@@ -37,7 +37,7 @@ Guests scan a per-table QR code, authenticate, browse the menu, and place orders
 | Tunneling (production) | Persistent named Cloudflare Tunnel (not the quick/temporary kind) — later phase, not v1 |
 | App composition | Aspire may be used for local dev orchestration/observability wiring, latest version |
 | Database migrations | DbUp, latest version, application to verify all migrations have applied and apply in sequence if necessary | 
-
+| Database backups	| `pg_dump` shell script run by host timer; new file per backup; scheduled daily at configurable local time (`BACKUP_SCHEDULE_TIME`, default `06:00`); retains last `BACKUP_RETENTION_COUNT` files (default `7`, set in `.env`); `.env.example` generates `.env` with these defaults if missing; older backups auto-deleted on each successful new backup; bind-mounted host directory (not in Git)
 
 **Non-goals for the stack:** no SQL Server, no EF Core, no Moq, no FluentAssertions, no vendor-locked telemetry SDKs, no native mobile app (see §7.4 for the one conditional exception), no external payment gateway, no external SMS/email sending service.
 
@@ -244,4 +244,3 @@ These were identified during discussion but intentionally deferred — flagged h
 - Exact `OrderEvent` type taxonomy (item added, item removed, price adjusted, acknowledged, etc.) and whether price edits and item edits share one event stream (recommended: yes, one stream per order).
 - Admin's hidden-records view: filtering/search requirements beyond "must exist and be usable."
 - Whether a QR code's underlying Table ID ever needs to be rotated/invalidated by staff (e.g., a phone left open on a table), and if so, how.
-- Backup/restore strategy for PostgreSQL on the target VPS.
