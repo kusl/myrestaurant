@@ -228,6 +228,7 @@ These aren't new to this project but apply here as much as anywhere:
 - **No dependencies that require payment for any use.**
 - **Full names, no abbreviations**, in code, CLI commands, and config keys.
 - **Spec-first development** — this document exists so implementation can be checked against explicit decisions rather than inferred assumptions.
+- **Atomic documentation and architectural decision records**: Any code change must be accompanied by the corresponding update to this requirements document and to any affected architectural decision record in the `docs/adr` folder, all within the same prompt or commit. The documentation is never updated separately or left behind; it moves atomically with the code it describes. If a decision changes, the existing ADR in `docs/adr` is edited (not duplicated) and the requirement here is updated to match. No implementation is considered complete until both the code and its documentation (requirements plus `docs/adr` records) are consistent.
 
 ---
 
@@ -249,4 +250,5 @@ These aren't new to this project but apply here as much as anywhere:
 These were identified during discussion but intentionally deferred — flagged here so they aren't lost:
 
 - Exact entity/table schema for `Person`, `TableSitting`, `PersonAtTable`, `Order`, `OrderEvent`, `MenuItem`.
-
+  I want the LLM to come up with a good normalized table structure, do NOT use entity attribute value to punt problems, do use uuidv7 when using guid
+- Resolved: Admin hidden-records view and full-state visibility rules (§4.3, §6.6).
