@@ -251,7 +251,6 @@ These were identified during discussion but intentionally deferred — flagged h
 
 - Exact entity/table schema for `Person`, `TableSitting`, `PersonAtTable`, `Order`, `OrderEvent`, `MenuItem`.
   I want the LLM to come up with a good normalized table structure, do NOT use entity attribute value to punt problems, do use uuidv7 when using guid
-- Resolved: Admin hidden-records view and full-state visibility rules (§4.3, §6.6).
 
 License will be AGPLv3. 
 No outside issues or pull requests. 

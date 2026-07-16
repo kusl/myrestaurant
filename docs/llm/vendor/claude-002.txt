@@ -1,0 +1,127 @@
+100
+10
+15
+
+**F‑01 — Who can reset passwords?** (§3.3 vs §4.5)
+Admin only 
+Counter will recommend creating a new account if admin is not available 
+
+**F‑02 — Who can adjust a locked‑in price?** (§6.3 vs §6.5)
+Counter and admin can adjust prices, kitchen cannot  
+
+**F‑03 — First‑admin bootstrap vs grant‑time credential mandates** (§4.3)
+Your assumption with /setup is fine. Please keep it 
+
+**F‑04 — Who can close a sitting?** (§5.4 vs §4.3)
+That's right, both counter and admin can close a sitting. 
+
+**F‑05 — Counter role has no credential requirement** (§4.4)
+Counter needs same as kitchen 
+
+**F‑06 — TLS / secure context never addressed; quick tunnels break passkeys.** *(largest technical gap)*
+TLS needs to be from cloudflare wither quick tunnels or permanent tunnels. 
+We did a proof of concept of this with our golang project at https://github.com/kusl/gotunnels 
+Go Tunnels is publicly available on github 
+It has
+    - Passkeys (WebAuthn) as the primary login, a password fallback (argon2id), and optional TOTP two-factor (RFC 6238, works with Aegis / Google Authenticator), with single-use recovery codes.
+    - Server-side sessions using an opaque Bearer token that works cross-origin (the frontend and API are on different tunnel domains). The token lives in localStorage, so a session persists across tabs and browser restarts and never expires on its own — you stay signed in until you explicitly log out (a deliberate anti–password-fatigue choice; tunable via GOTUNNELS_SESSION_TTL). Settings includes "log out everywhere" to revoke every session across all devices at once.
+    - Privacy-preserving audit log: client IPs are never stored raw — only sha256(pepper || ip), and the hash is shown to you plainly on your own activity page.
+    - A shared plain-text notes feed (create / delete, never edit) with visibility-aware polling for live updates, deferred "new notes" while you read, and server-side ownership checks in the SQL itself.
+    - A CAPTCHA toy with server-backed stats: the auto-solver can do hundreds of solves a second, so the browser batches deltas and syncs every few seconds; a RANK() OVER leaderboard and a per-user preferences endpoint round it out.
+    - OpenTelemetry traces, metrics, and logs over OTLP/HTTP — vendor-neutral, never tied to a specific backend.
+    - Content-Security-Policy in report-only mode by default; violations are reported back to the API, stored, and logged to telemetry.
+    - No exposed host ports; everything talks over the internal Compose network by service name.
+Unlike this demo, OUR argon2 parameters need to be ROBUST 
+
+**F‑07 — Order cardinality.** 
+Guests can edit their order at any time until closed by the counter 
+Kitchen can mark individual items as fulfiled 
+but guests are free to order more 
+every single guest change should send a notification to the kitchen 
+
+**F‑08 — "TOTP enabled" vs "TOTP required" conflated.** (§4.2)
+TOTP if present is always required. 
+TOTP is always required if password is present for admins, counter, and kitchen staff 
+Admin can reset password for anyone which will also remove TOTP 
+Users are required to create a new password after loggin in the first time after a password reset 
+
+**F‑09 — Admin sign‑in UX under a literal reading of §4.3.**
+Yes, that's right. admin may sign in with password + totp 
+
+**F‑10 — Post‑close edit window undefined.** (§5.5, §6.5)
+yes, orders are read only post close 
+
+**F‑10b — "Delete any user" vs append‑only history.** (§4.3)
+yes, deletes are soft deletes 
+
+**F‑11 — Attribution granularity toward guests.** (§6.5)
+yes, guests see role but we still save individual logins for auditability 
+
+**F‑12 — Static, never‑rotated QR is a permanent capability token.** (§5.1)
+This is a good catch. 
+While an existing guest approving a QR code is a good mitigation, 
+we have opened a vulnerability through which anyone can flood the system 
+from anywhere in the world opening a new session 
+every time the counter closes a session by a bad actor. 
+we need to somehow require the people to be at the table 
+which means the qr code must update periodically while the table is "open" 
+you may not use an older qr code to sign in, only the current qr code
+so this yet yet another web site / web page and yet another role 
+because we can't have the kitchen or counter be logged in on a display at every single table
+also we don't know if there will be two tables or twenty 
+counter needs to be able to "close" tables 
+this is getting complicated pretty fast 
+
+**F‑13 — Redis has no v1 consumer.** (§2)
+Not having redis if we don't need it is ok 
+
+**F‑14 — Aspire vs Podman Compose overlap.** (§2)
+Get rid of aspire. Prefer podman compose. 
+
+**F‑15 — `UPTRACE_DSN` is not a "standard OpenTelemetry environment variable".** (§2)
+This is an optional environment variable and should require no code change. 
+A working demo is at https://github.com/kusl/GoTunnels/blob/main/scripts/up.sh 
+
+**F‑16 — Backup mechanics underspecified.** (§7.x)
+Thank you. Yes, please implement these in the shell script
+
+**F‑17 — `run.sh` invoked but never defined.** (§1)
+It should do something similar to this 
+https://github.com/kusl/GoTunnels/blob/main/scripts/run.sh
+#   1. regenerates the LLM context dump (export.sh), if present
+#   2. runs the full test suite (build + vet + unit tests)
+#   3. builds the images and brings the whole stack up, printing the two
+#      Cloudflare Quick Tunnel URLs
+
+**F‑18 — Price‑change timelines promised but never recorded.** (§4.3 vs §6)
+Yes, this is correct as well 
+
+**F‑19 — Assorted unspecified operational details.**
+Currency, time zone, username policy, lockout policy, and whether anonymous ordering exists are all silent. *Spec defaults:* ISO 4217 `RESTAURANT_CURRENCY_CODE`; host time zone; case‑insensitive usernames 3–64 chars (`citext`); lockout 5 failures / 5 minutes plus endpoint rate limiting; **no anonymous ordering** — every guest authenticates (the requirements imply this but never state it).
+thankyou, accepted 
+
+**F‑20 — Moq exclusion rationale is factually off.** (§2 testing notes)
+Yes, please correct this in the documentation when we write the code / adr 
+actually, prefer testing with a "real" postgresql database that we stand up and tear down as necessary 
+if we build this project correctly with SOLID principles, we should have very few tests that REQUIRE mocking. 
+
+**F‑21 — "Three physical roles" vs four applications.** 
+and there is a new one in table. Please square this circle in the documentation as well. 
+
+**F‑22 — The no‑abbreviations rule collides with mandated abbreviations.** (§8)
+Please update as necessary to use full names everywhere 
+
+**F‑23 — Hardcoded personal path in the example.** (§1 vs §8)
+yes, please make it generic 
+
+**F‑24 — A "Resolved:" bullet inside the "not yet decided" list.** (§10)
+I removed it 
+
+**F‑25 — `export.sh` is emitted twice.**
+Fixed. I added it to the exclude list
+
+**F‑26 — `REQUIREMENTS.md` is absent from the dump.** 
+Fixed. I moved it up to docs from docs/llm 
+
+**F‑27 - 33 
+Please review the latest export.sh fix all the defects and include a new one in your output 
