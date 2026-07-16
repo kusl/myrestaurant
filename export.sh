@@ -50,7 +50,7 @@ EXCLUDE_DIR="docs/llm"
 # Individual files to exclude from the dump, in addition to EXCLUDE_DIR.
 # A bare name (no slash) is excluded wherever it appears; a name containing a
 # slash is treated as an exact repo-relative path.
-EXCLUDE_FILES=("yarn.lock")
+EXCLUDE_FILES=("yarn.lock" "export.sh")
 EXCLUDE_FILES_DISPLAY="$(printf '%s, ' "${EXCLUDE_FILES[@]}")"
 EXCLUDE_FILES_DISPLAY="${EXCLUDE_FILES_DISPLAY%, }"
 
