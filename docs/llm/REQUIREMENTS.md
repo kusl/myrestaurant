@@ -256,3 +256,4 @@ These were identified during discussion but intentionally deferred — flagged h
 License will be AGPLv3. 
 No outside issues or pull requests. 
 All copyright remains with the authors. 
+follow all engineering best practices such as solid principles 
