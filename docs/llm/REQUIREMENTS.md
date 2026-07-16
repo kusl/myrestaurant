@@ -36,6 +36,8 @@ Guests scan a per-table QR code, authenticate, browse the menu, and place orders
 | Tunneling (demo) | `try.cloudflare.com` quick tunnels for fast iteration; setup/teardown shell scripts; must support multiple concurrent tunnels, properly scoped so they don't bleed into each other's environment |
 | Tunneling (production) | Persistent named Cloudflare Tunnel (not the quick/temporary kind) — later phase, not v1 |
 | App composition | Aspire may be used for local dev orchestration/observability wiring, latest version |
+| Database migrations | DbUp, latest version, application to verify all migrations have applied and apply in sequence if necessary | 
+
 
 **Non-goals for the stack:** no SQL Server, no EF Core, no Moq, no FluentAssertions, no vendor-locked telemetry SDKs, no native mobile app (see §7.4 for the one conditional exception), no external payment gateway, no external SMS/email sending service.
 
@@ -243,4 +245,3 @@ These were identified during discussion but intentionally deferred — flagged h
 - Admin's hidden-records view: filtering/search requirements beyond "must exist and be usable."
 - Whether a QR code's underlying Table ID ever needs to be rotated/invalidated by staff (e.g., a phone left open on a table), and if so, how.
 - Backup/restore strategy for PostgreSQL on the target VPS.
-- Migration tooling strategy, given Dapper is used instead of EF Core, use a db up project. our omnibus `run.sh` should include this migration. 
