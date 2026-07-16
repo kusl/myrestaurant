@@ -79,6 +79,7 @@ One shared backend; the following are logically distinct experiences (could be d
 - **Admin accounts must have a passkey.** This is enforced when the passkey is registered / at admin-role grant time.
 - If an admin's passkey is later lost/removed while they are already logged in and using the system, the system does **not** auto-demote them or lock them out — enforcement is at registration/grant time, not a continuous background check. (Deliberately no aggressive enforcement here — avoids a support nightmare during service hours.)
 - Admins have full authority: create/read/update/delete on any user, role, menu item, order, or hidden record. Admins are the only role that can unhide hidden historical records (§6.5).
+- Admin visibility of full database state: Where ordinary users see only current or visible state (e.g., current menu price, own visible order history), the admin-facing interface displays the complete record as stored — including append-only event histories, hidden records (§6.6), and price-change timelines. Any filtering or search controls are applied at the admin's explicit request; the underlying data shown is never projected or truncated for the admin role.
 
 ### 4.4 Role gating (kitchen / counter)
 
@@ -114,6 +115,12 @@ One shared backend; the following are logically distinct experiences (could be d
 
 - Every physical table has its own QR code, encoding a stable **Table ID**.
 - Scanning the QR code does **not** by itself create or join a session — it identifies which table the device is at and routes the guest into the sign-in flow (§4.1) for that table.
+- The underlying Table ID is static — it is never rotated, regenerated, or invalidated by staff.
+- When the QR code is scanned:
+    - If no open TableSitting exists for that Table ID, the system creates a new TableSitting and routes the authenticated user into it.
+    - If an open TableSitting exists, the scanning user is shown the existing session and may join it; the system does not create a concurrent second TableSitting for the same Table ID.
+    - If a session was accidentally left open (e.g., a device left at the table), staff resolve it by closing the sitting at the counter (§5.4); there is no separate "reset" or "invalidate QR" action — only session closure.
+- Operational assumption: a new party does not occupy the table until the previous TableSitting has been closed and the bill settled by counter staff (§5.4).
 
 ### 5.2 Table sitting vs. person session
 
@@ -132,6 +139,7 @@ One shared backend; the following are logically distinct experiences (could be d
 - Only **counter** can close a Table Sitting.
 - **Closing the sitting and marking the bill paid happen atomically as a single action.** There is no "closed but unpaid" state and no separate walkout/comp flow in v1 — that is explicitly out of scope for now, not silently unsupported-but-assumed-fine.
 - The moment a sitting closes/is paid, the table-wide visibility from §5.3 ends immediately for everyone still connected (this is a live permission change pushed over the same SignalR connection that drives the rest of the UI — not just a rule enforced on next page load). From that point forward, each person can only see their own order in their personal history.
+- Counter staff are responsible for closing the sitting after the bill is settled; this is the only mechanism that frees the table for the next TableSitting. No automated timeout or rotation is used, except at the End of Business Day, when counter staff may perform a batch closure of all remaining open TableSitting records; each such closure is still logged individually as a normal close event.
 
 ### 5.5 Post-close visibility
 
@@ -183,7 +191,7 @@ There is **no multi-step "order tracker"** (no submitted → in-prep → ready g
   - Hiding removes it from that user's own view only — it is not deleted from the system, and no other party's view of it changes.
   - **There is no "show hidden" toggle for the user** — once hidden, it is gone from their perspective, permanently, from their own point of view.
   - **Only an admin can unhide** a hidden record, via an admin-facing view listing hidden records system-wide. (This view needs to exist and be usable — e.g., filterable by user/date/table — otherwise "admin can unhide" has no way to actually locate the thing to unhide. Exact filtering/search UX is an implementation detail, but the view itself is a requirement, not optional.)
-
+  - Admin hidden-records view: The view must display every hidden historical order as it exists in the database. It must be filterable and searchable by user identifier, date range, and table identifier, so the admin can locate a specific record to unhide it. The view shows the full, unprojected database state of the record (not a summary); unhide is available per record.
 ---
 
 ## 7. Notifications
@@ -241,6 +249,4 @@ These aren't new to this project but apply here as much as anywhere:
 These were identified during discussion but intentionally deferred — flagged here so they aren't lost:
 
 - Exact entity/table schema for `Person`, `TableSitting`, `PersonAtTable`, `Order`, `OrderEvent`, `MenuItem`.
-- Exact `OrderEvent` type taxonomy (item added, item removed, price adjusted, acknowledged, etc.) and whether price edits and item edits share one event stream (recommended: yes, one stream per order).
-- Admin's hidden-records view: filtering/search requirements beyond "must exist and be usable."
-- Whether a QR code's underlying Table ID ever needs to be rotated/invalidated by staff (e.g., a phone left open on a table), and if so, how.
+
