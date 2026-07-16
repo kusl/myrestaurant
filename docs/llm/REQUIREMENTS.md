@@ -7,7 +7,10 @@
 
 ## 1. Purpose
 
-A restaurant management system covering three physical roles — **table (customer)**, **kitchen**, and **counter (payment)** — built entirely on free/open-source components, self-hosted, with no dependency on paid external services (no payment processors, no SMS/email providers, no vendor-specific telemetry backends).
+A restaurant management system covering three physical roles — **table (customer)**, **kitchen**, and **counter (payment)** — built entirely on free/open-source components, self-hosted, with no dependency on paid external services (no payment processors, no SMS/email providers, no vendor-specific telemetry backends). 
+However, it should be straightforward to use environment variables or .env files to store required stuff like 
+`cd /home/kushal/src/dotnet/myrestaurant/; export UPTRACE_DSN="https://[redacted]@api.uptrace.dev?grpc=4317"; time bash run.sh`
+
 
 Guests scan a per-table QR code, authenticate, browse the menu, and place orders. Kitchen sees orders live and prepares them. Counter closes out the table and settles the bill. All actions are transparent and auditable — nothing is silently overwritten.
 
@@ -240,4 +243,4 @@ These were identified during discussion but intentionally deferred — flagged h
 - Admin's hidden-records view: filtering/search requirements beyond "must exist and be usable."
 - Whether a QR code's underlying Table ID ever needs to be rotated/invalidated by staff (e.g., a phone left open on a table), and if so, how.
 - Backup/restore strategy for PostgreSQL on the target VPS.
-- Migration tooling strategy, given Dapper is used instead of EF Core (no built-in migrations).
+- Migration tooling strategy, given Dapper is used instead of EF Core, use a db up project. our omnibus `run.sh` should include this migration. 
