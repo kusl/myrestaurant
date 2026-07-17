@@ -14,3 +14,256 @@ Please generate the full code base as well as all the documentation
 I have uploaded the latest dump.txt 
 git repository is/will be publicly available at 
 https://github.com/kusl/myrestaurant
+
+
+/
+Rulings. F-01–05, F-09–11, F-13–19, F-21–24 are recorded as stated and will be reflected verbatim in the next doc revision. Four need a word back from you — I've picked defaults so a silent "fine" is a valid answer:
+F-06: Cloudflare tunnels it is, with one sharp edge I verified: trycloudflare.com is on the Public Suffix List, so on quick tunnels a passkey binds to the random per-run subdomain and dies with it. Durable passkeys therefore require a named tunnel on your stable domain; quick tunnels stay fine for demos with password+TOTP. I'll also carry your "ROBUST Argon2" instruction into a custom IPasswordHasher (Argon2id, ~64 MiB / t=3 / p=1, configurable), and note the accepted risk that in-house ordering hairpins through Cloudflare, so LAN ordering depends on WAN health. I'm taking GoTunnels as the tunnel/TLS/observability reference only — its never-expiring localStorage bearer session doesn't fit Blazor Server's cookie/circuit model.
+F-07 (Q1): I'll respec as one living order per guest per sitting: edits staged client-side and sent explicitly, each send is one batch event and one kitchen alert (not per-keystroke, to avoid alert fatigue); lines get a pending → fulfilled lifecycle replacing order-level Acknowledged; guests may remove only not-yet-fulfilled lines. Veto if you want literal per-change notifications.
+F-08 (Q2/Q3): Default: TOTP is challenged on password sign-ins only, not passkey sign-ins (the authenticator is already a second factor). Admin reset wipes password+TOTP; next sign-in forces new password, then immediate TOTP re-enrollment before anything else. The per-user "admin TOTP toggle" from §4.2 disappears.
+F-12 (Q4/Q5): New role table_display with surface /display/{table} — a cheap per-table device paired once via an admin one-time code, showing a QR that encodes {origin}/table/{id}?token=HMAC(table_secret, time_window), rotating every 60 s, current+previous window accepted, rotation independent of sitting state; counter can read the current code off their own screen if a display dies. Q5: I'm speccing rotating-only — printed static QRs are gone entirely rather than kept as a flagged fallback. Veto if you want the fallback documented.
+all of this is fine. 
+Please generate the full code base as well as all the documentation
+I have uploaded the latest dump.txt 
+git repository is/will be publicly available at 
+https://github.com/kusl/myrestaurant
+
+Show less
+
+Orchestrated technical specification drafting across multiple document sections
+Orchestrated technical specification drafting across multiple document sections
+
+Loaded frontend-design skill
+
+Scaffold repository tree and fetch the real AGPL-3.0-only license text
+
+Write revised REQUIREMENTS.md folding in all 2026-07-16 rulings
+
+Fix directory scaffold (the shell is sh, not bash — no brace expansion)
+
+Write revised REQUIREMENTS.md folding in all 2026-07-16 rulings
+
+Check current state of generated repo before resuming
+
+Check directory scaffold and locate export.sh findings in transcript
+
+Check transcript size and final state before compaction
+
+Locate original spec structure in transcript
+Done
+Now resuming with the technical specification rewrite.
+
+
+Architected DataAccess layer with repositories, read models, and transaction handling
+Architected DataAccess layer with repositories, read models, and transaction handling
+
+Write TECHNICAL_SPECIFICATION.md v0.2
+
+Extract finding titles from original review doc in transcript
+
+Check if dump.txt is on disk with original review findings
+
+Write DOCUMENTATION_REVIEW.md resolutions ledger
+
+Write ADRs 0001-0005
+
+Write ADRs 0006-0010
+
+Write .gitignore, CONTRIBUTING, .env.example, Directory props, solution file
+
+Write compose.yaml, Containerfile, README.md
+
+Write run.sh, shutdown.sh, export.sh
+
+Write all operational scripts and CI workflow
+
+Write the initial schema migration
+
+Write Domain csproj, roles, entity classes
+
+Write order events, projection, policy, notifications
+
+Write TOTP, QR token, hash format, code generators, sign-in policy
+
+Verify current state of the repository before resuming
+
+Review authoritative DDL so repository SQL matches exactly
+
+Review Domain entity property names for repository mapping
+
+Review remaining Domain entities for repository mapping
+
+Review Domain policy/projection/notification APIs before writing DataAccess and services
+Done
+Verification of Data Access design (from your Domain layer):
+
+Everything is consistent. Now writing the DataAccess project — starting with the csproj and setup files.
+
+please continue
+
+
+Strategizing WebApplication project file organization
+Strategizing WebApplication project file organization
+
+Check central package versions so csproj references match exactly
+
+DataAccess project file — Dapper + Npgsql + DbUp, embedded migrations
+
+Data source factory + one-time Dapper snake_case configuration
+
+DbUp migration runner — embedded scripts, fail fast, journal table
+
+Use GetDiscoveredScripts (no DB connection needed) instead of GetScriptsToExecute
+MigrationRunner.cs
++11
+-11
+
+Read-model row records shaped by the SQL views and reporting queries
+
+Person repository — accounts, credentials fields, roles, addresses, security events
+
+Add missing PersonAddress entity to Domain (person_address table)
+Person.cs
++19
+-6
+
+Passkey and recovery-code repositories
+
+Table + display-device repositories (rotating QR secret, pairing codes)
+
+Sitting repository — open/join with race handling, close with settlement, explorer queries
+
+Order repository — the append-only event log: batches, edits, projections, history, hiding
+
+Add flat SittingLineRow read model (avoids fragile Dapper multi-mapping)
+ReadModels.cs
++24
+-5
+
+Replace multi-mapped sitting-lines query with flat SittingLineRow query
+OrderRepository.cs
++29
+-23
+
+Add SittingExplorerRow read model for the administration explorer
+ReadModels.cs
++23
+-11
+
+Replace tuple multi-mapping explorer query with flat SittingExplorerRow
+SittingRepository.cs
++25
+-18
+
+Menu repository — mutations paired with events in one transaction, timelines
+
+Notification repository — reminder scanner query and once-only insert
+Done
+DataAccess is complete. Now reviewing remaining Domain security APIs before writing the WebApplication:
+
+
+Architected comprehensive WebApplication structure with security, services, endpoints, and pages
+Architected comprehensive WebApplication structure with security, services, endpoints, and pages
+
+Review Domain security APIs so WebApplication services match signatures
+Done
+Now the WebApplication project — the largest piece. Starting with project file, options, telemetry, and the broadcaster:
+
+
+WebApplication project file
+WebApplication project file
+
+WebApplication project file
+Claude couldn’t finish this response. Try again in a moment.
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/
+please continue from the previous chat
+
+
+Architecting component pages and endpoint handlers comprehensively
+Architecting component pages and endpoint handlers comprehensively
+
+Relevant chats
+3 results
+
+
+Restaurant ordering system technical specifications
+
+
+Documentation review responses
+
+
+Technical specification and documentation review
+
+
+Check whether any code was pushed to the repo, and confirm project files
+
+Relevant chats
+3 results
+
+
+Restaurant ordering system technical specifications
+
+
+Technical specification and documentation review
+
+
+Documentation review responses
+
+
+Relevant chats
+3 results
+
+
+Restaurant ordering system technical specifications
+
+
+Documentation review responses
+
+
+Technical specification and documentation review
+
+Done
+Claude reached its max length for this message. Max effort can use excessive tokens resulting in hitting limits. Consider using a lower effort setting.
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+00
+37
+66
