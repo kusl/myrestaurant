@@ -1,258 +1,198 @@
-# Restaurant Management System — Requirements
+# myrestaurant — Requirements
 
-**Status:** Thought-experiment / pre-implementation. No code written yet.
-**Scope:** Single restaurant per deployed instance. No multi-tenancy, no cross-instance awareness, no global system. Every restaurant is sovereign.
+**Revision 2 — 2026-07-17.** This revision folds in the owner's rulings on documentation-review findings F-01 through F-33 (see `docs/DOCUMENTATION_REVIEW.md` for the ledger and `docs/adr/` for the decision records). Revision 1 is preserved in git history. The companion `docs/TECHNICAL_SPECIFICATION.md` v1.0 is the normative implementation contract; where this document states intent and that document states mechanism, the mechanism governs.
 
 ---
 
 ## 1. Purpose
 
-A restaurant management system covering three physical roles — **table (customer)**, **kitchen**, and **counter (payment)** — built entirely on free/open-source components, self-hosted, with no dependency on paid external services (no payment processors, no SMS/email providers, no vendor-specific telemetry backends). 
-However, it should be straightforward to use environment variables or .env files to store required stuff like 
-`cd /home/kushal/src/dotnet/myrestaurant/; export UPTRACE_DSN="https://[redacted]@api.uptrace.dev?grpc=4317"; time bash run.sh`
+A self-hosted ordering system for one small restaurant, run by its owner on their own hardware, published as free software. Guests seated at a table order from their own phones; the kitchen sees what to cook the moment it is sent; the counter settles the bill; the owner administers everything. No cloud vendor holds the data; no per-seat fee exists; anyone may run their own copy under the AGPL.
 
+There are **four human experiences** — three physical stations (table, kitchen, counter) plus administration, which is a role rather than a place — and one **device experience**, the per-table display that shows the rotating join code. All five are areas of a single application (§3).
 
-Guests scan a per-table QR code, authenticate, browse the menu, and place orders. Kitchen sees orders live and prepares them. Counter closes out the table and settles the bill. All actions are transparent and auditable — nothing is silently overwritten.
-
----
+The system is deliberately small: one restaurant, one host, one PostgreSQL database, tens of tables, not thousands. Every design choice below is allowed to assume that scale.
 
 ## 2. Technology stack
 
-| Concern | Choice |
-|---|---|
-| Language / runtime | C#, latest language features, .NET 10 (or latest stable at build time) |
-| Web framework | ASP.NET Core, Blazor Server (single backend, live UI via SignalR — no separate push infra needed) |
-| Data access | Dapper (no Entity Framework) |
-| Database | PostgreSQL (latest stable) |
-| Caching | Redis (or equivalent), containerized — optional infra component, not required for v1 correctness |
-| Observability | OpenTelemetry (logs, metrics, spans — full end-to-end coverage). No vendor-specific packages. Optional Uptrace DSN via standard OTel env var configuration — this is just an OTel-compatible collector endpoint, not a special integration. |
-| Orchestration (dev/prod) | Podman Compose, rootless. Runs on Fedora or Debian. |
-| Containers | Containerfile (not Dockerfile) for every service, multi-stage, latest base images |
-| CI | GitHub Actions — kept intentionally thin. All real logic lives in shell scripts invoked by the workflow, and those scripts drive Podman Compose. This keeps CI portable and reproducible locally. |
-| Unit testing | xUnit v3 (latest) |
-| Assertion style | Plain xUnit or AwesomeAssertions — no FluentAssertions, no Moq (avoid packages with restrictive/paid licensing) |
-| Integration/E2E testing | Playwright, run inside a container (required on Fedora — no native Playwright support on the host) |
-| Package/version management | Central Package Management via `Directory.Packages.props` / `Directory.Build.props` |
-| Tunneling (demo) | `try.cloudflare.com` quick tunnels for fast iteration; setup/teardown shell scripts; must support multiple concurrent tunnels, properly scoped so they don't bleed into each other's environment |
-| Tunneling (production) | Persistent named Cloudflare Tunnel (not the quick/temporary kind) — later phase, not v1 |
-| App composition | Aspire may be used for local dev orchestration/observability wiring, latest version |
-| Database migrations | DbUp, latest version, application to verify all migrations have applied and apply in sequence if necessary | 
-| Database backups	| `pg_dump` shell script run by host timer; new file per backup; scheduled daily at configurable local time (`BACKUP_SCHEDULE_TIME`, default `06:00`); retains last `BACKUP_RETENTION_COUNT` files (default `7`, set in `.env`); `.env.example` generates `.env` with these defaults if missing; older backups auto-deleted on each successful new backup; bind-mounted host directory (not in Git)
+| Concern | Choice | Notes |
+|---|---|---|
+| Runtime | .NET 10 | |
+| Web framework | ASP.NET Core Blazor Server (interactive server render mode) | one application, routed areas |
+| Database | PostgreSQL (current major) | `citext` extension for case-insensitive text |
+| Data access | **Dapper** | **Entity Framework is forbidden** anywhere in the solution |
+| Migrations | DbUp, plain SQL, executed at startup | ADR-0012 |
+| Identity | ASP.NET Core Identity core services over custom Dapper stores | ADR-0003 |
+| Password hashing | **Argon2id** via custom `IPasswordHasher` (Konscious.Security.Cryptography.Argon2, MIT) | ADR-0008; robust parameters, configurable |
+| Passkeys | .NET 10 built-in WebAuthn support | `fido2-net-lib` (MIT) is the approved fallback |
+| Live updates | Blazor Server circuits + in-process broadcaster | no Redis in v1 — ADR-0006 |
+| Observability | OpenTelemetry (traces, metrics, logs), OTLP export | collector-agnostic; any OTLP endpoint works |
+| Containers | **rootless Podman + podman-compose is canonical** | Aspire AppHost is an optional dev convenience, never required — ADR-0004 |
+| Public origin / TLS | **Cloudflare named tunnel** on the owner's stable domain | ADR-0005; Caddy serves dev TLS and an optional staff-LAN fallback |
+| Unit-test doubles | hand-written fakes preferred; NSubstitute acceptable | Moq is not used |
+| QR rendering | server-side SVG generation | no client-side QR libraries |
+| License | **AGPL-3.0-only** | |
+| Dependencies | free/libre only | nothing that requires payment or a license key |
 
-**Non-goals for the stack:** no SQL Server, no EF Core, no Moq, no FluentAssertions, no vendor-locked telemetry SDKs, no native mobile app (see §7.4 for the one conditional exception), no external payment gateway, no external SMS/email sending service.
+## 3. Applications (areas)
 
----
+One Blazor Server application serves five routed areas (ADR-0001):
 
-## 3. Applications (front ends)
+- **`/table`** — the guest experience: join a table, build and send orders, watch the party's orders live, see the running bill.
+- **`/kitchen`** — the kitchen queue: loud alert on new work, pending lines grouped by guest order, tap-to-fulfill, item 86'ing (deactivate menu items).
+- **`/counter`** — billing: per-sitting bill view, price adjustments with reasons, close & settle, and the on-screen rotating join QR for any table (the fallback if a table's display dies).
+- **`/administration`** — everything: users, roles, resets, tables, display-device pairing and revocation, join-secret rotation, menu management, hidden-records view (locate and unhide guest-hidden orders, §6.7), event explorer, end-of-day batch close. The administrator always sees the **complete stored record, unprojected** — full event histories, hidden records, price-change timelines; filters narrow only on the administrator's explicit request.
+- **`/display/{table}`** — the table display device surface: a full-screen rotating join QR for exactly one table, on a cheap paired device (ADR-0009). Devices are principals of kind `table_display`; they are not person accounts.
 
-One shared backend; the following are logically distinct experiences (could be distinct Blazor Server apps or distinct routed sections of one app — an implementation decision, not a requirements decision):
+## 4. Identity and authentication
 
-1. **Table (customer-facing)** — menu browsing, ordering, viewing table-mates' orders, personal order history, personal profile/account.
-2. **Kitchen-facing** — live order queue, acknowledge orders, edit orders (tamper-evidently), deactivate/reactivate menu items.
-3. **Counter-facing** — per-table billing view, close/settle sessions, edit orders (tamper-evidently), deactivate/reactivate menu items, password reset assistance.
-4. **Admin** — full read/write authority; user and role management; TOTP policy overrides; unhide hidden records; menu management.
+### 4.1 Accounts and credentials
 
----
+Everyone who orders, cooks, or administers is a `person` with a unique username (case-insensitive, 3–64 characters) and an optional display name shown to their table-mates and the kitchen. Credentials are any combination of:
 
-## 4. Identity & authentication
+- **Password** — hashed with Argon2id (ADR-0008). Minimum length 12; no composition rules; no forced rotation.
+- **Passkey** — the preferred credential for everyone; required for kitchen role holders and administrators at grant time.
+- **TOTP** — RFC 6238, 6 digits, 30-second step; enrollable by any signed-in user; secrets stored encrypted at rest.
 
-### 4.1 Credentials
+Account lockout: 5 consecutive failed attempts (password, TOTP, or recovery code) locks the account for 5 minutes.
 
-- Two supported first-factor methods, offered as **alternatives**, not both required:
-  - **Username + password**, using standard `autocomplete="username"` / `autocomplete="new-password"` form conventions so OS-level password managers on iOS/Android generate and offer strong passwords automatically.
-  - **Username + passkey** (WebAuthn/FIDO2), which should work out of the box on modern iOS/Android/desktop browsers.
-- **Passkeys are always offered, never required**, for ordinary guests. UI should nudge toward passkey enrollment (e.g., "want a faster way to sign in next time?") without blocking any flow.
-- Usernames are **unique per instance only**. No instance is aware of any other instance. No global user directory exists anywhere in the system.
+Usernames are unique **per instance only**. No instance is aware of any other instance and no global user directory exists anywhere — every restaurant is sovereign. Registration and change-password forms use `autocomplete="username"` / `autocomplete="new-password"` so OS-level password managers on phones generate and offer strong passwords automatically. **Passkeys are always offered, never required, for ordinary guests** — a dismissible "want a faster way to sign in next time?" nudge after registration and after sign-in, never a gate; the grant-time passkey mandate applies only to the kitchen and administrator roles.
 
-### 4.2 TOTP (two-factor)
+### 4.2 Two-factor policy (revised by the Q2 ruling)
 
-- If a user has TOTP enabled, it is **required by default** on every login going forward.
-- A user may remove/re-add their own TOTP at any time **while logged in** (e.g., lost authenticator app, wants to reconfigure).
-- An **admin can independently toggle whether TOTP is required for a given non-admin user**. This is its own standalone admin action — it is not required to be bundled with a password reset, though a password reset is one common trigger for it (e.g., user is locked out because they lost their authenticator app and their password).
-- TOTP recovery codes are supported.
-- **Admin accounts always require TOTP.** This cannot be disabled by anyone, including another admin.
+**TOTP is challenged on password sign-ins only, and only when the account has TOTP enrolled.** The passkey sign-in path never challenges TOTP — a passkey-capable authenticator is already a second factor. There is **no per-user "require TOTP" toggle**; requiredness collapses to enrollment.
 
-### 4.3 Admin accounts
+Administrators must always be **enrolled** in TOTP (enrolled at grant time and in the bootstrap wizard) and cannot remove their own enrollment. A passkey-only administrator with no password set is permitted; the enrollment then has no path on which to be challenged, which is acceptable because there is no password to phish. Recovery codes substitute for a TOTP code on the password path only.
 
-- Admin is a **per-restaurant, per-instance role** — never global, matching the "every restaurant is sovereign" principle.
-- The **first user created during initial setup automatically becomes the first admin.** This bootstrap path (`no admin exists yet → next registered/created user becomes admin`) is only available before any admin exists, and is permanently closed off afterward.
-- **Admin accounts must have a passkey.** This is enforced when the passkey is registered / at admin-role grant time.
-- If an admin's passkey is later lost/removed while they are already logged in and using the system, the system does **not** auto-demote them or lock them out — enforcement is at registration/grant time, not a continuous background check. (Deliberately no aggressive enforcement here — avoids a support nightmare during service hours.)
-- Admins have full authority: create/read/update/delete on any user, role, menu item, order, or hidden record. Admins are the only role that can unhide hidden historical records (§6.5).
-- Admin visibility of full database state: Where ordinary users see only current or visible state (e.g., current menu price, own visible order history), the admin-facing interface displays the complete record as stored — including append-only event histories, hidden records (§6.6), and price-change timelines. Any filtering or search controls are applied at the admin's explicit request; the underlying data shown is never projected or truncated for the admin role.
+### 4.3 Registration
 
-### 4.4 Role gating (kitchen / counter)
+Guests self-register at the moment of joining a table (§5.1): username, optional display name, and at least one credential — passkey offered first, password accepted. Staff accounts are created by an administrator.
 
-- **Kitchen role requires a passkey** on the account holding that role. Enforced at role-grant time.
-- No TOTP requirement is imposed on kitchen/counter roles by default (TOTP for non-admins is opt-in / admin-toggleable, per §4.2) — the passkey-for-kitchen rule stands on its own.
-- No continuous re-verification or auto-demotion if a credential is later removed while the session is active — same posture as admin (§4.3).
+### 4.4 First administrator
 
-### 4.5 Password reset
+On a fresh database, `/setup` runs a one-time bootstrap wizard: create the account, register a passkey, enroll TOTP, grant `administrator` — all inside one guarded transaction. Once any administrator exists, `/setup` returns 404 forever.
 
-- **Self-service:** any logged-in user can change their own password (requires knowing the current one).
-- **Admin-initiated reset:** an admin can reset any user's password to a **randomly generated password**.
-  - The affected user is **forced to change their password on next login.**
-  - This reset is one of the triggers that can make TOTP optional for that user (see §4.2) — but is not the *only* way to toggle that flag.
-- **Forgot password, not logged in, no self-service path:** because there is no automated email/SMS sending in v1, this always falls back to a human-mediated in-person/admin reset. There is no automated "forgot password" email flow.
+### 4.5 Administrative reset (revised by the Q3 ruling)
 
-### 4.6 Contact info
+An administrator resetting a user's credentials: sets a temporary password, always flags `must_change_password`, and — **if TOTP was enrolled at reset time** — wipes the TOTP secret and all recovery codes and flags `must_enroll_totp`. Reset never forces TOTP onto an account that never had it.
 
-- Users may optionally store a phone number and/or email address on their profile.
-- These are used for **manual escalation only** in v1 — e.g., an admin resets a password and then manually calls/texts/emails the new password to the user outside the system. They are not wired to any automated notification pipeline (no automated "your order is ready" texts, etc.) — building that would require a paid third-party sending service, which conflicts with the no-paid-dependency principle. This may be revisited later as an explicit, named future integration, not assumed as in-scope.
+After **any** subsequent successful sign-in (password *or* passkey), a post-authentication obligations pipeline runs before the user reaches any destination: forced password change if flagged, then forced TOTP re-enrollment if flagged, then proceed. Every step writes a `security_event`.
 
-### 4.7 User profile page
+Guests who lose access ask the counter, who identifies them in person and relays to an administrator; there is no self-service reset (no email/SMS infrastructure exists on purpose).
 
-- Every user has a profile page where they may (all optional):
-  - Manage passkeys / password / TOTP.
-  - Add phone number / email.
-  - Add **addresses with free-text labels** (e.g., "Home," "Work," "Grandparents' house") — structured street/city/zip fields are a reasonable implementation detail, but the label is always free text chosen by the user. Not currently consumed by any other feature (no delivery/takeout flow exists yet) — this is intentionally scaffolding for a possible future feature, not dead weight to be removed, but also not to be treated as load-bearing for anything in v1.
+### 4.6 Profile, contact details, and addresses
 
----
+Every person has a profile page where they manage their credentials (passkeys, password, TOTP and recovery codes) and may, all optionally:
 
-## 5. Table / session model
+- Store a **phone number and/or email address**. These exist for **manual escalation only** — e.g., an administrator resets a password and then calls or texts the user outside the system. They are wired to no automated pipeline (no "your order is ready" texts); building one would require a paid sending service, which conflicts with the no-paid-dependency principle. This may be revisited later as an explicit, named future integration — never assumed in scope.
+- Store **postal addresses with free-text labels** ("Home", "Work", "Grandparents' house"). Structured street/city/postal-code fields are a reasonable implementation detail, but the label is always free text chosen by the user. Nothing consumes addresses in version 1 — they are deliberate scaffolding for a possible future delivery/takeout feature, not dead weight to be removed, and not load-bearing for anything now.
 
-### 5.1 QR codes and table identity
+## 5. Tables, sittings, and joining
 
-- Every physical table has its own QR code, encoding a stable **Table ID**.
-- Scanning the QR code does **not** by itself create or join a session — it identifies which table the device is at and routes the guest into the sign-in flow (§4.1) for that table.
-- The underlying Table ID is static — it is never rotated, regenerated, or invalidated by staff.
-- When the QR code is scanned:
-    - If no open TableSitting exists for that Table ID, the system creates a new TableSitting and routes the authenticated user into it.
-    - If an open TableSitting exists, the scanning user is shown the existing session and may join it; the system does not create a concurrent second TableSitting for the same Table ID.
-    - If a session was accidentally left open (e.g., a device left at the table), staff resolve it by closing the sitting at the counter (§5.4); there is no separate "reset" or "invalidate QR" action — only session closure.
-- Operational assumption: a new party does not occupy the table until the previous TableSitting has been closed and the bill settled by counter staff (§5.4).
+### 5.1 Joining a table (revised by the F-12 / Q4 / Q5 rulings)
 
-### 5.2 Table sitting vs. person session
+Every table has a **rotating join code**, not a printed one. Printed static QR codes are gone entirely.
 
-- A **Table Sitting** represents one party occupying one table for one meal — the parent record that ties everything at that table together for that visit.
-- Each person who signs in at that table creates their own **Person-at-Table** record (join between an authenticated `Person` and the current `TableSitting`).
-- **Each person has their own individual order** — orders belong to the person, not to the table as an undifferentiated cart. There is no shared/merged cart across devices at a table.
-- Because guest identity is now persistent (via passkey/password accounts) and repeat visits are expected, a `TableSitting` from one visit is fully independent of a `TableSitting` from another visit, even for the same returning `Person` at the same physical table.
+- Each table holds a server-side 32-byte `join_secret`, never disclosed to any client. The current join token is `HMAC-SHA256(join_secret, table-uuid ":" time-window)` where the window advances every 60 seconds (configurable); the server accepts the current and previous windows (≤120 s validity).
+- A cheap **table display device**, paired once by an administrator with a one-time code, shows the current QR full-screen and refreshes on the window boundary (`/display/{table}`, ADR-0009).
+- Scanning yields `{origin}/table/{id}?token=…`. A valid token is immediately exchanged for a short-lived **join grant** (10 minutes, encrypted cookie) so that slow registration cannot outlive the token. After sign-in/registration, joining consumes the grant. Expired tokens get a friendly "code expired — scan the display again" page.
+- If a display dies, the **counter (or an administrator) shows the same rotating QR on their own screen** and the guest scans that. Rotation runs whether or not a sitting is open.
+- Existing members of the table's open sitting reach `/table/{id}` without any token.
 
-### 5.3 Visibility during an active sitting
+### 5.2 Sittings
 
-- **While a Table Sitting is open**, everyone signed in at that table can see everyone else's order **at that same table** (items, modifiers, running total) — full transparency within the party.
-- Guests at **different tables** can never see each other's orders, regardless of session state. Table-to-table privacy is absolute.
+A **sitting** is one party's occupation of one table from first join to close. The first successful join with no open sitting on that table creates one; later joiners with a valid grant become members of the open sitting. A person may be a member of multiple open sittings (edge case, permitted). Each member has exactly **one living order** per sitting (§6.1). Operationally, a new party is not expected to occupy a table until the previous sitting has been closed and settled at the counter; an accidentally-left-open sitting (a device abandoned at the table) is resolved by closing it — there is no separate "reset table" action.
 
-### 5.4 Closing a sitting
+### 5.3 Visibility
 
-- Only **counter** can close a Table Sitting.
-- **Closing the sitting and marking the bill paid happen atomically as a single action.** There is no "closed but unpaid" state and no separate walkout/comp flow in v1 — that is explicitly out of scope for now, not silently unsupported-but-assumed-fine.
-- The moment a sitting closes/is paid, the table-wide visibility from §5.3 ends immediately for everyone still connected (this is a live permission change pushed over the same SignalR connection that drives the rest of the UI — not just a rule enforced on next page load). From that point forward, each person can only see their own order in their personal history.
-- Counter staff are responsible for closing the sitting after the bill is settled; this is the only mechanism that frees the table for the next TableSitting. No automated timeout or rotation is used, except at the End of Business Day, when counter staff may perform a batch closure of all remaining open TableSitting records; each such closure is still logged individually as a normal close event.
+Members of a sitting see each other's display names, orders, and line states live. Guests at **different tables never** see each other's orders — table-to-table privacy is absolute. The moment a sitting closes, party-wide visibility ends **immediately** for everyone still connected: a live permission change pushed over the same circuit that drives the rest of the interface, not a rule enforced on next page load. Kitchen and counter see everything current. History visibility is governed by §6.7.
 
-### 5.5 Post-close visibility
+### 5.4 Close and settle (revised)
 
-- After closing, each person's order becomes part of their **personal order history** (§6.6), visible only to them (plus admin, plus kitchen/counter in their normal operational capacity while relevant — see §6).
+Counter or administrator closes a sitting. Closing computes and stamps the **settled total** — the sum over all non-removed lines at their latest price, including still-pending lines — under a lock that excludes concurrent order writes. Before closing, the counter reviews still-pending lines and either removes them (with a reason) or knowingly charges for them. After close the sitting is read-only history, except administrator corrective events (§6.6). Administration offers an end-of-day batch close for stragglers.
 
----
+## 6. Orders
 
-## 6. Menu, ordering, and the order lifecycle
+### 6.1 One living order per guest per sitting (revised by the Q1 ruling)
 
-### 6.1 Menu items
+Each member has exactly one order per sitting, created lazily on their first send. There is no order-per-submission.
 
-- Every menu item has a name, description (optional), and a **displayed price**.
-- Menu items have an **active/inactive** flag, settable by kitchen, counter, or admin.
-- **Deactivating an item does not remove it from any existing order** that already references it — history is immutable in that sense.
-- **Deactivating an item does not hide it from the menu view** — it remains visible, but guests cannot select/order it while inactive. (This is a deliberate choice: better for a guest to see "Salmon — currently unavailable" than for the item to mysteriously vanish.)
+### 6.2 Staging and sending
 
-### 6.2 Inventory — explicitly out of scope for v1
+Guests build changes **client-side** (a staging area holding line additions — menu item, quantity 1–100, optional customization note — and removals of their own pending lines) and press **Send** explicitly. Each send commits as **one batch event** and produces **one kitchen alert**. There are no per-keystroke events or alerts.
 
-- There is **no inventory tracking or stock-decrement system.** All active menu items are assumed to be orderable in unlimited quantity.
-- If an item genuinely runs out, kitchen/counter deactivate it (§6.1).
-- If a specific customization can't be honored (e.g., "eggless omelette," "gold foil sushi"), the system does not attempt to model or validate this — a staff member walks to the table and tells them in person. Free-text customization requests are not validated against any rules engine.
+### 6.3 Line lifecycle (replaces order-level acknowledgment)
 
-### 6.3 Placing an order
+Every added line is **pending** until the kitchen (or an administrator) marks it **fulfilled** — prepared and dispatched — or a permitted actor removes it. There is no order-level Acknowledged state and no in-preparation granularity; "served to the table" is deliberately untracked beyond fulfillment. A mistaken fulfillment is corrected by a visible **fulfillment reversal** (kitchen or administrator), returning the line to pending.
 
-- A person adds items (with optional free-text customization notes) from the active menu and submits an order.
-- **Price is locked in at order time** — the order stores the price as it was when submitted, independent of any later menu price changes. This locked-in price is itself editable later by counter under the same tamper-evident rules as everything else (§6.5).
+### 6.4 Who may do what
 
-### 6.4 Order state and the kitchen workflow
+- **Guest (order owner):** add lines; remove **their own pending** lines. Fulfilled lines cannot be removed by the guest. Only while the sitting is open.
+- **Kitchen / counter / administrator:** add or remove any line (staff edit, reason optional on removal).
+- **Counter / administrator:** adjust a line's price, with a reason (comps, corrections).
+- **Kitchen / administrator:** fulfill lines; revert fulfillments.
+- Removal is terminal; re-adding is a new line. All mutations are all-or-nothing per event: if any operation in a send fails validation (line just fulfilled, item just deactivated), the whole batch is rejected with per-operation reasons and the guest restages against fresh state.
 
-There is **no multi-step "order tracker"** (no submitted → in-prep → ready granularity). The only kitchen-relevant states are:
+### 6.5 Tamper-evidence
 
-1. **Submitted** — order placed by the guest, visible to kitchen, timer starts.
-2. **Acknowledged** — kitchen has tapped/clicked to acknowledge the order. This is the single kitchen action; there is no further per-item status tracking.
+Orders are **append-only event logs** with fully relational, typed operation tables — no JSON payloads, no entity-attribute-value (ADR-0002). Every event records who (person and role), what, and when. Current state is a projection (SQL views plus an equivalent pure fold in the domain layer, equivalence-tested). Nothing is ever updated or deleted in an order's history; corrections roll forward.
 
-"Served" is **not tracked by the system at all** — it is handled by physical reality (food goes out, staff and guests both know it happened). No "mark as served" feature should be added later without recognizing this is a deliberate simplification, not an oversight.
+### 6.6 After close
 
-### 6.5 Editing orders — tamper-evidence
+Closed sittings are read-only, except that an **administrator** may append corrective events (staff edits, price adjustments, fulfillments, reversals — never guest submissions). The settled total stamped at close is never rewritten; corrections live visibly beside it.
 
-- **Kitchen and counter can both edit orders** (add/remove items, adjust the locked-in price, etc.) after submission.
-- All such changes must be **tamper-evident**: it must always be obvious *who* changed *what* and *when*.
-- Implementation implication (not a code decision here, but a hard constraint on the data model): this requires an **append-only event log per order** — every change is a new event referencing the previous state, never an in-place mutation of a "current" row with no history. "Current state" is a read-model/projection over this event stream, not the source of truth.
-- Edits only ever **roll forward** — there is no true "undo"/delete of a prior event. Correcting a mistake means adding a new event that supersedes the old one, and both remain visible in the order's history.
-- **Guests see kitchen/counter edits to their order in real time** (same live-UI mechanism as everything else) — e.g., if kitchen removes an item because it's unavailable, the guest's screen updates immediately reflecting the change and who made it.
+### 6.7 History, hiding
 
-### 6.6 Order history and hiding
+Every person has full, unlimited access to their **own** order history across all visits — no retention limit, no automatic deletion. Cross-member history is never shown. A guest may **hide** an individual order from a closed sitting **from their own view**:
 
-- Every user can view their own **full, unlimited order history** across all their visits to this restaurant instance. There is no retention limit or automatic deletion.
-- A user may **hide** an individual historical order from their own view.
-  - Hiding removes it from that user's own view only — it is not deleted from the system, and no other party's view of it changes.
-  - **There is no "show hidden" toggle for the user** — once hidden, it is gone from their perspective, permanently, from their own point of view.
-  - **Only an admin can unhide** a hidden record, via an admin-facing view listing hidden records system-wide. (This view needs to exist and be usable — e.g., filterable by user/date/table — otherwise "admin can unhide" has no way to actually locate the thing to unhide. Exact filtering/search UX is an implementation detail, but the view itself is a requirement, not optional.)
-  - Admin hidden-records view: The view must display every hidden historical order as it exists in the database. It must be filterable and searchable by user identifier, date range, and table identifier, so the admin can locate a specific record to unhide it. The view shows the full, unprojected database state of the record (not a summary); unhide is available per record.
----
+- Hiding removes it from that person's own view only — nothing is deleted, and no other party's view changes (kitchen/counter operational lookups and administration are unaffected).
+- **There is no "show hidden" toggle for the user.** Once hidden, it is gone from their perspective, permanently, and the confirmation dialog says so.
+- **Only an administrator can unhide**, via a dedicated hidden-records view listing every hidden order system-wide, filterable by username, date range, and table, showing the full, unprojected stored record per row, with unhide available per record. This view is a requirement, not an implementation nicety — without it, "admin can unhide" has no way to locate anything.
+- Hiding and unhiding are themselves append-only visibility events.
 
-## 7. Notifications
+### 6.8 Menu
 
-### 7.1 Mechanism
+Administrators create and edit menu items (name, price, active flag); kitchen, counter, and administrators may activate/deactivate ("86") items instantly. Menu changes are their own append-only event log. Guest adds re-validate item activeness inside the send transaction; prices are captured on the line at add time, so later menu price changes never move an existing line. Deactivating an item does **not** hide it from the guest menu: it remains visible, marked "currently unavailable", and unorderable — better for a guest to see the salmon is out than to watch it mysteriously vanish. Deactivation never touches existing orders. There is no inventory or stock tracking (§9); if an item runs out, staff deactivate it. Customization notes are free text and are never validated by any rules engine — an impossible request ("eggless omelette") is handled by a human walking to the table.
 
-- Live updates (new orders, acknowledgments, edits, visibility changes at sitting-close) are delivered via **Blazor Server's built-in SignalR circuit** — this is sufficient for push-style delivery and does not require a separate push notification system, service workers, or the Web Push API.
+## 7. Kitchen alerting
 
-### 7.2 Kitchen alerting
+### 7.1 Alerts
 
-- When a guest submits an order, the kitchen display must produce a **loud, attention-getting notification** (audio, not just a silent UI update) — kitchen staff are not assumed to be staring at a screen.
-- If an order is **not acknowledged within 60 seconds**, the system **re-notifies once** (repeats the same alert). There is **no escalation** (no increasing volume, no alternate channel, no repeated re-notification beyond this) — deliberately kept simple.
+The kitchen display plays a **loud audible alert** (after a one-time user-gesture audio arm, with a persistent visual fallback badge) and updates instantly when new work arrives: every guest send, and any counter/administrator staff edit that adds or removes lines. The kitchen's own edits, price adjustments, and fulfillment actions are silent. The display requests a screen wake lock.
 
-### 7.3 Browser constraints on "loud"
+### 7.2 Reminder (revised for the batch model)
 
-Reliable audio playback in a browser is non-trivial: browsers restrict autoplay without a prior user gesture, and a backgrounded/idle tab may be throttled or the screen may sleep. The intended approach:
+If, `KITCHEN_SUBMISSION_REMINDER_SECONDS` (default 60) after a guest send containing at least one added line, **none** of that send's added lines has been fulfilled or removed, the kitchen is alerted **once more** for that send. One reminder maximum per send; pure-removal sends alert once and never remind.
 
-- A dedicated, always-on kitchen display (tablet or PC) running the kitchen-facing app in kiosk mode.
-- A one-time "arm audio" user gesture at the start of a shift (tap to acknowledge sound is enabled) to satisfy browser autoplay restrictions for the rest of the session.
-- Screen Wake Lock API (or OS-level kiosk settings) to prevent the display from sleeping.
-- Clear reconnect handling/UI if the SignalR circuit drops, so a missed connection is visibly obvious to staff rather than silently swallowed.
+## 8. Cross-cutting principles
 
-### 7.4 Native app — conditional fallback, not a v1 commitment
+- **Naming:** long, unabbreviated, snake_case database names (`{table}_identifier` primary keys); no abbreviations anywhere in schema or code identifiers. **Carve-out:** industry-standard initialisms that are *more* recognizable than their expansions — TOTP, HMAC, QR, URL, SQL, TLS, API — are permitted and preferred over awkward expansions.
+- **Identifiers:** application-generated UUIDv7 everywhere (ADR-0011).
+- **Money:** `numeric(10,2)`; a single restaurant-wide currency code (`RESTAURANT_CURRENCY_CODE`, default `USD`) used for display only.
+- **Time:** everything stored `timestamptz` UTC; rendered in `RESTAURANT_TIME_ZONE` (default `America/New_York`).
+- **Configuration:** environment variables only, all prefixed and long-named (technical specification §13); sensible defaults for development; the app fails fast on invalid security-relevant configuration.
+- **Observability:** OpenTelemetry everywhere; metrics named in full snake_case words (technical specification §12).
+- **Honesty in UI:** removed lines render struck-through with actor and reason, price adjustments show old → new with reason, reversals stay visible. The interface never pretends history didn't happen.
+- **Accessibility of operations:** `./run.sh` (dev) and `podman-compose up` (prod) must work from a fresh clone/host with no manual database steps.
 
-If browser-based kiosk-mode audio/wake-lock proves unreliable in real kitchen conditions, a native kitchen-display app is an acceptable fallback to revisit later. It is **not** part of v1 scope, and should not be started speculatively — the browser-based approach above should be tried first and given a real chance to fail before native is pursued.
+## 9. Out of scope for version 1
+
+Payments and card processing; tips accounting; inventory; reservations; multi-restaurant/multi-tenant anything; native mobile apps (the web app is the app; a native kitchen-display app remains a **conditional fallback only** — revisited if, and only if, the browser kiosk approach to audio and wake lock demonstrably fails in real kitchen conditions after being given a genuine chance, and never started speculatively); printing (receipts or otherwise); email/SMS (hence no self-service reset); per-line preparation-stage tracking beyond pending → fulfilled; loyalty/discount engines (price adjustment with a reason covers comps); analytics dashboards beyond the event explorer and OTLP metrics; Redis or any external message backplane (ADR-0006); horizontal scaling of the web tier.
+
+## 10. Resolved design directives
+
+Earlier revisions carried open directives; all are now resolved and embodied:
+
+- *"Do NOT use entity attribute value; do not punt problems with JSON columns"* → typed operation tables with composite-FK subtype enforcement (ADR-0002, technical specification §8).
+- *"ROBUST Argon2"* → Argon2id 64 MiB / t=3 / p=1 configurable, PHC strings, rehash-on-verify, concurrency cap, startup floor guard (ADR-0008).
+- *"Cloudflare tunnels"* → named tunnel on the owner's stable domain is the production origin; quick tunnels are demo-only (passkeys die with the per-run subdomain — trycloudflare.com is on the Public Suffix List); accepted risk: in-house ordering hairpins through Cloudflare, so LAN ordering depends on WAN health (ADR-0005).
+- *"GoTunnels as reference"* → adopted for tunnel/TLS/observability patterns only; its never-expiring localStorage bearer session is rejected as unfit for Blazor Server's cookie/circuit model (ADR-0005).
+- Order model, TOTP policy, rotating join codes → ADR-0007, ADR-0010, ADR-0009 respectively, as summarized in §§4–7 above.
+
+License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no outside contributions (`CONTRIBUTING.md`); documentation changes are atomic — a behavior change lands with its requirement, specification, review-ledger, and ADR edits in one commit; ADRs are edited in place with a History line rather than duplicated.
 
 ---
 
-## 8. Cross-cutting principles carried in from prior team practice
+## Revision history
 
-These aren't new to this project but apply here as much as anywhere:
-
-- **Environment-agnostic configuration** — no environment-specific values hardcoded anywhere; derive at runtime or inject via CI/CD secrets, since (even though this project has no multi-tenancy) the same codebase/image may still be deployed to different restaurant instances with different config.
-- **No dependencies that require payment for any use.**
-- **Full names, no abbreviations**, in code, CLI commands, and config keys.
-- **Spec-first development** — this document exists so implementation can be checked against explicit decisions rather than inferred assumptions.
-- **Atomic documentation and architectural decision records**: Any code change must be accompanied by the corresponding update to this requirements document and to any affected architectural decision record in the `docs/adr` folder, all within the same prompt or commit. The documentation is never updated separately or left behind; it moves atomically with the code it describes. If a decision changes, the existing ADR in `docs/adr` is edited (not duplicated) and the requirement here is updated to match. No implementation is considered complete until both the code and its documentation (requirements plus `docs/adr` records) are consistent.
-
----
-
-## 9. Explicitly out of scope for v1 (do not build speculatively)
-
-- Inventory/stock tracking (§6.2).
-- Multi-step kitchen order tracking / "pizza tracker" UI (§6.4).
-- Automated email/SMS sending of any kind (§4.5, §4.6) — contact info is manual-escalation-only.
-- External payment gateway integration — the counter produces a bill/summary; actual payment handling is outside the system.
-- Walkout / comp / "closed but unpaid" session states (§5.4).
-- Cross-instance or multi-tenant anything — every instance is fully sovereign and unaware of every other instance.
-- Native mobile app — only a conditional future fallback for kitchen display reliability (§7.4), not a general-purpose app.
-- Delivery/takeout using the address book (§4.7) — the address book exists as profile scaffolding only; nothing currently consumes it.
-
----
-
-## 10. Open items for the next design pass (not yet decided)
-
-These were identified during discussion but intentionally deferred — flagged here so they aren't lost:
-
-- Exact entity/table schema for `Person`, `TableSitting`, `PersonAtTable`, `Order`, `OrderEvent`, `MenuItem`.
-  I want the LLM to come up with a good normalized table structure, do NOT use entity attribute value to punt problems, do use uuidv7 when using guid
-
-License will be AGPLv3. 
-No outside issues or pull requests. 
-All copyright remains with the authors. 
-follow all engineering best practices such as solid principles 
+- **Rev 2 — 2026-07-17.** Folded in rulings on F-01–F-33. Headline changes: one living order per guest per sitting with client-side staging, explicit batched sends, and a pending → fulfilled → (reversible) line lifecycle replacing order-level Acknowledged (§6, Q1); TOTP challenged on password sign-ins only, per-user admin TOTP toggle removed, reset wipes password+TOTP and forces re-enrollment via a post-auth obligations pipeline (§4.2/§4.5, Q2/Q3); rotating HMAC table-join tokens on paired `table_display` devices, printed static QR codes removed entirely, counter-screen fallback (§5.1, Q4/Q5); Cloudflare named tunnel fixed as production origin with the Public-Suffix-List passkey caveat and Argon2id hashing (§2/§10, F-06); four-experiences-plus-display phrasing (§1, F-21); abbreviation carve-out (§8, F-22); repository-generic paths (F-23); §10 retitled to resolved directives (F-24). The earlier "fulfilled ≈ served" ambiguity is resolved: fulfilled means prepared and dispatched; serving is untracked (§6.3). All rev-1 material untouched by a ruling carries forward unchanged — profile contact details and free-label address scaffolding (§4.6), owner-view hiding semantics with the admin hidden-records view (§6.7), deactivated-items-stay-visible (§6.8), absolute table-to-table privacy with live visibility revocation at close (§5.3), and the conditional (not cancelled) native kitchen-display fallback (§9).
+- **Rev 1 — 2026-07-16.** Initial requirements.

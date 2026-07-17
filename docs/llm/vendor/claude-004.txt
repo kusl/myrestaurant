@@ -196,3 +196,357 @@ Claude is AI and can make mistakes. Please double-check responses.
 49
 88
 
+
+/
+Claude finished the response
+Rulings. F-01–05, F-09–11, F-13–19, F-21–24 are recorded as stated and will be reflected verbatim in the next doc revision. Four need a word back from you — I've picked defaults so a silent "fine" is a valid answer:
+F-06: Cloudflare tunnels it is, with one sharp edge I verified: trycloudflare.com is on the Public Suffix List, so on quick tunnels a passkey binds to the random per-run subdomain and dies with it. Durable passkeys therefore require a named tunnel on your stable domain; quick tunnels stay fine for demos with password+TOTP. I'll also carry your "ROBUST Argon2" instruction into a custom IPasswordHasher (Argon2id, ~64 MiB / t=3 / p=1, configurable), and note the accepted risk that in-house ordering hairpins through Cloudflare, so LAN ordering depends on WAN health. I'm taking GoTunnels as the tunnel/TLS/observability reference only — its never-expiring localStorage bearer session doesn't fit Blazor Server's cookie/circuit model.
+F-07 (Q1): I'll respec as one living order per guest per sitting: edits staged client-side and sent explicitly, each send is one batch event and one kitchen alert (not per-keystroke, to avoid alert fatigue); lines get a pending → fulfilled lifecycle replacing order-level Acknowledged; guests may remove only not-yet-fulfilled lines. Veto if you want literal per-change notifications.
+F-08 (Q2/Q3): Default: TOTP is challenged on password sign-ins only, not passkey sign-ins (the authenticator is already a second factor). Admin reset wipes password+TOTP; next sign-in forces new password, then immediate TOTP re-enrollment before anything else. The per-user "admin TOTP toggle" from §4.2 disappears.
+F-12 (Q4/Q5): New role table_display with surface /display/{table} — a cheap per-table device paired once via an admin one-time code, showing a QR that encodes {origin}/table/{id}?token=HMAC(table_secret, time_window), rotating every 60 s, current+previous window accepted, rotation independent of sitting state; counter can read the current code off their own screen if a display dies. Q5: I'm speccing rotating-only — printed static QRs are gone entirely rather than kept as a flagged fallback. Veto if you want the fallback documented.
+all of this is fine. 
+Please generate the detailed technical specification 
+as well as all the documentation
+including all the ADR
+the documentation should be detailed, comprehensive, and unambiguous
+so another person or LLM should be able to implement the whole project 
+think through all possible scenarios and give me all the files in a zip file 
+so I can unzip it on top of the existing repository 
+I have uploaded the latest dump.txt 
+git repository is/will be publicly available at 
+https://github.com/kusl/myrestaurant
+
+Show less
+
+Architected comprehensive specification with reconciled rulings and schema design
+Architected comprehensive specification with reconciled rulings and schema design
+Done
+All four rulings are clear — I'll fold them in, resolve the one internal conflict (F-09's "TOTP even after passkey" is superseded by your Q2 ruling), and produce the full documentation set. Let me build it.
+
+
+Resolved to sequentially generate architectural decision records
+Resolved to sequentially generate architectural decision records
+
+Create staging directory for the documentation bundle
+Done
+Now writing the ADR set — decisions pinned first so the spec and requirements reuse identical language.
+
+
+Architecting technical specification with glossary and twenty sections
+Architecting technical specification with glossary and twenty sections
+
+ADR-0001: single application with routed areas
+
+ADR-0002: relational append-only event logs with typed operation tables
+
+ADR-0003: ASP.NET Core Identity primitives over Dapper stores
+
+ADR-0004: Podman Compose canonical, Aspire optional
+
+ADR-0005: origins and TLS via named Cloudflare tunnel, PSL edge, Caddy for dev
+
+ADR-0006: Redis excluded from v1
+
+ADR-0007: living order per guest per sitting with line lifecycle
+
+ADR-0008: Argon2id password hashing
+
+Checking current state of the bundle staging directory
+
+Checking transcript size and locating drafted DDL
+
+Searching transcript for DDL and token algorithm drafts
+
+Checking dump.txt structure to locate original docs
+
+Listing uploads directory
+
+Locating original document content in transcript
+
+Checking the start of the transcript for original document content
+
+Searching transcript for the dump.txt attachment content
+
+Checking transcript structure between human turn and assistant turn
+
+Reviewing ADR 0007 and 0008 for terminology consistency
+
+Creating ADR-0009 on rotating table join tokens and display devices
+
+Creating ADR-0010 on TOTP policy
+
+Creating ADR-0011 on UUIDv7 identifiers
+
+Creating ADR-0012 on DbUp migrations
+Done
+ADRs complete. Now the revised requirements document.
+
+
+Architected comprehensive technical specification with full database schema and documentation structure
+Architected comprehensive technical specification with full database schema and documentation structure
+
+Creating REQUIREMENTS.md revision 2 with all rulings folded in
+Done
+Now the technical specification — the centerpiece. Writing it in three parts.
+
+
+Verified specification size and contemplated database syntax validation
+Verified specification size and contemplated database syntax validation
+
+Creating technical specification part 1 (sections 0–7)
+
+Appending section 8 (schema of record) to the technical specification
+
+Appending sections 9–19 and Appendix A to complete the technical specification
+Done
+Let me validate the DDL actually runs against PostgreSQL before shipping it.
+
+
+Verified database schema compilation and planned additional testing protocols
+Verified database schema compilation and planned additional testing protocols
+
+Checking whether PostgreSQL is available for DDL validation
+
+Installing PostgreSQL to validate the schema DDL
+
+Installing PostgreSQL as current user
+
+Updating apt indexes then installing PostgreSQL
+
+Starting PostgreSQL and extracting SQL blocks from the spec
+
+Running the full DDL and views against PostgreSQL 16
+
+Testing reminder SQL and menu_item_event CHECK truth table
+Done
+Found a real bug: created with NULL price was accepted. The OR event_type = 'created' escape hatch is wrong. Fixing with the clean biconditional form:
+
+
+Edited 2 files, ran a command
+Edited 2 files, ran a command
+
+Fixing the menu_item_event CHECK constraints to a correct biconditional form
+TECHNICAL_SPECIFICATION.md
++4
+-6
+
+Updating the explanatory note under the DDL to match the fixed constraints
+TECHNICAL_SPECIFICATION.md
++1
+-1
+
+Re-running full DDL and the corrected truth table (4 positives, 6 negatives)
+Done
+Schema validated. One more smoke test on the composite-FK subtype enforcement — the crown jewel of the event model:
+
+
+Verified cross-referenced specification sections for documentation consistency
+Verified cross-referenced specification sections for documentation consistency
+
+Smoke-testing composite-FK subtype enforcement, role CHECKs, terminal removal, and views
+
+Checking current state of the bundle directory and transcript files
+
+Locating the findings F-01 through F-33 in the transcript
+
+Searching earlier transcript for original findings text and checking uploads directory
+
+Checking transcript head for document content and finding references
+
+Listing section headers of the spec and requirements for cross-referencing
+
+Reading spec sections 13-15 and 19 (config, deployment, backups, milestones) for OPERATIONS.md consistency
+
+Finding all OPERATIONS.md section references to keep numbering consistent
+Done
+All prior work is intact and verified. The bundle at /home/claude/bundle/ contains all 12 ADRs, REQUIREMENTS.md rev 2 (~13KB), and TECHNICAL_SPECIFICATION.md v1.0 (65KB) — the spec's full DDL was validated against a live PostgreSQL 16 install earlier in this session, which caught and fixed one real bug (the menu_item_event CHECK constraints had an escape hatch letting created rows omit a price; now biconditional and re-verified against a 10-case truth table).
+
+What remains before the zip ships, in order:
+
+docs/DOCUMENTATION_REVIEW.md — the findings→resolution→embodiment ledger. I've confirmed the section anchors it must cross-reference (Appendix A of the spec already maps F-06/F-07/F-08/F-12 to their embodiments). One honesty note I'll carry into the file and the final summary: the original F-01–F-05 and F-25–F-33 finding prose was in your dump.txt, which is no longer in my context after compaction — those entries will record dispositions accurately (accepted as stated / remediated in export.sh, F-26 = REQUIREMENTS now tracked in docs/) with a pointer to the prior revision in git history, and you should diff against your original before committing.
+docs/OPERATIONS.md — I've just pinned the exact section numbers other documents already reference, so these are now fixed: §5 display pairing + kiosk guidance, §6 backups/restore drill, §7 optional staff-LAN Caddy fallback, §8 Data Protection keys warning, plus tunnel setup, /setup walkthrough, quick-tunnel demo runbook, and domain-change procedure.
+CONTRIBUTING.md (no outside contributions), LICENSE (unauthenticated AGPL-3.0 fetch from the GitHub API — skipped with a note if rate-limited), then zip everything to /mnt/user-data/outputs/myrestaurant-docs.zip.
+Say "go" (or anything at all) and I'll finish the remaining four files and hand you the zip.
+
+go
+
+
+Revalidating DDL against live PostgreSQL database
+Revalidating DDL against live PostgreSQL database
+
+Collecting REQUIREMENTS section anchors referenced elsewhere and skimming current rev 2
+
+Reading the rest of REQUIREMENTS rev 2 to verify coverage against the original rev 1
+
+Verifying spec covers person_address, hiding semantics, menu unavailable visibility, admin hidden-records view
+
+Inspecting spec passkey/menu/surfaces sections and person DDL before patching
+
+Finding identity DDL layout and section 3 structure for insertion points
+Done
+All insertion points identified. Applying the spec patches now.
+
+
+Diagnosing container permissions and postgres invocation method
+Diagnosing container permissions and postgres invocation method
+
+Adding email/phone contact columns to person DDL per original REQUIREMENTS §4.6
+TECHNICAL_SPECIFICATION.md
++4
+-2
+
+Adding person_address table (owner-mandated profile scaffolding) after totp_recovery_code
+TECHNICAL_SPECIFICATION.md
++19
+-3
+
+Adding autocomplete conventions and passkey-nudge policy to §3.3
+TECHNICAL_SPECIFICATION.md
++1
+-1
+
+Rewriting §6.8 Hiding to the original owner-view semantics with admin hidden-records view
+TECHNICAL_SPECIFICATION.md
++3
+-3
+
+Adding menu stay-visible-when-deactivated rule and never-validated customization notes to §7
+TECHNICAL_SPECIFICATION.md
++1
+-1
+
+Fixing §11.1 history/hide semantics and adding the profile page description
+TECHNICAL_SPECIFICATION.md
++1
+-1
+
+Adding hidden-records view to §11.4 administration surface and admin full-visibility principle
+TECHNICAL_SPECIFICATION.md
++1
+-1
+
+Fixing E2E scenario 11 to owner-view hiding semantics
+TECHNICAL_SPECIFICATION.md
++1
+-1
+
+Documenting the bootstrap self-grant in §3.6 since person_role.granted_by is NOT NULL
+TECHNICAL_SPECIFICATION.md
++1
+-1
+Done
+Spec patched. Re-validating the modified DDL against live PostgreSQL to keep the "validated schema" claim honest.
+
+
+Orchestrated nine documentation patches across specification sections
+Orchestrated nine documentation patches across specification sections
+
+Re-extracting and validating the full patched DDL against live PostgreSQL 16
+
+Checking user context and postgres connectivity method
+
+Validating patched DDL and smoke-testing the new person columns and person_address table
+
+Full validation pass with reminder parameter substituted
+Done
+Full schema validation passes (all tables, 5 views, reminder scan). Now the REQUIREMENTS patches to restore the dropped rev-1 substance:
+
+
+Verifying credentials and reconciling documentation
+Verifying credentials and reconciling documentation
+
+R1: restoring sovereignty, autocomplete conventions, and passkey-nudge policy to §4.1
+REQUIREMENTS.md
++3
+-1
+
+R2: restoring §4.6 profile/contact/addresses section from the original requirements
+REQUIREMENTS.md
++10
+-3
+
+R3+R4: restoring operational assumption to §5.2 and absolute table privacy + live revocation to §5.3
+REQUIREMENTS.md
++5
+-5
+
+R5: fixing §6.7 hiding to owner-view semantics with the admin hidden-records view requirement
+REQUIREMENTS.md
++8
+-3
+
+R6: adding menu stay-visible rule and never-validated notes to §6.8
+REQUIREMENTS.md
++1
+-1
+
+R7: restoring the conditional native-fallback stance in §9
+REQUIREMENTS.md
++1
+-1
+
+R8: adding hidden-records view and full-record principle to §3 administration bullet
+REQUIREMENTS.md
++1
+-1
+
+Updating the rev-2 revision-history entry to record the restored rev-1 material
+REQUIREMENTS.md
++1
+-1
+
+Writing the findings→resolution→embodiment ledger replacing the prose review
+
+Writing the operations runbook with section numbers pinned by cross-references in the spec and ADRs
+
+Writing CONTRIBUTING.md per the owner's governance directives
+
+Fetching the canonical AGPL-3.0 text from the GitHub licenses API (unauthenticated)
+Done
+Unauthenticated call is rate-limited — retrying with the read token provided for exactly this case:
+
+
+Rectifying metric names and health endpoints
+Rectifying metric names and health endpoints
+
+Fetching AGPL-3.0 text with the authenticated read request
+Done
+LICENSE secured. Final consistency checks and token-hygiene sweep before packaging:
+
+
+Orchestrated code fixes and documentation restoration comprehensively
+Orchestrated code fixes and documentation restoration comprehensively
+
+Sweeping bundle for token leakage and checking script/metric naming consistency
+
+Aligning OPERATIONS metric/health names with the spec and de-duplicating the §11.1 menu phrasing
+
+Building the final zip with repo-root-relative paths and verifying contents
+
+Presented file
+Done
+Done — 18 files, ready to unzip onto the repository root: LICENSE (canonical AGPL-3.0-only, fetched from the GitHub licenses API), CONTRIBUTING.md, and under docs/: REQUIREMENTS.md rev 2, TECHNICAL_SPECIFICATION.md v1.0 (~69KB, includes the schema of record), DOCUMENTATION_REVIEW.md restructured as an F-01→F-33 disposition ledger, OPERATIONS.md, and the twelve ADRs.
+
+Two things worth knowing about how this pass went. First, the full DDL — every table, all five projection views, and the reminder-scan query — was executed against a live PostgreSQL 16 instance; that validation caught a real bug earlier (the menu_item_event CHECK constraints had an escape hatch letting created rows omit a price; now biconditional and verified against a 10-case truth table). Second, because your original rev-1 requirements resurfaced in the project file, I diffed rev 2 against it line by line and restored substance the regeneration had dropped: §4.6 contact info and the free-label address scaffolding (with person_address and the email/phone columns added back to the schema and re-validated), the deactivated-items-stay-visible rule, absolute table-to-table privacy with live visibility revocation at close, and the conditional-not-cancelled native fallback. Most importantly, I caught and fixed a semantic flip in hiding: both regenerated docs had "hide from table-mates," but your original says hiding removes an order from the owner's own view only, irreversibly for them, with an admin-only hidden-records view (filterable by user/date/table, full unprojected record) to unhide — that's now restored consistently across requirements, spec, capability matrix, surfaces, and the E2E scenario.
+
+Judgment calls embedded in the docs, each a one-word veto if wrong: (a) F-09's TOTP-after-passkey concern is recorded as superseded by your Q2 ruling rather than confirmed; (b) the 60-second reminder fires once per guest send containing added lines, only if none of them has been fulfilled or removed — pure-removal sends alert once and never remind; (c) loud kitchen alerts extend to counter/admin line-changing edits (kitchen needs to know), while the kitchen's own edits stay silent; (d) reset forces TOTP re-enrollment only if TOTP was enrolled at reset time, and the obligations pipeline runs on the passkey path too; (e) the counter fallback is the same rotating QR on the counter screen — no human-readable short code in v1.
+
+
+Myrestaurant docs
+ZIP 
+
+You’ve used 99% of your Fable 5 limit · Resets Jul 18 at 7:00 PM
+Request usage credits
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+62
+55
+100
+

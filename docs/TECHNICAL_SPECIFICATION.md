@@ -1,544 +1,821 @@
-# Restaurant Management System — Technical Specification
+# myrestaurant — Technical Specification
 
-**Status:** Draft v0.1 — implementation-ready except where marked ⚠, which depend on rulings for findings F‑01…F‑05 in `DOCUMENTATION_REVIEW.md`.
-**Source of truth:** `REQUIREMENTS.md` (commit `af51017`). Where the requirements conflict or are silent, this document records the interpretation chosen; every such interpretation is cross-referenced to a finding ID (`F‑nn`) in `DOCUMENTATION_REVIEW.md` so it can be vetoed before code exists.
-**Normative language:** *must* = hard requirement; *should* = default unless an ADR says otherwise.
+**Version 1.0 — 2026-07-17 — Status: accepted, implementation-ready.**
+
+This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md` (rev 2). It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. The decisions register in Appendix A maps every ruling to its embodiment.
 
 ---
+
+## 0. Glossary
+
+- **person** — any account: guest, staff, or administrator. One row in `person`.
+- **role** — `administrator`, `kitchen`, or `counter`, held by a person (`person_role`). `guest` is not a stored role; it is the implicit capacity of any person acting as a sitting member on their own order.
+- **table** — a physical table (`restaurant_table`), holding the server-side `join_secret`.
+- **display device** — a cheap per-table device (`table_display_device`) paired once, showing the rotating join QR at `/display/{table}`. A device principal, kind `table_display`; never a person.
+- **sitting** — one party's occupation of one table from first join to close (`table_sitting`). **member** — a person joined to a sitting (`table_sitting_member`).
+- **living order** — the single `guest_order` a member has within a sitting.
+- **line** — one ordered item instance, identified by `order_line_identifier`, created by a line-added operation. **pending** — added, not fulfilled, not removed. **fulfilled** — kitchen marked it prepared and dispatched. **removed** — terminal.
+- **event** — one append-only `order_event` row. **operation** — one row in a typed operation table owned by an event. **send / batch** — a guest pressing Send, producing exactly one `guest_submission` event carrying all staged operations.
+- **join token** — the rotating HMAC value in the QR URL. **join grant** — the 10-minute encrypted cookie a valid token is exchanged for. **pairing code** — the one-time code that binds a display device to a table.
+- **origin** — `RESTAURANT_PUBLIC_ORIGIN`, the single public base URL (scheme + host [+ port]); drives WebAuthn RP ID and all QR URLs.
 
 ## 1. Architecture overview
 
-One ASP.NET Core **Blazor Server** application (interactive server render mode, .NET 10) serves all four experiences as routed areas of a single app: `/table`, `/kitchen`, `/counter`, `/administration`. A single app (rather than four) is chosen because all experiences share one SignalR-backed live-update model, one identity system, and one database; separate apps would multiply deployment surface without any isolation benefit at single-restaurant scale. *(ADR‑0001)*
+One ASP.NET Core **Blazor Server** application (.NET 10, interactive server render mode) serves five routed areas — `/table`, `/kitchen`, `/counter`, `/administration`, `/display` — against one PostgreSQL database via **Dapper** (Entity Framework is forbidden). Schema evolution is DbUp SQL scripts executed at startup (ADR-0012). Live UI updates ride each user's Blazor circuit, fed by a single in-process broadcaster (§9); there is no Redis and no external bus in v1 (ADR-0006). Identity uses ASP.NET Core Identity core services over custom Dapper stores (ADR-0003) with Argon2id password hashing (ADR-0008) and .NET 10 built-in WebAuthn passkeys. The canonical runtime is rootless Podman Compose (ADR-0004); the production public origin is a Cloudflare **named tunnel** on the owner's stable domain (ADR-0005). Everything is instrumented with OpenTelemetry (§12). License: AGPL-3.0-only; all dependencies free/libre.
 
-Runtime topology (one restaurant instance = one Podman Compose stack):
+Order state is an append-only event log with fully relational typed operation tables and projection views (ADR-0002, ADR-0007); §8 is the schema of record.
 
-| Service | Image | Purpose |
-|---|---|---|
-| `web` | built from `Containerfile` (sdk:10.0 → aspnet:10.0, multi-stage, non-root) | Blazor Server app, DbUp migrations at startup |
-| `postgres` | `docker.io/library/postgres:18` | Only durable store |
-| `caddy` | `docker.io/library/caddy:2` | TLS termination (see §12), reverse proxy with WebSocket pass-through |
-| `cloudflared` *(optional, later phase)* | `docker.io/library/cloudflare/cloudflared` | Persistent named tunnel — production remote access |
-
-**Redis is not part of v1.** No v1 requirement consumes it; its future roles (SignalR backplane if ever multi-node, cache) are documented but not scaffolded. *(F‑13, ADR‑0006)*
-
-**Podman Compose is the canonical orchestrator** for dev, CI, and prod. An Aspire AppHost may exist as an optional developer convenience but no script, test, or CI path may require it. *(F‑14, ADR‑0004)*
-
-Scale assumption: single `web` instance per restaurant. All live updates flow through an in-process broadcaster (§8); no distributed backplane exists or is needed.
-
----
-
-## 2. Solution and repository layout
+## 2. Repository layout
 
 ```
-/
-├── run.sh                          # canonical entry point (defined in §14)  (F‑17)
-├── Containerfile                   # web application image
-├── compose.yaml                    # podman compose stack
-├── Directory.Build.props           # shared build settings (nullable, analyzers, LangVersion)
-├── Directory.Packages.props        # Central Package Management — single version source
-├── .env.example                    # template; run.sh copies to .env if missing (§14)
-├── source/
-│   ├── MyRestaurant.Domain/        # entities, order-event model, projection logic (no I/O)
-│   ├── MyRestaurant.DataAccess/    # Dapper repositories, DbUp migration scripts (embedded)
-│   └── MyRestaurant.WebApplication/# Blazor areas, identity, SignalR-adjacent services, JS interop
+myrestaurant/
+├── src/
+│   ├── MyRestaurant.Domain/              # pure domain: projections, validation, token algorithm, id factory
+│   ├── MyRestaurant.DataAccess/          # Dapper repositories, Identity stores, Migrations/ (embedded .sql)
+│   └── MyRestaurant.WebApplication/      # Blazor Server app: areas, auth, broadcaster, background services
 ├── tests/
-│   ├── MyRestaurant.UnitTests/
-│   ├── MyRestaurant.IntegrationTests/
-│   └── MyRestaurant.EndToEndTests/ # Playwright, container-only
-├── scripts/                        # all real logic; CI only calls these (§15–§16)
-├── docs/
-│   ├── REQUIREMENTS.md             # tracked here, NOT under docs/llm/  (F‑26)
-│   ├── TECHNICAL_SPECIFICATION.md  # this file
-│   ├── DOCUMENTATION_REVIEW.md
-│   ├── adr/                        # one file per decision; edited in place, never duplicated
-│   └── llm/                        # generated dumps only — gitignored output target
-└── .github/workflows/continuous-integration.yml   # thin: checkout + call script
+│   ├── MyRestaurant.Domain.Tests/
+│   ├── MyRestaurant.DataAccess.Tests/    # integration tests against real PostgreSQL (Testcontainers or compose)
+│   ├── MyRestaurant.WebApplication.Tests/
+│   └── MyRestaurant.EndToEnd.Tests/      # Playwright, scenarios in §16.3
+├── docs/                                  # this bundle
+├── scripts/                               # backup.sh, restore.sh, tunnel setup helpers
+├── compose.yaml                           # canonical; profiles: (default/dev), production
+├── Containerfile
+├── Caddyfile                              # dev TLS; optional staff-LAN fallback
+├── run.sh                                 # dev entry: compose up + dotnet watch, see §14.4
+├── export.sh                              # repo → dump.txt exporter (review tooling)
+├── CONTRIBUTING.md · LICENSE · README.md
 ```
 
-Dependency direction: `WebApplication → DataAccess → Domain`. Domain has zero package references beyond the BCL, so all projection/state logic is unit-testable without infrastructure (SOLID: dependency inversion via interfaces defined in Domain, implemented in DataAccess).
+Dependency direction: `WebApplication → DataAccess → Domain`. `Domain` references nothing but the BCL.
 
-**Naming convention** *(F‑22)*: full words everywhere — code, SQL identifiers, script names, config keys — with an explicit carve-out for industry-standard initialisms whose expansion would harm clarity: `TOTP`, `QR`, `URL`, `HTTPS`, `OTLP`, and third-party-defined keys (`OTEL_*`, `POSTGRES_*`, `ASPNETCORE_*`, `UPTRACE_DSN`). `id` is an abbreviation; the word is `identifier` (e.g., `person_identifier`).
+## 3. Identity, authentication, authorization
 
----
+### 3.1 Identity core over Dapper stores
 
-## 3. Identity and authentication
+Register ASP.NET Core Identity **core services** (not the EF default UI/stores) with custom stores in `MyRestaurant.DataAccess` implementing at minimum: `IUserStore`, `IUserPasswordStore`, `IUserSecurityStampStore`, `IUserLockoutStore`, `IUserTwoFactorStore`, `IUserAuthenticatorKeyStore`, `IUserTwoFactorRecoveryCodeStore`, `IUserPasskeyStore` (the .NET 10 passkey store abstraction), over the `person*` tables in §8. Usernames are `citext`, unique, 3–64 characters (enforced by CHECK and by validator). `security_stamp` is a `uuid` regenerated on every credential or role change. Cookie auth: Secure, HttpOnly, SameSite=Lax, 24-hour sliding expiration, security-stamp revalidation interval **5 minutes** — so resets, role revocations, and deactivations bite live sessions within minutes. Lockout: **5** consecutive failures (password, TOTP, or recovery code all count) locks for **5 minutes**; sign-in pages surface remaining-lockout messaging without revealing whether the username exists.
 
-### 3.1 Building blocks
+### 3.2 Password hashing — Argon2id (ADR-0008)
 
-ASP.NET Core **Identity core services with custom Dapper-backed stores** (no EF): `IUserStore`/`IUserPasswordStore`/`IUserTwoFactorStore`/etc. implemented in `MyRestaurant.DataAccess` over the `person` tables of §6. This buys the hardened primitives — PBKDF2 password hashing (`PasswordHasher` v3), RFC 6238 TOTP verification, recovery-code handling, lockout counters — without EF. Passkeys use the **built-in WebAuthn/passkey support that ASP.NET Core Identity ships in .NET 10**; if any gap is found in practice, `fido2-net-lib` (MIT) is the approved fallback. Cookie authentication (secure, HttpOnly, SameSite=Lax), 24 h sliding expiry, security-stamp revalidation every 5 minutes so admin actions (role revoke, password reset) bite quickly. TOTP secrets are stored encrypted with ASP.NET Data Protection; the key ring is persisted to a named volume (`DATA_PROTECTION_KEYS_DIRECTORY`) so cookies and protected secrets survive container restarts. *(ADR‑0003)*
+Custom `IPasswordHasher<Person>`; Identity's PBKDF2 hasher is not registered. Algorithm **Argon2id** via Konscious.Security.Cryptography.Argon2 (MIT). Parameters from environment with defaults `ARGON2_MEMORY_KIBIBYTES=65536`, `ARGON2_ITERATIONS=3`, `ARGON2_PARALLELISM=1`; salt 16 bytes CSPRNG per hash; tag 32 bytes. Stored as a PHC string in `person.password_hash`:
 
-### 3.2 Credential model
+```
+$argon2id$v=19$m=65536,t=3,p=1$<base64-no-pad(salt)>$<base64-no-pad(tag)>
+```
 
-- First factor: **password** or **passkey**, alternatives per REQUIREMENTS §4.1. `password_hash` is nullable; an account must have at least one first factor (enforced in application logic — cross-table constraint). Registration forms use `autocomplete="username"` / `autocomplete="new-password"`; passkey enrollment is offered post-registration and after sign-in as a dismissible nudge, never a gate, for guests.
-- Usernames: unique per instance, case-insensitive (`citext`), 3–64 chars, no whitespace. *(F‑19)*
-- **TOTP is two independent facts** *(F‑08)*: *enrolled* (`totp_secret_protected` non-null) and *required* (`totp_required` boolean). Sign-in matrix:
+Verification parses the **stored** parameters, recomputes, compares with `CryptographicOperations.FixedTimeEquals`, and returns `SuccessRehashNeeded` when stored parameters differ from configured ones (Identity then rehashes transparently at sign-in). A process-wide `SemaphoreSlim(ARGON2_MAX_CONCURRENT_HASHES=4)` bounds concurrent computations (~64 MiB each); excess queue. **Startup floor guard:** the application must fail fast (log + non-zero exit) if `ARGON2_MEMORY_KIBIBYTES < 19456`, `ARGON2_ITERATIONS < 2`, or `ARGON2_PARALLELISM < 1`. Password policy: minimum length 12, no composition rules, no expiry.
 
-| enrolled | required | sign-in behavior |
-|---|---|---|
-| no | no | first factor only |
-| yes | yes | first factor + TOTP (or recovery code) |
-| yes | no | first factor only — challenge skipped (admin has explicitly relaxed it) |
-| no | yes | first factor, then **forced TOTP enrollment** before proceeding |
+### 3.3 Passkeys
 
-  User self-enrolls/removes TOTP while signed in (enrolling sets `required = true`, per §4.2 "required by default"). Admin may toggle `totp_required` for any **non-admin** as a standalone action. Ten single-use recovery codes are generated at enrollment, stored hashed, regenerable.
-- **Administrator accounts:** must possess ≥1 passkey and have TOTP enrolled+required. Enforced **at grant time only** — the grant action fails unless both exist; no continuous background check, no auto-demotion (REQUIREMENTS §4.3). ⚠ An admin may still *sign in* with password+TOTP (possession ≠ mandatory use), and a passkey sign-in is *also* followed by a TOTP challenge, because §4.3 says TOTP is always required — unusual UX, flagged for confirmation. *(F‑09)*
-- **Kitchen role:** must possess ≥1 passkey, enforced at grant time. **Counter role:** no credential precondition — as literally written. ⚠ *(F‑05)*
-- Sign-in on staff devices and passkey ceremonies require a secure context; see §12.
+.NET 10 Identity WebAuthn. RP ID = host of `RESTAURANT_PUBLIC_ORIGIN` (full host, not registrable domain). Registration options: `residentKey=preferred`, `userVerification=preferred`, `attestation=none`. Sign-in supports username-first and username-less (discoverable credential) flows. Store per §8 `passkey_credential` (credential id unique, public key, sign counter, optional transports and label). Fallback library if a framework gap is found: fido2-net-lib (record the fallback by editing ADR-0003). Registration and change-password forms follow platform conventions — `autocomplete="username"` / `autocomplete="new-password"` — so operating-system password managers generate and offer strong passwords automatically. Passkey enrollment is offered to guests after registration and after sign-in as a **dismissible nudge**: always offered, never required, never a gate for guests (the grant-time passkey mandate applies only to the kitchen and administrator roles, §3.7). **Consequence of RP ID binding (ADR-0005):** passkeys are only durable on the stable named-tunnel domain; on quick tunnels (`*.trycloudflare.com`, a Public Suffix List entry) they bind to the per-run subdomain and die with it — quick tunnels are demo-only with password+TOTP.
 
-### 3.3 First-admin bootstrap *(F‑03)*
+### 3.4 TOTP and recovery codes
 
-While zero administrators exist, the app exposes only `/setup`: a wizard that (1) creates the user, (2) **requires** passkey registration, (3) **requires** TOTP enrollment, then (4) grants `administrator` — all before the account is usable. Steps 1–4 conclude in one guarded transaction (re-check "no admin exists" under lock) so a race cannot mint two bootstrap admins. Once any administrator exists the path returns 404 permanently. This is the only way to satisfy §4.3's credential mandates on an account that is auto-granted admin.
+RFC 6238: SHA-1, 6 digits, 30-second step, ±1 step skew. Secret 20 random bytes; provisioning URI (`otpauth://totp/{RESTAURANT_NAME}:{username}?secret={base32}&issuer={RESTAURANT_NAME}`) rendered as a server-side SVG QR at enrollment; enrollment confirmed by one valid code. Secret stored **encrypted with ASP.NET Data Protection** in `person.totp_secret_protected`; the Data Protection key ring persists to the `DATA_PROTECTION_KEYS_DIRECTORY` volume (losing it invalidates TOTP secrets and cookies — see OPERATIONS §8). Enrollment state == `totp_secret_protected IS NOT NULL`; there is **no** `totp_required` column. Ten single-use recovery codes generated at enrollment (and on regeneration), stored hashed (SHA-256), usable **only** on the password path in place of a TOTP code; `recovery_code_used` / `recovery_codes_regenerated` security events recorded.
 
-### 3.4 Password reset ⚠ *(F‑01)*
+### 3.5 Sign-in flows and the post-authentication obligations pipeline (ADR-0010)
 
-- Self-service change (knows current password): any signed-in user.
-- Admin reset: generates a 20-character random password (CSPRNG), displays it exactly once to the admin, sets `must_change_password = true`; the user is forced into a change-password screen at next sign-in before any other action. The admin may, separately, toggle `totp_required` off if the user also lost their authenticator.
-- **Spec assumption pending ruling:** reset capability is **administrator-only**; counter's "password reset assistance" (REQUIREMENTS §3.3) is procedural — counter identifies the guest and summons/relays to an admin. If the ruling instead grants counter a reset capability, it must be scoped to accounts holding no role, and every reset is a `security_event` either way.
-- No unauthenticated "forgot password" flow exists (no email/SMS in v1) — human-mediated only.
+**Password path:** username + password → if account has TOTP enrolled, challenge for TOTP or recovery code → success. **Passkey path:** WebAuthn assertion → success, **never** a TOTP challenge. Both paths then run the **obligations pipeline** before any destination: (1) `must_change_password` → forced password-change page (sets new password, clears flag, `forced_password_change_completed` event); (2) `must_enroll_totp` → forced TOTP enrollment (QR, confirm code, fresh recovery codes, clears flag, `forced_totp_enrollment_completed` event); (3) continue to the originally requested URL or role-appropriate home. The pipeline must be enforced by an authorization filter/middleware so no authenticated endpoint (except sign-out and the pipeline pages themselves) is reachable while a flag is set. Every sign-in attempt records `sign_in_succeeded` / `sign_in_failed` (with method tag in the metric, §12) and lockouts record `account_locked_out`.
 
-### 3.5 Authorization
+### 3.6 First-administrator bootstrap
 
-Role claims from `person_role`; area policies: `/table` → authenticated; `/kitchen` → kitchen ∨ administrator; `/counter` → counter ∨ administrator; `/administration` → administrator. Administrator satisfies every policy (REQUIREMENTS §4.3 full authority). Fine-grained action matrix:
+`/setup` is reachable only while **zero administrators exist**. The wizard collects username/display name, registers a **passkey**, enrolls **TOTP** (with recovery codes), then grants `administrator` (recording the new administrator as their own grantor — `granted_by_person_identifier` self-references, satisfying its NOT NULL constraint) — all committed in **one transaction** that first takes `pg_advisory_xact_lock(hashtext('myrestaurant_setup'))` and re-checks the zero-administrator condition under the lock (two racing browsers: one wins, the other sees 404 on retry). After any administrator exists, `/setup` returns 404. The wizard must not allow skipping the passkey or TOTP steps.
 
-| Capability | Guest (owner) | Kitchen | Counter | Administrator |
+### 3.7 Roles, policies, capability matrix
+
+Stored roles: `administrator`, `kitchen`, `counter` (CHECK-constrained in `person_role`; `table_display` is a device principal, never a row here). Administrative reset (per §4.5 of requirements): set temporary password; set `must_change_password`; **iff** TOTP was enrolled, delete secret + recovery codes and set `must_enroll_totp`; regenerate security stamp; write `password_reset_by_administrator` (+ `totp_cleared_by_administrator` when applicable). Deactivation (`is_active=false`) blocks sign-in and invalidates sessions via stamp; deletion does not exist (F-10b) — history must keep its actors.
+
+Area policies: `/table` any authenticated person (membership checked per sitting); `/kitchen` role kitchen or administrator; `/counter` role counter or administrator; `/administration` administrator; `/display/{table}` a non-revoked device principal whose table claim matches `{table}`; `/display/pair` anonymous, rate-limited (§4.2).
+
+**Capability matrix** (server-enforced in the order transaction, §6.5; UI merely mirrors it):
+
+| Capability | guest (owner) | kitchen | counter | administrator |
 |---|---|---|---|---|
-| Submit order (own, open sitting) | ✔ | — | — | ✔ |
-| Acknowledge order | — | ✔ | — | ✔ |
-| Add/remove order items after submission | — | ✔ | ✔ | ✔ |
-| Adjust locked-in line price ⚠ *(F‑02)* | — | — | ✔ | ✔ |
+| Send batch (`guest_submission`): add lines; remove **own pending** lines | ✔ (open sitting, member, own order) | — | — | — (admins dining act as guests on their own order, `actor_role='guest'`) |
+| `staff_edit`: add/remove any line | — | ✔ | ✔ | ✔ |
+| `price_adjustment` (reason required) | — | — | ✔ | ✔ |
+| `fulfillment` / `fulfillment_reversal` | — | ✔ | — | ✔ |
 | Activate/deactivate menu item | — | ✔ | ✔ | ✔ |
 | Create/edit menu items | — | — | — | ✔ |
-| Close + settle sitting ⚠ *(F‑04)* | — | — | ✔ | ✔ |
-| Hide own historical order | ✔ | — | — | — |
-| Unhide any hidden order | — | — | — | ✔ |
-| Reset passwords / toggle TOTP / manage users & roles | — | — | ✖ (assist only, F‑01) | ✔ |
+| Close & settle sitting; end-of-day batch close | — | — | ✔ | ✔ |
+| Show rotating join QR for a table (fallback) | — | — | ✔ | ✔ |
+| Hide own order / unhide any order | ✔ / — | — | — | — / ✔ |
+| Pair & revoke display devices; rotate `join_secret` | — | — | — | ✔ |
+| Users, roles, resets; post-close corrective events | — | — | — | ✔ |
 
-Account "deletion" is **deactivation** (`is_active = false`, sign-in blocked, sessions invalidated via security stamp). Rows are never deleted — required by the append-only history model; hard erasure is explicitly deferred. *(F‑10b)*
+## 4. Tables, display devices, and join tokens (ADR-0009)
 
----
+### 4.1 `restaurant_table` and the join secret
 
-## 4. Tables, sittings, and sessions
+Each table row holds `join_secret bytea CHECK (octet_length(join_secret) = 32)`, generated with a CSPRNG at table creation, **never sent to any client** (displays receive a rendered SVG QR over their circuit). Administrators may **rotate** the secret at any time (new 32 bytes, `join_secret_rotated_at` stamped): every outstanding token for that table dies instantly. Deactivating a table (`is_active=false`) stops token validation and display rendering for it.
 
-- Each physical table is a `restaurant_table` row; its immutable `table_identifier` (UUIDv7) is encoded in the QR as `{RESTAURANT_PUBLIC_ORIGIN}/table/{table_identifier}` so a phone camera opens the browser directly. The admin area renders printable QR pages (QRCoder, MIT — also reused for TOTP provisioning QR).
-- Scanning routes to sign-in/registration for that table (scan alone creates nothing). After authentication, in one transaction: if no open `table_sitting` exists for the table, insert one (creator becomes first `person_at_table`); the partial unique index `one open sitting per table` (§6) makes the concurrent-scan race lose gracefully — on unique violation, re-read and fall through to the join path. If an open sitting exists, show it (table label, party size, opened-at) with an explicit **Join** action; declining lands on the personal profile/history. Joins are recorded (`person_at_table.joined_at`) and broadcast to the party — mitigation for the static-QR risk, which is otherwise accepted as written. *(F‑12)*
-- A person may appear in multiple open sittings (e.g., moved tables before staff closed the first); the UI operates in the context of the most recently scanned/selected sitting, and orders always bind to the sitting they were placed in. There is **no anonymous ordering** — every guest authenticates, which the requirements imply but never state. *(F‑19)*
-- **Visibility:** while a sitting is open, every member sees every member's orders at that table live; cross-table visibility never exists. On close, the server broadcasts a visibility-revoked event to the sitting's subscribers and tears down the subscription group — connected guests' UIs switch immediately (not on next navigation) to personal-history mode.
-- **Close = settle, atomically** ⚠ *(F‑04)*: counter (or administrator) triggers one transaction that verifies the sitting is open, stamps `closed_at`/`closed_by_person_identifier`/`closure_type`, and records `settled_total_amount` computed from the projections at that instant. No closed-but-unpaid state exists. End-of-business-day batch close iterates open sittings, one transaction and one log entry each, `closure_type = 'end_of_business_day'`.
+### 4.2 Display devices and pairing
 
----
+`table_display_device`: bound to one table; authenticated by a device cookie whose value is `device:{device_identifier}:{secret}` where `secret` is 32 random bytes Base64Url; the server stores only `sha256(secret)` (`device_secret_hash`). Cookie: Secure, HttpOnly, SameSite=Lax, expiry ~365 days. Each request re-validates the hash and `revoked_at IS NULL`; `last_seen_at` is updated at most once per minute. Revocation (`revoked_at`, `revoked_by_person_identifier`) kills the device on its next request or circuit revalidation.
 
-## 5. Orders — lifecycle and event model
+Pairing: administrator, from the table's admin page, generates a one-time code — 8 characters from the unambiguous alphabet `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, stored **hashed** (SHA-256) in `table_display_pairing_code` with `expires_at = now() + TABLE_DISPLAY_PAIRING_CODE_MINUTES` (default 10), single-use (`used_at`). The device opens `/display/pair` (anonymous; rate-limited **5 attempts/minute/IP**), enters the code; on match the server creates the device row, sets the cookie, marks the code used, and redirects to `/display/{table}`. Failed attempts burn nothing but the rate budget.
 
-### 5.1 Cardinality and states *(F‑07, ADR‑0007)*
+### 4.3 Token algorithm (normative)
 
-A **submission is an order**: a guest builds a cart client-side (circuit state, nothing persisted), and submitting creates one `guest_order` with its initial events atomically. A person may therefore hold several orders within one sitting (round two of drinks = a new order), each with its own kitchen lifecycle. Guests never edit an order after submission (REQUIREMENTS §6.5 grants edit rights only to kitchen/counter); wanting more is a new order, wanting less is a request to staff.
+```
+rotation      = TABLE_JOIN_TOKEN_ROTATION_SECONDS            -- default 60
+window_index  = floor(unix_time_seconds / rotation)
+message       = UTF8( lowercase-hyphenated-table-uuid + ":" + decimal(window_index) )
+token         = Base64Url( HMAC_SHA256( join_secret, message ) )   -- full 32 bytes, no padding
+url           = {RESTAURANT_PUBLIC_ORIGIN}/table/{table_identifier}?token={token}
+```
 
-States, exactly two, derived from events: **Submitted** (creation, timer starts, kitchen alerted) → **Acknowledged** (single kitchen tap). Served is deliberately untracked.
+Validation: recompute for `window_index` and `window_index − 1`; accept iff either matches by `CryptographicOperations.FixedTimeEquals`. Worst-case token life = 2 × rotation (default 120 s). Rotation is continuous and **independent of sitting state**. Every validation increments `table_join_tokens_validated_total{result=valid|expired|invalid}` — `expired` when the token matches some window older than the previous (recompute a bounded lookback of, say, 10 windows purely for metric labeling; anything else is `invalid`). QR is rendered **server-side as SVG**; the display re-renders on a server timer aligned to the window boundary (fire at `(window_index+1) × rotation` UTC).
 
-### 5.2 Append-only event log
+### 4.4 Join flow and grants
 
-The source of truth per order is `order_event` plus **typed subtype tables** (class-table inheritance — fully relational, no EAV, no JSON payloads). Current state is a projection (SQL views §6.3 + an equivalent pure fold in `MyRestaurant.Domain` for in-memory use and unit testing). Events only roll forward; corrections supersede, never erase. *(ADR‑0002)*
+`GET /table/{id}?token=…` for a non-member: validate token → on success, issue the **join grant** — a Data-Protection-encrypted cookie `{table_identifier, issued_at}`, TTL `TABLE_JOIN_GRANT_MINUTES` (default 10) — and continue to sign-in/registration if anonymous, else to the join confirmation. The join action (post-auth) requires a valid, matching grant; it opens a sitting if none is open on that table, inserts membership, **consumes the grant** (cookie cleared), and broadcasts `SittingMemberJoined`. Invalid/absent token for a non-member → friendly "this code has expired — please scan the table display again" page (HTTP 200, no oracle detail). **Members bypass tokens entirely:** `/table/{id}` with an authenticated member of that table's open sitting renders the order surface regardless of query string. Registration mid-flow: the grant cookie survives the passkey ceremony; that is its purpose.
 
-| `event_type` | Subtype table / payload | Permitted actor roles |
+### 4.5 Counter fallback
+
+Counter and administration surfaces can render, on demand per table, the **same** rotating QR (same server-side generation; secret never leaves the server). This is the operational fallback when a table's display is dead. There is no printed QR and no human-readable short-code path in v1.
+
+## 5. Sittings
+
+### 5.1 Open and membership
+
+First consumed grant on a table with no open sitting creates `table_sitting` (opened_at) and the first membership atomically. Later grants add members (`UNIQUE (table_sitting_identifier, person_identifier)` makes double-join idempotent). A person may hold memberships in multiple open sittings; the UI scopes to the sitting behind the current `/table/{id}` route.
+
+### 5.2 Visibility while open
+
+Members see the party roster (display names), every member's living order with per-line states, and the running per-person and table totals (from `sitting_bill`, §8.3). Kitchen sees pending lines for all open sittings; counter sees bills for all open sittings.
+
+### 5.3 Close and settle
+
+Counter or administrator. In one transaction: `SELECT … FOR UPDATE` the sitting row; verify `closed_at IS NULL`; compute the settled total as the sum over `sitting_bill` for the sitting **under that lock** (concurrent order writers hold `FOR SHARE` on the sitting and are excluded — §6.6); stamp `closed_at`, `closed_by_person_identifier`, `settled_total_amount`; commit; broadcast `SittingClosed`. The counter UI must surface still-pending lines prominently before offering Close (remove with reason, or knowingly charge). `settled_total_amount` is **never rewritten**; post-close corrections (§6.7) live beside it, and the UI shows both the stamped settled total and, when corrective events exist, the current corrected total.
+
+### 5.4 End of day
+
+Administration provides batch close: list open sittings with last-activity timestamps, select, close each via the same §5.3 transaction.
+
+## 6. Orders — the living-order event model (ADR-0002, ADR-0007)
+
+### 6.1 Living order
+
+Exactly one `guest_order` per (sitting, member): `UNIQUE (table_sitting_identifier, person_identifier)`. Created lazily inside the member's first send transaction; a lost creation race (unique violation) is re-read and proceeds.
+
+### 6.2 Events
+
+`order_event`: per-order monotonic `sequence_number` (1, 2, 3… assigned under the order lock), `event_type` ∈ `guest_submission | staff_edit | price_adjustment | fulfillment | fulfillment_reversal`, `actor_person_identifier`, `actor_role` ∈ `guest | kitchen | counter | administrator`, `occurred_at`. Same-row CHECKs bind type→role (schema §8.2): guest_submission→guest; staff_edit→kitchen/counter/administrator; price_adjustment→counter/administrator; fulfillment and fulfillment_reversal→kitchen/administrator. `UNIQUE (guest_order_identifier, sequence_number)` and `UNIQUE (order_event_identifier, event_type)` (the composite-FK target for subtype enforcement).
+
+### 6.3 Operations
+
+Typed operation tables, each with a uniform surrogate `uuid` PK, a redundant CHECK-constrained `event_type`, and a composite FK `(order_event_identifier, event_type) → order_event`:
+
+| Table | Allowed event types | Payload |
 |---|---|---|
-| `item_added` | `order_line_identifier` (new), `menu_item_identifier`, `quantity`, `unit_price_amount` (locked-in copy of menu price at that moment), `customization_note` | guest (only within the creating transaction), kitchen, counter, administrator |
-| `submitted` | — (exactly once per order, at creation) | guest, administrator |
-| `acknowledged` | — (at most once per order) | kitchen, administrator |
-| `item_removed` | `order_line_identifier` → an existing added line | kitchen, counter, administrator |
-| `item_price_adjusted` ⚠ *(F‑02)* | `order_line_identifier`, `new_unit_price_amount` | counter, administrator |
+| `order_operation_line_added` | guest_submission, staff_edit | `order_line_identifier` (UNIQUE — the line's identity), `menu_item_identifier`, `quantity` 1–100, `unit_price_amount` (captured at add), `customization_note` NULL |
+| `order_operation_line_removed` | guest_submission, staff_edit | `order_line_identifier` (UNIQUE — removal terminal), `reason` NULL |
+| `order_operation_line_price_adjusted` | price_adjustment | `order_line_identifier`, `new_unit_price_amount`, `reason` NOT NULL |
+| `order_operation_line_fulfilled` | fulfillment | `order_line_identifier` |
+| `order_operation_line_fulfillment_reverted` | fulfillment_reversal | `order_line_identifier` |
 
-Quantity change = `item_removed` + `item_added` (two events, both visible — simplest honest history). Sequence numbers are assigned per order under `SELECT … FOR UPDATE` on the `guest_order` row; `UNIQUE (order_identifier, sequence_number)` makes concurrent writers fail loudly rather than interleave silently.
+A guest send is one `guest_submission` event owning N added + M removed rows. Staff UIs send one operation per event typically, but the model permits multi-operation staff events (e.g. kitchen "fulfill all pending for this order" = one `fulfillment` event, N fulfilled rows).
 
-Every event records `actor_person_identifier` and `actor_role` (the role being exercised). Tamper-evidence display: staff and admin views show full actor identity per event; **guest-facing** live edit notices show the role label only ("kitchen removed Salmon — unavailable"), not staff usernames. *(F‑11)*
+### 6.4 Line lifecycle
 
-**Edit window** *(F‑10)*: kitchen/counter may append events only while the sitting is open. After close, orders are read-only except that an administrator may append corrective events (each is itself logged; `settled_total_amount` on the closure is never rewritten, so any post-close correction is visibly divergent rather than silently reconciled).
+pending → fulfilled (revertible, roll-forward) → …; removed is terminal from either state (guests only from pending, staff from any). Fulfillment state of a line = the **latest by parent sequence_number** of its fulfilled/reverted operations (fulfilled if that latest is a fulfilled row). Removed = a removal row exists. Re-adding after removal = a new line, new identifier.
 
-### 5.3 History, hiding, unhiding
+### 6.5 Validation invariants (application-enforced inside the serialized transaction; integration-tested)
 
-Post-close, an order belongs to its owner's unlimited history. Hiding appends `order_visibility_event(action = 'hidden_by_owner')`; the owner's views filter on the latest visibility action; no user-facing unhide exists (UI confirms: "This cannot be undone from your account"). Admin **hidden-records view**: lists all currently-hidden orders system-wide, filterable by username, date range, and table; each row expands to the complete stored record — full event log, visibility log, sitting context, unprojected (REQUIREMENTS §4.3, §6.6) — with a per-record Unhide action appending `unhidden_by_administrator`.
+1. Every event owns ≥ 1 operation row.
+2. Every referenced `order_line_identifier` belongs to **this** order (its adding event's `guest_order_identifier` matches).
+3. A removal may not target a line already removed (DB also enforces via UNIQUE) **or** — for guest actors — a line that is currently fulfilled or not their own… (guest sends may only remove lines whose adding event was their own `guest_submission` and which are currently pending).
+4. A guest_submission requires: actor is the order owner, is a member of the sitting, sitting open; each added `menu_item_identifier` exists and `is_active` **re-checked in this transaction**; quantity 1–100; `unit_price_amount` set server-side from the current menu price (client-sent prices are ignored).
+5. A removal operation may not reference a line added in the same event.
+6. `fulfillment` targets currently-pending, non-removed lines; `fulfillment_reversal` targets currently-fulfilled lines (fulfilled/reverted must alternate per line).
+7. `price_adjustment` targets non-removed lines; reason non-empty.
+8. Post-close (sitting closed): only administrators, only event types staff_edit / price_adjustment / fulfillment / fulfillment_reversal — never guest_submission.
+9. **All-or-nothing:** any failed operation rejects the entire event; the response carries per-operation error reasons plus a fresh projection so the client restages.
 
-### 5.4 Menu
+### 6.6 Locking protocol (normative)
 
-`menu_item` holds current state (name, description, `current_price_amount`, `is_active`); every mutation simultaneously appends a `menu_item_event` (created / renamed / description_changed / price_changed / activated / deactivated, with typed old/new columns) in the same transaction — this supplies the price-change timelines §4.3 promises the admin but §6 never mandated recording. *(F‑18)* Deactivated items stay visible on the guest menu, marked "currently unavailable," unorderable; submission re-validates `is_active` per line inside the creating transaction and rejects with a live menu refresh if stale. Deactivation never touches existing orders. Kitchen/counter can toggle `is_active`; only admin creates/edits items. Prices: `numeric(10,2)`, single instance currency, display driven by `RESTAURANT_CURRENCY_CODE` (ISO 4217). *(F‑19)*
+Every order-mutating transaction: (a) `SELECT … FOR SHARE` the `table_sitting` row and verify it is open (post-close administrative corrections skip the open check but still take `FOR SHARE`); (b) `SELECT … FOR UPDATE` the `guest_order` row (creating it first if absent — `INSERT … ON CONFLICT DO NOTHING` then re-select FOR UPDATE); (c) read `max(sequence_number)` for the order and assign +1; (d) validate §6.5 against the projection under the lock; (e) insert the event + operations (+ `kitchen_notification` `initial` when §10.1 says so) in the same transaction; (f) commit; (g) broadcast after commit. The close transaction takes `FOR UPDATE` on the sitting (§5.3); FOR SHARE vs FOR UPDATE conflict is what guarantees no event slips past a close and no close computes a total while a write is in flight.
 
----
+### 6.7 Post-close corrections
 
-## 6. Database schema (PostgreSQL 18, DbUp migration `0001_initial_schema.sql`)
+Administrator-only appended events per §6.5(8), fully visible in history views next to the stamped settled total.
 
-UUIDv7 everywhere a GUID appears, **application-generated** via `Guid.CreateVersion7()` (keys known before round-trip; PG 18's native `uuidv7()` is available but the app is the single generator). Timestamps `timestamptz`. Reserved word avoided: the order table is `guest_order`.
+### 6.8 Hiding
+
+`order_visibility_event` (owner hides; only an administrator unhides). Hiding applies to an order in a **closed** sitting and removes it from the **owner's own views** — their personal history — and changes **no other party's view**: cross-member history is never shown in the first place (§11.1), and kitchen/counter operational lookups and administration always see everything. There is **no user-facing unhide**; the confirmation dialog states plainly that this cannot be undone from the guest's account. Administrators locate hidden orders in the **hidden-records view** (§11.4): every currently-hidden order system-wide, filterable by username, date range, and table, each row expandable to the complete stored record — full event log, visibility log, sitting context, unprojected — with a per-record Unhide (appends `unhidden_by_administrator`). Current flag = latest event (view `order_visibility_current`).
+
+## 7. Menu
+
+`menu_item` (name, `price_amount numeric(10,2) ≥ 0`, `is_active`) with append-only `menu_item_event` mirroring every change (`created | name_changed | price_changed | activated | deactivated`, typed nullable payload columns CHECK-bound to type, actor, timestamp). Create/edit is administrator; activate/deactivate is kitchen/counter/administrator and takes effect instantly (broadcast `MenuChanged`; guest staging areas mark newly-inactive staged items and the send re-validates server-side regardless). Prices on existing lines never move when the menu price changes (§6.5.4 capture rule). Deactivated items are **not hidden** from the guest menu: they remain visible, marked "currently unavailable", and cannot be added to a send — the guest sees that the salmon exists and is out, rather than watching it silently vanish. Customization notes are free text and are never validated against any rules engine; an impossible request ("eggless omelette") is handled by a human walking to the table.
+
+## 8. Database schema (schema of record)
+
+### 8.1 Conventions
+
+PostgreSQL, current major. Extension: `citext`. All identifiers snake_case, unabbreviated (carve-out per requirements §8: TOTP/HMAC/QR/URL/SQL/TLS). Primary keys `uuid` named `{table}_identifier`, application-generated UUIDv7 (ADR-0011) — **no database defaults for identifiers**. Timestamps `timestamptz`, UTC, named `…_at`. Money `numeric(10,2)`. The DDL below ships verbatim as `src/MyRestaurant.DataAccess/Migrations/0001_initial_schema.sql` (plus `CREATE EXTENSION IF NOT EXISTS citext;` at top).
+
+### 8.2 Tables (DDL)
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS citext;
 
--- ── identity ────────────────────────────────────────────────────────────────
 CREATE TABLE person (
-    person_identifier       uuid PRIMARY KEY,
-    username                citext NOT NULL UNIQUE
-                            CHECK (char_length(username) BETWEEN 3 AND 64),
-    display_name            text NOT NULL CHECK (char_length(display_name) BETWEEN 1 AND 100),
-    password_hash           text NULL,                 -- NULL ⇒ passkey-only (app enforces ≥1 first factor)
-    security_stamp          uuid NOT NULL,
-    totp_secret_protected   text NULL,                 -- Data-Protection-encrypted
-    totp_required           boolean NOT NULL DEFAULT false,
-    must_change_password    boolean NOT NULL DEFAULT false,
-    email_address           citext NULL,
-    phone_number            text NULL,
-    is_active               boolean NOT NULL DEFAULT true,
-    failed_sign_in_count    integer NOT NULL DEFAULT 0,
-    lockout_end_at          timestamptz NULL,
-    created_at              timestamptz NOT NULL DEFAULT now()
+    person_identifier        uuid PRIMARY KEY,
+    username                 citext NOT NULL UNIQUE
+                             CHECK (char_length(username) BETWEEN 3 AND 64),
+    display_name             text NULL,
+    email_address            citext NULL,        -- optional; manual escalation only (§11.1)
+    phone_number             text NULL,          -- optional; manual escalation only (§11.1)
+    password_hash            text NULL,          -- PHC argon2id string (§3.2)
+    totp_secret_protected    text NULL,          -- Data-Protection-encrypted; NULL = not enrolled
+    must_change_password     boolean NOT NULL DEFAULT false,
+    must_enroll_totp         boolean NOT NULL DEFAULT false,
+    security_stamp           uuid NOT NULL,
+    failed_access_count      integer NOT NULL DEFAULT 0,
+    lockout_end_at           timestamptz NULL,
+    is_active                boolean NOT NULL DEFAULT true,
+    created_at               timestamptz NOT NULL
 );
 
 CREATE TABLE person_role (
-    person_identifier       uuid NOT NULL REFERENCES person,
-    role_name               text NOT NULL CHECK (role_name IN ('administrator','kitchen','counter')),
-    granted_at              timestamptz NOT NULL DEFAULT now(),
-    granted_by_person_identifier uuid NULL REFERENCES person,   -- NULL only for bootstrap self-grant
-    PRIMARY KEY (person_identifier, role_name)
+    person_role_identifier       uuid PRIMARY KEY,
+    person_identifier            uuid NOT NULL REFERENCES person (person_identifier),
+    role_name                    text NOT NULL
+                                 CHECK (role_name IN ('administrator', 'kitchen', 'counter')),
+    granted_by_person_identifier uuid NOT NULL REFERENCES person (person_identifier),
+    granted_at                   timestamptz NOT NULL,
+    UNIQUE (person_identifier, role_name)
 );
 
 CREATE TABLE passkey_credential (
     passkey_credential_identifier uuid PRIMARY KEY,
-    person_identifier       uuid NOT NULL REFERENCES person,
-    credential_identifier   bytea NOT NULL UNIQUE,     -- WebAuthn credential ID
-    public_key              bytea NOT NULL,
-    signature_counter       bigint NOT NULL DEFAULT 0,
-    transports              text[] NULL,
-    authenticator_aaguid    uuid NULL,
-    label                   text NOT NULL DEFAULT 'passkey',
-    created_at              timestamptz NOT NULL DEFAULT now(),
-    last_used_at            timestamptz NULL
+    person_identifier             uuid NOT NULL REFERENCES person (person_identifier),
+    credential_id                 bytea NOT NULL UNIQUE,
+    public_key                    bytea NOT NULL,
+    signature_counter             bigint NOT NULL DEFAULT 0,
+    transports                    text NULL,
+    credential_display_name       text NULL,
+    created_at                    timestamptz NOT NULL
 );
 
 CREATE TABLE totp_recovery_code (
     totp_recovery_code_identifier uuid PRIMARY KEY,
-    person_identifier       uuid NOT NULL REFERENCES person,
-    code_hash               text NOT NULL,
-    created_at              timestamptz NOT NULL DEFAULT now(),
-    used_at                 timestamptz NULL
+    person_identifier             uuid NOT NULL REFERENCES person (person_identifier),
+    code_hash                     bytea NOT NULL,       -- sha256
+    used_at                       timestamptz NULL,
+    created_at                    timestamptz NOT NULL
 );
+CREATE INDEX totp_recovery_code_person_index ON totp_recovery_code (person_identifier);
 
 CREATE TABLE person_address (
     person_address_identifier uuid PRIMARY KEY,
-    person_identifier       uuid NOT NULL REFERENCES person,
-    label                   text NOT NULL,             -- free text, user-chosen
-    street_line_one         text NULL,
-    street_line_two         text NULL,
-    city                    text NULL,
-    region                  text NULL,
-    postal_code             text NULL,
-    country                 text NULL,
-    created_at              timestamptz NOT NULL DEFAULT now()
+    person_identifier         uuid NOT NULL REFERENCES person (person_identifier),
+    label                     text NOT NULL,      -- always free text, chosen by the user ("Home", "Work")
+    street_line_one           text NULL,
+    street_line_two           text NULL,
+    city                      text NULL,
+    region                    text NULL,
+    postal_code               text NULL,
+    country                   text NULL,
+    created_at                timestamptz NOT NULL
 );
+CREATE INDEX person_address_person_index ON person_address (person_identifier);
+-- Deliberate scaffolding for a possible future delivery/takeout feature (REQUIREMENTS §4.6):
+-- consumed by nothing in version 1, and not to be removed as dead weight.
 
 CREATE TABLE security_event (
     security_event_identifier uuid PRIMARY KEY,
-    occurred_at             timestamptz NOT NULL DEFAULT now(),
-    actor_person_identifier uuid NULL REFERENCES person,       -- NULL ⇒ system/bootstrap
-    subject_person_identifier uuid NOT NULL REFERENCES person,
-    event_type              text NOT NULL CHECK (event_type IN (
-        'account_created','account_deactivated','account_reactivated',
-        'password_changed','password_reset_by_administrator','forced_password_change_completed',
-        'totp_enabled','totp_disabled',
-        'totp_requirement_enabled_by_administrator','totp_requirement_disabled_by_administrator',
-        'recovery_code_used','recovery_codes_regenerated',
-        'passkey_registered','passkey_removed',
-        'role_granted','role_revoked',
-        'sign_in_succeeded','sign_in_failed','account_locked_out')),
-    detail                  text NULL
+    subject_person_identifier uuid NOT NULL REFERENCES person (person_identifier),
+    actor_person_identifier   uuid NULL REFERENCES person (person_identifier), -- NULL = the subject themselves / system
+    event_type                text NOT NULL CHECK (event_type IN (
+        'account_created', 'account_deactivated', 'account_reactivated',
+        'password_changed', 'password_reset_by_administrator',
+        'forced_password_change_completed',
+        'totp_enrolled', 'totp_removed', 'totp_cleared_by_administrator',
+        'forced_totp_enrollment_completed',
+        'recovery_code_used', 'recovery_codes_regenerated',
+        'passkey_registered', 'passkey_removed',
+        'role_granted', 'role_revoked',
+        'sign_in_succeeded', 'sign_in_failed', 'account_locked_out')),
+    occurred_at               timestamptz NOT NULL
+);
+CREATE INDEX security_event_subject_index ON security_event (subject_person_identifier, occurred_at);
+
+CREATE TABLE restaurant_table (
+    restaurant_table_identifier uuid PRIMARY KEY,
+    label                       text NOT NULL UNIQUE,
+    join_secret                 bytea NOT NULL CHECK (octet_length(join_secret) = 32),
+    join_secret_rotated_at      timestamptz NULL,
+    is_active                   boolean NOT NULL DEFAULT true,
+    created_at                  timestamptz NOT NULL
 );
 
--- ── tables and sittings ─────────────────────────────────────────────────────
-CREATE TABLE restaurant_table (
-    table_identifier        uuid PRIMARY KEY,          -- the value encoded in the QR; never rotated
-    table_label             text NOT NULL UNIQUE,      -- human name/number
-    is_active               boolean NOT NULL DEFAULT true,
-    created_at              timestamptz NOT NULL DEFAULT now()
+CREATE TABLE table_display_device (
+    table_display_device_identifier uuid PRIMARY KEY,
+    restaurant_table_identifier     uuid NOT NULL REFERENCES restaurant_table (restaurant_table_identifier),
+    device_label                    text NOT NULL,
+    device_secret_hash              bytea NOT NULL CHECK (octet_length(device_secret_hash) = 32), -- sha256
+    paired_by_person_identifier     uuid NOT NULL REFERENCES person (person_identifier),
+    paired_at                       timestamptz NOT NULL,
+    revoked_at                      timestamptz NULL,
+    revoked_by_person_identifier    uuid NULL REFERENCES person (person_identifier),
+    last_seen_at                    timestamptz NULL,
+    CHECK ((revoked_at IS NULL) = (revoked_by_person_identifier IS NULL))
+);
+CREATE INDEX table_display_device_table_index ON table_display_device (restaurant_table_identifier);
+
+CREATE TABLE table_display_pairing_code (
+    table_display_pairing_code_identifier uuid PRIMARY KEY,
+    restaurant_table_identifier           uuid NOT NULL REFERENCES restaurant_table (restaurant_table_identifier),
+    code_hash                             bytea NOT NULL CHECK (octet_length(code_hash) = 32), -- sha256
+    created_by_person_identifier          uuid NOT NULL REFERENCES person (person_identifier),
+    created_at                            timestamptz NOT NULL,
+    expires_at                            timestamptz NOT NULL,
+    used_at                               timestamptz NULL
 );
 
 CREATE TABLE table_sitting (
-    table_sitting_identifier uuid PRIMARY KEY,
-    table_identifier        uuid NOT NULL REFERENCES restaurant_table,
-    opened_at               timestamptz NOT NULL DEFAULT now(),
-    opened_by_person_identifier uuid NOT NULL REFERENCES person,
-    closed_at               timestamptz NULL,
-    closed_by_person_identifier uuid NULL REFERENCES person,
-    closure_type            text NULL CHECK (closure_type IN ('standard','end_of_business_day')),
-    settled_total_amount    numeric(10,2) NULL CHECK (settled_total_amount >= 0),
-    CHECK (num_nulls(closed_at, closed_by_person_identifier, closure_type, settled_total_amount) IN (0, 4))
+    table_sitting_identifier    uuid PRIMARY KEY,
+    restaurant_table_identifier uuid NOT NULL REFERENCES restaurant_table (restaurant_table_identifier),
+    opened_at                   timestamptz NOT NULL,
+    closed_at                   timestamptz NULL,
+    closed_by_person_identifier uuid NULL REFERENCES person (person_identifier),
+    settled_total_amount        numeric(10,2) NULL,
+    CHECK ((closed_at IS NULL) = (closed_by_person_identifier IS NULL)),
+    CHECK ((closed_at IS NULL) = (settled_total_amount IS NULL))
 );
-CREATE UNIQUE INDEX one_open_sitting_per_table
-    ON table_sitting (table_identifier) WHERE closed_at IS NULL;
+-- at most one open sitting per table:
+CREATE UNIQUE INDEX table_sitting_one_open_per_table
+    ON table_sitting (restaurant_table_identifier) WHERE closed_at IS NULL;
+CREATE INDEX table_sitting_table_index ON table_sitting (restaurant_table_identifier, opened_at);
 
-CREATE TABLE person_at_table (
-    person_at_table_identifier uuid PRIMARY KEY,
-    table_sitting_identifier uuid NOT NULL REFERENCES table_sitting,
-    person_identifier       uuid NOT NULL REFERENCES person,
-    joined_at               timestamptz NOT NULL DEFAULT now(),
+CREATE TABLE table_sitting_member (
+    table_sitting_member_identifier uuid PRIMARY KEY,
+    table_sitting_identifier        uuid NOT NULL REFERENCES table_sitting (table_sitting_identifier),
+    person_identifier               uuid NOT NULL REFERENCES person (person_identifier),
+    joined_at                       timestamptz NOT NULL,
     UNIQUE (table_sitting_identifier, person_identifier)
 );
 
--- ── menu ────────────────────────────────────────────────────────────────────
 CREATE TABLE menu_item (
-    menu_item_identifier    uuid PRIMARY KEY,
-    name                    text NOT NULL UNIQUE,
-    description             text NULL,
-    current_price_amount    numeric(10,2) NOT NULL CHECK (current_price_amount >= 0),
-    is_active               boolean NOT NULL DEFAULT true,
-    created_at              timestamptz NOT NULL DEFAULT now()
+    menu_item_identifier uuid PRIMARY KEY,
+    name                 text NOT NULL,
+    price_amount         numeric(10,2) NOT NULL CHECK (price_amount >= 0),
+    is_active            boolean NOT NULL DEFAULT true,
+    created_at           timestamptz NOT NULL
 );
 
-CREATE TABLE menu_item_event (                          -- append-only; written in same txn as menu_item change
+CREATE TABLE menu_item_event (
     menu_item_event_identifier uuid PRIMARY KEY,
-    menu_item_identifier    uuid NOT NULL REFERENCES menu_item,
-    sequence_number         bigint NOT NULL,
-    occurred_at             timestamptz NOT NULL DEFAULT now(),
-    actor_person_identifier uuid NOT NULL REFERENCES person,
-    event_type              text NOT NULL CHECK (event_type IN
-        ('created','renamed','description_changed','price_changed','activated','deactivated')),
-    previous_name           text NULL,
-    new_name                text NULL,
-    previous_price_amount   numeric(10,2) NULL,
-    new_price_amount        numeric(10,2) NULL,
-    previous_description    text NULL,
-    new_description         text NULL,
-    UNIQUE (menu_item_identifier, sequence_number)
+    menu_item_identifier       uuid NOT NULL REFERENCES menu_item (menu_item_identifier),
+    actor_person_identifier    uuid NOT NULL REFERENCES person (person_identifier),
+    event_type                 text NOT NULL CHECK (event_type IN
+                               ('created', 'name_changed', 'price_changed', 'activated', 'deactivated')),
+    new_name                   text NULL,
+    new_price_amount           numeric(10,2) NULL CHECK (new_price_amount IS NULL OR new_price_amount >= 0),
+    occurred_at                timestamptz NOT NULL,
+    CHECK ((new_name IS NOT NULL)         = (event_type IN ('created', 'name_changed'))),
+    CHECK ((new_price_amount IS NOT NULL) = (event_type IN ('created', 'price_changed')))
 );
+CREATE INDEX menu_item_event_item_index ON menu_item_event (menu_item_identifier, occurred_at);
 
--- ── orders: append-only event log with typed subtypes ──────────────────────
 CREATE TABLE guest_order (
-    order_identifier        uuid PRIMARY KEY,
-    table_sitting_identifier uuid NOT NULL REFERENCES table_sitting,
-    person_identifier       uuid NOT NULL REFERENCES person,   -- owner; app verifies membership in sitting
-    created_at              timestamptz NOT NULL DEFAULT now()
+    guest_order_identifier   uuid PRIMARY KEY,
+    table_sitting_identifier uuid NOT NULL REFERENCES table_sitting (table_sitting_identifier),
+    person_identifier        uuid NOT NULL REFERENCES person (person_identifier),
+    created_at               timestamptz NOT NULL,
+    UNIQUE (table_sitting_identifier, person_identifier)
 );
 
 CREATE TABLE order_event (
     order_event_identifier  uuid PRIMARY KEY,
-    order_identifier        uuid NOT NULL REFERENCES guest_order,
-    sequence_number         bigint NOT NULL,
-    occurred_at             timestamptz NOT NULL DEFAULT now(),
-    actor_person_identifier uuid NOT NULL REFERENCES person,
-    actor_role              text NOT NULL CHECK (actor_role IN ('guest','kitchen','counter','administrator')),
+    guest_order_identifier  uuid NOT NULL REFERENCES guest_order (guest_order_identifier),
+    sequence_number         bigint NOT NULL CHECK (sequence_number >= 1),
     event_type              text NOT NULL CHECK (event_type IN
-        ('submitted','acknowledged','item_added','item_removed','item_price_adjusted')),
-    UNIQUE (order_identifier, sequence_number)
+        ('guest_submission', 'staff_edit', 'price_adjustment', 'fulfillment', 'fulfillment_reversal')),
+    actor_person_identifier uuid NOT NULL REFERENCES person (person_identifier),
+    actor_role              text NOT NULL CHECK (actor_role IN
+        ('guest', 'kitchen', 'counter', 'administrator')),
+    occurred_at             timestamptz NOT NULL,
+    UNIQUE (guest_order_identifier, sequence_number),
+    UNIQUE (order_event_identifier, event_type),   -- composite-FK target for subtype enforcement
+    CHECK (event_type <> 'guest_submission'    OR actor_role = 'guest'),
+    CHECK (event_type <> 'staff_edit'          OR actor_role IN ('kitchen', 'counter', 'administrator')),
+    CHECK (event_type <> 'price_adjustment'    OR actor_role IN ('counter', 'administrator')),
+    CHECK (event_type <> 'fulfillment'         OR actor_role IN ('kitchen', 'administrator')),
+    CHECK (event_type <> 'fulfillment_reversal' OR actor_role IN ('kitchen', 'administrator'))
 );
-CREATE UNIQUE INDEX one_submission_per_order
-    ON order_event (order_identifier) WHERE event_type = 'submitted';
-CREATE UNIQUE INDEX one_acknowledgement_per_order
-    ON order_event (order_identifier) WHERE event_type = 'acknowledged';
+CREATE INDEX order_event_order_index ON order_event (guest_order_identifier, sequence_number);
 
-CREATE TABLE order_event_item_added (
-    order_event_identifier  uuid PRIMARY KEY REFERENCES order_event,
-    order_line_identifier   uuid NOT NULL UNIQUE,       -- names the logical line for later events
-    menu_item_identifier    uuid NOT NULL REFERENCES menu_item,
-    quantity                integer NOT NULL CHECK (quantity BETWEEN 1 AND 100),
-    unit_price_amount       numeric(10,2) NOT NULL CHECK (unit_price_amount >= 0),  -- price locked at add time
-    customization_note      text NULL
+CREATE TABLE order_operation_line_added (
+    order_operation_line_added_identifier uuid PRIMARY KEY,
+    order_event_identifier                uuid NOT NULL,
+    event_type                            text NOT NULL
+        CHECK (event_type IN ('guest_submission', 'staff_edit')),
+    order_line_identifier                 uuid NOT NULL UNIQUE,   -- the line's identity
+    menu_item_identifier                  uuid NOT NULL REFERENCES menu_item (menu_item_identifier),
+    quantity                              integer NOT NULL CHECK (quantity BETWEEN 1 AND 100),
+    unit_price_amount                     numeric(10,2) NOT NULL CHECK (unit_price_amount >= 0),
+    customization_note                    text NULL,
+    FOREIGN KEY (order_event_identifier, event_type)
+        REFERENCES order_event (order_event_identifier, event_type)
 );
+CREATE INDEX order_operation_line_added_event_index
+    ON order_operation_line_added (order_event_identifier);
 
-CREATE TABLE order_event_item_removed (
-    order_event_identifier  uuid PRIMARY KEY REFERENCES order_event,
-    order_line_identifier   uuid NOT NULL REFERENCES order_event_item_added (order_line_identifier)
+CREATE TABLE order_operation_line_removed (
+    order_operation_line_removed_identifier uuid PRIMARY KEY,
+    order_event_identifier                  uuid NOT NULL,
+    event_type                              text NOT NULL
+        CHECK (event_type IN ('guest_submission', 'staff_edit')),
+    order_line_identifier                   uuid NOT NULL UNIQUE   -- removal is terminal
+        REFERENCES order_operation_line_added (order_line_identifier),
+    reason                                  text NULL,
+    FOREIGN KEY (order_event_identifier, event_type)
+        REFERENCES order_event (order_event_identifier, event_type)
 );
+CREATE INDEX order_operation_line_removed_event_index
+    ON order_operation_line_removed (order_event_identifier);
 
-CREATE TABLE order_event_item_price_adjusted (
-    order_event_identifier  uuid PRIMARY KEY REFERENCES order_event,
-    order_line_identifier   uuid NOT NULL REFERENCES order_event_item_added (order_line_identifier),
-    new_unit_price_amount   numeric(10,2) NOT NULL CHECK (new_unit_price_amount >= 0)
+CREATE TABLE order_operation_line_price_adjusted (
+    order_operation_line_price_adjusted_identifier uuid PRIMARY KEY,
+    order_event_identifier                         uuid NOT NULL,
+    event_type                                     text NOT NULL
+        CHECK (event_type = 'price_adjustment'),
+    order_line_identifier                          uuid NOT NULL
+        REFERENCES order_operation_line_added (order_line_identifier),
+    new_unit_price_amount                          numeric(10,2) NOT NULL CHECK (new_unit_price_amount >= 0),
+    reason                                         text NOT NULL CHECK (btrim(reason) <> ''),
+    FOREIGN KEY (order_event_identifier, event_type)
+        REFERENCES order_event (order_event_identifier, event_type)
+);
+CREATE INDEX order_operation_line_price_adjusted_line_index
+    ON order_operation_line_price_adjusted (order_line_identifier);
+
+CREATE TABLE order_operation_line_fulfilled (
+    order_operation_line_fulfilled_identifier uuid PRIMARY KEY,
+    order_event_identifier                    uuid NOT NULL,
+    event_type                                text NOT NULL CHECK (event_type = 'fulfillment'),
+    order_line_identifier                     uuid NOT NULL
+        REFERENCES order_operation_line_added (order_line_identifier),
+    FOREIGN KEY (order_event_identifier, event_type)
+        REFERENCES order_event (order_event_identifier, event_type)
+);
+CREATE INDEX order_operation_line_fulfilled_line_index
+    ON order_operation_line_fulfilled (order_line_identifier);
+
+CREATE TABLE order_operation_line_fulfillment_reverted (
+    order_operation_line_fulfillment_reverted_identifier uuid PRIMARY KEY,
+    order_event_identifier                                uuid NOT NULL,
+    event_type                                            text NOT NULL
+        CHECK (event_type = 'fulfillment_reversal'),
+    order_line_identifier                                 uuid NOT NULL
+        REFERENCES order_operation_line_added (order_line_identifier),
+    FOREIGN KEY (order_event_identifier, event_type)
+        REFERENCES order_event (order_event_identifier, event_type)
+);
+CREATE INDEX order_operation_line_fulfillment_reverted_line_index
+    ON order_operation_line_fulfillment_reverted (order_line_identifier);
+
+CREATE TABLE kitchen_notification (
+    kitchen_notification_identifier uuid PRIMARY KEY,
+    order_event_identifier          uuid NOT NULL,
+    event_type                      text NOT NULL
+        CHECK (event_type IN ('guest_submission', 'staff_edit')),
+    kind                            text NOT NULL CHECK (kind IN ('initial', 'reminder')),
+    created_at                      timestamptz NOT NULL,
+    UNIQUE (order_event_identifier, kind),
+    FOREIGN KEY (order_event_identifier, event_type)
+        REFERENCES order_event (order_event_identifier, event_type)
 );
 
 CREATE TABLE order_visibility_event (
     order_visibility_event_identifier uuid PRIMARY KEY,
-    order_identifier        uuid NOT NULL REFERENCES guest_order,
-    occurred_at             timestamptz NOT NULL DEFAULT now(),
-    actor_person_identifier uuid NOT NULL REFERENCES person,
-    action                  text NOT NULL CHECK (action IN ('hidden_by_owner','unhidden_by_administrator'))
+    guest_order_identifier            uuid NOT NULL REFERENCES guest_order (guest_order_identifier),
+    actor_person_identifier           uuid NOT NULL REFERENCES person (person_identifier),
+    event_type                        text NOT NULL CHECK (event_type IN ('hidden', 'unhidden')),
+    occurred_at                       timestamptz NOT NULL
 );
-
-CREATE TABLE kitchen_notification (                     -- audit of alerts; enforces single reminder
-    kitchen_notification_identifier uuid PRIMARY KEY,
-    order_identifier        uuid NOT NULL REFERENCES guest_order,
-    kind                    text NOT NULL CHECK (kind IN ('initial','reminder')),
-    sent_at                 timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (order_identifier, kind)
-);
-
--- supporting indexes
-CREATE INDEX order_event_by_order        ON order_event (order_identifier, sequence_number);
-CREATE INDEX guest_order_by_sitting      ON guest_order (table_sitting_identifier);
-CREATE INDEX guest_order_by_person       ON guest_order (person_identifier, created_at DESC);
-CREATE INDEX person_at_table_by_person   ON person_at_table (person_identifier);
-CREATE INDEX table_sitting_by_table      ON table_sitting (table_identifier, opened_at DESC);
-CREATE INDEX order_visibility_by_order   ON order_visibility_event (order_identifier, occurred_at DESC);
+CREATE INDEX order_visibility_event_order_index
+    ON order_visibility_event (guest_order_identifier, occurred_at);
 ```
 
-### 6.1 Projection views (read models — rebuildable, never authoritative)
+Note on the `menu_item_event` CHECKs: they are biconditionals — `new_name` is present exactly when the type is `created` or `name_changed`, and `new_price_amount` exactly when the type is `created` or `price_changed`; `activated`/`deactivated` therefore carry neither. Integration tests must assert all ten combinations (five types × payload present/absent).
+
+### 8.3 Projection views
 
 ```sql
 CREATE VIEW order_current_line AS
-SELECT added_event.order_identifier,
-       added.order_line_identifier,
-       added.menu_item_identifier,
-       added.quantity,
-       COALESCE(latest_adjustment.new_unit_price_amount, added.unit_price_amount) AS unit_price_amount,
-       added.customization_note
-FROM order_event_item_added AS added
-JOIN order_event AS added_event USING (order_event_identifier)
+SELECT
+    added_event.guest_order_identifier,
+    added.order_line_identifier,
+    added.menu_item_identifier,
+    menu_item.name AS menu_item_name,
+    added.quantity,
+    COALESCE(latest_price.new_unit_price_amount, added.unit_price_amount)
+        AS current_unit_price_amount,
+    added.customization_note,
+    COALESCE(latest_flip.is_fulfilled, false) AS is_fulfilled,
+    added_event.occurred_at AS added_at,
+    added.order_event_identifier AS added_by_order_event_identifier
+FROM order_operation_line_added AS added
+JOIN order_event AS added_event
+    ON added_event.order_event_identifier = added.order_event_identifier
+JOIN menu_item
+    ON menu_item.menu_item_identifier = added.menu_item_identifier
+LEFT JOIN order_operation_line_removed AS removed
+    ON removed.order_line_identifier = added.order_line_identifier
 LEFT JOIN LATERAL (
-    SELECT adjusted.new_unit_price_amount
-    FROM order_event_item_price_adjusted AS adjusted
-    JOIN order_event AS adjustment_event USING (order_event_identifier)
-    WHERE adjusted.order_line_identifier = added.order_line_identifier
+    SELECT adjustment.new_unit_price_amount
+    FROM order_operation_line_price_adjusted AS adjustment
+    JOIN order_event AS adjustment_event
+        ON adjustment_event.order_event_identifier = adjustment.order_event_identifier
+    WHERE adjustment.order_line_identifier = added.order_line_identifier
     ORDER BY adjustment_event.sequence_number DESC
     LIMIT 1
-) AS latest_adjustment ON true
-WHERE NOT EXISTS (SELECT 1 FROM order_event_item_removed AS removed
-                  WHERE removed.order_line_identifier = added.order_line_identifier);
+) AS latest_price ON true
+LEFT JOIN LATERAL (
+    SELECT flip.was_fulfillment AS is_fulfilled
+    FROM (
+        SELECT true AS was_fulfillment, fulfilled_event.sequence_number
+        FROM order_operation_line_fulfilled AS fulfilled
+        JOIN order_event AS fulfilled_event
+            ON fulfilled_event.order_event_identifier = fulfilled.order_event_identifier
+        WHERE fulfilled.order_line_identifier = added.order_line_identifier
+        UNION ALL
+        SELECT false, reverted_event.sequence_number
+        FROM order_operation_line_fulfillment_reverted AS reverted
+        JOIN order_event AS reverted_event
+            ON reverted_event.order_event_identifier = reverted.order_event_identifier
+        WHERE reverted.order_line_identifier = added.order_line_identifier
+    ) AS flip
+    ORDER BY flip.sequence_number DESC
+    LIMIT 1
+) AS latest_flip ON true
+WHERE removed.order_line_identifier IS NULL;
+
+CREATE VIEW kitchen_pending_line AS
+SELECT
+    line.*,
+    guest_order.table_sitting_identifier,
+    guest_order.person_identifier,
+    person.display_name AS person_display_name,
+    table_sitting.restaurant_table_identifier,
+    restaurant_table.label AS restaurant_table_label
+FROM order_current_line AS line
+JOIN guest_order       ON guest_order.guest_order_identifier = line.guest_order_identifier
+JOIN person            ON person.person_identifier = guest_order.person_identifier
+JOIN table_sitting     ON table_sitting.table_sitting_identifier = guest_order.table_sitting_identifier
+JOIN restaurant_table  ON restaurant_table.restaurant_table_identifier = table_sitting.restaurant_table_identifier
+WHERE table_sitting.closed_at IS NULL
+  AND NOT line.is_fulfilled;
 
 CREATE VIEW order_current_state AS
-SELECT o.order_identifier, o.table_sitting_identifier, o.person_identifier, o.created_at,
-       min(e.occurred_at) FILTER (WHERE e.event_type = 'submitted')    AS submitted_at,
-       min(e.occurred_at) FILTER (WHERE e.event_type = 'acknowledged') AS acknowledged_at
-FROM guest_order o LEFT JOIN order_event e USING (order_identifier)
-GROUP BY o.order_identifier, o.table_sitting_identifier, o.person_identifier, o.created_at;
+SELECT
+    guest_order.guest_order_identifier,
+    guest_order.table_sitting_identifier,
+    guest_order.person_identifier,
+    first_event.first_submitted_at,
+    last_event.last_event_at,
+    COALESCE(line_summary.pending_line_count, 0)  AS pending_line_count,
+    COALESCE(line_summary.fulfilled_line_count, 0) AS fulfilled_line_count,
+    COALESCE(line_summary.current_total_amount, 0::numeric(10,2)) AS current_total_amount
+FROM guest_order
+LEFT JOIN LATERAL (
+    SELECT min(occurred_at) AS first_submitted_at
+    FROM order_event
+    WHERE order_event.guest_order_identifier = guest_order.guest_order_identifier
+      AND order_event.event_type = 'guest_submission'
+) AS first_event ON true
+LEFT JOIN LATERAL (
+    SELECT max(occurred_at) AS last_event_at
+    FROM order_event
+    WHERE order_event.guest_order_identifier = guest_order.guest_order_identifier
+) AS last_event ON true
+LEFT JOIN LATERAL (
+    SELECT
+        count(*) FILTER (WHERE NOT line.is_fulfilled) AS pending_line_count,
+        count(*) FILTER (WHERE line.is_fulfilled)     AS fulfilled_line_count,
+        sum(line.quantity * line.current_unit_price_amount) AS current_total_amount
+    FROM order_current_line AS line
+    WHERE line.guest_order_identifier = guest_order.guest_order_identifier
+) AS line_summary ON true;
+
+CREATE VIEW sitting_bill AS
+SELECT
+    guest_order.table_sitting_identifier,
+    guest_order.person_identifier,
+    guest_order.guest_order_identifier,
+    COALESCE(sum(line.quantity * line.current_unit_price_amount), 0::numeric(10,2))
+        AS person_total_amount
+FROM guest_order
+LEFT JOIN order_current_line AS line
+    ON line.guest_order_identifier = guest_order.guest_order_identifier
+GROUP BY guest_order.table_sitting_identifier,
+         guest_order.person_identifier,
+         guest_order.guest_order_identifier;
 
 CREATE VIEW order_visibility_current AS
-SELECT DISTINCT ON (order_identifier) order_identifier, action, occurred_at
+SELECT DISTINCT ON (guest_order_identifier)
+    guest_order_identifier,
+    (event_type = 'hidden') AS is_hidden
 FROM order_visibility_event
-ORDER BY order_identifier, occurred_at DESC, order_visibility_event_identifier DESC;
-
-CREATE VIEW sitting_bill AS                              -- counter's per-table view
-SELECT s.table_sitting_identifier, o.person_identifier,
-       sum(l.quantity * l.unit_price_amount) AS person_total_amount
-FROM table_sitting s
-JOIN guest_order o        USING (table_sitting_identifier)
-JOIN order_current_line l USING (order_identifier)
-GROUP BY s.table_sitting_identifier, o.person_identifier;
+ORDER BY guest_order_identifier, occurred_at DESC, order_visibility_event_identifier DESC;
 ```
 
-`MyRestaurant.Domain` contains an equivalent pure fold (`OrderProjection.FromEvents(...)`) — the unit-tested reference implementation; the views must agree with it (asserted in integration tests).
+The bill (sum over `sitting_bill` for a sitting) **includes still-pending lines** by design; the counter reviews them before close (§5.3).
 
-### 6.2 Migrations and backups
+### 8.4 Reminder scan (normative SQL)
 
-DbUp runs at `web` startup: embedded scripts, ordered, transaction per script, journal table `schema_version_journal`; the app verifies all known scripts are journaled and applies any missing in sequence, failing fast (container exits non-zero) on error. Backups *(F‑16)*: `scripts/database_backup.sh` runs `pg_dump --format=custom` **inside the postgres container** via `podman exec` (guarantees client/server version match), writes `backup_YYYYMMDDTHHMMSS.dump` to the bind-mounted, git-ignored `BACKUP_DIRECTORY`, then prunes to the newest `BACKUP_RETENTION_COUNT` (default 7) — pruning only after a successful new dump. `scripts/install_database_backup_timer.sh` renders a **systemd user timer** (`OnCalendar` from `BACKUP_SCHEDULE_TIME`, default 06:00 host-local time) and reminds the operator to `loginctl enable-linger` so the rootless timer runs without a login session. Restore procedure documented alongside the script (`pg_restore` into a fresh volume).
+The reminder background service (§10.2) runs every ~5 seconds:
 
----
-
-## 7. Live updates (in-process, single node)
-
-A singleton `IDomainEventBroadcaster` in `WebApplication` (built on `System.Threading.Channels`) publishes typed notifications: `OrderSubmitted`, `OrderAcknowledged`, `OrderEdited`, `MenuChanged`, `SittingMemberJoined`, `SittingClosed`, `VisibilityRevoked`. Blazor components subscribe on initialization with a scope key (sitting identifier, or the kitchen/counter channel) and re-render via `InvokeAsync(StateHasChanged)`; unsubscribe on circuit disposal. Blazor Server's own SignalR circuit is the delivery mechanism to browsers — no extra hub, no client push infrastructure. Publication happens **after** the owning DB transaction commits. Because there is exactly one `web` instance, no backplane exists; that assumption is recorded in ADR‑0006 as the trigger condition for ever introducing Redis.
-
----
-
-## 8. Kitchen alerting and the always-on display
-
-- **Server side:** submitting an order writes `kitchen_notification(kind='initial')` and broadcasts. A `BackgroundService` scans every 5 s for orders with `submitted_at` older than `KITCHEN_ACKNOWLEDGEMENT_REMINDER_SECONDS` (default 60), no acknowledgement, and no `reminder` row — then inserts the `reminder` row (unique index makes the once-only rule a database fact, resilient to restarts) and broadcasts the re-alert. No further escalation, by design.
-- **Client side (kitchen area JS interop module):** a start-of-shift **"Arm audio"** button (one user gesture) resumes the `AudioContext` and primes the locally-bundled alert sample (CC0 asset in `wwwroot`, no CDN); the armed state is visibly indicated and its absence is a prominent warning. Screen Wake Lock is acquired on arm and re-acquired on `visibilitychange`. Blazor's reconnection UI is replaced with a full-screen, high-contrast banner + audible chirp on circuit drop so a dead connection is unmissable. Deployment guidance (kiosk mode, OS sleep settings) ships in `docs/`. Wake Lock and stable audio behavior require a secure context — see §12. Native app remains a conditional fallback only, untouched in v1.
-
----
-
-## 9. Application surfaces (behavioral spec)
-
-- **Table:** menu (active + greyed-out unavailable items), cart, submit; live party view — every table-mate's orders with items, notes, per-person and table running totals; live edit notices with role attribution *(F‑11)*; nudge (dismissible) toward passkey enrollment; profile page (credentials, TOTP, recovery codes, phone/email, free-label addresses); personal history with per-order hide (confirmed irreversible-for-you).
-- **Kitchen:** queue of unacknowledged orders oldest-first with live age timers, table label, person display name, lines + customization notes; one-tap Acknowledge; recent acknowledged list; order edit (add/remove lines); menu item activate/deactivate; audio-arm status.
-- **Counter:** open sittings grid → per-sitting bill (per person, per line, totals from `sitting_bill`); order edits including price adjustment ⚠ *(F‑02)*; **Close & settle** with confirmation showing final total; end-of-day batch close; menu activate/deactivate; reset-assistance flow per F‑01 ruling.
-- **Administration:** user management (create staff accounts with temporary password + forced change, grant/revoke roles with passkey/TOTP grant-time checks, deactivate/reactivate, reset password, TOTP-required toggle for non-admins); menu CRUD with per-item event timeline (including the price-change timeline); tables CRUD + printable QR; hidden-records view (§5.3); sittings/orders explorer rendering **complete stored state** — full event streams, visibility logs, security events — with filters applied only on explicit request and never projected/truncated (REQUIREMENTS §4.3).
-
----
-
-## 10. Observability
-
-OpenTelemetry only, zero vendor packages: `AspNetCore` + `Npgsql` instrumentation, runtime metrics, a custom `ActivitySource`/`Meter` pair (`MyRestaurant.Domain`) covering order submission→acknowledgement spans and counters (`orders_submitted_total`, `orders_acknowledged_total`, `kitchen_reminders_sent_total`, `sittings_closed_total`), and logs via the OTel `ILogger` provider — end-to-end request → circuit → SQL coverage. Export is **OTLP configured exclusively through standard `OTEL_*` environment variables** (`OTEL_EXPORTER_OTLP_ENDPOINT`, `_PROTOCOL`, `_HEADERS`, `OTEL_SERVICE_NAME=myrestaurant.web`); exporters activate only when an endpoint is configured, console logging always on. Because `UPTRACE_DSN` is a vendor-shaped variable the app must not read *(F‑15)*, `run.sh` performs the courtesy translation when it is present: parse the DSN → set `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS="uptrace-dsn=${UPTRACE_DSN}"`, `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`. Any OTLP-compatible collector therefore works identically.
-
----
-
-## 11. Configuration (`.env`, all keys full-word except the §2 carve-out)
-
-| Key | Default | Consumer |
-|---|---|---|
-| `RESTAURANT_NAME` | `My Restaurant` | display |
-| `RESTAURANT_PUBLIC_ORIGIN` | `https://localhost:8443` | QR URLs, WebAuthn relying-party identifier (§12) |
-| `RESTAURANT_TIME_ZONE` | host TZ | display, end-of-day framing |
-| `RESTAURANT_CURRENCY_CODE` | `USD` | price display |
-| `RESTAURANT_DATABASE_CONNECTION_STRING` | composed by compose from `POSTGRES_*` | web |
-| `POSTGRES_DATABASE` / `POSTGRES_USERNAME` / `POSTGRES_PASSWORD` | dev defaults; password generated into `.env` on first bootstrap | postgres, compose |
-| `DATA_PROTECTION_KEYS_DIRECTORY` | named volume path | web |
-| `KITCHEN_ACKNOWLEDGEMENT_REMINDER_SECONDS` | `60` | web |
-| `BACKUP_DIRECTORY` / `BACKUP_SCHEDULE_TIME` / `BACKUP_RETENTION_COUNT` | `./backups` (git-ignored) / `06:00` / `7` | backup scripts/timer |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` / `_PROTOCOL` / `_HEADERS`, `OTEL_SERVICE_NAME` | unset ⇒ export disabled | web |
-| `UPTRACE_DSN` | unset | `run.sh` translation only *(F‑15)* |
-
-Nothing environment-specific is hardcoded; the image is identical across instances (REQUIREMENTS §8). `.env` is git-ignored; `.env.example` is committed; `scripts/ensure_environment_file.sh` copies it into place when `.env` is absent *(F‑16)*.
-
----
-
-## 12. TLS and secure contexts *(F‑06, ADR‑0005)*
-
-WebAuthn passkeys, the Screen Wake Lock API, and dependable media autoplay all require HTTPS — and passkeys additionally **bind to the relying-party domain**, so the origin must be *stable* wherever passkeys are used. The requirements are silent on certificates; this spec closes the gap:
-
-1. **LAN (normal service):** Caddy terminates TLS using its internal CA for a stable local hostname (e.g., `restaurant.lan`); the CA root is installed once on staff devices and the kitchen kiosk. `RESTAURANT_PUBLIC_ORIGIN` points here; guest phones on the venue Wi-Fi resolve it via local DNS.
-2. **Production remote access:** persistent **named** Cloudflare tunnel with a stable domain (later phase, as required).
-3. **Quick tunnels (`try.cloudflare.com`):** demo-only. Because each run gets a **random hostname, passkeys registered through a quick tunnel are unusable on the next one** (relying-party mismatch) and TOTP-protected accounts remain reachable only by password. Tunnel scripts print this warning. Quick tunnels must never carry the bootstrap of a real instance.
-4. Rootless Podman cannot bind 80/443 by default; the stack publishes 8080/8443, and the deployment doc offers the `net.ipv4.ip_unprivileged_port_start=80` sysctl for installations that want standard ports.
-
-Quick-tunnel scripts (`scripts/quick_tunnel_start.sh <name> <port>`, `quick_tunnel_stop.sh <name>`) keep per-name state directories (`.tunnels/<name>/` — PID file, captured URL, log; git-ignored), so multiple concurrent tunnels never share environment or trample each other.
-
----
-
-## 13. Testing
-
-| Layer | Tooling | Scope |
-|---|---|---|
-| Unit | xUnit v3; plain asserts or AwesomeAssertions (Apache-2.0); **no Moq, no FluentAssertions** — hand-written fakes preferred, NSubstitute (BSD-3) permitted *(F‑20)* | `Domain` event fold/projections, price-lock behavior, TOTP sign-in matrix, authorization matrix, bootstrap guard |
-| Integration | xUnit v3 against a disposable `postgres:18` container started by `scripts/run_integration_tests.sh` (compose profile) | Dapper repositories, migration idempotency, partial-unique-index races (double-open sitting, double-acknowledge), view-vs-domain-fold equivalence |
-| End-to-end | Playwright **inside** `mcr.microsoft.com/playwright/dotnet` container on the compose network (Fedora-safe, per REQUIREMENTS §2) | bootstrap wizard (passkey via WebAuthn virtual authenticator + TOTP); guest registers at QR URL, orders; second guest joins, sees party orders; kitchen alert fires (JS test hook records the play call — CI is deaf), acknowledge; 60 s reminder (interval shortened via env); counter edits price, closes → connected guest's view flips to history live; hide → admin locates in hidden-records view → unhide; admin reset → forced password change |
-
----
-
-## 14. Scripts and CI
-
-`run.sh` (repo root — the entry point REQUIREMENTS §1 invokes but never defined *(F‑17)*): ensure `.env` → translate `UPTRACE_DSN` if present → `podman compose up --build --detach` → wait for web health → print URLs. Companions: `shutdown.sh`, and under `scripts/`: `ensure_environment_file.sh`, `run_unit_tests.sh`, `run_integration_tests.sh`, `run_end_to_end_tests.sh`, `continuous_integration.sh`, `database_backup.sh`, `install_database_backup_timer.sh`, `quick_tunnel_start.sh`, `quick_tunnel_stop.sh`. All logic lives here; the GitHub Actions workflow is intentionally the whole of:
-
-```yaml
-jobs:
-  continuous-integration:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: bash scripts/continuous_integration.sh   # verifies podman, then build → unit → integration → end-to-end → teardown; uploads test artifacts
+```sql
+-- :reminder_seconds = KITCHEN_SUBMISSION_REMINDER_SECONDS
+SELECT submission.order_event_identifier
+FROM order_event AS submission
+JOIN guest_order   ON guest_order.guest_order_identifier = submission.guest_order_identifier
+JOIN table_sitting ON table_sitting.table_sitting_identifier = guest_order.table_sitting_identifier
+WHERE submission.event_type = 'guest_submission'
+  AND table_sitting.closed_at IS NULL
+  AND submission.occurred_at < now() - make_interval(secs => :reminder_seconds)
+  AND EXISTS (SELECT 1 FROM order_operation_line_added AS added
+              WHERE added.order_event_identifier = submission.order_event_identifier)
+  AND NOT EXISTS (SELECT 1 FROM kitchen_notification AS prior
+                  WHERE prior.order_event_identifier = submission.order_event_identifier
+                    AND prior.kind = 'reminder')
+  AND NOT EXISTS (
+      SELECT 1
+      FROM order_operation_line_added AS added
+      WHERE added.order_event_identifier = submission.order_event_identifier
+        AND (EXISTS (SELECT 1 FROM order_operation_line_fulfilled AS fulfilled
+                     WHERE fulfilled.order_line_identifier = added.order_line_identifier)
+          OR EXISTS (SELECT 1 FROM order_operation_line_removed AS removed
+                     WHERE removed.order_line_identifier = added.order_line_identifier)));
 ```
 
-Everything CI does is reproducible locally with the same command (REQUIREMENTS §2).
+For each hit: `INSERT INTO kitchen_notification (…, kind => 'reminder') ON CONFLICT (order_event_identifier, kind) DO NOTHING`; broadcast `KitchenAlert(reminder)` **only if the insert took** (rowcount 1). The `UNIQUE (order_event_identifier, kind)` constraint makes the whole thing race-safe.
+
+### 8.5 Domain fold equivalence
+
+`MyRestaurant.Domain` provides `OrderProjection.FromEvents(IReadOnlyList<OrderEvent>)` — a pure fold producing the same line set, prices, and fulfillment flags as `order_current_line`/`order_current_state`. Integration tests generate randomized event sequences (respecting §6.5), then assert view output ≡ fold output. The fold is what mutation validation (§6.5) evaluates under the lock; the views serve reads. Neither is the source of truth — the event tables are.
+
+## 9. Live updates
+
+`IDomainEventBroadcaster` (in `Domain`, implemented in-process in `WebApplication`) fans out to subscribed Blazor circuits **after commit**. Notification types (records with the identifiers a subscriber needs to re-query — payloads are ids, not state):
+
+| Notification | Fired on | Consumed by |
+|---|---|---|
+| `OrderLinesChanged(sittingId, orderId)` | any order event commit | table members of the sitting; counter |
+| `KitchenAlert(orderEventId, kind)` | kitchen_notification insert (initial/reminder) | kitchen (sound + highlight) |
+| `LineFulfillmentChanged(sittingId, orderId)` | fulfillment / reversal commit | table members; kitchen |
+| `MenuChanged()` | menu_item / menu_item_event commit | all surfaces showing the menu |
+| `SittingMemberJoined(sittingId)` | membership insert | table members; displays (party size) |
+| `SittingClosed(sittingId)` | close commit | table members; kitchen; counter |
+| `VisibilityChanged(orderId)` | visibility event commit | table members (history views) |
+
+Subscribers re-query views on notification (ids let them scope the re-query). Components unsubscribe on disposal. If Redis ever becomes necessary (second web replica), only the broadcaster implementation changes (ADR-0006). Display QR rotation is **not** broadcast — displays re-render on their own window-aligned timer (§4.3).
+
+## 10. Kitchen alerting
+
+### 10.1 Alert rule
+
+A `kitchen_notification (kind='initial')` row is written **in the same transaction** as: every `guest_submission`, and every `staff_edit` **by counter or administrator** that adds or removes lines. The kitchen's own `staff_edit`s, all `price_adjustment`s, and fulfillment/reversal events are silent (no notification row). After commit, `KitchenAlert(initial)` broadcasts; the kitchen surface plays the loud sound and highlights the affected order group.
+
+### 10.2 Reminder rule
+
+Exactly the SQL of §8.4: one reminder maximum per guest send, fired at `KITCHEN_SUBMISSION_REMINDER_SECONDS` (default 60) iff the send had ≥1 added line and none of its added lines has since been fulfilled or removed. Pure-removal sends alert once (10.1) and never remind. Reminders exist only for guest submissions — staff coordinate verbally.
+
+### 10.3 Audio arm and wake lock
+
+Browsers block autoplay: the kitchen surface shows a one-tap "enable sound" arm control per session; until armed (and whenever playback fails) a persistent, high-contrast visual badge with unseen-alert count is the fallback. The surface requests `navigator.wakeLock('screen')`, re-acquiring on `visibilitychange`. The display surface (§11.5) does the same wake-lock dance, no audio.
+
+## 11. Surface behavior
+
+### 11.1 `/table`
+
+Anonymous with valid token → grant → sign-in/registration (passkey-first, password offered) → join. Member view: the party roster; **my order** — staging area (add item pickers from the menu — deactivated items greyed out and unselectable (§7) — with quantity 1–100 and note; mark-my-pending-line-for-removal) with a Send button that is disabled while empty and shows an all-or-nothing error panel (per-operation reasons) on rejection; below it the committed living order, each line badged pending/fulfilled, removed lines struck-through with actor + reason, price adjustments shown old → new with reason; **party orders** — read-only equivalents for other members; running personal and table totals; history (the guest's **own** past orders at this restaurant — cross-member history is never shown); a per-order **Hide** control on closed orders, confirmed as irreversible from the guest's account (§6.8); and a **profile page** — manage passkeys, password, TOTP and recovery codes; optional phone number and email address (used for manual staff escalation only — nothing in the system sends to them automatically); postal addresses with **free-text labels** ("Home", "Work", "Grandparents' house") — deliberate scaffolding for a possible future delivery/takeout feature, consumed by nothing in version 1 and not to be removed as dead weight. On `SittingClosed`, the surface flips to a read-only settled-bill view.
+
+### 11.2 `/kitchen`
+
+Queue of `kitchen_pending_line` grouped by (table label → person display name → order), ordered by the group's oldest `added_at`; each group shows the send timestamp(s); customization notes prominent. Tap a line → one `fulfillment` event; "fulfill all for this order" → one event, N operations; an Undo affordance on recently-fulfilled lines → `fulfillment_reversal`. An "86" panel lists menu items with active toggles. Loud alert + badge per §10.3.
+
+### 11.3 `/counter`
+
+Open sittings with per-person and table totals (`sitting_bill`); drill-in shows lines with states; price adjustment dialog (new price + required reason); add/remove line (staff edit, optional reason on removal); pending-lines warning then **Close & settle**; a per-table "Show join code" button rendering the rotating QR full-screen (§4.5); closed-sitting lookup (read-only).
+
+### 11.4 `/administration`
+
+Users (create staff, roles grant/revoke, activate/deactivate, **Reset credentials** per §3.7); Tables (create/edit/deactivate, rotate join secret with confirmation, display devices list with pair-code generation and revoke, show rotating QR); Menu (CRUD + activity, event history per item); Sittings (open + recent, end-of-day batch close, post-close corrective actions per §6.7); **Hidden records** (every hidden order system-wide, filterable by username / date range / table, full unprojected record per row, per-record Unhide — §6.8); Event explorer (filter security/order/menu events by subject, actor, type, time); no printed-QR page exists. Administration renders the **complete stored record** everywhere — full event streams, visibility logs, security events — never projected or truncated for the administrator; filters narrow only on explicit request.
+
+### 11.5 `/display/{table}`
+
+Unpaired device → redirect `/display/pair` (code entry). Paired: full-screen table label + rotating QR (server SVG, window-aligned refresh), party-size chip when a sitting is open (via `SittingMemberJoined`/`SittingClosed`), connection-state indicator (circuit down → prominent "offline — see the counter" state; the QR must not silently freeze stale), wake lock. Revoked → pairing screen with "this display was disconnected".
+
+## 12. Observability
+
+OpenTelemetry traces (ASP.NET Core + Npgsql instrumentation), logs, and metrics via OTLP (`OTEL_EXPORTER_OTLP_ENDPOINT` etc.; `run.sh` translates a legacy `UPTRACE_DSN` if present — any OTLP collector works). Custom meters (full snake_case):
+
+`guest_submission_batches_total` · `order_lines_added_total` · `order_lines_removed_total` · `order_lines_fulfilled_total` · `kitchen_reminders_sent_total` · `sittings_closed_total` · `table_join_tokens_validated_total{result}` · `sign_ins_total{method=password|passkey, result=succeeded|failed}` · `password_hash_duration_milliseconds` (histogram). Health: `/healthz/live` (process up), `/healthz/ready` (DB reachable + migrations current); compose healthchecks target these.
+
+## 13. Configuration (environment only)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `RESTAURANT_NAME` | `My Restaurant` | display + TOTP issuer |
+| `RESTAURANT_PUBLIC_ORIGIN` | `https://localhost:8443` (dev) | **the** origin: RP ID host, QR URLs; production = named-tunnel domain |
+| `RESTAURANT_TIME_ZONE` | `America/New_York` | rendering only |
+| `RESTAURANT_CURRENCY_CODE` | `USD` | display only |
+| `RESTAURANT_DATABASE_CONNECTION_STRING` | compose-internal default | Npgsql string |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | dev defaults | consumed by the postgres container; **must** be overridden in production |
+| `DATA_PROTECTION_KEYS_DIRECTORY` | `/var/lib/myrestaurant/dataprotection` | named volume; §3.4 |
+| `KITCHEN_SUBMISSION_REMINDER_SECONDS` | `60` | §10.2 |
+| `TABLE_JOIN_TOKEN_ROTATION_SECONDS` | `60` | §4.3 |
+| `TABLE_JOIN_GRANT_MINUTES` | `10` | §4.4 |
+| `TABLE_DISPLAY_PAIRING_CODE_MINUTES` | `10` | §4.2 |
+| `ARGON2_MEMORY_KIBIBYTES` / `ARGON2_ITERATIONS` / `ARGON2_PARALLELISM` / `ARGON2_MAX_CONCURRENT_HASHES` | `65536` / `3` / `1` / `4` | §3.2 + floor guard |
+| `BACKUP_DIRECTORY` / `BACKUP_SCHEDULE_TIME` / `BACKUP_RETENTION_COUNT` | `/var/lib/myrestaurant/backups` / `03:30` / `14` | §15 |
+| `OTEL_*` | unset | standard OTel variables; `UPTRACE_DSN` translated by `run.sh` only |
+| `CLOUDFLARE_TUNNEL_TOKEN` | — | production profile, cloudflared |
+
+Fail-fast validation at startup: origin parses as absolute https URL; Argon2 floor (§3.2); rotation/grant/pairing values ≥ 10 s / ≥ 1 min / ≥ 1 min; connection string present.
+
+## 14. Deployment, TLS, origins (ADR-0004, ADR-0005)
+
+**14.1 Canonical stack** — `compose.yaml`, rootless Podman. Services: `web` (Containerfile build; listens 8080 HTTP inside the network), `postgres` (named volume), `caddy` (dev profile: terminates TLS at `https://localhost:8443` with Caddy's internal CA), `cloudflared` (**production profile**: named tunnel via `CLOUDFLARE_TUNNEL_TOKEN`, forwards to `web:8080`; TLS at Cloudflare's edge). Host ports stay ≥1024 (rootless); if 80/443 are ever wanted directly, that is a host `sysctl net.ipv4.ip_unprivileged_port_start` concern, not this project's default. `podman-compose up` = dev; `podman-compose --profile production up -d` = production. Caddy **may** additionally run in production as an optional staff-LAN fallback (self-signed `restaurant.lan`; staff-only; passkeys will not work on that origin; password+TOTP does) — off by default, documented in OPERATIONS §7.
+
+**14.2 Origin truth** — one `RESTAURANT_PUBLIC_ORIGIN`. Everything (WebAuthn RP ID, QR URLs, links) derives from it. In-house guests hairpin through Cloudflare; **LAN ordering therefore depends on WAN health — accepted risk** per the F-06 ruling.
+
+**14.3 Quick tunnels** — demo-only. `*.trycloudflare.com` is on the Public Suffix List: a passkey's RP ID binds to the random per-run subdomain and dies with the tunnel. The quick-tunnel helper script must print this warning. Demos authenticate with password+TOTP.
+
+**14.4 `run.sh`** — dev entry: checks prerequisites, starts compose (postgres [+caddy]), exports dev defaults (translating `UPTRACE_DSN` → `OTEL_*` if set), `dotnet watch` the web app. Idempotent; `run.sh --containers-only` starts the stack without watch.
+
+**14.5 Aspire** — optional `AppHost` project may exist for F5 convenience; it must never be required by docs, scripts, or CI.
+
+## 15. Backups
+
+`scripts/backup.sh`: `pg_dump -Fc` to `BACKUP_DIRECTORY/myrestaurant-YYYYMMDD-HHMMSS.dump`, prune to `BACKUP_RETENTION_COUNT`; scheduled at `BACKUP_SCHEDULE_TIME` (systemd timer or host cron invoking the script via `podman exec`). `scripts/restore.sh <dump>`: stop web, `pg_restore --clean --if-exists`, start web (migrations verify). **The Data Protection keys volume must be backed up alongside the database** — without it, TOTP secrets and cookies are unrecoverable (§3.4). Restore drill documented in OPERATIONS §6.
+
+## 16. Testing
+
+**16.1 Unit (Domain):** projection fold; §6.5 validation table (every rule, both outcomes); token computation vectors (fixed secret/uuid/window → expected Base64Url); PHC encode/parse round-trips; obligations pipeline state machine. Hand-written fakes preferred; NSubstitute acceptable; no Moq (F-20).
+
+**16.2 Integration (DataAccess, real PostgreSQL):** every Identity store method; every CHECK/UNIQUE/composite-FK in §8.2 (attempt each forbidden shape, assert rejection); view ≡ fold equivalence on randomized sequences; locking protocol (concurrent send vs close — no event after close, settled total consistent); lazy `guest_order` creation race; reminder scan semantics incl. `ON CONFLICT` idempotence; migration idempotence (run twice).
+
+**16.3 End-to-end (Playwright), minimum scenarios:**
+1. Fresh stack → `/setup` bootstrap (passkey via virtual authenticator, TOTP, admin granted) → `/setup` now 404.
+2. Admin creates table → pairing code → device pairs at `/display/pair` → `/display/{table}` shows rotating QR that **changes across a window boundary**.
+3. Guest scans (simulated URL from current token) → registers with passkey (slowly — grant outlives token) → joins; sitting created.
+4. Guest stages 2 adds + note → Send → kitchen gets one loud alert → lines pending.
+5. Second guest joins via fresh token → sees first guest's order live; first guest sees roster update.
+6. Kitchen fulfills one line → guest sees fulfilled badge.
+7. Guest tries to remove the fulfilled line → whole batch rejected with per-op reason; removing their pending line succeeds.
+8. A send sits unfulfilled 60 s → exactly one reminder alert.
+9. Counter adjusts a price with reason → guest sees old → new with reason.
+10. Counter closes (pending-line warning shown) → table flips to settled read-only; totals match.
+11. Guest hides a closed order → it disappears from their own history (staff and admin views unchanged); admin filters the hidden-records view by username → Unhide restores it.
+12. Admin resets a TOTP-enrolled user → user password sign-in → forced password change → forced TOTP re-enrollment → lands home; passkey sign-in path also hits the pipeline.
+13. Passkey sign-in of a TOTP-enrolled user → **no** TOTP challenge.
+14. Expired token URL → friendly expiry page; token from previous window → accepted.
+15. Admin rotates a table's join secret → in-flight token dies; display's next window works.
+
+**16.4 CI:** GitHub Actions — build, unit, integration (service container PostgreSQL), E2E (compose), publish image on tag.
+
+## 17. Security posture and accepted risks
+
+Threats mitigated: static-QR capability theft (rotating tokens, ≤120 s life, per-table secret rotation); Argon2 memory DoS (semaphore + rate limit + lockout); display theft (revocation; device holds no secret worth extracting; join secret never leaves the server); credential stuffing (Argon2id, lockout, passkeys-first); stale sessions after admin action (5-minute stamp revalidation); half-applied schema (fail-fast migrations); pairing brute force (hashed single-use codes, TTL, 5/min/IP).
+
+Accepted, by ruling or by design: token replay within ≤120 s (bounded by membership/visibility rules); WAN dependence of in-house ordering (hairpin — F-06); quick-tunnel passkey loss (PSL — demos only); counter role may operate password-only (no passkey mandate); guest sees table-mates' display names and orders (that's the product); no rate limit on authenticated order sends beyond all-or-nothing validation (single-restaurant trust model).
+
+## 18. Governance
+
+Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic documentation:** a behavior change lands in one commit with its `REQUIREMENTS.md`, this specification, `DOCUMENTATION_REVIEW.md` ledger, and ADR edits. ADRs are edited in place with a History line (never duplicated); supersessions say so explicitly. This specification's version bumps (1.0 → 1.1 …) with a dated changelog appended at the bottom when normative content changes.
+
+## 19. Build order (milestones)
+
+- **M1 — skeleton:** solution layout (§2), Containerfile, compose dev profile, DbUp with `0001_initial_schema.sql`, health endpoints, OTel wiring, `run.sh`.
+- **M2 — identity:** Dapper Identity stores, Argon2id hasher (+floor guard, semaphore), passkeys, TOTP + recovery codes, lockout, obligations pipeline, `/setup` bootstrap, roles/policies, security events, admin user management + reset.
+- **M3 — tables & joining:** table CRUD + join secrets + rotation, display pairing + device auth + `/display`, token generate/validate + metrics, grant cookie, join flow, sittings + membership.
+- **M4 — ordering:** living order + locking protocol, staging UI, batch send + validation, staff edits, fulfillment/reversal, projections + fold + equivalence tests, kitchen surface + alerts + reminder service.
+- **M5 — counter & administration:** bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu management + events, event explorer, hide/unhide, post-close corrections.
+- **M6 — hardening & production:** full E2E suite (§16.3), backups + restore drill, cloudflared production profile + tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, CI pipeline.
 
 ---
 
-## 15. Security posture and accepted risks
+## Appendix A — Decisions register (ruling → embodiment)
 
-Cookie hardening + antiforgery (Blazor built-in); Identity lockout (5 failures → 5 min) plus fixed-window rate limiting on authentication endpoints; TOTP secrets encrypted at rest, recovery codes stored hashed; admin-generated passwords are single-display, forced-change, CSPRNG; every credential/role action lands in `security_event`; HSTS + standard security headers at Caddy on public domains; secrets only in `.env`/CI secrets, never in git. Accepted, documented risks: the static never-rotated table QR is a permanent capability to join that table's open sitting (REQUIREMENTS §5.1 forbids rotation — joins are logged and party-visible; a join-approval step is proposed as a requirements amendment, F‑12); counter role carries no credential precondition ⚠ *(F‑05)*; a `web` restart drops circuits (reconnect UI makes it obvious; DB state is unaffected); password recovery is human-mediated by design.
-
-## 16. Governance and conventions
-
-License `AGPL-3.0-only` (`LICENSE` at root; SPDX headers in source). Copyright remains with the authors; **no outside contributions**: GitHub Issues disabled, and because GitHub cannot disable pull requests on public repos, `CONTRIBUTING.md` states unsolicited PRs are closed unreviewed. Engineering rules: SOLID (interfaces in `Domain`, implementations injected; small role-focused services), nullable reference types + analyzers as errors, full-word naming (§2 carve-out), Central Package Management only, spec-first with **atomic documentation** — every change lands with its `REQUIREMENTS.md`/spec/ADR updates in the same commit, ADRs edited in place. Initial ADR set to create with the first commit: 0001 single-app-with-areas, 0002 relational order event log, 0003 Identity-over-Dapper, 0004 compose-canonical/Aspire-optional, 0005 TLS via Caddy internal CA + named tunnel, 0006 no Redis in v1, 0007 order-per-submission.
-
-## 17. Build order
-
-M1 skeleton: solution, compose, Containerfile, DbUp, health, OTel, `run.sh` → M2 identity: registration, password+passkey, TOTP, bootstrap wizard, roles, profile → M3 tables/sittings/orders: QR flow, event log, guest + kitchen areas, alerting → M4 counter: bills, edits, close/settle, live visibility revocation, history + hide → M5 administration surfaces → M6 hardening: full E2E matrix, backups + timer, tunnel scripts, deployment docs.
-
----
-
-## Appendix A — Decisions register (interpretations awaiting veto)
-
-| Finding | Decision embodied in this spec |
-|---|---|
-| F‑01 ⚠ | Password reset is administrator-only; counter "assists" procedurally |
-| F‑02 ⚠ | Price adjustment: counter + administrator; item add/remove: kitchen + counter + administrator |
-| F‑03 | Bootstrap wizard enforces passkey + TOTP before the first admin exists |
-| F‑04 ⚠ | Close/settle: counter or administrator |
-| F‑05 ⚠ | Counter role has no passkey requirement (as written) — accepted risk |
-| F‑07 | One order per submission; multiple orders per person per sitting; guests never edit post-submission |
-| F‑08/F‑09 | TOTP enrolled/required as two flags; admin passkey possession-only; TOTP challenged even after passkey sign-in |
-| F‑10 | Orders read-only after close except admin corrective events; users deactivated, never deleted |
-| F‑11 | Guests see role-level attribution of staff edits; full identity in staff/admin views |
-| F‑12/F‑13/F‑14/F‑15/F‑16/F‑17/F‑18 | As specified in §4, §1, §10, §6.2, §14, §5.4 respectively |
+| Ruling / finding | Decision | Embodied in |
+|---|---|---|
+| F-06 | Named Cloudflare tunnel = production origin; quick tunnels demo-only (PSL passkey caveat); Argon2id "robust" params; hairpin risk accepted; GoTunnels reference-only, bearer sessions rejected | §3.2, §3.3, §14, §17 · ADR-0005, ADR-0008 |
+| F-07 / Q1 | Living order per guest per sitting; client staging; batch sends; one alert per send; pending → fulfilled lifecycle; guests remove own pending only; reversal event | §6, §10, §11.1 · ADR-0007, ADR-0002 |
+| F-08 / Q2 / Q3 (supersedes F-09 draft) | TOTP on password path only; no per-user toggle; reset wipes password+TOTP (if enrolled) and forces change + re-enrollment via obligations pipeline on any sign-in path | §3.4, §3.5, §3.7 · ADR-0010 |
+| F-12 / Q4 / Q5 | Rotating HMAC join tokens; `table_display` device principal; pairing codes; join grants; counter fallback QR; printed QR removed | §4, §11.5 · ADR-0009 |
+| F-10 / F-10b / F-11 | Post-close admin corrective events beside immutable settled total; deactivate-not-delete; guest as actor_role not stored role | §5.3, §6.7, §3.7, §8.2 |
+| F-13 / F-14 / F-15 | No Redis v1 (broadcaster interface); compose canonical / Aspire optional; OTLP-generic (`UPTRACE_DSN` translated in run.sh only) | §9, §12, §14 · ADR-0006, ADR-0004 |
+| F-16 / F-17 | Backups pg_dump -Fc + retention + keys volume; run.sh defined | §15, §14.4 |
+| F-18 / F-19 | Menu item event log; lockout 5/5min, username 3–64 citext, currency/timezone defaults | §7, §3.1, §13, §8.2 |
+| F-20 | Hand-written fakes; NSubstitute ok; no Moq | §16.1 |
+| F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
+| F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
+| Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP re-enrollment only if enrolled pre-reset; obligations pipeline runs on passkey path too; counter fallback = same rotating QR (no short-code) | §10.1–10.2, §3.5, §3.7, §4.5 · ledger notes |
