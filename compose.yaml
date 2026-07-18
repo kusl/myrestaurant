@@ -1,0 +1,98 @@
+# Canonical stack (TECHNICAL_SPECIFICATION §14.1), rootless Podman-first.
+#
+#   podman-compose up                              -> postgres + web (headless web on 127.0.0.1:8080)
+#   podman-compose --profile dev up                -> + Caddy, TLS at https://localhost:8443
+#   podman-compose --profile production up -d       -> + cloudflared named tunnel (no Caddy)
+#
+# `web` and `postgres` have no profile, so they always start. `caddy` and `cloudflared` are behind
+# profiles. The web port is published on loopback only — the app trusts X-Forwarded-* headers and is
+# meant to be reached through the proxy, never directly from the LAN/WAN.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-myrestaurant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-myrestaurant}
+      POSTGRES_DB: ${POSTGRES_DB:-myrestaurant}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      # Loopback only: lets a host-run `dotnet watch` (see run.sh) reach the database in dev.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-myrestaurant} -d ${POSTGRES_DB:-myrestaurant}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: Containerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      RESTAURANT_NAME: ${RESTAURANT_NAME:-My Restaurant}
+      RESTAURANT_PUBLIC_ORIGIN: ${RESTAURANT_PUBLIC_ORIGIN:-https://localhost:8443}
+      RESTAURANT_TIME_ZONE: ${RESTAURANT_TIME_ZONE:-America/New_York}
+      RESTAURANT_CURRENCY_CODE: ${RESTAURANT_CURRENCY_CODE:-USD}
+      RESTAURANT_DATABASE_CONNECTION_STRING: >-
+        Host=postgres;Port=5432;Database=${POSTGRES_DB:-myrestaurant};Username=${POSTGRES_USER:-myrestaurant};Password=${POSTGRES_PASSWORD:-myrestaurant}
+      DATA_PROTECTION_KEYS_DIRECTORY: /var/lib/myrestaurant/dataprotection
+      KITCHEN_SUBMISSION_REMINDER_SECONDS: ${KITCHEN_SUBMISSION_REMINDER_SECONDS:-60}
+      TABLE_JOIN_TOKEN_ROTATION_SECONDS: ${TABLE_JOIN_TOKEN_ROTATION_SECONDS:-60}
+      TABLE_JOIN_GRANT_MINUTES: ${TABLE_JOIN_GRANT_MINUTES:-10}
+      TABLE_DISPLAY_PAIRING_CODE_MINUTES: ${TABLE_DISPLAY_PAIRING_CODE_MINUTES:-10}
+      ARGON2_MEMORY_KIBIBYTES: ${ARGON2_MEMORY_KIBIBYTES:-65536}
+      ARGON2_ITERATIONS: ${ARGON2_ITERATIONS:-3}
+      ARGON2_PARALLELISM: ${ARGON2_PARALLELISM:-1}
+      ARGON2_MAX_CONCURRENT_HASHES: ${ARGON2_MAX_CONCURRENT_HASHES:-4}
+      # OpenTelemetry is optional; when unset the app attaches no OTLP exporter (§12).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-myrestaurant}
+    volumes:
+      # ':U' asks Podman to chown the volume to the container user (rootless). Docker ignores it;
+      # if you are on Docker and it complains, drop the ':U' suffix (BUILD_PROGRESS: known caveats).
+      - dataprotection-keys:/var/lib/myrestaurant/dataprotection:U
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["dev"]
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  cloudflared:
+    image: docker.io/cloudflare/cloudflared:latest
+    profiles: ["production"]
+    restart: unless-stopped
+    depends_on:
+      - web
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN for the production profile}
+
+volumes:
+  postgres-data:
+  dataprotection-keys:
+  caddy-data:
+  caddy-config:

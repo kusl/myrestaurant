@@ -1,0 +1,18 @@
+# Dev-profile reverse proxy (TECHNICAL_SPECIFICATION §14.1). Caddy terminates TLS at
+# https://localhost:8443 using its internal CA and forwards to the web container over HTTP.
+# reverse_proxy sets X-Forwarded-For/Proto/Host automatically and transparently upgrades the
+# Blazor Server WebSocket, so no extra configuration is needed for live updates.
+#
+# In production this file is not used: cloudflared terminates TLS at Cloudflare's edge and forwards
+# straight to web:8080. (Caddy MAY optionally run in production as a staff-LAN fallback on a
+# self-signed restaurant.lan origin — off by default; see OPERATIONS §7.)
+
+{
+	admin off
+}
+
+localhost:8443 {
+	tls internal
+	encode zstd gzip
+	reverse_proxy web:8080
+}
