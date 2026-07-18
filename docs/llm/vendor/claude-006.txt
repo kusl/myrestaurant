@@ -1393,3 +1393,1003 @@ Claude is AI and can make mistakes. Please double-check responses.
 77
 100
 
+
+/
+Claude finished the response
+Please continue with the first milestone. 
+I will delete the sln file. 
+It exists now in the dump but it will be gone. 
+Do not generate it again. 
+Remember, we should use the latest standard. 
+The latest standard is * dot slnX file 
+Never forget. 
+Ok now keep all our guidelines in mind 
+whenever you write code or update code 
+you should also update the documentation 
+as well as any tests 
+always use the latest versions of dependencies 
+no ifs, buts, or what 
+use the latest versions 
+figure it out 
+if the latest version is not something we can use 
+reconsider whether we should use it at all 
+latest version does not mean pre-release 
+or nightly versions
+
+Show more
+
+Reconciled missing implementation with milestone requirements and dependency strategy
+Reconciled missing implementation with milestone requirements and dependency strategy
+I have the context. This is a .NET 10 restaurant ordering system with a staged build plan. Let me read the source-of-truth spec and the guidelines before writing anything.
+
+
+Reading REQUIREMENTS.md — tech stack and constraints
+Reading REQUIREMENTS.md — tech stack and constraints
+Now the technical specification — the source of truth. Let me read it in full.
+
+
+Architected M1 milestone scaffold using .slnx format with verified latest dependencies
+Architected M1 milestone scaffold using .slnx format with verified latest dependencies
+I have the complete spec now. §19 defines M1, and BUILD_PROGRESS.md frames Stage 1 as "M1: skeleton + pure Domain." The repo currently holds only docs + the .sln, so I'll build the milestone for real — using a .slnx (not .sln), latest stable dependencies, with matching tests and updated docs.
+
+First, let me understand my environment and confirm what I can reach for version lookups.
+
+
+Orchestrated GitHub API queries to discover latest stable dependency versions
+Orchestrated GitHub API queries to discover latest stable dependency versions
+No local SDK and NuGet is blocked (403), but the GitHub API is reachable. I'll resolve the latest stable versions from GitHub releases (the project's own workflow expects a final dotnet restore to confirm). Let me look them up.
+
+
+Evaluated dependency versions and architected xUnit v3 test project configuration
+Evaluated dependency versions and architected xUnit v3 test project configuration
+PAT works (5000/hr). Now the runner, test SDK, and OpenTelemetry package versions.
+
+
+Architected comprehensive .NET 10 restaurant system with domain events, observability, and migrations
+Architected comprehensive .NET 10 restaurant system with domain events, observability, and migrations
+PAT confirmed working. Latest stable versions resolved:
+
+.NET SDK 10.0.302 · Dapper 2.1.79 · Npgsql 10.0.3 · DbUp 6.1.1
+OpenTelemetry 1.17.0 (core + AspNetCore instrumentation) · Npgsql.OpenTelemetry 10.0.3
+xUnit.v3 3.2.2 · xunit.runner.visualstudio 3.1.5 · Microsoft.NET.Test.Sdk 18.8.1
+Testcontainers 4.13.0 · NSubstitute 6.0.0 · Microsoft.Playwright 1.61.0
+Before writing the crypto code, I'll compute exact test vectors (I can't run .NET, so the token/hash expectations must be precomputed and baked into the tests).
+
+
+Architected base64url encoding solution and structured project setup
+Architected base64url encoding solution and structured project setup
+Vectors locked in. Now I'll build the full milestone tree. Let me create the directory structure.
+
+
+Reconsidered directory creation strategy after brace expansion failed
+Reconsidered directory creation strategy after brace expansion failed
+Brace expansion didn't expand (non-bash shell). Let me create the directories explicitly.
+
+
+Orchestrated build configuration setup while preserving MSBuild syntax integrity
+Orchestrated build configuration setup while preserving MSBuild syntax integrity
+Tree is correct. Now the root build configuration — starting with the .slnx solution (the new standard) and central build props.
+
+
+Architected Domain project structure with shared build properties
+Architected Domain project structure with shared build properties
+Now the Domain project (BCL-only). Writing the csproj and the time/identifier primitives.
+
+
+Architected Security folder components while weighing compatibility considerations
+Architected Security folder components while weighing compatibility considerations
+Now the Security primitives — a shared Base64Url helper, secret/hash/code generators, the Argon2 PHC string, and the join-token algorithm.
+
+
+Architected Argon2 PHC string encoding with standard base64 format
+Architected Argon2 PHC string encoding with standard base64 format
+Now the Argon2 PHC string — pure encode/parse/rehash-decision. Real Argon2 hashes use standard (not URL-safe) base64, no padding, so I'll implement that variant here.
+
+
+Dissecting token normalization mechanics and window calculation logic
+Dissecting token normalization mechanics and window calculation logic
+Now the join-token algorithm — the normative HMAC construction from §4.3, with valid/expired/invalid classification for metrics.
+
+
+JoinTokenService — normative rotating HMAC join tokens
+JoinTokenService — normative rotating HMAC join tokens
+Now the post-authentication obligations state machine (§3.5).
+
+
+ObligationsPipeline state machine
+ObligationsPipeline state machine
+Now the Orders domain — the core. First the event and operation records.
+
+
+Order event and operation records + rule helpers
+Order event and operation records + rule helpers
+Now the fold — OrderProjection.FromEvents, which must produce the same result as the order_current_line / order_current_state SQL views (§8.5). A shared internal line-state builder backs both the fold and the validator.
+
+
+OrderProjection fold + projected records + shared line-state builder
+OrderProjection fold + projected records + shared line-state builder
+Now the validator — the rule-dense enforcement of every §6.5 invariant plus the §6.4 capability rules.
+
+
+OrderMutationValidator with all §6.5 invariants
+OrderMutationValidator with all §6.5 invariants
+Now the live-updates broadcaster interface and notification records (§9).
+
+
+Domain notifications and broadcaster interface
+Domain notifications and broadcaster interface
+Domain is complete. Now DataAccess — starting with the migration SQL, transcribed verbatim from spec §8.2 + §8.3 (22 tables, 5 views).
+
+
+Writing the initial schema migration (verbatim §8.2/§8.3)
+Writing the initial schema migration (verbatim §8.2/§8.3)
+22 tables, 5 views — matches. Now the DataAccess csproj, connection factory, and DbUp migration runner.
+
+
+Ran 2 commands
+Ran 2 commands
+Let me read the truncated config/infra section so RestaurantOptions and compose match the spec exactly.
+
+
+Reading remaining §13 config keys and §14 infra
+Reading remaining §13 config keys and §14 infra
+Complete config in hand. Now the WebApplication — csproj, options (with fail-fast validation), metrics, broadcaster, and the composition root.
+
+
+WebApplication csproj and RestaurantOptions with fail-fast validation
+WebApplication csproj and RestaurantOptions with fail-fast validation
+please continue
+
+
+Orchestrated generation of application infrastructure components
+Orchestrated generation of application infrastructure components
+I'm picking up where I left off on the MyRestaurant project and need to check the current state of the working directory to see what's already been completed and what still needs to be done.
+
+
+Inventory current working directory to confirm what's written vs pending
+I've got 31 files on disk matching the expected structure—root config files, complete Domain and DataAccess layers, and a partial WebApplication with just the project file and RestaurantOptions configuration. Let me check that RestaurantOptions is fully implemented and review a few domain files to confirm the exact type names and namespaces I'll need to reference when setting up Program.cs.
+
+
+Extract all namespaces and public type declarations to reference correctly in pending files
+Now I'm reviewing the exact type signatures I'll need to reference throughout the codebase—specifically the constructors and interfaces for IClock, IIdentifierFactory, IDatabaseConnectionFactory, the NpgsqlDatabaseConnectionFactory and SchemaMigrationRunner constructors, IDomainEventBroadcaster, the DomainNotification base class, and RestaurantOptions to make sure I have the right contracts in place.
+
+
+Read exact interface signatures for DI registration and broadcaster
+I need to examine the constructors for NpgsqlDatabaseConnectionFactory and SchemaMigrationRunner, along with what RestaurantOptions members Program.cs will need.
+
+
+Read connection factory + migration runner ctor signatures
+Now I need to review the RestaurantOptions class to see what properties are defined there, so I can properly reference them when setting up the configuration in Program.cs.
+
+
+Read full RestaurantOptions to reference exact property names in Program.cs
+I need to verify the DomainNotification base type and its namespace before setting up Program.cs and the broadcaster implementation.
+
+
+Confirm DomainNotification base type for broadcaster
+Now I'm ready to generate the remaining WebApplication files, starting with the observability metrics, then the domain event broadcaster, the main program setup, and the Blazor components including the app shell, routing, layout, and home page.
+
+Done
+I have the full public surface. Let me verify the §12 metrics spec before writing the metrics class.
+
+
+Architected metrics framework with dependency injection integration
+Architected metrics framework with dependency injection integration
+
+Read §12 metrics + §13 config from spec to make metric names faithful
+I've confirmed the metric names I'll be working with, including counters for guest submissions, order operations, kitchen reminders, and sign-ins, plus a histogram for password hashing duration. Now I'm starting to implement the RestaurantMetrics class, though I need to be careful about how I structure it.
+
+For the implementation, I'll define a constant for the meter name "MyRestaurant" and use IMeterFactory to ensure it's testable and properly integrated with dependency injection.
+
+Done
+All type signatures and the §12 metric names are confirmed. Now writing the pending WebApplication files, starting with observability.
+
+
+Examined event broadcasting architecture and handler management patterns
+Examined event broadcasting architecture and handler management patterns
+
+Create RestaurantMetrics: the custom OpenTelemetry meter (§12)
+Now I'm looking at the InProcessDomainEventBroadcaster implementation, which manages domain event subscriptions using a concurrent dictionary keyed by subscriber IDs. The publish method safely iterates over a snapshot of handlers and wraps each invocation in try-catch to log errors without propagating exceptions back to the publisher, while subscribe returns a disposable that removes the handler when disposed.
+
+
+Create InProcessDomainEventBroadcaster: the single v1 in-process broadcaster (§9, ADR-0006)
+I'm checking the Program.cs composition root against the BUILD_PROGRESS reference to verify the ordering and health endpoints match the design specification.
+
+Done
+Now the composition root. Let me verify the BUILD_PROGRESS ordering note before writing Program.cs.
+
+
+Architected ASP.NET Core application initialization with observability and infrastructure integration
+Architected ASP.NET Core application initialization with observability and infrastructure integration
+
+Read BUILD_PROGRESS composition-root ordering + caveats
+I'm seeing an important distinction about the compose profiles—both Caddy and cloudflared are actually profile-gated services, not just one or the other, and the bare up command runs a headless web server on port 8080 instead.
+
+I also need to account for the Containerfile details: tzdata and curl are installed (curl for health checks, tzdata for timezone support), and the data-protection volume gets mounted with the :U flag. These are critical for the infrastructure setup.
+
+Now I'm moving into Program.cs and need to structure it carefully following the initialization order: options validation, OpenTelemetry setup, service registration, database migration before HTTP binding, forwarded headers configuration, health endpoints, and finally Blazor interactive server mode. I'm gathering the necessary using statements across the data access, domain, web application, observability, and ASP.NET Core namespaces.
+
+For data protection, I'll use the AddDataProtection extension from Microsoft.AspNetCore.DataProtection. The OpenTelemetry exporter will be gated behind checking for the OTEL_EXPORTER_OTLP_ENDPOINT environment variable, and I need to wire up Npgsql tracing instrumentation through the appropriate extension method. the canonical documented form. The Npgsql docs show you call AddNpgsql() on the TracerProviderBuilder, which comes from the Npgsql.OpenTelemetry package. I need to verify whether the extension is accessed via using Npgsql; or another namespace, but I'll go with the most common documented pattern and note any adjustments needed.
+
+Since I'm already including using OpenTelemetry.Trace; for other instrumentation like AspNetCore, AddNpgsql() should resolve from there. If it doesn't, that's a straightforward fix to document. Now I'm checking what other instrumentation extensions are available and where they live.
+
+I need to include all three namespaces — OpenTelemetry.Trace, OpenTelemetry.Metrics, and OpenTelemetry.Logs — since each has its own AddOtlpExporter() variant. Let me start writing out Program.cs with the health check endpoints: a liveness check that just returns "live", and a readiness check that opens a database connection, runs a simple query, and checks if the migrations are up to date.
+
+Writing the ready endpoint handler... Finishing the error response, then realizing that IsUpToDate() makes its own database call, so if the database is down the initial SELECT 1 already caught it. I need to make sure I have the right imports — System.Data.Common for the database types and the implicit usings from the web SDK should cover Results and StatusCodes. I'm checking whether the OTEL exporter endpoint is configured by reading from the environment, then conditionally adding exporters only if that value exists. The question is whether to still register the meters and instrumentation even without an exporter — it's cheap to do so, but without an exporter there's no actual export happening, so the main concern is gating the exporters themselves behind that environment variable. Configuring the OpenTelemetry pipeline... I'll skip the variable type issue by chaining the OpenTelemetry configuration directly on the builder without assigning it, which keeps things clean and avoids the naming question altogether. Now I'm ready to write out the full Program.cs file with proper comments and the dependency injection registrations in the right order.
+
+Registering the core services...
+
+I'm setting up the SchemaMigrationRunner with the database connection string and a logger callback, then thinking through how RestaurantMetrics gets its IMeterFactory dependency — it looks like that comes from the metrics services registered by the framework in .NET 8+.
+
+For safety, I'll explicitly call builder.Services.AddMetrics() since it's idempotent and ensures IMeterFactory is available. Now I'm configuring data protection to persist keys to the file system and set the application name.
+
+Writing data protection setup... Writing configuration code... Setting up the health check endpoints for liveness and readiness probes, then mapping the Razor components with interactive server rendering before running the app. After that, I need to add options validation at the builder stage before the host is constructed. Top-level statements in C# can return an int for the exit code, and since there's no top-level await here, the program effectively has an implicit static int Main. The early return 1; for configuration errors works fine, and app.Run() blocks until shutdown then implicitly returns 0, so the exit code handling is correct.
+
+I need to read the OTEL endpoint from configuration using the environment variables that are already being loaded, then write out the complete file with a header comment. Let me also verify that the Domain and DataAccess layers don't have any InvariantGlobalization issues, and check what namespace the Npgsql tracing extension uses.
+
+Show more
+Done
+BUILD_PROGRESS confirms the exact composition order and refines the compose profiles (both Caddy and cloudflared behind profiles; bare up = web+postgres only). Writing Program.cs now.
+
+
+Orchestrating Router configuration with MainLayout integration
+Orchestrating Router configuration with MainLayout integration
+
+Create Program.cs composition root following the documented startup order
+Setting up the Blazor component structure with the necessary imports and component files for the application. Finishing the Routes component setup...
+
+The Router component is configured to scan the assembly for routable components, with MainLayout as the default layout wrapper and focus management set to the h1 element on navigation. I'm noting that typeof(Program).Assembly works because Program is accessible within the same assembly even though it's generated as an internal class from top-level statements, though typeof(App).Assembly would work equally well since they're the same assembly.
+
+Now I'm building out the MainLayout component as a simple shell that renders the Body content, and starting on the Home page which will display the restaurant name pulled from injected RestaurantOptions.
+
+I'm creating a minimal M1 landing page with the restaurant name as a heading, a brief description of the self-hosted ordering system, and links to the health check endpoints. Before diving into styling, I should check the frontend-design skill guidance, though this is such a bare-bones skeleton that I might proceed with just basic CSS. I'll quickly check the frontend-design skill to make sure I'm not missing anything relevant, even though this is a minimal server-rendered page.
+
+Show more
+Done
+Now the Blazor shell. Since this introduces UI, let me consult the frontend-design skill first (keeping M1 appropriately minimal).
+
+
+Architected minimal Blazor landing page with restrained design philosophy
+Architected minimal Blazor landing page with restrained design philosophy
+
+Loaded frontend-design skill
+I'm designing a minimal Blazor landing page for a self-hosted restaurant ordering system—keeping it clean and restrained with intentional typography and color, avoiding the typical AI aesthetic of creams and terracottas in favor of a neutral look that suits a skeleton milestone.
+
+I'll use a cool-neutral light slate background, deep slate text, and a restrained teal accent that hints at hospitality without being clichéd. Since this is a self-hosted offline app, I'm sticking to system fonts to avoid external dependencies, and I'll keep the page disciplined—just the restaurant name, M1 designation, and health endpoints. Now I'm starting with the Imports.razor file.
+
+Done
+The skill is oriented toward distinctive artifacts; M1 is explicitly a minimal skeleton shell, so I'll keep the landing page clean and restrained (and avoid external font dependencies, which would break the self-hosted/offline model). Writing the components.
+
+
+Architected dual deployment modes and certificate configuration strategy
+Architected dual deployment modes and certificate configuration strategy
+
+Create Blazor _Imports.razor with the standard component usings
+
+Create App.razor root document with HeadOutlet, app.css link, and blazor.web.js
+
+Create Routes.razor router with default layout and focus-on-navigate
+
+Create MainLayout.razor, the base layout wrapping page content
+I'm setting up the Home.razor component to include the restaurant name, a brief introduction, an M1 status indicator, and relevant health links—keeping the tone practical and honest about this being an early milestone while making it accessible for end users.
+
+
+Create Home.razor landing page showing restaurant name and M1 status
+I'm writing the stylesheet for wwwroot/app.css with a cool near-white background, slate text, and deep pine/teal accents—keeping it minimal and disciplined while respecting responsive design, focus states, and reduced-motion preferences, all without relying on external fonts.
+
+
+Create app.css: minimal restrained styling for the skeleton, no external fonts
+Setting up the configuration files for the application — I'll configure appsettings.json with minimal logging since environment-specific settings are handled separately, keeping just the logging levels and host defaults here.
+
+For Development, I'm bumping up the logging verbosity and enabling detailed Blazor circuit errors to help with debugging during local development.
+
+For launchSettings.json, I need to figure out the HTTPS setup — since Caddy handles TLS termination at port 8443 in the compose environment, but for local dotnet watch development I'll need to configure the appropriate listening port. So there are two distinct modes: full containerized setup where everything runs in compose, or a host-dev mode where run.sh spins up just the postgres container and runs dotnet watch on the host machine directly. The cleanest approach is to have run.sh start only postgres as the database dependency, set up the dev environment variables (with the connection string pointing to localhost:5432 and the origin as https://localhost:8443), then launch dotnet watch for the web app.
+
+In host-dev mode, Kestrel listens directly on https://localhost:8443 using the ASP.NET Core dev certificate—no Caddy involved. Caddy only appears in the full-container profile. The RESTAURANT_PUBLIC_ORIGIN stays consistent at https://localhost:8443 across both modes: in host-dev it's the direct Kestrel endpoint, and in full-container it's the public-facing Caddy endpoint that proxies to the internal web service on http:8080. The launchSettings applicationUrl should be set to https://localhost:8443 since that's what host-dev uses.
+
+For dotnet watch to respect this and bind https with the dev cert, I need to ensure the launch profile is configured correctly—dotnet run and dotnet watch both use the profile settings, though run.sh might override with explicit ASPNETCORE_URLS if needed. I'm realizing that for local development, I could skip TLS entirely since browsers treat http://localhost as a secure context for WebAuthn and service workers, which would simplify the setup. But then I need to reconsider what RESTAURANT_PUBLIC_ORIGIN should be.
+
+The validator requires https for the origin, which is a production safety check. So even in dev, if I want PUBLIC_ORIGIN to be https and actually work, Kestrel needs to serve https with the dev certificate. That means for host-dev, I should use dotnet dev-certs to generate and trust the certificate, then run Kestrel over https on localhost:8443 with PUBLIC_ORIGIN=https://localhost:8443. This keeps the origin honest and satisfies the validator without needing Caddy.
+
+For the launchSettings.json, I'll configure the https profile with applicationUrl pointing to both https://localhost:8443 and http://localhost:8080, set ASPNETCORE_ENVIRONMENT to Development, and include the restaurant environment variables without hardcoding secrets.
+
+Writing launchSettings.json...
+
+Show more
+Done
+Now the app settings and launch settings.
+
+
+Created 3 files
+Created 3 files
+
+Create appsettings.json (logging + allowed hosts; all real config is env-only)
+
+Create appsettings.Development.json enabling detailed Blazor circuit errors
+
+Create launchSettings.json for host-dev dotnet watch (https on 8443, matching PUBLIC_ORIGIN)
+Now I'm setting up the test projects. I'll create four test csproj files using the standard xUnit v3 configuration with centrally managed package versions, then write out the corresponding test files.
+
+Let me verify that Directory.Packages.props includes all the necessary dependencies: xunit.v3, xunit.runner.visualstudio, Microsoft.NET.Test.Sdk, Testcontainers.PostgreSql, NSubstitute, and Microsoft.Playwright.
+
+Done
+WebApplication is complete. Before writing test projects, let me confirm the central package versions are all present.
+
+
+Reconsidered testing strategy and domain layer dependencies
+Reconsidered testing strategy and domain layer dependencies
+
+Confirm centrally-managed package versions for test projects
+Now I'm setting up the test projects, starting with MyRestaurant.Domain.Tests, which will reference the Domain project and use xUnit with the standard testing SDK and runner. I'm including NSubstitute for mocking since the domain logic has dependencies like IClock that benefit from substitution.
+
+Actually, let me reconsider — the domain services like JoinTokenService and SecretGenerator are mostly static with explicit parameters, so I don't need mocking for those. I should check the actual method signatures in the domain layer to understand what interfaces I'm working with and what needs to be tested, so I can write the tests correctly against the real API.
+
+Done
+All versions centrally managed. Now I must read the exact Domain signatures so the tests compile against reality. Reading the security + orders types.
+
+
+Examined multiple type interfaces systematically
+Examined multiple type interfaces systematically
+
+Read exact public signatures of the security domain types for test authoring
+I need to examine the public interfaces for several more types: Argon2PhcString, ObligationsPipeline, OrderEvents, OrderProjection, OrderMutationValidator, and UuidV7IdentifierFactory.
+
+
+Read Argon2PhcString, ObligationsPipeline, UuidV7 factory signatures
+Now I'm moving on to the Orders types—OrderEvents, OrderProjection, and OrderMutationValidator—which are the most complex pieces. I need to understand their exact record shapes so I can write the corresponding tests properly.
+
+Done
+Now the Orders types — the most complex, needed for projection and validator tests.
+
+
+Architected validator framework and test configurations
+Architected validator framework and test configurations
+
+Read OrderEvents full source for test authoring
+
+Read OrderProjection full source for projection test authoring
+Looking at the OrderMutationValidator next.
+
+
+Read OrderMutationValidator full source for validator test authoring
+I'm reviewing the complete validator structure and the data models it works with—the menu item snapshots, order mutation context with sitting and actor state, and the proposed order events with their types and actor roles. Defining more operations... Writing test project config...
+
+Done
+I now have every Domain signature. Let me confirm Directory.Build.props (to know what test csproj files inherit) before writing them.
+
+
+Orchestrated test project configuration with executable settings
+Orchestrated test project configuration with executable settings
+
+Confirm inherited MSBuild props and a sample csproj style
+Now I'm setting up the test project files with the right configuration—disabling doc generation, marking them as test projects with executable output type, and making sure they're not packable. I'll start with the Domain.Tests csproj file.
+
+Done
+Everything inherits cleanly. Writing the four test project files now.
+
+
+Validated test vectors through computational verification
+Validated test vectors through computational verification
+
+Create Domain.Tests csproj (xUnit v3, OutputType Exe)
+
+Create DataAccess.Tests csproj (xUnit v3 + Testcontainers PostgreSQL)
+
+Create WebApplication.Tests csproj (xUnit v3, config binding tests)
+I'm realizing there's a nuance with how the test project references the web application assembly—since the web project uses top-level statements with an internal Program class, there shouldn't be any naming conflicts when the test project pulls in the compiled output and accesses public types like RestaurantOptions.
+
+
+Create EndToEnd.Tests csproj (xUnit v3 + Playwright, all skipped until M6)
+Now I'm writing the Domain tests, starting with JoinTokenServiceTests. These tests hardcode the precomputed vectors to validate the token generation logic — I've got the test vectors ready, including the secret bytes, UUID, and weight parameter that should produce specific token outputs.
+
+I need to verify these vectors are actually correct by recomputing them with Python's HMAC before hardcoding them into the tests, since if the vectors are subtly wrong, the entire test suite would be unreliable.
+
+Done
+Now the test source. Before hardcoding the crypto vectors, let me recompute them independently to be certain they're correct.
+
+
+Architected comprehensive test suite validating token service functionality
+Architected comprehensive test suite validating token service functionality
+
+Independently recompute all precomputed crypto vectors to confirm correctness
+All the vector values check out, so I'm ready to write the test suite. I'm creating JoinTokenServiceTests.cs to validate that CurrentWindowIndex correctly computes the floor of unix time divided by rotation period, stays consistent within a window boundary, ComputeToken produces the expected outputs for the test vectors across different windows, and ComputeCurrentToken uses the right window index.
+
+I'll also test the Validate method across various scenarios—current window tokens should be valid, previous window tokens valid, tokens from two windows back expired if within the lookback period, older tokens invalid, and malformed or wrong-length inputs rejected. NextRotationInstant should equal (window+1) times the rotation period, BuildJoinUrl should format correctly, and the service should throw when rotation is less than 1.
+
+For the test data, I'm building a 32-byte secret array using a helper method and setting up Validate tests by picking a known rotation value like 60, computing the current window for a specific instant, then generating tokens for that window and adjacent windows via ComputeToken to verify the windowing logic works as expected. currentWindow-11 are the boundary for Expired tokens, while currentWindow-12 falls into Invalid. I'll test the Valid cases (currentWindow and currentWindow-1), the Expired boundary (currentWindow-2 through currentWindow-11), and the Invalid case (currentWindow-12), plus malformed tokens like "!!!" and incorrectly-sized base64url strings.
+
+Now I'm setting up the test file using xUnit with [Fact] and [Theory] attributes, then writing out the JoinTokenServiceTests class.
+
+Show more
+Done
+All vectors confirmed exactly. Writing the Domain test files, starting with the crypto-vector-anchored join token tests.
+
+
+Architected comprehensive test suite for cryptographic parameter validation
+Architected comprehensive test suite for cryptographic parameter validation
+
+Create JoinTokenServiceTests with confirmed HMAC vectors + windowing behaviour
+Now I'm setting up the Argon2PhcStringTests to verify encoding produces the correct canonical string format with known parameters, that round-trip encoding and parsing preserves the salt and tag bytes across various patterns, that parsing a hardcoded canonical string with zero salt and tag yields the right parameters, and that TryParse correctly rejects malformed input.
+
+I need to account for the fact that Argon2Parameters is a record with byte array fields, and since arrays use reference equality rather than structural equality in records, I'll compare the salt and tag fields individually using SequenceEqual instead of relying on record equality.
+
+Writing test cases... Now I'm checking edge cases like invalid base64 characters in the salt and missing segments, then verifying the NeedsRehash logic compares stored parameters against configured ones to determine if rehashing is needed. Time to write out the test cases.
+
+Show more
+Done
+Now the Argon2 PHC string tests (round-trip + hardcoded canonical form + malformed rejection).
+
+
+Analyzed state machine logic for obligation pipeline testing scenarios
+Analyzed state machine logic for obligation pipeline testing scenarios
+
+Create Argon2PhcStringTests: canonical encoding, round-trip, malformed rejection, rehash
+Looking at the ObligationsPipelineTests, I'm working through a state machine with different obligation scenarios based on two boolean flags. The test matrix covers what obligation gets returned next depending on password change and TOTP enrollment requirements, whether the pipeline is cleared, and access rules for different endpoint types.
+
+Done
+Now the obligations pipeline state-machine tests.
+
+
+Architected comprehensive test suite for cryptographic utilities
+Architected comprehensive test suite for cryptographic utilities
+
+Create ObligationsPipelineTests covering the §3.5 password-before-TOTP ordering
+I'm organizing the test files for the crypto utilities—I'll create SecretGeneratorTests.cs to cover SecretGenerator, PairingCode, RecoveryCode, Base64UrlText, and UuidV7, then set up a separate file for the remaining security primitives.
+
+Writing test cases... Now I'm checking the test cases for pairing and recovery codes—verifying that Generate produces 8-character codes from a 31-character alphabet that excludes ambiguous letters, and that IsWellFormed correctly rejects invalid lengths and forbidden characters. For recovery codes, I'm confirming the pattern with 11 characters, a dash at position 5, and 10 distinct well-formed codes in a generated set. Moving into the SHA256 hashing tests next. I'll skip strict ordering to avoid test flakiness and just verify version and uniqueness instead. For the hex conversion, I'm using Convert.ToHexString(hash).ToLowerInvariant() for compatibility across .NET versions. Now I'm ready to write out these test files.
+
+Show more
+Done
+Now the remaining Domain primitive tests (secrets, codes, encoding, hashing, UUIDv7).
+
+
+Architected test infrastructure and validation scenarios for order projections
+Architected test infrastructure and validation scenarios for order projections
+
+Create SecretGeneratorTests: sizes, randomness, base64url secret round-trip
+
+Create Base64UrlTextTests: url-safe alphabet, round-trip, malformed rejection
+I'm checking the TryDecode method with asterisks as input—after base64 normalization, the string remains invalid since asterisks aren't valid base64 characters, so it correctly throws a FormatException and returns false. Moving on to test the hashing, pairing/recovery code, and UUID v7 functionality.
+
+
+Create Sha256HashingTests using the confirmed sha256('myrestaurant') vector
+
+Create PairingAndRecoveryCodeTests: alphabet, format, distinct set
+
+Create UuidV7IdentifierFactoryTests: version 7 + uniqueness
+Moving on to the core Order tests—OrderProjectionTests and OrderMutationValidatorTests. I'm thinking about creating a test helper to make constructing events and operations more readable, so I'll build an OrderTestBuilders class with factory methods to reduce noise in the test code.
+
+For OrderProjectionTests, I'm mapping out the key scenarios: starting with an empty event stream that should produce a ProjectedOrder with zero lines and null timestamps, then a guest submission adding lines, followed by price adjustments, removals, and fulfillment state changes. Each scenario validates that the projection correctly reflects the order state—line counts, pending vs. fulfilled tallies, and the total amount calculation across all non-removed lines.
+
+I'm also verifying the ordering semantics: lines should be sorted by AddedAt then OrderLineIdentifier, and events should be folded by SequenceNumber so that out-of-order input still produces the correct final state. For timestamps, FirstSubmittedAt is the earliest GuestSubmission event, and LastEventAt is the latest event overall.
+
+Now I'm setting up test helpers with a base instant and building convenience methods...
+
+Writing test helper methods... Adding factory methods... For the "latest by sequence wins" test, I'm passing events in an arbitrary order like [seq3, seq1, seq2] to verify the projection applies them correctly by sequence number rather than input order — seq2's price of 11 gets overridden by seq3's price of 12, giving a final price of 12. Now I'm writing the projection tests with computed expected totals like line A at qty2 and price 9.50 equaling 19.00.
+
+Show more
+Done
+Now the two most important Domain tests: the projection fold and the mutation validator. First a small builder helper to keep them readable.
+
+
+Architected comprehensive test validation framework with systematic coverage
+Architected comprehensive test validation framework with systematic coverage
+
+Create OrderTestBuilders helper for constructing order events/operations in tests
+
+Create OrderProjectionTests: the event-log fold to current state (§8.5)
+I'm mapping out the test cases for OrderMutationValidatorTests, planning to validate each rule with both passing and failing scenarios. I'll set up helper methods to construct test contexts with menu items and guest submissions, then systematically cover all the validation rules starting with the empty operations check. Continuing through the remaining operation validations: LineRemoved needs to check for non-existent or already-removed lines, prevent guests from removing others' lines or their own fulfilled lines (but allow pending removals), and allow staff to remove any line. LinePriceAdjusted validates the line exists and isn't removed, requires a reason, and rejects negative prices. LineFulfilled and LineFulfillmentReverted follow similar patterns checking existence and state. The whole event fails validation if any single operation is invalid, then I'm setting up test fixtures with helper GUIDs for menu items.
+
+Writing test setup... Defining test helper methods... Writing test fixtures... Writing test cases... should use GuestSubmission instead to keep the semantics clean, even though the projection test doesn't validate authorization. The key insight is that guests can remove their own lines, but only through GuestSubmission events, not StaffEdit. I'll update that projection test to use GuestSubmission for the removal instead, keeping it consistent with how guests actually remove their own lines. Then I'll do the same fix in OrderProjectionTests where I used StaffEdit+Guest for the removal test. For the validator tests, I'll stick with StaffEdit+Counter for staff removals and GuestSubmission+Guest for guest removals.
+
+Show more
+Done
+Let me fix a semantic detail in the projection test (a guest removal belongs in a GuestSubmission, not a StaffEdit) before writing the validator tests.
+
+
+Use a guest's own submission for the guest removal, not a StaffEdit
+Use a guest's own submission for the guest removal, not a StaffEdit
+
+Use a guest's own submission for the guest removal, not a StaffEdit
+OrderProjectionTests.cs
++4
+-4
+Done
+Now the comprehensive validator tests covering every §6.5 rule, both outcomes.
+
+
+Create OrderMutationValidatorTests covering every §6.5 rule with pass and fail cases
+Create OrderMutationValidatorTests covering every §6.5 rule with pass and fail cases
+
+Create OrderMutationValidatorTests covering every §6.5 rule with pass and fail cases
+Moving on to the remaining test files: RestaurantOptionsTests for the web application layer (which doesn't need containers), followed by SchemaMigrationRunnerTests that uses Testcontainers, and finally a placeholder for the end-to-end tests.
+
+For RestaurantOptionsTests, I'm covering configuration binding with defaults like RestaurantName and PublicOrigin, then validation scenarios—rejecting non-HTTPS origins, invalid timezones, malformed currency codes, and Argon2 parameters that fall below their minimum thresholds.
+
+I also need to test token rotation, grant, pairing, and reminder intervals all requiring values of at least 1, plus an empty connection string validation. Since the connection string has a fallback from configuration, I'll need to construct RestaurantOptions directly with a blank value to test that validation path. Given the required init properties, I'm thinking of creating a helper method that returns a fully-populated valid RestaurantOptions instance, which I can then modify for individual test cases. Writing the helper method... Finishing the restaurant options configuration with the max concurrent hashes setting, then running through validation tests to ensure the builder properly rejects invalid inputs like insecure origins, malformed timezone IDs, invalid currency codes, and out-of-range cryptographic parameters. NAME, RESTAURANT_PUBLIC_ORIGIN, ARGON2_ITERATIONS=5, and other environment variables to verify the binding works correctly. I also need to test the fallback behavior when ARGON2_ITERATIONS contains a non-numeric value like "abc", which should default to 3. Additionally, I'm testing ResolveWebAuthnRelyingPartyId() to extract the host from the public origin URL, and ResolveTimeZone() to ensure it returns a valid TimeZoneInfo object. I'll need to import the Configuration namespace to use ConfigurationBuilder and AddInMemoryCollection.
+
+AddInMemoryCollection should be available transitively through the web project's ASP.NET Core dependencies, so I can use it to set up test configuration data. Now I'm writing the RestaurantOptionsTests class with test methods that use AddInMemoryCollection to pass configuration key-value pairs.
+
+Show more
+Done
+Domain tests complete. Now the web-layer config tests (pure, no server).
+
+
+Create RestaurantOptionsTests: env binding, defaults, fail-fast validation
+Create RestaurantOptionsTests: env binding, defaults, fail-fast validation
+
+Create RestaurantOptionsTests: env binding, defaults, fail-fast validation
+I'm setting up integration tests for the SchemaMigrationRunner using a PostgreSQL 17 container, verifying that migrations run idempotently and that the expected tables and views are created in the database schema.
+
+For handling environments without a container engine, I'll use xUnit v3's Assert.Skip() method to dynamically skip tests when Docker or Podman isn't available. I'll implement IAsyncLifetime on the test class to attempt container startup during initialization, catch any failures, and then skip individual tests if the container couldn't start.
+
+Actually, a better approach is to create a shared class fixture that implements IAsyncLifetime — this way one container instance is reused across all tests in the class rather than starting a new one per test. The fixture will try to start the container in InitializeAsync(), and if it fails, it stores the skip reason. Each test then checks if startup failed and calls Assert.Skip() with that reason.
+
+Writing the fixture class... I need to explicitly configure the database name, username, and password for the PostgreSQL container rather than relying on defaults, then verify that EnsureDatabase won't try to recreate an already-existing database. I should also check whether xUnit v3 has the Assert.Skip method available.
+
+For the test assertions, I'll open a connection after running the migration and query for the existence of key tables and views using to_regclass, which returns null if the relation doesn't exist. I'll also verify idempotency by running the migration again and confirming it doesn't throw and that IsUpToDate returns true.
+
+I need to check the actual migration SQL to get the exact names of the 22 tables and 5 views so I'm asserting against the real relation names rather than guessing.
+
+Show more
+Done
+Now the DataAccess integration test. Let me first read the actual relation names from the migration SQL so the assertions match reality.
+
+
+Extract real table/view names from the migration to assert against
+Extract real table/view names from the migration to assert against
+
+Extract real table/view names from the migration to assert against
+I'm identifying the key database objects to test against—22 tables and 5 views with the citext extension enabled. I'll focus on asserting that specific relations like person, guest_order, order_event, and several others exist, plus verify the total count of tables in the public schema matches expectations.
+
+I'll use Npgsql to query the database directly, opening a connection from the fixture and executing commands to check if relations exist via to_regclass and verify the citext extension is installed. For the assertions, I'll use a boolean check to confirm each named relation is present rather than trying to parse the return type.
+
+I'll create a helper method using Dapper (which is already referenced) to execute these queries cleanly — one to check if a relation exists by name, another to verify the citext extension. The xUnit fixture injection works the same way in v3 as v2, so I'll inject it through the test class constructor.
+
+For the container setup, I need to specify the PostgreSQL image version explicitly to ensure it's using version 17.
+
+Show more
+Done
+22 tables, 5 views, citext — all names captured. Writing the Testcontainers integration test with graceful skip when no container engine is present.
+
+
+Created 2 files, edited a file
+Created 2 files, edited a file
+
+Create PostgreSqlFixture: one PostgreSQL 17 container shared across migration tests
+
+Create SchemaMigrationRunnerTests: apply, idempotency, relations exist, citext present
+I'm noticing that the first test method is marked as async Task but doesn't actually use await anywhere, which triggers a compiler warning. I should either remove the async keyword to make it a regular synchronous method, or add proper await calls if the operations support it.
+
+
+Make the idempotency test synchronous (no await) to avoid an async-without-await warning
+SchemaMigrationRunnerTests.cs
++3
+-3
+I'm setting up an EndToEnd test class with skipped tests that map to the §16.3 matrix scenarios, each marked with a descriptive skip reason and named after the specific test cases from that section.
+
+Done
+Now the EndToEnd placeholder. Let me read §16.3 to name the scenarios faithfully.
+
+
+Read §16.3 end-to-end scenario matrix to name placeholder tests
+Read §16.3 end-to-end scenario matrix to name placeholder tests
+
+Read §16.3 end-to-end scenario matrix to name placeholder tests
+I'm setting up a test class with 15 skipped test cases, each one representing a different scenario and marked with xUnit's [Fact(Skip = "...")] attribute so the test matrix stays version-controlled. I'll add brief comments explaining the reasoning behind each scenario and keep the file self-documenting, with a note about Playwright integration.
+
+Done
+15 scenarios captured. Writing the skipped E2E placeholder so the matrix is version-controlled from M1.
+
+
+Create EndToEndScenarios placeholder: the §16.3 matrix as skipped tests for M6
+Create EndToEndScenarios placeholder: the §16.3 matrix as skipped tests for M6
+
+Create EndToEndScenarios placeholder: the §16.3 matrix as skipped tests for M6
+Now that the tests are complete, I need to add the test projects to the solution file so the build and test commands pick them up, then verify everything compiles together. I'm also planning to create the infrastructure files next—the Docker setup, compose configuration, Caddy reverse proxy config, shell scripts for backups and tunneling, environment template, and documentation.
+
+However, I'm realizing that NuGet isn't in the allowed domains list for this environment, so dotnet restore will fail here. The .NET SDK probably isn't installed either. This is a scaffold generation task meant to hand off to the user's machine, so I shouldn't expect to actually compile here—my job is to produce a correct, coherent scaffold with clear build instructions for them to run on their networked machine.
+
+Let me refocus on what I can do: update the solution file to include all four test projects, write the infrastructure files, create the README and environment template, and finalize the build progress documentation.
+
+Show more
+Done
+All tests are written. Now let me check the solution file and whether the toolchain/NuGet is reachable here (to set expectations on building).
+
+
+Inspect solution file and check toolchain/NuGet availability
+Inspect solution file and check toolchain/NuGet availability
+
+Inspect solution file and check toolchain/NuGet availability
+The solution file already references all four test projects and the infrastructure files like README.md, .env.example, and compose.yaml, so I've created those project files at the exact paths the slnx expects. The solution items include some files that don't exist yet, which is fine since they're mainly for IDE organization.
+
+I've confirmed dotnet isn't installed and NuGet is blocked as expected, so I can't actually build or test here — but that's intentional since the scaffold is designed to build on the user's networked machine. I'll focus on correctness and clearly note the build status in my summary.
+
+Now I need to create the infrastructure files at the root with the exact names the slnx specifies: Containerfile, compose.yaml, Caddyfile, run.sh, .env.example, and README.md, plus the scripts directory with backup.sh, restore.sh, and quick_tunnel.sh per the BUILD_PROGRESS checklist.
+
+I'm reviewing the deployment stack (§14), backups (§15), CI (§16.4), and the BUILD_PROGRESS infra requirements to get all the details right — the Containerfile needs to build from the SDK and run on aspnet with tzdata and curl, compose.yaml needs postgres and web services always running with caddy in dev and cloudflared in production, the data-protection volume needs the :U flag for podman, and the backup configuration specifies the directory, schedule time, and retention count.
+
+Show more
+Done
+The solution already references all four test projects and the infra files by exact name (Containerfile, compose.yaml, Caddyfile, run.sh, .env.example, README.md). The toolchain/NuGet is intentionally unavailable here, so this stays a hand-off scaffold. Let me read §14–§15 to make the infra faithful.
+
+
+Read §14 (deployment/stack) and §15 (backups) for faithful infra files
+Read §14 (deployment/stack) and §15 (backups) for faithful infra files
+
+Read §14 (deployment/stack) and §15 (backups) for faithful infra files
+Now I'm laying out the infrastructure setup with three services: the web container built from a Containerfile exposing port 8080, a PostgreSQL database with persistent storage using environment variables for configuration, and Caddy in development mode to handle TLS termination at localhost:8443 and proxy requests to the web service.
+
+For production, I'm swapping Caddy for Cloudflared to tunnel traffic through Cloudflare. Both setups include health checks targeting the /healthz/live and /healthz/ready endpoints using curl, and the data protection volume gets mounted with the :U flag for Podman.
+
+Writing the Containerfile... I'll just copy the entire repository and let dotnet publish handle the restore automatically, which will build all the project dependencies together. The migration SQL is coming next.
+
+Show more
+Done
+Now I have the exact deployment topology. Let me check global.json so the Containerfile's SDK tag aligns.
+
+
+Read global.json SDK pin and .gitignore to align infra files
+Read global.json SDK pin and .gitignore to align infra files
+
+Read global.json SDK pin and .gitignore to align infra files
+The global.json specifies SDK 10.0.302 with rollForward set to latestFeature, so I need a build image with at least that version. Using the mcr.microsoft.com/dotnet/sdk:10.0 tag will give me the latest 10.0 SDK, which satisfies the requirement. Now I'm writing the Containerfile.
+
+Done
+SDK pinned to 10.0.302. Writing the infrastructure files now, starting with the Containerfile.
+
+
+Create Containerfile: multi-stage SDK build to aspnet runtime with tzdata + curl
+Create Containerfile: multi-stage SDK build to aspnet runtime with tzdata + curl
+
+Create Containerfile: multi-stage SDK build to aspnet runtime with tzdata + curl
+I'm setting up the compose.yaml file with postgres as the base service using the alpine image, configuring it with environment variables from .env and a health check, plus a web service that builds from the Containerfile and depends on postgres being healthy. I'll also add caddy for development and cloudflared for production profiles.
+
+For the web service, I'm passing through RESTAURANT_* variables and the DATABASE connection string pointing to postgres:5432, along with DATA_PROTECTION_KEYS_DIRECTORY and OTEL_* variables, mounting the dataprotection volume with podman ownership handling, and setting up a health check via curl. The web service publishes port 8080 to the host for headless access in bare mode, though in production behind cloudflared this direct exposure isn't strictly necessary but doesn't hurt — though there's a security consideration around exposing the web service directly since it trusts forwarded headers and could be vulnerable to local header spoofing attacks.
+
+The resolution is to bind the port to 127.0.0.1 only rather than all interfaces, keeping it off the LAN and WAN while still allowing local access. This way the port is reachable on the host loopback but not exposed to the network, which aligns with the threat model where the server itself is trusted and cloudflared handles internet exposure.
+
+For the dev setup, I'm configuring Caddy as a reverse proxy on port 8443 with an internal CA, mounting the Caddyfile and setting up the necessary volumes. The production setup will use cloudflared to reach the web service over the internal compose network.
+
+I'm defining the shared volumes for postgres data, data protection keys, and Caddy's persistent state. The data protection keys volume gets mounted into the web container with user namespace remapping enabled. I'll keep the :U suffix and document in the README that this is Podman-specific, with a note for Docker users to remove it. For the web service environment, I'm setting up the PostgreSQL connection string to point at the postgres service with configurable credentials, and the public origin defaults to localhost for development but gets overridden in production via environment variables.
+
+I'm also passing through OpenTelemetry configuration variables and setting restart policies to unless-stopped for the core services, then configuring service dependencies with health checks so containers wait for postgres to be ready before starting.
+
+Now I'll write out the compose file without the version key since that's no longer needed in modern Compose.
+
+Show more
+Done
+Now the compose file with the always/dev/production service topology.
+
+
+Created 2 files
+Created 2 files
+
+Create compose.yaml: postgres+web always, caddy (dev), cloudflared (production)
+I'm setting up the Caddyfile for the dev environment to terminate TLS at localhost:8443 using an internal CA, then reverse proxy to the web service on port 8080 with proper forwarding headers that Caddy handles automatically.
+
+Writing Caddyfile config...
+
+
+Create Caddyfile: dev TLS termination at localhost:8443, reverse proxy to web:8080
+The run.sh script checks for prerequisites like dotnet and container tools, then starts a Postgres container with Caddy for the dev environment, but there's a networking issue where Caddy running in the compose network tries to proxy to the web app on the host, which won't work since they're not on the same network.
+
+Looking at the documentation more carefully, I think the intended design is simpler: run.sh starts only Postgres in a container and runs the web app directly on the host via dotnet watch, which handles HTTPS with the dev certificate on localhost:8443. The "[+caddy]" notation suggests Caddy is optional and only needed for the full containerized setup, not for the dev entry point.
+
+The catch is that Postgres needs its port exposed to the host so the host-run web app can connect. The current compose.yaml doesn't publish Postgres's port, so I need to either add a port mapping there or have run.sh override it when starting the container.
+
+The cleanest approach is to add a loopback-only port mapping directly to the Postgres service in compose.yaml — 127.0.0.1:5432:5432 — so it's available for host development without exposing it beyond localhost. Then run.sh can start just the Postgres container and set the connection string to point to localhost.
+
+Writing the run.sh script... Writing shell script detection...
+
+I'll also make sure to set execute permissions on the shell scripts once they're created, and then add the loopback port configuration to the PostgreSQL service in the compose file.
+
+Show more
+Done
+run.sh needs postgres reachable from a host-run dotnet watch, so let me publish postgres on loopback for dev before writing it.
+
+
+Edited a file, created a file
+Edited a file, created a file
+
+Publish postgres on loopback so host-dev (run.sh + dotnet watch) can connect
+compose.yaml
++6
+-3
+
+Create run.sh dev entry point: start postgres, export dev env, dotnet watch
+Now I'm working through the backup and restore scripts. The backup script uses pg_dump in custom format to create timestamped backup files in a designated directory, with automatic pruning to maintain a retention limit. It can run either via podman exec against the postgres container or directly against the database, and gets scheduled through a systemd timer or host cron job.
+
+For robustness, I'll have the script detect the container engine (podman or docker) and the running postgres service, then execute pg_dump inside the container to ensure version compatibility. The script will accept environment variables for the backup directory and retention count, with sensible defaults, and I should also remind users to back up the data-protection keys volume separately.
+
+Writing the backup and restore scripts... Configuring the tunnel target to use an environment variable that defaults to the containerized web port, with documentation that the stack needs to be running beforehand. After cloudflared starts, it outputs the public URL that needs to be configured as the restaurant's public identifier.
+
+For the quick tunnel script itself, I'll check if cloudflared is available on the host and use it directly; if not, I'll run it through the container engine with host networking to avoid needing TLS verification.
+
+Show more
+Done
+Now the operational scripts (backup, restore, quick tunnel).
+
+
+Created 3 files
+Created 3 files
+
+Create scripts/backup.sh: pg_dump -Fc with retention pruning (§15)
+
+Create scripts/restore.sh: stop web, pg_restore --clean --if-exists, start web (§15)
+
+Create scripts/quick_tunnel.sh: demo-only trycloudflare tunnel with the PSL/passkey warning (§14.3)
+Now I'm creating the .env.example file with all environment variables listed alongside development defaults and explanatory comments, making sure to flag which ones are required for production like the database password, restaurant origin URL, and Cloudflare tunnel token, while keeping any sensitive credentials out of the example entirely.
+
+Done
+Now the .env.example and README.md, then I'll make the scripts executable.
+
+
+Created 2 files
+Created 2 files
+Let me make the shell scripts executable and harden the web-test project so ASP.NET Core config types resolve regardless of framework-reference transitivity.
+
+
+Make entry scripts executable
+Make entry scripts executable
+
+Make entry scripts executable
+Done
+please continue
+
+
+Investigated framework reference propagation and resolved test project dependency issue
+Investigated framework reference propagation and resolved test project dependency issue
+I'm picking back up on Milestone 1 of the MyRestaurant project and need to verify the current state of things. First, I should check whether the FrameworkReference edit to WebApplication.Tests.csproj was successfully applied, then examine the work directory to see where we stand.
+
+
+Verify the FrameworkReference edit landed in WebApplication.Tests.csproj
+I'm realizing the FrameworkReference to Microsoft.AspNetCore.App doesn't actually propagate transitively when a Web SDK project is referenced from a non-Web SDK test project—this is a known limitation in .NET that I need to account for. won't automatically get the shared framework. The real issue is that if a test project references a web project and needs to directly use ASP.NET Core types—like IConfiguration, ConfigurationBuilder, or AddInMemoryCollection—it needs its own FrameworkReference to Microsoft.AspNetCore.App. These utilities are part of the Microsoft.Extensions.Configuration.* packages, which are included in the ASP.NET Core shared framework, so the test project can't rely solely on transitive references. Framework references don't propagate transitively through project references the way package references do, so the test project would need its own explicit <FrameworkReference Include="Microsoft.AspNetCore.App" /> to access the necessary types like ConfigurationBuilder and IConfiguration. you have a library that uses ASP.NET Core APIs, you add <FrameworkReference Include="Microsoft.AspNetCore.App" />. If another project references that library, does it need its own FrameworkReference?
+
+The answer per Microsoft docs: For a project that references a project/package that itself references the Microsoft.AspNetCore.App framework, the framework reference IS transitively applied. This is because framework references flow like other MSBuild items.
+
+Hmm, but actually I've hit this exact issue before in practice: a test project referencing a web project could not find WebApplicationFactory or certain types without adding its own framework reference. But WebApplicationFactory is in Microsoft.AspNetCore.Mvc.Testing package, that's different.
+
+Now I'm checking what RestaurantOptionsTests actually needs — it's using configuration APIs like ConfigurationBuilder, AddInMemoryCollection, and IConfiguration. These come from different assemblies in the Microsoft.Extensions.Configuration family, so I need to figure out which packages provide what. Extensions.Configuration, Microsoft.Extensions.Configuration.Abstractions, and Microsoft.Extensions.Configuration.Binderare all bundled in theMicrosoft.AspNetCore.Appshared framework but also available as individual NuGet packages. The test project needs to referenceIConfigurationfrom the web project'sRestaurantOptions.FromConfiguration` method, so it'll need the appropriate configuration abstractions to compile.
+
+If the framework reference flows transitively through the web project dependency, the test automatically gets all the shared framework assemblies. If not, the build fails. Adding an explicit <FrameworkReference Include="Microsoft.AspNetCore.App" /> to the test project is the safest approach—it's idempotent and prevents any potential build breaks regardless of how the transitive references resolve.
+
+The summary noted this change was in progress, so I need to verify it was actually applied to the csproj. It wasn't, so I'll add it now. I should also review the existing comment about transitive framework reference propagation—the behavior here is that FrameworkReference metadata does propagate through project references, but I want to make sure I'm handling this correctly before finalizing the comment. The test project targets net10.0, same as the web project, so they're compatible. There's a subtle edge case where transitive framework references work for compilation but might not always flow through in all scenarios, especially for published libraries. Given the uncertainty and that this is flagged as a potential build-break, the safest approach is to add an explicit FrameworkReference to the test project — it's harmless if redundant but ensures the build succeeds. Let me make that change now.
+
+Show less
+Done
+The FrameworkReference edit didn't land. Let me add it — referencing a Web SDK project doesn't reliably flow the ASP.NET Core shared framework to a plain-SDK test project, and the config-binding tests need it.
+
+
+Verified structural completeness and file organization
+Verified structural completeness and file organization
+
+Add explicit FrameworkReference to Microsoft.AspNetCore.App so IConfiguration/ConfigurationBuilder/AddInMemoryCollection resolve, and correct the comment
+MyRestaurant.WebApplication.Tests.csproj
++25
+-19
+Let me run through a final check to make sure everything's accounted for in the file structure.
+
+Done
+Now the final verification pass. Let me confirm the full tree is present.
+
+
+Cataloging project architecture and file inventory
+Cataloging project architecture and file inventory
+
+List all files in the work tree to confirm completeness
+I'm scanning through the project structure now. The root contains twelve configuration and setup files, there are three scripts, the Domain layer has eighteen C# files plus a project file, and DataAccess includes four C# files, a project file, and a migration.
+
+The WebApplication project has multiple files, and there are four fully populated test projects. Now I'm running a verification pass—checking the shell scripts with bash syntax validation, validating any JSON files, and doing a sanity check on the remaining files.
+
+Done
+Complete tree. Now the verification pass — shell script syntax first.
+
+
+Validated scripts and pivoted toward JSON verification
+Validated scripts and pivoted toward JSON verification
+
+Syntax-check all shell scripts and confirm executable bits
+The shell scripts all check out syntactically and are ready to run. Now I'm moving on to validate the JSON files.
+
+Done
+All scripts valid. Now JSON validation.
+
+
+Validated configuration files and XML structures
+Validated configuration files and XML structures
+
+Validate all JSON config files parse
+Now I'm validating the YAML structure in compose.yaml and checking that the XML files like .slnx, .csproj, and Directory.*.props are well-formed.
+
+Done
+JSON all valid. Now YAML and XML well-formedness.
+
+
+Audited code structure and validation protocols
+Audited code structure and validation protocols
+
+Validate compose YAML and all XML project/solution files
+Let me do a quick sanity check on the C# code by looking for common issues like balanced braces, namespace consistency, and verifying that the .slnx file references match actual project files. I should also confirm the SQL migration is properly structured.
+
+Done
+All structural files valid. Let me verify the .slnx project paths resolve to real files.
+
+
+Validated code integrity and database migration completeness
+Validated code integrity and database migration completeness
+
+Confirm every path referenced in .slnx exists on disk
+Now I'm doing a quick sanity check on the C# files to make sure they all have proper namespace declarations, the braces are balanced, and there aren't any stray TODO markers or placeholder code left behind. I should also verify that the migration SQL is complete with the citext extension, all the table definitions, and the views.
+
+Done
+Solution references all resolve. Now a C# sanity sweep — namespaces, brace balance, and any stray markers.
+
+
+Investigated code structure and pinpointed potential build issue sources
+Investigated code structure and pinpointed potential build issue sources
+
+Check every C# file has a namespace and balanced braces
+Looking at the Program.cs structure, it appears to be using top-level statements that return an int rather than a traditional namespace with a Main method, which explains why there's no explicit namespace declaration and why the code has return statements at the top level.
+
+Now I need to verify the actual implementation by checking the migration SQL file and then examining Program.cs and SchemaMigrationRunner.cs more closely, since those are the most likely places where build issues could occur — particularly around the DbUp IUpgradeLog API usage and the OpenTelemetry configuration.
+
+Done
+Program.cs uses top-level statements (returns int) — no namespace expected there. Let me verify the migration SQL is intact and eyeball the two files previously flagged as likely build-break sites.
+
+
+Confirm migration SQL has citext + 22 tables + 5 views
+Confirm migration SQL has citext + 22 tables + 5 views
+
+Confirm migration SQL has citext + 22 tables + 5 views
+The database schema checks out with all 22 tables, 5 views, and the citext extension in place. Now I need to examine SchemaMigrationRunner.cs and Program.cs to identify potential build issues, particularly around DbUp's IUpgradeLog API integration.
+
+Done
+SQL matches spec (citext + 22 tables + 5 views). Let me eyeball the two highest-risk files — SchemaMigrationRunner (DbUp logging API) and Program.cs (OTel using-set).
+
+
+Verifying exception handling inheritance mechanisms
+Verifying exception handling inheritance mechanisms
+
+Read SchemaMigrationRunner.cs
+
+Review DbUp usage and IUpgradeLog implementation for API correctness
+The DbUp API calls are all correct—the database creation, deployment to PostgreSQL, embedded script loading with filtering, transaction handling per script, and console logging are all using the right methods and overloads.
+
+For the error handling, NpgsqlException does have IsTransient inherited from DbException (available in .NET 6+), so the transient retry logic is sound. The fallback catch for all other NpgsqlException cases ensures comprehensive coverage.
+
+The implementation looks well-designed and defensive, especially with LogToConsole() sidestepping any IUpgradeLog API compatibility issues. Now checking Program.cs to see how the OpenTelemetry setup and overall structure fit together.
+
+Show less
+Done
+SchemaMigrationRunner uses only stable DbUp surface (LogToConsole() sidesteps the IUpgradeLog drift). Now Program.cs.
+
+
+Validated API dependencies and configuration integrity
+Validated API dependencies and configuration integrity
+
+Review entry point: OTel using-set, config validation, migration-before-HTTP ordering, health endpoints
+I'm reviewing the using statements in Program.cs to verify the API dependencies are correct, checking that System.Data.Common is imported for database connections, the data protection and HTTP forwarding middleware are available, and the OpenTelemetry packages are included.
+
+Now I'm validating the specific API calls throughout the configuration — confirming that CreateBuilder works as expected, that AddOpenTelemetry returns the right builder type with methods like ConfigureResource and WithTracing, and that the instrumentation extensions like AddAspNetCoreInstrumentation and AddNpgsql are available from their respective packages. Registering the singleton services... CreateScope() returns IServiceScope, which should be available through the web SDK's implicit usings that include Microsoft.Extensions.DependencyInjection. I'm verifying that all the key types and methods are covered by the implicit usings—dependency injection utilities, logging interfaces, HTTP result types, routing extensions, and configuration access all check out. Now I'm looking at how the health check endpoint is being set up with the /healthz/live route. I need to verify that the NpgsqlDatabaseConnectionFactory implements the OpenConnectionAsync method correctly, returning a Task<DbConnection> or ValueTask<DbConnection> so the await using pattern works as expected. The health endpoint's async lambda doesn't affect the top-level Main signature since it's nested, so the entry point stays synchronous and returns int as expected. Now I need to check the connection factory interface to confirm it returns an awaitable DbConnection.
+
+Show less
+Done
+Program.cs is coherent. Let me confirm the one cross-file contract it depends on — IDatabaseConnectionFactory.OpenConnectionAsync returning an awaitable DbConnection.
+
+
+Verified async method signatures and audited code for anomalies
+Verified async method signatures and audited code for anomalies
+
+Verify connection factory method signature matches Program.cs usage
+I'm verifying that the connection factory's async method signature matches what's being called in Program.cs — the OpenConnectionAsync method returns a ValueTask<DbConnection> that properly awaits to yield the connection object.
+
+Now I want to do a final sweep across the source files for any obvious issues like leftover NotImplementedException calls, stray merge markers, or placeholder text that shouldn't be there.
+
+Done
+The connection-factory contract matches Program.cs exactly. Let me do a final scan for stray placeholders, merge markers, or accidental secrets.
+
+
+Validated codebase integrity and orchestrated delivery packaging
+Validated codebase integrity and orchestrated delivery packaging
+
+Scan for merge markers, NotImplementedException, leaked PAT, and stray TODOs
+I've completed the verification pass and everything checks out—no merge conflicts, no unimplemented code, no exposed secrets, and all files are syntactically valid across JSON, XML, YAML, shell scripts, SQL, and C#. The highest-risk files like SchemaMigrationRunner have been validated as well.
+
+Now I'm packaging everything for delivery by copying the myrestaurant directory to outputs, creating a tarball with the proper directory structure for clean extraction, and preparing the key files for browsing.
+
+Done
+Verification complete — everything clean. Packaging to outputs now.
+
+
+Investigated file permission loss during archive creation
+Investigated file permission loss during archive creation
+
+Copy tree to outputs, preserve exec bits, create tarball, verify contents
+The executable permissions didn't carry over to the tarball—the files show as regular read-write instead of executable. I ran chmod +x on the copied files before archiving, but the tar listing reveals they're still non-executable, so either the chmod didn't actually apply or something went wrong during the tar process.
+
+Done
+Exec bits didn't make it into the archive. Let me fix and re-tar.
+
+
+Diagnosed filesystem limitation and pivoted to alternative archival strategy
+Diagnosed filesystem limitation and pivoted to alternative archival strategy
+
+Force 755 on scripts on disk and rebuild tarball, verifying exec bits land in the archive
+The chmod command isn't persisting because the /mnt/user-data/outputs filesystem doesn't support execute permissions — it's likely a mount with forced file modes, similar to FUSE or overlay mounts. This is a filesystem limitation I can't work around with chmod, though the source files at /home/claude/myrestaurant do have their execute bits set from the previous session.
+
+I'll verify the source directory still has the correct permissions and create the tarball from there instead, which will preserve the 0755 modes in the archive itself even if the extracted files in outputs don't display them correctly.
+
+Done
+The outputs mount doesn't honor the exec bit. The source tree at /home/claude does — I'll build the archive from there so the archived modes are correct, then drop just the tarball into outputs.
+
+
+Clarifying archive permissions and executable preservation
+Clarifying archive permissions and executable preservation
+
+Rebuild tarball from /home/claude source so 0755 script modes are preserved in the archive
+The tarball preserves the executable permissions on all four shell scripts, so they'll be ready to run when extracted. The browsable copy in outputs won't show those permissions due to filesystem limitations, but the README clarifies that chmod +x isn't necessary since the archive maintains them. Now I'm organizing the deliverables with the tarball first, followed by the README and other files.
+
+Done
+Archive now carries correct 0755 script modes (71 files). Presenting.
+
+
+Orchestrated milestone deliverables and setup documentation
+Orchestrated milestone deliverables and setup documentation
+
+Presented 3 files
+I'm drafting a summary of the M1 milestone deliverables and initial setup steps, keeping the focus on what's being delivered without including sensitive credentials or rehashing the interruption.
+
+Done
+Milestone 1 is built and packaged. Here's what's in the archive.
+
+What M1 delivers
+
+The full solution skeleton driven by MyRestaurant.slnx (XML solution — no .sln, and it won't be regenerated), with three source projects and four test projects, all on .NET 10 with centrally-pinned latest-stable versions.
+
+MyRestaurant.Domain is pure BCL-only logic with no I/O: the join-token service (HMAC-SHA256 rotating table tokens with previous-window acceptance), Argon2id PHC string parsing with a rehash policy, the post-authentication obligations pipeline (password-change then TOTP enrollment), UUIDv7 identifiers, pairing/recovery codes, and the append-only order model — events, the fold-into-projection, and the full §6.5 mutation validator.
+
+MyRestaurant.DataAccess is Dapper + Npgsql only (no EF), with the complete initial migration (citext + 22 tables + 5 views, verbatim from §8.2/§8.3) embedded and run by a SchemaMigrationRunner that does bounded boot-retry on connection failures but fails fast on a bad script.
+
+MyRestaurant.WebApplication is the Blazor Server shell: environment-only config binding with fail-fast validation (the Argon2 floor guard and §13 lower bounds all reject before a host exists), OpenTelemetry wired but exporting only when an OTLP endpoint is set, migrations applied before HTTP binds, and /healthz/live + /healthz/ready probes.
+
+Tests cover the domain exhaustively (every validator rule, both outcomes; independently re-verified crypto vectors), a Testcontainers-backed migration test that self-skips when no container engine is present, config-validation tests, and 15 skipped Playwright placeholders — one per §16.3 end-to-end scenario — to be implemented at M6.
+
+Infrastructure is complete: Containerfile, rootless-Podman-first compose.yaml (with dev/production profiles for Caddy and the Cloudflare tunnel), Caddyfile, run.sh, backup/restore/quick-tunnel scripts, and .env.example. README and the roadmap were updated alongside the code.
+
+First build on your machine
+
+The environment here has no .NET SDK and NuGet is blocked, so this ships as an unbuilt scaffold (matching the project's documented hand-off). On your machine:
+
+tar xzf myrestaurant-m1.tar.gz
+cd myrestaurant
+dotnet restore
+dotnet build
+dotnet test
+./run.sh            # host-dev: starts Postgres in a container, runs the app with dotnet watch
+# or: ./run.sh --containers-only   # everything in containers behind Caddy on https://localhost:8443
+Two things worth flagging for the first build, both documented in the README's known-caveats section: SchemaMigrationRunner deliberately uses DbUp's built-in LogToConsole() rather than a custom IUpgradeLog, since that interface shifts between DbUp versions — if a build break surfaces anywhere, that's the most likely spot. And the extracted scripts may not show the executable bit (the output filesystem here strips it), but the tarball itself preserves 0755, so they'll be executable after extraction; bash run.sh works either way.
+
+
+Myrestaurant m1.tar
+GZ 
+
+Readme
+Document · MD 
+
+Myrestaurant
+SLNX 
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+12
+78
+100
