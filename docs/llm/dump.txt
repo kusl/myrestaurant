@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-18T01:18:32-04:00
+  Generated at   : 2026-07-18T01:56:43-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,10 +17,10 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 0e036c285b31666d296fb05478d4a149f40dae14
-  Commit (short) : 0e036c2
-  Commit date    : 2026-07-18 01:18:26 -0400
-  Commit message : add terminal output
+  Commit (full)  : 8944d54380c4071ea9bdac4d49fc004a69d55aef
+  Commit (short) : 8944d54
+  Commit date    : 2026-07-18 01:56:08 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
   Files included : 90
   Excluded path  : docs/llm/
@@ -1033,15 +1033,15 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
   File name:             Directory.Packages.props
   Relative path:         Directory.Packages.props
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/Directory.Packages.props
-  Size:                  2.0 KiB (2022 bytes)
-  Last modified:         2026-07-17 19:58:27.000000000 -0400
+  Size:                  2.1 KiB (2175 bytes)
+  Last modified:         2026-07-18 01:54:26.642701129 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 21258237
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               9189e3816d1973aacce205b2bfc8cc092de19011c05246e5607eb7445364fe69
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               fabcce466f40a2188b6e7c59a558c45007fa3139e00f2cfe9e5227e0b5528aa5
+  Last git commit:       8944d54 2026-07-18 01:56:08 -0400 add claude response
 
 --- CONTENT ---
 <Project>
@@ -1063,7 +1063,9 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
   <ItemGroup Label="Data access (MyRestaurant.DataAccess)">
     <PackageVersion Include="Dapper" Version="2.1.79" />
     <PackageVersion Include="Npgsql" Version="10.0.3" />
-    <PackageVersion Include="dbup-postgresql" Version="6.1.1" />
+    <!-- 6.1.1 was never published; NuGet resolves 6.1.2 as the nearest match, so pin it
+         exactly to keep restore warning-free (was NU1603). -->
+    <PackageVersion Include="dbup-postgresql" Version="6.1.2" />
   </ItemGroup>
 
   <ItemGroup Label="Observability + database wiring (MyRestaurant.WebApplication)">
@@ -1986,15 +1988,15 @@ The code in this milestone was written carefully but has not been compiled in th
   File name:             compose.yaml
   Relative path:         compose.yaml
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/compose.yaml
-  Size:                  3.9 KiB (3991 bytes)
-  Last modified:         2026-07-17 21:33:54.000000000 -0400
+  Size:                  4.3 KiB (4440 bytes)
+  Last modified:         2026-07-18 01:54:45.515230983 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 21258240
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               c4a241d6cdcaa3f1ea8004bac13e663148974a2c1ccef801ced3f30288fe0973
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               fcf3593c8de465c76d7afa573482537bb510be47c2bdc86bbadfd4a9a4904c8c
+  Last git commit:       8944d54 2026-07-18 01:56:08 -0400 add claude response
 
 --- CONTENT ---
 # Canonical stack (TECHNICAL_SPECIFICATION §14.1), rootless Podman-first.
@@ -2088,13 +2090,19 @@ services:
       - web
     command: ["tunnel", "--no-autoupdate", "run"]
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN for the production profile}
+      # Empty default (deliberately NOT `${...:?}`): podman-compose — the canonical engine
+      # (ADR-0004) — interpolates EVERY service in this file at parse time regardless of the active
+      # profile, so a `:?` guard here aborts even `podman-compose up postgres` (what run.sh does in
+      # dev). cloudflared still fails fast on an empty token — just at container start rather than at
+      # compose-parse. PRODUCTION: set CLOUDFLARE_TUNNEL_TOKEN in .env before `--profile production`.
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
 
 volumes:
   postgres-data:
   dataprotection-keys:
   caddy-data:
   caddy-config:
+  
 
 ################################################################################
 # FILE: docs/BUILD_PROGRESS.md
@@ -4202,20 +4210,20 @@ Use **DbUp** (MIT) with plain `.sql` scripts:
   Relative path:         global.json
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/global.json
   Size:                  79 B (79 bytes)
-  Last modified:         2026-07-18 01:07:44.296651851 -0400
+  Last modified:         2026-07-18 01:54:18.834283318 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 21258271
   Hard links:            1
   MIME type:             application/json
-  SHA-256:               bf2075c2dc7a33aa06f6895e06c2c6daf22c7be0face1c6a8aa0d6624efa9358
-  Last git commit:       4707d48 2026-07-18 01:09:24 -0400 reduce requirement in dotnet
+  SHA-256:               6e0590c24e13f9792d37fa5ae42438f3e8775bc5a69d5926887c48aa8cab639a
+  Last git commit:       8944d54 2026-07-18 01:56:08 -0400 add claude response
 
 --- CONTENT ---
 {
   "sdk": {
-    "version": "10.0.0",
-    "rollForward": "latestFeature"
+    "version": "10.0.100",
+    "rollForward": "latestMinor"
   }
 }
 
@@ -6125,17 +6133,19 @@ internal sealed class LineState
   File name:             Argon2PhcString.cs
   Relative path:         src/MyRestaurant.Domain/Security/Argon2PhcString.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.Domain/Security/Argon2PhcString.cs
-  Size:                  4.8 KiB (4936 bytes)
-  Last modified:         2026-07-17 20:00:32.000000000 -0400
+  Size:                  4.9 KiB (4996 bytes)
+  Last modified:         2026-07-18 01:55:32.299863150 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 21258216
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               4240baa265a04c464961f884a2ae1dde6a1e5090c1bf7d096c0736de7453cb0a
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               42a0afa1ebcc7522664c0ac84e35a4e7f705f90d505707c82a6496ae543e2486
+  Last git commit:       8944d54 2026-07-18 01:56:08 -0400 add claude response
 
 --- CONTENT ---
+using System.Diagnostics.CodeAnalysis;
+
 namespace MyRestaurant.Domain.Security;
 
 /// <summary>
@@ -6171,7 +6181,7 @@ public static class Argon2PhcString
         return parameters;
     }
 
-    public static bool TryParse(string phcString, out Argon2Parameters? parameters)
+    public static bool TryParse(string phcString, [NotNullWhen(true)] out Argon2Parameters? parameters)
     {
         parameters = null;
         if (string.IsNullOrEmpty(phcString))
@@ -7393,15 +7403,15 @@ public sealed class RestaurantMetrics : IDisposable
   File name:             Program.cs
   Relative path:         src/MyRestaurant.WebApplication/Program.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Program.cs
-  Size:                  6.3 KiB (6430 bytes)
-  Last modified:         2026-07-17 21:16:07.000000000 -0400
+  Size:                  6.3 KiB (6492 bytes)
+  Last modified:         2026-07-18 01:55:03.859707846 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 21258182
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               cb5d2b9b445a39d0592433627a2973e21bcfe88db600f0488365a505ddf167a7
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               388c298acf2dd64a5f077471ba54303dcf0113d929be2c9f11c17abe05fc810e
+  Last git commit:       8944d54 2026-07-18 01:56:08 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -7415,6 +7425,7 @@ using MyRestaurant.WebApplication.Components;
 using MyRestaurant.WebApplication.Configuration;
 using MyRestaurant.WebApplication.LiveUpdates;
 using MyRestaurant.WebApplication.Observability;
+using Npgsql;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -7463,6 +7474,7 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics =>
     {
         metrics.AddAspNetCoreInstrumentation();
+        metrics.AddNpgsqlInstrumentation();
         metrics.AddMeter(RestaurantMetrics.MeterName);
         if (otlpExporterConfigured)
         {
@@ -7503,13 +7515,13 @@ builder.Services.AddDataProtection()
     .SetApplicationName("myrestaurant");
 
 // The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
-// so honour its X-Forwarded-* headers. KnownNetworks/KnownProxies are cleared deliberately — safe
+// so honour its X-Forwarded-* headers. KnownIPNetworks/KnownProxies are cleared deliberately — safe
 // ONLY because the origin is never exposed directly (BUILD_PROGRESS: forwarded-headers trust).
 builder.Services.Configure<ForwardedHeadersOptions>(forwarded =>
 {
     forwarded.ForwardedHeaders =
         ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
-    forwarded.KnownNetworks.Clear();
+    forwarded.KnownIPNetworks.Clear();
     forwarded.KnownProxies.Clear();
 });
 
@@ -7902,15 +7914,15 @@ a:focus-visible,
   File name:             PostgreSqlFixture.cs
   Relative path:         tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs
-  Size:                  1.6 KiB (1598 bytes)
-  Last modified:         2026-07-17 21:30:10.000000000 -0400
+  Size:                  2.0 KiB (2068 bytes)
+  Last modified:         2026-07-18 01:55:52.227610143 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 21258266
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               2d6c409a0ebcf98318cb644d64cf6a28e2ed8ef0caa576a66eddfb9e39f61fc2
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               9dfec76563569fe254cade10a0402640c4db361c7cfc26393643366ec3ebd7ed
+  Last git commit:       8944d54 2026-07-18 01:56:08 -0400 add claude response
 
 --- CONTENT ---
 using Testcontainers.PostgreSql;
@@ -7926,12 +7938,7 @@ namespace MyRestaurant.DataAccess.Tests;
 /// </summary>
 public sealed class PostgreSqlFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:17-alpine")
-        .WithDatabase("myrestaurant")
-        .WithUsername("myrestaurant")
-        .WithPassword("myrestaurant")
-        .Build();
+    private PostgreSqlContainer? _container;
 
     /// <summary>The Npgsql connection string once the container is up; otherwise <c>null</c>.</summary>
     public string? ConnectionString { get; private set; }
@@ -7943,6 +7950,17 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
     {
         try
         {
+            // Build here rather than in a field initializer: PostgreSqlBuilder.Build() validates
+            // container-engine connectivity eagerly, so constructing the container in the field
+            // initializer (i.e. the fixture ctor) would throw a DockerUnavailableException BEFORE
+            // this try/catch — reporting every test as a "class fixture threw in its constructor"
+            // failure instead of the intended skip.
+            _container = new PostgreSqlBuilder("postgres:17-alpine")
+                .WithDatabase("myrestaurant")
+                .WithUsername("myrestaurant")
+                .WithPassword("myrestaurant")
+                .Build();
+
             await _container.StartAsync();
             ConnectionString = _container.GetConnectionString();
         }
@@ -7954,7 +7972,7 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        if (ConnectionString is not null)
+        if (_container is not null)
         {
             await _container.DisposeAsync();
         }
@@ -7969,15 +7987,15 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
   File name:             SchemaMigrationRunnerTests.cs
   Relative path:         tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs
-  Size:                  3.6 KiB (3637 bytes)
-  Last modified:         2026-07-17 21:30:35.000000000 -0400
+  Size:                  3.9 KiB (3943 bytes)
+  Last modified:         2026-07-18 01:55:59.364433214 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 21258265
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               5947568b57de31aaa40507bd0cc21d326918dcb2d464542d6a903f31cebd4182
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               c96aa9f61ce5ed44919d9ce337eef3d1e86ddaa876c5820f50528673dedc3cd4
+  Last git commit:       8944d54 2026-07-18 01:56:08 -0400 add claude response
 
 --- CONTENT ---
 using Dapper;
@@ -8042,10 +8060,12 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
         BuildRunner(connectionString).Run();
 
         await using NpgsqlConnection connection = new(connectionString);
-        await connection.OpenAsync();
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
 
         bool citextInstalled = await connection.ExecuteScalarAsync<bool>(
-            "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'citext')");
+            new CommandDefinition(
+                "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'citext')",
+                cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.True(citextInstalled);
     }
@@ -8060,11 +8080,13 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
         BuildRunner(connectionString).Run();
 
         await using NpgsqlConnection connection = new(connectionString);
-        await connection.OpenAsync();
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
 
         bool exists = await connection.ExecuteScalarAsync<bool>(
-            "SELECT to_regclass(@Relation) IS NOT NULL",
-            new { Relation = relation });
+            new CommandDefinition(
+                "SELECT to_regclass(@Relation) IS NOT NULL",
+                new { Relation = relation },
+                cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.True(exists, $"Expected relation '{relation}' to exist after migration.");
     }
@@ -9985,9 +10007,9 @@ public sealed class RestaurantOptionsTests
 # DUMP SUMMARY
 ################################################################################
   Files dumped   : 90
-  Total size     : 395.4 KiB (404883 bytes)
+  Total size     : 396.9 KiB (406383 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-18T01:18:35-04:00
+  Completed at   : 2026-07-18T01:56:46-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
