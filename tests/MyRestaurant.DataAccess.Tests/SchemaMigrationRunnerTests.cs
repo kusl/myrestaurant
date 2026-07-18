@@ -60,10 +60,12 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
         BuildRunner(connectionString).Run();
 
         await using NpgsqlConnection connection = new(connectionString);
-        await connection.OpenAsync();
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
 
         bool citextInstalled = await connection.ExecuteScalarAsync<bool>(
-            "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'citext')");
+            new CommandDefinition(
+                "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'citext')",
+                cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.True(citextInstalled);
     }
@@ -78,11 +80,13 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
         BuildRunner(connectionString).Run();
 
         await using NpgsqlConnection connection = new(connectionString);
-        await connection.OpenAsync();
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
 
         bool exists = await connection.ExecuteScalarAsync<bool>(
-            "SELECT to_regclass(@Relation) IS NOT NULL",
-            new { Relation = relation });
+            new CommandDefinition(
+                "SELECT to_regclass(@Relation) IS NOT NULL",
+                new { Relation = relation },
+                cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.True(exists, $"Expected relation '{relation}' to exist after migration.");
     }

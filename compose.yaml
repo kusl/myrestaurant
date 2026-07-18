@@ -89,10 +89,16 @@ services:
       - web
     command: ["tunnel", "--no-autoupdate", "run"]
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN for the production profile}
+      # Empty default (deliberately NOT `${...:?}`): podman-compose — the canonical engine
+      # (ADR-0004) — interpolates EVERY service in this file at parse time regardless of the active
+      # profile, so a `:?` guard here aborts even `podman-compose up postgres` (what run.sh does in
+      # dev). cloudflared still fails fast on an empty token — just at container start rather than at
+      # compose-parse. PRODUCTION: set CLOUDFLARE_TUNNEL_TOKEN in .env before `--profile production`.
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
 
 volumes:
   postgres-data:
   dataprotection-keys:
   caddy-data:
   caddy-config:
+  

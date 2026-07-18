@@ -18,7 +18,7 @@ and any other defects or missed opportunities so far
 
 
 /
-Claude is responding
+Claude finished the response
 lets stay with M1 for a bit to clean it up 
 I have uploaded the latest dump.txt 
 as well as the latest claude-terminal.txt 
@@ -306,7 +306,752 @@ One doc note (BUILD_PROGRESS.md line 1965) literally predicted the AddNpgsql bre
 Diagnosed multiple compiler errors, test failures, and environment configuration issues comprehensively
 Diagnosed multiple compiler errors, test failures, and environment configuration issues comprehensively
 
+Enumerate every distinct diagnostic code and check the tail for run.sh outcome
+I'm seeing three distinct warning codes across the diagnostic results. NU1603 shows up twenty times during restore and build phases in multiple projects and gets resolved by upgrading to dbup-postgresql 6.1.2. The xUnit1051 warning appears a couple times and is fixed by using TestContext.Current.CancellationToken. ASPDEPR005 occurs twice because the build ran multiple times, and it's addressed by switching to KnownIPN.
+
+There are also several compiler errors: CS1061 from the missing AddNpgsql using statement, CS8603 which needs the NotNullWhen attribute, and CS0618 from an obsolete PostgreSqlBuilder overload. All the [FAIL] test results stem from Docker being unavailable during fixture construction, which will be resolved by deferring the build to InitializeAsync so those tests skip instead. The final build failure reporting 14 errors is actually the test run summary combining the Docker-related test failures with the AddNpgsql compilation error. So DataAccess.Tests ran and failed on Docker even though WebApplication didn't compile — that's because the test projects don't depend on WebApplication except for WebApplication.Tests itself. Once I fix the AddNpgsql issue, WebApplication will compile, WebApplication.Tests will build and run, and DataAccess.Tests will skip as expected.
+
+The run.sh failure is a separate issue: the compose file is trying to use a CLOUDFLARE_TUNNEL_TOKEN environment variable that isn't set, causing podman compose up to fail. I need to check the run.sh script and compose.yaml to see how this variable is being referenced and whether it needs to be optional or provided differently.
+
+Actually, looking at the error message more carefully — it says the variable is required for the production profile, but podman-compose has a known quirk where it interpolates all variables in the file during parsing regardless of which profiles are active. So even though CLOUDFLARE_TUNNEL_TOKEN is scoped to the production profile, podman-compose is still trying to resolve it at parse time.
+
+I need to check the actual run.sh, compose.yaml, and .env.example files to see if this is something I should fix or if it's expected behavior — maybe the user needs to provide the token in their environment or run.sh is only meant for production.
+
+Show less
+Done
+The build/test diagnostics are fully covered by my six files. But the tail shows bash run.sh also failed — podman-compose errors on CLOUDFLARE_TUNNEL_TOKEN even though it's a production-only variable. Let me examine run.sh, compose.yaml, and .env.example to see if that's an in-scope defect.
+
+
+Diagnosed podman-compose parsing incompatibility and architected pragmatic fix
+Diagnosed podman-compose parsing incompatibility and architected pragmatic fix
+
+Extract run.sh, compose.yaml, .env.example to diagnose the run.sh failure
+So the issue is that when run.sh executes podman-compose up -d postgres, it parses the entire compose.yaml file, including the cloudflared service which requires the CLOUDFLARE_TUNNEL_TOKEN environment variable to be set—and since that variable isn't defined, the compose file fails to parse.
+
+The root cause is that podman-compose eagerly interpolates all variables during the initial file parsing phase, unlike docker-compose which only interpolates variables for services in active profiles. This means even though we're only starting postgres, podman-compose still tries to resolve the token requirement for cloudflared and crashes before it even gets to the service selection step.
+
+The fix involves trading off the fail-fast safety of the :? syntax for a permissive default like :- so parsing succeeds, accepting that production would need runtime guards instead of parse-time validation. Since the project is committed to podman-compose, this incompatibility with strict variable requirements is unavoidable. evel will fail immediately at runtime with a clear error message, so it's not as bad as breaking the compose file itself. The key insight is that podman-compose does support ${VAR:-default} syntax with empty defaults, so I can use that instead of :? to let the file parse cleanly in dev mode while still catching the missing token at runtime when cloudflared actually tries to start. Moving the fail-fast check into the shell workflow for production would be scope creep since run.sh doesn't handle that profile. Instead, I could keep the compose default empty and add a comment explaining that cloudflared will refuse to start without a real token, making it the responsibility of whoever runs the production profile. Limiting the service argument in run.sh won't help either since podman-compose parses the entire file regardless of which service is specified.
+
+Going with the empty default and the ${CLOUDFLARE_TUNNEL_TOKEN:-} pattern with an explanatory comment is the pragmatic fix — especially since ADR-0004 declares podman-compose canonical and the ${VAR:?} syntax is incompatible with it. A dev-entrypoint that crashes on the canonical container engine is definitely a defect worth fixing, so this is in scope.
+
+The error about the production tunnel token is spurious for the dev workflow since it's genuinely optional for local development. After fixing compose.yaml, bash run.sh should proceed to set env vars and launch the dotnet watch process, though it'll likely hit other issues like the web app's database migrations.
+
+Actually, let me trace through this more carefully. The traceback shows the failure happens during the compose file parse itself on the first podman-compose up -d postgres invocation, so the fix to remove the optional token requirement should unblock that initial step. The parse error happens when podman-compose tries to read the compose.yaml with the :? syntax, so changing it to :- fixes that. The .env.example already has CLOUDFLARE_TUNNEL_TOKEN marked as optional for production, so that's fine. The --containers-only path should work once the compose syntax is fixed, and I don't think run.sh needs changes for this particular issue. I'll update the comment to clarify that cloudflared itself validates the token, and explain why the :? guard was removed—podman-compose interpolates at parse time, which broke every command including dev. I should present the full compose.yaml file since the user wants complete files, and I need to verify that the https profile exists in launchSettings.json to confirm run.sh's --launch-profile https flag is valid.
+
+Show less
+Done
+Found a real defect in the dev loop: podman-compose interpolates the entire compose file at parse time, so the production-only ${CLOUDFLARE_TUNNEL_TOKEN:?...} fail-fast guard breaks even run.sh's dev path (up -d postgres). Since ADR-0004 makes podman-compose canonical, that :? is incompatible. Let me confirm the launch profile run.sh depends on, then fix compose.yaml.
+
+
+Diagnosed build failures and orchestrated seven comprehensive fixes
+Diagnosed build failures and orchestrated seven comprehensive fixes
+
+Check launchSettings.json for the https profile run.sh uses
+The https profile is properly configured to bind to both HTTPS and HTTP ports, so the launch command is valid. The web app runs migrations on startup and needs postgres accessible at the default localhost connection string, which the compose setup provides by publishing the postgres port. The run.sh flow should work once compose finishes parsing.
+
+The only fix needed is changing the cloudflared service's TUNNEL_TOKEN variable from using :? syntax to :- syntax. I'm updating the compose.yaml with this correction and clarifying the comment to explain that podman-compose interpolates all services at parse time regardless of which profile is active.
+
+Now I'm reviewing whether the user's original command sequence has been fully addressed — they ran export.sh, dotnet info, clean, restore, build, test, and run.sh with timing measurements. Looking back at the output, the "Build succeeded in 0.9s" message at line 57 is actually from dotnet clean, which apparently triggers a restore and build evaluation internally, taking about 1.1 seconds total.
+
+Then dotnet restore runs separately and completes with 4 NU1603 warnings in about 0.975 seconds. The actual dotnet build command fails with an AddNpgsql error, followed by failed test and compose runs. But export.sh itself worked fine — that's not the issue. The real problems are the global.json validation error (which gets fixed), the restore warnings, and the build failure from the missing dependency.
+
+So I've made five key fixes: updating global.json with a valid version and rollForward setting, adding dbup-postgresql 6.1.2 to the package props, configuring Npgsql instrumentation and IP networks in Program.cs, adding the NotNullWhen attribute to the Argon2 class, and refactoring the PostgreSQL test fixture to use lazy initialization and fix the Docker image constructor. There's also a schema migration test file that needs attention.
+
+Now I'm writing the compose.yaml file to add the Cloudflare tunnel token with a default fallback, then I'll do a final review of all seven files before presenting them. I'm also double-checking that the global.json rollForward setting won't accidentally pick up a .NET 11 SDK—latestMinor keeps us within the same major version, so we're safe there. Let me verify the exact rollForward semantics from the Microsoft documentation to make sure I'm not steering the user wrong—this is critical since they're trying to avoid the invalid global.json trap. The docs define each rollForward option: patch uses the specified version or rolls to the latest patch if not found, feature uses the latest patch for the specified feature band or rolls forward to the next one, minor follows similar logic across minor versions, and major continues the pattern at the major level.
+
+For the other options, latestPatch picks the highest patch within the requested feature band, latestFeature gets the highest feature band and patch for the major.minor, latestMinor finds the highest minor, feature band, and patch within the major version, latestMajor takes the absolute highest of everything, and disable requires an exact match. With latestMinor and version 10.0.100 specified, it would select 10.0.109 since that's the highest minor.featureband.patch available in major 10—and importantly, it doesn't require 10.0.100 to actually be installed. The version string format checks out, so the global.json configuration is solid. Now I'm moving on to write the compose.yaml file and do a final review of everything. latestMinor is the right choice here since it aligns with what the user wants—accepting any .NET 10 version, including future minor releases like 10.1.x, while still requiring at least 10.0.100.
+
+Show less
+Done
+run.sh's https profile is valid, so fixing the compose parse is the only thing blocking the dev loop. Let me write the corrected compose.yaml.
+
+
+Verified file integrity and syntax across all configurations
+Verified file integrity and syntax across all configurations
+
+Corrected compose.yaml — replace the production-only :? guard with an empty default so podman-compose can parse the file for dev/postgres commands
+Let me do a final pass through all seven files to verify everything is correct, checking for any syntax errors in the JSON and YAML while making sure I haven't accidentally altered anything beyond the intended changes.
+
+Done
+Now let me validate the config files for syntax and do a final review of all seven files.
+
+
+Scrutinizing critical files for absolute correctness before presenting
+Scrutinizing critical files for absolute correctness before presenting
+
+Validate JSON/YAML/XML syntax and confirm no leftover defect patterns across all corrected files
+All the files are passing validation now with no defect patterns remaining. Let me do a final careful review of the most critical files—particularly Program.cs and PostgreSqlFixture.cs—to make absolutely sure everything is correct, then I'll be ready to present the solution.
+
+Actually, I've already verified the key sections. Let me just double-check Argon2PhcString one more time to confirm the Parse method returns correctly and there are no other places prone to the CS8603 warning. The collection expressions like bytes = []; and the TheoryData syntax are fine since they're C# 12 features that were already in the original code.
+
+Now I'm thinking through whether the [NotNullWhen(true)] attribute on TryParse could cause any unexpected issues elsewhere—particularly in the test file where TryParse is called. The attribute should only improve nullable flow analysis and make things safer, never create new warnings on correct code, so the tests should be fine.
+
+Show less
+Done
+All seven files validate cleanly with no leftover defect patterns. Let me do a final check on the Argon2 tests to confirm the [NotNullWhen(true)] annotation won't surprise any existing caller.
+
+
+Orchestrated comprehensive code fixes across seven files with strategic organization
+Orchestrated comprehensive code fixes across seven files with strategic organization
+
+Check how the Argon2 tests use TryParse to confirm NotNullWhen won't break them
+I'm looking at a test case where TryParse returns false, and the compiler doesn't recognize that the parameters variable should be null on that path even though Assert.Null expects it to be — the [NotNullWhen(true)] attribute only guarantees non-null when the method returns true, leaving the false path ambiguous.
+
+Now I'll organize the results by summarizing the fix and then presenting all seven files with their full paths and corrected code. I'm deciding to present the files inline with their full paths rather than as downloadable artifacts, since the user specifically needs to know exactly where each file goes — especially for files like Program.cs that exist in multiple places. I'll order them logically starting with configuration files, then source code, then tests, keeping the surrounding explanation minimal since they want the full content.
+
+For the defect-to-fix mapping, I'll use a compact list format rather than a table to keep it readable while still showing the distinct diagnostics clearly.
+
+Show less
+Done
+All seven files validate and every defect pattern is gone. The [NotNullWhen(true)] annotation is safe for the existing TryParse tests (the false-path null-state is unchanged).
+
+Here's what your run surfaced and what each fix addresses:
+
+error CS1061 AddNpgsql (the only hard build error) — the extension lives in namespace Npgsql (I confirmed it still ships in Npgsql.OpenTelemetry 10.0.3), and Program.cs was missing using Npgsql;. Your BUILD_PROGRESS.md note literally predicted this.
+13 [FAIL] in DataAccess.Tests — not really about your code: the fixture tried to skip when Docker/Podman is down, but PostgreSqlBuilder.Build() validates the engine eagerly in the field initializer (the ctor), so it threw before the try/catch could run ("class fixture threw in its constructor"). Moving the build into InitializeAsync makes them skip instead of fail.
+bash run.sh crash — podman-compose interpolates every service at parse time regardless of profile, so the production-only ${CLOUDFLARE_TUNNEL_TOKEN:?…} guard aborted even up -d postgres. Swapped to an empty default.
+Warnings: NU1603 (dbup-postgresql 6.1.1 doesn't exist → 6.1.2), CS8603 ([NotNullWhen(true)]), ASPDEPR005 (KnownNetworks→KnownIPNetworks), CS0618 (obsolete PostgreSqlBuilder()→image ctor), xUnit1051 (thread TestContext.Current.CancellationToken).
+global.json — "10.0.0" is invalid (feature bands start at 100), which is why dotnet --info flagged it. "10.0.100" + latestMinor = "any .NET 10 SDK ≥ 10.0.100", so your 10.0.109 is accepted.
+One thing that's an addition rather than a fix: I added metrics.AddNpgsqlInstrumentation(); alongside your existing tracing.AddNpgsql(); — your NpgsqlDataSource-backed factory emits the "Npgsql" meter, so you get DB/pool metrics for free. Drop that one line if you'd rather keep it minimal.
+
+Below are the full files, each with its path.
+
+global.json
+
+json
+{
+  "sdk": {
+    "version": "10.0.100",
+    "rollForward": "latestMinor"
+  }
+}
+Directory.Packages.props
+
+xml
+<Project>
+
+  <!--
+    Central Package Management. This is the ONE place versions are declared
+    (TECHNICAL_SPECIFICATION §16; REQUIREMENTS §2). csproj files use versionless
+    <PackageReference> entries.
+
+    Every version below is the latest STABLE (non-prerelease, non-nightly) release as
+    resolved on 2026-07-17. Confirm with `dotnet restore` on a networked machine; if a
+    version has moved on, bump it here only (BUILD_PROGRESS: first-build checklist).
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="Data access (MyRestaurant.DataAccess)">
+    <PackageVersion Include="Dapper" Version="2.1.79" />
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
+    <!-- 6.1.1 was never published; NuGet resolves 6.1.2 as the nearest match, so pin it
+         exactly to keep restore warning-free (was NU1603). -->
+    <PackageVersion Include="dbup-postgresql" Version="6.1.2" />
+  </ItemGroup>
+
+  <ItemGroup Label="Observability + database wiring (MyRestaurant.WebApplication)">
+    <PackageVersion Include="Npgsql.OpenTelemetry" Version="10.0.3" />
+    <PackageVersion Include="OpenTelemetry" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Test infrastructure (all test projects)">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="NSubstitute" Version="6.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Integration tests (MyRestaurant.DataAccess.Tests)">
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.13.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="End-to-end tests (MyRestaurant.EndToEnd.Tests)">
+    <PackageVersion Include="Microsoft.Playwright" Version="1.61.0" />
+  </ItemGroup>
+
+</Project>
+compose.yaml
+
+yaml
+# Canonical stack (TECHNICAL_SPECIFICATION §14.1), rootless Podman-first.
+#
+#   podman-compose up                              -> postgres + web (headless web on 127.0.0.1:8080)
+#   podman-compose --profile dev up                -> + Caddy, TLS at https://localhost:8443
+#   podman-compose --profile production up -d       -> + cloudflared named tunnel (no Caddy)
+#
+# `web` and `postgres` have no profile, so they always start. `caddy` and `cloudflared` are behind
+# profiles. The web port is published on loopback only — the app trusts X-Forwarded-* headers and is
+# meant to be reached through the proxy, never directly from the LAN/WAN.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-myrestaurant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-myrestaurant}
+      POSTGRES_DB: ${POSTGRES_DB:-myrestaurant}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      # Loopback only: lets a host-run `dotnet watch` (see run.sh) reach the database in dev.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-myrestaurant} -d ${POSTGRES_DB:-myrestaurant}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: Containerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      RESTAURANT_NAME: ${RESTAURANT_NAME:-My Restaurant}
+      RESTAURANT_PUBLIC_ORIGIN: ${RESTAURANT_PUBLIC_ORIGIN:-https://localhost:8443}
+      RESTAURANT_TIME_ZONE: ${RESTAURANT_TIME_ZONE:-America/New_York}
+      RESTAURANT_CURRENCY_CODE: ${RESTAURANT_CURRENCY_CODE:-USD}
+      RESTAURANT_DATABASE_CONNECTION_STRING: >-
+        Host=postgres;Port=5432;Database=${POSTGRES_DB:-myrestaurant};Username=${POSTGRES_USER:-myrestaurant};Password=${POSTGRES_PASSWORD:-myrestaurant}
+      DATA_PROTECTION_KEYS_DIRECTORY: /var/lib/myrestaurant/dataprotection
+      KITCHEN_SUBMISSION_REMINDER_SECONDS: ${KITCHEN_SUBMISSION_REMINDER_SECONDS:-60}
+      TABLE_JOIN_TOKEN_ROTATION_SECONDS: ${TABLE_JOIN_TOKEN_ROTATION_SECONDS:-60}
+      TABLE_JOIN_GRANT_MINUTES: ${TABLE_JOIN_GRANT_MINUTES:-10}
+      TABLE_DISPLAY_PAIRING_CODE_MINUTES: ${TABLE_DISPLAY_PAIRING_CODE_MINUTES:-10}
+      ARGON2_MEMORY_KIBIBYTES: ${ARGON2_MEMORY_KIBIBYTES:-65536}
+      ARGON2_ITERATIONS: ${ARGON2_ITERATIONS:-3}
+      ARGON2_PARALLELISM: ${ARGON2_PARALLELISM:-1}
+      ARGON2_MAX_CONCURRENT_HASHES: ${ARGON2_MAX_CONCURRENT_HASHES:-4}
+      # OpenTelemetry is optional; when unset the app attaches no OTLP exporter (§12).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-myrestaurant}
+    volumes:
+      # ':U' asks Podman to chown the volume to the container user (rootless). Docker ignores it;
+      # if you are on Docker and it complains, drop the ':U' suffix (BUILD_PROGRESS: known caveats).
+      - dataprotection-keys:/var/lib/myrestaurant/dataprotection:U
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["dev"]
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  cloudflared:
+    image: docker.io/cloudflare/cloudflared:latest
+    profiles: ["production"]
+    restart: unless-stopped
+    depends_on:
+      - web
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      # Empty default (deliberately NOT `${...:?}`): podman-compose — the canonical engine
+      # (ADR-0004) — interpolates EVERY service in this file at parse time regardless of the active
+      # profile, so a `:?` guard here aborts even `podman-compose up postgres` (what run.sh does in
+      # dev). cloudflared still fails fast on an empty token — just at container start rather than at
+      # compose-parse. PRODUCTION: set CLOUDFLARE_TUNNEL_TOKEN in .env before `--profile production`.
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+
+volumes:
+  postgres-data:
+  dataprotection-keys:
+  caddy-data:
+  caddy-config:
+src/MyRestaurant.WebApplication/Program.cs
+
+csharp
+using System.Data.Common;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
+using MyRestaurant.DataAccess;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.LiveUpdates;
+using MyRestaurant.Domain.Time;
+using MyRestaurant.WebApplication.Components;
+using MyRestaurant.WebApplication.Configuration;
+using MyRestaurant.WebApplication.LiveUpdates;
+using MyRestaurant.WebApplication.Observability;
+using Npgsql;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+
+// The composition root (TECHNICAL_SPECIFICATION §14, BUILD_PROGRESS). Startup order is deliberate:
+//   1. bind + validate configuration and fail fast on bad security-relevant settings;
+//   2. wire OpenTelemetry (exporters only when an OTLP endpoint is configured);
+//   3. register services;
+//   4. apply database migrations BEFORE binding HTTP (never serve on a half-applied schema, §17);
+//   5. forwarded headers → health endpoints → Blazor interactive-server components.
+
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddEnvironmentVariables();
+
+// (1) Configuration is environment-only (§13). Validate before a host exists so a misconfigured
+// deployment exits with a clear message instead of half-starting.
+RestaurantOptions options = RestaurantOptions.FromConfiguration(builder.Configuration);
+IReadOnlyList<string> configurationErrors = options.Validate();
+if (configurationErrors.Count > 0)
+{
+    foreach (string error in configurationErrors)
+    {
+        Console.Error.WriteLine($"Configuration error: {error}");
+    }
+
+    return 1;
+}
+
+// (2) OpenTelemetry (§12). The OTLP exporters are attached only when OTEL_EXPORTER_OTLP_ENDPOINT is
+// set, so a plain `dotnet run` with no collector does not spam connection-refused logs. The meter
+// and instrumentation are always registered — they are cheap and keep the custom meter live.
+bool otlpExporterConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
+
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService(serviceName: "myrestaurant"))
+    .WithTracing(tracing =>
+    {
+        tracing.AddAspNetCoreInstrumentation();
+        tracing.AddNpgsql();
+        if (otlpExporterConfigured)
+        {
+            tracing.AddOtlpExporter();
+        }
+    })
+    .WithMetrics(metrics =>
+    {
+        metrics.AddAspNetCoreInstrumentation();
+        metrics.AddNpgsqlInstrumentation();
+        metrics.AddMeter(RestaurantMetrics.MeterName);
+        if (otlpExporterConfigured)
+        {
+            metrics.AddOtlpExporter();
+        }
+    });
+
+if (otlpExporterConfigured)
+{
+    builder.Logging.AddOpenTelemetry(logging =>
+    {
+        logging.IncludeScopes = true;
+        logging.IncludeFormattedMessage = true;
+        logging.AddOtlpExporter();
+    });
+}
+
+// (3) Services. Everything the domain needs is behind an interface so tests can substitute it.
+builder.Services.AddMetrics();
+builder.Services.AddSingleton(options);
+builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddSingleton<IIdentifierFactory, UuidV7IdentifierFactory>();
+builder.Services.AddSingleton<IDatabaseConnectionFactory>(
+    _ => new NpgsqlDatabaseConnectionFactory(options.DatabaseConnectionString));
+builder.Services.AddSingleton<RestaurantMetrics>();
+builder.Services.AddSingleton<IDomainEventBroadcaster, InProcessDomainEventBroadcaster>();
+builder.Services.AddSingleton(serviceProvider =>
+{
+    ILogger<SchemaMigrationRunner> logger = serviceProvider.GetRequiredService<ILogger<SchemaMigrationRunner>>();
+    return new SchemaMigrationRunner(
+        options.DatabaseConnectionString,
+        message => logger.LogWarning("{MigrationStatus}", message));
+});
+
+// Data-protection keys live on a mounted volume so cookies/tokens survive restarts (§3.4).
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(options.DataProtectionKeysDirectory))
+    .SetApplicationName("myrestaurant");
+
+// The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
+// so honour its X-Forwarded-* headers. KnownIPNetworks/KnownProxies are cleared deliberately — safe
+// ONLY because the origin is never exposed directly (BUILD_PROGRESS: forwarded-headers trust).
+builder.Services.Configure<ForwardedHeadersOptions>(forwarded =>
+{
+    forwarded.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+    forwarded.KnownIPNetworks.Clear();
+    forwarded.KnownProxies.Clear();
+});
+
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+WebApplication app = builder.Build();
+
+// (4) Migrate before binding HTTP. A failure throws and the process exits non-zero without ever
+// serving a request against an incomplete schema (§17: "half-applied schema").
+using (IServiceScope migrationScope = app.Services.CreateScope())
+{
+    migrationScope.ServiceProvider.GetRequiredService<SchemaMigrationRunner>().Run();
+}
+
+// (5) HTTP pipeline. No HTTPS redirection — TLS is terminated at the proxy.
+app.UseForwardedHeaders();
+app.UseStaticFiles();
+app.UseAntiforgery();
+
+// Health endpoints (§12). Liveness is "the process answers"; readiness additionally proves the
+// database is reachable and migrations are current — compose healthchecks target these.
+app.MapGet("/healthz/live", () => Results.Text("live"));
+app.MapGet(
+    "/healthz/ready",
+    async (IDatabaseConnectionFactory connectionFactory, SchemaMigrationRunner migrationRunner, CancellationToken cancellationToken) =>
+    {
+        try
+        {
+            await using DbConnection connection = await connectionFactory.OpenConnectionAsync(cancellationToken);
+            await using DbCommand command = connection.CreateCommand();
+            command.CommandText = "SELECT 1";
+            _ = await command.ExecuteScalarAsync(cancellationToken);
+
+            return migrationRunner.IsUpToDate()
+                ? Results.Text("ready")
+                : Results.Text("migrations pending", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (Exception)
+        {
+            return Results.Text("not ready", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    });
+
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
+
+app.Run();
+
+return 0;
+src/MyRestaurant.Domain/Security/Argon2PhcString.cs
+
+csharp
+using System.Diagnostics.CodeAnalysis;
+
+namespace MyRestaurant.Domain.Security;
+
+/// <summary>
+/// Encoding, parsing, and the rehash decision for the Argon2id PHC string stored in
+/// <c>person.password_hash</c> (TECHNICAL_SPECIFICATION §3.2):
+/// <code>$argon2id$v=19$m=65536,t=3,p=1$&lt;base64-no-pad(salt)&gt;$&lt;base64-no-pad(tag)&gt;</code>
+/// This type is intentionally pure string/Base64 work — it does NOT compute Argon2. The
+/// custom <c>IPasswordHasher</c> (M2, in the web layer over Konscious.Security.Cryptography)
+/// computes the raw tag, encodes it here, and on verify parses the STORED parameters,
+/// recomputes, compares with <c>CryptographicOperations.FixedTimeEquals</c>, and rehashes
+/// when <see cref="NeedsRehash"/> is true. Argon2 encoded hashes use the standard Base64
+/// alphabet (not URL-safe), without padding.
+/// </summary>
+public static class Argon2PhcString
+{
+    public const int Version = 19; // Argon2 version 1.3 (0x13)
+    private const string AlgorithmLabel = "argon2id";
+
+    public static string Encode(Argon2Parameters parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        return $"${AlgorithmLabel}$v={Version}$m={parameters.MemoryKibibytes},t={parameters.Iterations},p={parameters.Parallelism}$" +
+               $"{StandardBase64NoPadding(parameters.Salt)}${StandardBase64NoPadding(parameters.Tag)}";
+    }
+
+    public static Argon2Parameters Parse(string phcString)
+    {
+        if (!TryParse(phcString, out Argon2Parameters? parameters))
+        {
+            throw new FormatException("The value is not a well-formed argon2id PHC string.");
+        }
+
+        return parameters;
+    }
+
+    public static bool TryParse(string phcString, [NotNullWhen(true)] out Argon2Parameters? parameters)
+    {
+        parameters = null;
+        if (string.IsNullOrEmpty(phcString))
+        {
+            return false;
+        }
+
+        // Leading '$' yields an empty first segment: ["", "argon2id", "v=19", "m=..,t=..,p=..", salt, tag]
+        string[] segments = phcString.Split('$');
+        if (segments.Length != 6 || segments[0].Length != 0)
+        {
+            return false;
+        }
+
+        if (!string.Equals(segments[1], AlgorithmLabel, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (!TryParseTaggedInteger(segments[2], "v", out int version) || version != Version)
+        {
+            return false;
+        }
+
+        string[] costs = segments[3].Split(',');
+        if (costs.Length != 3
+            || !TryParseTaggedInteger(costs[0], "m", out int memoryKibibytes)
+            || !TryParseTaggedInteger(costs[1], "t", out int iterations)
+            || !TryParseTaggedInteger(costs[2], "p", out int parallelism))
+        {
+            return false;
+        }
+
+        if (!TryDecodeStandardBase64NoPadding(segments[4], out byte[] salt)
+            || !TryDecodeStandardBase64NoPadding(segments[5], out byte[] tag))
+        {
+            return false;
+        }
+
+        parameters = new Argon2Parameters(memoryKibibytes, iterations, parallelism, salt, tag);
+        return true;
+    }
+
+    /// <summary>
+    /// True when the stored cost parameters differ from the currently configured ones, so
+    /// the verifier should transparently rehash at sign-in (Identity's SuccessRehashNeeded).
+    /// The salt and tag never enter this decision.
+    /// </summary>
+    public static bool NeedsRehash(Argon2Parameters stored, int configuredMemoryKibibytes, int configuredIterations, int configuredParallelism)
+    {
+        ArgumentNullException.ThrowIfNull(stored);
+        return stored.MemoryKibibytes != configuredMemoryKibibytes
+            || stored.Iterations != configuredIterations
+            || stored.Parallelism != configuredParallelism;
+    }
+
+    private static bool TryParseTaggedInteger(string segment, string expectedTag, out int value)
+    {
+        value = 0;
+        int equals = segment.IndexOf('=');
+        if (equals != expectedTag.Length
+            || !segment.AsSpan(0, equals).SequenceEqual(expectedTag))
+        {
+            return false;
+        }
+
+        return int.TryParse(segment.AsSpan(equals + 1), out value);
+    }
+
+    private static string StandardBase64NoPadding(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=');
+
+    private static bool TryDecodeStandardBase64NoPadding(string text, out byte[] bytes)
+    {
+        bytes = [];
+        string padded = (text.Length % 4) switch
+        {
+            2 => text + "==",
+            3 => text + "=",
+            1 => text, // invalid; Convert will reject
+            _ => text,
+        };
+
+        try
+        {
+            bytes = Convert.FromBase64String(padded);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+}
+
+/// <summary>The parsed contents of an Argon2id PHC string.</summary>
+public sealed record Argon2Parameters(int MemoryKibibytes, int Iterations, int Parallelism, byte[] Salt, byte[] Tag);
+tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs
+
+csharp
+using Testcontainers.PostgreSql;
+using Xunit;
+
+namespace MyRestaurant.DataAccess.Tests;
+
+/// <summary>
+/// Starts one PostgreSQL 17 container for the whole test class (Testcontainers). If no container
+/// engine is available (Podman/Docker not installed or not running), startup fails and
+/// <see cref="SkipReason"/> is set so the tests skip rather than fail (BUILD_PROGRESS:
+/// container-dependent tests).
+/// </summary>
+public sealed class PostgreSqlFixture : IAsyncLifetime
+{
+    private PostgreSqlContainer? _container;
+
+    /// <summary>The Npgsql connection string once the container is up; otherwise <c>null</c>.</summary>
+    public string? ConnectionString { get; private set; }
+
+    /// <summary>Non-null when the container could not start; the reason to pass to <c>Assert.Skip</c>.</summary>
+    public string? SkipReason { get; private set; }
+
+    public async ValueTask InitializeAsync()
+    {
+        try
+        {
+            // Build here rather than in a field initializer: PostgreSqlBuilder.Build() validates
+            // container-engine connectivity eagerly, so constructing the container in the field
+            // initializer (i.e. the fixture ctor) would throw a DockerUnavailableException BEFORE
+            // this try/catch — reporting every test as a "class fixture threw in its constructor"
+            // failure instead of the intended skip.
+            _container = new PostgreSqlBuilder("postgres:17-alpine")
+                .WithDatabase("myrestaurant")
+                .WithUsername("myrestaurant")
+                .WithPassword("myrestaurant")
+                .Build();
+
+            await _container.StartAsync();
+            ConnectionString = _container.GetConnectionString();
+        }
+        catch (Exception exception)
+        {
+            SkipReason = "A container engine (Podman/Docker) is required but was unavailable: " + exception.Message;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_container is not null)
+        {
+            await _container.DisposeAsync();
+        }
+    }
+}
+tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs
+
+csharp
+using Dapper;
+using MyRestaurant.DataAccess;
+using Npgsql;
+using Xunit;
+
+namespace MyRestaurant.DataAccess.Tests;
+
+/// <summary>
+/// Integration tests for the DbUp migration runner (TECHNICAL_SPECIFICATION §14/§16) against a real
+/// PostgreSQL 17 container: the initial schema applies cleanly, a second run is a no-op (idempotent),
+/// <see cref="SchemaMigrationRunner.IsUpToDate"/> reports current, and the key relations and the
+/// <c>citext</c> extension exist afterwards.
+/// </summary>
+public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture>
+{
+    private readonly PostgreSqlFixture _fixture;
+
+    public SchemaMigrationRunnerTests(PostgreSqlFixture fixture) => _fixture = fixture;
+
+    // A representative subset of the 22 tables and 5 views — enough to prove the script ran to the end.
+    public static TheoryData<string> KeyRelations =>
+    [
+        "public.person",
+        "public.passkey_credential",
+        "public.menu_item",
+        "public.guest_order",
+        "public.order_event",
+        "public.order_operation_line_added",
+        "public.table_sitting",
+        "public.order_current_line",   // view
+        "public.order_current_state",  // view
+        "public.sitting_bill",         // view
+        "public.kitchen_pending_line", // view
+    ];
+
+    [Fact]
+    public void Run_AppliesSchema_AndIsIdempotent()
+    {
+        Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+        string connectionString = _fixture.ConnectionString!;
+
+        SchemaMigrationRunner runner = BuildRunner(connectionString);
+
+        // First run applies everything and reports current.
+        runner.Run();
+        Assert.True(runner.IsUpToDate());
+
+        // Second run must be a harmless no-op (DbUp journals executed scripts).
+        Exception? secondRun = Record.Exception(() => runner.Run());
+        Assert.Null(secondRun);
+        Assert.True(runner.IsUpToDate());
+    }
+
+    [Fact]
+    public async Task Run_CreatesCitextExtension()
+    {
+        Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+        string connectionString = _fixture.ConnectionString!;
+
+        BuildRunner(connectionString).Run();
+
+        await using NpgsqlConnection connection = new(connectionString);
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+
+        bool citextInstalled = await connection.ExecuteScalarAsync<bool>(
+            new CommandDefinition(
+                "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'citext')",
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.True(citextInstalled);
+    }
+
+    [Theory]
+    [MemberData(nameof(KeyRelations))]
+    public async Task Run_CreatesKeyRelation(string relation)
+    {
+        Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+        string connectionString = _fixture.ConnectionString!;
+
+        BuildRunner(connectionString).Run();
+
+        await using NpgsqlConnection connection = new(connectionString);
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+
+        bool exists = await connection.ExecuteScalarAsync<bool>(
+            new CommandDefinition(
+                "SELECT to_regclass(@Relation) IS NOT NULL",
+                new { Relation = relation },
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.True(exists, $"Expected relation '{relation}' to exist after migration.");
+    }
+
+    private static SchemaMigrationRunner BuildRunner(string connectionString)
+        => new(connectionString)
+        {
+            // Keep the test snappy: the container is already up, so no long connection-retry budget.
+            MaximumAttempts = 3,
+            DelayBetweenAttempts = TimeSpan.FromMilliseconds(200),
+        };
+}
+After dropping these in, your loop should go: dotnet build clean, dotnet test green with the DataAccess.Tests skipped (they'll run for real once Podman is up), and bash run.sh past the compose step into dotnet watch.
+
+Two optional, non-blocking cleanups I left alone (they're prose, not defects) — happy to hand you full files if you want them:
+
+docs/BUILD_PROGRESS.md line ~1967 and docs/DOCUMENTATION_REVIEW.md line ~2216 still say KnownNetworks; they should read KnownIPNetworks to match the code.
+docs/BUILD_PROGRESS.md lines ~1965–1966 (the AddNpgsql caveat) could note the resolution was adding using Npgsql;.
+One thing worth deciding for later M-milestones: the DataAccess.Tests now silently skip without an engine, which is friendly for your Fedora loop but does mean CI could go green having tested nothing. When you set up CI, you'll want it to run with Podman/Docker present so those skips become real runs.
+
+
+
 Want to be notified when Claude responds?
+
 
 
 
@@ -317,6 +1062,6 @@ Claude is AI and can make mistakes. Please double-check responses.
 
 
 
-41
-80
+61
+82
 100

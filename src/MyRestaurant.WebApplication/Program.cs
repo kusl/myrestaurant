@@ -9,6 +9,7 @@ using MyRestaurant.WebApplication.Components;
 using MyRestaurant.WebApplication.Configuration;
 using MyRestaurant.WebApplication.LiveUpdates;
 using MyRestaurant.WebApplication.Observability;
+using Npgsql;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -57,6 +58,7 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics =>
     {
         metrics.AddAspNetCoreInstrumentation();
+        metrics.AddNpgsqlInstrumentation();
         metrics.AddMeter(RestaurantMetrics.MeterName);
         if (otlpExporterConfigured)
         {
@@ -97,13 +99,13 @@ builder.Services.AddDataProtection()
     .SetApplicationName("myrestaurant");
 
 // The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
-// so honour its X-Forwarded-* headers. KnownNetworks/KnownProxies are cleared deliberately — safe
+// so honour its X-Forwarded-* headers. KnownIPNetworks/KnownProxies are cleared deliberately — safe
 // ONLY because the origin is never exposed directly (BUILD_PROGRESS: forwarded-headers trust).
 builder.Services.Configure<ForwardedHeadersOptions>(forwarded =>
 {
     forwarded.ForwardedHeaders =
         ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
-    forwarded.KnownNetworks.Clear();
+    forwarded.KnownIPNetworks.Clear();
     forwarded.KnownProxies.Clear();
 });
 

@@ -11,12 +11,7 @@ namespace MyRestaurant.DataAccess.Tests;
 /// </summary>
 public sealed class PostgreSqlFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:17-alpine")
-        .WithDatabase("myrestaurant")
-        .WithUsername("myrestaurant")
-        .WithPassword("myrestaurant")
-        .Build();
+    private PostgreSqlContainer? _container;
 
     /// <summary>The Npgsql connection string once the container is up; otherwise <c>null</c>.</summary>
     public string? ConnectionString { get; private set; }
@@ -28,6 +23,17 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
     {
         try
         {
+            // Build here rather than in a field initializer: PostgreSqlBuilder.Build() validates
+            // container-engine connectivity eagerly, so constructing the container in the field
+            // initializer (i.e. the fixture ctor) would throw a DockerUnavailableException BEFORE
+            // this try/catch — reporting every test as a "class fixture threw in its constructor"
+            // failure instead of the intended skip.
+            _container = new PostgreSqlBuilder("postgres:17-alpine")
+                .WithDatabase("myrestaurant")
+                .WithUsername("myrestaurant")
+                .WithPassword("myrestaurant")
+                .Build();
+
             await _container.StartAsync();
             ConnectionString = _container.GetConnectionString();
         }
@@ -39,7 +45,7 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        if (ConnectionString is not null)
+        if (_container is not null)
         {
             await _container.DisposeAsync();
         }

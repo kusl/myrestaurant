@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace MyRestaurant.Domain.Security;
 
 /// <summary>
@@ -33,7 +35,7 @@ public static class Argon2PhcString
         return parameters;
     }
 
-    public static bool TryParse(string phcString, out Argon2Parameters? parameters)
+    public static bool TryParse(string phcString, [NotNullWhen(true)] out Argon2Parameters? parameters)
     {
         parameters = null;
         if (string.IsNullOrEmpty(phcString))
