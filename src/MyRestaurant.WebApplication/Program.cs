@@ -21,7 +21,7 @@ using OpenTelemetry.Trace;
 //   2. wire OpenTelemetry (exporters only when an OTLP endpoint is configured);
 //   3. register services;
 //   4. apply database migrations BEFORE binding HTTP (never serve on a half-applied schema, §17);
-//   5. forwarded headers → health endpoints → Blazor interactive-server components.
+//   5. forwarded headers → auth → health endpoints → Blazor interactive-server components.
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
@@ -99,9 +99,11 @@ builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(options.DataProtectionKeysDirectory))
     .SetApplicationName("myrestaurant");
 
-// ASP.NET Core Identity core services over the custom Dapper store, with the Argon2id hasher
-// (§3.1–§3.2, ADR-0003/ADR-0008). Registered after Data Protection because the store encrypts the
-// TOTP secret with it and after RestaurantMetrics because the hasher reports its timing there.
+// ASP.NET Core Identity core services over the custom Dapper store, with the Argon2id hasher, plus
+// sign-in, hardened cookie auth, security-stamp revalidation, the area authorization policies, and the
+// security-event log (§3.1–§3.7, ADR-0003/ADR-0008). Registered after Data Protection because the
+// store encrypts the TOTP secret and the auth cookie is protected with it, and after RestaurantMetrics
+// because the hasher and sign-in manager report there.
 builder.Services.AddRestaurantIdentity(options);
 
 // The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
@@ -127,9 +129,13 @@ using (IServiceScope migrationScope = app.Services.CreateScope())
     migrationScope.ServiceProvider.GetRequiredService<SchemaMigrationRunner>().Run();
 }
 
-// (5) HTTP pipeline. No HTTPS redirection — TLS is terminated at the proxy.
+// (5) HTTP pipeline. No HTTPS redirection — TLS is terminated at the proxy. Authentication populates
+// HttpContext.User from the Identity cookie; authorization enforces the area policies (§3.7) once the
+// area pages carry [Authorize]. Both sit after static files and before antiforgery/endpoints.
 app.UseForwardedHeaders();
 app.UseStaticFiles();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
 
 // Health endpoints (§12). Liveness is "the process answers"; readiness additionally proves the

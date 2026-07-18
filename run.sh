@@ -69,5 +69,25 @@ mkdir -p "$DATA_PROTECTION_KEYS_DIRECTORY"
 # Ensure the ASP.NET Core dev certificate exists so Kestrel can serve https://localhost:8443.
 dotnet dev-certs https >/dev/null 2>&1 || true
 
+# --- keep `dotnet watch` working under a low inotify instance limit -----------------------------
+# `dotnet watch` opens several inotify instances to watch the source tree. A busy workstation can hit
+# the kernel's per-user cap (default 128), and the watcher then dies with:
+#   "The configured user limit (128) on the number of inotify instances has been reached".
+# When the cap looks low and the caller has not already chosen a watcher, fall back to the polling
+# file watcher for this run so hot reload keeps working WITHOUT root. The native (inotify) watcher is
+# snappier and lighter on CPU; to prefer it, raise the cap once (needs root):
+#   sudo sysctl fs.inotify.max_user_instances=1024
+#   echo 'fs.inotify.max_user_instances=1024' | sudo tee /etc/sysctl.d/99-inotify.conf   # persist
+# To force the native watcher regardless of the cap, run with DOTNET_USE_POLLING_FILE_WATCHER=0.
+if [[ -z "${DOTNET_USE_POLLING_FILE_WATCHER:-}" ]]; then
+    inotify_instance_limit="$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo 0)"
+    [[ "$inotify_instance_limit" =~ ^[0-9]+$ ]] || inotify_instance_limit=0
+    if (( inotify_instance_limit < 256 )); then
+        export DOTNET_USE_POLLING_FILE_WATCHER=1
+        echo "info: inotify instance limit is ${inotify_instance_limit} (< 256); using the polling file watcher for hot reload."
+        echo "info: for the snappier native watcher, raise it once: sudo sysctl fs.inotify.max_user_instances=1024"
+    fi
+fi
+
 echo "info: starting the web app with hot reload at https://localhost:8443 ..."
 exec dotnet watch --project src/MyRestaurant.WebApplication run --launch-profile https
