@@ -125,7 +125,7 @@ The code in this milestone was written carefully but has not been compiled in th
   is the most likely place a build break appears — adjust the builder calls there.
 - **Npgsql OpenTelemetry.** Tracing is enabled with `AddNpgsql()`; if the extension's namespace has
   moved in the pinned Npgsql.OpenTelemetry version, adjust the using directives in `Program.cs`.
-- **Forwarded-headers trust.** `Program.cs` clears `KnownNetworks`/`KnownProxies` so `X-Forwarded-*`
+- **Forwarded-headers trust.** `Program.cs` clears `KnownIPNetworks`/`KnownProxies` so `X-Forwarded-*`
   from the proxy is honoured. This is safe only because the app is reached exclusively through a
   trusted proxy (Cloudflare tunnel in production, Caddy in dev) and never exposed directly.
 - **Rootless volume ownership.** The data-protection volume is mounted `:U` in compose so Podman

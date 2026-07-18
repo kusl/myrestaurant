@@ -96,7 +96,7 @@ Delivered:
   custom `IUpgradeLog`, whose interface shape varies across DbUp versions. If
   the DbUp API differs from what is pinned, this file is the most likely place a
   build break appears — adjust the builder calls there.
-- **Forwarded headers trust.** `Program.cs` clears `KnownNetworks`/`KnownProxies`
+- **Forwarded headers trust.** `Program.cs` clears `KnownIPNetworks`/`KnownProxies`
   so `X-Forwarded-*` from the tunnel/Caddy is honoured. This is safe only because
   the app is reached exclusively through a trusted proxy (Cloudflare tunnel in
   production, Caddy in dev) and is never exposed directly. Keep it that way.
