@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-18T09:04:14-04:00
+  Generated at   : 2026-07-18T12:05:23-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,20 +17,18 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : ea595f772ffcf95476d374e352b45722dccb502d
-  Commit (short) : ea595f7
-  Commit date    : 2026-07-18 08:52:28 -0400
-  Commit message : run dump
+  Commit (full)  : 2c6e6601867c2cdfdd1a2a15b3eea88946014e82
+  Commit (short) : 2c6e660
+  Commit date    : 2026-07-18 12:04:27 -0400
+  Commit message : add claude output
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 97
+  Files included : 107
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
 GIT WORKING TREE STATUS (first 20 lines)
 ═════════════════════════════════════════════════════════════════════════════════
  M docs/llm/vendor/claude-output.txt
- D docs/llm/vendor/files.zip
-?? docs/llm/vendor/claude-009.txt
 
 ################################################################################
 # FILE: export.sh  [THIS SCRIPT — included for full context]
@@ -535,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (97 included files)
+# FILE TREE  (107 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -580,7 +578,9 @@ cat "$OUTPUT_FILE"
 │   │   ├── IDatabaseConnectionFactory.cs
 │   │   ├── Identity
 │   │   │   ├── Argon2idPasswordHasher.cs
+│   │   │   ├── DapperSecurityEventLog.cs
 │   │   │   ├── DapperUserStore.cs
+│   │   │   ├── ISecurityEventLog.cs
 │   │   │   └── Person.cs
 │   │   ├── Migrations
 │   │   │   └── 0001_initial_schema.sql
@@ -589,7 +589,9 @@ cat "$OUTPUT_FILE"
 │   │   └── SchemaMigrationRunner.cs
 │   ├── MyRestaurant.Domain
 │   │   ├── Authentication
-│   │   │   └── ObligationsPipeline.cs
+│   │   │   ├── ObligationsPipeline.cs
+│   │   │   ├── SecurityEventType.cs
+│   │   │   └── SignInAudit.cs
 │   │   ├── Identifiers
 │   │   │   ├── IIdentifierFactory.cs
 │   │   │   └── UuidV7IdentifierFactory.cs
@@ -613,6 +615,8 @@ cat "$OUTPUT_FILE"
 │   │       ├── IClock.cs
 │   │       └── SystemClock.cs
 │   └── MyRestaurant.WebApplication
+│       ├── Authorization
+│       │   └── AuthorizationPolicies.cs
 │       ├── Components
 │       │   ├── App.razor
 │       │   ├── Layout
@@ -624,7 +628,8 @@ cat "$OUTPUT_FILE"
 │       ├── Configuration
 │       │   └── RestaurantOptions.cs
 │       ├── Identity
-│       │   └── IdentityServiceCollectionExtensions.cs
+│       │   ├── IdentityServiceCollectionExtensions.cs
+│       │   └── RestaurantSignInManager.cs
 │       ├── LiveUpdates
 │       │   └── InProcessDomainEventBroadcaster.cs
 │       ├── MyRestaurant.WebApplication.csproj
@@ -641,8 +646,10 @@ cat "$OUTPUT_FILE"
     ├── MyRestaurant.DataAccess.Tests
     │   ├── Identity
     │   │   ├── Argon2idPasswordHasherTests.cs
+    │   │   ├── DapperSecurityEventLogTests.cs
     │   │   ├── DapperUserStoreTests.cs
-    │   │   └── FixedClock.cs
+    │   │   ├── FixedClock.cs
+    │   │   └── IdentityWiringTests.cs
     │   ├── MyRestaurant.DataAccess.Tests.csproj
     │   ├── PostgreSqlFixture.cs
     │   └── SchemaMigrationRunnerTests.cs
@@ -657,7 +664,9 @@ cat "$OUTPUT_FILE"
     │   ├── OrderTestBuilders.cs
     │   ├── PairingAndRecoveryCodeTests.cs
     │   ├── SecretGeneratorTests.cs
+    │   ├── SecurityEventTypeTests.cs
     │   ├── Sha256HashingTests.cs
+    │   ├── SignInAuditTests.cs
     │   └── UuidV7IdentifierFactoryTests.cs
     ├── MyRestaurant.EndToEnd.Tests
     │   ├── EndToEndScenarios.cs
@@ -2129,15 +2138,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  11.6 KiB (11846 bytes)
-  Last modified:         2026-07-18 12:46:04.000000000 -0400
+  Size:                  16.3 KiB (16656 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
   Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21340841
+  Inode:                 21386317
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               f933e769f48663acbef0401d7d4cb57fff9c191dfffac92829cbcf3a89da5cf9
-  Last git commit:       fa320ac 2026-07-18 08:51:11 -0400 add claude response
+  SHA-256:               f8543d0852b332b0497a5e4ab61ee1acd037b6f722dd8f54664195d78f83c59e
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
 
 --- CONTENT ---
 # Build progress
@@ -2153,14 +2162,15 @@ The scaffold and each subsequent milestone are written in an environment
 **without a .NET SDK** and without NuGet/.NET download hosts. Consequences:
 
 - **The C# for a milestone is written to match the spec and the .NET 10 APIs, then
-  first compiled on your machine.** M1 has since been built and tested there
-  (green — see below). M2 code is, like M1 was, unbuilt until your next
-  build/test run; expect to fix the occasional thing a compiler would catch.
+  first compiled on your machine.** M1 built green, and so did the first M2 slice
+  (identity persistence + Argon2id hasher). The newest M2 slice — sign-in, cookie
+  auth, and authorization wiring — is, like its predecessors were, unbuilt until
+  your next build/test run; expect to fix the occasional thing a compiler would catch.
 - **Package versions in `Directory.Packages.props` are best-effort.** They target
   the .NET 10 GA era. Run `dotnet restore`; if a version does not exist, bump it
-  there to the nearest available. Nothing else references versions. New in M2:
-  `Konscious.Security.Cryptography.Argon2` (its repo publishes no Git tags, so
-  the pin is the latest known NuGet release — bump if restore cannot find it).
+  there to the nearest available. Nothing else references versions. The sign-in
+  slice adds **no** packages — cookie auth, `SignInManager`, the security-stamp
+  validator, and authorization all come from the ASP.NET Core shared framework.
 - Shell scripts are syntax-checked with `bash -n`; they may need `chmod +x`.
 
 ## Staged plan
@@ -2169,7 +2179,7 @@ The work is split into six stages aligned to the spec's milestones (§19). Each
 stage is meant to leave the tree buildable and testable.
 
 - [x] **Stage 1 — M1: skeleton + pure Domain** *(built green: 139 passed, 28 skipped)*
-- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher landed)*
+- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, then sign-in + authorization wiring, landed; latest local run: 147 passed, 41 skipped)*
 - [ ] **Stage 3 — M3: tables & joining**
 - [ ] **Stage 4 — M4: ordering**
 - [ ] **Stage 5 — M5: counter & administration**
@@ -2215,12 +2225,13 @@ EndToEnd matrix is an M6 placeholder). Delivered:
 
 ## Stage 2 — in progress (M2 — identity & accounts)
 
-M2 is being landed in coherent, individually-buildable slices. **This slice: the
-identity persistence layer and the Argon2id password hasher**, wired as Identity
-core services and covered by tests. It intentionally stops short of sign-in flows,
-passkeys, and the bootstrap — those are the next slices (see "Next").
+M2 is being landed in coherent, individually-buildable slices.
 
-Delivered:
+### Slice 1 — identity persistence layer + Argon2id hasher (landed)
+
+The identity persistence layer and the Argon2id password hasher, wired as Identity
+core services and covered by tests. It intentionally stopped short of sign-in flows,
+passkeys, and the bootstrap.
 
 - **`Person`** (`DataAccess/Identity/Person.cs`) — the Identity user entity mapping
   the `person` row. No normalized-username/email shadow columns (citext handles
@@ -2232,7 +2243,6 @@ Delivered:
   parameters drift from configured ones, and a **process-wide `SemaphoreSlim`**
   bounding concurrent hashes. Registered as a **singleton** (so the semaphore is
   real) with a duration hook feeding `password_hash_duration_milliseconds` (§12).
-  The startup floor guard stays in `RestaurantOptions.Validate` (already present).
 - **`DapperUserStore`** (`DataAccess/Identity/`) — one class implementing the store
   family `UserManager<Person>` needs short of passkeys: `IUserStore`,
   `IUserPasswordStore`, `IUserSecurityStampStore`, `IUserLockoutStore`,
@@ -2242,27 +2252,77 @@ Delivered:
   codes in their own table, SHA-256-hashed and single-use; duplicate/short usernames
   mapped to `DuplicateUserName`/`InvalidUserName` results.
 - **`AddRestaurantIdentity`** (`WebApplication/Identity/`) — `AddIdentityCore<Person>`
-  with the §3.1/§3.2 options (password length 12/no composition, lockout 5/5-min,
-  no email/phone confirmation), `AddUserStore<DapperUserStore>()`, default token
+  with the §3.1/§3.2 options, `AddUserStore<DapperUserStore>()`, default token
   providers (incl. the authenticator/TOTP provider), and the Argon2id hasher
-  replacing the PBKDF2 default. Called from `Program.cs` after Data Protection.
-- **Project wiring**: `MyRestaurant.DataAccess.csproj` now has
-  `<FrameworkReference Include="Microsoft.AspNetCore.App" />` (so the Identity core
-  abstractions and Data Protection are available in this non-web library at the
-  installed runtime version — no NuGet version to pin) plus the Konscious package;
-  the same FrameworkReference is added to `MyRestaurant.DataAccess.Tests.csproj`.
-- **Tests**: `Argon2idPasswordHasherTests` (round-trip, wrong/garbage input, PHC
-  shape, salt randomness, rehash signal — no container needed); `DapperUserStoreTests`
-  (create/lookup with citext casing, duplicate/short-username mapping, password,
-  security-stamp regeneration, lockout counters/end-date, TOTP-secret encryption at
-  rest, hashed single-use recovery codes, role read path, and the refused operations:
-  delete, unattributed grant/revoke — Testcontainers, skips without an engine).
+  replacing the PBKDF2 default.
+- **Project wiring**: `MyRestaurant.DataAccess.csproj` gained
+  `<FrameworkReference Include="Microsoft.AspNetCore.App" />` (Identity core
+  abstractions + Data Protection in a non-web library) plus the Konscious package;
+  the same FrameworkReference is on `MyRestaurant.DataAccess.Tests.csproj`.
+- **Tests**: `Argon2idPasswordHasherTests`, `DapperUserStoreTests` (Testcontainers,
+  skips without an engine).
+
+### Slice 2 — sign-in + authorization wiring (this change)
+
+The services the sign-in **flows** will need, plus authorization, plus the audit
+trail sign-ins write to. No sign-in *pages* yet — those are the next slice — so the
+new `SignInManager` is wired and unit-tested through a pure decision rather than
+driven by a form.
+
+- **Cookie authentication** (`WebApplication/Identity/IdentityServiceCollectionExtensions.cs`)
+  — Identity's four cookie schemes via `AddAuthentication(...).AddIdentityCookies()`
+  (application cookie is the default authenticate/challenge scheme, external is the
+  default sign-in scheme — what `AddIdentity` composes internally, minus a
+  `RoleManager` we do not want). The application cookie is hardened per §3.1:
+  `HttpOnly`, `SecurePolicy=Always`, `SameSite=Lax`, 24-hour **sliding** expiration,
+  name `myrestaurant.authentication`; login/logout/access-denied paths point at the
+  sign-in surfaces the next slice builds.
+- **`RestaurantSignInManager`** (`WebApplication/Identity/`) — a `SignInManager<Person>`
+  that audits every terminal sign-in outcome once as a `security_event` and once on
+  `sign_ins_total{method,result}` (§3.5, §12). It overrides only the password and
+  second-factor paths; the passkey path records its own success in the passkey slice
+  (overriding `SignInAsync` would double-count the password path, which calls it
+  internally). The **decision** of what to record is the pure
+  `MyRestaurant.Domain.Authentication.SignInAudit` (unit-tested exhaustively);
+  the manager just maps the framework `SignInResult` onto it. Registered via
+  `AddSignInManager<RestaurantSignInManager>()`.
+- **Security-stamp revalidation** — `SecurityStampValidatorOptions.ValidationInterval
+  = 5 minutes` (§3.1). `AddIdentityCookies` points the cookie's `OnValidatePrincipal`
+  at the static `SecurityStampValidator`, which resolves `ISecurityStampValidator` /
+  `ITwoFactorSecurityStampValidator` at runtime; `AddIdentityCore`/`AddSignInManager`
+  do **not** register those (only the monolithic `AddIdentity` does), so they are
+  registered explicitly here. This is what makes resets/revocations/deactivations
+  bite live sessions within minutes.
+- **Roles → claims** — no `RoleManager` and no role entity (roles are plain strings,
+  §3.7). The store implements `IUserRoleStore<Person>`, so the default
+  claims-principal factory adds one role claim per granted role at sign-in.
+- **Area authorization policies** (`WebApplication/Authorization/AuthorizationPolicies.cs`)
+  — `area.table` (any authenticated person), `area.kitchen` (kitchen **or**
+  administrator), `area.counter` (counter **or** administrator), `area.administration`
+  (administrator), matching the §3.7 matrix. Role names are the lower-case tokens the
+  `person_role` CHECK stores. The display-device policies are an M3 concern.
+- **`ISecurityEventLog` + `DapperSecurityEventLog`** (`DataAccess/Identity/`) — the
+  append-only writer for the `security_event` table (§8.2), used by sign-in now and
+  by the administration service later. Event-type strings are the closed
+  `SecurityEventType` vocabulary in the Domain, guarded client-side so a bad value
+  fails fast instead of as a CHECK violation.
+- **`Program.cs`** — `app.UseAuthentication()` / `app.UseAuthorization()` added after
+  static files and before antiforgery/endpoints. They populate `HttpContext.User`
+  and enforce policies; nothing is authorized yet, so Home and the health endpoints
+  stay anonymous and there is no behaviour change until the area pages carry
+  `[Authorize]`.
+- **Tests**: `SecurityEventTypeTests` + `SignInAuditTests` (pure, always run);
+  `DapperSecurityEventLogTests` (Testcontainers — null vs administrator actor,
+  round-trip — plus a container-free guard test for the unknown-type rejection);
+  `IdentityWiringTests` (builds the container and asserts the `SignInManager` type,
+  cookie hardening, the 5-minute stamp interval, and the four policies' role rules).
 
 ### Build/test checklist for this slice
 
-1. `dotnet restore` — resolves the new Konscious package (bump the pin if needed).
-2. `dotnet build` — the Identity code is unverified until this runs.
-3. `dotnet test` — hasher tests run everywhere; store tests need Podman/Docker.
+1. `dotnet restore` — no new packages; should be a no-op beyond Slice 1.
+2. `dotnet build` — the sign-in/authorization C# is unverified until this runs.
+3. `dotnet test` — the pure Domain tests and the wiring test run everywhere; the
+   security-event store test needs Podman/Docker.
 
 ## Known caveats and deliberate decisions
 
@@ -2280,7 +2340,7 @@ Delivered:
   `uuid` column, so `SetSecurityStampAsync` mints a fresh `Guid` and discards the
   passed string. The value is compared only for equality and regenerated on
   credential/role change, so this is faithful — and it is exactly what makes resets
-  bite live sessions once stamp revalidation is wired (next slice).
+  bite live sessions once stamp revalidation is wired (now wired, this slice).
 - **M2 — two-factor is derived, not flagged.** `GetTwoFactorEnabledAsync` reads
   `totp_secret_protected`; `SetTwoFactorEnabledAsync(false)` clears the secret.
 - **M2 — email/phone confirmation not modeled.** The schema has no confirmation
@@ -2289,36 +2349,52 @@ Delivered:
 - **M2 — role grant/revoke via the store is `NotSupported`.** `person_role` requires
   the granting administrator (self-referencing for the first admin, §3.6), which the
   parameterless `AddToRoleAsync`/`RemoveFromRoleAsync` contract cannot supply. Grants
-  land in the transactional account-administration service / `/setup` (next slices);
+  land in the transactional account-administration service / `/setup` (later slices);
   the store's role **read** path is complete so claims flow at sign-in.
 - **M2 — deletion does not exist (F-10b).** `DeleteAsync` throws; accounts are
   deactivated (`is_active=false`) so history keeps its actors.
-- **Dev-machine note (not a code defect).** `run.sh` uses `dotnet watch`; a busy
-  workstation can hit the kernel's inotify instance limit
+- **M2 — the sign-in manager is wired but not yet reached by a page.** Its audit
+  logic is proven by the pure `SignInAudit` tests and the wiring test. The actual
+  sign-in **pages** are the next slice, and they must post to a static/SSR endpoint
+  (not an interactive-circuit event) so the cookie can be written to the response —
+  a Blazor Server constraint, not an Identity one.
+- **M2 — Blazor auth-state cascade + per-area `[Authorize]` deferred.**
+  `UseAuthentication`/`UseAuthorization` are in the pipeline and the policies are
+  registered, but they enforce nothing until the area pages carry `[Authorize]` and
+  the router wraps `CascadingAuthenticationState` — added with those pages.
+- **Dev-machine note — inotify watch limit (now handled in `run.sh`).** `dotnet watch`
+  can exhaust the kernel's inotify **instance** limit on a busy workstation
   (`The configured user limit (128) on the number of inotify instances has been
-  reached`). Raise it on the host, e.g. `sysctl fs.inotify.max_user_instances=1024`
-  (persist via `/etc/sysctl.d/`). It does not affect the container runtime or CI.
+  reached`), which killed the watcher. `run.sh` now reads
+  `fs.inotify.max_user_instances` and, when it is low (< 256) and the caller has not
+  set `DOTNET_USE_POLLING_FILE_WATCHER`, falls back to the **polling** file watcher
+  for that run so hot reload works without root. For the snappier native watcher,
+  raise the cap once — `sudo sysctl fs.inotify.max_user_instances=1024` (persist via
+  `/etc/sysctl.d/`) — or force it with `DOTNET_USE_POLLING_FILE_WATCHER=0`. Neither
+  the container runtime nor CI is affected.
 
 ## Next: remaining M2 slices (in order)
 
-1. **Sign-in + authorization wiring**: `SignInManager`, cookie auth (Secure,
-   HttpOnly, SameSite=Lax, 24-h sliding), **security-stamp revalidation every 5 min**
-   (§3.1), roles→claims, and the area authorization policies (§3.7). Sign-in/lockout
-   security events + `sign_ins_total{method,result}` (§12).
-2. **Password sign-in flow** (username+password → TOTP/recovery challenge when
-   enrolled) and the **obligations pipeline middleware** enforcing the pure
-   `ObligationsPipeline` decision (§3.5): forced password-change and forced
-   TOTP-enrollment pages; nothing else reachable while a flag is set.
-3. **TOTP enrollment**: provisioning URI → server-side SVG QR, confirm-code, fresh
+1. **Password sign-in flow** (username+password → TOTP/recovery challenge when
+   enrolled), built on the `SignInManager`/cookies wired this slice, plus the
+   **obligations pipeline middleware** enforcing the pure `ObligationsPipeline`
+   decision (§3.5): forced password-change and forced TOTP-enrollment pages; nothing
+   else reachable while a flag is set. Sign-in pages post to static/SSR endpoints so
+   the auth cookie can be written. This is also where the Blazor
+   `CascadingAuthenticationState` and the first `[Authorize]`-gated area land.
+2. **TOTP enrollment**: provisioning URI → server-side SVG QR, confirm-code, fresh
    recovery codes. Verify Identity's Rfc6238 skew; if it is not ±1 step (§3.4), add a
-   custom authenticator token provider.
-4. **Passkeys** (`IUserPasskeyStore`, .NET 10 WebAuthn): registration/assertion,
+   custom authenticator token provider. Records `totp_enrolled` /
+   `recovery_codes_regenerated` via the security-event log (`recovery_code_used`
+   is already recorded by the sign-in manager wired in this slice).
+3. **Passkeys** (`IUserPasskeyStore`, .NET 10 WebAuthn): registration/assertion,
    username-first and discoverable flows, the passkey sign-in path (never a TOTP
-   challenge). Verify the new .NET 10 passkey API against the framework source first.
-5. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
+   challenge — records `sign_in_succeeded` with method `passkey`). Verify the new
+   .NET 10 passkey API against the framework source first.
+4. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
    zero-administrator re-check, self-granting the administrator role in one
    transaction (§3.6) — the first home for role grants.
-6. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
+5. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
    + `role_granted`/`role_revoked` events), **Reset credentials** (temp password +
    `must_change_password`; clear TOTP + set `must_enroll_totp` iff enrolled; new
    stamp; `password_reset_by_administrator` [+ `totp_cleared_by_administrator`]),
@@ -4314,15 +4390,15 @@ Use **DbUp** (MIT) with plain `.sql` scripts:
   File name:             run.sh
   Relative path:         run.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/run.sh
-  Size:                  3.5 KiB (3582 bytes)
-  Last modified:         2026-07-17 21:34:15.000000000 -0400
-  Permissions:           -rwxr-xr-x
+  Size:                  4.9 KiB (5059 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21258234
+  Inode:                 21386316
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               337dcf673f2f55f6ddec2ad6037e832cb2c3797dca41d5373793b0fc10a72509
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               bffda2ce1dcaa7c043906636c6a5b0728503c5fcbf0530b5b823cc90c6b2de39
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
 
 --- CONTENT ---
 #!/usr/bin/env bash
@@ -4395,6 +4471,26 @@ mkdir -p "$DATA_PROTECTION_KEYS_DIRECTORY"
 
 # Ensure the ASP.NET Core dev certificate exists so Kestrel can serve https://localhost:8443.
 dotnet dev-certs https >/dev/null 2>&1 || true
+
+# --- keep `dotnet watch` working under a low inotify instance limit -----------------------------
+# `dotnet watch` opens several inotify instances to watch the source tree. A busy workstation can hit
+# the kernel's per-user cap (default 128), and the watcher then dies with:
+#   "The configured user limit (128) on the number of inotify instances has been reached".
+# When the cap looks low and the caller has not already chosen a watcher, fall back to the polling
+# file watcher for this run so hot reload keeps working WITHOUT root. The native (inotify) watcher is
+# snappier and lighter on CPU; to prefer it, raise the cap once (needs root):
+#   sudo sysctl fs.inotify.max_user_instances=1024
+#   echo 'fs.inotify.max_user_instances=1024' | sudo tee /etc/sysctl.d/99-inotify.conf   # persist
+# To force the native watcher regardless of the cap, run with DOTNET_USE_POLLING_FILE_WATCHER=0.
+if [[ -z "${DOTNET_USE_POLLING_FILE_WATCHER:-}" ]]; then
+    inotify_instance_limit="$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo 0)"
+    [[ "$inotify_instance_limit" =~ ^[0-9]+$ ]] || inotify_instance_limit=0
+    if (( inotify_instance_limit < 256 )); then
+        export DOTNET_USE_POLLING_FILE_WATCHER=1
+        echo "info: inotify instance limit is ${inotify_instance_limit} (< 256); using the polling file watcher for hot reload."
+        echo "info: for the snappier native watcher, raise it once: sudo sysctl fs.inotify.max_user_instances=1024"
+    fi
+fi
 
 echo "info: starting the web app with hot reload at https://localhost:8443 ..."
 exec dotnet watch --project src/MyRestaurant.WebApplication run --launch-profile https
@@ -4785,6 +4881,107 @@ public sealed record Argon2HashingOptions(
     int Iterations,
     int Parallelism,
     int MaxConcurrentHashes);
+
+################################################################################
+# FILE: src/MyRestaurant.DataAccess/Identity/DapperSecurityEventLog.cs
+################################################################################
+
+--- METADATA ---
+  File name:             DapperSecurityEventLog.cs
+  Relative path:         src/MyRestaurant.DataAccess/Identity/DapperSecurityEventLog.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Identity/DapperSecurityEventLog.cs
+  Size:                  3.3 KiB (3387 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 21386311
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               a9f35b50edb079a72d58e4c15398defe104f86de1c5f88cb8eb6c740c63cbeac
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using MyRestaurant.Domain.Authentication;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.Time;
+
+namespace MyRestaurant.DataAccess.Identity;
+
+/// <summary>
+/// The Dapper-backed <see cref="ISecurityEventLog"/> over the <c>security_event</c> table
+/// (TECHNICAL_SPECIFICATION §8.2). Like <see cref="DapperUserStore"/> it holds no connection: each call
+/// opens one from the injected factory and disposes it, so a single instance is safe for the scoped
+/// Identity lifetime. Identifiers are application-generated UUIDv7 (ADR-0011); timestamps come from the
+/// injected <see cref="IClock"/> so tests are deterministic.
+/// </summary>
+public sealed class DapperSecurityEventLog : ISecurityEventLog
+{
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+    private readonly IClock _clock;
+    private readonly IIdentifierFactory _identifierFactory;
+
+    public DapperSecurityEventLog(
+        IDatabaseConnectionFactory connectionFactory,
+        IClock clock,
+        IIdentifierFactory identifierFactory)
+    {
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+        ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(identifierFactory);
+
+        _connectionFactory = connectionFactory;
+        _clock = clock;
+        _identifierFactory = identifierFactory;
+    }
+
+    public async Task RecordAsync(
+        Guid subjectPersonIdentifier,
+        Guid? actorPersonIdentifier,
+        string eventType,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(eventType);
+
+        // Fail fast with a clear message: the column has a CHECK for exactly this set, so a bad value
+        // would otherwise surface as an opaque PostgreSQL CheckViolation at write time.
+        if (!SecurityEventType.IsKnown(eventType))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(eventType),
+                eventType,
+                "Unknown security event type; it must be one of MyRestaurant.Domain.Authentication.SecurityEventType.");
+        }
+
+        // Cast the nullable actor to uuid so Npgsql resolves the parameter type whether the value is a
+        // Guid or NULL (mirrors the '::citext' casts in DapperUserStore). The subject is always present.
+        const string sql = """
+            INSERT INTO security_event (
+                security_event_identifier, subject_person_identifier, actor_person_identifier,
+                event_type, occurred_at)
+            VALUES (
+                @SecurityEventIdentifier, @SubjectPersonIdentifier, @ActorPersonIdentifier::uuid,
+                @EventType, @OccurredAt);
+            """;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            sql,
+            new
+            {
+                SecurityEventIdentifier = _identifierFactory.Create(),
+                SubjectPersonIdentifier = subjectPersonIdentifier,
+                ActorPersonIdentifier = actorPersonIdentifier,
+                EventType = eventType,
+                OccurredAt = _clock.UtcNow,
+            },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+    }
+}
 
 ################################################################################
 # FILE: src/MyRestaurant.DataAccess/Identity/DapperUserStore.cs
@@ -5435,6 +5632,58 @@ public sealed class DapperUserStore :
         user.IsActive,
         user.CreatedAt,
     };
+}
+
+################################################################################
+# FILE: src/MyRestaurant.DataAccess/Identity/ISecurityEventLog.cs
+################################################################################
+
+--- METADATA ---
+  File name:             ISecurityEventLog.cs
+  Relative path:         src/MyRestaurant.DataAccess/Identity/ISecurityEventLog.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Identity/ISecurityEventLog.cs
+  Size:                  1.5 KiB (1582 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 21386310
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               0c8097afe2edaa23ae081df56b341f4f3a08605db8696aa231594a46719b489c
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+
+--- CONTENT ---
+namespace MyRestaurant.DataAccess.Identity;
+
+/// <summary>
+/// Appends rows to the <c>security_event</c> table (TECHNICAL_SPECIFICATION §8.2). Security events are
+/// an audit trail, never mutated and never deleted: sign-in outcomes and lockouts today (§3.5), and
+/// administrative actions — resets, grants/revocations, deactivations — as those land in later M2
+/// slices (§3.7). It lives beside the Dapper Identity store because it is pure persistence; callers in
+/// the web layer depend on this interface rather than on SQL.
+/// </summary>
+public interface ISecurityEventLog
+{
+    /// <summary>
+    /// Records one security event.
+    /// </summary>
+    /// <param name="subjectPersonIdentifier">
+    /// The account the event is about (the <c>security_event.subject_person_identifier</c>; NOT NULL).
+    /// </param>
+    /// <param name="actorPersonIdentifier">
+    /// The person who caused it, or <c>null</c> when the subject acted on themselves or the system did
+    /// (e.g. a sign-in attempt, a lockout). Maps to the nullable <c>actor_person_identifier</c>.
+    /// </param>
+    /// <param name="eventType">
+    /// One of <see cref="MyRestaurant.Domain.Authentication.SecurityEventType"/> — validated before the
+    /// write so an unknown value fails fast rather than as a raw CHECK violation.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the write.</param>
+    Task RecordAsync(
+        Guid subjectPersonIdentifier,
+        Guid? actorPersonIdentifier,
+        string eventType,
+        CancellationToken cancellationToken = default);
 }
 
 ################################################################################
@@ -6279,6 +6528,192 @@ public static class ObligationsPipeline
     /// </summary>
     public static bool MayReachEndpoint(bool mustChangePassword, bool mustEnrollTotp, bool endpointIsPipelineOrSignOut)
         => IsCleared(mustChangePassword, mustEnrollTotp) || endpointIsPipelineOrSignOut;
+}
+
+################################################################################
+# FILE: src/MyRestaurant.Domain/Authentication/SecurityEventType.cs
+################################################################################
+
+--- METADATA ---
+  File name:             SecurityEventType.cs
+  Relative path:         src/MyRestaurant.Domain/Authentication/SecurityEventType.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.Domain/Authentication/SecurityEventType.cs
+  Size:                  3.3 KiB (3398 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 21386308
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               cd97bc4d6564074d8eb3c000712690e19733475b47813feacc52a556b6865ec6
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+
+--- CONTENT ---
+namespace MyRestaurant.Domain.Authentication;
+
+/// <summary>
+/// The closed vocabulary of security-audit event types (TECHNICAL_SPECIFICATION §3.4–§3.7). These
+/// strings are the exact values allowed by the <c>security_event.event_type</c> CHECK constraint
+/// (§8.2); keeping them in one BCL-only place lets the web layer raise events, the data layer persist
+/// them, and a unit test assert the set matches the schema — all without duplicating string literals.
+///
+/// <para>Do not rename a value without a coordinated migration: the database rejects any string not in
+/// this list, so a typo here surfaces as a CHECK violation at write time rather than a compile error.
+/// <see cref="IsKnown"/> gives callers a cheap client-side guard so a bad value fails fast with a clear
+/// exception instead of a raw PostgreSQL error.</para>
+/// </summary>
+public static class SecurityEventType
+{
+    // Account lifecycle (§3.7).
+    public const string AccountCreated = "account_created";
+    public const string AccountDeactivated = "account_deactivated";
+    public const string AccountReactivated = "account_reactivated";
+
+    // Passwords (§3.2, §3.5, §3.7).
+    public const string PasswordChanged = "password_changed";
+    public const string PasswordResetByAdministrator = "password_reset_by_administrator";
+    public const string ForcedPasswordChangeCompleted = "forced_password_change_completed";
+
+    // TOTP + recovery codes (§3.4, §3.5, §3.7).
+    public const string TotpEnrolled = "totp_enrolled";
+    public const string TotpRemoved = "totp_removed";
+    public const string TotpClearedByAdministrator = "totp_cleared_by_administrator";
+    public const string ForcedTotpEnrollmentCompleted = "forced_totp_enrollment_completed";
+    public const string RecoveryCodeUsed = "recovery_code_used";
+    public const string RecoveryCodesRegenerated = "recovery_codes_regenerated";
+
+    // Passkeys (§3.3).
+    public const string PasskeyRegistered = "passkey_registered";
+    public const string PasskeyRemoved = "passkey_removed";
+
+    // Roles (§3.6, §3.7).
+    public const string RoleGranted = "role_granted";
+    public const string RoleRevoked = "role_revoked";
+
+    // Sign-in outcomes (§3.5). The metric sign_ins_total{method,result} mirrors these (§12).
+    public const string SignInSucceeded = "sign_in_succeeded";
+    public const string SignInFailed = "sign_in_failed";
+    public const string AccountLockedOut = "account_locked_out";
+
+    /// <summary>Every valid <c>event_type</c>, in the order the schema lists them.</summary>
+    public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
+    {
+        AccountCreated,
+        AccountDeactivated,
+        AccountReactivated,
+        PasswordChanged,
+        PasswordResetByAdministrator,
+        ForcedPasswordChangeCompleted,
+        TotpEnrolled,
+        TotpRemoved,
+        TotpClearedByAdministrator,
+        ForcedTotpEnrollmentCompleted,
+        RecoveryCodeUsed,
+        RecoveryCodesRegenerated,
+        PasskeyRegistered,
+        PasskeyRemoved,
+        RoleGranted,
+        RoleRevoked,
+        SignInSucceeded,
+        SignInFailed,
+        AccountLockedOut,
+    };
+
+    /// <summary>True when <paramref name="eventType"/> is one the schema will accept (case-sensitive).</summary>
+    public static bool IsKnown(string eventType) => All.Contains(eventType);
+}
+
+################################################################################
+# FILE: src/MyRestaurant.Domain/Authentication/SignInAudit.cs
+################################################################################
+
+--- METADATA ---
+  File name:             SignInAudit.cs
+  Relative path:         src/MyRestaurant.Domain/Authentication/SignInAudit.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.Domain/Authentication/SignInAudit.cs
+  Size:                  3.5 KiB (3533 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 21386309
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               6c85bd4e6ecb75db033a767e8fcaeb90a9ee1661c945d690cee58c7f4c621a29
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+
+--- CONTENT ---
+namespace MyRestaurant.Domain.Authentication;
+
+/// <summary>
+/// The terminal-ish outcome of a single sign-in attempt, distilled from ASP.NET Core Identity's
+/// <c>SignInResult</c> into a BCL-only value the domain can reason about. The web layer maps the
+/// framework result onto this; the domain decides what to audit. Keeping the decision here (rather
+/// than inside the <c>SignInManager</c> subclass) makes it exhaustively unit-testable, exactly as the
+/// obligations pipeline is (TECHNICAL_SPECIFICATION §3.5, §16.1).
+/// </summary>
+public enum SignInAttemptResult
+{
+    /// <summary>Fully authenticated — the cookie was issued.</summary>
+    Succeeded,
+
+    /// <summary>Credentials were rejected (wrong password, wrong/absent second factor).</summary>
+    Failed,
+
+    /// <summary>The account is locked out (either already, or this attempt tripped the threshold, §3.1).</summary>
+    LockedOut,
+
+    /// <summary>The password was correct but a second factor is still required — not yet a terminal outcome.</summary>
+    RequiresTwoFactor,
+
+    /// <summary>Sign-in is not permitted for this account (e.g. a confirmation gate, unused here).</summary>
+    NotAllowed,
+}
+
+/// <summary>
+/// The pure audit decision for a sign-in attempt (TECHNICAL_SPECIFICATION §3.5, §12): given the
+/// outcome, which <see cref="SecurityEventType"/> row (if any) should be written, and which
+/// <c>result</c> label the <c>sign_ins_total</c> metric should carry (if any).
+///
+/// <para><see cref="SignInAttemptResult.RequiresTwoFactor"/> is deliberately silent on both: the
+/// password step passing is not a completed sign-in, so the terminal event/metric is recorded by the
+/// second-factor step instead. Everything else is terminal and is both audited and metered.</para>
+/// </summary>
+public static class SignInAudit
+{
+    /// <summary>
+    /// The security-event type to persist for <paramref name="result"/>, or <c>null</c> when nothing
+    /// should be recorded yet (the two-factor challenge case).
+    /// </summary>
+    public static string? SecurityEventFor(SignInAttemptResult result) => result switch
+    {
+        SignInAttemptResult.Succeeded => SecurityEventType.SignInSucceeded,
+        SignInAttemptResult.LockedOut => SecurityEventType.AccountLockedOut,
+        SignInAttemptResult.Failed => SecurityEventType.SignInFailed,
+        SignInAttemptResult.NotAllowed => SecurityEventType.SignInFailed,
+        SignInAttemptResult.RequiresTwoFactor => null,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The <c>result</c> tag value for the <c>sign_ins_total{method,result}</c> metric (§12), or
+    /// <c>null</c> when the attempt should not be metered yet (the two-factor challenge case). A
+    /// lockout is metered as a failure while being audited as its own <c>account_locked_out</c> event.
+    /// </summary>
+    public static string? MetricResultFor(SignInAttemptResult result) => result switch
+    {
+        SignInAttemptResult.Succeeded => MetricSucceeded,
+        SignInAttemptResult.Failed => MetricFailed,
+        SignInAttemptResult.LockedOut => MetricFailed,
+        SignInAttemptResult.NotAllowed => MetricFailed,
+        SignInAttemptResult.RequiresTwoFactor => null,
+        _ => null,
+    };
+
+    /// <summary>The <c>result</c> tag value recorded on a successful sign-in.</summary>
+    public const string MetricSucceeded = "succeeded";
+
+    /// <summary>The <c>result</c> tag value recorded on any non-success terminal outcome.</summary>
+    public const string MetricFailed = "failed";
 }
 
 ################################################################################
@@ -7735,6 +8170,87 @@ public sealed class SystemClock : IClock
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.WebApplication/Authorization/AuthorizationPolicies.cs
+################################################################################
+
+--- METADATA ---
+  File name:             AuthorizationPolicies.cs
+  Relative path:         src/MyRestaurant.WebApplication/Authorization/AuthorizationPolicies.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Authorization/AuthorizationPolicies.cs
+  Size:                  2.8 KiB (2897 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 21386306
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               9a044c8cb3702f0685e05709bbcc238fbc16d596af6b50caca0c7258df9f9c79
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+
+--- CONTENT ---
+namespace MyRestaurant.WebApplication.Authorization;
+
+/// <summary>
+/// The three stored role names (TECHNICAL_SPECIFICATION §3.7), spelled exactly as the
+/// <c>person_role.role_name</c> CHECK stores them — lower case. The Dapper role store returns roles in
+/// this casing, the claims factory turns each into a role claim verbatim, and the policies below match
+/// on it, so the whole chain agrees on one spelling. <c>guest</c> is not here: it is the implicit
+/// capacity of any authenticated person on their own order, never a stored role. <c>table_display</c>
+/// is a device principal, not a person role.
+/// </summary>
+public static class RestaurantRoles
+{
+    public const string Administrator = "administrator";
+    public const string Kitchen = "kitchen";
+    public const string Counter = "counter";
+}
+
+/// <summary>
+/// Named authorization policies for the routed areas (TECHNICAL_SPECIFICATION §3.7). The policies are
+/// registered here; pages attach them with <c>[Authorize(Policy = ...)]</c> as each area is built in
+/// later milestones. The display-device policies (<c>/display/{table}</c>, <c>/display/pair</c>) are a
+/// device-principal concern and arrive with M3.
+/// </summary>
+public static class AuthorizationPolicies
+{
+    /// <summary><c>/table</c> — any authenticated person (per-sitting membership is checked separately).</summary>
+    public const string Table = "area.table";
+
+    /// <summary><c>/kitchen</c> — the kitchen or administrator role.</summary>
+    public const string Kitchen = "area.kitchen";
+
+    /// <summary><c>/counter</c> — the counter or administrator role.</summary>
+    public const string Counter = "area.counter";
+
+    /// <summary><c>/administration</c> — the administrator role.</summary>
+    public const string Administration = "area.administration";
+}
+
+/// <summary>Registers the area authorization policies (§3.7).</summary>
+public static class AuthorizationServiceCollectionExtensions
+{
+    public static IServiceCollection AddRestaurantAuthorization(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddAuthorizationBuilder()
+            .AddPolicy(AuthorizationPolicies.Table, policy => policy
+                .RequireAuthenticatedUser())
+            .AddPolicy(AuthorizationPolicies.Kitchen, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireRole(RestaurantRoles.Kitchen, RestaurantRoles.Administrator))
+            .AddPolicy(AuthorizationPolicies.Counter, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireRole(RestaurantRoles.Counter, RestaurantRoles.Administrator))
+            .AddPolicy(AuthorizationPolicies.Administration, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireRole(RestaurantRoles.Administrator));
+
+        return services;
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/App.razor
 ################################################################################
 
@@ -8101,20 +8617,23 @@ public sealed class RestaurantOptions
   File name:             IdentityServiceCollectionExtensions.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
-  Size:                  3.7 KiB (3776 bytes)
-  Last modified:         2026-07-18 12:46:04.000000000 -0400
+  Size:                  8.1 KiB (8283 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
   Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21340833
+  Inode:                 21386304
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               2dce14067ba812ffa23c3bccea08dc82aa8f09ae741bdf16dacb3f88e697955d
-  Last git commit:       fa320ac 2026-07-18 08:51:11 -0400 add claude response
+  SHA-256:               b8703b7b1d4923e5715e6f852987a64ae7351913d37832c3a1328556e214837c
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
 
 --- CONTENT ---
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.WebApplication.Authorization;
 using MyRestaurant.WebApplication.Configuration;
 using MyRestaurant.WebApplication.Observability;
 
@@ -8123,16 +8642,54 @@ namespace MyRestaurant.WebApplication.Identity;
 /// <summary>
 /// Wires ASP.NET Core Identity <b>core</b> services (never the EF default stores/UI) over the custom
 /// Dapper store, with the Argon2id hasher replacing Identity's PBKDF2 default
-/// (TECHNICAL_SPECIFICATION §3.1–§3.2, ADR-0003/ADR-0008). Sign-in (<c>SignInManager</c>, cookie
-/// auth, the security-stamp revalidation interval) and the passkey store are wired in a later M2
-/// increment; this method only makes <see cref="UserManager{TUser}"/> resolvable and correct.
+/// (TECHNICAL_SPECIFICATION §3.1–§3.2, ADR-0003/ADR-0008), plus sign-in and authorization:
+/// <list type="bullet">
+///   <item>the Identity cookie scheme, hardened (Secure, HttpOnly, SameSite=Lax, 24-hour sliding);</item>
+///   <item><see cref="RestaurantSignInManager"/> (the auditing <see cref="SignInManager{TUser}"/>);</item>
+///   <item>security-stamp revalidation every 5 minutes, so resets, role revocations, and
+///   deactivations bite live sessions within minutes (§3.1);</item>
+///   <item>the area authorization policies (§3.7), via <see cref="AuthorizationServiceCollectionExtensions"/>;</item>
+///   <item>the append-only <see cref="ISecurityEventLog"/> that sign-in outcomes are recorded to (§3.5).</item>
+/// </list>
+///
+/// Roles flow to claims automatically: the store implements <see cref="IUserRoleStore{TUser}"/>, so the
+/// default claims-principal factory adds a role claim per granted role at sign-in — no role entity or
+/// <c>RoleManager</c> is registered (roles are plain strings, §3.7). The sign-in <em>pages</em> and the
+/// obligations-pipeline middleware are the next M2 slices; this method wires the services they need.
 /// </summary>
 public static class IdentityServiceCollectionExtensions
 {
+    /// <summary>The application authentication cookie name.</summary>
+    private const string AuthenticationCookieName = "myrestaurant.authentication";
+
+    /// <summary>Security-stamp revalidation interval (§3.1).</summary>
+    private static readonly TimeSpan SecurityStampValidationInterval = TimeSpan.FromMinutes(5);
+
+    /// <summary>Cookie sliding-expiration lifetime (§3.1).</summary>
+    private static readonly TimeSpan AuthenticationCookieLifetime = TimeSpan.FromHours(24);
+
     public static IServiceCollection AddRestaurantIdentity(this IServiceCollection services, RestaurantOptions options)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
+
+        // SignInManager and the cookie handlers resolve the current HttpContext.
+        services.AddHttpContextAccessor();
+
+        // Cookie authentication with Identity's four schemes (application, external, two-factor
+        // remember-me, two-factor user-id). The application cookie is the default for
+        // authenticate/challenge/forbid; the external cookie is the default sign-in scheme, matching
+        // what AddIdentity configures internally (we compose it by hand to avoid a RoleManager).
+        services.AddAuthentication(authentication =>
+            {
+                authentication.DefaultAuthenticateScheme = IdentityConstants.ApplicationScheme;
+                authentication.DefaultChallengeScheme = IdentityConstants.ApplicationScheme;
+                authentication.DefaultSignInScheme = IdentityConstants.ExternalScheme;
+            })
+            .AddIdentityCookies();
+
+        // Area authorization policies (§3.7).
+        services.AddRestaurantAuthorization();
 
         services.AddIdentityCore<Person>(identity =>
             {
@@ -8163,7 +8720,37 @@ public static class IdentityServiceCollectionExtensions
                 identity.Stores.ProtectPersonalData = false;
             })
             .AddUserStore<DapperUserStore>()
-            .AddDefaultTokenProviders(); // Authenticator (TOTP), Data-Protection, email/phone token providers.
+            .AddDefaultTokenProviders() // Authenticator (TOTP), Data-Protection, email/phone token providers.
+            .AddSignInManager<RestaurantSignInManager>();
+
+        // AddIdentityCookies wires the application cookie's OnValidatePrincipal to the static
+        // SecurityStampValidator, which resolves these at runtime. AddIdentityCore/AddSignInManager do
+        // not register them (only the monolithic AddIdentity does), so register them explicitly.
+        services.TryAddScoped<ISecurityStampValidator, SecurityStampValidator<Person>>();
+        services.TryAddScoped<ITwoFactorSecurityStampValidator, TwoFactorSecurityStampValidator<Person>>();
+
+        // Harden the application cookie (§3.1). Secure + HttpOnly + SameSite=Lax; 24-hour sliding
+        // expiration. The paths point at the sign-in surfaces built in the next slice; nothing is
+        // authorized yet, so no redirect fires until those pages and their [Authorize] attributes exist.
+        services.ConfigureApplicationCookie(cookie =>
+        {
+            cookie.Cookie.Name = AuthenticationCookieName;
+            cookie.Cookie.HttpOnly = true;
+            cookie.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            cookie.Cookie.SameSite = SameSiteMode.Lax;
+            cookie.ExpireTimeSpan = AuthenticationCookieLifetime;
+            cookie.SlidingExpiration = true;
+            cookie.LoginPath = "/sign-in";
+            cookie.LogoutPath = "/sign-out";
+            cookie.AccessDeniedPath = "/access-denied";
+        });
+
+        // Revalidate the security stamp every 5 minutes so administrative resets/revocations/
+        // deactivations invalidate live sessions promptly (§3.1).
+        services.Configure<SecurityStampValidatorOptions>(validator =>
+        {
+            validator.ValidationInterval = SecurityStampValidationInterval;
+        });
 
         // Replace Identity's PBKDF2 IPasswordHasher<Person> with Argon2id (§3.2). Singleton so the
         // process-wide concurrency semaphore genuinely bounds total concurrent hashes; the duration
@@ -8180,7 +8767,223 @@ public static class IdentityServiceCollectionExtensions
                 metrics.RecordPasswordHashDuration);
         }));
 
+        // The append-only security-event trail (§3.5, §3.7). Scoped, matching the Identity lifetime;
+        // it holds no state and opens a connection per write from the singleton factory.
+        services.AddScoped<ISecurityEventLog, DapperSecurityEventLog>();
+
         return services;
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Identity/RestaurantSignInManager.cs
+################################################################################
+
+--- METADATA ---
+  File name:             RestaurantSignInManager.cs
+  Relative path:         src/MyRestaurant.WebApplication/Identity/RestaurantSignInManager.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/RestaurantSignInManager.cs
+  Size:                  7.7 KiB (7842 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 21386305
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               7bbbdcd3a4ff4a62a690a880d729ab609279d482a9514063d0aa18b4be32f3d6
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+
+--- CONTENT ---
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
+using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Authentication;
+using MyRestaurant.WebApplication.Observability;
+
+namespace MyRestaurant.WebApplication.Identity;
+
+/// <summary>
+/// A <see cref="SignInManager{TUser}"/> that audits every sign-in outcome centrally
+/// (TECHNICAL_SPECIFICATION §3.5, §12): whichever endpoint drives the sign-in, the terminal result is
+/// recorded once as a <c>security_event</c> and once on the <c>sign_ins_total{method,result}</c>
+/// metric. The <em>decision</em> of what to record lives in the pure <see cref="SignInAudit"/>
+/// (unit-tested exhaustively); this class only maps the framework's <see cref="SignInResult"/> onto it
+/// and performs the side effects.
+///
+/// <para>Only the password and second-factor paths are overridden here. The passkey path
+/// (<c>SignInManager.SignInAsync</c> after a WebAuthn assertion, method = <c>passkey</c>) records its
+/// own success in the passkey slice, so <see cref="SignInManager{TUser}.SignInAsync(TUser,bool,string)"/>
+/// is intentionally not overridden — overriding it would double-count the password path, which calls it
+/// internally on success.</para>
+///
+/// <para>A subject is required for a <c>security_event</c> row (the column is NOT NULL, §8.2), so a
+/// failed attempt against a non-existent username is metered but not audited — there is no account to
+/// attribute it to. <c>RequiresTwoFactor</c> is neither audited nor metered here: the password step
+/// passing is not a completed sign-in, and the second-factor step records the terminal outcome.</para>
+/// </summary>
+public sealed class RestaurantSignInManager : SignInManager<Person>
+{
+    /// <summary>The <c>method</c> tag for the password path, including its TOTP/recovery second factor (§3.5).</summary>
+    private const string PasswordMethod = "password";
+
+    private readonly ISecurityEventLog _securityEventLog;
+    private readonly RestaurantMetrics _metrics;
+
+    public RestaurantSignInManager(
+        UserManager<Person> userManager,
+        IHttpContextAccessor contextAccessor,
+        IUserClaimsPrincipalFactory<Person> claimsFactory,
+        IOptions<IdentityOptions> optionsAccessor,
+        ILogger<SignInManager<Person>> logger,
+        IAuthenticationSchemeProvider schemes,
+        IUserConfirmation<Person> confirmation,
+        ISecurityEventLog securityEventLog,
+        RestaurantMetrics metrics)
+        : base(userManager, contextAccessor, claimsFactory, optionsAccessor, logger, schemes, confirmation)
+    {
+        ArgumentNullException.ThrowIfNull(securityEventLog);
+        ArgumentNullException.ThrowIfNull(metrics);
+
+        _securityEventLog = securityEventLog;
+        _metrics = metrics;
+    }
+
+    /// <summary>
+    /// Username + password. Reimplements the base's "resolve the user, else fail" step so that a
+    /// failure against an unknown username is still metered, then routes real users through the
+    /// user-typed overload below (which does the auditing) — no double counting.
+    /// </summary>
+    public override async Task<SignInResult> PasswordSignInAsync(
+        string userName,
+        string password,
+        bool isPersistent,
+        bool lockoutOnFailure)
+    {
+        ArgumentNullException.ThrowIfNull(userName);
+
+        Person? user = await UserManager.FindByNameAsync(userName).ConfigureAwait(false);
+        if (user is null)
+        {
+            // No account to attribute a security_event to; still meter the failed attempt (§12).
+            RecordMetric(SignInAttemptResult.Failed);
+            return SignInResult.Failed;
+        }
+
+        return await PasswordSignInAsync(user, password, isPersistent, lockoutOnFailure).ConfigureAwait(false);
+    }
+
+    /// <summary>Known user + password: the base does the work; we audit the terminal outcome.</summary>
+    public override async Task<SignInResult> PasswordSignInAsync(
+        Person user,
+        string password,
+        bool isPersistent,
+        bool lockoutOnFailure)
+    {
+        SignInResult result = await base
+            .PasswordSignInAsync(user, password, isPersistent, lockoutOnFailure)
+            .ConfigureAwait(false);
+
+        await AuditAsync(user, result).ConfigureAwait(false);
+        return result;
+    }
+
+    /// <summary>The TOTP second factor on the password path (§3.5): audit the terminal outcome.</summary>
+    public override async Task<SignInResult> TwoFactorAuthenticatorSignInAsync(
+        string code,
+        bool isPersistent,
+        bool rememberClient)
+    {
+        // Capture the pending user before the base runs: a successful sign-in clears the two-factor
+        // cookie, after which GetTwoFactorAuthenticationUserAsync would return null.
+        Person? user = await GetTwoFactorAuthenticationUserAsync().ConfigureAwait(false);
+        SignInResult result = await base
+            .TwoFactorAuthenticatorSignInAsync(code, isPersistent, rememberClient)
+            .ConfigureAwait(false);
+
+        await AuditAsync(user, result).ConfigureAwait(false);
+        return result;
+    }
+
+    /// <summary>
+    /// A recovery code standing in for the TOTP second factor (§3.4): audit the sign-in outcome, and —
+    /// on success — also record that a recovery code was consumed. The base only signs in when the code
+    /// was actually redeemed, so a succeeded result means exactly one code was spent.
+    /// </summary>
+    public override async Task<SignInResult> TwoFactorRecoveryCodeSignInAsync(string recoveryCode)
+    {
+        Person? user = await GetTwoFactorAuthenticationUserAsync().ConfigureAwait(false);
+        SignInResult result = await base
+            .TwoFactorRecoveryCodeSignInAsync(recoveryCode)
+            .ConfigureAwait(false);
+
+        await AuditAsync(user, result).ConfigureAwait(false);
+
+        if (result.Succeeded && user is not null)
+        {
+            await _securityEventLog
+                .RecordAsync(user.PersonIdentifier, actorPersonIdentifier: null, SecurityEventType.RecoveryCodeUsed)
+                .ConfigureAwait(false);
+        }
+
+        return result;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+
+    /// <summary>Meters the attempt and, when there is a subject, records the security event.</summary>
+    private async Task AuditAsync(Person? user, SignInResult result)
+    {
+        SignInAttemptResult attempt = Classify(result);
+        RecordMetric(attempt);
+
+        if (user is null)
+        {
+            return;
+        }
+
+        string? eventType = SignInAudit.SecurityEventFor(attempt);
+        if (eventType is not null)
+        {
+            // The subject acted on themselves / the system observed the attempt — no distinct actor.
+            await _securityEventLog
+                .RecordAsync(user.PersonIdentifier, actorPersonIdentifier: null, eventType)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private void RecordMetric(SignInAttemptResult attempt)
+    {
+        string? metricResult = SignInAudit.MetricResultFor(attempt);
+        if (metricResult is not null)
+        {
+            _metrics.RecordSignIn(PasswordMethod, metricResult);
+        }
+    }
+
+    private static SignInAttemptResult Classify(SignInResult result)
+    {
+        if (result.Succeeded)
+        {
+            return SignInAttemptResult.Succeeded;
+        }
+
+        if (result.IsLockedOut)
+        {
+            return SignInAttemptResult.LockedOut;
+        }
+
+        if (result.IsNotAllowed)
+        {
+            return SignInAttemptResult.NotAllowed;
+        }
+
+        if (result.RequiresTwoFactor)
+        {
+            return SignInAttemptResult.RequiresTwoFactor;
+        }
+
+        return SignInAttemptResult.Failed;
     }
 }
 
@@ -8476,15 +9279,15 @@ public sealed class RestaurantMetrics : IDisposable
   File name:             Program.cs
   Relative path:         src/MyRestaurant.WebApplication/Program.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Program.cs
-  Size:                  6.7 KiB (6879 bytes)
-  Last modified:         2026-07-18 12:46:04.000000000 -0400
+  Size:                  7.2 KiB (7335 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
   Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21340834
+  Inode:                 21386307
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               d95fe4af6b6183b50b7461b0768e85bf06293076dc97ff64b534c7c9ae6384da
-  Last git commit:       fa320ac 2026-07-18 08:51:11 -0400 add claude response
+  SHA-256:               243380e8224d888bfbbd31cfdaafea0e1943aa60e7082aa2e7cb276e72dbb722
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
 
 --- CONTENT ---
 using System.Data.Common;
@@ -8510,7 +9313,7 @@ using OpenTelemetry.Trace;
 //   2. wire OpenTelemetry (exporters only when an OTLP endpoint is configured);
 //   3. register services;
 //   4. apply database migrations BEFORE binding HTTP (never serve on a half-applied schema, §17);
-//   5. forwarded headers → health endpoints → Blazor interactive-server components.
+//   5. forwarded headers → auth → health endpoints → Blazor interactive-server components.
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
@@ -8588,9 +9391,11 @@ builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(options.DataProtectionKeysDirectory))
     .SetApplicationName("myrestaurant");
 
-// ASP.NET Core Identity core services over the custom Dapper store, with the Argon2id hasher
-// (§3.1–§3.2, ADR-0003/ADR-0008). Registered after Data Protection because the store encrypts the
-// TOTP secret with it and after RestaurantMetrics because the hasher reports its timing there.
+// ASP.NET Core Identity core services over the custom Dapper store, with the Argon2id hasher, plus
+// sign-in, hardened cookie auth, security-stamp revalidation, the area authorization policies, and the
+// security-event log (§3.1–§3.7, ADR-0003/ADR-0008). Registered after Data Protection because the
+// store encrypts the TOTP secret and the auth cookie is protected with it, and after RestaurantMetrics
+// because the hasher and sign-in manager report there.
 builder.Services.AddRestaurantIdentity(options);
 
 // The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
@@ -8616,9 +9421,13 @@ using (IServiceScope migrationScope = app.Services.CreateScope())
     migrationScope.ServiceProvider.GetRequiredService<SchemaMigrationRunner>().Run();
 }
 
-// (5) HTTP pipeline. No HTTPS redirection — TLS is terminated at the proxy.
+// (5) HTTP pipeline. No HTTPS redirection — TLS is terminated at the proxy. Authentication populates
+// HttpContext.User from the Identity cookie; authorization enforces the area policies (§3.7) once the
+// area pages carry [Authorize]. Both sit after static files and before antiforgery/endpoints.
 app.UseForwardedHeaders();
 app.UseStaticFiles();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
 
 // Health endpoints (§12). Liveness is "the process answers"; readiness additionally proves the
@@ -9053,6 +9862,181 @@ public sealed class Argon2idPasswordHasherTests
         Assert.Equal(
             PasswordVerificationResult.SuccessRehashNeeded,
             currentHasher.VerifyHashedPassword(AnyUser, legacyHash, "rehash me please"));
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.DataAccess.Tests/Identity/DapperSecurityEventLogTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             DapperSecurityEventLogTests.cs
+  Relative path:         tests/MyRestaurant.DataAccess.Tests/Identity/DapperSecurityEventLogTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/Identity/DapperSecurityEventLogTests.cs
+  Size:                  6.6 KiB (6732 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 21386313
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               118a2faa456d8b1e4f002be89d351a91fed518dec27ea3435e1b04e2afb98ef0
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Authentication;
+using MyRestaurant.Domain.Identifiers;
+using Xunit;
+
+namespace MyRestaurant.DataAccess.Tests.Identity;
+
+/// <summary>
+/// Integration tests for <see cref="DapperSecurityEventLog"/> (TECHNICAL_SPECIFICATION §3.5, §8.2,
+/// §16.2) against a real PostgreSQL 17 container: a self-inflicted event stores a null actor; an
+/// administrative event stores the acting administrator; and the CHECK-backed vocabulary is guarded
+/// client-side (that last test needs no container and always runs). If no container engine is
+/// available, the database-backed tests skip.
+/// </summary>
+public sealed class DapperSecurityEventLogTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
+{
+    private readonly PostgreSqlFixture _fixture;
+    private readonly FixedClock _clock = new(new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero));
+    private NpgsqlDatabaseConnectionFactory? _connectionFactory;
+
+    public DapperSecurityEventLogTests(PostgreSqlFixture fixture) => _fixture = fixture;
+
+    public ValueTask InitializeAsync()
+    {
+        if (_fixture.ConnectionString is not null)
+        {
+            new SchemaMigrationRunner(_fixture.ConnectionString)
+            {
+                MaximumAttempts = 3,
+                DelayBetweenAttempts = TimeSpan.FromMilliseconds(200),
+            }.Run();
+
+            _connectionFactory = new NpgsqlDatabaseConnectionFactory(_fixture.ConnectionString);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connectionFactory is not null)
+        {
+            await _connectionFactory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task RecordAsync_SelfInflictedEvent_StoresRowWithNullActor()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid subject = await InsertPersonAsync(UniqueUsername("subject"), cancellationToken);
+        DapperSecurityEventLog log = BuildLog();
+
+        await log.RecordAsync(subject, actorPersonIdentifier: null, SecurityEventType.SignInSucceeded, cancellationToken);
+
+        SecurityEventRow row = await ReadSingleEventAsync(subject, cancellationToken);
+        Assert.Equal(SecurityEventType.SignInSucceeded, row.EventType);
+        Assert.Null(row.ActorPersonIdentifier);
+        Assert.Equal(_clock.UtcNow, row.OccurredAt);
+    }
+
+    [Fact]
+    public async Task RecordAsync_AdministrativeEvent_StoresTheActingAdministrator()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid subject = await InsertPersonAsync(UniqueUsername("staff"), cancellationToken);
+        Guid administrator = await InsertPersonAsync(UniqueUsername("admin"), cancellationToken);
+        DapperSecurityEventLog log = BuildLog();
+
+        await log.RecordAsync(subject, administrator, SecurityEventType.RoleGranted, cancellationToken);
+
+        SecurityEventRow row = await ReadSingleEventAsync(subject, cancellationToken);
+        Assert.Equal(SecurityEventType.RoleGranted, row.EventType);
+        Assert.Equal(administrator, row.ActorPersonIdentifier);
+    }
+
+    [Fact]
+    public async Task RecordAsync_UnknownEventType_ThrowsBeforeTouchingTheDatabase()
+    {
+        // No container needed: the client-side guard rejects the value before opening a connection.
+        DapperSecurityEventLog log = new(new ThrowingConnectionFactory(), _clock, new UuidV7IdentifierFactory());
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => log.RecordAsync(Guid.CreateVersion7(), actorPersonIdentifier: null, "not_a_real_event"));
+    }
+
+    // --- helpers -----------------------------------------------------------------------------------
+
+    private DapperSecurityEventLog BuildLog()
+        => new(_connectionFactory!, _clock, new UuidV7IdentifierFactory());
+
+    private void SkipIfNoContainer()
+        => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+
+    private static string UniqueUsername(string prefix) => $"{prefix}_{Guid.NewGuid():N}";
+
+    private async Task<Guid> InsertPersonAsync(string username, CancellationToken cancellationToken)
+    {
+        Guid identifier = Guid.CreateVersion7();
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO person (person_identifier, username, security_stamp, created_at)
+            VALUES (@Id, @Username, @Stamp, @CreatedAt);
+            """,
+            new
+            {
+                Id = identifier,
+                Username = username,
+                Stamp = Guid.NewGuid(),
+                CreatedAt = _clock.UtcNow,
+            },
+            cancellationToken: cancellationToken));
+
+        return identifier;
+    }
+
+    private async Task<SecurityEventRow> ReadSingleEventAsync(Guid subject, CancellationToken cancellationToken)
+    {
+        // Alias snake_case columns to the row's PascalCase properties so Dapper matches by name without
+        // the global MatchNamesWithUnderscores setting the store deliberately avoids.
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        return await connection.QuerySingleAsync<SecurityEventRow>(new CommandDefinition(
+            """
+            SELECT event_type               AS EventType,
+                   actor_person_identifier  AS ActorPersonIdentifier,
+                   occurred_at              AS OccurredAt
+            FROM security_event
+            WHERE subject_person_identifier = @Subject;
+            """,
+            new { Subject = subject },
+            cancellationToken: cancellationToken));
+    }
+
+    /// <summary>One projected <c>security_event</c> row for assertions.</summary>
+    private sealed class SecurityEventRow
+    {
+        public string EventType { get; init; } = string.Empty;
+        public Guid? ActorPersonIdentifier { get; init; }
+        public DateTimeOffset OccurredAt { get; init; }
+    }
+
+    /// <summary>An <see cref="IDatabaseConnectionFactory"/> that must never be called; proves the guard runs first.</summary>
+    private sealed class ThrowingConnectionFactory : IDatabaseConnectionFactory
+    {
+        public ValueTask<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("The connection factory must not be reached for an invalid event type.");
     }
 }
 
@@ -9499,6 +10483,184 @@ internal sealed class FixedClock : IClock
     public FixedClock(DateTimeOffset utcNow) => UtcNow = utcNow;
 
     public DateTimeOffset UtcNow { get; set; }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.DataAccess.Tests/Identity/IdentityWiringTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             IdentityWiringTests.cs
+  Relative path:         tests/MyRestaurant.DataAccess.Tests/Identity/IdentityWiringTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/Identity/IdentityWiringTests.cs
+  Size:                  6.5 KiB (6643 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 21386312
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               e49fcc041329c32858eccfa2f0a24ad52a7c875dd9f8b7bfa1c8012fd37d4868
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+
+--- CONTENT ---
+using System.Data.Common;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Infrastructure;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using MyRestaurant.DataAccess;
+using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.Time;
+using MyRestaurant.WebApplication.Authorization;
+using MyRestaurant.WebApplication.Configuration;
+using MyRestaurant.WebApplication.Identity;
+using MyRestaurant.WebApplication.Observability;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests;
+
+/// <summary>
+/// Verifies the sign-in and authorization wiring composed by
+/// <see cref="IdentityServiceCollectionExtensions.AddRestaurantIdentity"/>
+/// (TECHNICAL_SPECIFICATION §3.1, §3.7): the auditing <see cref="RestaurantSignInManager"/> is the
+/// resolved <see cref="SignInManager{TUser}"/>; the application cookie is hardened (Secure, HttpOnly,
+/// SameSite=Lax, 24-hour sliding); the security stamp revalidates every 5 minutes; and the four area
+/// policies require the right roles. No server is started — the container is built and inspected.
+/// </summary>
+public sealed class IdentityWiringTests
+{
+    [Fact]
+    public void SignInManager_IsTheAuditingRestaurantSignInManager()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        SignInManager<Person> signInManager = scope.ServiceProvider.GetRequiredService<SignInManager<Person>>();
+
+        Assert.IsType<RestaurantSignInManager>(signInManager);
+    }
+
+    [Fact]
+    public void ApplicationCookie_IsHardenedPerSpec()
+    {
+        using ServiceProvider provider = BuildProvider();
+
+        CookieAuthenticationOptions cookie = provider
+            .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(IdentityConstants.ApplicationScheme);
+
+        Assert.True(cookie.Cookie.HttpOnly);
+        Assert.Equal(CookieSecurePolicy.Always, cookie.Cookie.SecurePolicy);
+        Assert.Equal(SameSiteMode.Lax, cookie.Cookie.SameSite);
+        Assert.Equal(TimeSpan.FromHours(24), cookie.ExpireTimeSpan);
+        Assert.True(cookie.SlidingExpiration);
+    }
+
+    [Fact]
+    public void SecurityStamp_RevalidatesEveryFiveMinutes()
+    {
+        using ServiceProvider provider = BuildProvider();
+
+        SecurityStampValidatorOptions options = provider
+            .GetRequiredService<IOptions<SecurityStampValidatorOptions>>()
+            .Value;
+
+        Assert.Equal(TimeSpan.FromMinutes(5), options.ValidationInterval);
+    }
+
+    [Fact]
+    public async Task TablePolicy_RequiresOnlyAuthentication()
+    {
+        AuthorizationPolicy policy = await GetPolicyAsync(AuthorizationPolicies.Table);
+
+        Assert.Contains(policy.Requirements, requirement => requirement is DenyAnonymousAuthorizationRequirement);
+        Assert.DoesNotContain(policy.Requirements, requirement => requirement is RolesAuthorizationRequirement);
+    }
+
+    [Theory]
+    [InlineData(AuthorizationPolicies.Kitchen, RestaurantRoles.Kitchen, RestaurantRoles.Administrator)]
+    [InlineData(AuthorizationPolicies.Counter, RestaurantRoles.Counter, RestaurantRoles.Administrator)]
+    public async Task StaffPolicies_AllowTheRoleOrAdministrator(string policyName, string role, string administrator)
+    {
+        AuthorizationPolicy policy = await GetPolicyAsync(policyName);
+
+        RolesAuthorizationRequirement roles = Assert.Single(policy.Requirements.OfType<RolesAuthorizationRequirement>());
+        Assert.Equal(
+            new[] { administrator, role }.OrderBy(r => r),
+            roles.AllowedRoles.OrderBy(r => r));
+        Assert.Contains(policy.Requirements, requirement => requirement is DenyAnonymousAuthorizationRequirement);
+    }
+
+    [Fact]
+    public async Task AdministrationPolicy_RequiresTheAdministratorRole()
+    {
+        AuthorizationPolicy policy = await GetPolicyAsync(AuthorizationPolicies.Administration);
+
+        RolesAuthorizationRequirement roles = Assert.Single(policy.Requirements.OfType<RolesAuthorizationRequirement>());
+        Assert.Equal(new[] { RestaurantRoles.Administrator }, roles.AllowedRoles);
+    }
+
+    // --- helpers -----------------------------------------------------------------------------------
+
+    private static async Task<AuthorizationPolicy> GetPolicyAsync(string policyName)
+    {
+        using ServiceProvider provider = BuildProvider();
+        IAuthorizationPolicyProvider policyProvider = provider.GetRequiredService<IAuthorizationPolicyProvider>();
+
+        AuthorizationPolicy? policy = await policyProvider.GetPolicyAsync(policyName);
+
+        Assert.NotNull(policy);
+        return policy!;
+    }
+
+    private static ServiceProvider BuildProvider()
+    {
+        ServiceCollection services = new();
+
+        // Prerequisites Program.cs registers before AddRestaurantIdentity.
+        services.AddLogging();
+        services.AddMetrics();
+        services.AddSingleton<RestaurantMetrics>();
+        services.AddSingleton<IClock, SystemClock>();
+        services.AddSingleton<IIdentifierFactory, UuidV7IdentifierFactory>();
+        services.AddSingleton<IDatabaseConnectionFactory, UnusedConnectionFactory>();
+        services.AddDataProtection();
+
+        services.AddRestaurantIdentity(BuildOptions());
+
+        return services.BuildServiceProvider();
+    }
+
+    private static RestaurantOptions BuildOptions() => new()
+    {
+        RestaurantName = "Test Bistro",
+        PublicOrigin = "https://localhost:8443",
+        TimeZoneId = "America/New_York",
+        CurrencyCode = "USD",
+        DatabaseConnectionString = "Host=localhost;Database=x;Username=u;Password=p",
+        DataProtectionKeysDirectory = "/tmp/myrestaurant-keys",
+        KitchenSubmissionReminderSeconds = 60,
+        TableJoinTokenRotationSeconds = 60,
+        TableJoinGrantMinutes = 10,
+        TableDisplayPairingCodeMinutes = 10,
+        Argon2MemoryKibibytes = 65536,
+        Argon2Iterations = 3,
+        Argon2Parallelism = 1,
+        Argon2MaxConcurrentHashes = 4,
+    };
+
+    /// <summary>The wiring tests never open a connection; this makes that explicit.</summary>
+    private sealed class UnusedConnectionFactory : IDatabaseConnectionFactory
+    {
+        public ValueTask<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Wiring tests must not open a database connection.");
+    }
 }
 
 ################################################################################
@@ -11145,6 +12307,87 @@ public sealed class SecretGeneratorTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.Domain.Tests/SecurityEventTypeTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             SecurityEventTypeTests.cs
+  Relative path:         tests/MyRestaurant.Domain.Tests/SecurityEventTypeTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.Domain.Tests/SecurityEventTypeTests.cs
+  Size:                  2.2 KiB (2225 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 21386314
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               5c8d5780c371de362b7875d954127c014b31479c6a9725d742e7a623f664290a
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+
+--- CONTENT ---
+using MyRestaurant.Domain.Authentication;
+using Xunit;
+
+namespace MyRestaurant.Domain.Tests;
+
+/// <summary>
+/// Guards the security-event vocabulary (TECHNICAL_SPECIFICATION §3.4–§3.7, §8.2). The set here must
+/// stay identical to the <c>security_event.event_type</c> CHECK in the migration, so this test pins
+/// the exact strings and count; a drift on either side (a typo, a forgotten value) fails here rather
+/// than as a PostgreSQL CHECK violation at write time.
+/// </summary>
+public sealed class SecurityEventTypeTests
+{
+    // The exact set the schema's CHECK constraint allows (0001_initial_schema.sql, security_event).
+    private static readonly string[] SchemaEventTypes =
+    [
+        "account_created",
+        "account_deactivated",
+        "account_reactivated",
+        "password_changed",
+        "password_reset_by_administrator",
+        "forced_password_change_completed",
+        "totp_enrolled",
+        "totp_removed",
+        "totp_cleared_by_administrator",
+        "forced_totp_enrollment_completed",
+        "recovery_code_used",
+        "recovery_codes_regenerated",
+        "passkey_registered",
+        "passkey_removed",
+        "role_granted",
+        "role_revoked",
+        "sign_in_succeeded",
+        "sign_in_failed",
+        "account_locked_out",
+    ];
+
+    [Fact]
+    public void All_MatchesTheSchemaCheckSet()
+        => Assert.Equal(SchemaEventTypes.OrderBy(x => x), SecurityEventType.All.OrderBy(x => x));
+
+    [Fact]
+    public void All_HasNineteenEntries()
+        => Assert.Equal(19, SecurityEventType.All.Count);
+
+    [Theory]
+    [InlineData("sign_in_succeeded")]
+    [InlineData("sign_in_failed")]
+    [InlineData("account_locked_out")]
+    [InlineData("role_granted")]
+    public void IsKnown_TrueForSchemaValues(string eventType)
+        => Assert.True(SecurityEventType.IsKnown(eventType));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("Sign_In_Succeeded")] // case-sensitive: the column stores exact lower-case tokens
+    [InlineData("signed_in")]
+    [InlineData("totp_enroled")]      // misspelling must not slip past the guard
+    public void IsKnown_FalseForAnythingElse(string eventType)
+        => Assert.False(SecurityEventType.IsKnown(eventType));
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.Domain.Tests/Sha256HashingTests.cs
 ################################################################################
 
@@ -11200,6 +12443,94 @@ public sealed class Sha256HashingTests
     {
         byte[] stored = Sha256Hashing.Hash("PAIR-CODE-XYZ");
         Assert.False(Sha256Hashing.MatchesStoredHash("PAIR-CODE-ZZZ", stored));
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.Domain.Tests/SignInAuditTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             SignInAuditTests.cs
+  Relative path:         tests/MyRestaurant.Domain.Tests/SignInAuditTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.Domain.Tests/SignInAuditTests.cs
+  Size:                  2.9 KiB (2974 bytes)
+  Last modified:         2026-07-18 16:00:02.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 21386315
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               3342c265fe7fe0495f4050e0f10b365306b44550a28b576ecfc8c76e44d11425
+  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+
+--- CONTENT ---
+using MyRestaurant.Domain.Authentication;
+using Xunit;
+
+namespace MyRestaurant.Domain.Tests;
+
+/// <summary>
+/// Exhaustively verifies the pure sign-in audit decision (TECHNICAL_SPECIFICATION §3.5, §12): each
+/// outcome maps to the right <c>security_event</c> type and <c>sign_ins_total</c> result label, and the
+/// two-factor-challenge case records neither (it is not a completed sign-in — the second-factor step
+/// records the terminal outcome).
+/// </summary>
+public sealed class SignInAuditTests
+{
+    [Theory]
+    [InlineData(SignInAttemptResult.Succeeded, SecurityEventType.SignInSucceeded)]
+    [InlineData(SignInAttemptResult.Failed, SecurityEventType.SignInFailed)]
+    [InlineData(SignInAttemptResult.NotAllowed, SecurityEventType.SignInFailed)]
+    [InlineData(SignInAttemptResult.LockedOut, SecurityEventType.AccountLockedOut)]
+    public void SecurityEventFor_TerminalOutcomes_MapToTheExpectedEvent(
+        SignInAttemptResult result,
+        string expectedEventType)
+        => Assert.Equal(expectedEventType, SignInAudit.SecurityEventFor(result));
+
+    [Fact]
+    public void SecurityEventFor_RequiresTwoFactor_RecordsNothing()
+        => Assert.Null(SignInAudit.SecurityEventFor(SignInAttemptResult.RequiresTwoFactor));
+
+    [Fact]
+    public void MetricResultFor_Success_IsSucceeded()
+        => Assert.Equal(SignInAudit.MetricSucceeded, SignInAudit.MetricResultFor(SignInAttemptResult.Succeeded));
+
+    [Theory]
+    [InlineData(SignInAttemptResult.Failed)]
+    [InlineData(SignInAttemptResult.NotAllowed)]
+    [InlineData(SignInAttemptResult.LockedOut)]
+    public void MetricResultFor_NonSuccessTerminalOutcomes_AreFailed(SignInAttemptResult result)
+        => Assert.Equal(SignInAudit.MetricFailed, SignInAudit.MetricResultFor(result));
+
+    [Fact]
+    public void MetricResultFor_RequiresTwoFactor_IsNotMetered()
+        => Assert.Null(SignInAudit.MetricResultFor(SignInAttemptResult.RequiresTwoFactor));
+
+    [Fact]
+    public void EverySecurityEventProduced_IsAKnownType()
+    {
+        foreach (SignInAttemptResult result in Enum.GetValues<SignInAttemptResult>())
+        {
+            string? eventType = SignInAudit.SecurityEventFor(result);
+            if (eventType is not null)
+            {
+                Assert.True(SecurityEventType.IsKnown(eventType), $"{result} produced an unknown event type '{eventType}'.");
+            }
+        }
+    }
+
+    [Fact]
+    public void AuditAndMetric_AgreeOnWhenToRecord()
+    {
+        // Whenever there is a terminal metric there is a terminal event, and vice versa: the only
+        // "record nothing" case is the two-factor challenge, and it must be silent on both channels.
+        foreach (SignInAttemptResult result in Enum.GetValues<SignInAttemptResult>())
+        {
+            bool hasEvent = SignInAudit.SecurityEventFor(result) is not null;
+            bool hasMetric = SignInAudit.MetricResultFor(result) is not null;
+            Assert.Equal(hasEvent, hasMetric);
+        }
     }
 }
 
@@ -11659,10 +12990,10 @@ public sealed class RestaurantOptionsTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 97
-  Total size     : 468.4 KiB (479677 bytes)
+  Files dumped   : 107
+  Total size     : 519.7 KiB (532140 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-18T09:04:17-04:00
+  Completed at   : 2026-07-18T12:05:26-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
