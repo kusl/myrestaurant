@@ -4,6 +4,11 @@
     Dapper repositories, the DbUp migration runner, and (from M2) the custom ASP.NET Core
     Identity stores. References Domain only. Entity Framework is forbidden anywhere in the
     solution (REQUIREMENTS §2) — do not add any EF package here or upstream.
+
+    The ASP.NET Core shared framework is referenced (not the EF/UI packages) so the Identity
+    *core* abstractions (IUserStore<T>, IPasswordHasher<T>, UserManager<T>) and Data Protection
+    (IDataProtectionProvider — used to encrypt the TOTP secret, §3.4) are available in this
+    non-web class library at the installed runtime version, with no NuGet version to pin.
   -->
   <PropertyGroup>
     <RootNamespace>MyRestaurant.DataAccess</RootNamespace>
@@ -11,9 +16,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Dapper" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="dbup-postgresql" />
+    <!-- Argon2id password hashing (§3.2, ADR-0008); MIT. Not in the shared framework. -->
+    <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
   </ItemGroup>
 
   <ItemGroup>

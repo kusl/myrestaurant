@@ -1,9 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Integration tests for the DbUp migration runner against a real PostgreSQL 17 container
-    (Testcontainers). They require a running container engine (Podman/Docker); when none is
-    available the tests skip rather than fail (BUILD_PROGRESS: container-dependent tests).
+    Integration tests for the DbUp migration runner and the Dapper Identity store against a real
+    PostgreSQL 17 container (Testcontainers). They require a running container engine
+    (Podman/Docker); when none is available the tests skip rather than fail (BUILD_PROGRESS:
+    container-dependent tests).
+
+    The ASP.NET Core shared framework is referenced so the store tests can build a Data Protection
+    provider and use the Identity abstractions; Konscious (the Argon2 hasher's dependency) flows in
+    transitively from the DataAccess project reference.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -12,6 +17,10 @@
     <RootNamespace>MyRestaurant.DataAccess.Tests</RootNamespace>
     <AssemblyName>MyRestaurant.DataAccess.Tests</AssemblyName>
   </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

@@ -7,6 +7,7 @@ using MyRestaurant.Domain.LiveUpdates;
 using MyRestaurant.Domain.Time;
 using MyRestaurant.WebApplication.Components;
 using MyRestaurant.WebApplication.Configuration;
+using MyRestaurant.WebApplication.Identity;
 using MyRestaurant.WebApplication.LiveUpdates;
 using MyRestaurant.WebApplication.Observability;
 using Npgsql;
@@ -97,6 +98,11 @@ builder.Services.AddSingleton(serviceProvider =>
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(options.DataProtectionKeysDirectory))
     .SetApplicationName("myrestaurant");
+
+// ASP.NET Core Identity core services over the custom Dapper store, with the Argon2id hasher
+// (§3.1–§3.2, ADR-0003/ADR-0008). Registered after Data Protection because the store encrypts the
+// TOTP secret with it and after RestaurantMetrics because the hasher reports its timing there.
+builder.Services.AddRestaurantIdentity(options);
 
 // The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
 // so honour its X-Forwarded-* headers. KnownIPNetworks/KnownProxies are cleared deliberately — safe
