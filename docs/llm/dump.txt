@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-19T17:19:48-04:00
+  Generated at   : 2026-07-19T17:21:37-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,10 +17,10 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : a4423d992226aa1781f73e9bc91355535c687638
-  Commit (short) : a4423d9
-  Commit date    : 2026-07-19 17:19:43 -0400
-  Commit message : add claude response
+  Commit (full)  : bfa02e256681a3ff71d3f8f54ffb1d1c52019d25
+  Commit (short) : bfa02e2
+  Commit date    : 2026-07-19 17:20:46 -0400
+  Commit message : run scripts
   Remote origin  : git@github.com:kusl/myrestaurant.git
   Files included : 123
   Excluded path  : docs/llm/
@@ -28,6 +28,8 @@ REPOSITORY METADATA
 
 GIT WORKING TREE STATUS (first 20 lines)
 ═════════════════════════════════════════════════════════════════════════════════
+ D CHANGES-2026-07-19.md
+ D docs/llm/CHANGES-2026-07-19.md
  M docs/llm/vendor/claude-output.txt
 
 ################################################################################
@@ -875,103 +877,6 @@ playwright-report/
 .DS_Store
 
 .dataprotection/
-
-################################################################################
-# FILE: CHANGES-2026-07-19.md
-################################################################################
-
---- METADATA ---
-  File name:             CHANGES-2026-07-19.md
-  Relative path:         CHANGES-2026-07-19.md
-  Absolute path:         /home/kushal/src/dotnet/myrestaurant/CHANGES-2026-07-19.md
-  Size:                  6.3 KiB (6438 bytes)
-  Last modified:         2026-07-19 15:38:37.000000000 -0400
-  Permissions:           -rw-r--r--
-  Owner:                 kushal:kushal
-  Inode:                 21654819
-  Hard links:            1
-  MIME type:             text/plain
-  SHA-256:               b024ea831b8082d8d4561f7f93733538e5c5f135c3e9881383be23372d0febe9
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
-
---- CONTENT ---
-# Apply notes — 2026-07-19 — M2 slice 3 (interactive sign-in) + course corrections
-
-Every file below is a **complete replacement** (or a brand-new file) — copy each one over the path shown, no merging required. All paths are relative to the repository root `/home/kushal/src/dotnet/myrestaurant/`. The bundle `myrestaurant-m2-signin-slice.tar.gz` unpacks exactly this tree, so from the repo root you can also just:
-
-```bash
-tar -xzf myrestaurant-m2-signin-slice.tar.gz
-```
-
-No new NuGet packages. No new migrations. No `.csproj` changes.
-
-## 0. One-time host fix (do this first)
-
-The ~40 "errors" in your terminal were **skips, not failures** — Testcontainers couldn't find a Docker-compatible socket because the rootless Podman API socket wasn't running. Enable it once and it survives reboots:
-
-```bash
-systemctl --user enable --now podman.socket
-```
-
-The new `ContainerEngineDiscovery.cs` then finds `$XDG_RUNTIME_DIR/podman/podman.sock` automatically (honoring `DOCKER_HOST` if you've set one) and disables Ryuk, which rootless Podman doesn't need.
-
-## 1. Course corrections (4 files)
-
-| Path | What changed |
-|---|---|
-| `tests/MyRestaurant.DataAccess.Tests/ContainerEngineDiscovery.cs` | **new** — module initializer that points Testcontainers at the rootless Podman socket |
-| `tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs` | skip message now tells you the exact `systemctl --user` command instead of a generic shrug |
-| `tests/MyRestaurant.DataAccess.Tests/Identity/DapperSecurityEventLogTests.cs` | fixes the one `xUnit1051` warning (passes the test cancellation token through) — build is now warning-clean |
-| `scripts/quick_tunnel.sh` | pre-checks `/healthz/ready` and refuses with instructions if the stack is down; prints the tunnel URL in an unmissable banner; runs in the foreground until Ctrl+C |
-
-## 2. M2 slice 3 — source (21 files)
-
-| Path | What it is |
-|---|---|
-| `src/MyRestaurant.WebApplication/Identity/RestaurantClaimsPrincipalFactory.cs` | **new** — emits role claims (fixes the latent bug where `AddIdentityCore`'s default factory emits none, so the §3.7 area policies could never pass), plus display-name and obligation claims |
-| `src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs` | **new** — pure route table + obligation resolution + open-redirect-safe return-URL helpers |
-| `src/MyRestaurant.WebApplication/Identity/ObligationsMiddleware.cs` | **new** — authenticated + outstanding obligation + non-exempt path → redirect to the obligation page |
-| `src/MyRestaurant.WebApplication/Identity/AccountEndpoints.cs` | **new** — antiforgery-validated `POST /sign-out` |
-| `src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs` | registers the claims factory, cascading auth state, cookie paths now sourced from `AccountRoutes` |
-| `src/MyRestaurant.WebApplication/Identity/RestaurantSignInManager.cs` | adds `CanSignInAsync` override — deactivated accounts get `NotAllowed`, audited |
-| `src/MyRestaurant.WebApplication/Program.cs` | obligations middleware after `UseAuthorization`, account endpoints mapped |
-| `src/MyRestaurant.WebApplication/Components/App.razor` | per-page render mode — account pages run static SSR, the rest interactive server |
-| `src/MyRestaurant.WebApplication/Components/Routes.razor` | `AuthorizeRouteView` + redirect-to-sign-in for anonymous users |
-| `src/MyRestaurant.WebApplication/Components/_Imports.razor` | new namespaces |
-| `src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor` | header with session state and the sign-out form |
-| `src/MyRestaurant.WebApplication/Components/Account/RedirectToSignIn.razor` | **new** |
-| `src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor` | **new** — password sign-in (persistent cookie, lockout counted) |
-| `src/MyRestaurant.WebApplication/Components/Account/Pages/SignInTwoFactor.razor` | **new** — TOTP step (no remember-device, by design) |
-| `src/MyRestaurant.WebApplication/Components/Account/Pages/SignInRecoveryCode.razor` | **new** — recovery-code step |
-| `src/MyRestaurant.WebApplication/Components/Account/Pages/ChangePasswordRequired.razor` | **new** — obligation (1) |
-| `src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotpRequired.razor` | **new** — obligation (2), addressable stub until the TOTP slice |
-| `src/MyRestaurant.WebApplication/Components/Account/Pages/AccessDenied.razor` | **new** |
-| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor` | **new** — first policy-gated interactive area page (proves cookie → claims → policy → circuit) |
-| `src/MyRestaurant.WebApplication/Components/Pages/Home.razor` | landing copy + link to `/table` |
-| `src/MyRestaurant.WebApplication/wwwroot/app.css` | header/session/panel/form styles added to the M1 palette |
-
-## 3. Tests (3 files)
-
-| Path | What it covers |
-|---|---|
-| `tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs` | + claims factory registration, + cookie paths match `AccountRoutes` |
-| `tests/MyRestaurant.WebApplication.Tests/Identity/ObligationsEnforcementTests.cs` | **new** — obligation resolution, exempt-vs-blocked paths, redirect target, return-URL safety |
-| `tests/MyRestaurant.WebApplication.Tests/Identity/RestaurantClaimsPrincipalFactoryTests.cs` | **new** — role/display-name/obligation claims via a hand-written fake user-role store |
-
-## 4. Docs (3 files)
-
-`docs/BUILD_PROGRESS.md` (slice record + the settled answer on run.sh/quick-tunnel + the terminal-run corrections), `README.md` (status, testing prerequisites, two-command demo flow), `docs/OPERATIONS.md` (§10 rewritten to match the hardened script; everything else untouched).
-
-## 5. Verify
-
-```bash
-dotnet restore
-dotnet build                                   # expect: 0 warnings, 0 errors
-dotnet test                                    # with podman.socket active: ~217 passed, 3 skipped, 0 failed
-./run.sh --smoke                               # containers up, migrations, /healthz/ready, teardown
-```
-
-Then one manual check: `./run.sh`, browse `https://localhost:8443/table` → you should bounce to `/sign-in?ReturnUrl=%2Ftable`. (No accounts exist yet — registration/bootstrap is a later slice — so the bounce *is* the test.) If anything fails to compile, the account pages under `Components/Account/Pages/` are the most likely spot; nothing else has exotic syntax.
 
 ################################################################################
 # FILE: CONTRIBUTING.md
@@ -15574,9 +15479,9 @@ public sealed class RestaurantOptionsTests
 # DUMP SUMMARY
 ################################################################################
   Files dumped   : 123
-  Total size     : 622.8 KiB (637748 bytes)
+  Total size     : 616.5 KiB (631310 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-19T17:19:52-04:00
+  Completed at   : 2026-07-19T17:21:41-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
