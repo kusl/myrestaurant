@@ -1,0 +1,30 @@
+@page "/access-denied"
+@attribute [ExcludeFromInteractiveRouting]
+
+@* Where the application cookie's AccessDeniedPath lands (TECHNICAL_SPECIFICATION §3.7): an
+   authenticated principal asked for an area their roles do not grant. Interactive pages show the
+   same denial inline via the router's NotAuthorized branch; this page covers server-enforced
+   (static SSR / endpoint) authorization. Exempt from the obligations pipeline so a flagged user who
+   trips a policy is not redirect-looped. *@
+
+<PageTitle>Access denied</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">Access denied</p>
+    <h1>You do not have access to this area</h1>
+
+    <AuthorizeView>
+        <Authorized>
+            <p class="lede">
+                You are signed in as <strong>@context.User.Identity?.Name</strong>, but this area
+                requires a role your account does not hold. If you believe you should have it, an
+                administrator can grant the role.
+            </p>
+        </Authorized>
+        <NotAuthorized>
+            <p class="lede">This area requires a role your session does not hold.</p>
+        </NotAuthorized>
+    </AuthorizeView>
+
+    <p><a href="/">Back to the home page</a></p>
+</section>

@@ -1,0 +1,60 @@
+@page "/account/enroll-totp-required"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize]
+@inject UserManager<Person> UserManager
+@inject NavigationManager Navigation
+
+@* Obligation (2) of the post-authentication pipeline (TECHNICAL_SPECIFICATION §3.5): forced TOTP
+   re-enrollment after an administrative reset wiped an enrolled secret. The enrollment mechanics
+   (provisioning URI → server-side SVG QR → confirm code → fresh recovery codes → clear flag →
+   `forced_totp_enrollment_completed`) are the next M2 slice; this page is its addressable, exempt
+   HOME so the middleware, routes, and tests are final now. Nothing in the application can set
+   `must_enroll_totp` yet — administrative reset arrives in a later slice — so in practice this page
+   is only reachable by hand-editing the database (BUILD_PROGRESS: deliberate stub). *@
+
+<PageTitle>Re-enroll your authenticator</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">Action required</p>
+    <h1>Re-enroll your authenticator</h1>
+    <p class="lede">
+        An administrator reset this account, which wiped its previous authenticator enrollment and
+        recovery codes. A fresh enrollment (QR code, confirmation, new recovery codes) is required
+        before you can continue.
+    </p>
+    <p class="lede">
+        <strong>The enrollment screen is not built yet</strong> — it arrives with the TOTP milestone
+        slice. Until then this account stays parked here; an administrator can clear the requirement
+        directly if it is blocking someone.
+    </p>
+
+    <form class="sign-out-form form-footnote" method="post" action="@AccountRoutes.SignOut">
+        <AntiforgeryToken />
+        <span>Done for now?</span>
+        <button type="submit" class="link-button">Sign out</button>
+    </form>
+</section>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // Nothing outstanding: pass the visitor along instead of showing a stale demand.
+        if (!user.MustEnrollTotp)
+        {
+            Navigation.NavigateTo(ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl));
+        }
+    }
+}

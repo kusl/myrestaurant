@@ -106,7 +106,16 @@ Passkeys bind to the RP ID — the host of `RESTAURANT_PUBLIC_ORIGIN`. Moving do
 
 ## 10. Quick-tunnel demo runbook
 
-`scripts/quick_tunnel.sh` starts a `trycloudflare.com` quick tunnel for show-and-tell. Every run gets a random subdomain, and `trycloudflare.com` is on the Public Suffix List, so **any passkey registered through a quick tunnel binds to that one run and dies with it** — the script prints exactly this warning, loudly. Demo with password + TOTP accounts; never bootstrap a real instance (§3) through a quick tunnel; never point a real instance's `RESTAURANT_PUBLIC_ORIGIN` at one.
+Show-and-tell over the public internet is a **two-command** flow, by design (spec §14.3/§14.4, ADR-0005 — quick tunnels are demo-only and are not part of `run.sh`):
+
+```bash
+./run.sh --containers-only     # terminal 1 — build, migrate, start the stack, return
+scripts/quick_tunnel.sh        # terminal 2 — expose it, stays in the foreground
+```
+
+The script refuses to start if the stack isn't up and ready (it probes `http://localhost:8080/healthz/ready` first and tells you exactly which command to run if the probe fails), so running it against nothing fails in one second with instructions rather than a hung tunnel. Once `cloudflared` hands back the random `https://<something>.trycloudflare.com` hostname, the script prints it in an unmissable banner and then **stays in the foreground streaming tunnel logs** — the URL lives exactly as long as the process. `Ctrl+C` ends the demo; there is no detached mode and no "print the URL and exit," because the tunnel dies with the process that owns it.
+
+Every run gets a random subdomain, and `trycloudflare.com` is on the Public Suffix List, so **any passkey registered through a quick tunnel binds to that one run and dies with it** — the script prints exactly this warning, loudly. Demo with password + TOTP accounts; never bootstrap a real instance (§3) through a quick tunnel; never point a real instance's `RESTAURANT_PUBLIC_ORIGIN` at one.
 
 ## 11. WAN outage behavior
 

@@ -1,8 +1,31 @@
-@* Top-level router. For M1 there is a single route (Home); later milestones add the guest,
-   kitchen, counter, admin, and table-display areas here. *@
+@* Top-level router. AuthorizeRouteView enforces [Authorize] on interactive pages: an anonymous
+   visitor is sent to the sign-in page with the destination preserved, while an authenticated
+   principal that fails an area policy (§3.7) sees the denial where they stand. The cascading
+   authentication state comes from AddCascadingAuthenticationState (wired in AddRestaurantIdentity),
+   so this works in both static SSR and interactive-server rendering. Static-SSR pages carrying
+   [Authorize] are additionally enforced by endpoint authorization on the server. *@
 <Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)" />
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)">
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated == true)
+                {
+                    <section class="panel">
+                        <p class="eyebrow">Access denied</p>
+                        <h1>You do not have access to this area</h1>
+                        <p class="lede">
+                            You are signed in as <strong>@context.User.Identity?.Name</strong>, but this
+                            area requires a role your account does not hold.
+                        </p>
+                        <p><a href="/">Back to the home page</a></p>
+                    </section>
+                }
+                else
+                {
+                    <RedirectToSignIn />
+                }
+            </NotAuthorized>
+        </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
 </Router>

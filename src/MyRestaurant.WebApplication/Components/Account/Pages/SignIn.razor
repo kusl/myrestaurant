@@ -1,0 +1,116 @@
+@page "/sign-in"
+@attribute [ExcludeFromInteractiveRouting]
+@inject SignInManager<Person> SignInManager
+@inject NavigationManager Navigation
+
+@* The password sign-in page (TECHNICAL_SPECIFICATION §3.5, §4.1). Static SSR on purpose: issuing the
+   authentication cookie needs a real HTTP response, which a Blazor circuit does not have. The form
+   is a plain full-page POST (EditForm in SSR emits the antiforgery token itself). Auditing and
+   metering happen centrally in RestaurantSignInManager, never here. *@
+
+<PageTitle>Sign in</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">MyRestaurant</p>
+    <h1>Sign in</h1>
+
+    @if (HttpContext.User.Identity?.IsAuthenticated == true)
+    {
+        <p class="lede">
+            You are already signed in as <strong>@HttpContext.User.Identity?.Name</strong>.
+        </p>
+        <p><a href="/">Back to the home page</a></p>
+    }
+    else
+    {
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <EditForm Model="Input" method="post" OnValidSubmit="SignInUserAsync" FormName="sign-in">
+            <DataAnnotationsValidator />
+
+            <div class="form-field">
+                <label for="username">Username</label>
+                <InputText id="username" @bind-Value="Input.Username" autocomplete="username"
+                           autocapitalize="none" spellcheck="false" autofocus />
+                <ValidationMessage For="@(() => Input.Username)" />
+            </div>
+
+            <div class="form-field">
+                <label for="password">Password</label>
+                <InputText id="password" type="password" @bind-Value="Input.Password"
+                           autocomplete="current-password" />
+                <ValidationMessage For="@(() => Input.Password)" />
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Sign in</button>
+            </div>
+        </EditForm>
+
+        <p class="form-footnote">
+            Guests register at the table by scanning its display — there is no stand-alone
+            registration page. Lost access? Ask at the counter.
+        </p>
+    }
+</section>
+
+@code {
+    private string? _errorMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private SignInInputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private async Task SignInUserAsync()
+    {
+        string destination = ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl);
+
+        // isPersistent: the §3.1 session is a 24-hour sliding cookie either way; persisting it lets
+        // a guest's phone survive a browser restart mid-meal. lockoutOnFailure per §3.1.
+        SignInResult result = await SignInManager.PasswordSignInAsync(
+            Input.Username,
+            Input.Password,
+            isPersistent: true,
+            lockoutOnFailure: true);
+
+        if (result.Succeeded)
+        {
+            // The obligations middleware intercepts this navigation when a §3.5 flag is set.
+            Navigation.NavigateTo(destination);
+        }
+        else if (result.RequiresTwoFactor)
+        {
+            Navigation.NavigateTo(
+                $"{AccountRoutes.SignInTwoFactor}?ReturnUrl={Uri.EscapeDataString(destination)}");
+        }
+        else if (result.IsLockedOut)
+        {
+            _errorMessage = "Too many failed attempts. The account is locked for about five minutes — try again then.";
+        }
+        else if (result.IsNotAllowed)
+        {
+            _errorMessage = "This account has been deactivated. Ask at the counter if you think that is a mistake.";
+        }
+        else
+        {
+            _errorMessage = "That username and password combination did not work.";
+        }
+    }
+
+    private sealed class SignInInputModel
+    {
+        [Required(ErrorMessage = "Enter your username.")]
+        public string Username { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter your password.")]
+        public string Password { get; set; } = string.Empty;
+    }
+}

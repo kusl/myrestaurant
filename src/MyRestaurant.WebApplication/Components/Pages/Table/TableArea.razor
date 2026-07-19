@@ -1,0 +1,40 @@
+@page "/table"
+@attribute [Authorize(Policy = AuthorizationPolicies.Table)]
+
+@* The first [Authorize]-gated area (TECHNICAL_SPECIFICATION §3.7 — `area.table`: any authenticated
+   person). This interactive placeholder exists to prove the whole chain live — cookie → claims →
+   policy → AuthorizeRouteView → circuit — before the real guest experience (joining, staging,
+   sending; M3/M4) replaces its body. Anonymous visitors are redirected to /sign-in with this page
+   as the return URL. *@
+
+<PageTitle>Your table</PageTitle>
+
+<section class="panel">
+    <p class="eyebrow">Table area</p>
+    <h1>Signed in and gated</h1>
+
+    <AuthorizeView>
+        <Authorized>
+            <p class="lede">
+                You are signed in as <strong>@context.User.Identity?.Name</strong>@DisplayNameSuffix(context.User),
+                and the <code>area.table</code> policy admitted you — the authentication cookie, the
+                claims principal, and the area authorization are all live.
+            </p>
+        </Authorized>
+    </AuthorizeView>
+
+    <p class="lede">
+        Joining a table by scanning its rotating code, and building and sending orders, arrive with
+        Milestones&nbsp;3 and&nbsp;4.
+    </p>
+
+    <p><a href="/">Back to the home page</a></p>
+</section>
+
+@code {
+    private static string DisplayNameSuffix(System.Security.Claims.ClaimsPrincipal user)
+    {
+        string? displayName = user.FindFirst(RestaurantClaimTypes.DisplayName)?.Value;
+        return string.IsNullOrWhiteSpace(displayName) ? string.Empty : $" ({displayName})";
+    }
+}

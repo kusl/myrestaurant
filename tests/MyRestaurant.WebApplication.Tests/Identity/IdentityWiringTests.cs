@@ -22,10 +22,13 @@ namespace MyRestaurant.WebApplication.Tests;
 /// <summary>
 /// Verifies the sign-in and authorization wiring composed by
 /// <see cref="IdentityServiceCollectionExtensions.AddRestaurantIdentity"/>
-/// (TECHNICAL_SPECIFICATION §3.1, §3.7): the auditing <see cref="RestaurantSignInManager"/> is the
-/// resolved <see cref="SignInManager{TUser}"/>; the application cookie is hardened (Secure, HttpOnly,
-/// SameSite=Lax, 24-hour sliding); the security stamp revalidates every 5 minutes; and the four area
-/// policies require the right roles. No server is started — the container is built and inspected.
+/// (TECHNICAL_SPECIFICATION §3.1, §3.5, §3.7): the auditing <see cref="RestaurantSignInManager"/> is
+/// the resolved <see cref="SignInManager{TUser}"/>; the claims principal factory is the restaurant
+/// one (role + obligation claims — the default single-generic factory emits no role claims at all,
+/// so this registration is what makes the area policies passable); the application cookie is
+/// hardened (Secure, HttpOnly, SameSite=Lax, 24-hour sliding) and points at the account routes; the
+/// security stamp revalidates every 5 minutes; and the four area policies require the right roles.
+/// No server is started — the container is built and inspected.
 /// </summary>
 public sealed class IdentityWiringTests
 {
@@ -38,6 +41,18 @@ public sealed class IdentityWiringTests
         SignInManager<Person> signInManager = scope.ServiceProvider.GetRequiredService<SignInManager<Person>>();
 
         Assert.IsType<RestaurantSignInManager>(signInManager);
+    }
+
+    [Fact]
+    public void ClaimsPrincipalFactory_IsTheRestaurantFactory()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        IUserClaimsPrincipalFactory<Person> factory =
+            scope.ServiceProvider.GetRequiredService<IUserClaimsPrincipalFactory<Person>>();
+
+        Assert.IsType<RestaurantClaimsPrincipalFactory>(factory);
     }
 
     [Fact]
@@ -54,6 +69,20 @@ public sealed class IdentityWiringTests
         Assert.Equal(SameSiteMode.Lax, cookie.Cookie.SameSite);
         Assert.Equal(TimeSpan.FromHours(24), cookie.ExpireTimeSpan);
         Assert.True(cookie.SlidingExpiration);
+    }
+
+    [Fact]
+    public void ApplicationCookie_PointsAtTheAccountRoutes()
+    {
+        using ServiceProvider provider = BuildProvider();
+
+        CookieAuthenticationOptions cookie = provider
+            .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(IdentityConstants.ApplicationScheme);
+
+        Assert.Equal(AccountRoutes.SignIn, cookie.LoginPath);
+        Assert.Equal(AccountRoutes.SignOut, cookie.LogoutPath);
+        Assert.Equal(AccountRoutes.AccessDenied, cookie.AccessDeniedPath);
     }
 
     [Fact]

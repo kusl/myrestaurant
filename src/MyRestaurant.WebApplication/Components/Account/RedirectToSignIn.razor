@@ -1,0 +1,16 @@
+@inject NavigationManager Navigation
+
+@* Sends an anonymous visitor to the sign-in page, preserving where they were headed. forceLoad is
+   required: the sign-in page is excluded from interactive routing (static SSR), so the interactive
+   router cannot navigate to it client-side — a full document load is the only correct transition.
+   During static prerendering the NavigateTo call surfaces as an HTTP redirect instead. *@
+
+@code {
+    protected override void OnInitialized()
+    {
+        string destination = "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
+        Navigation.NavigateTo(
+            $"{AccountRoutes.SignIn}?ReturnUrl={Uri.EscapeDataString(destination)}",
+            forceLoad: true);
+    }
+}

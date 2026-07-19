@@ -1,6 +1,27 @@
 @inherits LayoutComponentBase
 
+@* The shared shell. The session header uses a plain HTML form for sign-out — a full-page POST to
+   the /sign-out endpoint with the antiforgery token — so it behaves identically whether the hosting
+   page renders as static SSR (the account pages) or over an interactive circuit. *@
 <div class="app-shell">
+    <header class="app-header">
+        <a class="app-brand" href="/">MyRestaurant</a>
+        <nav class="app-session" aria-label="Session">
+            <AuthorizeView>
+                <Authorized>
+                    <span class="session-name">@context.User.Identity?.Name</span>
+                    <form class="sign-out-form" method="post" action="@AccountRoutes.SignOut">
+                        <AntiforgeryToken />
+                        <button type="submit" class="link-button">Sign out</button>
+                    </form>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="session-link" href="@AccountRoutes.SignIn">Sign in</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </nav>
+    </header>
+
     <main class="app-main">
         @Body
     </main>

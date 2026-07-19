@@ -11,15 +11,19 @@ The scaffold and each subsequent milestone are written in an environment
 **without a .NET SDK** and without NuGet/.NET download hosts. Consequences:
 
 - **The C# for a milestone is written to match the spec and the .NET 10 APIs, then
-  first compiled on your machine.** M1 built green, and so did the first M2 slice
-  (identity persistence + Argon2id hasher). The newest M2 slice — sign-in, cookie
-  auth, and authorization wiring — is, like its predecessors were, unbuilt until
-  your next build/test run; expect to fix the occasional thing a compiler would catch.
+  first compiled on your machine.** M1 built green, and so did the first two M2 slices
+  (identity persistence + Argon2id hasher, then sign-in/cookie/authorization wiring —
+  the latest local sweep: build green, 220 tests, 0 failed, 177 passed, 43 skipped,
+  `run.sh --smoke` passing end to end). The newest slice — the sign-in **pages**, the
+  obligations middleware, and the claims factory — is, like its predecessors were,
+  unbuilt until your next build/test run; expect to fix the occasional thing a
+  compiler would catch, most likely in the Razor components.
 - **Package versions in `Directory.Packages.props` are best-effort.** They target
   the .NET 10 GA era. Run `dotnet restore`; if a version does not exist, bump it
   there to the nearest available. Nothing else references versions. The sign-in
-  slice adds **no** packages — cookie auth, `SignInManager`, the security-stamp
-  validator, and authorization all come from the ASP.NET Core shared framework.
+  slice adds **no** packages — static-SSR Razor components, cookie auth,
+  `SignInManager`, antiforgery, and authorization all come from the ASP.NET Core
+  shared framework.
 - Shell scripts are syntax-checked with `bash -n`; they may need `chmod +x`.
 
 ## Staged plan
@@ -28,11 +32,27 @@ The work is split into six stages aligned to the spec's milestones (§19). Each
 stage is meant to leave the tree buildable and testable.
 
 - [x] **Stage 1 — M1: skeleton + pure Domain** *(built green: 139 passed, 28 skipped)*
-- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, then sign-in + authorization wiring, landed; latest local run: 147 passed, 41 skipped)*
+- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, and now the password sign-in flow + obligations middleware have landed; last verified local run before this slice: 177 passed, 43 skipped)*
 - [ ] **Stage 3 — M3: tables & joining**
 - [ ] **Stage 4 — M4: ordering**
 - [ ] **Stage 5 — M5: counter & administration**
 - [ ] **Stage 6 — M6: hardening**
+
+### A note on `run.sh` and quick-tunnel URLs (recurring question, settled)
+
+There is **no milestone anywhere in the plan for `run.sh` to print a
+`*.trycloudflare.com` URL and exit** — a previous session said so, and it was right.
+The specification splits the concerns deliberately: §14.4 defines `run.sh` as the dev
+entry (compose + watch, plus `--smoke` and `--containers-only`, both of which verify
+`/healthz/ready` and exit), while §14.3 makes quick tunnels a **demo-only** concern
+delivered by a separate helper — `scripts/quick_tunnel.sh` — whose milestone home is
+**M6** ("quick-tunnel demo script with warning"), already landed early. Note also
+that "deliver a URL **and exit**" is impossible for a quick tunnel: the URL lives
+exactly as long as the `cloudflared` process, so the correct shape is what the helper
+does — bring the URL up prominently and hold the tunnel open in the foreground. The
+demo flow is two commands: `./run.sh --containers-only`, then
+`scripts/quick_tunnel.sh`. If the owner ever wants a one-command demo mode, that is a
+spec ruling (§14.3/§14.4 + ADR-0005 edits) before it is a script change.
 
 ## Stage 1 — done (compiles green)
 
@@ -111,11 +131,11 @@ passkeys, and the bootstrap.
 - **Tests**: `Argon2idPasswordHasherTests`, `DapperUserStoreTests` (Testcontainers,
   skips without an engine).
 
-### Slice 2 — sign-in + authorization wiring (this change)
+### Slice 2 — sign-in + authorization wiring (landed)
 
-The services the sign-in **flows** will need, plus authorization, plus the audit
-trail sign-ins write to. No sign-in *pages* yet — those are the next slice — so the
-new `SignInManager` is wired and unit-tested through a pure decision rather than
+The services the sign-in **flows** need, plus authorization, plus the audit
+trail sign-ins write to. No sign-in *pages* yet — those are Slice 3 — so the
+`SignInManager` was wired and unit-tested through a pure decision rather than
 driven by a form.
 
 - **Cookie authentication** (`WebApplication/Identity/IdentityServiceCollectionExtensions.cs`)
@@ -125,7 +145,7 @@ driven by a form.
   `RoleManager` we do not want). The application cookie is hardened per §3.1:
   `HttpOnly`, `SecurePolicy=Always`, `SameSite=Lax`, 24-hour **sliding** expiration,
   name `myrestaurant.authentication`; login/logout/access-denied paths point at the
-  sign-in surfaces the next slice builds.
+  sign-in surfaces Slice 3 builds.
 - **`RestaurantSignInManager`** (`WebApplication/Identity/`) — a `SignInManager<Person>`
   that audits every terminal sign-in outcome once as a `security_event` and once on
   `sign_ins_total{method,result}` (§3.5, §12). It overrides only the password and
@@ -143,8 +163,9 @@ driven by a form.
   registered explicitly here. This is what makes resets/revocations/deactivations
   bite live sessions within minutes.
 - **Roles → claims** — no `RoleManager` and no role entity (roles are plain strings,
-  §3.7). The store implements `IUserRoleStore<Person>`, so the default
-  claims-principal factory adds one role claim per granted role at sign-in.
+  §3.7). The store implements `IUserRoleStore<Person>`; the claims-principal factory
+  turns granted roles into role claims at sign-in. *(Slice 2 believed the default
+  factory would do this; Slice 3 discovered it does not and fixed it — see below.)*
 - **Area authorization policies** (`WebApplication/Authorization/AuthorizationPolicies.cs`)
   — `area.table` (any authenticated person), `area.kitchen` (kitchen **or**
   administrator), `area.counter` (counter **or** administrator), `area.administration`
@@ -156,22 +177,153 @@ driven by a form.
   `SecurityEventType` vocabulary in the Domain, guarded client-side so a bad value
   fails fast instead of as a CHECK violation.
 - **`Program.cs`** — `app.UseAuthentication()` / `app.UseAuthorization()` added after
-  static files and before antiforgery/endpoints. They populate `HttpContext.User`
-  and enforce policies; nothing is authorized yet, so Home and the health endpoints
-  stay anonymous and there is no behaviour change until the area pages carry
-  `[Authorize]`.
+  static files and before antiforgery/endpoints.
 - **Tests**: `SecurityEventTypeTests` + `SignInAuditTests` (pure, always run);
   `DapperSecurityEventLogTests` (Testcontainers — null vs administrator actor,
   round-trip — plus a container-free guard test for the unknown-type rejection);
   `IdentityWiringTests` (builds the container and asserts the `SignInManager` type,
   cookie hardening, the 5-minute stamp interval, and the four policies' role rules).
 
+### Slice 3 — password sign-in flow + obligations middleware (this change)
+
+The §3.5 password path is now drivable by a browser end to end: sign in (with the
+TOTP or recovery-code challenge when enrolled), get locked out after five failures,
+be forced through a password change after an administrative reset, sign out — and the
+first `[Authorize]`-gated area proves the whole chain.
+
+- **Per-page render modes** (`Components/App.razor`) — the interactive-server render
+  mode is no longer hard-coded on `<Routes>`/`<HeadOutlet>`; it is chosen per page via
+  `HttpContext.AcceptsInteractiveRouting()`. Account pages opt out with
+  `[ExcludeFromInteractiveRouting]` and render **static SSR**, because issuing or
+  refreshing the authentication cookie requires a real HTTP response — a Blazor
+  circuit cannot write cookies. Everything else stays interactive server (ADR-0004).
+- **Account routes in one place** (`Identity/ObligationsEnforcement.cs` →
+  `AccountRoutes`) — `/sign-in`, `/sign-in/two-factor`, `/sign-in/recovery-code`,
+  `/sign-out`, `/access-denied`, `/account/change-password-required`,
+  `/account/enroll-totp-required`. The cookie options, the pages, the middleware, and
+  the tests all reference these constants so they cannot drift.
+- **Sign-in pages** (`Components/Account/Pages/`, all static SSR, plain full-page
+  form posts, antiforgery via `EditForm`):
+  - `SignIn.razor` — username + password; `isPersistent: true` (the §3.1 session is a
+    24-hour sliding cookie either way; persistence lets a guest's phone survive a
+    browser restart mid-meal), `lockoutOnFailure: true`. Routes `RequiresTwoFactor`
+    to the TOTP page, explains lockout and deactivation, and never reveals whether
+    the username or the password was wrong. Return URLs are collapsed through a
+    shared open-redirect guard (`SafeLocalReturnUrl`).
+  - `SignInTwoFactor.razor` — the TOTP challenge (§3.4/§4.2); tolerant of the
+    spaces/dashes authenticator apps display; deliberately **no** "remember this
+    device" — TOTP is challenged on every password sign-in of an enrolled account.
+    Bounces to `/sign-in` when no pending two-factor user exists.
+  - `SignInRecoveryCode.razor` — single-use recovery codes standing in for TOTP;
+    the `recovery_code_used` event is recorded centrally by the sign-in manager.
+  - `AccessDenied.razor` — where the cookie's `AccessDeniedPath` lands (§3.7).
+- **Sign-out** (`Identity/AccountEndpoints.cs`) — a minimal-API **POST** `/sign-out`
+  (never GET-triggerable); binding the optional form field turns on the framework's
+  automatic antiforgery validation. Clears all four Identity cookies and redirects
+  to a safe local URL. No `security_event` is written: sign-out is not in the §8.2
+  vocabulary, and sessions also end silently by expiry/stamp rotation, so recording
+  only explicit sign-outs would tell a misleading story.
+- **Claims factory** (`Identity/RestaurantClaimsPrincipalFactory.cs`) — **fixes a
+  latent Slice-2 bug**: the single-generic `UserClaimsPrincipalFactory<TUser>` that
+  `AddIdentityCore` registers emits **no role claims** (only the `TUser, TRole`
+  variant does, and this app deliberately has no role entity), so the §3.7 area
+  policies could never have passed. The restaurant factory adds one role claim per
+  granted role (via the store's role read path), the optional display name
+  (`myrestaurant:display_name`), and the §3.5 obligation flags
+  (`myrestaurant:must_change_password` / `myrestaurant:must_enroll_totp`) as claims.
+  Obligations-as-claims means the middleware needs **no database read per request**;
+  the claims refresh on the explicit `RefreshSignInAsync` after an obligation clears
+  and, at the latest, on the 5-minute security-stamp revalidation.
+- **Obligations middleware** (`Identity/ObligationsMiddleware.cs` +
+  `ObligationsEnforcement`) — enforces §3.5: an authenticated principal with an
+  outstanding flag is redirected (with the original destination as `ReturnUrl`) to
+  the page that clears the next obligation, and **nothing else is reachable** except
+  sign-out, the pipeline pages, `/access-denied`, health probes, and framework static
+  assets. The *decision* is the pure Domain `ObligationsPipeline`; the claim mapping,
+  exemption list, and redirect building are testable statics. The Blazor circuit
+  endpoint (`/_blazor`) is deliberately **not** exempt: a tab left open when a flag
+  lands cannot reconnect its circuit until the pipeline clears.
+- **Forced password change** (`Account/Pages/ChangePasswordRequired.razor`) —
+  obligation (1): verifies the temporary password, applies the new one, clears
+  `must_change_password` **in the same store update** (the flag is flipped on the
+  entity before `ChangePasswordAsync`, whose success path is the only one that
+  persists), records `forced_password_change_completed`, and `RefreshSignInAsync`
+  re-issues the cookie so the cleared claim takes effect on the very next request.
+- **Forced TOTP re-enrollment** (`Account/Pages/EnrollTotpRequired.razor`) — a
+  **deliberate stub**: the addressable, middleware-exempt home for obligation (2),
+  explaining that the enrollment mechanics arrive with the TOTP slice. Nothing in
+  the application can set `must_enroll_totp` yet (administrative reset is a later
+  slice), so the page is only reachable by hand-editing the database.
+- **Deactivation gate** (`RestaurantSignInManager.CanSignInAsync`) — an inactive
+  `Person` may not sign in on any path (§3.7, F-10b); the framework surfaces it as
+  `NotAllowed`, audited as a failed sign-in. Previously the stamp killed live
+  sessions but the front door was open.
+- **Router + layout** — `Routes.razor` now uses `AuthorizeRouteView` (anonymous →
+  `RedirectToSignIn`, which force-loads because the sign-in page is static SSR;
+  authenticated-but-unauthorized → inline denial); `AddCascadingAuthenticationState`
+  supplies the auth state in both render modes; `MainLayout` grew a session header
+  (username + antiforgery-protected sign-out form, or a sign-in link) that behaves
+  identically in static and interactive rendering.
+- **First gated area** (`Components/Pages/Table/TableArea.razor`) — `/table` under
+  `[Authorize(Policy = area.table)]`: an interactive placeholder proving cookie →
+  claims → policy → router → circuit before M3/M4 replace its body.
+- **Styling** (`wwwroot/app.css`) — session header, account panels, form fields,
+  buttons, and error styling in the same quiet M1 palette; no external assets.
+- **Tests**: `ObligationsEnforcementTests` (claims mapping, exemption list, redirect
+  targets, the open-redirect guard — pure, always run);
+  `RestaurantClaimsPrincipalFactoryTests` (hand-written fake store per §16.1;
+  the regression guard for the role-claims fix); `IdentityWiringTests` extended
+  (claims-factory registration, cookie paths = `AccountRoutes`).
+
+### Course corrections from the first full local run (2026-07-19 terminal)
+
+The first complete sweep on the owner's Fedora 44 machine (`dotnet clean/restore/
+build/test` + `run.sh --smoke`) surfaced no failures — 220 tests, 0 failed, 177
+passed, 43 skipped, and the smoke run booted, hit `/healthz/ready` = 200, and exited
+cleanly. What *looked* like a wall of errors was two things, both now addressed:
+
+- **Testcontainers could not find the container engine (40 of the 43 skips).** The
+  machine runs **rootless Podman** — `run.sh` proved the engine works via
+  `podman-compose` in the same sweep — but Testcontainers only probed the Docker
+  socket (`unix:///var/run/docker.sock`) and skipped every DataAccess integration
+  test with a Docker-flavoured error. Fixes:
+  - `tests/MyRestaurant.DataAccess.Tests/ContainerEngineDiscovery.cs` — a
+    `[ModuleInitializer]` that, when nothing is explicitly configured
+    (`DOCKER_HOST`, `TESTCONTAINERS_HOST_OVERRIDE`, `~/.testcontainers.properties`)
+    and the Docker socket is absent, points Testcontainers at the rootless Podman
+    socket (`$XDG_RUNTIME_DIR/podman/podman.sock`) and disables Ryuk (unreliable
+    under rootless Podman; every fixture disposes its own container anyway). A
+    module initializer runs before Testcontainers snapshots its environment, so the
+    setting is guaranteed to be seen.
+  - `PostgreSqlFixture` — the skip message now states the one-time enable command
+    (`systemctl --user enable --now podman.socket`) instead of only echoing the
+    Docker error. **Action on the dev machine:** run that command once; the 40
+    skips become real passing integration tests on the next `dotnet test`.
+  - The remaining 3 skips are by design until their milestones (the EndToEnd matrix
+    is M6; two DataAccess tests are also engine-gated).
+- **One `xUnit1051` warning** — the container-free guard test in
+  `DapperSecurityEventLogTests` now passes `TestContext.Current.CancellationToken`,
+  returning the build to zero warnings.
+- **`scripts/quick_tunnel.sh` hardening** (M6 deliverable, landed early; §14.3) —
+  now pre-checks that the target is actually answering before opening a tunnel
+  (failing fast with the `./run.sh --containers-only` hint instead of 502-ing in
+  front of an audience) and surfaces the assigned `*.trycloudflare.com` URL in a
+  prominent banner the moment cloudflared reports it, while keeping the tunnel in
+  the foreground — see the `run.sh`/quick-tunnel note near the top of this file.
+
 ### Build/test checklist for this slice
 
-1. `dotnet restore` — no new packages; should be a no-op beyond Slice 1.
-2. `dotnet build` — the sign-in/authorization C# is unverified until this runs.
-3. `dotnet test` — the pure Domain tests and the wiring test run everywhere; the
-   security-event store test needs Podman/Docker.
+1. `dotnet restore` — no new packages; should be a no-op.
+2. `dotnet build` — the Razor components and middleware are unverified until this
+   runs; the account pages are the most likely home of anything a compiler catches.
+3. *(one time, dev machine)* `systemctl --user enable --now podman.socket` — lets
+   the DataAccess integration tests run instead of skipping.
+4. `dotnet test` — expect the pure Domain/web tests plus, with the socket active,
+   the Testcontainers suites; the EndToEnd matrix still skips (M6).
+5. `./run.sh --smoke` — boots once, verifies `/healthz/ready`, exits.
+6. Manual: `./run.sh`, then visit `/table` → you should be bounced to `/sign-in`
+   with a `ReturnUrl`. (Until `/setup` lands, creating a person to sign in **as**
+   means inserting a row by hand or waiting for the bootstrap slice.)
 
 ## Known caveats and deliberate decisions
 
@@ -184,12 +336,12 @@ driven by a form.
 - **Forwarded headers trust.** `Program.cs` clears `KnownIPNetworks`/`KnownProxies`;
   safe only because the app is reached exclusively through a trusted proxy.
 - **Rootless volume ownership / compose profiles / container-dependent tests** — as
-  before (M1).
+  before (M1); plus the Podman-socket discovery above for the test suite.
 - **M2 — security stamp is a `uuid`.** Identity's opaque Base32 stamp does not fit a
   `uuid` column, so `SetSecurityStampAsync` mints a fresh `Guid` and discards the
   passed string. The value is compared only for equality and regenerated on
   credential/role change, so this is faithful — and it is exactly what makes resets
-  bite live sessions once stamp revalidation is wired (now wired, this slice).
+  bite live sessions once stamp revalidation is wired (wired in Slice 2).
 - **M2 — two-factor is derived, not flagged.** `GetTwoFactorEnabledAsync` reads
   `totp_secret_protected`; `SetTwoFactorEnabledAsync(false)` clears the secret.
 - **M2 — email/phone confirmation not modeled.** The schema has no confirmation
@@ -201,20 +353,31 @@ driven by a form.
   land in the transactional account-administration service / `/setup` (later slices);
   the store's role **read** path is complete so claims flow at sign-in.
 - **M2 — deletion does not exist (F-10b).** `DeleteAsync` throws; accounts are
-  deactivated (`is_active=false`) so history keeps its actors.
-- **M2 — the sign-in manager is wired but not yet reached by a page.** Its audit
-  logic is proven by the pure `SignInAudit` tests and the wiring test. The actual
-  sign-in **pages** are the next slice, and they must post to a static/SSR endpoint
-  (not an interactive-circuit event) so the cookie can be written to the response —
-  a Blazor Server constraint, not an Identity one.
-- **M2 — Blazor auth-state cascade + per-area `[Authorize]` deferred.**
-  `UseAuthentication`/`UseAuthorization` are in the pipeline and the policies are
-  registered, but they enforce nothing until the area pages carry `[Authorize]` and
-  the router wraps `CascadingAuthenticationState` — added with those pages.
-- **Dev-machine note — inotify watch limit (now handled in `run.sh`).** `dotnet watch`
+  deactivated (`is_active=false`) so history keeps its actors — and, as of Slice 3,
+  a deactivated account is also refused at the front door (`CanSignInAsync`).
+- **M2 — account pages are static SSR by design.** They post full pages and write
+  cookies on the response; do not convert them to interactive components — a Blazor
+  circuit cannot set cookies. The per-page render mode in `App.razor` is what makes
+  the two worlds coexist.
+- **M2 — no registration page exists yet.** Guests register at the moment of joining
+  a table (§4.3, M3) and staff are created by an administrator (later M2 slice), so
+  `/sign-in` is deliberately the only public account surface. Until `/setup` lands
+  there is no in-app way to create the first account.
+- **M2 — obligations block Blazor circuits too.** `/_blazor` is not exempt in the
+  middleware: an interactive tab open when a reset lands loses its circuit until the
+  pipeline clears. Intended ("nothing else reachable", §3.5); expect the reconnect
+  banner in that scenario, not an error.
+- **M2 — obligation freshness.** Obligation state travels as claims; a flag an
+  administrator sets mid-session bites on the next principal rebuild — immediately
+  after the reset in practice, because the reset rotates the security stamp and the
+  5-minute revalidation then rebuilds the principal (§3.1). Clearing is immediate
+  via `RefreshSignInAsync`.
+- **M2 — the forced-TOTP-enrollment page is a stub** (see Slice 3). Its route,
+  middleware exemption, and tests are final; its body arrives with TOTP enrollment.
+- **Dev-machine note — inotify watch limit (handled in `run.sh`).** `dotnet watch`
   can exhaust the kernel's inotify **instance** limit on a busy workstation
   (`The configured user limit (128) on the number of inotify instances has been
-  reached`), which killed the watcher. `run.sh` now reads
+  reached`), which killed the watcher. `run.sh` reads
   `fs.inotify.max_user_instances` and, when it is low (< 256) and the caller has not
   set `DOTNET_USE_POLLING_FILE_WATCHER`, falls back to the **polling** file watcher
   for that run so hot reload works without root. For the snappier native watcher,
@@ -224,27 +387,23 @@ driven by a form.
 
 ## Next: remaining M2 slices (in order)
 
-1. **Password sign-in flow** (username+password → TOTP/recovery challenge when
-   enrolled), built on the `SignInManager`/cookies wired this slice, plus the
-   **obligations pipeline middleware** enforcing the pure `ObligationsPipeline`
-   decision (§3.5): forced password-change and forced TOTP-enrollment pages; nothing
-   else reachable while a flag is set. Sign-in pages post to static/SSR endpoints so
-   the auth cookie can be written. This is also where the Blazor
-   `CascadingAuthenticationState` and the first `[Authorize]`-gated area land.
-2. **TOTP enrollment**: provisioning URI → server-side SVG QR, confirm-code, fresh
-   recovery codes. Verify Identity's Rfc6238 skew; if it is not ±1 step (§3.4), add a
-   custom authenticator token provider. Records `totp_enrolled` /
-   `recovery_codes_regenerated` via the security-event log (`recovery_code_used`
-   is already recorded by the sign-in manager wired in this slice).
-3. **Passkeys** (`IUserPasskeyStore`, .NET 10 WebAuthn): registration/assertion,
+1. **TOTP enrollment**: provisioning URI → server-side SVG QR, confirm-code, fresh
+   recovery codes, records `totp_enrolled` / `recovery_codes_regenerated` — and the
+   body of the forced re-enrollment page (obligation (2), clearing `must_enroll_totp`
+   with `forced_totp_enrollment_completed`). Verify Identity's Rfc6238 skew; if it is
+   not ±1 step (§3.4), add a custom authenticator token provider.
+2. **Passkeys** (`IUserPasskeyStore`, .NET 10 WebAuthn): registration/assertion,
    username-first and discoverable flows, the passkey sign-in path (never a TOTP
    challenge — records `sign_in_succeeded` with method `passkey`). Verify the new
    .NET 10 passkey API against the framework source first.
-4. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
+3. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
    zero-administrator re-check, self-granting the administrator role in one
-   transaction (§3.6) — the first home for role grants.
-5. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
+   transaction (§3.6) — the first home for role grants, and the first in-app way to
+   create an account.
+4. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
    + `role_granted`/`role_revoked` events), **Reset credentials** (temp password +
    `must_change_password`; clear TOTP + set `must_enroll_totp` iff enrolled; new
    stamp; `password_reset_by_administrator` [+ `totp_cleared_by_administrator`]),
-   deactivate/reactivate. Store-level integration tests + middleware tests throughout.
+   deactivate/reactivate — the first thing that actually sets the obligation flags
+   the Slice-3 pipeline enforces. Store-level integration tests + middleware tests
+   throughout.

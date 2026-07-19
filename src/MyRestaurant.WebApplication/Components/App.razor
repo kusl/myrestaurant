@@ -1,5 +1,8 @@
-@* The root HTML document. Interactive-server render mode is set on HeadOutlet and Routes so the
-   whole app runs over a Blazor Server circuit (ADR-0004: interactive server rendering). *@
+@* The root HTML document. Interactive-server rendering is the default for the whole app (ADR-0004),
+   but it is applied per page rather than hard-coded: pages marked [ExcludeFromInteractiveRouting]
+   (the account/sign-in surfaces) render as static SSR instead, because writing the authentication
+   cookie requires a real HTTP response — a Blazor circuit cannot set cookies (BUILD_PROGRESS:
+   "sign-in pages must post to a static/SSR endpoint"). *@
 <!DOCTYPE html>
 <html lang="en">
 
@@ -9,12 +12,24 @@
     <base href="/" />
     <link rel="stylesheet" href="app.css" />
     <link rel="icon" href="data:," />
-    <HeadOutlet @rendermode="InteractiveServer" />
+    <HeadOutlet @rendermode="RenderModeForPage" />
 </head>
 
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="RenderModeForPage" />
     <script src="_framework/blazor.web.js"></script>
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    /// <summary>
+    /// Interactive server for ordinary pages; <c>null</c> (static SSR) for pages that opted out with
+    /// <see cref="ExcludeFromInteractiveRoutingAttribute"/> — the sign-in and obligation pages.
+    /// </summary>
+    private IComponentRenderMode? RenderModeForPage
+        => HttpContext.AcceptsInteractiveRouting() ? InteractiveServer : null;
+}

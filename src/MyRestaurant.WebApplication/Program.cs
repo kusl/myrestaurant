@@ -21,7 +21,7 @@ using OpenTelemetry.Trace;
 //   2. wire OpenTelemetry (exporters only when an OTLP endpoint is configured);
 //   3. register services;
 //   4. apply database migrations BEFORE binding HTTP (never serve on a half-applied schema, §17);
-//   5. forwarded headers → auth → health endpoints → Blazor interactive-server components.
+//   5. forwarded headers → auth → obligations pipeline → health endpoints → Blazor components.
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
@@ -100,7 +100,8 @@ builder.Services.AddDataProtection()
     .SetApplicationName("myrestaurant");
 
 // ASP.NET Core Identity core services over the custom Dapper store, with the Argon2id hasher, plus
-// sign-in, hardened cookie auth, security-stamp revalidation, the area authorization policies, and the
+// sign-in, hardened cookie auth, the claims factory (roles + §3.5 obligation claims), security-stamp
+// revalidation, the area authorization policies, cascading authentication state, and the
 // security-event log (§3.1–§3.7, ADR-0003/ADR-0008). Registered after Data Protection because the
 // store encrypts the TOTP secret and the auth cookie is protected with it, and after RestaurantMetrics
 // because the hasher and sign-in manager report there.
@@ -130,12 +131,15 @@ using (IServiceScope migrationScope = app.Services.CreateScope())
 }
 
 // (5) HTTP pipeline. No HTTPS redirection — TLS is terminated at the proxy. Authentication populates
-// HttpContext.User from the Identity cookie; authorization enforces the area policies (§3.7) once the
-// area pages carry [Authorize]. Both sit after static files and before antiforgery/endpoints.
+// HttpContext.User from the Identity cookie; authorization enforces the area policies (§3.7) on the
+// pages that carry [Authorize]; the obligations middleware then makes everything except sign-out and
+// the pipeline pages unreachable while a §3.5 flag is set. Static files sit before authentication so
+// css/assets are never blocked; antiforgery sits after auth, before endpoints.
 app.UseForwardedHeaders();
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<ObligationsMiddleware>();
 app.UseAntiforgery();
 
 // Health endpoints (§12). Liveness is "the process answers"; readiness additionally proves the
@@ -161,6 +165,9 @@ app.MapGet(
             return Results.Text("not ready", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
         }
     });
+
+// The POST /sign-out endpoint (antiforgery-protected; exempt from the obligations pipeline).
+app.MapRestaurantAccountEndpoints();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

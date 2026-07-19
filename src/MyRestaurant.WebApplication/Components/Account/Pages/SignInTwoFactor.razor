@@ -1,0 +1,103 @@
+@page "/sign-in/two-factor"
+@attribute [ExcludeFromInteractiveRouting]
+@inject SignInManager<Person> SignInManager
+@inject NavigationManager Navigation
+
+@* The TOTP challenge on the password path (TECHNICAL_SPECIFICATION §3.4, §4.2, ADR-0010). Reachable
+   only mid-sign-in: the password step parked the pending user in the two-factor cookie; without it
+   this page bounces back to /sign-in. There is deliberately no "remember this device" — TOTP is
+   challenged on every password sign-in of an enrolled account. The passkey path never lands here. *@
+
+<PageTitle>Two-factor code</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">MyRestaurant</p>
+    <h1>Enter your authenticator code</h1>
+    <p class="lede">
+        Your password was correct. Open your authenticator app and enter the six-digit code for this
+        account.
+    </p>
+
+    @if (_errorMessage is not null)
+    {
+        <p class="status-error" role="alert">@_errorMessage</p>
+    }
+
+    <EditForm Model="Input" method="post" OnValidSubmit="VerifyCodeAsync" FormName="sign-in-two-factor">
+        <DataAnnotationsValidator />
+
+        <div class="form-field">
+            <label for="totp-code">Authenticator code</label>
+            <InputText id="totp-code" @bind-Value="Input.Code" autocomplete="one-time-code"
+                       inputmode="numeric" autofocus />
+            <ValidationMessage For="@(() => Input.Code)" />
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="button-primary">Verify</button>
+        </div>
+    </EditForm>
+
+    <p class="form-footnote">
+        Authenticator unavailable?
+        <a href="@RecoveryCodeHref">Use a recovery code instead.</a>
+    </p>
+</section>
+
+@code {
+    private string? _errorMessage;
+
+    [SupplyParameterFromForm]
+    private TwoFactorInputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private string RecoveryCodeHref
+        => $"{AccountRoutes.SignInRecoveryCode}?ReturnUrl={Uri.EscapeDataString(ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl))}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // No pending two-factor user means this page was reached out of order — start over.
+        if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+        }
+    }
+
+    private async Task VerifyCodeAsync()
+    {
+        if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // Authenticator apps display codes in groups; be forgiving about spaces and dashes.
+        string code = Input.Code.Replace(" ", string.Empty).Replace("-", string.Empty);
+
+        SignInResult result = await SignInManager.TwoFactorAuthenticatorSignInAsync(
+            code,
+            isPersistent: true,
+            rememberClient: false);
+
+        if (result.Succeeded)
+        {
+            Navigation.NavigateTo(ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl));
+        }
+        else if (result.IsLockedOut)
+        {
+            _errorMessage = "Too many failed attempts. The account is locked for about five minutes — try again then.";
+        }
+        else
+        {
+            _errorMessage = "That code did not verify. Codes rotate every 30 seconds — check the app and try the current one.";
+        }
+    }
+
+    private sealed class TwoFactorInputModel
+    {
+        [Required(ErrorMessage = "Enter the six-digit code.")]
+        public string Code { get; set; } = string.Empty;
+    }
+}

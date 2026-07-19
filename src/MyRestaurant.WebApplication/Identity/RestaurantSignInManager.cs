@@ -15,6 +15,11 @@ namespace MyRestaurant.WebApplication.Identity;
 /// (unit-tested exhaustively); this class only maps the framework's <see cref="SignInResult"/> onto it
 /// and performs the side effects.
 ///
+/// <para>It is also where <b>deactivation blocks sign-in</b> (§3.7, F-10b): <see cref="CanSignInAsync"/>
+/// refuses an inactive <see cref="Person"/>, which the framework surfaces as
+/// <see cref="SignInResult.NotAllowed"/> — audited as a failed sign-in. Deactivation additionally
+/// kills live sessions through the security stamp; this gate closes the front door.</para>
+///
 /// <para>Only the password and second-factor paths are overridden here. The passkey path
 /// (<c>SignInManager.SignInAsync</c> after a WebAuthn assertion, method = <c>passkey</c>) records its
 /// own success in the passkey slice, so <see cref="SignInManager{TUser}.SignInAsync(TUser,bool,string)"/>
@@ -51,6 +56,18 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
 
         _securityEventLog = securityEventLog;
         _metrics = metrics;
+    }
+
+    /// <summary>
+    /// The pre-sign-in gate: a deactivated account may not sign in on any path (§3.7). The framework
+    /// turns a <c>false</c> here into <see cref="SignInResult.NotAllowed"/>, which
+    /// <see cref="AuditAsync"/> records as a failed sign-in.
+    /// </summary>
+    public override async Task<bool> CanSignInAsync(Person user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        return user.IsActive && await base.CanSignInAsync(user).ConfigureAwait(false);
     }
 
     /// <summary>

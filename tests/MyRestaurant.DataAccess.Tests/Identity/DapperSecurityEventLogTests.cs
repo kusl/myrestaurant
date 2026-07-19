@@ -84,10 +84,15 @@ public sealed class DapperSecurityEventLogTests : IClassFixture<PostgreSqlFixtur
     public async Task RecordAsync_UnknownEventType_ThrowsBeforeTouchingTheDatabase()
     {
         // No container needed: the client-side guard rejects the value before opening a connection.
+        // The token is passed so xUnit's test cancellation stays responsive (xUnit1051).
         DapperSecurityEventLog log = new(new ThrowingConnectionFactory(), _clock, new UuidV7IdentifierFactory());
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
-            () => log.RecordAsync(Guid.CreateVersion7(), actorPersonIdentifier: null, "not_a_real_event"));
+            () => log.RecordAsync(
+                Guid.CreateVersion7(),
+                actorPersonIdentifier: null,
+                "not_a_real_event",
+                TestContext.Current.CancellationToken));
     }
 
     // --- helpers -----------------------------------------------------------------------------------

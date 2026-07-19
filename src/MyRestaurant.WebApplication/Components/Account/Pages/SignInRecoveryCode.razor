@@ -1,0 +1,96 @@
+@page "/sign-in/recovery-code"
+@attribute [ExcludeFromInteractiveRouting]
+@inject SignInManager<Person> SignInManager
+@inject NavigationManager Navigation
+
+@* A recovery code standing in for the TOTP code on the password path (TECHNICAL_SPECIFICATION §3.4).
+   Each code is single-use; a successful redemption is recorded (`recovery_code_used`) by
+   RestaurantSignInManager. Like the TOTP page, this is only reachable mid-sign-in. *@
+
+<PageTitle>Recovery code</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">MyRestaurant</p>
+    <h1>Use a recovery code</h1>
+    <p class="lede">
+        Enter one of the recovery codes you saved when you enrolled your authenticator. Each code
+        works exactly once — when you are back in, consider regenerating a fresh set from your
+        profile.
+    </p>
+
+    @if (_errorMessage is not null)
+    {
+        <p class="status-error" role="alert">@_errorMessage</p>
+    }
+
+    <EditForm Model="Input" method="post" OnValidSubmit="RedeemCodeAsync" FormName="sign-in-recovery-code">
+        <DataAnnotationsValidator />
+
+        <div class="form-field">
+            <label for="recovery-code">Recovery code</label>
+            <InputText id="recovery-code" @bind-Value="Input.RecoveryCode" autocomplete="off"
+                       autocapitalize="none" spellcheck="false" autofocus />
+            <ValidationMessage For="@(() => Input.RecoveryCode)" />
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="button-primary">Sign in</button>
+        </div>
+    </EditForm>
+
+    <p class="form-footnote">
+        Found your authenticator after all?
+        <a href="@TwoFactorHref">Enter the six-digit code instead.</a>
+    </p>
+</section>
+
+@code {
+    private string? _errorMessage;
+
+    [SupplyParameterFromForm]
+    private RecoveryCodeInputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private string TwoFactorHref
+        => $"{AccountRoutes.SignInTwoFactor}?ReturnUrl={Uri.EscapeDataString(ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl))}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+        }
+    }
+
+    private async Task RedeemCodeAsync()
+    {
+        if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        SignInResult result = await SignInManager.TwoFactorRecoveryCodeSignInAsync(Input.RecoveryCode.Trim());
+
+        if (result.Succeeded)
+        {
+            Navigation.NavigateTo(ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl));
+        }
+        else if (result.IsLockedOut)
+        {
+            _errorMessage = "Too many failed attempts. The account is locked for about five minutes — try again then.";
+        }
+        else
+        {
+            _errorMessage = "That recovery code did not work. Codes are single-use — try another from your saved set.";
+        }
+    }
+
+    private sealed class RecoveryCodeInputModel
+    {
+        [Required(ErrorMessage = "Enter a recovery code.")]
+        public string RecoveryCode { get; set; } = string.Empty;
+    }
+}

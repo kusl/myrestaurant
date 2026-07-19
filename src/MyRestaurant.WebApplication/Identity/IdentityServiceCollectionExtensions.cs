@@ -14,18 +14,24 @@ namespace MyRestaurant.WebApplication.Identity;
 /// Dapper store, with the Argon2id hasher replacing Identity's PBKDF2 default
 /// (TECHNICAL_SPECIFICATION §3.1–§3.2, ADR-0003/ADR-0008), plus sign-in and authorization:
 /// <list type="bullet">
-///   <item>the Identity cookie scheme, hardened (Secure, HttpOnly, SameSite=Lax, 24-hour sliding);</item>
-///   <item><see cref="RestaurantSignInManager"/> (the auditing <see cref="SignInManager{TUser}"/>);</item>
+///   <item>the Identity cookie scheme, hardened (Secure, HttpOnly, SameSite=Lax, 24-hour sliding),
+///   pointing at the sign-in / sign-out / access-denied surfaces in <see cref="AccountRoutes"/>;</item>
+///   <item><see cref="RestaurantSignInManager"/> (the auditing <see cref="SignInManager{TUser}"/>,
+///   which also refuses deactivated accounts);</item>
+///   <item><see cref="RestaurantClaimsPrincipalFactory"/> — emits the role claims the area policies
+///   match on (the single-generic default factory never does), plus the §3.5 obligation claims and
+///   the display name;</item>
 ///   <item>security-stamp revalidation every 5 minutes, so resets, role revocations, and
 ///   deactivations bite live sessions within minutes (§3.1);</item>
 ///   <item>the area authorization policies (§3.7), via <see cref="AuthorizationServiceCollectionExtensions"/>;</item>
+///   <item>the cascading <c>Task&lt;AuthenticationState&gt;</c> the Blazor router and
+///   <c>AuthorizeView</c> consume;</item>
 ///   <item>the append-only <see cref="ISecurityEventLog"/> that sign-in outcomes are recorded to (§3.5).</item>
 /// </list>
 ///
-/// Roles flow to claims automatically: the store implements <see cref="IUserRoleStore{TUser}"/>, so the
-/// default claims-principal factory adds a role claim per granted role at sign-in — no role entity or
-/// <c>RoleManager</c> is registered (roles are plain strings, §3.7). The sign-in <em>pages</em> and the
-/// obligations-pipeline middleware are the next M2 slices; this method wires the services they need.
+/// The obligations pipeline itself is enforced by <see cref="ObligationsMiddleware"/> in the request
+/// pipeline (registered in <c>Program.cs</c>); the sign-in and forced-change pages are static-SSR
+/// Razor components under <c>Components/Account</c>.
 /// </summary>
 public static class IdentityServiceCollectionExtensions
 {
@@ -61,6 +67,10 @@ public static class IdentityServiceCollectionExtensions
         // Area authorization policies (§3.7).
         services.AddRestaurantAuthorization();
 
+        // The cascading Task<AuthenticationState> that <AuthorizeView>, AuthorizeRouteView, and the
+        // account pages consume — in both static SSR and interactive-server rendering.
+        services.AddCascadingAuthenticationState();
+
         services.AddIdentityCore<Person>(identity =>
             {
                 // Usernames: 3–64 chars is enforced by the DB CHECK and citext handles uniqueness, so
@@ -90,6 +100,7 @@ public static class IdentityServiceCollectionExtensions
                 identity.Stores.ProtectPersonalData = false;
             })
             .AddUserStore<DapperUserStore>()
+            .AddClaimsPrincipalFactory<RestaurantClaimsPrincipalFactory>()
             .AddDefaultTokenProviders() // Authenticator (TOTP), Data-Protection, email/phone token providers.
             .AddSignInManager<RestaurantSignInManager>();
 
@@ -100,8 +111,8 @@ public static class IdentityServiceCollectionExtensions
         services.TryAddScoped<ITwoFactorSecurityStampValidator, TwoFactorSecurityStampValidator<Person>>();
 
         // Harden the application cookie (§3.1). Secure + HttpOnly + SameSite=Lax; 24-hour sliding
-        // expiration. The paths point at the sign-in surfaces built in the next slice; nothing is
-        // authorized yet, so no redirect fires until those pages and their [Authorize] attributes exist.
+        // expiration. The login/logout/access-denied paths are the real account surfaces now (this
+        // slice); an unauthenticated hit on an [Authorize] page redirects to /sign-in?ReturnUrl=….
         services.ConfigureApplicationCookie(cookie =>
         {
             cookie.Cookie.Name = AuthenticationCookieName;
@@ -110,13 +121,14 @@ public static class IdentityServiceCollectionExtensions
             cookie.Cookie.SameSite = SameSiteMode.Lax;
             cookie.ExpireTimeSpan = AuthenticationCookieLifetime;
             cookie.SlidingExpiration = true;
-            cookie.LoginPath = "/sign-in";
-            cookie.LogoutPath = "/sign-out";
-            cookie.AccessDeniedPath = "/access-denied";
+            cookie.LoginPath = AccountRoutes.SignIn;
+            cookie.LogoutPath = AccountRoutes.SignOut;
+            cookie.AccessDeniedPath = AccountRoutes.AccessDenied;
         });
 
         // Revalidate the security stamp every 5 minutes so administrative resets/revocations/
-        // deactivations invalidate live sessions promptly (§3.1).
+        // deactivations invalidate live sessions promptly (§3.1). Rebuilding the principal also
+        // refreshes the role and obligation claims through the factory above.
         services.Configure<SecurityStampValidatorOptions>(validator =>
         {
             validator.ValidationInterval = SecurityStampValidationInterval;

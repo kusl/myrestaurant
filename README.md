@@ -5,10 +5,12 @@ the kitchen and counter work from live boards, and everything runs on one small 
 Cloudflare tunnel. Blazor Server over PostgreSQL, no external runtime dependencies beyond the
 database and the tunnel.
 
-This repository is at **Milestone 1 (the skeleton)**. The domain, data-access, and web host are in
-place; the database schema applies at startup; health checks and the app shell work. The guest,
-kitchen, counter, administrator, and table-display experiences — and all of authentication — arrive
-in later milestones (see *Roadmap*).
+This repository has completed **Milestone 1 (the skeleton)** and is partway through **Milestone 2
+(identity & accounts)**: password sign-in with the TOTP/recovery-code challenge, lockout, sign-out,
+the forced-password-change pipeline, and the first authorization-gated area all work. Passkeys, TOTP
+enrollment, the `/setup` bootstrap, and account administration are the remaining M2 slices; the
+guest, kitchen, counter, administrator, and table-display experiences arrive in later milestones
+(see *Roadmap* and `docs/BUILD_PROGRESS.md`).
 
 ## Layout
 
@@ -16,21 +18,26 @@ The solution (`MyRestaurant.slnx`) is a small set of projects with a strict depe
 the web layer depends on data-access and the domain; the domain depends on nothing.
 
 - `src/MyRestaurant.Domain` — pure domain logic: the order event model and its fold/validation, the
-  join-token and Argon2 PHC primitives, identifiers, clock, and live-update contracts. No I/O.
-- `src/MyRestaurant.DataAccess` — Dapper + Npgsql, the DbUp migration runner, and the embedded SQL
-  schema (`Migrations/0001_initial_schema.sql`: 22 tables, 5 views, the `citext` extension). Entity
-  Framework is deliberately not used anywhere.
+  join-token and Argon2 PHC primitives, the sign-in audit and obligations-pipeline decisions,
+  identifiers, clock, and live-update contracts. No I/O.
+- `src/MyRestaurant.DataAccess` — Dapper + Npgsql, the DbUp migration runner, the embedded SQL
+  schema (`Migrations/0001_initial_schema.sql`: 22 tables, 5 views, the `citext` extension), and the
+  Identity stores (person, roles read side, TOTP secret encrypted at rest, recovery codes, the
+  append-only security-event log). Entity Framework is deliberately not used anywhere.
 - `src/MyRestaurant.WebApplication` — the composition root, configuration binding and fail-fast
-  validation, OpenTelemetry wiring, the in-process live-update broadcaster, and the Blazor shell.
-- `tests/` — pure domain tests, a Testcontainers migration test, web-layer configuration tests, and
-  the version-controlled end-to-end scenario matrix (skipped until Milestone 6).
+  validation, OpenTelemetry wiring, the in-process live-update broadcaster, cookie authentication
+  with the auditing sign-in manager, the §3.5 obligations middleware, the account pages (static SSR),
+  and the Blazor shell.
+- `tests/` — pure domain tests, Testcontainers integration tests for migrations and the Identity
+  stores, web-layer configuration/wiring/enforcement tests, and the version-controlled end-to-end
+  scenario matrix (skipped until Milestone 6).
 
 ## Prerequisites
 
 - The .NET SDK pinned in `global.json` (10.0.302 or a newer 10.0 feature band).
 - A container engine — rootless **Podman** is the primary target; Docker works too.
-- For integration tests, the container engine must be running. For end-to-end tests (later),
-  Playwright browsers as well.
+- For integration tests, the container engine's API socket must be reachable (see *Testing*). For
+  end-to-end tests (later), Playwright browsers as well.
 
 ## Quick start
 
@@ -43,6 +50,12 @@ Host-dev with hot reload (database in a container, web app on the host):
 This starts PostgreSQL in a container, exports sensible dev defaults, ensures the ASP.NET Core dev
 certificate, and runs `dotnet watch`. The app comes up at `https://localhost:8443`.
 
+Boot once, verify health, and exit (the end-of-sweep / CI mode):
+
+```bash
+./run.sh --smoke
+```
+
 Full containerized dev stack (adds Caddy for TLS):
 
 ```bash
@@ -51,6 +64,9 @@ Full containerized dev stack (adds Caddy for TLS):
 ```
 
 Then trust Caddy's local CA on first use and open `https://localhost:8443`.
+
+`run.sh` never opens tunnels or prints public URLs — that is a separate, demo-only step (see
+*Deployment* below and `docs/OPERATIONS.md` §10).
 
 ## Configuration
 
@@ -64,13 +80,26 @@ a missing connection string, and so on).
 ```bash
 dotnet test                                             # everything
 dotnet test tests/MyRestaurant.Domain.Tests             # pure, fast, no services
-dotnet test tests/MyRestaurant.WebApplication.Tests     # configuration binding + validation
-dotnet test tests/MyRestaurant.DataAccess.Tests         # needs a running container engine
+dotnet test tests/MyRestaurant.WebApplication.Tests     # config binding + identity wiring/enforcement
+dotnet test tests/MyRestaurant.DataAccess.Tests         # needs a reachable container engine
 ```
 
-The domain and web-layer tests need no services. The data-access test spins up a real PostgreSQL 17
-container via Testcontainers; if no container engine is available it skips rather than fails. The
-end-to-end project lists the required scenarios as skipped placeholders and is implemented at
+The domain and web-layer tests need no services. The data-access tests spin up a real PostgreSQL 17
+container via Testcontainers; if no container engine is reachable they skip rather than fail.
+
+**Rootless Podman (the canonical engine):** Testcontainers talks to the engine's API socket, not the
+`podman` CLI, so on a fresh Fedora/Podman machine the integration tests skip with a Docker-flavoured
+"endpoint unavailable" message even though `run.sh` works. Activate the user socket once:
+
+```bash
+systemctl --user enable --now podman.socket
+```
+
+The test suite then discovers `unix://$XDG_RUNTIME_DIR/podman/podman.sock` automatically (and
+disables Ryuk, which is unreliable rootless — every fixture disposes its own container). Explicit
+configuration still wins: `DOCKER_HOST` or `~/.testcontainers.properties`, if set, are respected.
+
+The end-to-end project lists the required scenarios as skipped placeholders and is implemented at
 Milestone 6.
 
 ## Deployment
@@ -91,9 +120,18 @@ podman-compose --profile production up -d
 and link URLs are derived. In-house guests hairpin through the tunnel, so LAN ordering depends on WAN
 health — an accepted tradeoff for this design.
 
-For a throwaway demo, `scripts/quick_tunnel.sh` opens a `*.trycloudflare.com` tunnel. Because that
-domain is random per run and on the Public Suffix List, passkeys will not persist across runs; demos
-sign in with password + TOTP.
+For a throwaway demo, bring the stack up and then open a quick tunnel — two commands, in order:
+
+```bash
+./run.sh --containers-only
+scripts/quick_tunnel.sh
+```
+
+The script verifies the app is answering, opens a `*.trycloudflare.com` tunnel, and prints the
+assigned URL in a banner the moment it exists. The URL lives exactly as long as the script runs
+(Ctrl+C ends the demo) — a quick tunnel cannot "print a URL and exit", because exiting kills the
+URL. That domain is random per run and on the Public Suffix List, so passkeys will not persist
+across runs; demos sign in with password + TOTP.
 
 ## Backups
 
@@ -105,14 +143,14 @@ TOTP secrets and auth cookies are unrecoverable.
 
 ## First-build checklist
 
-The code in this milestone was written carefully but has not been compiled in this environment
-(no toolchain or package feed here). On a networked machine:
+The code in each milestone slice is written carefully but has not been compiled in its authoring
+environment (no toolchain or package feed there). On a networked machine:
 
 1. `dotnet restore` — resolve or adjust any package versions in `Directory.Packages.props`.
 2. `dotnet build` — fix any analyzer/compiler findings.
-3. `dotnet test` — domain and web-layer tests need no services; the data-access test needs a
-   container engine.
-4. `./run.sh` — confirm migrations apply and `/healthz/ready` returns 200.
+3. `dotnet test` — domain and web-layer tests need no services; the data-access tests need the
+   container engine socket (see *Testing*).
+4. `./run.sh --smoke` — confirm migrations apply and `/healthz/ready` returns 200.
 
 ## Known caveats and deliberate decisions
 
@@ -130,11 +168,19 @@ The code in this milestone was written carefully but has not been compiled in th
   trusted proxy (Cloudflare tunnel in production, Caddy in dev) and never exposed directly.
 - **Rootless volume ownership.** The data-protection volume is mounted `:U` in compose so Podman
   chowns it to the container user. On Docker, drop the `:U` suffix if it objects.
+- **Account pages are static SSR by design.** Sign-in and the forced-change pages write cookies on
+  the response, which a Blazor circuit cannot do; do not convert them to interactive components.
+- **No registration or `/setup` page yet.** Guests register at the moment of joining a table (M3)
+  and staff are created by an administrator (later M2 slice), so until the bootstrap slice lands
+  there is no in-app way to create the first account.
 
 ## Roadmap
 
-- **M2** — identity & accounts: custom Dapper Identity stores, Argon2id hashing with the floor guard
-  and concurrency semaphore, passkeys, TOTP + recovery codes, lockout, the obligations middleware,
-  `/setup` first-admin bootstrap, roles/policies, and security-event logging.
+- **M2** — identity & accounts *(in progress)*: ✔ custom Dapper Identity stores, ✔ Argon2id hashing
+  with the floor guard and concurrency semaphore, ✔ lockout, ✔ password sign-in with the
+  TOTP/recovery challenge, ✔ the obligations middleware with forced password change, ✔ roles →
+  policies → the first gated area, ✔ security-event logging; still to come: TOTP enrollment,
+  passkeys, `/setup` first-admin bootstrap, and account administration (which is what starts
+  setting the obligation flags).
 - **M3–M5** — guest ordering, kitchen and counter boards, table displays, administration.
 - **M6** — the Playwright end-to-end matrix and CI publishing.

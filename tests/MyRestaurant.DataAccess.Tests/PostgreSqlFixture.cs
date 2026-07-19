@@ -5,9 +5,14 @@ namespace MyRestaurant.DataAccess.Tests;
 
 /// <summary>
 /// Starts one PostgreSQL 17 container for the whole test class (Testcontainers). If no container
-/// engine is available (Podman/Docker not installed or not running), startup fails and
-/// <see cref="SkipReason"/> is set so the tests skip rather than fail (BUILD_PROGRESS:
-/// container-dependent tests).
+/// engine is reachable, startup fails and <see cref="SkipReason"/> is set so the tests skip rather
+/// than fail (BUILD_PROGRESS: container-dependent tests).
+///
+/// <para>Endpoint discovery order: explicit configuration (<c>DOCKER_HOST</c>,
+/// <c>~/.testcontainers.properties</c>) → the Docker default socket → the rootless Podman user
+/// socket, which <see cref="ContainerEngineDiscovery"/> wires up automatically when it exists. On a
+/// Podman host where the socket has never been activated, the skip reason below spells out the
+/// one-time fix instead of only echoing Testcontainers' Docker-flavoured error.</para>
 /// </summary>
 public sealed class PostgreSqlFixture : IAsyncLifetime
 {
@@ -39,7 +44,12 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
         }
         catch (Exception exception)
         {
-            SkipReason = "A container engine (Podman/Docker) is required but was unavailable: " + exception.Message;
+            SkipReason =
+                "A container engine (Podman/Docker) was not reachable: " + exception.Message +
+                " — on a rootless-Podman host, activate the user API socket once with" +
+                " `systemctl --user enable --now podman.socket` and re-run; the tests discover it" +
+                " automatically. (Explicit configuration also works:" +
+                " `export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock`.)";
         }
     }
 
