@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-19T16:47:04-04:00
+  Generated at   : 2026-07-19T17:19:48-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,10 +17,10 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 3f92b04f030a177161a2d276c94465cd8f6ccf70
-  Commit (short) : 3f92b04
-  Commit date    : 2026-07-19 16:40:56 -0400
-  Commit message : run dump
+  Commit (full)  : a4423d992226aa1781f73e9bc91355535c687638
+  Commit (short) : a4423d9
+  Commit date    : 2026-07-19 17:19:43 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
   Files included : 123
   Excluded path  : docs/llm/
@@ -29,8 +29,6 @@ REPOSITORY METADATA
 GIT WORKING TREE STATUS (first 20 lines)
 ═════════════════════════════════════════════════════════════════════════════════
  M docs/llm/vendor/claude-output.txt
- M src/MyRestaurant.WebApplication/Components/Account/Pages/ChangePasswordRequired.razor
-?? docs/llm/vendor/claude-012.txt
 
 ################################################################################
 # FILE: export.sh  [THIS SCRIPT — included for full context]
@@ -5588,15 +5586,15 @@ public sealed class DapperSecurityEventLog : ISecurityEventLog
   File name:             DapperUserStore.cs
   Relative path:         src/MyRestaurant.DataAccess/Identity/DapperUserStore.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Identity/DapperUserStore.cs
-  Size:                  29.2 KiB (29936 bytes)
-  Last modified:         2026-07-18 12:46:04.000000000 -0400
+  Size:                  29.6 KiB (30333 bytes)
+  Last modified:         2026-07-19 21:14:34.000000000 -0400
   Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21340830
+  Inode:                 21675157
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               396787c70638c26be3371652bd1edfb43ac53a376b3a867c120ea217246b0853
-  Last git commit:       fa320ac 2026-07-18 08:51:11 -0400 add claude response
+  SHA-256:               687a17e87f0b1b8c5d9c4106ec75027bfccde8df8a1f4ac3f63fa5673d8b21f6
+  Last git commit:       a4423d9 2026-07-19 17:19:43 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -5661,21 +5659,24 @@ public sealed class DapperUserStore :
     // Every SELECT aliases snake_case columns to the POCO's PascalCase properties. Postgres folds the
     // unquoted aliases to lower case and Dapper matches case-insensitively, so no global
     // MatchNamesWithUnderscores setting is needed (which would silently affect every other query).
+    // Every column is person.-qualified: person_identifier also exists on person_role (and most other
+    // child tables), so the bare name is ambiguous (42702) the moment a query JOINs one of them — as
+    // GetUsersInRoleAsync does. The qualification is harmless in the single-table lookups.
     private const string PersonColumns = """
-        person_identifier      AS PersonIdentifier,
-        username               AS Username,
-        display_name           AS DisplayName,
-        email_address          AS EmailAddress,
-        phone_number           AS PhoneNumber,
-        password_hash          AS PasswordHash,
-        totp_secret_protected  AS TotpSecretProtected,
-        must_change_password   AS MustChangePassword,
-        must_enroll_totp       AS MustEnrollTotp,
-        security_stamp         AS SecurityStamp,
-        failed_access_count    AS FailedAccessCount,
-        lockout_end_at         AS LockoutEndAt,
-        is_active              AS IsActive,
-        created_at             AS CreatedAt
+        person.person_identifier      AS PersonIdentifier,
+        person.username               AS Username,
+        person.display_name           AS DisplayName,
+        person.email_address          AS EmailAddress,
+        person.phone_number           AS PhoneNumber,
+        person.password_hash          AS PasswordHash,
+        person.totp_secret_protected  AS TotpSecretProtected,
+        person.must_change_password   AS MustChangePassword,
+        person.must_enroll_totp       AS MustEnrollTotp,
+        person.security_stamp         AS SecurityStamp,
+        person.failed_access_count    AS FailedAccessCount,
+        person.lockout_end_at         AS LockoutEndAt,
+        person.is_active              AS IsActive,
+        person.created_at             AS CreatedAt
         """;
 
     private readonly IDatabaseConnectionFactory _connectionFactory;
@@ -8905,20 +8906,21 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             ChangePasswordRequired.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/ChangePasswordRequired.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/ChangePasswordRequired.razor
-  Size:                  6.2 KiB (6394 bytes)
-  Last modified:         2026-07-19 16:46:51.187663559 -0400
+  Size:                  6.5 KiB (6611 bytes)
+  Last modified:         2026-07-19 21:14:34.000000000 -0400
   Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21654100
+  Inode:                 21675158
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               091c28172e074000f50e477b399e85f9c177fcbf233bdf906085e265328e756e
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               912c578b97ae1262965aecb6152455c48e683a76a47646fd32b7869aff5f5387
+  Last git commit:       a4423d9 2026-07-19 17:19:43 -0400 add claude response
 
 --- CONTENT ---
 @page "/account/change-password-required"
 @attribute [ExcludeFromInteractiveRouting]
 @attribute [Authorize]
+@using MyRestaurant.Domain.Authentication
 @inject UserManager<Person> UserManager
 @inject SignInManager<Person> SignInManager
 @inject ISecurityEventLog SecurityEventLog
@@ -8995,13 +8997,17 @@ public static class AuthorizationServiceCollectionExtensions
     private HttpContext HttpContext { get; set; } = default!;
 
     [SupplyParameterFromForm]
-    private ChangePasswordInputModel Input { get; set; } = new();
+    private ChangePasswordInputModel Input { get; set; } = default!;
 
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
+        // BL0008: a form POST binds Input itself and may assign null, so the default lives here
+        // rather than in a property initializer the binder would silently discard.
+        Input ??= new();
+
         Person? user = await UserManager.GetUserAsync(HttpContext.User);
         if (user is null)
         {
@@ -9054,7 +9060,7 @@ public static class AuthorizationServiceCollectionExtensions
         await SecurityEventLog.RecordAsync(
             user.PersonIdentifier,
             actorPersonIdentifier: null,
-            MyRestaurant.Domain.Authentication.SecurityEventType.ForcedPasswordChangeCompleted);
+            SecurityEventType.ForcedPasswordChangeCompleted);
 
         // Re-issue the cookie: fresh security stamp, and the obligation claim disappears with it, so
         // the middleware releases this principal on the very next request.
@@ -9166,15 +9172,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             SignIn.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor
-  Size:                  4.1 KiB (4230 bytes)
-  Last modified:         2026-07-19 08:46:58.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  4.4 KiB (4508 bytes)
+  Last modified:         2026-07-19 21:14:34.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21654801
+  Inode:                 21675159
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               40f2ec946aa62cb66e8f7a60a254301e7931dbd938480b3da7fab98975d0abd7
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               7ca49793281d6e672264a3d1dbd2fadfbb530085c934ef0209a4457c1c08df00
+  Last git commit:       a4423d9 2026-07-19 17:19:43 -0400 add claude response
 
 --- CONTENT ---
 @page "/sign-in"
@@ -9243,10 +9249,14 @@ public static class AuthorizationServiceCollectionExtensions
     private HttpContext HttpContext { get; set; } = default!;
 
     [SupplyParameterFromForm]
-    private SignInInputModel Input { get; set; } = new();
+    private SignInInputModel Input { get; set; } = default!;
 
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
+
+    // BL0008: on a static-SSR form POST the framework binds [SupplyParameterFromForm] itself and may
+    // assign null, silently discarding a `= new()` initializer — so the default is applied here instead.
+    protected override void OnInitialized() => Input ??= new();
 
     private async Task SignInUserAsync()
     {
@@ -9302,15 +9312,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             SignInRecoveryCode.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/SignInRecoveryCode.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/SignInRecoveryCode.razor
-  Size:                  3.3 KiB (3354 bytes)
-  Last modified:         2026-07-19 08:47:35.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  3.5 KiB (3564 bytes)
+  Last modified:         2026-07-19 21:14:34.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21654797
+  Inode:                 21675160
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               bd28e54b8cc232029f9fea0cb5509a9b2531d89aae2deef8f709915f6025ecca
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               a9cadc1e700284c1579ccd9da2e35d20546a611c77a5b227defa3cf9a0a992f2
+  Last git commit:       a4423d9 2026-07-19 17:19:43 -0400 add claude response
 
 --- CONTENT ---
 @page "/sign-in/recovery-code"
@@ -9363,7 +9373,7 @@ public static class AuthorizationServiceCollectionExtensions
     private string? _errorMessage;
 
     [SupplyParameterFromForm]
-    private RecoveryCodeInputModel Input { get; set; } = new();
+    private RecoveryCodeInputModel Input { get; set; } = default!;
 
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
@@ -9373,6 +9383,10 @@ public static class AuthorizationServiceCollectionExtensions
 
     protected override async Task OnInitializedAsync()
     {
+        // BL0008: a form POST binds Input itself and may assign null, so the default lives here
+        // rather than in a property initializer the binder would silently discard.
+        Input ??= new();
+
         if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
         {
             Navigation.NavigateTo(AccountRoutes.SignIn);
@@ -9418,15 +9432,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             SignInTwoFactor.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/SignInTwoFactor.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/SignInTwoFactor.razor
-  Size:                  3.6 KiB (3688 bytes)
-  Last modified:         2026-07-19 08:47:18.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  3.8 KiB (3898 bytes)
+  Last modified:         2026-07-19 21:14:34.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21654798
+  Inode:                 21675161
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               7f9acf3c2b724e0897a988d5252f9ebe6d65e38a070baec3866919a409e0dd53
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               bd5815df9ea5328464275fc978cb73f5ac379b159a3d6067d9e117795fbb217a
+  Last git commit:       a4423d9 2026-07-19 17:19:43 -0400 add claude response
 
 --- CONTENT ---
 @page "/sign-in/two-factor"
@@ -9479,7 +9493,7 @@ public static class AuthorizationServiceCollectionExtensions
     private string? _errorMessage;
 
     [SupplyParameterFromForm]
-    private TwoFactorInputModel Input { get; set; } = new();
+    private TwoFactorInputModel Input { get; set; } = default!;
 
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
@@ -9489,6 +9503,10 @@ public static class AuthorizationServiceCollectionExtensions
 
     protected override async Task OnInitializedAsync()
     {
+        // BL0008: a form POST binds Input itself and may assign null, so the default lives here
+        // rather than in a property initializer the binder would silently discard.
+        Input ??= new();
+
         // No pending two-factor user means this page was reached out of order — start over.
         if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
         {
@@ -15556,9 +15574,9 @@ public sealed class RestaurantOptionsTests
 # DUMP SUMMARY
 ################################################################################
   Files dumped   : 123
-  Total size     : 621.5 KiB (636436 bytes)
+  Total size     : 622.8 KiB (637748 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-19T16:47:08-04:00
+  Completed at   : 2026-07-19T17:19:52-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
