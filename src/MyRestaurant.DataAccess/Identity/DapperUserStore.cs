@@ -60,21 +60,24 @@ public sealed class DapperUserStore :
     // Every SELECT aliases snake_case columns to the POCO's PascalCase properties. Postgres folds the
     // unquoted aliases to lower case and Dapper matches case-insensitively, so no global
     // MatchNamesWithUnderscores setting is needed (which would silently affect every other query).
+    // Every column is person.-qualified: person_identifier also exists on person_role (and most other
+    // child tables), so the bare name is ambiguous (42702) the moment a query JOINs one of them — as
+    // GetUsersInRoleAsync does. The qualification is harmless in the single-table lookups.
     private const string PersonColumns = """
-        person_identifier      AS PersonIdentifier,
-        username               AS Username,
-        display_name           AS DisplayName,
-        email_address          AS EmailAddress,
-        phone_number           AS PhoneNumber,
-        password_hash          AS PasswordHash,
-        totp_secret_protected  AS TotpSecretProtected,
-        must_change_password   AS MustChangePassword,
-        must_enroll_totp       AS MustEnrollTotp,
-        security_stamp         AS SecurityStamp,
-        failed_access_count    AS FailedAccessCount,
-        lockout_end_at         AS LockoutEndAt,
-        is_active              AS IsActive,
-        created_at             AS CreatedAt
+        person.person_identifier      AS PersonIdentifier,
+        person.username               AS Username,
+        person.display_name           AS DisplayName,
+        person.email_address          AS EmailAddress,
+        person.phone_number           AS PhoneNumber,
+        person.password_hash          AS PasswordHash,
+        person.totp_secret_protected  AS TotpSecretProtected,
+        person.must_change_password   AS MustChangePassword,
+        person.must_enroll_totp       AS MustEnrollTotp,
+        person.security_stamp         AS SecurityStamp,
+        person.failed_access_count    AS FailedAccessCount,
+        person.lockout_end_at         AS LockoutEndAt,
+        person.is_active              AS IsActive,
+        person.created_at             AS CreatedAt
         """;
 
     private readonly IDatabaseConnectionFactory _connectionFactory;

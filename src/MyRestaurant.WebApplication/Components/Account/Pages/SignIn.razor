@@ -64,10 +64,14 @@
     private HttpContext HttpContext { get; set; } = default!;
 
     [SupplyParameterFromForm]
-    private SignInInputModel Input { get; set; } = new();
+    private SignInInputModel Input { get; set; } = default!;
 
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
+
+    // BL0008: on a static-SSR form POST the framework binds [SupplyParameterFromForm] itself and may
+    // assign null, silently discarding a `= new()` initializer — so the default is applied here instead.
+    protected override void OnInitialized() => Input ??= new();
 
     private async Task SignInUserAsync()
     {

@@ -48,7 +48,7 @@
     private string? _errorMessage;
 
     [SupplyParameterFromForm]
-    private TwoFactorInputModel Input { get; set; } = new();
+    private TwoFactorInputModel Input { get; set; } = default!;
 
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
@@ -58,6 +58,10 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // BL0008: a form POST binds Input itself and may assign null, so the default lives here
+        // rather than in a property initializer the binder would silently discard.
+        Input ??= new();
+
         // No pending two-factor user means this page was reached out of order — start over.
         if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
         {
