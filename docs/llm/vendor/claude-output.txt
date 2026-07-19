@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-19T08:22:20-04:00
+  Generated at   : 2026-07-19T16:40:07-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : d79d53514151c2464360220f940e146c1af02b83
-  Commit (short) : d79d535
-  Commit date    : 2026-07-18 18:50:16 -0400
-  Commit message : run dump
+  Commit (full)  : 56e1018c47b1c40881422c50d0395ca8f3bbd7a5
+  Commit (short) : 56e1018
+  Commit date    : 2026-07-19 16:39:47 -0400
+  Commit message : add all files
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 107
+  Files included : 123
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,12 +533,13 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (107 included files)
+# FILE TREE  (123 included files)
 ################################################################################
 .
 ├── .editorconfig
 ├── .env.example
 ├── .gitignore
+├── CHANGES-2026-07-19.md
 ├── CONTRIBUTING.md
 ├── Caddyfile
 ├── Containerfile
@@ -618,17 +619,32 @@ cat "$OUTPUT_FILE"
 │       ├── Authorization
 │       │   └── AuthorizationPolicies.cs
 │       ├── Components
+│       │   ├── Account
+│       │   │   ├── Pages
+│       │   │   │   ├── AccessDenied.razor
+│       │   │   │   ├── ChangePasswordRequired.razor
+│       │   │   │   ├── EnrollTotpRequired.razor
+│       │   │   │   ├── SignIn.razor
+│       │   │   │   ├── SignInRecoveryCode.razor
+│       │   │   │   └── SignInTwoFactor.razor
+│       │   │   └── RedirectToSignIn.razor
 │       │   ├── App.razor
 │       │   ├── Layout
 │       │   │   └── MainLayout.razor
 │       │   ├── Pages
-│       │   │   └── Home.razor
+│       │   │   ├── Home.razor
+│       │   │   └── Table
+│       │   │       └── TableArea.razor
 │       │   ├── Routes.razor
 │       │   └── _Imports.razor
 │       ├── Configuration
 │       │   └── RestaurantOptions.cs
 │       ├── Identity
+│       │   ├── AccountEndpoints.cs
 │       │   ├── IdentityServiceCollectionExtensions.cs
+│       │   ├── ObligationsEnforcement.cs
+│       │   ├── ObligationsMiddleware.cs
+│       │   ├── RestaurantClaimsPrincipalFactory.cs
 │       │   └── RestaurantSignInManager.cs
 │       ├── LiveUpdates
 │       │   └── InProcessDomainEventBroadcaster.cs
@@ -644,6 +660,7 @@ cat "$OUTPUT_FILE"
 │           └── app.css
 └── tests
     ├── MyRestaurant.DataAccess.Tests
+    │   ├── ContainerEngineDiscovery.cs
     │   ├── Identity
     │   │   ├── Argon2idPasswordHasherTests.cs
     │   │   ├── DapperSecurityEventLogTests.cs
@@ -672,7 +689,9 @@ cat "$OUTPUT_FILE"
     │   └── MyRestaurant.EndToEnd.Tests.csproj
     └── MyRestaurant.WebApplication.Tests
         ├── Identity
-        │   └── IdentityWiringTests.cs
+        │   ├── IdentityWiringTests.cs
+        │   ├── ObligationsEnforcementTests.cs
+        │   └── RestaurantClaimsPrincipalFactoryTests.cs
         ├── MyRestaurant.WebApplication.Tests.csproj
         └── RestaurantOptionsTests.cs
 
@@ -856,6 +875,103 @@ playwright-report/
 .DS_Store
 
 .dataprotection/
+
+################################################################################
+# FILE: CHANGES-2026-07-19.md
+################################################################################
+
+--- METADATA ---
+  File name:             CHANGES-2026-07-19.md
+  Relative path:         CHANGES-2026-07-19.md
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/CHANGES-2026-07-19.md
+  Size:                  6.3 KiB (6438 bytes)
+  Last modified:         2026-07-19 15:38:37.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654819
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               b024ea831b8082d8d4561f7f93733538e5c5f135c3e9881383be23372d0febe9
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+# Apply notes — 2026-07-19 — M2 slice 3 (interactive sign-in) + course corrections
+
+Every file below is a **complete replacement** (or a brand-new file) — copy each one over the path shown, no merging required. All paths are relative to the repository root `/home/kushal/src/dotnet/myrestaurant/`. The bundle `myrestaurant-m2-signin-slice.tar.gz` unpacks exactly this tree, so from the repo root you can also just:
+
+```bash
+tar -xzf myrestaurant-m2-signin-slice.tar.gz
+```
+
+No new NuGet packages. No new migrations. No `.csproj` changes.
+
+## 0. One-time host fix (do this first)
+
+The ~40 "errors" in your terminal were **skips, not failures** — Testcontainers couldn't find a Docker-compatible socket because the rootless Podman API socket wasn't running. Enable it once and it survives reboots:
+
+```bash
+systemctl --user enable --now podman.socket
+```
+
+The new `ContainerEngineDiscovery.cs` then finds `$XDG_RUNTIME_DIR/podman/podman.sock` automatically (honoring `DOCKER_HOST` if you've set one) and disables Ryuk, which rootless Podman doesn't need.
+
+## 1. Course corrections (4 files)
+
+| Path | What changed |
+|---|---|
+| `tests/MyRestaurant.DataAccess.Tests/ContainerEngineDiscovery.cs` | **new** — module initializer that points Testcontainers at the rootless Podman socket |
+| `tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs` | skip message now tells you the exact `systemctl --user` command instead of a generic shrug |
+| `tests/MyRestaurant.DataAccess.Tests/Identity/DapperSecurityEventLogTests.cs` | fixes the one `xUnit1051` warning (passes the test cancellation token through) — build is now warning-clean |
+| `scripts/quick_tunnel.sh` | pre-checks `/healthz/ready` and refuses with instructions if the stack is down; prints the tunnel URL in an unmissable banner; runs in the foreground until Ctrl+C |
+
+## 2. M2 slice 3 — source (21 files)
+
+| Path | What it is |
+|---|---|
+| `src/MyRestaurant.WebApplication/Identity/RestaurantClaimsPrincipalFactory.cs` | **new** — emits role claims (fixes the latent bug where `AddIdentityCore`'s default factory emits none, so the §3.7 area policies could never pass), plus display-name and obligation claims |
+| `src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs` | **new** — pure route table + obligation resolution + open-redirect-safe return-URL helpers |
+| `src/MyRestaurant.WebApplication/Identity/ObligationsMiddleware.cs` | **new** — authenticated + outstanding obligation + non-exempt path → redirect to the obligation page |
+| `src/MyRestaurant.WebApplication/Identity/AccountEndpoints.cs` | **new** — antiforgery-validated `POST /sign-out` |
+| `src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs` | registers the claims factory, cascading auth state, cookie paths now sourced from `AccountRoutes` |
+| `src/MyRestaurant.WebApplication/Identity/RestaurantSignInManager.cs` | adds `CanSignInAsync` override — deactivated accounts get `NotAllowed`, audited |
+| `src/MyRestaurant.WebApplication/Program.cs` | obligations middleware after `UseAuthorization`, account endpoints mapped |
+| `src/MyRestaurant.WebApplication/Components/App.razor` | per-page render mode — account pages run static SSR, the rest interactive server |
+| `src/MyRestaurant.WebApplication/Components/Routes.razor` | `AuthorizeRouteView` + redirect-to-sign-in for anonymous users |
+| `src/MyRestaurant.WebApplication/Components/_Imports.razor` | new namespaces |
+| `src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor` | header with session state and the sign-out form |
+| `src/MyRestaurant.WebApplication/Components/Account/RedirectToSignIn.razor` | **new** |
+| `src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor` | **new** — password sign-in (persistent cookie, lockout counted) |
+| `src/MyRestaurant.WebApplication/Components/Account/Pages/SignInTwoFactor.razor` | **new** — TOTP step (no remember-device, by design) |
+| `src/MyRestaurant.WebApplication/Components/Account/Pages/SignInRecoveryCode.razor` | **new** — recovery-code step |
+| `src/MyRestaurant.WebApplication/Components/Account/Pages/ChangePasswordRequired.razor` | **new** — obligation (1) |
+| `src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotpRequired.razor` | **new** — obligation (2), addressable stub until the TOTP slice |
+| `src/MyRestaurant.WebApplication/Components/Account/Pages/AccessDenied.razor` | **new** |
+| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor` | **new** — first policy-gated interactive area page (proves cookie → claims → policy → circuit) |
+| `src/MyRestaurant.WebApplication/Components/Pages/Home.razor` | landing copy + link to `/table` |
+| `src/MyRestaurant.WebApplication/wwwroot/app.css` | header/session/panel/form styles added to the M1 palette |
+
+## 3. Tests (3 files)
+
+| Path | What it covers |
+|---|---|
+| `tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs` | + claims factory registration, + cookie paths match `AccountRoutes` |
+| `tests/MyRestaurant.WebApplication.Tests/Identity/ObligationsEnforcementTests.cs` | **new** — obligation resolution, exempt-vs-blocked paths, redirect target, return-URL safety |
+| `tests/MyRestaurant.WebApplication.Tests/Identity/RestaurantClaimsPrincipalFactoryTests.cs` | **new** — role/display-name/obligation claims via a hand-written fake user-role store |
+
+## 4. Docs (3 files)
+
+`docs/BUILD_PROGRESS.md` (slice record + the settled answer on run.sh/quick-tunnel + the terminal-run corrections), `README.md` (status, testing prerequisites, two-command demo flow), `docs/OPERATIONS.md` (§10 rewritten to match the hardened script; everything else untouched).
+
+## 5. Verify
+
+```bash
+dotnet restore
+dotnet build                                   # expect: 0 warnings, 0 errors
+dotnet test                                    # with podman.socket active: ~217 passed, 3 skipped, 0 failed
+./run.sh --smoke                               # containers up, migrations, /healthz/ready, teardown
+```
+
+Then one manual check: `./run.sh`, browse `https://localhost:8443/table` → you should bounce to `/sign-in?ReturnUrl=%2Ftable`. (No accounts exist yet — registration/bootstrap is a later slice — so the bounce *is* the test.) If anything fails to compile, the account pages under `Components/Account/Pages/` are the most likely spot; nothing else has exotic syntax.
 
 ################################################################################
 # FILE: CONTRIBUTING.md
@@ -1855,15 +1971,15 @@ For more information on this, and how to apply and follow the GNU AGPL, see
   File name:             README.md
   Relative path:         README.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/README.md
-  Size:                  7.2 KiB (7358 bytes)
-  Last modified:         2026-07-18 02:00:21.200077515 -0400
+  Size:                  9.7 KiB (9969 bytes)
+  Last modified:         2026-07-19 08:54:03.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258238
+  Inode:                 21654805
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               5adb59085effc407fd6f9a9c9e40c28563a988bc8b58024922ea5140b1aeb3e9
-  Last git commit:       ef3f4c3 2026-07-18 02:02:31 -0400 run scripts
+  SHA-256:               3941a33aba16c419dafd6c743c7c78d3e4b15d9ec0965a1817691dccadbf7745
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 # MyRestaurant
@@ -1873,10 +1989,12 @@ the kitchen and counter work from live boards, and everything runs on one small 
 Cloudflare tunnel. Blazor Server over PostgreSQL, no external runtime dependencies beyond the
 database and the tunnel.
 
-This repository is at **Milestone 1 (the skeleton)**. The domain, data-access, and web host are in
-place; the database schema applies at startup; health checks and the app shell work. The guest,
-kitchen, counter, administrator, and table-display experiences — and all of authentication — arrive
-in later milestones (see *Roadmap*).
+This repository has completed **Milestone 1 (the skeleton)** and is partway through **Milestone 2
+(identity & accounts)**: password sign-in with the TOTP/recovery-code challenge, lockout, sign-out,
+the forced-password-change pipeline, and the first authorization-gated area all work. Passkeys, TOTP
+enrollment, the `/setup` bootstrap, and account administration are the remaining M2 slices; the
+guest, kitchen, counter, administrator, and table-display experiences arrive in later milestones
+(see *Roadmap* and `docs/BUILD_PROGRESS.md`).
 
 ## Layout
 
@@ -1884,21 +2002,26 @@ The solution (`MyRestaurant.slnx`) is a small set of projects with a strict depe
 the web layer depends on data-access and the domain; the domain depends on nothing.
 
 - `src/MyRestaurant.Domain` — pure domain logic: the order event model and its fold/validation, the
-  join-token and Argon2 PHC primitives, identifiers, clock, and live-update contracts. No I/O.
-- `src/MyRestaurant.DataAccess` — Dapper + Npgsql, the DbUp migration runner, and the embedded SQL
-  schema (`Migrations/0001_initial_schema.sql`: 22 tables, 5 views, the `citext` extension). Entity
-  Framework is deliberately not used anywhere.
+  join-token and Argon2 PHC primitives, the sign-in audit and obligations-pipeline decisions,
+  identifiers, clock, and live-update contracts. No I/O.
+- `src/MyRestaurant.DataAccess` — Dapper + Npgsql, the DbUp migration runner, the embedded SQL
+  schema (`Migrations/0001_initial_schema.sql`: 22 tables, 5 views, the `citext` extension), and the
+  Identity stores (person, roles read side, TOTP secret encrypted at rest, recovery codes, the
+  append-only security-event log). Entity Framework is deliberately not used anywhere.
 - `src/MyRestaurant.WebApplication` — the composition root, configuration binding and fail-fast
-  validation, OpenTelemetry wiring, the in-process live-update broadcaster, and the Blazor shell.
-- `tests/` — pure domain tests, a Testcontainers migration test, web-layer configuration tests, and
-  the version-controlled end-to-end scenario matrix (skipped until Milestone 6).
+  validation, OpenTelemetry wiring, the in-process live-update broadcaster, cookie authentication
+  with the auditing sign-in manager, the §3.5 obligations middleware, the account pages (static SSR),
+  and the Blazor shell.
+- `tests/` — pure domain tests, Testcontainers integration tests for migrations and the Identity
+  stores, web-layer configuration/wiring/enforcement tests, and the version-controlled end-to-end
+  scenario matrix (skipped until Milestone 6).
 
 ## Prerequisites
 
 - The .NET SDK pinned in `global.json` (10.0.302 or a newer 10.0 feature band).
 - A container engine — rootless **Podman** is the primary target; Docker works too.
-- For integration tests, the container engine must be running. For end-to-end tests (later),
-  Playwright browsers as well.
+- For integration tests, the container engine's API socket must be reachable (see *Testing*). For
+  end-to-end tests (later), Playwright browsers as well.
 
 ## Quick start
 
@@ -1911,6 +2034,12 @@ Host-dev with hot reload (database in a container, web app on the host):
 This starts PostgreSQL in a container, exports sensible dev defaults, ensures the ASP.NET Core dev
 certificate, and runs `dotnet watch`. The app comes up at `https://localhost:8443`.
 
+Boot once, verify health, and exit (the end-of-sweep / CI mode):
+
+```bash
+./run.sh --smoke
+```
+
 Full containerized dev stack (adds Caddy for TLS):
 
 ```bash
@@ -1919,6 +2048,9 @@ Full containerized dev stack (adds Caddy for TLS):
 ```
 
 Then trust Caddy's local CA on first use and open `https://localhost:8443`.
+
+`run.sh` never opens tunnels or prints public URLs — that is a separate, demo-only step (see
+*Deployment* below and `docs/OPERATIONS.md` §10).
 
 ## Configuration
 
@@ -1932,13 +2064,26 @@ a missing connection string, and so on).
 ```bash
 dotnet test                                             # everything
 dotnet test tests/MyRestaurant.Domain.Tests             # pure, fast, no services
-dotnet test tests/MyRestaurant.WebApplication.Tests     # configuration binding + validation
-dotnet test tests/MyRestaurant.DataAccess.Tests         # needs a running container engine
+dotnet test tests/MyRestaurant.WebApplication.Tests     # config binding + identity wiring/enforcement
+dotnet test tests/MyRestaurant.DataAccess.Tests         # needs a reachable container engine
 ```
 
-The domain and web-layer tests need no services. The data-access test spins up a real PostgreSQL 17
-container via Testcontainers; if no container engine is available it skips rather than fails. The
-end-to-end project lists the required scenarios as skipped placeholders and is implemented at
+The domain and web-layer tests need no services. The data-access tests spin up a real PostgreSQL 17
+container via Testcontainers; if no container engine is reachable they skip rather than fail.
+
+**Rootless Podman (the canonical engine):** Testcontainers talks to the engine's API socket, not the
+`podman` CLI, so on a fresh Fedora/Podman machine the integration tests skip with a Docker-flavoured
+"endpoint unavailable" message even though `run.sh` works. Activate the user socket once:
+
+```bash
+systemctl --user enable --now podman.socket
+```
+
+The test suite then discovers `unix://$XDG_RUNTIME_DIR/podman/podman.sock` automatically (and
+disables Ryuk, which is unreliable rootless — every fixture disposes its own container). Explicit
+configuration still wins: `DOCKER_HOST` or `~/.testcontainers.properties`, if set, are respected.
+
+The end-to-end project lists the required scenarios as skipped placeholders and is implemented at
 Milestone 6.
 
 ## Deployment
@@ -1959,9 +2104,18 @@ podman-compose --profile production up -d
 and link URLs are derived. In-house guests hairpin through the tunnel, so LAN ordering depends on WAN
 health — an accepted tradeoff for this design.
 
-For a throwaway demo, `scripts/quick_tunnel.sh` opens a `*.trycloudflare.com` tunnel. Because that
-domain is random per run and on the Public Suffix List, passkeys will not persist across runs; demos
-sign in with password + TOTP.
+For a throwaway demo, bring the stack up and then open a quick tunnel — two commands, in order:
+
+```bash
+./run.sh --containers-only
+scripts/quick_tunnel.sh
+```
+
+The script verifies the app is answering, opens a `*.trycloudflare.com` tunnel, and prints the
+assigned URL in a banner the moment it exists. The URL lives exactly as long as the script runs
+(Ctrl+C ends the demo) — a quick tunnel cannot "print a URL and exit", because exiting kills the
+URL. That domain is random per run and on the Public Suffix List, so passkeys will not persist
+across runs; demos sign in with password + TOTP.
 
 ## Backups
 
@@ -1973,14 +2127,14 @@ TOTP secrets and auth cookies are unrecoverable.
 
 ## First-build checklist
 
-The code in this milestone was written carefully but has not been compiled in this environment
-(no toolchain or package feed here). On a networked machine:
+The code in each milestone slice is written carefully but has not been compiled in its authoring
+environment (no toolchain or package feed there). On a networked machine:
 
 1. `dotnet restore` — resolve or adjust any package versions in `Directory.Packages.props`.
 2. `dotnet build` — fix any analyzer/compiler findings.
-3. `dotnet test` — domain and web-layer tests need no services; the data-access test needs a
-   container engine.
-4. `./run.sh` — confirm migrations apply and `/healthz/ready` returns 200.
+3. `dotnet test` — domain and web-layer tests need no services; the data-access tests need the
+   container engine socket (see *Testing*).
+4. `./run.sh --smoke` — confirm migrations apply and `/healthz/ready` returns 200.
 
 ## Known caveats and deliberate decisions
 
@@ -1998,12 +2152,20 @@ The code in this milestone was written carefully but has not been compiled in th
   trusted proxy (Cloudflare tunnel in production, Caddy in dev) and never exposed directly.
 - **Rootless volume ownership.** The data-protection volume is mounted `:U` in compose so Podman
   chowns it to the container user. On Docker, drop the `:U` suffix if it objects.
+- **Account pages are static SSR by design.** Sign-in and the forced-change pages write cookies on
+  the response, which a Blazor circuit cannot do; do not convert them to interactive components.
+- **No registration or `/setup` page yet.** Guests register at the moment of joining a table (M3)
+  and staff are created by an administrator (later M2 slice), so until the bootstrap slice lands
+  there is no in-app way to create the first account.
 
 ## Roadmap
 
-- **M2** — identity & accounts: custom Dapper Identity stores, Argon2id hashing with the floor guard
-  and concurrency semaphore, passkeys, TOTP + recovery codes, lockout, the obligations middleware,
-  `/setup` first-admin bootstrap, roles/policies, and security-event logging.
+- **M2** — identity & accounts *(in progress)*: ✔ custom Dapper Identity stores, ✔ Argon2id hashing
+  with the floor guard and concurrency semaphore, ✔ lockout, ✔ password sign-in with the
+  TOTP/recovery challenge, ✔ the obligations middleware with forced password change, ✔ roles →
+  policies → the first gated area, ✔ security-event logging; still to come: TOTP enrollment,
+  passkeys, `/setup` first-admin bootstrap, and account administration (which is what starts
+  setting the obligation flags).
 - **M3–M5** — guest ordering, kitchen and counter boards, table displays, administration.
 - **M6** — the Playwright end-to-end matrix and CI publishing.
 
@@ -2139,15 +2301,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  16.3 KiB (16656 bytes)
-  Last modified:         2026-07-18 16:00:02.000000000 -0400
-  Permissions:           -rw-------
+  Size:                  27.8 KiB (28419 bytes)
+  Last modified:         2026-07-19 08:53:12.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21386317
+  Inode:                 21654831
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               f8543d0852b332b0497a5e4ab61ee1acd037b6f722dd8f54664195d78f83c59e
-  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+  SHA-256:               6718c0f6a6d234d2cada35a8116e6cbd7db6eae5e37fa671241dbe2f53f92a8c
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 # Build progress
@@ -2163,15 +2325,19 @@ The scaffold and each subsequent milestone are written in an environment
 **without a .NET SDK** and without NuGet/.NET download hosts. Consequences:
 
 - **The C# for a milestone is written to match the spec and the .NET 10 APIs, then
-  first compiled on your machine.** M1 built green, and so did the first M2 slice
-  (identity persistence + Argon2id hasher). The newest M2 slice — sign-in, cookie
-  auth, and authorization wiring — is, like its predecessors were, unbuilt until
-  your next build/test run; expect to fix the occasional thing a compiler would catch.
+  first compiled on your machine.** M1 built green, and so did the first two M2 slices
+  (identity persistence + Argon2id hasher, then sign-in/cookie/authorization wiring —
+  the latest local sweep: build green, 220 tests, 0 failed, 177 passed, 43 skipped,
+  `run.sh --smoke` passing end to end). The newest slice — the sign-in **pages**, the
+  obligations middleware, and the claims factory — is, like its predecessors were,
+  unbuilt until your next build/test run; expect to fix the occasional thing a
+  compiler would catch, most likely in the Razor components.
 - **Package versions in `Directory.Packages.props` are best-effort.** They target
   the .NET 10 GA era. Run `dotnet restore`; if a version does not exist, bump it
   there to the nearest available. Nothing else references versions. The sign-in
-  slice adds **no** packages — cookie auth, `SignInManager`, the security-stamp
-  validator, and authorization all come from the ASP.NET Core shared framework.
+  slice adds **no** packages — static-SSR Razor components, cookie auth,
+  `SignInManager`, antiforgery, and authorization all come from the ASP.NET Core
+  shared framework.
 - Shell scripts are syntax-checked with `bash -n`; they may need `chmod +x`.
 
 ## Staged plan
@@ -2180,11 +2346,27 @@ The work is split into six stages aligned to the spec's milestones (§19). Each
 stage is meant to leave the tree buildable and testable.
 
 - [x] **Stage 1 — M1: skeleton + pure Domain** *(built green: 139 passed, 28 skipped)*
-- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, then sign-in + authorization wiring, landed; latest local run: 147 passed, 41 skipped)*
+- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, and now the password sign-in flow + obligations middleware have landed; last verified local run before this slice: 177 passed, 43 skipped)*
 - [ ] **Stage 3 — M3: tables & joining**
 - [ ] **Stage 4 — M4: ordering**
 - [ ] **Stage 5 — M5: counter & administration**
 - [ ] **Stage 6 — M6: hardening**
+
+### A note on `run.sh` and quick-tunnel URLs (recurring question, settled)
+
+There is **no milestone anywhere in the plan for `run.sh` to print a
+`*.trycloudflare.com` URL and exit** — a previous session said so, and it was right.
+The specification splits the concerns deliberately: §14.4 defines `run.sh` as the dev
+entry (compose + watch, plus `--smoke` and `--containers-only`, both of which verify
+`/healthz/ready` and exit), while §14.3 makes quick tunnels a **demo-only** concern
+delivered by a separate helper — `scripts/quick_tunnel.sh` — whose milestone home is
+**M6** ("quick-tunnel demo script with warning"), already landed early. Note also
+that "deliver a URL **and exit**" is impossible for a quick tunnel: the URL lives
+exactly as long as the `cloudflared` process, so the correct shape is what the helper
+does — bring the URL up prominently and hold the tunnel open in the foreground. The
+demo flow is two commands: `./run.sh --containers-only`, then
+`scripts/quick_tunnel.sh`. If the owner ever wants a one-command demo mode, that is a
+spec ruling (§14.3/§14.4 + ADR-0005 edits) before it is a script change.
 
 ## Stage 1 — done (compiles green)
 
@@ -2263,11 +2445,11 @@ passkeys, and the bootstrap.
 - **Tests**: `Argon2idPasswordHasherTests`, `DapperUserStoreTests` (Testcontainers,
   skips without an engine).
 
-### Slice 2 — sign-in + authorization wiring (this change)
+### Slice 2 — sign-in + authorization wiring (landed)
 
-The services the sign-in **flows** will need, plus authorization, plus the audit
-trail sign-ins write to. No sign-in *pages* yet — those are the next slice — so the
-new `SignInManager` is wired and unit-tested through a pure decision rather than
+The services the sign-in **flows** need, plus authorization, plus the audit
+trail sign-ins write to. No sign-in *pages* yet — those are Slice 3 — so the
+`SignInManager` was wired and unit-tested through a pure decision rather than
 driven by a form.
 
 - **Cookie authentication** (`WebApplication/Identity/IdentityServiceCollectionExtensions.cs`)
@@ -2277,7 +2459,7 @@ driven by a form.
   `RoleManager` we do not want). The application cookie is hardened per §3.1:
   `HttpOnly`, `SecurePolicy=Always`, `SameSite=Lax`, 24-hour **sliding** expiration,
   name `myrestaurant.authentication`; login/logout/access-denied paths point at the
-  sign-in surfaces the next slice builds.
+  sign-in surfaces Slice 3 builds.
 - **`RestaurantSignInManager`** (`WebApplication/Identity/`) — a `SignInManager<Person>`
   that audits every terminal sign-in outcome once as a `security_event` and once on
   `sign_ins_total{method,result}` (§3.5, §12). It overrides only the password and
@@ -2295,8 +2477,9 @@ driven by a form.
   registered explicitly here. This is what makes resets/revocations/deactivations
   bite live sessions within minutes.
 - **Roles → claims** — no `RoleManager` and no role entity (roles are plain strings,
-  §3.7). The store implements `IUserRoleStore<Person>`, so the default
-  claims-principal factory adds one role claim per granted role at sign-in.
+  §3.7). The store implements `IUserRoleStore<Person>`; the claims-principal factory
+  turns granted roles into role claims at sign-in. *(Slice 2 believed the default
+  factory would do this; Slice 3 discovered it does not and fixed it — see below.)*
 - **Area authorization policies** (`WebApplication/Authorization/AuthorizationPolicies.cs`)
   — `area.table` (any authenticated person), `area.kitchen` (kitchen **or**
   administrator), `area.counter` (counter **or** administrator), `area.administration`
@@ -2308,22 +2491,153 @@ driven by a form.
   `SecurityEventType` vocabulary in the Domain, guarded client-side so a bad value
   fails fast instead of as a CHECK violation.
 - **`Program.cs`** — `app.UseAuthentication()` / `app.UseAuthorization()` added after
-  static files and before antiforgery/endpoints. They populate `HttpContext.User`
-  and enforce policies; nothing is authorized yet, so Home and the health endpoints
-  stay anonymous and there is no behaviour change until the area pages carry
-  `[Authorize]`.
+  static files and before antiforgery/endpoints.
 - **Tests**: `SecurityEventTypeTests` + `SignInAuditTests` (pure, always run);
   `DapperSecurityEventLogTests` (Testcontainers — null vs administrator actor,
   round-trip — plus a container-free guard test for the unknown-type rejection);
   `IdentityWiringTests` (builds the container and asserts the `SignInManager` type,
   cookie hardening, the 5-minute stamp interval, and the four policies' role rules).
 
+### Slice 3 — password sign-in flow + obligations middleware (this change)
+
+The §3.5 password path is now drivable by a browser end to end: sign in (with the
+TOTP or recovery-code challenge when enrolled), get locked out after five failures,
+be forced through a password change after an administrative reset, sign out — and the
+first `[Authorize]`-gated area proves the whole chain.
+
+- **Per-page render modes** (`Components/App.razor`) — the interactive-server render
+  mode is no longer hard-coded on `<Routes>`/`<HeadOutlet>`; it is chosen per page via
+  `HttpContext.AcceptsInteractiveRouting()`. Account pages opt out with
+  `[ExcludeFromInteractiveRouting]` and render **static SSR**, because issuing or
+  refreshing the authentication cookie requires a real HTTP response — a Blazor
+  circuit cannot write cookies. Everything else stays interactive server (ADR-0004).
+- **Account routes in one place** (`Identity/ObligationsEnforcement.cs` →
+  `AccountRoutes`) — `/sign-in`, `/sign-in/two-factor`, `/sign-in/recovery-code`,
+  `/sign-out`, `/access-denied`, `/account/change-password-required`,
+  `/account/enroll-totp-required`. The cookie options, the pages, the middleware, and
+  the tests all reference these constants so they cannot drift.
+- **Sign-in pages** (`Components/Account/Pages/`, all static SSR, plain full-page
+  form posts, antiforgery via `EditForm`):
+  - `SignIn.razor` — username + password; `isPersistent: true` (the §3.1 session is a
+    24-hour sliding cookie either way; persistence lets a guest's phone survive a
+    browser restart mid-meal), `lockoutOnFailure: true`. Routes `RequiresTwoFactor`
+    to the TOTP page, explains lockout and deactivation, and never reveals whether
+    the username or the password was wrong. Return URLs are collapsed through a
+    shared open-redirect guard (`SafeLocalReturnUrl`).
+  - `SignInTwoFactor.razor` — the TOTP challenge (§3.4/§4.2); tolerant of the
+    spaces/dashes authenticator apps display; deliberately **no** "remember this
+    device" — TOTP is challenged on every password sign-in of an enrolled account.
+    Bounces to `/sign-in` when no pending two-factor user exists.
+  - `SignInRecoveryCode.razor` — single-use recovery codes standing in for TOTP;
+    the `recovery_code_used` event is recorded centrally by the sign-in manager.
+  - `AccessDenied.razor` — where the cookie's `AccessDeniedPath` lands (§3.7).
+- **Sign-out** (`Identity/AccountEndpoints.cs`) — a minimal-API **POST** `/sign-out`
+  (never GET-triggerable); binding the optional form field turns on the framework's
+  automatic antiforgery validation. Clears all four Identity cookies and redirects
+  to a safe local URL. No `security_event` is written: sign-out is not in the §8.2
+  vocabulary, and sessions also end silently by expiry/stamp rotation, so recording
+  only explicit sign-outs would tell a misleading story.
+- **Claims factory** (`Identity/RestaurantClaimsPrincipalFactory.cs`) — **fixes a
+  latent Slice-2 bug**: the single-generic `UserClaimsPrincipalFactory<TUser>` that
+  `AddIdentityCore` registers emits **no role claims** (only the `TUser, TRole`
+  variant does, and this app deliberately has no role entity), so the §3.7 area
+  policies could never have passed. The restaurant factory adds one role claim per
+  granted role (via the store's role read path), the optional display name
+  (`myrestaurant:display_name`), and the §3.5 obligation flags
+  (`myrestaurant:must_change_password` / `myrestaurant:must_enroll_totp`) as claims.
+  Obligations-as-claims means the middleware needs **no database read per request**;
+  the claims refresh on the explicit `RefreshSignInAsync` after an obligation clears
+  and, at the latest, on the 5-minute security-stamp revalidation.
+- **Obligations middleware** (`Identity/ObligationsMiddleware.cs` +
+  `ObligationsEnforcement`) — enforces §3.5: an authenticated principal with an
+  outstanding flag is redirected (with the original destination as `ReturnUrl`) to
+  the page that clears the next obligation, and **nothing else is reachable** except
+  sign-out, the pipeline pages, `/access-denied`, health probes, and framework static
+  assets. The *decision* is the pure Domain `ObligationsPipeline`; the claim mapping,
+  exemption list, and redirect building are testable statics. The Blazor circuit
+  endpoint (`/_blazor`) is deliberately **not** exempt: a tab left open when a flag
+  lands cannot reconnect its circuit until the pipeline clears.
+- **Forced password change** (`Account/Pages/ChangePasswordRequired.razor`) —
+  obligation (1): verifies the temporary password, applies the new one, clears
+  `must_change_password` **in the same store update** (the flag is flipped on the
+  entity before `ChangePasswordAsync`, whose success path is the only one that
+  persists), records `forced_password_change_completed`, and `RefreshSignInAsync`
+  re-issues the cookie so the cleared claim takes effect on the very next request.
+- **Forced TOTP re-enrollment** (`Account/Pages/EnrollTotpRequired.razor`) — a
+  **deliberate stub**: the addressable, middleware-exempt home for obligation (2),
+  explaining that the enrollment mechanics arrive with the TOTP slice. Nothing in
+  the application can set `must_enroll_totp` yet (administrative reset is a later
+  slice), so the page is only reachable by hand-editing the database.
+- **Deactivation gate** (`RestaurantSignInManager.CanSignInAsync`) — an inactive
+  `Person` may not sign in on any path (§3.7, F-10b); the framework surfaces it as
+  `NotAllowed`, audited as a failed sign-in. Previously the stamp killed live
+  sessions but the front door was open.
+- **Router + layout** — `Routes.razor` now uses `AuthorizeRouteView` (anonymous →
+  `RedirectToSignIn`, which force-loads because the sign-in page is static SSR;
+  authenticated-but-unauthorized → inline denial); `AddCascadingAuthenticationState`
+  supplies the auth state in both render modes; `MainLayout` grew a session header
+  (username + antiforgery-protected sign-out form, or a sign-in link) that behaves
+  identically in static and interactive rendering.
+- **First gated area** (`Components/Pages/Table/TableArea.razor`) — `/table` under
+  `[Authorize(Policy = area.table)]`: an interactive placeholder proving cookie →
+  claims → policy → router → circuit before M3/M4 replace its body.
+- **Styling** (`wwwroot/app.css`) — session header, account panels, form fields,
+  buttons, and error styling in the same quiet M1 palette; no external assets.
+- **Tests**: `ObligationsEnforcementTests` (claims mapping, exemption list, redirect
+  targets, the open-redirect guard — pure, always run);
+  `RestaurantClaimsPrincipalFactoryTests` (hand-written fake store per §16.1;
+  the regression guard for the role-claims fix); `IdentityWiringTests` extended
+  (claims-factory registration, cookie paths = `AccountRoutes`).
+
+### Course corrections from the first full local run (2026-07-19 terminal)
+
+The first complete sweep on the owner's Fedora 44 machine (`dotnet clean/restore/
+build/test` + `run.sh --smoke`) surfaced no failures — 220 tests, 0 failed, 177
+passed, 43 skipped, and the smoke run booted, hit `/healthz/ready` = 200, and exited
+cleanly. What *looked* like a wall of errors was two things, both now addressed:
+
+- **Testcontainers could not find the container engine (40 of the 43 skips).** The
+  machine runs **rootless Podman** — `run.sh` proved the engine works via
+  `podman-compose` in the same sweep — but Testcontainers only probed the Docker
+  socket (`unix:///var/run/docker.sock`) and skipped every DataAccess integration
+  test with a Docker-flavoured error. Fixes:
+  - `tests/MyRestaurant.DataAccess.Tests/ContainerEngineDiscovery.cs` — a
+    `[ModuleInitializer]` that, when nothing is explicitly configured
+    (`DOCKER_HOST`, `TESTCONTAINERS_HOST_OVERRIDE`, `~/.testcontainers.properties`)
+    and the Docker socket is absent, points Testcontainers at the rootless Podman
+    socket (`$XDG_RUNTIME_DIR/podman/podman.sock`) and disables Ryuk (unreliable
+    under rootless Podman; every fixture disposes its own container anyway). A
+    module initializer runs before Testcontainers snapshots its environment, so the
+    setting is guaranteed to be seen.
+  - `PostgreSqlFixture` — the skip message now states the one-time enable command
+    (`systemctl --user enable --now podman.socket`) instead of only echoing the
+    Docker error. **Action on the dev machine:** run that command once; the 40
+    skips become real passing integration tests on the next `dotnet test`.
+  - The remaining 3 skips are by design until their milestones (the EndToEnd matrix
+    is M6; two DataAccess tests are also engine-gated).
+- **One `xUnit1051` warning** — the container-free guard test in
+  `DapperSecurityEventLogTests` now passes `TestContext.Current.CancellationToken`,
+  returning the build to zero warnings.
+- **`scripts/quick_tunnel.sh` hardening** (M6 deliverable, landed early; §14.3) —
+  now pre-checks that the target is actually answering before opening a tunnel
+  (failing fast with the `./run.sh --containers-only` hint instead of 502-ing in
+  front of an audience) and surfaces the assigned `*.trycloudflare.com` URL in a
+  prominent banner the moment cloudflared reports it, while keeping the tunnel in
+  the foreground — see the `run.sh`/quick-tunnel note near the top of this file.
+
 ### Build/test checklist for this slice
 
-1. `dotnet restore` — no new packages; should be a no-op beyond Slice 1.
-2. `dotnet build` — the sign-in/authorization C# is unverified until this runs.
-3. `dotnet test` — the pure Domain tests and the wiring test run everywhere; the
-   security-event store test needs Podman/Docker.
+1. `dotnet restore` — no new packages; should be a no-op.
+2. `dotnet build` — the Razor components and middleware are unverified until this
+   runs; the account pages are the most likely home of anything a compiler catches.
+3. *(one time, dev machine)* `systemctl --user enable --now podman.socket` — lets
+   the DataAccess integration tests run instead of skipping.
+4. `dotnet test` — expect the pure Domain/web tests plus, with the socket active,
+   the Testcontainers suites; the EndToEnd matrix still skips (M6).
+5. `./run.sh --smoke` — boots once, verifies `/healthz/ready`, exits.
+6. Manual: `./run.sh`, then visit `/table` → you should be bounced to `/sign-in`
+   with a `ReturnUrl`. (Until `/setup` lands, creating a person to sign in **as**
+   means inserting a row by hand or waiting for the bootstrap slice.)
 
 ## Known caveats and deliberate decisions
 
@@ -2336,12 +2650,12 @@ driven by a form.
 - **Forwarded headers trust.** `Program.cs` clears `KnownIPNetworks`/`KnownProxies`;
   safe only because the app is reached exclusively through a trusted proxy.
 - **Rootless volume ownership / compose profiles / container-dependent tests** — as
-  before (M1).
+  before (M1); plus the Podman-socket discovery above for the test suite.
 - **M2 — security stamp is a `uuid`.** Identity's opaque Base32 stamp does not fit a
   `uuid` column, so `SetSecurityStampAsync` mints a fresh `Guid` and discards the
   passed string. The value is compared only for equality and regenerated on
   credential/role change, so this is faithful — and it is exactly what makes resets
-  bite live sessions once stamp revalidation is wired (now wired, this slice).
+  bite live sessions once stamp revalidation is wired (wired in Slice 2).
 - **M2 — two-factor is derived, not flagged.** `GetTwoFactorEnabledAsync` reads
   `totp_secret_protected`; `SetTwoFactorEnabledAsync(false)` clears the secret.
 - **M2 — email/phone confirmation not modeled.** The schema has no confirmation
@@ -2353,20 +2667,31 @@ driven by a form.
   land in the transactional account-administration service / `/setup` (later slices);
   the store's role **read** path is complete so claims flow at sign-in.
 - **M2 — deletion does not exist (F-10b).** `DeleteAsync` throws; accounts are
-  deactivated (`is_active=false`) so history keeps its actors.
-- **M2 — the sign-in manager is wired but not yet reached by a page.** Its audit
-  logic is proven by the pure `SignInAudit` tests and the wiring test. The actual
-  sign-in **pages** are the next slice, and they must post to a static/SSR endpoint
-  (not an interactive-circuit event) so the cookie can be written to the response —
-  a Blazor Server constraint, not an Identity one.
-- **M2 — Blazor auth-state cascade + per-area `[Authorize]` deferred.**
-  `UseAuthentication`/`UseAuthorization` are in the pipeline and the policies are
-  registered, but they enforce nothing until the area pages carry `[Authorize]` and
-  the router wraps `CascadingAuthenticationState` — added with those pages.
-- **Dev-machine note — inotify watch limit (now handled in `run.sh`).** `dotnet watch`
+  deactivated (`is_active=false`) so history keeps its actors — and, as of Slice 3,
+  a deactivated account is also refused at the front door (`CanSignInAsync`).
+- **M2 — account pages are static SSR by design.** They post full pages and write
+  cookies on the response; do not convert them to interactive components — a Blazor
+  circuit cannot set cookies. The per-page render mode in `App.razor` is what makes
+  the two worlds coexist.
+- **M2 — no registration page exists yet.** Guests register at the moment of joining
+  a table (§4.3, M3) and staff are created by an administrator (later M2 slice), so
+  `/sign-in` is deliberately the only public account surface. Until `/setup` lands
+  there is no in-app way to create the first account.
+- **M2 — obligations block Blazor circuits too.** `/_blazor` is not exempt in the
+  middleware: an interactive tab open when a reset lands loses its circuit until the
+  pipeline clears. Intended ("nothing else reachable", §3.5); expect the reconnect
+  banner in that scenario, not an error.
+- **M2 — obligation freshness.** Obligation state travels as claims; a flag an
+  administrator sets mid-session bites on the next principal rebuild — immediately
+  after the reset in practice, because the reset rotates the security stamp and the
+  5-minute revalidation then rebuilds the principal (§3.1). Clearing is immediate
+  via `RefreshSignInAsync`.
+- **M2 — the forced-TOTP-enrollment page is a stub** (see Slice 3). Its route,
+  middleware exemption, and tests are final; its body arrives with TOTP enrollment.
+- **Dev-machine note — inotify watch limit (handled in `run.sh`).** `dotnet watch`
   can exhaust the kernel's inotify **instance** limit on a busy workstation
   (`The configured user limit (128) on the number of inotify instances has been
-  reached`), which killed the watcher. `run.sh` now reads
+  reached`), which killed the watcher. `run.sh` reads
   `fs.inotify.max_user_instances` and, when it is low (< 256) and the caller has not
   set `DOTNET_USE_POLLING_FILE_WATCHER`, falls back to the **polling** file watcher
   for that run so hot reload works without root. For the snappier native watcher,
@@ -2376,30 +2701,26 @@ driven by a form.
 
 ## Next: remaining M2 slices (in order)
 
-1. **Password sign-in flow** (username+password → TOTP/recovery challenge when
-   enrolled), built on the `SignInManager`/cookies wired this slice, plus the
-   **obligations pipeline middleware** enforcing the pure `ObligationsPipeline`
-   decision (§3.5): forced password-change and forced TOTP-enrollment pages; nothing
-   else reachable while a flag is set. Sign-in pages post to static/SSR endpoints so
-   the auth cookie can be written. This is also where the Blazor
-   `CascadingAuthenticationState` and the first `[Authorize]`-gated area land.
-2. **TOTP enrollment**: provisioning URI → server-side SVG QR, confirm-code, fresh
-   recovery codes. Verify Identity's Rfc6238 skew; if it is not ±1 step (§3.4), add a
-   custom authenticator token provider. Records `totp_enrolled` /
-   `recovery_codes_regenerated` via the security-event log (`recovery_code_used`
-   is already recorded by the sign-in manager wired in this slice).
-3. **Passkeys** (`IUserPasskeyStore`, .NET 10 WebAuthn): registration/assertion,
+1. **TOTP enrollment**: provisioning URI → server-side SVG QR, confirm-code, fresh
+   recovery codes, records `totp_enrolled` / `recovery_codes_regenerated` — and the
+   body of the forced re-enrollment page (obligation (2), clearing `must_enroll_totp`
+   with `forced_totp_enrollment_completed`). Verify Identity's Rfc6238 skew; if it is
+   not ±1 step (§3.4), add a custom authenticator token provider.
+2. **Passkeys** (`IUserPasskeyStore`, .NET 10 WebAuthn): registration/assertion,
    username-first and discoverable flows, the passkey sign-in path (never a TOTP
    challenge — records `sign_in_succeeded` with method `passkey`). Verify the new
    .NET 10 passkey API against the framework source first.
-4. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
+3. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
    zero-administrator re-check, self-granting the administrator role in one
-   transaction (§3.6) — the first home for role grants.
-5. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
+   transaction (§3.6) — the first home for role grants, and the first in-app way to
+   create an account.
+4. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
    + `role_granted`/`role_revoked` events), **Reset credentials** (temp password +
    `must_change_password`; clear TOTP + set `must_enroll_totp` iff enrolled; new
    stamp; `password_reset_by_administrator` [+ `totp_cleared_by_administrator`]),
-   deactivate/reactivate. Store-level integration tests + middleware tests throughout.
+   deactivate/reactivate — the first thing that actually sets the obligation flags
+   the Slice-3 pipeline enforces. Store-level integration tests + middleware tests
+   throughout.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -2500,15 +2821,15 @@ No findings remain open. New issues enter this ledger as fresh `F-nn` rows — f
   File name:             OPERATIONS.md
   Relative path:         docs/OPERATIONS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/OPERATIONS.md
-  Size:                  13.8 KiB (14089 bytes)
-  Last modified:         2026-07-17 11:56:04.000000000 -0400
+  Size:                  14.7 KiB (15014 bytes)
+  Last modified:         2026-07-19 15:38:02.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21195456
+  Inode:                 21654832
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               96db9674b4ae0e7fd65e2dfee3afc437bb7e70c4ae84235f6b297509f547b0e6
-  Last git commit:       f4b25f9 2026-07-17 09:22:33 -0400 update documentation
+  SHA-256:               7d1364ff027165731704cf5037767fa0e506f7f4f4f7342a2bcf3a6b13254c07
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 # myrestaurant — Operations
@@ -2619,7 +2940,16 @@ Passkeys bind to the RP ID — the host of `RESTAURANT_PUBLIC_ORIGIN`. Moving do
 
 ## 10. Quick-tunnel demo runbook
 
-`scripts/quick_tunnel.sh` starts a `trycloudflare.com` quick tunnel for show-and-tell. Every run gets a random subdomain, and `trycloudflare.com` is on the Public Suffix List, so **any passkey registered through a quick tunnel binds to that one run and dies with it** — the script prints exactly this warning, loudly. Demo with password + TOTP accounts; never bootstrap a real instance (§3) through a quick tunnel; never point a real instance's `RESTAURANT_PUBLIC_ORIGIN` at one.
+Show-and-tell over the public internet is a **two-command** flow, by design (spec §14.3/§14.4, ADR-0005 — quick tunnels are demo-only and are not part of `run.sh`):
+
+```bash
+./run.sh --containers-only     # terminal 1 — build, migrate, start the stack, return
+scripts/quick_tunnel.sh        # terminal 2 — expose it, stays in the foreground
+```
+
+The script refuses to start if the stack isn't up and ready (it probes `http://localhost:8080/healthz/ready` first and tells you exactly which command to run if the probe fails), so running it against nothing fails in one second with instructions rather than a hung tunnel. Once `cloudflared` hands back the random `https://<something>.trycloudflare.com` hostname, the script prints it in an unmissable banner and then **stays in the foreground streaming tunnel logs** — the URL lives exactly as long as the process. `Ctrl+C` ends the demo; there is no detached mode and no "print the URL and exit," because the tunnel dies with the process that owns it.
+
+Every run gets a random subdomain, and `trycloudflare.com` is on the Public Suffix List, so **any passkey registered through a quick tunnel binds to that one run and dies with it** — the script prints exactly this warning, loudly. Demo with password + TOTP accounts; never bootstrap a real instance (§3) through a quick tunnel; never point a real instance's `RESTAURANT_PUBLIC_ORIGIN` at one.
 
 ## 11. WAN outage behavior
 
@@ -4780,15 +5110,15 @@ echo "info: backup complete. Remember to back up the Data Protection keys volume
   File name:             quick_tunnel.sh
   Relative path:         scripts/quick_tunnel.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/quick_tunnel.sh
-  Size:                  1.9 KiB (1949 bytes)
-  Last modified:         2026-07-17 21:35:15.000000000 -0400
+  Size:                  5.4 KiB (5493 bytes)
+  Last modified:         2026-07-19 08:41:06.000000000 -0400
   Permissions:           -rwxr-xr-x
   Owner:                 kushal:kushal
-  Inode:                 21258243
+  Inode:                 21654807
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               0b6663e6de69689aabcef512ae7689e6ce96d57a72af5329f51a80d32e2fa12a
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               11d20e972d0e85972d0d1219a833318e5e49fe465b07d249f6d4428472c08a5a
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 #!/usr/bin/env bash
@@ -4799,8 +5129,10 @@ echo "info: backup complete. Remember to back up the Data Protection keys volume
 # relying-party ID binds to that subdomain, so passkeys registered during a quick-tunnel demo die
 # when the tunnel stops. Demos must therefore authenticate with password + TOTP, not passkeys.
 #
-# Point the tunnel at the containerized web port (bring the stack up first, e.g. ./run.sh
-# --containers-only). Override the target with TUNNEL_TARGET if needed.
+# The tunnel only exists while this process runs — there is deliberately no "print a URL and exit"
+# mode, because exiting kills the URL. Bring the stack up FIRST (e.g. `./run.sh --containers-only`),
+# then run this script and leave it in the foreground; Ctrl+C closes the tunnel. Override the target
+# with TUNNEL_TARGET if needed.
 
 set -euo pipefail
 
@@ -4816,18 +5148,73 @@ cat >&2 <<'WARNING'
 ────────────────────────────────────────────────────────────────────────────
 WARNING
 
-echo "info: opening a quick tunnel to $TARGET ..." >&2
+# ---------------------------------------------------------------------------------------------------
+# Pre-flight: refuse to open a tunnel onto nothing. A quick tunnel to a dead port "works" from
+# cloudflared's point of view and then 502s in front of the audience — fail here instead, with the
+# command that fixes it.
+# ---------------------------------------------------------------------------------------------------
+http_ok() {
+    local url="$1"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsS -o /dev/null --max-time 5 "$url" >/dev/null 2>&1
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -T 5 -O /dev/null "$url" >/dev/null 2>&1
+    else
+        return 3
+    fi
+}
 
+probe_rc=0
+http_ok "${TARGET%/}/healthz/ready" || probe_rc=$?
+if (( probe_rc == 3 )); then
+    echo "warning: neither curl nor wget is installed; skipping the readiness pre-check." >&2
+elif (( probe_rc != 0 )); then
+    # /healthz/ready may 503 while migrations settle; accept any answer at the root as "alive".
+    if ! http_ok "$TARGET"; then
+        echo "error: nothing is answering at $TARGET — there is no point opening a tunnel to it." >&2
+        echo "hint : bring the stack up first, then re-run this script:" >&2
+        echo "           ./run.sh --containers-only" >&2
+        echo "       (or point TUNNEL_TARGET at wherever the app is listening)" >&2
+        exit 1
+    fi
+    echo "warning: $TARGET answers, but /healthz/ready is not 200 yet — the demo may need a moment." >&2
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# Locate a cloudflared (binary first, then a containerized fallback on the host network).
+# ---------------------------------------------------------------------------------------------------
 if command -v cloudflared >/dev/null 2>&1; then
-    exec cloudflared tunnel --url "$TARGET"
+    RUNNER=(cloudflared)
 elif command -v podman >/dev/null 2>&1; then
-    exec podman run --rm --network host docker.io/cloudflare/cloudflared tunnel --url "$TARGET"
+    RUNNER=(podman run --rm --network host docker.io/cloudflare/cloudflared)
 elif command -v docker >/dev/null 2>&1; then
-    exec docker run --rm --network host docker.io/cloudflare/cloudflared tunnel --url "$TARGET"
+    RUNNER=(docker run --rm --network host docker.io/cloudflare/cloudflared)
 else
     echo "error: need cloudflared, podman, or docker on PATH." >&2
     exit 1
 fi
+
+echo "info: opening a quick tunnel to $TARGET (foreground — Ctrl+C closes the tunnel and kills the URL) ..." >&2
+
+# ---------------------------------------------------------------------------------------------------
+# Run cloudflared in the foreground, passing its log through unchanged, and surface the assigned
+# *.trycloudflare.com URL prominently the moment it appears (it is otherwise buried in log noise).
+# The pipeline keeps cloudflared as the long-lived process; its exit status is the script's.
+# ---------------------------------------------------------------------------------------------------
+"${RUNNER[@]}" tunnel --url "$TARGET" 2>&1 | {
+    url_announced=0
+    while IFS= read -r line; do
+        printf '%s\n' "$line"
+        if (( url_announced == 0 )) && [[ "$line" =~ (https://[A-Za-z0-9.-]+\.trycloudflare\.com) ]]; then
+            url_announced=1
+            printf '\n────────────────────────────────────────────────────────────────────────────\n' >&2
+            printf '  PUBLIC DEMO URL:  %s\n' "${BASH_REMATCH[1]}" >&2
+            printf '  Password + TOTP only — passkeys registered here die with this tunnel.\n' >&2
+            printf '  The URL lives exactly as long as this process. Ctrl+C ends the demo.\n' >&2
+            printf '────────────────────────────────────────────────────────────────────────────\n\n' >&2
+        fi
+    done
+}
 
 ################################################################################
 # FILE: scripts/restore.sh
@@ -8459,6 +8846,728 @@ public static class AuthorizationServiceCollectionExtensions
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/AccessDenied.razor
+################################################################################
+
+--- METADATA ---
+  File name:             AccessDenied.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/AccessDenied.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/AccessDenied.razor
+  Size:                  1.2 KiB (1238 bytes)
+  Last modified:         2026-07-19 08:48:40.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654802
+  Hard links:            1
+  MIME type:             text/html
+  SHA-256:               de750777b00d3e98cfcc52d44532688ffda0e411f5cf9e1759747a50bd4e202f
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+@page "/access-denied"
+@attribute [ExcludeFromInteractiveRouting]
+
+@* Where the application cookie's AccessDeniedPath lands (TECHNICAL_SPECIFICATION §3.7): an
+   authenticated principal asked for an area their roles do not grant. Interactive pages show the
+   same denial inline via the router's NotAuthorized branch; this page covers server-enforced
+   (static SSR / endpoint) authorization. Exempt from the obligations pipeline so a flagged user who
+   trips a policy is not redirect-looped. *@
+
+<PageTitle>Access denied</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">Access denied</p>
+    <h1>You do not have access to this area</h1>
+
+    <AuthorizeView>
+        <Authorized>
+            <p class="lede">
+                You are signed in as <strong>@context.User.Identity?.Name</strong>, but this area
+                requires a role your account does not hold. If you believe you should have it, an
+                administrator can grant the role.
+            </p>
+        </Authorized>
+        <NotAuthorized>
+            <p class="lede">This area requires a role your session does not hold.</p>
+        </NotAuthorized>
+    </AuthorizeView>
+
+    <p><a href="/">Back to the home page</a></p>
+</section>
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/ChangePasswordRequired.razor
+################################################################################
+
+--- METADATA ---
+  File name:             ChangePasswordRequired.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/ChangePasswordRequired.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/ChangePasswordRequired.razor
+  Size:                  6.2 KiB (6359 bytes)
+  Last modified:         2026-07-19 08:48:13.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654800
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               7f51fdcc15be4c3d23e733c2d7a61f074bde100300cb9128b02a6011e727e948
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+@page "/account/change-password-required"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize]
+@inject UserManager<Person> UserManager
+@inject SignInManager<Person> SignInManager
+@inject ISecurityEventLog SecurityEventLog
+@inject NavigationManager Navigation
+
+@* Obligation (1) of the post-authentication pipeline (TECHNICAL_SPECIFICATION §3.5, ADR-0010): an
+   administrative reset set `must_change_password`, and ObligationsMiddleware routes every request
+   here until it clears. The flag is cleared in the SAME store update that persists the new hash
+   (set before ChangePasswordAsync; only its success path reaches UpdateAsync), a
+   `forced_password_change_completed` event is recorded, and the cookie is refreshed so the cleared
+   obligation claim takes effect immediately. Static SSR: the refreshed cookie must ride the response. *@
+
+<PageTitle>Choose a new password</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">Action required</p>
+    <h1>Choose a new password</h1>
+    <p class="lede">
+        An administrator reset this account, so the temporary password you just used must be
+        replaced before you can continue. Pick something at least 12 characters long — length is the
+        only rule, so a short sentence works well.
+    </p>
+
+    @if (_errors.Count > 0)
+    {
+        <ul class="status-error" role="alert">
+            @foreach (string error in _errors)
+            {
+                <li>@error</li>
+            }
+        </ul>
+    }
+
+    <EditForm Model="Input" method="post" OnValidSubmit="ChangePasswordAsync" FormName="change-password-required">
+        <DataAnnotationsValidator />
+
+        <div class="form-field">
+            <label for="current-password">Temporary (current) password</label>
+            <InputText id="current-password" type="password" @bind-Value="Input.CurrentPassword"
+                       autocomplete="current-password" autofocus />
+            <ValidationMessage For="@(() => Input.CurrentPassword)" />
+        </div>
+
+        <div class="form-field">
+            <label for="new-password">New password</label>
+            <InputText id="new-password" type="password" @bind-Value="Input.NewPassword"
+                       autocomplete="new-password" />
+            <ValidationMessage For="@(() => Input.NewPassword)" />
+        </div>
+
+        <div class="form-field">
+            <label for="confirm-password">New password, again</label>
+            <InputText id="confirm-password" type="password" @bind-Value="Input.ConfirmPassword"
+                       autocomplete="new-password" />
+            <ValidationMessage For="@(() => Input.ConfirmPassword)" />
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="button-primary">Set new password</button>
+        </div>
+    </EditForm>
+
+    <form class="sign-out-form form-footnote" method="post" action="@AccountRoutes.SignOut">
+        <AntiforgeryToken />
+        <span>Not ready right now?</span>
+        <button type="submit" class="link-button">Sign out</button>
+    </form>
+</section>
+
+@code {
+    private readonly List<string> _errors = [];
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private ChangePasswordInputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // Nothing outstanding (stale link, or the flag cleared in another tab): move along. The
+        // database is consulted rather than the claim so a just-cleared flag never re-traps anyone.
+        if (!user.MustChangePassword && HttpContext.Request.Method == HttpMethods.Get)
+        {
+            Navigation.NavigateTo(ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl));
+        }
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        string destination = ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl);
+
+        if (!user.MustChangePassword)
+        {
+            Navigation.NavigateTo(destination);
+            return;
+        }
+
+        // Clear the flag on the entity BEFORE the change: ChangePasswordAsync persists the entity
+        // (UpdateAsync) only on its success path, so the new hash and the cleared flag commit in one
+        // store update — and a failed attempt persists nothing.
+        user.MustChangePassword = false;
+        IdentityResult result = await UserManager.ChangePasswordAsync(
+            user,
+            Input.CurrentPassword,
+            Input.NewPassword);
+
+        if (!result.Succeeded)
+        {
+            user.MustChangePassword = true;
+            _errors.Clear();
+            _errors.AddRange(result.Errors.Select(error => error.Description));
+            return;
+        }
+
+        await SecurityEventLog.RecordAsync(
+            user.PersonIdentifier,
+            actorPersonIdentifier: null,
+            SecurityEventType.ForcedPasswordChangeCompleted);
+
+        // Re-issue the cookie: fresh security stamp, and the obligation claim disappears with it, so
+        // the middleware releases this principal on the very next request.
+        await SignInManager.RefreshSignInAsync(user);
+
+        Navigation.NavigateTo(destination);
+    }
+
+    private sealed class ChangePasswordInputModel
+    {
+        [Required(ErrorMessage = "Enter the temporary password you signed in with.")]
+        public string CurrentPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Choose a new password.")]
+        [MinLength(12, ErrorMessage = "Passwords are at least 12 characters (§3.2) — a short sentence works.")]
+        public string NewPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Repeat the new password.")]
+        [Compare(nameof(NewPassword), ErrorMessage = "The two entries do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotpRequired.razor
+################################################################################
+
+--- METADATA ---
+  File name:             EnrollTotpRequired.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotpRequired.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotpRequired.razor
+  Size:                  2.4 KiB (2508 bytes)
+  Last modified:         2026-07-19 08:48:30.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654799
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               97003bbc1d004783b799441071c5698239705ffde0f0a8cbddcb76b01c26efa8
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+@page "/account/enroll-totp-required"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize]
+@inject UserManager<Person> UserManager
+@inject NavigationManager Navigation
+
+@* Obligation (2) of the post-authentication pipeline (TECHNICAL_SPECIFICATION §3.5): forced TOTP
+   re-enrollment after an administrative reset wiped an enrolled secret. The enrollment mechanics
+   (provisioning URI → server-side SVG QR → confirm code → fresh recovery codes → clear flag →
+   `forced_totp_enrollment_completed`) are the next M2 slice; this page is its addressable, exempt
+   HOME so the middleware, routes, and tests are final now. Nothing in the application can set
+   `must_enroll_totp` yet — administrative reset arrives in a later slice — so in practice this page
+   is only reachable by hand-editing the database (BUILD_PROGRESS: deliberate stub). *@
+
+<PageTitle>Re-enroll your authenticator</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">Action required</p>
+    <h1>Re-enroll your authenticator</h1>
+    <p class="lede">
+        An administrator reset this account, which wiped its previous authenticator enrollment and
+        recovery codes. A fresh enrollment (QR code, confirmation, new recovery codes) is required
+        before you can continue.
+    </p>
+    <p class="lede">
+        <strong>The enrollment screen is not built yet</strong> — it arrives with the TOTP milestone
+        slice. Until then this account stays parked here; an administrator can clear the requirement
+        directly if it is blocking someone.
+    </p>
+
+    <form class="sign-out-form form-footnote" method="post" action="@AccountRoutes.SignOut">
+        <AntiforgeryToken />
+        <span>Done for now?</span>
+        <button type="submit" class="link-button">Sign out</button>
+    </form>
+</section>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // Nothing outstanding: pass the visitor along instead of showing a stale demand.
+        if (!user.MustEnrollTotp)
+        {
+            Navigation.NavigateTo(ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl));
+        }
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor
+################################################################################
+
+--- METADATA ---
+  File name:             SignIn.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor
+  Size:                  4.1 KiB (4230 bytes)
+  Last modified:         2026-07-19 08:46:58.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654801
+  Hard links:            1
+  MIME type:             text/html
+  SHA-256:               40f2ec946aa62cb66e8f7a60a254301e7931dbd938480b3da7fab98975d0abd7
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+@page "/sign-in"
+@attribute [ExcludeFromInteractiveRouting]
+@inject SignInManager<Person> SignInManager
+@inject NavigationManager Navigation
+
+@* The password sign-in page (TECHNICAL_SPECIFICATION §3.5, §4.1). Static SSR on purpose: issuing the
+   authentication cookie needs a real HTTP response, which a Blazor circuit does not have. The form
+   is a plain full-page POST (EditForm in SSR emits the antiforgery token itself). Auditing and
+   metering happen centrally in RestaurantSignInManager, never here. *@
+
+<PageTitle>Sign in</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">MyRestaurant</p>
+    <h1>Sign in</h1>
+
+    @if (HttpContext.User.Identity?.IsAuthenticated == true)
+    {
+        <p class="lede">
+            You are already signed in as <strong>@HttpContext.User.Identity?.Name</strong>.
+        </p>
+        <p><a href="/">Back to the home page</a></p>
+    }
+    else
+    {
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <EditForm Model="Input" method="post" OnValidSubmit="SignInUserAsync" FormName="sign-in">
+            <DataAnnotationsValidator />
+
+            <div class="form-field">
+                <label for="username">Username</label>
+                <InputText id="username" @bind-Value="Input.Username" autocomplete="username"
+                           autocapitalize="none" spellcheck="false" autofocus />
+                <ValidationMessage For="@(() => Input.Username)" />
+            </div>
+
+            <div class="form-field">
+                <label for="password">Password</label>
+                <InputText id="password" type="password" @bind-Value="Input.Password"
+                           autocomplete="current-password" />
+                <ValidationMessage For="@(() => Input.Password)" />
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Sign in</button>
+            </div>
+        </EditForm>
+
+        <p class="form-footnote">
+            Guests register at the table by scanning its display — there is no stand-alone
+            registration page. Lost access? Ask at the counter.
+        </p>
+    }
+</section>
+
+@code {
+    private string? _errorMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private SignInInputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private async Task SignInUserAsync()
+    {
+        string destination = ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl);
+
+        // isPersistent: the §3.1 session is a 24-hour sliding cookie either way; persisting it lets
+        // a guest's phone survive a browser restart mid-meal. lockoutOnFailure per §3.1.
+        SignInResult result = await SignInManager.PasswordSignInAsync(
+            Input.Username,
+            Input.Password,
+            isPersistent: true,
+            lockoutOnFailure: true);
+
+        if (result.Succeeded)
+        {
+            // The obligations middleware intercepts this navigation when a §3.5 flag is set.
+            Navigation.NavigateTo(destination);
+        }
+        else if (result.RequiresTwoFactor)
+        {
+            Navigation.NavigateTo(
+                $"{AccountRoutes.SignInTwoFactor}?ReturnUrl={Uri.EscapeDataString(destination)}");
+        }
+        else if (result.IsLockedOut)
+        {
+            _errorMessage = "Too many failed attempts. The account is locked for about five minutes — try again then.";
+        }
+        else if (result.IsNotAllowed)
+        {
+            _errorMessage = "This account has been deactivated. Ask at the counter if you think that is a mistake.";
+        }
+        else
+        {
+            _errorMessage = "That username and password combination did not work.";
+        }
+    }
+
+    private sealed class SignInInputModel
+    {
+        [Required(ErrorMessage = "Enter your username.")]
+        public string Username { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter your password.")]
+        public string Password { get; set; } = string.Empty;
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/SignInRecoveryCode.razor
+################################################################################
+
+--- METADATA ---
+  File name:             SignInRecoveryCode.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/SignInRecoveryCode.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/SignInRecoveryCode.razor
+  Size:                  3.3 KiB (3354 bytes)
+  Last modified:         2026-07-19 08:47:35.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654797
+  Hard links:            1
+  MIME type:             text/html
+  SHA-256:               bd28e54b8cc232029f9fea0cb5509a9b2531d89aae2deef8f709915f6025ecca
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+@page "/sign-in/recovery-code"
+@attribute [ExcludeFromInteractiveRouting]
+@inject SignInManager<Person> SignInManager
+@inject NavigationManager Navigation
+
+@* A recovery code standing in for the TOTP code on the password path (TECHNICAL_SPECIFICATION §3.4).
+   Each code is single-use; a successful redemption is recorded (`recovery_code_used`) by
+   RestaurantSignInManager. Like the TOTP page, this is only reachable mid-sign-in. *@
+
+<PageTitle>Recovery code</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">MyRestaurant</p>
+    <h1>Use a recovery code</h1>
+    <p class="lede">
+        Enter one of the recovery codes you saved when you enrolled your authenticator. Each code
+        works exactly once — when you are back in, consider regenerating a fresh set from your
+        profile.
+    </p>
+
+    @if (_errorMessage is not null)
+    {
+        <p class="status-error" role="alert">@_errorMessage</p>
+    }
+
+    <EditForm Model="Input" method="post" OnValidSubmit="RedeemCodeAsync" FormName="sign-in-recovery-code">
+        <DataAnnotationsValidator />
+
+        <div class="form-field">
+            <label for="recovery-code">Recovery code</label>
+            <InputText id="recovery-code" @bind-Value="Input.RecoveryCode" autocomplete="off"
+                       autocapitalize="none" spellcheck="false" autofocus />
+            <ValidationMessage For="@(() => Input.RecoveryCode)" />
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="button-primary">Sign in</button>
+        </div>
+    </EditForm>
+
+    <p class="form-footnote">
+        Found your authenticator after all?
+        <a href="@TwoFactorHref">Enter the six-digit code instead.</a>
+    </p>
+</section>
+
+@code {
+    private string? _errorMessage;
+
+    [SupplyParameterFromForm]
+    private RecoveryCodeInputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private string TwoFactorHref
+        => $"{AccountRoutes.SignInTwoFactor}?ReturnUrl={Uri.EscapeDataString(ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl))}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+        }
+    }
+
+    private async Task RedeemCodeAsync()
+    {
+        if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        SignInResult result = await SignInManager.TwoFactorRecoveryCodeSignInAsync(Input.RecoveryCode.Trim());
+
+        if (result.Succeeded)
+        {
+            Navigation.NavigateTo(ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl));
+        }
+        else if (result.IsLockedOut)
+        {
+            _errorMessage = "Too many failed attempts. The account is locked for about five minutes — try again then.";
+        }
+        else
+        {
+            _errorMessage = "That recovery code did not work. Codes are single-use — try another from your saved set.";
+        }
+    }
+
+    private sealed class RecoveryCodeInputModel
+    {
+        [Required(ErrorMessage = "Enter a recovery code.")]
+        public string RecoveryCode { get; set; } = string.Empty;
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/SignInTwoFactor.razor
+################################################################################
+
+--- METADATA ---
+  File name:             SignInTwoFactor.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/SignInTwoFactor.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/SignInTwoFactor.razor
+  Size:                  3.6 KiB (3688 bytes)
+  Last modified:         2026-07-19 08:47:18.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654798
+  Hard links:            1
+  MIME type:             text/html
+  SHA-256:               7f9acf3c2b724e0897a988d5252f9ebe6d65e38a070baec3866919a409e0dd53
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+@page "/sign-in/two-factor"
+@attribute [ExcludeFromInteractiveRouting]
+@inject SignInManager<Person> SignInManager
+@inject NavigationManager Navigation
+
+@* The TOTP challenge on the password path (TECHNICAL_SPECIFICATION §3.4, §4.2, ADR-0010). Reachable
+   only mid-sign-in: the password step parked the pending user in the two-factor cookie; without it
+   this page bounces back to /sign-in. There is deliberately no "remember this device" — TOTP is
+   challenged on every password sign-in of an enrolled account. The passkey path never lands here. *@
+
+<PageTitle>Two-factor code</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">MyRestaurant</p>
+    <h1>Enter your authenticator code</h1>
+    <p class="lede">
+        Your password was correct. Open your authenticator app and enter the six-digit code for this
+        account.
+    </p>
+
+    @if (_errorMessage is not null)
+    {
+        <p class="status-error" role="alert">@_errorMessage</p>
+    }
+
+    <EditForm Model="Input" method="post" OnValidSubmit="VerifyCodeAsync" FormName="sign-in-two-factor">
+        <DataAnnotationsValidator />
+
+        <div class="form-field">
+            <label for="totp-code">Authenticator code</label>
+            <InputText id="totp-code" @bind-Value="Input.Code" autocomplete="one-time-code"
+                       inputmode="numeric" autofocus />
+            <ValidationMessage For="@(() => Input.Code)" />
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="button-primary">Verify</button>
+        </div>
+    </EditForm>
+
+    <p class="form-footnote">
+        Authenticator unavailable?
+        <a href="@RecoveryCodeHref">Use a recovery code instead.</a>
+    </p>
+</section>
+
+@code {
+    private string? _errorMessage;
+
+    [SupplyParameterFromForm]
+    private TwoFactorInputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private string RecoveryCodeHref
+        => $"{AccountRoutes.SignInRecoveryCode}?ReturnUrl={Uri.EscapeDataString(ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl))}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // No pending two-factor user means this page was reached out of order — start over.
+        if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+        }
+    }
+
+    private async Task VerifyCodeAsync()
+    {
+        if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // Authenticator apps display codes in groups; be forgiving about spaces and dashes.
+        string code = Input.Code.Replace(" ", string.Empty).Replace("-", string.Empty);
+
+        SignInResult result = await SignInManager.TwoFactorAuthenticatorSignInAsync(
+            code,
+            isPersistent: true,
+            rememberClient: false);
+
+        if (result.Succeeded)
+        {
+            Navigation.NavigateTo(ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl));
+        }
+        else if (result.IsLockedOut)
+        {
+            _errorMessage = "Too many failed attempts. The account is locked for about five minutes — try again then.";
+        }
+        else
+        {
+            _errorMessage = "That code did not verify. Codes rotate every 30 seconds — check the app and try the current one.";
+        }
+    }
+
+    private sealed class TwoFactorInputModel
+    {
+        [Required(ErrorMessage = "Enter the six-digit code.")]
+        public string Code { get; set; } = string.Empty;
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Account/RedirectToSignIn.razor
+################################################################################
+
+--- METADATA ---
+  File name:             RedirectToSignIn.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Account/RedirectToSignIn.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/RedirectToSignIn.razor
+  Size:                  724 B (724 bytes)
+  Last modified:         2026-07-19 08:46:36.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654803
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               d34f1240708b7df0502a74fc2025803e804e32a47ebdb494f7c0eaa871a2ba06
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+@inject NavigationManager Navigation
+
+@* Sends an anonymous visitor to the sign-in page, preserving where they were headed. forceLoad is
+   required: the sign-in page is excluded from interactive routing (static SSR), so the interactive
+   router cannot navigate to it client-side — a full document load is the only correct transition.
+   During static prerendering the NavigateTo call surfaces as an HTTP redirect instead. *@
+
+@code {
+    protected override void OnInitialized()
+    {
+        string destination = "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
+        Navigation.NavigateTo(
+            $"{AccountRoutes.SignIn}?ReturnUrl={Uri.EscapeDataString(destination)}",
+            forceLoad: true);
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/App.razor
 ################################################################################
 
@@ -8466,19 +9575,22 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             App.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/App.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/App.razor
-  Size:                  625 B (625 bytes)
-  Last modified:         2026-07-17 21:16:53.000000000 -0400
+  Size:                  1.3 KiB (1359 bytes)
+  Last modified:         2026-07-19 08:46:02.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258189
+  Inode:                 21654787
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               99e6f0d938d0cbd0eaa3a13699fae726ff66a91301493f2824f86941cd088d9e
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               37515d5ed875a03c37b63cb2d5a45c9e541ab376ece542f50d36a902625d194d
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
-@* The root HTML document. Interactive-server render mode is set on HeadOutlet and Routes so the
-   whole app runs over a Blazor Server circuit (ADR-0004: interactive server rendering). *@
+@* The root HTML document. Interactive-server rendering is the default for the whole app (ADR-0004),
+   but it is applied per page rather than hard-coded: pages marked [ExcludeFromInteractiveRouting]
+   (the account/sign-in surfaces) render as static SSR instead, because writing the authentication
+   cookie requires a real HTTP response — a Blazor circuit cannot set cookies (BUILD_PROGRESS:
+   "sign-in pages must post to a static/SSR endpoint"). *@
 <!DOCTYPE html>
 <html lang="en">
 
@@ -8488,15 +9600,27 @@ public static class AuthorizationServiceCollectionExtensions
     <base href="/" />
     <link rel="stylesheet" href="app.css" />
     <link rel="icon" href="data:," />
-    <HeadOutlet @rendermode="InteractiveServer" />
+    <HeadOutlet @rendermode="RenderModeForPage" />
 </head>
 
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="RenderModeForPage" />
     <script src="_framework/blazor.web.js"></script>
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    /// <summary>
+    /// Interactive server for ordinary pages; <c>null</c> (static SSR) for pages that opted out with
+    /// <see cref="ExcludeFromInteractiveRoutingAttribute"/> — the sign-in and obligation pages.
+    /// </summary>
+    private IComponentRenderMode? RenderModeForPage
+        => HttpContext.AcceptsInteractiveRouting() ? InteractiveServer : null;
+}
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
@@ -8506,20 +9630,41 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             MainLayout.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
-  Size:                  116 B (116 bytes)
-  Last modified:         2026-07-17 21:17:01.000000000 -0400
+  Size:                  1.1 KiB (1177 bytes)
+  Last modified:         2026-07-19 08:46:28.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258194
+  Inode:                 21654794
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               7fefcddb86458703c83a618fc5b4648b2206eda3d16a671a73853baf27cb0a81
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               1c0c7d6016a46a9722172076f1bddf066148be014381894c09224531ddc534a3
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 @inherits LayoutComponentBase
 
+@* The shared shell. The session header uses a plain HTML form for sign-out — a full-page POST to
+   the /sign-out endpoint with the antiforgery token — so it behaves identically whether the hosting
+   page renders as static SSR (the account pages) or over an interactive circuit. *@
 <div class="app-shell">
+    <header class="app-header">
+        <a class="app-brand" href="/">MyRestaurant</a>
+        <nav class="app-session" aria-label="Session">
+            <AuthorizeView>
+                <Authorized>
+                    <span class="session-name">@context.User.Identity?.Name</span>
+                    <form class="sign-out-form" method="post" action="@AccountRoutes.SignOut">
+                        <AntiforgeryToken />
+                        <button type="submit" class="link-button">Sign out</button>
+                    </form>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="session-link" href="@AccountRoutes.SignIn">Sign in</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </nav>
+    </header>
+
     <main class="app-main">
         @Body
     </main>
@@ -8533,15 +9678,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             Home.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Home.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Home.razor
-  Size:                  975 B (975 bytes)
-  Last modified:         2026-07-17 21:17:10.000000000 -0400
+  Size:                  1.1 KiB (1174 bytes)
+  Last modified:         2026-07-19 08:49:02.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258192
+  Inode:                 21654790
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               a5783d1c6665fc90e8f8fbe633a11d9d51355e527a6cb1ef38054193de221157
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               7cc9853eb40ec8f149a499d656633983511bd95fe1d8f37b98db4f07d245901e
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 @page "/"
@@ -8554,9 +9699,11 @@ public static class AuthorizationServiceCollectionExtensions
     <h1 class="landing-title">@Options.RestaurantName</h1>
 
     <p class="landing-lede">
-        The application shell is running. This is the Milestone&nbsp;1 skeleton: the domain,
-        data-access, and web host are in place, and the database schema is applied at startup.
-        Guest, kitchen, counter, and administrator experiences arrive in later milestones.
+        The application shell is running. The Milestone&nbsp;1 skeleton (domain, data access, web
+        host, startup migrations) is in place, and Milestone&nbsp;2 is under way: password sign-in
+        with the TOTP/recovery challenge, lockout, and the forced-password-change pipeline work now.
+        Guest ordering, the kitchen and counter boards, and administration arrive in later
+        milestones.
     </p>
 
     <dl class="facts">
@@ -8570,11 +9717,72 @@ public static class AuthorizationServiceCollectionExtensions
         </div>
     </dl>
 
-    <nav class="health-links" aria-label="Health checks">
+    <nav class="health-links" aria-label="Health checks and areas">
         <a href="/healthz/live">Liveness</a>
         <a href="/healthz/ready">Readiness</a>
+        <a href="/table">Table area (sign-in required)</a>
     </nav>
 </section>
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor
+################################################################################
+
+--- METADATA ---
+  File name:             TableArea.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor
+  Size:                  1.5 KiB (1586 bytes)
+  Last modified:         2026-07-19 08:48:51.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654792
+  Hard links:            1
+  MIME type:             text/html
+  SHA-256:               756d495e0d7414ed2cadf311567cffad6e90448eee53cfcbf5a5418ac6dcfcbb
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+@page "/table"
+@attribute [Authorize(Policy = AuthorizationPolicies.Table)]
+
+@* The first [Authorize]-gated area (TECHNICAL_SPECIFICATION §3.7 — `area.table`: any authenticated
+   person). This interactive placeholder exists to prove the whole chain live — cookie → claims →
+   policy → AuthorizeRouteView → circuit — before the real guest experience (joining, staging,
+   sending; M3/M4) replaces its body. Anonymous visitors are redirected to /sign-in with this page
+   as the return URL. *@
+
+<PageTitle>Your table</PageTitle>
+
+<section class="panel">
+    <p class="eyebrow">Table area</p>
+    <h1>Signed in and gated</h1>
+
+    <AuthorizeView>
+        <Authorized>
+            <p class="lede">
+                You are signed in as <strong>@context.User.Identity?.Name</strong>@DisplayNameSuffix(context.User),
+                and the <code>area.table</code> policy admitted you — the authentication cookie, the
+                claims principal, and the area authorization are all live.
+            </p>
+        </Authorized>
+    </AuthorizeView>
+
+    <p class="lede">
+        Joining a table by scanning its rotating code, and building and sending orders, arrive with
+        Milestones&nbsp;3 and&nbsp;4.
+    </p>
+
+    <p><a href="/">Back to the home page</a></p>
+</section>
+
+@code {
+    private static string DisplayNameSuffix(System.Security.Claims.ClaimsPrincipal user)
+    {
+        string? displayName = user.FindFirst(RestaurantClaimTypes.DisplayName)?.Value;
+        return string.IsNullOrWhiteSpace(displayName) ? string.Empty : $" ({displayName})";
+    }
+}
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/Routes.razor
@@ -8584,22 +9792,45 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             Routes.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Routes.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Routes.razor
-  Size:                  399 B (399 bytes)
-  Last modified:         2026-07-17 21:16:58.000000000 -0400
+  Size:                  1.6 KiB (1636 bytes)
+  Last modified:         2026-07-19 08:46:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258190
+  Inode:                 21654788
   Hard links:            1
-  MIME type:             text/plain
-  SHA-256:               79cbcf69f522ee6e4ab8916d20d49fa27073d7d9bfcd59a152869258a07e0a5d
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  MIME type:             text/html
+  SHA-256:               1af42e54c1f9d204bb4e19d3f21338a98cd48073cb8e2d8f8c334d64ecf8d4a2
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
-@* Top-level router. For M1 there is a single route (Home); later milestones add the guest,
-   kitchen, counter, admin, and table-display areas here. *@
+@* Top-level router. AuthorizeRouteView enforces [Authorize] on interactive pages: an anonymous
+   visitor is sent to the sign-in page with the destination preserved, while an authenticated
+   principal that fails an area policy (§3.7) sees the denial where they stand. The cascading
+   authentication state comes from AddCascadingAuthenticationState (wired in AddRestaurantIdentity),
+   so this works in both static SSR and interactive-server rendering. Static-SSR pages carrying
+   [Authorize] are additionally enforced by endpoint authorization on the server. *@
 <Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)" />
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)">
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated == true)
+                {
+                    <section class="panel">
+                        <p class="eyebrow">Access denied</p>
+                        <h1>You do not have access to this area</h1>
+                        <p class="lede">
+                            You are signed in as <strong>@context.User.Identity?.Name</strong>, but this
+                            area requires a role your account does not hold.
+                        </p>
+                        <p><a href="/">Back to the home page</a></p>
+                    </section>
+                }
+                else
+                {
+                    <RedirectToSignIn />
+                }
+            </NotAuthorized>
+        </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
 </Router>
@@ -8612,28 +9843,36 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             _Imports.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/_Imports.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/_Imports.razor
-  Size:                  468 B (468 bytes)
-  Last modified:         2026-07-17 21:16:47.000000000 -0400
+  Size:                  832 B (832 bytes)
+  Last modified:         2026-07-19 08:46:20.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258195
+  Inode:                 21654804
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               ac82a5b51639934d001861d91b42e8eedf202d2c6856ee2e5acc2250d88dc5c6
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               976578830e4a5867dc5742f6c55f53b7d3df7d0a3b93ef8b93048dc37fe3740d
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 @using System.Net.Http
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.AspNetCore.Components.Web
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Microsoft.AspNetCore.Identity
 @using Microsoft.JSInterop
+@using MyRestaurant.DataAccess.Identity
 @using MyRestaurant.WebApplication
+@using MyRestaurant.WebApplication.Authorization
 @using MyRestaurant.WebApplication.Components
+@using MyRestaurant.WebApplication.Components.Account
 @using MyRestaurant.WebApplication.Components.Layout
 @using MyRestaurant.WebApplication.Configuration
+@using MyRestaurant.WebApplication.Identity
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs
@@ -8818,6 +10057,62 @@ public sealed class RestaurantOptions
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.WebApplication/Identity/AccountEndpoints.cs
+################################################################################
+
+--- METADATA ---
+  File name:             AccountEndpoints.cs
+  Relative path:         src/MyRestaurant.WebApplication/Identity/AccountEndpoints.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/AccountEndpoints.cs
+  Size:                  1.7 KiB (1748 bytes)
+  Last modified:         2026-07-19 08:44:05.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654782
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               9d8b21f7117a473ee058b8d25aa7461d70bae416f1eb72678e11370e39a0d261
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using MyRestaurant.DataAccess.Identity;
+
+namespace MyRestaurant.WebApplication.Identity;
+
+/// <summary>
+/// The non-page account endpoints. Sign-out is a POST endpoint rather than a page
+/// (TECHNICAL_SPECIFICATION §3.5): it must clear the authentication cookies on the response, must
+/// never be triggerable by a crafted GET link, and must stay reachable while the obligations
+/// pipeline blocks everything else (its path is exempt in <see cref="ObligationsEnforcement"/>).
+/// Binding the optional form field makes the endpoint "accept form data", which switches on the
+/// framework's automatic antiforgery validation for it — the layout's sign-out form supplies the
+/// token via <c>&lt;AntiforgeryToken /&gt;</c>.
+/// </summary>
+public static class AccountEndpoints
+{
+    public static IEndpointRouteBuilder MapRestaurantAccountEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        ArgumentNullException.ThrowIfNull(endpoints);
+
+        endpoints.MapPost(AccountRoutes.SignOut, async (
+            SignInManager<Person> signInManager,
+            [FromForm] string? returnUrl) =>
+        {
+            // Clears the application, external, and both two-factor cookies. Harmless when the
+            // caller was already anonymous. No security_event is written: sign-out is not in the
+            // §8.2 event-type vocabulary (sessions also end silently by expiry and stamp rotation,
+            // so recording only explicit sign-outs would tell a misleading story).
+            await signInManager.SignOutAsync();
+            return Results.LocalRedirect(ObligationsEnforcement.SafeLocalReturnUrl(returnUrl));
+        });
+
+        return endpoints;
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
 ################################################################################
 
@@ -8825,15 +10120,15 @@ public sealed class RestaurantOptions
   File name:             IdentityServiceCollectionExtensions.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
-  Size:                  8.1 KiB (8283 bytes)
-  Last modified:         2026-07-18 16:00:02.000000000 -0400
-  Permissions:           -rw-------
+  Size:                  8.9 KiB (9085 bytes)
+  Last modified:         2026-07-19 08:44:41.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21386304
+  Inode:                 21654780
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               b8703b7b1d4923e5715e6f852987a64ae7351913d37832c3a1328556e214837c
-  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+  SHA-256:               75d22f4073764b55ca846660ac9c249f4279fb36d5101e64958934787bf24f4c
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -8852,18 +10147,24 @@ namespace MyRestaurant.WebApplication.Identity;
 /// Dapper store, with the Argon2id hasher replacing Identity's PBKDF2 default
 /// (TECHNICAL_SPECIFICATION §3.1–§3.2, ADR-0003/ADR-0008), plus sign-in and authorization:
 /// <list type="bullet">
-///   <item>the Identity cookie scheme, hardened (Secure, HttpOnly, SameSite=Lax, 24-hour sliding);</item>
-///   <item><see cref="RestaurantSignInManager"/> (the auditing <see cref="SignInManager{TUser}"/>);</item>
+///   <item>the Identity cookie scheme, hardened (Secure, HttpOnly, SameSite=Lax, 24-hour sliding),
+///   pointing at the sign-in / sign-out / access-denied surfaces in <see cref="AccountRoutes"/>;</item>
+///   <item><see cref="RestaurantSignInManager"/> (the auditing <see cref="SignInManager{TUser}"/>,
+///   which also refuses deactivated accounts);</item>
+///   <item><see cref="RestaurantClaimsPrincipalFactory"/> — emits the role claims the area policies
+///   match on (the single-generic default factory never does), plus the §3.5 obligation claims and
+///   the display name;</item>
 ///   <item>security-stamp revalidation every 5 minutes, so resets, role revocations, and
 ///   deactivations bite live sessions within minutes (§3.1);</item>
 ///   <item>the area authorization policies (§3.7), via <see cref="AuthorizationServiceCollectionExtensions"/>;</item>
+///   <item>the cascading <c>Task&lt;AuthenticationState&gt;</c> the Blazor router and
+///   <c>AuthorizeView</c> consume;</item>
 ///   <item>the append-only <see cref="ISecurityEventLog"/> that sign-in outcomes are recorded to (§3.5).</item>
 /// </list>
 ///
-/// Roles flow to claims automatically: the store implements <see cref="IUserRoleStore{TUser}"/>, so the
-/// default claims-principal factory adds a role claim per granted role at sign-in — no role entity or
-/// <c>RoleManager</c> is registered (roles are plain strings, §3.7). The sign-in <em>pages</em> and the
-/// obligations-pipeline middleware are the next M2 slices; this method wires the services they need.
+/// The obligations pipeline itself is enforced by <see cref="ObligationsMiddleware"/> in the request
+/// pipeline (registered in <c>Program.cs</c>); the sign-in and forced-change pages are static-SSR
+/// Razor components under <c>Components/Account</c>.
 /// </summary>
 public static class IdentityServiceCollectionExtensions
 {
@@ -8899,6 +10200,10 @@ public static class IdentityServiceCollectionExtensions
         // Area authorization policies (§3.7).
         services.AddRestaurantAuthorization();
 
+        // The cascading Task<AuthenticationState> that <AuthorizeView>, AuthorizeRouteView, and the
+        // account pages consume — in both static SSR and interactive-server rendering.
+        services.AddCascadingAuthenticationState();
+
         services.AddIdentityCore<Person>(identity =>
             {
                 // Usernames: 3–64 chars is enforced by the DB CHECK and citext handles uniqueness, so
@@ -8928,6 +10233,7 @@ public static class IdentityServiceCollectionExtensions
                 identity.Stores.ProtectPersonalData = false;
             })
             .AddUserStore<DapperUserStore>()
+            .AddClaimsPrincipalFactory<RestaurantClaimsPrincipalFactory>()
             .AddDefaultTokenProviders() // Authenticator (TOTP), Data-Protection, email/phone token providers.
             .AddSignInManager<RestaurantSignInManager>();
 
@@ -8938,8 +10244,8 @@ public static class IdentityServiceCollectionExtensions
         services.TryAddScoped<ITwoFactorSecurityStampValidator, TwoFactorSecurityStampValidator<Person>>();
 
         // Harden the application cookie (§3.1). Secure + HttpOnly + SameSite=Lax; 24-hour sliding
-        // expiration. The paths point at the sign-in surfaces built in the next slice; nothing is
-        // authorized yet, so no redirect fires until those pages and their [Authorize] attributes exist.
+        // expiration. The login/logout/access-denied paths are the real account surfaces now (this
+        // slice); an unauthenticated hit on an [Authorize] page redirects to /sign-in?ReturnUrl=….
         services.ConfigureApplicationCookie(cookie =>
         {
             cookie.Cookie.Name = AuthenticationCookieName;
@@ -8948,13 +10254,14 @@ public static class IdentityServiceCollectionExtensions
             cookie.Cookie.SameSite = SameSiteMode.Lax;
             cookie.ExpireTimeSpan = AuthenticationCookieLifetime;
             cookie.SlidingExpiration = true;
-            cookie.LoginPath = "/sign-in";
-            cookie.LogoutPath = "/sign-out";
-            cookie.AccessDeniedPath = "/access-denied";
+            cookie.LoginPath = AccountRoutes.SignIn;
+            cookie.LogoutPath = AccountRoutes.SignOut;
+            cookie.AccessDeniedPath = AccountRoutes.AccessDenied;
         });
 
         // Revalidate the security stamp every 5 minutes so administrative resets/revocations/
-        // deactivations invalidate live sessions promptly (§3.1).
+        // deactivations invalidate live sessions promptly (§3.1). Rebuilding the principal also
+        // refreshes the role and obligation claims through the factory above.
         services.Configure<SecurityStampValidatorOptions>(validator =>
         {
             validator.ValidationInterval = SecurityStampValidationInterval;
@@ -8984,6 +10291,322 @@ public static class IdentityServiceCollectionExtensions
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
+################################################################################
+
+--- METADATA ---
+  File name:             ObligationsEnforcement.cs
+  Relative path:         src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
+  Size:                  5.8 KiB (5937 bytes)
+  Last modified:         2026-07-19 08:43:37.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654783
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               57d7313c15880c2dd2b084774d8c812c159afe07a65138d167e28b2a917335aa
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+using System.Security.Claims;
+using MyRestaurant.Domain.Authentication;
+
+namespace MyRestaurant.WebApplication.Identity;
+
+/// <summary>
+/// The routes the post-authentication obligations pipeline (§3.5) and the account surfaces live on.
+/// One place, so pages, the middleware, and the cookie configuration can never drift apart.
+/// </summary>
+public static class AccountRoutes
+{
+    /// <summary>The password sign-in page (static SSR so the cookie can be written).</summary>
+    public const string SignIn = "/sign-in";
+
+    /// <summary>The TOTP challenge on the password path (§3.4, §4.2).</summary>
+    public const string SignInTwoFactor = "/sign-in/two-factor";
+
+    /// <summary>A recovery code standing in for the TOTP code (§3.4).</summary>
+    public const string SignInRecoveryCode = "/sign-in/recovery-code";
+
+    /// <summary>The sign-out endpoint (POST only, antiforgery-protected).</summary>
+    public const string SignOut = "/sign-out";
+
+    /// <summary>Shown when an authenticated principal fails an area policy (§3.7).</summary>
+    public const string AccessDenied = "/access-denied";
+
+    /// <summary>The forced password-change page — obligation (1) of §3.5.</summary>
+    public const string ForcedPasswordChange = "/account/change-password-required";
+
+    /// <summary>The forced TOTP re-enrollment page — obligation (2) of §3.5.</summary>
+    public const string ForcedTotpEnrollment = "/account/enroll-totp-required";
+}
+
+/// <summary>
+/// The web-layer half of the §3.5 obligations pipeline. The <em>decision</em> is the pure, exhaustively
+/// unit-tested <see cref="ObligationsPipeline"/> in the Domain; this class maps a
+/// <see cref="ClaimsPrincipal"/>'s obligation claims onto that decision, says which request paths stay
+/// reachable while an obligation is outstanding, and builds the redirect that sends the principal to
+/// the right page. <see cref="ObligationsMiddleware"/> is a thin shell over these statics so the whole
+/// enforcement surface is testable without a server.
+/// </summary>
+public static class ObligationsEnforcement
+{
+    /// <summary>
+    /// The next outstanding obligation for <paramref name="principal"/>, decided by the Domain
+    /// pipeline over the claims <see cref="RestaurantClaimsPrincipalFactory"/> issued at sign-in.
+    /// </summary>
+    public static PostAuthenticationObligation NextObligationFor(ClaimsPrincipal principal)
+    {
+        ArgumentNullException.ThrowIfNull(principal);
+
+        return ObligationsPipeline.NextObligation(
+            HasObligationClaim(principal, RestaurantClaimTypes.MustChangePassword),
+            HasObligationClaim(principal, RestaurantClaimTypes.MustEnrollTotp));
+    }
+
+    /// <summary>
+    /// True when <paramref name="path"/> stays reachable while an obligation is outstanding (§3.5:
+    /// "no authenticated endpoint except sign-out and the pipeline pages themselves"). Health probes
+    /// and framework static assets are also exempt — they carry no user action. The Blazor circuit
+    /// endpoint (<c>/_blazor</c>) is deliberately <b>not</b> exempt: while a flag is set, interactive
+    /// circuits are refused too, so an already-open tab cannot keep acting.
+    /// </summary>
+    public static bool IsExemptPath(PathString path)
+        => path.StartsWithSegments(AccountRoutes.ForcedPasswordChange)
+        || path.StartsWithSegments(AccountRoutes.ForcedTotpEnrollment)
+        || path.StartsWithSegments(AccountRoutes.SignOut)
+        || path.StartsWithSegments(AccountRoutes.AccessDenied)
+        || path.StartsWithSegments("/healthz")
+        || path.StartsWithSegments("/_framework");
+
+    /// <summary>The page that clears <paramref name="obligation"/>.</summary>
+    public static string PageFor(PostAuthenticationObligation obligation) => obligation switch
+    {
+        PostAuthenticationObligation.ForcePasswordChange => AccountRoutes.ForcedPasswordChange,
+        PostAuthenticationObligation.ForceTotpEnrollment => AccountRoutes.ForcedTotpEnrollment,
+        PostAuthenticationObligation.None => throw new ArgumentOutOfRangeException(
+            nameof(obligation), obligation, "No page exists when no obligation is outstanding."),
+        _ => throw new ArgumentOutOfRangeException(nameof(obligation), obligation, "Unknown obligation."),
+    };
+
+    /// <summary>
+    /// The redirect that sends the principal to the obligation page, carrying the originally
+    /// requested URL so §3.5 step (3) — "continue to the originally requested URL" — can honour it
+    /// once the pipeline clears.
+    /// </summary>
+    public static string RedirectTargetFor(PostAuthenticationObligation obligation, HttpRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        string destination = $"{request.PathBase}{request.Path}{request.QueryString}";
+        if (string.IsNullOrEmpty(destination))
+        {
+            destination = "/";
+        }
+
+        return $"{PageFor(obligation)}?ReturnUrl={Uri.EscapeDataString(destination)}";
+    }
+
+    /// <summary>
+    /// Collapses a caller-supplied return URL to a safe local path: it must start with a single
+    /// <c>'/'</c> (no scheme, no protocol-relative <c>//host</c>), otherwise <c>"/"</c> is returned.
+    /// Shared by the sign-in pages and the sign-out endpoint so none of them can open-redirect.
+    /// </summary>
+    public static string SafeLocalReturnUrl(string? returnUrl)
+    {
+        if (string.IsNullOrEmpty(returnUrl))
+        {
+            return "/";
+        }
+
+        bool isLocal = returnUrl[0] == '/'
+            && !returnUrl.StartsWith("//", StringComparison.Ordinal)
+            && !returnUrl.StartsWith("/\\", StringComparison.Ordinal);
+
+        return isLocal ? returnUrl : "/";
+    }
+
+    private static bool HasObligationClaim(ClaimsPrincipal principal, string claimType)
+        => string.Equals(principal.FindFirstValue(claimType), "true", StringComparison.OrdinalIgnoreCase);
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Identity/ObligationsMiddleware.cs
+################################################################################
+
+--- METADATA ---
+  File name:             ObligationsMiddleware.cs
+  Relative path:         src/MyRestaurant.WebApplication/Identity/ObligationsMiddleware.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/ObligationsMiddleware.cs
+  Size:                  2.3 KiB (2368 bytes)
+  Last modified:         2026-07-19 08:43:53.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654781
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               646b031b14d67c2fb0aa3ebb38ca1765f8110423e73cede0e4e88d46a7d53102
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+using System.Security.Claims;
+using MyRestaurant.Domain.Authentication;
+
+namespace MyRestaurant.WebApplication.Identity;
+
+/// <summary>
+/// Enforces the post-authentication obligations pipeline (TECHNICAL_SPECIFICATION §3.5, ADR-0010):
+/// once a principal is authenticated, an outstanding <c>must_change_password</c> /
+/// <c>must_enroll_totp</c> flag makes every endpoint unreachable except sign-out and the pipeline's
+/// own pages — the request is redirected to the page that clears the next obligation, carrying the
+/// original destination as <c>ReturnUrl</c>.
+///
+/// <para>The <em>decision</em> is the pure <see cref="ObligationsPipeline"/>; the claim mapping,
+/// exemption list, and redirect construction are the testable statics on
+/// <see cref="ObligationsEnforcement"/>; this class is only the pipeline shell. It sits after
+/// authentication (it reads <see cref="HttpContext.User"/>) and before the endpoint runs. Anonymous
+/// requests pass through untouched — the flags only exist on authenticated principals.</para>
+///
+/// <para>Two deliberate consequences: static files served by <c>UseStaticFiles</c> never reach this
+/// middleware (it sits after them), and the Blazor circuit endpoint is <b>not</b> exempt — an
+/// interactive tab left open when a flag lands cannot reconnect its circuit until the pipeline
+/// clears, which is exactly the "nothing else reachable" the specification asks for.</para>
+/// </summary>
+public sealed class ObligationsMiddleware
+{
+    private readonly RequestDelegate _next;
+
+    public ObligationsMiddleware(RequestDelegate next)
+    {
+        ArgumentNullException.ThrowIfNull(next);
+        _next = next;
+    }
+
+    public Task InvokeAsync(HttpContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        ClaimsPrincipal user = context.User;
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            PostAuthenticationObligation obligation = ObligationsEnforcement.NextObligationFor(user);
+            if (obligation != PostAuthenticationObligation.None
+                && !ObligationsEnforcement.IsExemptPath(context.Request.Path))
+            {
+                context.Response.Redirect(ObligationsEnforcement.RedirectTargetFor(obligation, context.Request));
+                return Task.CompletedTask;
+            }
+        }
+
+        return _next(context);
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Identity/RestaurantClaimsPrincipalFactory.cs
+################################################################################
+
+--- METADATA ---
+  File name:             RestaurantClaimsPrincipalFactory.cs
+  Relative path:         src/MyRestaurant.WebApplication/Identity/RestaurantClaimsPrincipalFactory.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/RestaurantClaimsPrincipalFactory.cs
+  Size:                  3.8 KiB (3883 bytes)
+  Last modified:         2026-07-19 08:43:10.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654778
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               e3494a399852649400e3d00295e1f59c14854b93b134db4896d18b1c6eeef48d
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+using System.Security.Claims;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
+using MyRestaurant.DataAccess.Identity;
+
+namespace MyRestaurant.WebApplication.Identity;
+
+/// <summary>
+/// The application-specific claim types, all prefixed so they can never collide with framework or
+/// standard claims. Values are set at sign-in by <see cref="RestaurantClaimsPrincipalFactory"/> and
+/// refreshed whenever the principal is rebuilt — an explicit <c>RefreshSignInAsync</c> after an
+/// obligation completes, and the 5-minute security-stamp revalidation (§3.1).
+/// </summary>
+public static class RestaurantClaimTypes
+{
+    /// <summary>The optional human display name (roster / kitchen-queue rendering, §3.1).</summary>
+    public const string DisplayName = "myrestaurant:display_name";
+
+    /// <summary>Present (value <c>"true"</c>) while <c>must_change_password</c> is set (§3.5).</summary>
+    public const string MustChangePassword = "myrestaurant:must_change_password";
+
+    /// <summary>Present (value <c>"true"</c>) while <c>must_enroll_totp</c> is set (§3.5).</summary>
+    public const string MustEnrollTotp = "myrestaurant:must_enroll_totp";
+}
+
+/// <summary>
+/// Builds the <see cref="ClaimsPrincipal"/> issued into the authentication cookie
+/// (TECHNICAL_SPECIFICATION §3.5, §3.7). Three additions over the framework base:
+///
+/// <list type="bullet">
+///   <item><b>Role claims.</b> The single-generic
+///   <see cref="UserClaimsPrincipalFactory{TUser}"/> — the one <c>AddIdentityCore</c> registers —
+///   never emits role claims; only the two-generic <c>TUser, TRole</c> variant does, and this
+///   application deliberately has no role entity or <c>RoleManager</c> (roles are plain strings,
+///   §3.7). Without this override the §3.7 area policies could never pass. One role claim is added
+///   per granted role, using the configured <see cref="ClaimsIdentityOptions.RoleClaimType"/> so
+///   <see cref="ClaimsPrincipal.IsInRole"/> and <c>RequireRole</c> match it.</item>
+///   <item><b>Obligation claims.</b> <c>must_change_password</c> / <c>must_enroll_totp</c> travel as
+///   claims so <see cref="ObligationsMiddleware"/> enforces §3.5 without a database read per
+///   request. They refresh on explicit re-sign-in after an obligation clears and, at the latest,
+///   on the 5-minute stamp revalidation.</item>
+///   <item><b>Display name</b>, when the person has one.</item>
+/// </list>
+/// </summary>
+public sealed class RestaurantClaimsPrincipalFactory : UserClaimsPrincipalFactory<Person>
+{
+    public RestaurantClaimsPrincipalFactory(
+        UserManager<Person> userManager,
+        IOptions<IdentityOptions> optionsAccessor)
+        : base(userManager, optionsAccessor)
+    {
+    }
+
+    protected override async Task<ClaimsIdentity> GenerateClaimsAsync(Person user)
+    {
+        ClaimsIdentity identity = await base.GenerateClaimsAsync(user).ConfigureAwait(false);
+
+        // Roles → claims (see the type remarks: the base single-generic factory does not do this).
+        foreach (string role in await UserManager.GetRolesAsync(user).ConfigureAwait(false))
+        {
+            identity.AddClaim(new Claim(Options.ClaimsIdentity.RoleClaimType, role));
+        }
+
+        if (!string.IsNullOrWhiteSpace(user.DisplayName))
+        {
+            identity.AddClaim(new Claim(RestaurantClaimTypes.DisplayName, user.DisplayName));
+        }
+
+        // Obligations are present-or-absent flags: absence means "cleared", so the middleware's
+        // no-obligation fast path allocates nothing.
+        if (user.MustChangePassword)
+        {
+            identity.AddClaim(new Claim(RestaurantClaimTypes.MustChangePassword, "true"));
+        }
+
+        if (user.MustEnrollTotp)
+        {
+            identity.AddClaim(new Claim(RestaurantClaimTypes.MustEnrollTotp, "true"));
+        }
+
+        return identity;
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.WebApplication/Identity/RestaurantSignInManager.cs
 ################################################################################
 
@@ -8991,15 +10614,15 @@ public static class IdentityServiceCollectionExtensions
   File name:             RestaurantSignInManager.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/RestaurantSignInManager.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/RestaurantSignInManager.cs
-  Size:                  7.7 KiB (7842 bytes)
-  Last modified:         2026-07-18 16:00:02.000000000 -0400
-  Permissions:           -rw-------
+  Size:                  8.5 KiB (8725 bytes)
+  Last modified:         2026-07-19 08:45:18.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21386305
+  Inode:                 21654779
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               7bbbdcd3a4ff4a62a690a880d729ab609279d482a9514063d0aa18b4be32f3d6
-  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+  SHA-256:               d83e08907686b4d9bbcb71464b035b9c759bb40eb79e1f790bb3e3c8c9487904
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 using Microsoft.AspNetCore.Authentication;
@@ -9018,6 +10641,11 @@ namespace MyRestaurant.WebApplication.Identity;
 /// metric. The <em>decision</em> of what to record lives in the pure <see cref="SignInAudit"/>
 /// (unit-tested exhaustively); this class only maps the framework's <see cref="SignInResult"/> onto it
 /// and performs the side effects.
+///
+/// <para>It is also where <b>deactivation blocks sign-in</b> (§3.7, F-10b): <see cref="CanSignInAsync"/>
+/// refuses an inactive <see cref="Person"/>, which the framework surfaces as
+/// <see cref="SignInResult.NotAllowed"/> — audited as a failed sign-in. Deactivation additionally
+/// kills live sessions through the security stamp; this gate closes the front door.</para>
 ///
 /// <para>Only the password and second-factor paths are overridden here. The passkey path
 /// (<c>SignInManager.SignInAsync</c> after a WebAuthn assertion, method = <c>passkey</c>) records its
@@ -9055,6 +10683,18 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
 
         _securityEventLog = securityEventLog;
         _metrics = metrics;
+    }
+
+    /// <summary>
+    /// The pre-sign-in gate: a deactivated account may not sign in on any path (§3.7). The framework
+    /// turns a <c>false</c> here into <see cref="SignInResult.NotAllowed"/>, which
+    /// <see cref="AuditAsync"/> records as a failed sign-in.
+    /// </summary>
+    public override async Task<bool> CanSignInAsync(Person user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        return user.IsActive && await base.CanSignInAsync(user).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -9487,15 +11127,15 @@ public sealed class RestaurantMetrics : IDisposable
   File name:             Program.cs
   Relative path:         src/MyRestaurant.WebApplication/Program.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Program.cs
-  Size:                  7.2 KiB (7335 bytes)
-  Last modified:         2026-07-18 16:00:02.000000000 -0400
-  Permissions:           -rw-------
+  Size:                  7.6 KiB (7794 bytes)
+  Last modified:         2026-07-19 08:45:50.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21386307
+  Inode:                 21654776
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               243380e8224d888bfbbd31cfdaafea0e1943aa60e7082aa2e7cb276e72dbb722
-  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+  SHA-256:               135c2c624ddcb7c50d3694010bd9ff6d32b0a85231a27a5cce05563c18f51d4e
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 using System.Data.Common;
@@ -9521,7 +11161,7 @@ using OpenTelemetry.Trace;
 //   2. wire OpenTelemetry (exporters only when an OTLP endpoint is configured);
 //   3. register services;
 //   4. apply database migrations BEFORE binding HTTP (never serve on a half-applied schema, §17);
-//   5. forwarded headers → auth → health endpoints → Blazor interactive-server components.
+//   5. forwarded headers → auth → obligations pipeline → health endpoints → Blazor components.
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
@@ -9600,7 +11240,8 @@ builder.Services.AddDataProtection()
     .SetApplicationName("myrestaurant");
 
 // ASP.NET Core Identity core services over the custom Dapper store, with the Argon2id hasher, plus
-// sign-in, hardened cookie auth, security-stamp revalidation, the area authorization policies, and the
+// sign-in, hardened cookie auth, the claims factory (roles + §3.5 obligation claims), security-stamp
+// revalidation, the area authorization policies, cascading authentication state, and the
 // security-event log (§3.1–§3.7, ADR-0003/ADR-0008). Registered after Data Protection because the
 // store encrypts the TOTP secret and the auth cookie is protected with it, and after RestaurantMetrics
 // because the hasher and sign-in manager report there.
@@ -9630,12 +11271,15 @@ using (IServiceScope migrationScope = app.Services.CreateScope())
 }
 
 // (5) HTTP pipeline. No HTTPS redirection — TLS is terminated at the proxy. Authentication populates
-// HttpContext.User from the Identity cookie; authorization enforces the area policies (§3.7) once the
-// area pages carry [Authorize]. Both sit after static files and before antiforgery/endpoints.
+// HttpContext.User from the Identity cookie; authorization enforces the area policies (§3.7) on the
+// pages that carry [Authorize]; the obligations middleware then makes everything except sign-out and
+// the pipeline pages unreachable while a §3.5 flag is set. Static files sit before authentication so
+// css/assets are never blocked; antiforgery sits after auth, before endpoints.
 app.UseForwardedHeaders();
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<ObligationsMiddleware>();
 app.UseAntiforgery();
 
 // Health endpoints (§12). Liveness is "the process answers"; readiness additionally proves the
@@ -9661,6 +11305,9 @@ app.MapGet(
             return Results.Text("not ready", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
         }
     });
+
+// The POST /sign-out endpoint (antiforgery-protected; exempt from the obligations pipeline).
+app.MapRestaurantAccountEndpoints();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
@@ -9779,22 +11426,24 @@ return 0;
   File name:             app.css
   Relative path:         src/MyRestaurant.WebApplication/wwwroot/app.css
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/wwwroot/app.css
-  Size:                  3.4 KiB (3530 bytes)
-  Last modified:         2026-07-17 21:17:33.000000000 -0400
+  Size:                  6.8 KiB (7011 bytes)
+  Last modified:         2026-07-19 08:49:32.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258184
+  Inode:                 21654785
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               6e806be8336890dd02fd180d567edee26c43fc4d0e8196876f8aaa2dae157762
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               ecba049aad7b05a6f624038cf387c75f123eb0cdaebcbc616a9bd7ab6e7e5857
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 /*
- * Milestone 1 skeleton styling. Deliberately small and self-contained: no external fonts or CDNs,
- * because the application is self-hosted and must render behind a tunnel with no outbound calls.
- * The palette is a cool near-white with a single pine accent — quiet on purpose; the interfaces
- * that carry real weight (guest ordering, kitchen board) get their identity in later milestones.
+ * Milestone 1 skeleton styling, extended for the Milestone 2 account surfaces (sign-in, two-factor,
+ * forced password change) and the shared session header. Deliberately small and self-contained: no
+ * external fonts or CDNs, because the application is self-hosted and must render behind a tunnel
+ * with no outbound calls. The palette is a cool near-white with a single pine accent — quiet on
+ * purpose; the interfaces that carry real weight (guest ordering, kitchen board) get their identity
+ * in later milestones.
  */
 
 :root {
@@ -9806,6 +11455,9 @@ return 0;
     --accent: #0f766e;
     --accent-strong: #0b5a54;
     --focus-ring: #0f766e;
+    --danger-surface: #fbeaea;
+    --danger-ink: #7f1d1d;
+    --danger-hairline: #f0c7c7;
 
     --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --measure: 42rem;
@@ -9835,6 +11487,71 @@ body {
     flex-direction: column;
 }
 
+/* --- Session header (MainLayout) ------------------------------------------------------------- */
+
+.app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.65rem clamp(1rem, 3vw, 2rem);
+    background-color: var(--surface-raised);
+    border-bottom: 1px solid var(--hairline);
+}
+
+.app-brand {
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.app-session {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.95rem;
+}
+
+.session-name {
+    color: var(--ink-soft);
+    font-weight: 600;
+}
+
+.session-link {
+    color: var(--accent-strong);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.session-link:hover {
+    text-decoration: underline;
+}
+
+.sign-out-form {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+}
+
+.link-button {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--accent-strong);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.link-button:hover {
+    color: var(--accent);
+}
+
+/* --- Main content ----------------------------------------------------------------------------- */
+
 .app-main {
     flex: 1 1 auto;
     display: flex;
@@ -9843,7 +11560,8 @@ body {
     padding: clamp(1.5rem, 4vw, 4rem);
 }
 
-.landing {
+.landing,
+.panel {
     width: 100%;
     max-width: var(--measure);
     background-color: var(--surface-raised);
@@ -9851,6 +11569,10 @@ body {
     border-radius: 14px;
     padding: clamp(1.75rem, 4vw, 3rem);
     box-shadow: 0 1px 2px rgba(22, 32, 43, 0.04), 0 12px 32px rgba(22, 32, 43, 0.05);
+}
+
+.account-panel {
+    max-width: 30rem;
 }
 
 .eyebrow {
@@ -9870,8 +11592,17 @@ body {
     line-height: 1.1;
 }
 
-.landing-lede {
-    margin: 0 0 2rem;
+.panel h1 {
+    margin: 0 0 1rem;
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+}
+
+.landing-lede,
+.lede {
+    margin: 0 0 1.5rem;
     color: var(--ink-soft);
     font-size: 1.05rem;
 }
@@ -9928,8 +11659,92 @@ body {
     border-color: var(--accent);
 }
 
+/* --- Forms (account pages) --------------------------------------------------------------------- */
+
+.form-field {
+    margin: 0 0 1.1rem;
+}
+
+.form-field label {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+
+.form-field input {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    font: inherit;
+    color: var(--ink);
+    background-color: var(--surface-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+}
+
+.form-field input:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+    border-color: var(--accent);
+}
+
+.form-actions {
+    margin-top: 1.5rem;
+}
+
+.button-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.65rem 1.4rem;
+    font: inherit;
+    font-weight: 600;
+    color: #ffffff;
+    background-color: var(--accent);
+    border: 1px solid var(--accent-strong);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 120ms ease;
+}
+
+.button-primary:hover {
+    background-color: var(--accent-strong);
+}
+
+.form-footnote {
+    margin-top: 1.75rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--hairline);
+    color: var(--ink-soft);
+    font-size: 0.92rem;
+}
+
+.status-error {
+    margin: 0 0 1.25rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--danger-surface);
+    color: var(--danger-ink);
+    border: 1px solid var(--danger-hairline);
+    border-radius: 8px;
+    font-size: 0.95rem;
+}
+
+ul.status-error {
+    list-style-position: inside;
+}
+
+.validation-message {
+    display: block;
+    margin-top: 0.3rem;
+    color: var(--danger-ink);
+    font-size: 0.85rem;
+}
+
 a:focus-visible,
-.health-links a:focus-visible {
+.health-links a:focus-visible,
+.link-button:focus-visible,
+.button-primary:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
 }
@@ -9940,9 +11755,9 @@ a:focus-visible,
     position: fixed;
     inset: auto 0 0 0;
     padding: 0.75rem 1.25rem;
-    background-color: #fbeaea;
-    color: #7f1d1d;
-    border-top: 1px solid #f0c7c7;
+    background-color: var(--danger-surface);
+    color: var(--danger-ink);
+    border-top: 1px solid var(--danger-hairline);
     box-shadow: 0 -1px 2px rgba(22, 32, 43, 0.08);
 }
 
@@ -9950,6 +11765,111 @@ a:focus-visible,
     * {
         transition: none !important;
         animation: none !important;
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.DataAccess.Tests/ContainerEngineDiscovery.cs
+################################################################################
+
+--- METADATA ---
+  File name:             ContainerEngineDiscovery.cs
+  Relative path:         tests/MyRestaurant.DataAccess.Tests/ContainerEngineDiscovery.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/ContainerEngineDiscovery.cs
+  Size:                  4.1 KiB (4188 bytes)
+  Last modified:         2026-07-19 08:39:56.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654818
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               55c35b8af96f54c53820bd84ce3f68198bfadf92dc2442bc5560040f4e8a8cb3
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+using System.Runtime.CompilerServices;
+
+namespace MyRestaurant.DataAccess.Tests;
+
+/// <summary>
+/// Points Testcontainers at a <b>rootless Podman</b> socket when one is available and nothing else
+/// has been configured (BUILD_PROGRESS: container-dependent tests; ADR-0004 — rootless Podman is the
+/// canonical engine).
+///
+/// <para><b>Why this exists.</b> Testcontainers for .NET resolves its container endpoint from, in
+/// order: the <c>DOCKER_HOST</c> environment variable, <c>~/.testcontainers.properties</c>, and
+/// finally the Docker default <c>unix:///var/run/docker.sock</c>. On a rootless-Podman host (the
+/// canonical setup) none of those exist, so every integration test skipped with
+/// "Failed to connect to Docker endpoint at 'unix:///var/run/docker.sock'" — even while
+/// <c>run.sh</c> was happily starting PostgreSQL through <c>podman-compose</c> on the same machine.
+/// Podman's Docker-compatible API socket lives at
+/// <c>$XDG_RUNTIME_DIR/podman/podman.sock</c> and only exists once the user socket unit is active:
+/// <c>systemctl --user enable --now podman.socket</c> (one time, no root).</para>
+///
+/// <para><b>Why a module initializer.</b> Testcontainers snapshots its environment-derived
+/// configuration in static singletons on first touch of any Testcontainers type. A module
+/// initializer runs when this test assembly loads — strictly before any fixture constructs a
+/// builder — so the variables set here are guaranteed to be visible to that snapshot. Setting them
+/// inside a fixture would be a race against other fixtures.</para>
+///
+/// <para><b>What it never does.</b> Explicit user configuration always wins: if
+/// <c>DOCKER_HOST</c> or <c>TESTCONTAINERS_HOST_OVERRIDE</c> is set, or a
+/// <c>~/.testcontainers.properties</c> file exists, or the Docker socket itself is present, this
+/// initializer changes nothing. When it does select Podman it also disables Ryuk (the resource
+/// reaper) unless the caller configured it: Ryuk needs to bind-mount the engine socket into a
+/// privileged helper container, which is unreliable under rootless Podman, and every fixture here
+/// disposes its own container anyway.</para>
+/// </summary>
+internal static class ContainerEngineDiscovery
+{
+    [ModuleInitializer]
+    internal static void Initialize()
+    {
+        // Respect anything the user configured explicitly — env vars or the properties file.
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DOCKER_HOST")))
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TESTCONTAINERS_HOST_OVERRIDE")))
+        {
+            return;
+        }
+
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrEmpty(home) && File.Exists(Path.Combine(home, ".testcontainers.properties")))
+        {
+            return;
+        }
+
+        // If the Docker default endpoint exists, Testcontainers will find it on its own.
+        if (!OperatingSystem.IsLinux() || File.Exists("/var/run/docker.sock"))
+        {
+            return;
+        }
+
+        // Rootless Podman publishes its Docker-compatible API under the user runtime directory.
+        // XDG_RUNTIME_DIR is set on every systemd login session (Fedora, Debian, Ubuntu, ...).
+        string? runtimeDirectory = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
+        if (string.IsNullOrWhiteSpace(runtimeDirectory))
+        {
+            return;
+        }
+
+        string podmanSocket = Path.Combine(runtimeDirectory, "podman", "podman.sock");
+        if (!File.Exists(podmanSocket))
+        {
+            // The engine is installed but its API socket is not active; PostgreSqlFixture's skip
+            // message tells the developer the one-time `systemctl --user enable --now podman.socket`.
+            return;
+        }
+
+        Environment.SetEnvironmentVariable("DOCKER_HOST", $"unix://{podmanSocket}");
+
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TESTCONTAINERS_RYUK_DISABLED")))
+        {
+            Environment.SetEnvironmentVariable("TESTCONTAINERS_RYUK_DISABLED", "true");
+        }
     }
 }
 
@@ -10081,15 +12001,15 @@ public sealed class Argon2idPasswordHasherTests
   File name:             DapperSecurityEventLogTests.cs
   Relative path:         tests/MyRestaurant.DataAccess.Tests/Identity/DapperSecurityEventLogTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/Identity/DapperSecurityEventLogTests.cs
-  Size:                  6.6 KiB (6732 bytes)
-  Last modified:         2026-07-18 16:00:02.000000000 -0400
-  Permissions:           -rw-------
+  Size:                  6.8 KiB (6926 bytes)
+  Last modified:         2026-07-19 08:40:38.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21386313
+  Inode:                 21654816
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               118a2faa456d8b1e4f002be89d351a91fed518dec27ea3435e1b04e2afb98ef0
-  Last git commit:       2c6e660 2026-07-18 12:04:27 -0400 add claude output
+  SHA-256:               efddb7e5c9e7e7e591442ff70927129e96672d602c65ab7f8f4c581761a9051d
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 using System.Data.Common;
@@ -10178,10 +12098,15 @@ public sealed class DapperSecurityEventLogTests : IClassFixture<PostgreSqlFixtur
     public async Task RecordAsync_UnknownEventType_ThrowsBeforeTouchingTheDatabase()
     {
         // No container needed: the client-side guard rejects the value before opening a connection.
+        // The token is passed so xUnit's test cancellation stays responsive (xUnit1051).
         DapperSecurityEventLog log = new(new ThrowingConnectionFactory(), _clock, new UuidV7IdentifierFactory());
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
-            () => log.RecordAsync(Guid.CreateVersion7(), actorPersonIdentifier: null, "not_a_real_event"));
+            () => log.RecordAsync(
+                Guid.CreateVersion7(),
+                actorPersonIdentifier: null,
+                "not_a_real_event",
+                TestContext.Current.CancellationToken));
     }
 
     // --- helpers -----------------------------------------------------------------------------------
@@ -10759,15 +12684,15 @@ internal sealed class FixedClock : IClock
   File name:             PostgreSqlFixture.cs
   Relative path:         tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs
-  Size:                  2.0 KiB (2068 bytes)
-  Last modified:         2026-07-18 01:55:52.227610143 -0400
+  Size:                  2.8 KiB (2843 bytes)
+  Last modified:         2026-07-19 08:40:10.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258266
+  Inode:                 21654817
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               9dfec76563569fe254cade10a0402640c4db361c7cfc26393643366ec3ebd7ed
-  Last git commit:       8944d54 2026-07-18 01:56:08 -0400 add claude response
+  SHA-256:               83319626834fd48435dfa675167aa522add1ec3a66d657532cd0da928b036c19
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 using Testcontainers.PostgreSql;
@@ -10777,9 +12702,14 @@ namespace MyRestaurant.DataAccess.Tests;
 
 /// <summary>
 /// Starts one PostgreSQL 17 container for the whole test class (Testcontainers). If no container
-/// engine is available (Podman/Docker not installed or not running), startup fails and
-/// <see cref="SkipReason"/> is set so the tests skip rather than fail (BUILD_PROGRESS:
-/// container-dependent tests).
+/// engine is reachable, startup fails and <see cref="SkipReason"/> is set so the tests skip rather
+/// than fail (BUILD_PROGRESS: container-dependent tests).
+///
+/// <para>Endpoint discovery order: explicit configuration (<c>DOCKER_HOST</c>,
+/// <c>~/.testcontainers.properties</c>) → the Docker default socket → the rootless Podman user
+/// socket, which <see cref="ContainerEngineDiscovery"/> wires up automatically when it exists. On a
+/// Podman host where the socket has never been activated, the skip reason below spells out the
+/// one-time fix instead of only echoing Testcontainers' Docker-flavoured error.</para>
 /// </summary>
 public sealed class PostgreSqlFixture : IAsyncLifetime
 {
@@ -10811,7 +12741,12 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
         }
         catch (Exception exception)
         {
-            SkipReason = "A container engine (Podman/Docker) is required but was unavailable: " + exception.Message;
+            SkipReason =
+                "A container engine (Podman/Docker) was not reachable: " + exception.Message +
+                " — on a rootless-Podman host, activate the user API socket once with" +
+                " `systemctl --user enable --now podman.socket` and re-run; the tests discover it" +
+                " automatically. (Explicit configuration also works:" +
+                " `export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock`.)";
         }
     }
 
@@ -12789,15 +14724,15 @@ public sealed class EndToEndScenarios
   File name:             IdentityWiringTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs
-  Size:                  6.5 KiB (6643 bytes)
-  Last modified:         2026-07-18 18:41:13.603025093 -0400
+  Size:                  7.7 KiB (7860 bytes)
+  Last modified:         2026-07-19 08:50:06.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21454301
+  Inode:                 21654813
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               e49fcc041329c32858eccfa2f0a24ad52a7c875dd9f8b7bfa1c8012fd37d4868
-  Last git commit:       2339f51 2026-07-18 18:42:29 -0400 add claude response
+  SHA-256:               8b9ac45b50664096457e6ae3abe92b518087c911b1c61272277f828e37af0d72
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
 
 --- CONTENT ---
 using System.Data.Common;
@@ -12824,10 +14759,13 @@ namespace MyRestaurant.WebApplication.Tests;
 /// <summary>
 /// Verifies the sign-in and authorization wiring composed by
 /// <see cref="IdentityServiceCollectionExtensions.AddRestaurantIdentity"/>
-/// (TECHNICAL_SPECIFICATION §3.1, §3.7): the auditing <see cref="RestaurantSignInManager"/> is the
-/// resolved <see cref="SignInManager{TUser}"/>; the application cookie is hardened (Secure, HttpOnly,
-/// SameSite=Lax, 24-hour sliding); the security stamp revalidates every 5 minutes; and the four area
-/// policies require the right roles. No server is started — the container is built and inspected.
+/// (TECHNICAL_SPECIFICATION §3.1, §3.5, §3.7): the auditing <see cref="RestaurantSignInManager"/> is
+/// the resolved <see cref="SignInManager{TUser}"/>; the claims principal factory is the restaurant
+/// one (role + obligation claims — the default single-generic factory emits no role claims at all,
+/// so this registration is what makes the area policies passable); the application cookie is
+/// hardened (Secure, HttpOnly, SameSite=Lax, 24-hour sliding) and points at the account routes; the
+/// security stamp revalidates every 5 minutes; and the four area policies require the right roles.
+/// No server is started — the container is built and inspected.
 /// </summary>
 public sealed class IdentityWiringTests
 {
@@ -12840,6 +14778,18 @@ public sealed class IdentityWiringTests
         SignInManager<Person> signInManager = scope.ServiceProvider.GetRequiredService<SignInManager<Person>>();
 
         Assert.IsType<RestaurantSignInManager>(signInManager);
+    }
+
+    [Fact]
+    public void ClaimsPrincipalFactory_IsTheRestaurantFactory()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        IUserClaimsPrincipalFactory<Person> factory =
+            scope.ServiceProvider.GetRequiredService<IUserClaimsPrincipalFactory<Person>>();
+
+        Assert.IsType<RestaurantClaimsPrincipalFactory>(factory);
     }
 
     [Fact]
@@ -12856,6 +14806,20 @@ public sealed class IdentityWiringTests
         Assert.Equal(SameSiteMode.Lax, cookie.Cookie.SameSite);
         Assert.Equal(TimeSpan.FromHours(24), cookie.ExpireTimeSpan);
         Assert.True(cookie.SlidingExpiration);
+    }
+
+    [Fact]
+    public void ApplicationCookie_PointsAtTheAccountRoutes()
+    {
+        using ServiceProvider provider = BuildProvider();
+
+        CookieAuthenticationOptions cookie = provider
+            .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(IdentityConstants.ApplicationScheme);
+
+        Assert.Equal(AccountRoutes.SignIn, cookie.LoginPath);
+        Assert.Equal(AccountRoutes.SignOut, cookie.LogoutPath);
+        Assert.Equal(AccountRoutes.AccessDenied, cookie.AccessDeniedPath);
     }
 
     [Fact]
@@ -12956,6 +14920,385 @@ public sealed class IdentityWiringTests
     {
         public ValueTask<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("Wiring tests must not open a database connection.");
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Identity/ObligationsEnforcementTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             ObligationsEnforcementTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/ObligationsEnforcementTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/ObligationsEnforcementTests.cs
+  Size:                  5.8 KiB (5926 bytes)
+  Last modified:         2026-07-19 08:50:32.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654812
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               37e9c2c2a00ba0c9a9b343bc3af33f4e4c9c4de8fad43fb499b991b18cd7be68
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
+using MyRestaurant.Domain.Authentication;
+using MyRestaurant.WebApplication.Identity;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests.Identity;
+
+/// <summary>
+/// Pure tests for the web-layer half of the §3.5 obligations pipeline
+/// (<see cref="ObligationsEnforcement"/>): the claim → obligation mapping (delegating to the
+/// exhaustively-tested Domain <see cref="ObligationsPipeline"/>), the exemption list ("no
+/// authenticated endpoint except sign-out and the pipeline pages themselves"), the redirect targets
+/// that preserve the requested URL, and the open-redirect guard the account pages share. No server,
+/// no container — these always run.
+/// </summary>
+public sealed class ObligationsEnforcementTests
+{
+    // --- claims → obligation -------------------------------------------------------------------
+
+    [Fact]
+    public void NextObligationFor_NoObligationClaims_IsNone()
+    {
+        ClaimsPrincipal principal = BuildPrincipal();
+
+        Assert.Equal(PostAuthenticationObligation.None, ObligationsEnforcement.NextObligationFor(principal));
+    }
+
+    [Fact]
+    public void NextObligationFor_MustChangePassword_WinsOverTotp()
+    {
+        // The pipeline order is deliberate (§3.5): password first, then TOTP re-enrollment.
+        ClaimsPrincipal principal = BuildPrincipal(mustChangePassword: true, mustEnrollTotp: true);
+
+        Assert.Equal(
+            PostAuthenticationObligation.ForcePasswordChange,
+            ObligationsEnforcement.NextObligationFor(principal));
+    }
+
+    [Fact]
+    public void NextObligationFor_OnlyTotpFlag_IsForceTotpEnrollment()
+    {
+        ClaimsPrincipal principal = BuildPrincipal(mustEnrollTotp: true);
+
+        Assert.Equal(
+            PostAuthenticationObligation.ForceTotpEnrollment,
+            ObligationsEnforcement.NextObligationFor(principal));
+    }
+
+    [Fact]
+    public void NextObligationFor_ClaimValueOtherThanTrue_DoesNotCount()
+    {
+        ClaimsIdentity identity = new(authenticationType: "test");
+        identity.AddClaim(new Claim(RestaurantClaimTypes.MustChangePassword, "false"));
+        ClaimsPrincipal principal = new(identity);
+
+        Assert.Equal(PostAuthenticationObligation.None, ObligationsEnforcement.NextObligationFor(principal));
+    }
+
+    // --- exemption list --------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(AccountRoutes.ForcedPasswordChange)]
+    [InlineData(AccountRoutes.ForcedTotpEnrollment)]
+    [InlineData(AccountRoutes.SignOut)]
+    [InlineData(AccountRoutes.AccessDenied)]
+    [InlineData("/healthz/live")]
+    [InlineData("/healthz/ready")]
+    [InlineData("/_framework/blazor.web.js")]
+    public void IsExemptPath_PipelinePagesSignOutHealthAndFrameworkAssets_AreExempt(string path)
+    {
+        Assert.True(ObligationsEnforcement.IsExemptPath(new PathString(path)));
+    }
+
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/table")]
+    [InlineData("/sign-in")]
+    [InlineData("/sign-in/two-factor")]
+    [InlineData("/_blazor")] // circuits are deliberately blocked while an obligation is outstanding
+    [InlineData("/administration")]
+    public void IsExemptPath_EverythingElse_IsBlocked(string path)
+    {
+        Assert.False(ObligationsEnforcement.IsExemptPath(new PathString(path)));
+    }
+
+    // --- redirect targets ------------------------------------------------------------------------
+
+    [Fact]
+    public void RedirectTargetFor_CarriesTheRequestedUrlIncludingQuery()
+    {
+        DefaultHttpContext context = new();
+        context.Request.Path = "/table";
+        context.Request.QueryString = new QueryString("?welcome=1");
+
+        string target = ObligationsEnforcement.RedirectTargetFor(
+            PostAuthenticationObligation.ForcePasswordChange,
+            context.Request);
+
+        Assert.Equal(
+            $"{AccountRoutes.ForcedPasswordChange}?ReturnUrl={Uri.EscapeDataString("/table?welcome=1")}",
+            target);
+    }
+
+    [Fact]
+    public void RedirectTargetFor_TotpObligation_TargetsTheEnrollmentPage()
+    {
+        DefaultHttpContext context = new();
+        context.Request.Path = "/";
+
+        string target = ObligationsEnforcement.RedirectTargetFor(
+            PostAuthenticationObligation.ForceTotpEnrollment,
+            context.Request);
+
+        Assert.StartsWith(AccountRoutes.ForcedTotpEnrollment + "?ReturnUrl=", target, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PageFor_NoObligation_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => ObligationsEnforcement.PageFor(PostAuthenticationObligation.None));
+    }
+
+    // --- open-redirect guard ---------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("/table", "/table")]
+    [InlineData("/table?x=1", "/table?x=1")]
+    [InlineData(null, "/")]
+    [InlineData("", "/")]
+    [InlineData("https://evil.example", "/")]
+    [InlineData("//evil.example", "/")]
+    [InlineData("/\\evil.example", "/")]
+    [InlineData("javascript:alert(1)", "/")]
+    public void SafeLocalReturnUrl_OnlyAcceptsSingleSlashLocalPaths(string? input, string expected)
+    {
+        Assert.Equal(expected, ObligationsEnforcement.SafeLocalReturnUrl(input));
+    }
+
+    // --- helpers -----------------------------------------------------------------------------------
+
+    private static ClaimsPrincipal BuildPrincipal(bool mustChangePassword = false, bool mustEnrollTotp = false)
+    {
+        ClaimsIdentity identity = new(authenticationType: "test");
+
+        if (mustChangePassword)
+        {
+            identity.AddClaim(new Claim(RestaurantClaimTypes.MustChangePassword, "true"));
+        }
+
+        if (mustEnrollTotp)
+        {
+            identity.AddClaim(new Claim(RestaurantClaimTypes.MustEnrollTotp, "true"));
+        }
+
+        return new ClaimsPrincipal(identity);
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Identity/RestaurantClaimsPrincipalFactoryTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             RestaurantClaimsPrincipalFactoryTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/RestaurantClaimsPrincipalFactoryTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/RestaurantClaimsPrincipalFactoryTests.cs
+  Size:                  8.2 KiB (8359 bytes)
+  Last modified:         2026-07-19 08:51:07.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21654811
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               cf8043a4b786d7b7f1237646d92fa61fbd4075c1b0b5976f2dd12e9e4d7a92f2
+  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+
+--- CONTENT ---
+using System.Security.Claims;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.WebApplication.Identity;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests.Identity;
+
+/// <summary>
+/// Unit tests for <see cref="RestaurantClaimsPrincipalFactory"/> (TECHNICAL_SPECIFICATION §3.5,
+/// §3.7) over a hand-written fake store (§16.1: fakes preferred). The load-bearing assertion is the
+/// role one: the single-generic <see cref="UserClaimsPrincipalFactory{TUser}"/> that
+/// <c>AddIdentityCore</c> registers emits <b>no</b> role claims, so without the restaurant factory
+/// the area policies could never pass — these tests are the regression guard for that fix.
+/// </summary>
+public sealed class RestaurantClaimsPrincipalFactoryTests
+{
+    [Fact]
+    public async Task CreateAsync_EmitsOneRoleClaimPerGrantedRole_AndIsInRoleMatches()
+    {
+        Person user = BuildPerson();
+        using UserManager<Person> userManager = BuildUserManager(user, roles: ["kitchen", "administrator"]);
+        RestaurantClaimsPrincipalFactory factory = BuildFactory(userManager);
+
+        ClaimsPrincipal principal = await factory.CreateAsync(user);
+
+        Assert.True(principal.IsInRole("kitchen"));
+        Assert.True(principal.IsInRole("administrator"));
+        Assert.False(principal.IsInRole("counter"));
+        Assert.Equal(2, principal.FindAll(ClaimTypes.Role).Count());
+    }
+
+    [Fact]
+    public async Task CreateAsync_NameClaim_IsTheUsername()
+    {
+        Person user = BuildPerson(username: "casey");
+        using UserManager<Person> userManager = BuildUserManager(user, roles: []);
+        RestaurantClaimsPrincipalFactory factory = BuildFactory(userManager);
+
+        ClaimsPrincipal principal = await factory.CreateAsync(user);
+
+        Assert.Equal("casey", principal.Identity?.Name);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DisplayName_TravelsAsAClaimOnlyWhenPresent()
+    {
+        Person named = BuildPerson();
+        named.DisplayName = "Casey at the counter";
+        using UserManager<Person> namedManager = BuildUserManager(named, roles: []);
+        ClaimsPrincipal namedPrincipal = await BuildFactory(namedManager).CreateAsync(named);
+
+        Person unnamed = BuildPerson();
+        using UserManager<Person> unnamedManager = BuildUserManager(unnamed, roles: []);
+        ClaimsPrincipal unnamedPrincipal = await BuildFactory(unnamedManager).CreateAsync(unnamed);
+
+        Assert.Equal("Casey at the counter", namedPrincipal.FindFirstValue(RestaurantClaimTypes.DisplayName));
+        Assert.Null(unnamedPrincipal.FindFirst(RestaurantClaimTypes.DisplayName));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task CreateAsync_ObligationClaims_MirrorTheAccountFlags(bool mustChangePassword, bool mustEnrollTotp)
+    {
+        Person user = BuildPerson();
+        user.MustChangePassword = mustChangePassword;
+        user.MustEnrollTotp = mustEnrollTotp;
+        using UserManager<Person> userManager = BuildUserManager(user, roles: []);
+        RestaurantClaimsPrincipalFactory factory = BuildFactory(userManager);
+
+        ClaimsPrincipal principal = await factory.CreateAsync(user);
+
+        Assert.Equal(
+            mustChangePassword ? "true" : null,
+            principal.FindFirstValue(RestaurantClaimTypes.MustChangePassword));
+        Assert.Equal(
+            mustEnrollTotp ? "true" : null,
+            principal.FindFirstValue(RestaurantClaimTypes.MustEnrollTotp));
+    }
+
+    // --- helpers -----------------------------------------------------------------------------------
+
+    private static Person BuildPerson(string username = "guest") => new()
+    {
+        PersonIdentifier = Guid.CreateVersion7(),
+        Username = username,
+        SecurityStamp = Guid.NewGuid(),
+        CreatedAt = DateTimeOffset.UtcNow,
+    };
+
+    private static RestaurantClaimsPrincipalFactory BuildFactory(UserManager<Person> userManager)
+        => new(userManager, Options.Create(new IdentityOptions()));
+
+    private static UserManager<Person> BuildUserManager(Person user, IReadOnlyList<string> roles)
+        => new(
+            new FakeUserRoleStore(user, roles),
+            Options.Create(new IdentityOptions()),
+            passwordHasher: null!,
+            userValidators: [],
+            passwordValidators: [],
+            keyNormalizer: null!,
+            errors: new IdentityErrorDescriber(),
+            services: null!,
+            logger: NullLogger<UserManager<Person>>.Instance);
+
+    /// <summary>
+    /// A hand-written fake covering exactly what <c>GenerateClaimsAsync</c> touches: the id and
+    /// username reads on <see cref="IUserStore{TUser}"/>, and the role read on
+    /// <see cref="IUserRoleStore{TUser}"/> (which is also what flips
+    /// <c>UserManager.SupportsUserRole</c> on). Everything else is unreachable in these tests and
+    /// says so.
+    /// </summary>
+    private sealed class FakeUserRoleStore : IUserRoleStore<Person>
+    {
+        private readonly Person _user;
+        private readonly IReadOnlyList<string> _roles;
+
+        public FakeUserRoleStore(Person user, IReadOnlyList<string> roles)
+        {
+            _user = user;
+            _roles = roles;
+        }
+
+        public Task<string> GetUserIdAsync(Person user, CancellationToken cancellationToken)
+            => Task.FromResult(user.PersonIdentifier.ToString());
+
+        public Task<string?> GetUserNameAsync(Person user, CancellationToken cancellationToken)
+            => Task.FromResult<string?>(user.Username);
+
+        public Task<IList<string>> GetRolesAsync(Person user, CancellationToken cancellationToken)
+            => Task.FromResult<IList<string>>([.. _roles]);
+
+        public Task<bool> IsInRoleAsync(Person user, string roleName, CancellationToken cancellationToken)
+            => Task.FromResult(_roles.Contains(roleName, StringComparer.OrdinalIgnoreCase));
+
+        public void Dispose()
+        {
+        }
+
+        // --- unreachable in these tests ------------------------------------------------------------
+
+        public Task SetUserNameAsync(Person user, string? userName, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the claims factory.");
+
+        public Task<string?> GetNormalizedUserNameAsync(Person user, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the claims factory.");
+
+        public Task SetNormalizedUserNameAsync(Person user, string? normalizedName, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the claims factory.");
+
+        public Task<IdentityResult> CreateAsync(Person user, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the claims factory.");
+
+        public Task<IdentityResult> UpdateAsync(Person user, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the claims factory.");
+
+        public Task<IdentityResult> DeleteAsync(Person user, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the claims factory.");
+
+        public Task<Person?> FindByIdAsync(string userId, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the claims factory.");
+
+        public Task<Person?> FindByNameAsync(string normalizedUserName, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the claims factory.");
+
+        public Task AddToRoleAsync(Person user, string roleName, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the claims factory.");
+
+        public Task RemoveFromRoleAsync(Person user, string roleName, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the claims factory.");
+
+        public Task<IList<Person>> GetUsersInRoleAsync(string roleName, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the claims factory.");
     }
 }
 
@@ -13210,10 +15553,10 @@ public sealed class RestaurantOptionsTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 107
-  Total size     : 530.9 KiB (543618 bytes)
+  Files dumped   : 123
+  Total size     : 621.5 KiB (636401 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-19T08:22:23-04:00
+  Completed at   : 2026-07-19T16:40:11-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
