@@ -7,29 +7,27 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-19T17:21:37-04:00
+  Generated at   : 2026-07-20T15:30:32-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
-  OS             : Linux 7.1.3-201.fc44.x86_64 x86_64
+  OS             : Linux 7.1.4-200.fc44.x86_64 x86_64
 
 REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : bfa02e256681a3ff71d3f8f54ffb1d1c52019d25
-  Commit (short) : bfa02e2
-  Commit date    : 2026-07-19 17:20:46 -0400
-  Commit message : run scripts
+  Commit (full)  : e1ce9b3bbd2b66654619a1f4335efefe3ed79b6b
+  Commit (short) : e1ce9b3
+  Commit date    : 2026-07-20 15:30:13 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 123
+  Files included : 133
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
 GIT WORKING TREE STATUS (first 20 lines)
 ═════════════════════════════════════════════════════════════════════════════════
- D CHANGES-2026-07-19.md
- D docs/llm/CHANGES-2026-07-19.md
  M docs/llm/vendor/claude-output.txt
 
 ################################################################################
@@ -535,13 +533,12 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (123 included files)
+# FILE TREE  (133 included files)
 ################################################################################
 .
 ├── .editorconfig
 ├── .env.example
 ├── .gitignore
-├── CHANGES-2026-07-19.md
 ├── CONTRIBUTING.md
 ├── Caddyfile
 ├── Containerfile
@@ -608,12 +605,15 @@ cat "$OUTPUT_FILE"
 │   │   │   └── OrderProjection.cs
 │   │   ├── Security
 │   │   │   ├── Argon2PhcString.cs
+│   │   │   ├── Base32Text.cs
 │   │   │   ├── Base64UrlText.cs
 │   │   │   ├── JoinTokenService.cs
 │   │   │   ├── PairingCode.cs
 │   │   │   ├── RecoveryCode.cs
+│   │   │   ├── Rfc6238Totp.cs
 │   │   │   ├── SecretGenerator.cs
-│   │   │   └── Sha256Hashing.cs
+│   │   │   ├── Sha256Hashing.cs
+│   │   │   └── TotpProvisioningUri.cs
 │   │   └── Time
 │   │       ├── IClock.cs
 │   │       └── SystemClock.cs
@@ -625,6 +625,7 @@ cat "$OUTPUT_FILE"
 │       │   │   ├── Pages
 │       │   │   │   ├── AccessDenied.razor
 │       │   │   │   ├── ChangePasswordRequired.razor
+│       │   │   │   ├── EnrollTotp.razor
 │       │   │   │   ├── EnrollTotpRequired.razor
 │       │   │   │   ├── SignIn.razor
 │       │   │   │   ├── SignInRecoveryCode.razor
@@ -646,8 +647,10 @@ cat "$OUTPUT_FILE"
 │       │   ├── IdentityServiceCollectionExtensions.cs
 │       │   ├── ObligationsEnforcement.cs
 │       │   ├── ObligationsMiddleware.cs
+│       │   ├── RestaurantAuthenticatorTokenProvider.cs
 │       │   ├── RestaurantClaimsPrincipalFactory.cs
-│       │   └── RestaurantSignInManager.cs
+│       │   ├── RestaurantSignInManager.cs
+│       │   └── TotpEnrollment.cs
 │       ├── LiveUpdates
 │       │   └── InProcessDomainEventBroadcaster.cs
 │       ├── MyRestaurant.WebApplication.csproj
@@ -673,6 +676,7 @@ cat "$OUTPUT_FILE"
     │   └── SchemaMigrationRunnerTests.cs
     ├── MyRestaurant.Domain.Tests
     │   ├── Argon2PhcStringTests.cs
+    │   ├── Base32TextTests.cs
     │   ├── Base64UrlTextTests.cs
     │   ├── JoinTokenServiceTests.cs
     │   ├── MyRestaurant.Domain.Tests.csproj
@@ -681,10 +685,12 @@ cat "$OUTPUT_FILE"
     │   ├── OrderProjectionTests.cs
     │   ├── OrderTestBuilders.cs
     │   ├── PairingAndRecoveryCodeTests.cs
+    │   ├── Rfc6238TotpTests.cs
     │   ├── SecretGeneratorTests.cs
     │   ├── SecurityEventTypeTests.cs
     │   ├── Sha256HashingTests.cs
     │   ├── SignInAuditTests.cs
+    │   ├── TotpProvisioningUriTests.cs
     │   └── UuidV7IdentifierFactoryTests.cs
     ├── MyRestaurant.EndToEnd.Tests
     │   ├── EndToEndScenarios.cs
@@ -693,7 +699,9 @@ cat "$OUTPUT_FILE"
         ├── Identity
         │   ├── IdentityWiringTests.cs
         │   ├── ObligationsEnforcementTests.cs
-        │   └── RestaurantClaimsPrincipalFactoryTests.cs
+        │   ├── RestaurantAuthenticatorTokenProviderTests.cs
+        │   ├── RestaurantClaimsPrincipalFactoryTests.cs
+        │   └── TotpEnrollmentTicketTests.cs
         ├── MyRestaurant.WebApplication.Tests.csproj
         └── RestaurantOptionsTests.cs
 
@@ -1078,15 +1086,15 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
   File name:             Directory.Packages.props
   Relative path:         Directory.Packages.props
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/Directory.Packages.props
-  Size:                  2.4 KiB (2451 bytes)
-  Last modified:         2026-07-18 12:46:04.000000000 -0400
-  Permissions:           -rw-------
+  Size:                  2.8 KiB (2911 bytes)
+  Last modified:         2026-07-20 08:01:26.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21340836
+  Inode:                 21843832
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               eac7a783537c2de7c219c63e92b56874241b279cfee76d87a2db0d9bddb89e22
-  Last git commit:       fa320ac 2026-07-18 08:51:11 -0400 add claude response
+  SHA-256:               aabecb1697b2f82e2837252b883cdf3abe5bed2dfa5472af824e490d09e5effa
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
 
 --- CONTENT ---
 <Project>
@@ -1117,6 +1125,11 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
   </ItemGroup>
 
   <ItemGroup Label="Observability + database wiring (MyRestaurant.WebApplication)">
+    <!-- Server-side TOTP provisioning QR (§3.4). MIT, zero dependencies, netstandard2.0; used only
+         for its module geometry (we compose the inline SVG ourselves). 3.0.0 is the latest stable
+         release as resolved on 2026-07-19; if restore cannot find it, bump to the nearest available
+         (the EncodeText/ToGraphicsPath API is stable across the 3.x line). -->
+    <PackageVersion Include="Net.Codecrete.QrCodeGenerator" Version="3.0.0" />
     <PackageVersion Include="Npgsql.OpenTelemetry" Version="10.0.3" />
     <PackageVersion Include="OpenTelemetry" Version="1.17.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
@@ -2206,15 +2219,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  27.8 KiB (28419 bytes)
-  Last modified:         2026-07-19 08:53:12.000000000 -0400
+  Size:                  34.9 KiB (35745 bytes)
+  Last modified:         2026-07-20 08:06:21.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654831
+  Inode:                 21843845
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               6718c0f6a6d234d2cada35a8116e6cbd7db6eae5e37fa671241dbe2f53f92a8c
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               53a726463df1fa6f4ab1a183a7b411da960ade3786828c82d7b858e58ae85b95
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
 
 --- CONTENT ---
 # Build progress
@@ -2230,19 +2243,21 @@ The scaffold and each subsequent milestone are written in an environment
 **without a .NET SDK** and without NuGet/.NET download hosts. Consequences:
 
 - **The C# for a milestone is written to match the spec and the .NET 10 APIs, then
-  first compiled on your machine.** M1 built green, and so did the first two M2 slices
-  (identity persistence + Argon2id hasher, then sign-in/cookie/authorization wiring —
-  the latest local sweep: build green, 220 tests, 0 failed, 177 passed, 43 skipped,
-  `run.sh --smoke` passing end to end). The newest slice — the sign-in **pages**, the
-  obligations middleware, and the claims factory — is, like its predecessors were,
+  first compiled on your machine.** M1 built green, and so did the first three M2
+  slices (identity persistence + Argon2id hasher; sign-in/cookie/authorization wiring;
+  the password sign-in pages + obligations middleware + claims factory). After
+  enabling the Podman socket, the last full local sweep was **green with zero
+  warnings: 257 tests, 0 failed, 242 passed, 15 skipped** (the 15 remaining skips are
+  the M6 Playwright end-to-end matrix), and `run.sh --smoke` passed end to end. The
+  newest slice — **TOTP enrollment** (this change) — is, like its predecessors were,
   unbuilt until your next build/test run; expect to fix the occasional thing a
-  compiler would catch, most likely in the Razor components.
+  compiler would catch, most likely in the two enrollment Razor components.
 - **Package versions in `Directory.Packages.props` are best-effort.** They target
   the .NET 10 GA era. Run `dotnet restore`; if a version does not exist, bump it
-  there to the nearest available. Nothing else references versions. The sign-in
-  slice adds **no** packages — static-SSR Razor components, cookie auth,
-  `SignInManager`, antiforgery, and authorization all come from the ASP.NET Core
-  shared framework.
+  there to the nearest available. Nothing else references versions. This slice adds
+  **one** package — `Net.Codecrete.QrCodeGenerator` 3.0.0 (MIT, zero dependencies),
+  used only for the server-side provisioning-QR geometry; everything else (Identity
+  token providers, Data Protection, static-SSR components) is shared-framework.
 - Shell scripts are syntax-checked with `bash -n`; they may need `chmod +x`.
 
 ## Staged plan
@@ -2251,7 +2266,7 @@ The work is split into six stages aligned to the spec's milestones (§19). Each
 stage is meant to leave the tree buildable and testable.
 
 - [x] **Stage 1 — M1: skeleton + pure Domain** *(built green: 139 passed, 28 skipped)*
-- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, and now the password sign-in flow + obligations middleware have landed; last verified local run before this slice: 177 passed, 43 skipped)*
+- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, and now TOTP enrollment have landed; last verified local run before this slice: 242 passed, 15 skipped, 0 warnings)*
 - [ ] **Stage 3 — M3: tables & joining**
 - [ ] **Stage 4 — M4: ordering**
 - [ ] **Stage 5 — M5: counter & administration**
@@ -2530,19 +2545,103 @@ cleanly. What *looked* like a wall of errors was two things, both now addressed:
   prominent banner the moment cloudflared reports it, while keeping the tunnel in
   the foreground — see the `run.sh`/quick-tunnel note near the top of this file.
 
+### Slice 4 — TOTP enrollment (this change)
+
+Authenticator enrollment is now real, on both the voluntary page and the forced
+re-enrollment obligation. A signed-in user can scan a QR, confirm a code, and receive
+recovery codes; an enrolled user can regenerate those codes; and the §3.5 obligation
+(2) page finally clears its flag instead of parking the user.
+
+- **±1-step TOTP engine** (`Domain/Security/Rfc6238Totp.cs`) — HMAC-SHA-1, 6 digits,
+  30-second step, **±1** acceptance window, constant-time compare, RFC 4226 dynamic
+  truncation. Pure and BCL-only; verified against the RFC 6238 Appendix B vectors.
+  Companions: `Base32Text` (RFC 4648 §6, the secret's on-the-wire/at-rest encoding,
+  tolerant of case and grouping on decode) and `TotpProvisioningUri` (the
+  `otpauth://totp/…` Key Uri, every component percent-encoded).
+- **Why a custom token provider** (`WebApplication/Identity/RestaurantAuthenticatorTokenProvider.cs`)
+  — the framework's built-in `AuthenticatorTokenProvider<TUser>` accepts a **±2-step**
+  window (confirmed in the .NET 10 source, `Rfc6238AuthenticationService`); §3.4 says
+  **±1**. So a custom `IUserTwoFactorTokenProvider<Person>` delegates to the Domain
+  engine with the spec's skew and takes "now" from `IClock`. It is registered under
+  the same `TokenOptions.DefaultAuthenticatorProvider` name **after**
+  `AddDefaultTokenProviders()`; Identity's provider map keeps the last registration
+  under a given name, so ours wins (asserted in `IdentityWiringTests`). This changes
+  nothing in `RestaurantSignInManager` — `TwoFactorAuthenticatorSignInAsync` dispatches
+  by that provider name.
+- **Why a stateless protected ticket** (`WebApplication/Identity/TotpEnrollment.cs`)
+  — enrollment state is **derived** (`totp_secret_protected IS NOT NULL`; there is no
+  pending-secret column), so persisting an unconfirmed secret would switch two-factor
+  on before the user proved possession. Instead the GET generates the secret and hands
+  the page a Data-Protection-**protected** ticket
+  (`v1|{personId}|{issuedAtUnix}|{base32}`, purpose
+  `MyRestaurant.Identity.TotpEnrollmentTicket.v1`, distinct from the at-rest secret
+  purpose) carried in a hidden field. Confirm unprotects it (catching
+  `CryptographicException`), checks it belongs to the signed-in person and is within a
+  15-minute lifetime (via `IClock`), verifies the code, and only then writes the
+  secret. A **failed code re-posts the same ticket** so the scanned QR stays valid
+  (`ResumeEnrollment`); an **expired** ticket yields a fresh QR. Ephemeral-provider
+  round-trip, tamper, foreign-key-ring, wrong-person, expiry, and malformed cases are
+  unit-tested (`TotpEnrollmentTicketTests`).
+- **Commit shape** — confirm sets the key and clears `must_enroll_totp` on the tracked
+  entity, then persists both in the single update `UpdateSecurityStampAsync` performs;
+  the **stamp bump is the §3.1 credential-changed signal**, and the current session
+  survives it via `RefreshSignInAsync` on the page. Recovery codes are written
+  separately with the Domain `RecoveryCode.GenerateSet()` (10 × `XXXXX-XXXXX`), because
+  the framework's `GenerateNewTwoFactorRecoveryCodesAsync` uses a different format and
+  does **not** bump the stamp. **Regeneration alone does not bump the stamp** (it
+  changes no sign-in credential) — matching the framework's own behaviour. Exactly one
+  security event is recorded per action: `totp_enrolled` (voluntary),
+  `forced_totp_enrollment_completed` (forced), or `recovery_codes_regenerated`.
+- **QR is server-side and inline** (`TotpQrCode` in the same file) — modules from
+  `Net.Codecrete.QrCodeGenerator` (its `Ecc` became an **enum** in 3.x — `QrCode.Ecc.Medium`),
+  but the SVG is composed by hand: the library's `ToSvgString` emits an XML prolog and
+  DOCTYPE unfit for inlining, so we take `ToGraphicsPath(border: 4)` (the four-module
+  quiet zone baked into the path and the `viewBox`) and wrap it in a minimal
+  `<svg role="img" aria-label="…">` with a white backing rect. The label is
+  HTML-escaped. `TotpQrCodeTests` asserts no prolog/DOCTYPE, a viewBox, a non-empty
+  path, no external references, and the accessible label.
+- **Pages** (`Components/Account/Pages/`, both static SSR) —
+  - `EnrollTotp.razor` (`/account/enroll-totp`, voluntary): two named EditForms on one
+    page (`enroll-totp-confirm` / `enroll-totp-regenerate`), each with a matching
+    `[SupplyParameterFromForm(FormName = …)]` model so a post binds only its own form;
+    the GET picks the setup vs already-enrolled UI from the derived state. **Not** in
+    the obligations-exempt list — a user with an outstanding obligation is routed to the
+    pipeline, never here.
+  - `EnrollTotpRequired.razor` (`/account/enroll-totp-required`, forced): the former
+    stub, now the real obligation-(2) flow — same mechanics, `forced: true`, a
+    sign-out escape hatch, and GET-time deference to the earlier password-change step
+    if that flag is also set. Reads the flag from the database, not the claim, so a
+    just-cleared obligation never re-traps.
+- **Wiring & chrome** — `AccountRoutes.TotpEnrollment` constant; `TotpEnrollment`
+  registered scoped via a factory closing over `RESTAURANT_NAME` (the provisioning
+  issuer, §13) so it shares the request's `UserManager`/`DapperUserStore` instance;
+  a **Security** link in the authenticated `MainLayout` header; QR/manual-key/recovery
+  chip styles plus a `.status-success` in the same quiet palette.
+- **Tests**: `Base32TextTests`, `Rfc6238TotpTests` (RFC vectors + ±1/±2 boundaries),
+  `TotpProvisioningUriTests` (escaping), `RestaurantAuthenticatorTokenProviderTests`
+  (fixed clock at the RFC anchor + fake key store; accept ±1, reject ±2, tolerate
+  grouping, fail closed on no key/malformed), `TotpEnrollmentTicketTests` +
+  `TotpQrCodeTests`; `IdentityWiringTests` extended (provider-map override +
+  `TotpEnrollment` resolves); `ObligationsEnforcementTests` extended
+  (`/account/enroll-totp` is blocked).
+
 ### Build/test checklist for this slice
 
-1. `dotnet restore` — no new packages; should be a no-op.
-2. `dotnet build` — the Razor components and middleware are unverified until this
-   runs; the account pages are the most likely home of anything a compiler catches.
-3. *(one time, dev machine)* `systemctl --user enable --now podman.socket` — lets
-   the DataAccess integration tests run instead of skipping.
-4. `dotnet test` — expect the pure Domain/web tests plus, with the socket active,
-   the Testcontainers suites; the EndToEnd matrix still skips (M6).
+1. `dotnet restore` — pulls **one** new package (`Net.Codecrete.QrCodeGenerator`
+   3.0.0). If that exact version cannot be found, bump it in
+   `Directory.Packages.props` to the nearest available (the API is stable across 3.x).
+2. `dotnet build` — the two enrollment Razor components are the most likely home of
+   anything a compiler catches.
+3. *(one time, dev machine — already done in the last sweep)* `systemctl --user
+   enable --now podman.socket` — lets the DataAccess integration tests run.
+4. `dotnet test` — expect the previous green set plus the new TOTP suites (roughly a
+   dozen-plus new pure/web tests); the EndToEnd matrix still skips (M6).
 5. `./run.sh --smoke` — boots once, verifies `/healthz/ready`, exits.
-6. Manual: `./run.sh`, then visit `/table` → you should be bounced to `/sign-in`
-   with a `ReturnUrl`. (Until `/setup` lands, creating a person to sign in **as**
-   means inserting a row by hand or waiting for the bootstrap slice.)
+6. Manual: sign in, click **Security** in the header → scan the QR in any
+   authenticator app → enter the code → you should see ten recovery codes once.
+   Re-visiting **Security** should now offer recovery-code regeneration. (Until
+   `/setup` lands, creating a person to sign in **as** still means inserting a row by
+   hand or waiting for the bootstrap slice.)
 
 ## Known caveats and deliberate decisions
 
@@ -2591,8 +2690,20 @@ cleanly. What *looked* like a wall of errors was two things, both now addressed:
   after the reset in practice, because the reset rotates the security stamp and the
   5-minute revalidation then rebuilds the principal (§3.1). Clearing is immediate
   via `RefreshSignInAsync`.
-- **M2 — the forced-TOTP-enrollment page is a stub** (see Slice 3). Its route,
-  middleware exemption, and tests are final; its body arrives with TOTP enrollment.
+- **M2 — TOTP skew is ±1 by a custom provider** (see Slice 4). The built-in
+  authenticator provider is ±2; §3.4 is ±1, so `RestaurantAuthenticatorTokenProvider`
+  overrides it under the default provider name. If a future framework bump changes the
+  built-in window or the provider-map ordering, `IdentityWiringTests` will catch it.
+- **M2 — the forced-TOTP-enrollment page is real** (see Slice 4): it clears
+  `must_enroll_totp` and records `forced_totp_enrollment_completed`. Nothing in the app
+  **sets** that flag yet — administrative reset arrives in the account-administration
+  slice — so in practice the page is still reached only by hand-setting the flag, but
+  the flow behind it is complete and tested. Voluntary enrollment (the Security page)
+  is reachable today by anyone signed in.
+- **M2 — no voluntary TOTP *removal* surface yet.** The Security page enrolls and
+  regenerates recovery codes; it does not remove an enrollment. Removal (and the §4.2
+  rule that an admin cannot remove their **own** enrollment) belongs with the
+  account-administration / profile slice, alongside the store-level `TotpRemoved` path.
 - **Dev-machine note — inotify watch limit (handled in `run.sh`).** `dotnet watch`
   can exhaust the kernel's inotify **instance** limit on a busy workstation
   (`The configured user limit (128) on the number of inotify instances has been
@@ -2606,25 +2717,22 @@ cleanly. What *looked* like a wall of errors was two things, both now addressed:
 
 ## Next: remaining M2 slices (in order)
 
-1. **TOTP enrollment**: provisioning URI → server-side SVG QR, confirm-code, fresh
-   recovery codes, records `totp_enrolled` / `recovery_codes_regenerated` — and the
-   body of the forced re-enrollment page (obligation (2), clearing `must_enroll_totp`
-   with `forced_totp_enrollment_completed`). Verify Identity's Rfc6238 skew; if it is
-   not ±1 step (§3.4), add a custom authenticator token provider.
-2. **Passkeys** (`IUserPasskeyStore`, .NET 10 WebAuthn): registration/assertion,
+1. **Passkeys** (`IUserPasskeyStore`, .NET 10 WebAuthn): registration/assertion,
    username-first and discoverable flows, the passkey sign-in path (never a TOTP
    challenge — records `sign_in_succeeded` with method `passkey`). Verify the new
    .NET 10 passkey API against the framework source first.
-3. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
+2. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
    zero-administrator re-check, self-granting the administrator role in one
    transaction (§3.6) — the first home for role grants, and the first in-app way to
    create an account.
-4. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
+3. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
    + `role_granted`/`role_revoked` events), **Reset credentials** (temp password +
    `must_change_password`; clear TOTP + set `must_enroll_totp` iff enrolled; new
    stamp; `password_reset_by_administrator` [+ `totp_cleared_by_administrator`]),
-   deactivate/reactivate — the first thing that actually sets the obligation flags
-   the Slice-3 pipeline enforces. Store-level integration tests + middleware tests
+   deactivate/reactivate — the first thing that actually **sets** the obligation flags
+   the pipeline enforces (Slice 3) and the enrollment pages clear (Slice 4). This is
+   also the home for **voluntary TOTP removal** and the §4.2 "an admin cannot remove
+   their own enrollment" rule. Store-level integration tests + middleware tests
    throughout.
 
 ################################################################################
@@ -8200,6 +8308,138 @@ public static class Argon2PhcString
 public sealed record Argon2Parameters(int MemoryKibibytes, int Iterations, int Parallelism, byte[] Salt, byte[] Tag);
 
 ################################################################################
+# FILE: src/MyRestaurant.Domain/Security/Base32Text.cs
+################################################################################
+
+--- METADATA ---
+  File name:             Base32Text.cs
+  Relative path:         src/MyRestaurant.Domain/Security/Base32Text.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.Domain/Security/Base32Text.cs
+  Size:                  3.5 KiB (3573 bytes)
+  Last modified:         2026-07-20 00:23:44.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21843829
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               e0375d79b7caf6104d192fc0d5ed8e24b016e8e8db9c292f6c26fb5ebb2dbe94
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+
+--- CONTENT ---
+namespace MyRestaurant.Domain.Security;
+
+/// <summary>
+/// RFC 4648 §6 Base32 (uppercase, padding stripped) — the encoding of the TOTP shared secret in the
+/// provisioning URI and in the authenticator-key string ASP.NET Core Identity round-trips through
+/// the user store (TECHNICAL_SPECIFICATION §3.4). A 20-byte secret is exactly 32 characters, so
+/// padding never appears in practice. Implemented explicitly, like <see cref="Base64UrlText"/>, so
+/// the byte-for-byte output is fixed and testable against the RFC vectors.
+/// </summary>
+public static class Base32Text
+{
+    private const string Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+    public static string Encode(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.IsEmpty)
+        {
+            return string.Empty;
+        }
+
+        char[] buffer = new char[((bytes.Length * 8) + 4) / 5];
+        int cursor = 0;
+        int bitBuffer = 0;
+        int bitCount = 0;
+
+        foreach (byte value in bytes)
+        {
+            bitBuffer = (bitBuffer << 8) | value;
+            bitCount += 8;
+            while (bitCount >= 5)
+            {
+                bitCount -= 5;
+                buffer[cursor++] = Alphabet[(bitBuffer >> bitCount) & 0x1F];
+            }
+        }
+
+        if (bitCount > 0)
+        {
+            buffer[cursor++] = Alphabet[(bitBuffer << (5 - bitCount)) & 0x1F];
+        }
+
+        return new string(buffer, 0, cursor);
+    }
+
+    /// <summary>
+    /// Decodes Base32 text. Returns <c>false</c> (never throws) on any malformed input. Forgiving of
+    /// lowercase, of the spaces/dashes secrets are displayed with, and of trailing <c>'='</c>
+    /// padding — but impossible lengths and nonzero leftover bits are rejected rather than silently
+    /// dropped, so a truncated or corrupted secret never half-decodes.
+    /// </summary>
+    public static bool TryDecode(string text, out byte[] bytes)
+    {
+        bytes = [];
+        if (text is null)
+        {
+            return false;
+        }
+
+        // Trailing '=' padding is legal; '=' anywhere else is not (it falls through to the
+        // alphabet check below and is rejected there).
+        int end = text.Length;
+        while (end > 0 && text[end - 1] == '=')
+        {
+            end--;
+        }
+
+        List<byte> output = new(end * 5 / 8);
+        int bitBuffer = 0;
+        int bitCount = 0;
+
+        for (int index = 0; index < end; index++)
+        {
+            char character = char.ToUpperInvariant(text[index]);
+            if (character is ' ' or '-')
+            {
+                continue; // grouped-display separators
+            }
+
+            int value;
+            if (character is >= 'A' and <= 'Z')
+            {
+                value = character - 'A';
+            }
+            else if (character is >= '2' and <= '7')
+            {
+                value = character - '2' + 26;
+            }
+            else
+            {
+                return false;
+            }
+
+            bitBuffer = (bitBuffer << 5) | value;
+            bitCount += 5;
+            if (bitCount >= 8)
+            {
+                bitCount -= 8;
+                output.Add((byte)((bitBuffer >> bitCount) & 0xFF));
+            }
+        }
+
+        // Five or more leftover bits means an impossible encoded length (1, 3, or 6 characters
+        // mod 8); fewer leftover bits must all be zero, or the tail was truncated or corrupted.
+        if (bitCount >= 5 || (bitBuffer & ((1 << bitCount) - 1)) != 0)
+        {
+            return false;
+        }
+
+        bytes = [.. output];
+        return true;
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.Domain/Security/Base64UrlText.cs
 ################################################################################
 
@@ -8519,6 +8759,138 @@ public static class RecoveryCode
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.Domain/Security/Rfc6238Totp.cs
+################################################################################
+
+--- METADATA ---
+  File name:             Rfc6238Totp.cs
+  Relative path:         src/MyRestaurant.Domain/Security/Rfc6238Totp.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.Domain/Security/Rfc6238Totp.cs
+  Size:                  4.4 KiB (4480 bytes)
+  Last modified:         2026-07-20 07:56:39.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21843831
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               418540cc87ac30d92994b3f3a6d4380288fcee5c495e2072f1e7cbb5ab10a67d
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+
+--- CONTENT ---
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+
+namespace MyRestaurant.Domain.Security;
+
+/// <summary>
+/// RFC 6238 time-based one-time passwords (TECHNICAL_SPECIFICATION §3.4): HMAC-SHA-1, 6 digits, a
+/// 30-second step, and a <b>±1 step</b> acceptance window — one step either side of the current one,
+/// to tolerate clock skew and the moment of typing without opening the wider window Identity's
+/// built-in provider uses. The RFC 4226 dynamic-truncation step and the big-endian counter are
+/// implemented directly so the output is fixed and testable against the published Appendix B vectors;
+/// the code comparison is constant-time (<see cref="CryptographicOperations.FixedTimeEquals"/>).
+///
+/// <para>This is the pure engine. The Identity-facing wrapper that reads the key from the user store
+/// and is dispatched by <c>VerifyTwoFactorTokenAsync</c> is
+/// <c>RestaurantAuthenticatorTokenProvider</c> in the web layer.</para>
+/// </summary>
+public static class Rfc6238Totp
+{
+    /// <summary>The RFC 6238 shared-secret size (§3.4); mirrors <see cref="SecretGenerator.TotpSecretByteCount"/>.</summary>
+    public const int SecretSizeInBytes = 20;
+
+    /// <summary>Digits in a code (§3.4).</summary>
+    public const int CodeLength = 6;
+
+    /// <summary>The time step, in seconds (§3.4).</summary>
+    public const int TimeStepSeconds = 30;
+
+    /// <summary>Steps accepted either side of the current one (§3.4: ±1).</summary>
+    public const int AllowedStepSkew = 1;
+
+    private const int Modulo = 1_000_000; // 10^CodeLength
+
+    /// <summary>A fresh 20-byte secret (delegates to the shared CSPRNG helper).</summary>
+    public static byte[] GenerateSecret() => SecretGenerator.GenerateTotpSecret();
+
+    /// <summary>
+    /// The 6-digit code for <paramref name="secret"/> at <paramref name="timestamp"/>, zero-padded.
+    /// </summary>
+    public static string ComputeCode(ReadOnlySpan<byte> secret, DateTimeOffset timestamp)
+        => ComputeCodeForStep(secret, StepNumber(timestamp));
+
+    /// <summary>
+    /// True when <paramref name="code"/> matches <paramref name="secret"/> within <paramref name="allowedStepSkew"/>
+    /// steps of <paramref name="timestamp"/>. Non-numeric, wrong-length, and empty input all return
+    /// <c>false</c> rather than throwing, so callers can treat a bad code as simply "no match".
+    /// Negative absolute step numbers (timestamps before the Unix epoch) are skipped.
+    /// </summary>
+    public static bool ValidateCode(
+        ReadOnlySpan<byte> secret,
+        string code,
+        DateTimeOffset timestamp,
+        int allowedStepSkew = AllowedStepSkew)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(allowedStepSkew);
+
+        if (code is null || code.Length != CodeLength)
+        {
+            return false;
+        }
+
+        foreach (char character in code)
+        {
+            if (character is < '0' or > '9')
+            {
+                return false;
+            }
+        }
+
+        long currentStep = StepNumber(timestamp);
+        ReadOnlySpan<byte> candidate = System.Text.Encoding.ASCII.GetBytes(code);
+
+        bool matched = false;
+        for (int offset = -allowedStepSkew; offset <= allowedStepSkew; offset++)
+        {
+            long step = currentStep + offset;
+            if (step < 0)
+            {
+                continue;
+            }
+
+            byte[] expected = System.Text.Encoding.ASCII.GetBytes(ComputeCodeForStep(secret, step));
+
+            // Compare every step (no early break) so acceptance timing does not reveal which step matched.
+            matched |= CryptographicOperations.FixedTimeEquals(candidate, expected);
+        }
+
+        return matched;
+    }
+
+    private static long StepNumber(DateTimeOffset timestamp)
+        => timestamp.ToUnixTimeSeconds() / TimeStepSeconds;
+
+    private static string ComputeCodeForStep(ReadOnlySpan<byte> secret, long step)
+    {
+        Span<byte> counter = stackalloc byte[8];
+        BinaryPrimitives.WriteInt64BigEndian(counter, step);
+
+        Span<byte> mac = stackalloc byte[HMACSHA1.HashSizeInBytes];
+        HMACSHA1.HashData(secret, counter, mac);
+
+        // RFC 4226 §5.3 dynamic truncation.
+        int offset = mac[^1] & 0x0F;
+        int binary =
+            ((mac[offset] & 0x7F) << 24)
+            | (mac[offset + 1] << 16)
+            | (mac[offset + 2] << 8)
+            | mac[offset + 3];
+
+        return (binary % Modulo).ToString().PadLeft(CodeLength, '0');
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.Domain/Security/SecretGenerator.cs
 ################################################################################
 
@@ -8612,6 +8984,57 @@ public static class Sha256Hashing
     /// <summary>Constant-time comparison of a candidate against a stored hash.</summary>
     public static bool MatchesStoredHash(string candidate, ReadOnlySpan<byte> storedHash)
         => CryptographicOperations.FixedTimeEquals(Hash(candidate), storedHash);
+}
+
+################################################################################
+# FILE: src/MyRestaurant.Domain/Security/TotpProvisioningUri.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TotpProvisioningUri.cs
+  Relative path:         src/MyRestaurant.Domain/Security/TotpProvisioningUri.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.Domain/Security/TotpProvisioningUri.cs
+  Size:                  1.6 KiB (1683 bytes)
+  Last modified:         2026-07-20 07:56:51.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21843830
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               37ffa3dea5b97af2385e7e50bdfc726382bc0f51ab7ea1ed13826a3b73681d04
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+
+--- CONTENT ---
+namespace MyRestaurant.Domain.Security;
+
+/// <summary>
+/// Builds the <c>otpauth://totp/…</c> provisioning URI an authenticator app imports
+/// (TECHNICAL_SPECIFICATION §3.4). The label is <c>{issuer}:{username}</c> and the issuer is
+/// repeated as the <c>issuer</c> parameter, per the Key Uri Format that Google Authenticator and
+/// compatible apps expect; the issuer is the configured <c>RESTAURANT_NAME</c> (§13). The secret is
+/// the app's Base32 authenticator key. Algorithm/digits/period are left implicit — they equal the
+/// RFC 6238 defaults this app uses (SHA-1, 6 digits, 30 s), and emitting them changes nothing while
+/// tripping bugs in a few readers.
+///
+/// <para>Every user- or configuration-supplied component is percent-encoded with
+/// <see cref="Uri.EscapeDataString(string)"/>, so a restaurant name or username containing a space,
+/// <c>':'</c>, <c>'&amp;'</c>, or non-ASCII character cannot break out of its field.</para>
+/// </summary>
+public static class TotpProvisioningUri
+{
+    public static string Build(string issuer, string username, string base32Secret)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(issuer);
+        ArgumentException.ThrowIfNullOrEmpty(username);
+        ArgumentException.ThrowIfNullOrEmpty(base32Secret);
+
+        string encodedIssuer = Uri.EscapeDataString(issuer);
+        string encodedUsername = Uri.EscapeDataString(username);
+        string encodedSecret = Uri.EscapeDataString(base32Secret);
+
+        // Label: "{issuer}:{username}", each component escaped, the ':' a literal separator.
+        return $"otpauth://totp/{encodedIssuer}:{encodedUsername}?secret={encodedSecret}&issuer={encodedIssuer}";
+    }
 }
 
 ################################################################################
@@ -8990,69 +9413,172 @@ public static class AuthorizationServiceCollectionExtensions
 }
 
 ################################################################################
-# FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotpRequired.razor
+# FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotp.razor
 ################################################################################
 
 --- METADATA ---
-  File name:             EnrollTotpRequired.razor
-  Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotpRequired.razor
-  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotpRequired.razor
-  Size:                  2.4 KiB (2508 bytes)
-  Last modified:         2026-07-19 08:48:30.000000000 -0400
+  File name:             EnrollTotp.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotp.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotp.razor
+  Size:                  9.3 KiB (9533 bytes)
+  Last modified:         2026-07-20 08:12:22.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654799
+  Inode:                 21843825
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               97003bbc1d004783b799441071c5698239705ffde0f0a8cbddcb76b01c26efa8
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               f7ccca0ed47e041941cddd2924d6c6dc6cb7dd5496ed6580cb5f3833d439d2f6
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
 
 --- CONTENT ---
-@page "/account/enroll-totp-required"
+@page "/account/enroll-totp"
 @attribute [ExcludeFromInteractiveRouting]
 @attribute [Authorize]
+@using MyRestaurant.Domain.Authentication
 @inject UserManager<Person> UserManager
+@inject SignInManager<Person> SignInManager
+@inject TotpEnrollment Enrollment
 @inject NavigationManager Navigation
 
-@* Obligation (2) of the post-authentication pipeline (TECHNICAL_SPECIFICATION §3.5): forced TOTP
-   re-enrollment after an administrative reset wiped an enrolled secret. The enrollment mechanics
-   (provisioning URI → server-side SVG QR → confirm code → fresh recovery codes → clear flag →
-   `forced_totp_enrollment_completed`) are the next M2 slice; this page is its addressable, exempt
-   HOME so the middleware, routes, and tests are final now. Nothing in the application can set
-   `must_enroll_totp` yet — administrative reset arrives in a later slice — so in practice this page
-   is only reachable by hand-editing the database (BUILD_PROGRESS: deliberate stub). *@
+@* The voluntary authenticator page (TECHNICAL_SPECIFICATION §3.4, §4.2): any signed-in user can
+   enroll here, and an already-enrolled user can regenerate their recovery codes. Static SSR, like
+   every account page, because confirming enrollment rotates the security stamp and re-issues the
+   cookie — a Blazor circuit cannot write cookies. This page is NOT in the obligations-exempt list:
+   it is a normal authenticated destination, so a user with an outstanding obligation is routed to
+   the relevant pipeline page by the middleware, never here. The forced re-enrollment obligation has
+   its own page (EnrollTotpRequired.razor).
 
-<PageTitle>Re-enroll your authenticator</PageTitle>
+   Two POSTs share this page, each with its own form name and bound model:
+     • "enroll-totp-confirm" — confirm a scanned secret (carries the protected ticket + the code);
+     • "enroll-totp-regenerate" — regenerate recovery codes for an already-enrolled account.
+   The GET decides which UI to show from the derived enrollment state (secret present or not). *@
+
+<PageTitle>Authenticator</PageTitle>
 
 <section class="panel account-panel">
-    <p class="eyebrow">Action required</p>
-    <h1>Re-enroll your authenticator</h1>
-    <p class="lede">
-        An administrator reset this account, which wiped its previous authenticator enrollment and
-        recovery codes. A fresh enrollment (QR code, confirmation, new recovery codes) is required
-        before you can continue.
-    </p>
-    <p class="lede">
-        <strong>The enrollment screen is not built yet</strong> — it arrives with the TOTP milestone
-        slice. Until then this account stays parked here; an administrator can clear the requirement
-        directly if it is blocking someone.
-    </p>
+    <p class="eyebrow">Security</p>
 
-    <form class="sign-out-form form-footnote" method="post" action="@AccountRoutes.SignOut">
-        <AntiforgeryToken />
-        <span>Done for now?</span>
-        <button type="submit" class="link-button">Sign out</button>
-    </form>
+    @if (_recoveryCodes is not null)
+    {
+        <h1>Save your recovery codes</h1>
+        <p class="lede">
+            @_recoveryCodesLede Each code works once. Store them somewhere safe — a password manager
+            is ideal. If you lose your authenticator, a recovery code is the only way back in.
+        </p>
+
+        <ul class="recovery-codes" aria-label="Recovery codes">
+            @foreach (string recoveryCode in _recoveryCodes)
+            {
+                <li>@recoveryCode</li>
+            }
+        </ul>
+
+        <p class="status-success" role="status">Enrollment is active. These codes will not be shown again.</p>
+
+        <div class="form-actions">
+            <a class="button-primary" href="/">Done</a>
+        </div>
+    }
+    else if (_enrolled)
+    {
+        <h1>Authenticator enrolled</h1>
+        <p class="lede">
+            This account is protected by an authenticator app. You have
+            <strong>@_remainingRecoveryCodes</strong> unused recovery code@(_remainingRecoveryCodes == 1 ? "" : "s")
+            left. Regenerating replaces every remaining code with a fresh set and invalidates the old
+            ones.
+        </p>
+
+        <EditForm Model="RegenerateInput" method="post" OnValidSubmit="RegenerateAsync" FormName="enroll-totp-regenerate">
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Regenerate recovery codes</button>
+            </div>
+        </EditForm>
+    }
+    else
+    {
+        <h1>Set up an authenticator</h1>
+        <p class="lede">
+            Scan this QR code with an authenticator app (Google Authenticator, 1Password, Aegis, and
+            the like), then enter the six-digit code it shows to confirm. Codes rotate every 30
+            seconds.
+        </p>
+
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <div class="totp-qr">
+            @((MarkupString)_start!.QrCodeSvg)
+        </div>
+
+        <p class="totp-secret-label">Can't scan? Enter this key manually:</p>
+        <p class="totp-secret">@_start!.ManualEntrySecret</p>
+
+        <EditForm Model="ConfirmInput" method="post" OnValidSubmit="ConfirmAsync" FormName="enroll-totp-confirm">
+            <DataAnnotationsValidator />
+
+            <input type="hidden" name="ConfirmInput.ProtectedTicket" value="@_start!.ProtectedTicket" />
+
+            <div class="form-field">
+                <label for="totp-code">Six-digit code</label>
+                <InputText id="totp-code" @bind-Value="ConfirmInput.Code" autocomplete="one-time-code"
+                           inputmode="numeric" autofocus />
+                <ValidationMessage For="@(() => ConfirmInput.Code)" />
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Confirm enrollment</button>
+            </div>
+        </EditForm>
+    }
 </section>
 
 @code {
+    private bool _enrolled;
+    private int _remainingRecoveryCodes;
+    private TotpEnrollmentStart? _start;
+    private IReadOnlyList<string>? _recoveryCodes;
+    private string? _recoveryCodesLede;
+    private string? _errorMessage;
+
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
-    [SupplyParameterFromQuery]
-    private string? ReturnUrl { get; set; }
+    [SupplyParameterFromForm(FormName = "enroll-totp-confirm")]
+    private ConfirmInputModel ConfirmInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "enroll-totp-regenerate")]
+    private RegenerateInputModel RegenerateInput { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form POST binds these itself and may assign null, so defaults live here.
+        ConfirmInput ??= new();
+        RegenerateInput ??= new();
+
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // A GET (or a POST that did not already produce codes to show) renders the state-appropriate
+        // UI; if the account is not enrolled, a fresh secret + QR + ticket is prepared to display.
+        _enrolled = await UserManager.GetTwoFactorEnabledAsync(user);
+        if (_enrolled)
+        {
+            _remainingRecoveryCodes = await Enrollment.CountRecoveryCodesAsync(user, HttpContext.RequestAborted);
+        }
+        else
+        {
+            _start = Enrollment.BeginEnrollment(user);
+        }
+    }
+
+    private async Task ConfirmAsync()
     {
         Person? user = await UserManager.GetUserAsync(HttpContext.User);
         if (user is null)
@@ -9061,11 +9587,306 @@ public static class AuthorizationServiceCollectionExtensions
             return;
         }
 
-        // Nothing outstanding: pass the visitor along instead of showing a stale demand.
+        // Already enrolled (e.g. a stale tab): nothing to confirm.
+        if (await UserManager.GetTwoFactorEnabledAsync(user))
+        {
+            _enrolled = true;
+            _start = null;
+            _remainingRecoveryCodes = await Enrollment.CountRecoveryCodesAsync(user, HttpContext.RequestAborted);
+            return;
+        }
+
+        (TotpEnrollmentConfirmation confirmation, TotpEnrollmentResult? result) = await Enrollment.ConfirmAsync(
+            user,
+            ConfirmInput.ProtectedTicket,
+            ConfirmInput.Code,
+            forced: false,
+            HttpContext.RequestAborted);
+
+        switch (confirmation)
+        {
+            case TotpEnrollmentConfirmation.Succeeded:
+                // Confirm rotated the security stamp; refresh the cookie so this session survives the
+                // next stamp revalidation. The cookie is written during this SSR submit handler,
+                // before the recovery codes are rendered below, so showing them here is safe.
+                await SignInManager.RefreshSignInAsync(user);
+                _recoveryCodes = result!.RecoveryCodes;
+                _recoveryCodesLede = "Your authenticator is now enrolled.";
+                _enrolled = true;
+                _start = null;
+                break;
+
+            case TotpEnrollmentConfirmation.InvalidCode:
+                // Keep the same secret/QR/ticket so the user can retry the code they just mistyped;
+                // if the ticket has since expired, ResumeEnrollment returns null and we start fresh.
+                _errorMessage = "That code did not verify. Codes rotate every 30 seconds — check the app and try the current one.";
+                _start = Enrollment.ResumeEnrollment(user, ConfirmInput.ProtectedTicket) ?? Enrollment.BeginEnrollment(user);
+                break;
+
+            case TotpEnrollmentConfirmation.TicketInvalid:
+            default:
+                // The scanned secret expired or the ticket was unusable: issue a fresh QR to scan.
+                _errorMessage = "This setup step expired. Scan the new QR code and enter a fresh six-digit code.";
+                _start = Enrollment.BeginEnrollment(user);
+                break;
+        }
+    }
+
+    private async Task RegenerateAsync()
+    {
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // Regeneration only makes sense once enrolled; a non-enrolled POST falls back to setup.
+        if (!await UserManager.GetTwoFactorEnabledAsync(user))
+        {
+            _enrolled = false;
+            _start = Enrollment.BeginEnrollment(user);
+            return;
+        }
+
+        TotpEnrollmentResult result = await Enrollment.RegenerateRecoveryCodesAsync(user, HttpContext.RequestAborted);
+        _recoveryCodes = result.RecoveryCodes;
+        _recoveryCodesLede = "Your recovery codes have been regenerated.";
+        _enrolled = true;
+    }
+
+    private sealed class ConfirmInputModel
+    {
+        public string ProtectedTicket { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter the six-digit code from your authenticator app.")]
+        public string Code { get; set; } = string.Empty;
+    }
+
+    private sealed class RegenerateInputModel
+    {
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotpRequired.razor
+################################################################################
+
+--- METADATA ---
+  File name:             EnrollTotpRequired.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotpRequired.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotpRequired.razor
+  Size:                  7.9 KiB (8068 bytes)
+  Last modified:         2026-07-20 08:12:36.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21843826
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               bb60f54c2feb258df2907267caf4ff1811eed49df28319c67a719dfa655ba028
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+
+--- CONTENT ---
+@page "/account/enroll-totp-required"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize]
+@using MyRestaurant.Domain.Authentication
+@inject UserManager<Person> UserManager
+@inject SignInManager<Person> SignInManager
+@inject TotpEnrollment Enrollment
+@inject NavigationManager Navigation
+
+@* Obligation (2) of the post-authentication pipeline (TECHNICAL_SPECIFICATION §3.5): forced TOTP
+   re-enrollment after an administrative reset wiped an enrolled secret and set `must_enroll_totp`.
+   ObligationsMiddleware routes every request here (this route is exempt) until the flag clears.
+
+   Same mechanics as the voluntary page, three differences that suit an obligation:
+     • the copy explains WHY re-enrollment is required, not "would you like to";
+     • ConfirmAsync is called with forced: true, so it records `forced_totp_enrollment_completed`
+       and clears `must_enroll_totp` in the same store update that writes the secret (mirroring the
+       forced password page's one-update pattern);
+     • there is no recovery-code regeneration branch — the point here is to (re)enroll.
+   On GET: if the obligation is already clear (stale link / cleared in another tab) the visitor is
+   passed along; if a password change is ALSO outstanding, the earlier pipeline step wins and we
+   send them there (both pipeline pages are exempt, so navigating between them by hand is allowed).
+   Static SSR: confirmation rotates the stamp and re-issues the cookie, which a circuit cannot do. *@
+
+<PageTitle>Re-enroll your authenticator</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">Action required</p>
+
+    @if (_recoveryCodes is not null)
+    {
+        <h1>Save your new recovery codes</h1>
+        <p class="lede">
+            Your authenticator is enrolled again. Each code works once — store them somewhere safe. If
+            you lose your authenticator, a recovery code is the only way back in.
+        </p>
+
+        <ul class="recovery-codes" aria-label="Recovery codes">
+            @foreach (string recoveryCode in _recoveryCodes)
+            {
+                <li>@recoveryCode</li>
+            }
+        </ul>
+
+        <p class="status-success" role="status">These codes will not be shown again.</p>
+
+        <div class="form-actions">
+            <a class="button-primary" href="@_destination">Continue</a>
+        </div>
+    }
+    else
+    {
+        <h1>Re-enroll your authenticator</h1>
+        <p class="lede">
+            An administrator reset this account, which wiped its previous authenticator enrollment and
+            recovery codes. Scan the QR code below with an authenticator app, then enter the six-digit
+            code to confirm — you cannot continue until this is done.
+        </p>
+
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <div class="totp-qr">
+            @((MarkupString)_start!.QrCodeSvg)
+        </div>
+
+        <p class="totp-secret-label">Can't scan? Enter this key manually:</p>
+        <p class="totp-secret">@_start!.ManualEntrySecret</p>
+
+        <EditForm Model="Input" method="post" OnValidSubmit="ConfirmAsync" FormName="enroll-totp-required">
+            <DataAnnotationsValidator />
+
+            <input type="hidden" name="Input.ProtectedTicket" value="@_start!.ProtectedTicket" />
+
+            <div class="form-field">
+                <label for="totp-code">Six-digit code</label>
+                <InputText id="totp-code" @bind-Value="Input.Code" autocomplete="one-time-code"
+                           inputmode="numeric" autofocus />
+                <ValidationMessage For="@(() => Input.Code)" />
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Confirm enrollment</button>
+            </div>
+        </EditForm>
+
+        <form class="sign-out-form form-footnote" method="post" action="@AccountRoutes.SignOut">
+            <AntiforgeryToken />
+            <span>Done for now?</span>
+            <button type="submit" class="link-button">Sign out</button>
+        </form>
+    }
+</section>
+
+@code {
+    private TotpEnrollmentStart? _start;
+    private IReadOnlyList<string>? _recoveryCodes;
+    private string? _errorMessage;
+    private string _destination = "/";
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "enroll-totp-required")]
+    private ConfirmInputModel Input { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
+        Input ??= new();
+
+        _destination = ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl);
+
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // The database is consulted rather than the claim so a just-cleared flag never re-traps anyone.
+        if (HttpContext.Request.Method == HttpMethods.Get)
+        {
+            // Password change is the earlier pipeline step; if it is also outstanding, defer to it.
+            if (user.MustChangePassword)
+            {
+                Navigation.NavigateTo(AccountRoutes.ForcedPasswordChange);
+                return;
+            }
+
+            if (!user.MustEnrollTotp)
+            {
+                Navigation.NavigateTo(_destination);
+                return;
+            }
+        }
+
+        // Still outstanding: prepare a secret + QR + ticket to display.
+        _start = Enrollment.BeginEnrollment(user);
+    }
+
+    private async Task ConfirmAsync()
+    {
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // Cleared elsewhere in the meantime: move along instead of showing a stale demand.
         if (!user.MustEnrollTotp)
         {
-            Navigation.NavigateTo(ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl));
+            Navigation.NavigateTo(_destination);
+            return;
         }
+
+        (TotpEnrollmentConfirmation confirmation, TotpEnrollmentResult? result) = await Enrollment.ConfirmAsync(
+            user,
+            Input.ProtectedTicket,
+            Input.Code,
+            forced: true,
+            HttpContext.RequestAborted);
+
+        switch (confirmation)
+        {
+            case TotpEnrollmentConfirmation.Succeeded:
+                // Confirm cleared must_enroll_totp and rotated the stamp; refresh the cookie so the
+                // stale obligation claim does not keep the middleware redirecting here (and so the
+                // session survives the next stamp revalidation). Cookie is written in this SSR submit
+                // handler, before the recovery codes render below.
+                await SignInManager.RefreshSignInAsync(user);
+                _recoveryCodes = result!.RecoveryCodes;
+                _start = null;
+                break;
+
+            case TotpEnrollmentConfirmation.InvalidCode:
+                _errorMessage = "That code did not verify. Codes rotate every 30 seconds — check the app and try the current one.";
+                _start = Enrollment.ResumeEnrollment(user, Input.ProtectedTicket) ?? Enrollment.BeginEnrollment(user);
+                break;
+
+            case TotpEnrollmentConfirmation.TicketInvalid:
+            default:
+                _errorMessage = "This setup step expired. Scan the new QR code and enter a fresh six-digit code.";
+                _start = Enrollment.BeginEnrollment(user);
+                break;
+        }
+    }
+
+    private sealed class ConfirmInputModel
+    {
+        public string ProtectedTicket { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter the six-digit code from your authenticator app.")]
+        public string Code { get; set; } = string.Empty;
     }
 }
 
@@ -9555,15 +10376,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             MainLayout.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
-  Size:                  1.1 KiB (1177 bytes)
-  Last modified:         2026-07-19 08:46:28.000000000 -0400
+  Size:                  1.2 KiB (1271 bytes)
+  Last modified:         2026-07-20 08:00:58.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654794
+  Inode:                 21843822
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               1c0c7d6016a46a9722172076f1bddf066148be014381894c09224531ddc534a3
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               7e27e6325cec4ddea3287e635da77ae72a168400ed5e72fd35c35a44a73dd36d
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
 
 --- CONTENT ---
 @inherits LayoutComponentBase
@@ -9578,6 +10399,7 @@ public static class AuthorizationServiceCollectionExtensions
             <AuthorizeView>
                 <Authorized>
                     <span class="session-name">@context.User.Identity?.Name</span>
+                    <a class="session-link" href="@AccountRoutes.TotpEnrollment">Security</a>
                     <form class="sign-out-form" method="post" action="@AccountRoutes.SignOut">
                         <AntiforgeryToken />
                         <button type="submit" class="link-button">Sign out</button>
@@ -10045,22 +10867,24 @@ public static class AccountEndpoints
   File name:             IdentityServiceCollectionExtensions.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
-  Size:                  8.9 KiB (9085 bytes)
-  Last modified:         2026-07-19 08:44:41.000000000 -0400
+  Size:                  10.1 KiB (10334 bytes)
+  Last modified:         2026-07-20 08:00:45.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654780
+  Inode:                 21843813
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               75d22f4073764b55ca846660ac9c249f4279fb36d5101e64958934787bf24f4c
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               0dc8e16cb1c29926c25804508bab6a4c55b206022c092c2a20c3a214d9fb7f09
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
 
 --- CONTENT ---
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Time;
 using MyRestaurant.WebApplication.Authorization;
 using MyRestaurant.WebApplication.Configuration;
 using MyRestaurant.WebApplication.Observability;
@@ -10160,6 +10984,10 @@ public static class IdentityServiceCollectionExtensions
             .AddUserStore<DapperUserStore>()
             .AddClaimsPrincipalFactory<RestaurantClaimsPrincipalFactory>()
             .AddDefaultTokenProviders() // Authenticator (TOTP), Data-Protection, email/phone token providers.
+            // Override the built-in authenticator provider (±2-step window) with the §3.4 ±1 one.
+            // Identity's provider map keeps the last registration under a given name, so registering
+            // ours under the same DefaultAuthenticatorProvider name after the defaults wins.
+            .AddTokenProvider<RestaurantAuthenticatorTokenProvider>(TokenOptions.DefaultAuthenticatorProvider)
             .AddSignInManager<RestaurantSignInManager>();
 
         // AddIdentityCookies wires the application cookie's OnValidatePrincipal to the static
@@ -10211,6 +11039,17 @@ public static class IdentityServiceCollectionExtensions
         // it holds no state and opens a connection per write from the singleton factory.
         services.AddScoped<ISecurityEventLog, DapperSecurityEventLog>();
 
+        // TOTP enrollment (§3.4) for the voluntary and forced pages. Scoped so it shares the request's
+        // UserManager/DapperUserStore instance (it mutates the tracked entity through the store cast);
+        // the factory closes over the configured RESTAURANT_NAME, which is the provisioning issuer (§13).
+        services.AddScoped(serviceProvider => new TotpEnrollment(
+            serviceProvider.GetRequiredService<UserManager<Person>>(),
+            serviceProvider.GetRequiredService<IUserStore<Person>>(),
+            serviceProvider.GetRequiredService<ISecurityEventLog>(),
+            serviceProvider.GetRequiredService<IDataProtectionProvider>(),
+            serviceProvider.GetRequiredService<IClock>(),
+            options.RestaurantName));
+
         return services;
     }
 }
@@ -10223,15 +11062,15 @@ public static class IdentityServiceCollectionExtensions
   File name:             ObligationsEnforcement.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
-  Size:                  5.8 KiB (5937 bytes)
-  Last modified:         2026-07-19 08:43:37.000000000 -0400
+  Size:                  6.0 KiB (6117 bytes)
+  Last modified:         2026-07-20 08:00:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654783
+  Inode:                 21843816
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               57d7313c15880c2dd2b084774d8c812c159afe07a65138d167e28b2a917335aa
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               1d37935ea9073fba708420b9d471b2ae444301c1820da26ec84c1d45172340d5
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
 
 --- CONTENT ---
 using System.Security.Claims;
@@ -10265,6 +11104,9 @@ public static class AccountRoutes
 
     /// <summary>The forced TOTP re-enrollment page — obligation (2) of §3.5.</summary>
     public const string ForcedTotpEnrollment = "/account/enroll-totp-required";
+
+    /// <summary>The voluntary authenticator page: enroll, or regenerate recovery codes (§3.4, §4.2).</summary>
+    public const string TotpEnrollment = "/account/enroll-totp";
 }
 
 /// <summary>
@@ -10425,6 +11267,102 @@ public sealed class ObligationsMiddleware
         }
 
         return _next(context);
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Identity/RestaurantAuthenticatorTokenProvider.cs
+################################################################################
+
+--- METADATA ---
+  File name:             RestaurantAuthenticatorTokenProvider.cs
+  Relative path:         src/MyRestaurant.WebApplication/Identity/RestaurantAuthenticatorTokenProvider.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/RestaurantAuthenticatorTokenProvider.cs
+  Size:                  3.5 KiB (3601 bytes)
+  Last modified:         2026-07-20 07:57:11.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21843814
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               1d4fcb4abbc3ac34a40d16f9598b9ceeba918fe0e59b16e32558f61eb4e24c3d
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+
+--- CONTENT ---
+using Microsoft.AspNetCore.Identity;
+using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Security;
+using MyRestaurant.Domain.Time;
+
+namespace MyRestaurant.WebApplication.Identity;
+
+/// <summary>
+/// The authenticator (TOTP) token provider ASP.NET Core Identity dispatches to when it verifies a
+/// two-factor code (<c>UserManager.VerifyTwoFactorTokenAsync</c> →
+/// <c>SignInManager.TwoFactorAuthenticatorSignInAsync</c>). It <b>replaces</b> the framework's
+/// <c>AuthenticatorTokenProvider</c>, which accepts a ±2-step window; §3.4 mandates <b>±1</b>, so the
+/// verification is delegated to the pure <see cref="Rfc6238Totp"/> engine with the spec's skew, and
+/// "now" comes from the injected <see cref="IClock"/> (deterministic in tests).
+///
+/// <para>Registered under <see cref="Microsoft.AspNetCore.Identity.TokenOptions.DefaultAuthenticatorProvider"/>
+/// after <c>AddDefaultTokenProviders()</c> in <see cref="IdentityServiceCollectionExtensions"/>;
+/// Identity's provider map keeps the last registration under a given name, so this one wins. The key
+/// is the Base32 secret the user store round-trips (<c>GetAuthenticatorKeyAsync</c>); this provider
+/// never generates or persists anything (TOTP is not a delivered token), so
+/// <see cref="GenerateAsync"/> returns the empty string exactly as the framework provider does.</para>
+/// </summary>
+public sealed class RestaurantAuthenticatorTokenProvider : IUserTwoFactorTokenProvider<Person>
+{
+    private readonly IClock _clock;
+
+    public RestaurantAuthenticatorTokenProvider(IClock clock)
+    {
+        ArgumentNullException.ThrowIfNull(clock);
+        _clock = clock;
+    }
+
+    /// <summary>
+    /// TOTP is not a generated/delivered token — the shared secret is provisioned once at
+    /// enrollment — so the framework contract is to return the empty string here.
+    /// </summary>
+    public Task<string> GenerateAsync(string purpose, UserManager<Person> manager, Person user)
+        => Task.FromResult(string.Empty);
+
+    /// <summary>
+    /// Validates <paramref name="token"/> against the user's Base32 authenticator key at the current
+    /// instant within ±1 step. The <paramref name="purpose"/> is ignored (Identity passes
+    /// <c>"TwoFactor"</c>), matching the framework provider. Grouped-display spaces and dashes are
+    /// tolerated; a missing/blank key or a malformed secret verifies to <c>false</c>.
+    /// </summary>
+    public async Task<bool> ValidateAsync(string purpose, string token, UserManager<Person> manager, Person user)
+    {
+        ArgumentNullException.ThrowIfNull(manager);
+
+        string? key = await manager.GetAuthenticatorKeyAsync(user).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(token))
+        {
+            return false;
+        }
+
+        if (!Base32Text.TryDecode(key, out byte[] secret))
+        {
+            return false;
+        }
+
+        string normalized = token.Replace(" ", string.Empty).Replace("-", string.Empty);
+        return Rfc6238Totp.ValidateCode(secret, normalized, _clock.UtcNow);
+    }
+
+    /// <summary>
+    /// The provider can be used for two-factor only once the user has an authenticator key (i.e. is
+    /// enrolled). Matches the framework provider's gate.
+    /// </summary>
+    public async Task<bool> CanGenerateTwoFactorTokenAsync(UserManager<Person> manager, Person user)
+    {
+        ArgumentNullException.ThrowIfNull(manager);
+
+        string? key = await manager.GetAuthenticatorKeyAsync(user).ConfigureAwait(false);
+        return !string.IsNullOrWhiteSpace(key);
     }
 }
 
@@ -10761,6 +11699,389 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.WebApplication/Identity/TotpEnrollment.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TotpEnrollment.cs
+  Relative path:         src/MyRestaurant.WebApplication/Identity/TotpEnrollment.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/TotpEnrollment.cs
+  Size:                  15.9 KiB (16281 bytes)
+  Last modified:         2026-07-20 08:08:56.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21843815
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               9c9d1b34e186564195648218b8b5b9d3320b418d9110b37f5d364597f69ada45
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+
+--- CONTENT ---
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Encodings.Web;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
+using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Authentication;
+using MyRestaurant.Domain.Security;
+using MyRestaurant.Domain.Time;
+using Net.Codecrete.QrCodeGenerator;
+
+namespace MyRestaurant.WebApplication.Identity;
+
+/// <summary>
+/// The outcome of confirming an enrollment ticket.
+/// </summary>
+public enum TotpEnrollmentConfirmation
+{
+    /// <summary>The code verified; the secret and a fresh set of recovery codes were committed.</summary>
+    Succeeded,
+
+    /// <summary>The ticket was valid but the code did not verify — the same QR/ticket can be retried.</summary>
+    InvalidCode,
+
+    /// <summary>The ticket was missing, tampered with, for another account, or expired — start over.</summary>
+    TicketInvalid,
+}
+
+/// <summary>
+/// Everything an enrollment page needs to render: the Base32 secret (both raw and grouped for manual
+/// entry), the provisioning URI, the ready-to-embed SVG QR, and the protected ticket the confirm
+/// step round-trips.
+/// </summary>
+public sealed record TotpEnrollmentStart(
+    string SecretBase32,
+    string ManualEntrySecret,
+    string ProvisioningUri,
+    string QrCodeSvg,
+    string ProtectedTicket);
+
+/// <summary>
+/// The result of a successful confirmation or a recovery-code regeneration: the freshly generated
+/// plaintext codes, shown to the user exactly once.
+/// </summary>
+public sealed record TotpEnrollmentResult(IReadOnlyList<string> RecoveryCodes);
+
+/// <summary>
+/// TOTP enrollment (TECHNICAL_SPECIFICATION §3.4) for both the voluntary page and the forced
+/// re-enrollment obligation (§3.5, obligation 2).
+///
+/// <para><b>Why a stateless ticket.</b> Enrollment state is derived — a Person is enrolled iff
+/// <c>totp_secret_protected IS NOT NULL</c> (there is no pending-secret column). Persisting an
+/// unconfirmed secret would therefore flip two-factor on before the user proved they can generate a
+/// code. Instead the GET builds a secret and hands the page a Data-Protection-<b>protected</b> ticket
+/// (<c>v1|{personId}|{issuedAtUnix}|{base32}</c>); the confirm POST unprotects it, checks it belongs
+/// to the signed-in person and is within its 15-minute lifetime, verifies the code, and only then
+/// writes the secret. A failed code re-posts the same ticket, so the QR the user already scanned
+/// stays valid; an expired ticket yields a fresh QR.</para>
+///
+/// <para><b>Why it mutates through the store cast.</b> The confirm/regenerate steps operate on the
+/// <em>same</em> scoped <see cref="DapperUserStore"/> instance <see cref="UserManager{TUser}"/>
+/// resolves (injected here as <see cref="IUserStore{TUser}"/> and cast to the authenticator-key and
+/// recovery-code interfaces), so the secret and the forced-enrollment flag are set on the tracked
+/// entity and then persisted in a single update via
+/// <see cref="UserManager{TUser}.UpdateSecurityStampAsync"/> — the stamp bump is the §3.1 signal that
+/// credentials changed. Recovery codes are written separately (their own table/transaction) with the
+/// Domain <see cref="RecoveryCode.GenerateSet"/>; the framework's
+/// <c>GenerateNewTwoFactorRecoveryCodesAsync</c> is bypassed because it uses a different code format
+/// and does not bump the stamp. Regeneration alone does not bump the stamp (it changes no sign-in
+/// credential), matching the framework's own behaviour.</para>
+/// </summary>
+public sealed class TotpEnrollment
+{
+    /// <summary>Data-Protection purpose for the short-lived enrollment ticket. Distinct from the at-rest secret purpose.</summary>
+    private const string TicketProtectorPurpose = "MyRestaurant.Identity.TotpEnrollmentTicket.v1";
+
+    /// <summary>How long a provisioning QR stays confirmable before a fresh one must be generated.</summary>
+    private static readonly TimeSpan TicketLifetime = TimeSpan.FromMinutes(15);
+
+    private readonly UserManager<Person> _userManager;
+    private readonly IUserStore<Person> _userStore;
+    private readonly ISecurityEventLog _securityEventLog;
+    private readonly IDataProtector _ticketProtector;
+    private readonly IClock _clock;
+    private readonly string _issuer;
+
+    public TotpEnrollment(
+        UserManager<Person> userManager,
+        IUserStore<Person> userStore,
+        ISecurityEventLog securityEventLog,
+        IDataProtectionProvider dataProtectionProvider,
+        IClock clock,
+        string issuer)
+    {
+        ArgumentNullException.ThrowIfNull(userManager);
+        ArgumentNullException.ThrowIfNull(userStore);
+        ArgumentNullException.ThrowIfNull(securityEventLog);
+        ArgumentNullException.ThrowIfNull(dataProtectionProvider);
+        ArgumentNullException.ThrowIfNull(clock);
+        ArgumentException.ThrowIfNullOrEmpty(issuer);
+
+        _userManager = userManager;
+        _userStore = userStore;
+        _securityEventLog = securityEventLog;
+        _ticketProtector = dataProtectionProvider.CreateProtector(TicketProtectorPurpose);
+        _clock = clock;
+        _issuer = issuer;
+    }
+
+    /// <summary>
+    /// Generates a new secret and everything needed to display it — QR, manual key, provisioning
+    /// URI, and the protected ticket to post back. Persists nothing.
+    /// </summary>
+    public TotpEnrollmentStart BeginEnrollment(Person user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        byte[] secret = Rfc6238Totp.GenerateSecret();
+        string base32 = Base32Text.Encode(secret);
+        string uri = TotpProvisioningUri.Build(_issuer, user.Username, base32);
+        string ticket = new TotpEnrollmentTicket(user.PersonIdentifier, _clock.UtcNow, base32)
+            .Protect(_ticketProtector);
+
+        return new TotpEnrollmentStart(
+            SecretBase32: base32,
+            ManualEntrySecret: GroupForManualEntry(base32),
+            ProvisioningUri: uri,
+            QrCodeSvg: TotpQrCode.RenderSvg(uri),
+            ProtectedTicket: ticket);
+    }
+
+    /// <summary>
+    /// Rebuilds the display for a ticket the user already holds — same secret, same QR, same ticket
+    /// — so a mistyped code can be retried without re-scanning. Returns <c>null</c> when the ticket
+    /// is unusable (tampered, for another account, or expired), signalling the caller to
+    /// <see cref="BeginEnrollment"/> a fresh one instead. Persists nothing.
+    /// </summary>
+    public TotpEnrollmentStart? ResumeEnrollment(Person user, string protectedTicket)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        if (!TotpEnrollmentTicket.TryUnprotect(_ticketProtector, protectedTicket, out TotpEnrollmentTicket? ticket)
+            || ticket!.PersonIdentifier != user.PersonIdentifier
+            || ticket.HasExpired(_clock.UtcNow, TicketLifetime))
+        {
+            return null;
+        }
+
+        string uri = TotpProvisioningUri.Build(_issuer, user.Username, ticket.SecretBase32);
+        return new TotpEnrollmentStart(
+            SecretBase32: ticket.SecretBase32,
+            ManualEntrySecret: GroupForManualEntry(ticket.SecretBase32),
+            ProvisioningUri: uri,
+            QrCodeSvg: TotpQrCode.RenderSvg(uri),
+            ProtectedTicket: protectedTicket);
+    }
+
+    /// <summary>
+    /// Confirms an enrollment: validates the ticket and the code, then (on success) commits the
+    /// secret, clears the forced-enrollment obligation, bumps the security stamp, issues a fresh set
+    /// of recovery codes, and records one event — <see cref="SecurityEventType.ForcedTotpEnrollmentCompleted"/>
+    /// when <paramref name="forced"/>, otherwise <see cref="SecurityEventType.TotpEnrolled"/>.
+    /// </summary>
+    public async Task<(TotpEnrollmentConfirmation Confirmation, TotpEnrollmentResult? Result)> ConfirmAsync(
+        Person user,
+        string protectedTicket,
+        string code,
+        bool forced,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        if (!TotpEnrollmentTicket.TryUnprotect(_ticketProtector, protectedTicket, out TotpEnrollmentTicket? ticket)
+            || ticket!.PersonIdentifier != user.PersonIdentifier
+            || ticket.HasExpired(_clock.UtcNow, TicketLifetime)
+            || !Base32Text.TryDecode(ticket.SecretBase32, out byte[] secret))
+        {
+            return (TotpEnrollmentConfirmation.TicketInvalid, null);
+        }
+
+        string normalized = (code ?? string.Empty).Replace(" ", string.Empty).Replace("-", string.Empty);
+        if (!Rfc6238Totp.ValidateCode(secret, normalized, _clock.UtcNow))
+        {
+            return (TotpEnrollmentConfirmation.InvalidCode, null);
+        }
+
+        // Commit the secret and clear the obligation on the tracked entity, then persist both in the
+        // one update UpdateSecurityStampAsync performs (which also rotates the §3.1 stamp).
+        IUserAuthenticatorKeyStore<Person> keyStore = AuthenticatorKeyStore();
+        await keyStore.SetAuthenticatorKeyAsync(user, ticket.SecretBase32, cancellationToken).ConfigureAwait(false);
+        user.MustEnrollTotp = false;
+        await _userManager.UpdateSecurityStampAsync(user).ConfigureAwait(false);
+
+        IReadOnlyList<string> recoveryCodes = await IssueRecoveryCodesAsync(user, cancellationToken).ConfigureAwait(false);
+
+        await _securityEventLog.RecordAsync(
+            user.PersonIdentifier,
+            actorPersonIdentifier: null,
+            forced ? SecurityEventType.ForcedTotpEnrollmentCompleted : SecurityEventType.TotpEnrolled,
+            cancellationToken).ConfigureAwait(false);
+
+        return (TotpEnrollmentConfirmation.Succeeded, new TotpEnrollmentResult(recoveryCodes));
+    }
+
+    /// <summary>
+    /// Regenerates the recovery-code set for an already-enrolled account, invalidating the old codes,
+    /// and records <see cref="SecurityEventType.RecoveryCodesRegenerated"/>. Does not touch the TOTP
+    /// secret or the security stamp.
+    /// </summary>
+    public async Task<TotpEnrollmentResult> RegenerateRecoveryCodesAsync(
+        Person user,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        IReadOnlyList<string> recoveryCodes = await IssueRecoveryCodesAsync(user, cancellationToken).ConfigureAwait(false);
+
+        await _securityEventLog.RecordAsync(
+            user.PersonIdentifier,
+            actorPersonIdentifier: null,
+            SecurityEventType.RecoveryCodesRegenerated,
+            cancellationToken).ConfigureAwait(false);
+
+        return new TotpEnrollmentResult(recoveryCodes);
+    }
+
+    /// <summary>The count of unused recovery codes for <paramref name="user"/>.</summary>
+    public Task<int> CountRecoveryCodesAsync(Person user, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        return RecoveryCodeStore().CountCodesAsync(user, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<string>> IssueRecoveryCodesAsync(Person user, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<string> codes = RecoveryCode.GenerateSet();
+        await RecoveryCodeStore().ReplaceCodesAsync(user, codes, cancellationToken).ConfigureAwait(false);
+        return codes;
+    }
+
+    private IUserAuthenticatorKeyStore<Person> AuthenticatorKeyStore()
+        => _userStore as IUserAuthenticatorKeyStore<Person>
+            ?? throw new InvalidOperationException("The configured user store does not support authenticator keys.");
+
+    private IUserTwoFactorRecoveryCodeStore<Person> RecoveryCodeStore()
+        => _userStore as IUserTwoFactorRecoveryCodeStore<Person>
+            ?? throw new InvalidOperationException("The configured user store does not support recovery codes.");
+
+    /// <summary>Groups a Base32 secret into space-separated blocks of four for easier manual entry.</summary>
+    private static string GroupForManualEntry(string base32)
+    {
+        StringBuilder builder = new(base32.Length + (base32.Length / 4));
+        for (int index = 0; index < base32.Length; index++)
+        {
+            if (index > 0 && index % 4 == 0)
+            {
+                builder.Append(' ');
+            }
+
+            builder.Append(base32[index]);
+        }
+
+        return builder.ToString();
+    }
+}
+
+/// <summary>
+/// The short-lived, Data-Protection-protected enrollment ticket that carries an unconfirmed secret
+/// between the GET that generates the QR and the POST that confirms it, so nothing is persisted until
+/// the user proves possession. The payload is <c>v1|{personId:D}|{issuedAtUnixSeconds}|{base32}</c>;
+/// protection provides confidentiality and tamper-evidence, and the embedded issued-at plus an
+/// explicit lifetime check bound how long a QR stays confirmable.
+/// </summary>
+public sealed record TotpEnrollmentTicket(Guid PersonIdentifier, DateTimeOffset IssuedAt, string SecretBase32)
+{
+    private const string Version = "v1";
+
+    public string Protect(IDataProtector protector)
+    {
+        ArgumentNullException.ThrowIfNull(protector);
+
+        string payload = string.Join(
+            '|',
+            Version,
+            PersonIdentifier.ToString("D"),
+            IssuedAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture),
+            SecretBase32);
+
+        return protector.Protect(payload);
+    }
+
+    public bool HasExpired(DateTimeOffset now, TimeSpan lifetime) => now - IssuedAt > lifetime;
+
+    public static bool TryUnprotect(IDataProtector protector, string? protectedTicket, out TotpEnrollmentTicket? ticket)
+    {
+        ArgumentNullException.ThrowIfNull(protector);
+
+        ticket = null;
+        if (string.IsNullOrEmpty(protectedTicket))
+        {
+            return false;
+        }
+
+        string payload;
+        try
+        {
+            payload = protector.Unprotect(protectedTicket);
+        }
+        catch (CryptographicException)
+        {
+            return false; // tampered, wrong key, or not one of ours
+        }
+
+        string[] parts = payload.Split('|');
+        if (parts.Length != 4
+            || parts[0] != Version
+            || !Guid.TryParseExact(parts[1], "D", out Guid personIdentifier)
+            || !long.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out long issuedAtUnix)
+            || string.IsNullOrEmpty(parts[3]))
+        {
+            return false;
+        }
+
+        ticket = new TotpEnrollmentTicket(
+            personIdentifier,
+            DateTimeOffset.FromUnixTimeSeconds(issuedAtUnix),
+            parts[3]);
+        return true;
+    }
+}
+
+/// <summary>
+/// Renders a provisioning URI to a self-contained, inline SVG QR code (TECHNICAL_SPECIFICATION §3.4:
+/// server-side, no client calls). The QR modules come from <c>Net.Codecrete.QrCodeGenerator</c>; the
+/// element is composed by hand rather than via the library's <c>ToSvgString</c>, which emits an XML
+/// prolog and DOCTYPE unsuitable for inlining. A white background rect keeps the code scannable on
+/// the panel surface, a four-module quiet zone is baked into both the path and the viewBox, and the
+/// <c>aria-label</c> is HTML-escaped so the URI cannot inject markup.
+/// </summary>
+public static class TotpQrCode
+{
+    private const int QuietZoneModules = 4;
+    private const string DarkColor = "#16202b";  // --ink
+    private const string LightColor = "#ffffff"; // --surface-raised
+
+    public static string RenderSvg(string provisioningUri)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(provisioningUri);
+
+        QrCode qr = QrCode.EncodeText(provisioningUri, QrCode.Ecc.Medium);
+        int dimension = qr.Size + (QuietZoneModules * 2);
+        string path = qr.ToGraphicsPath(QuietZoneModules);
+        string label = HtmlEncoder.Default.Encode("Authenticator setup QR code");
+
+        return
+            $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {dimension} {dimension}\" "
+            + $"role=\"img\" aria-label=\"{label}\" class=\"totp-qr-svg\" shape-rendering=\"crispEdges\">"
+            + $"<rect width=\"{dimension}\" height=\"{dimension}\" fill=\"{LightColor}\"/>"
+            + $"<path d=\"{path}\" fill=\"{DarkColor}\"/>"
+            + "</svg>";
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.WebApplication/LiveUpdates/InProcessDomainEventBroadcaster.cs
 ################################################################################
 
@@ -10877,15 +12198,15 @@ public sealed class InProcessDomainEventBroadcaster : IDomainEventBroadcaster
   File name:             MyRestaurant.WebApplication.csproj
   Relative path:         src/MyRestaurant.WebApplication/MyRestaurant.WebApplication.csproj
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/MyRestaurant.WebApplication.csproj
-  Size:                  1.1 KiB (1113 bytes)
-  Last modified:         2026-07-17 20:12:37.000000000 -0400
+  Size:                  1.3 KiB (1322 bytes)
+  Last modified:         2026-07-20 08:01:36.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258185
+  Inode:                 21843819
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               26a1d989ac76525b9c19fe103092349d0b05ef6ecb5d8e3623664bf1e7cd713e
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               05e36808901591e9c8cf9ee17b19be2d41d314c6715097b4986ffd1ceb614e33
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
 
 --- CONTENT ---
 <Project Sdk="Microsoft.NET.Sdk.Web">
@@ -10894,7 +12215,9 @@ public sealed class InProcessDomainEventBroadcaster : IDomainEventBroadcaster
     Blazor Server application (interactive server render mode), the composition root, the
     in-process broadcaster, and (in later milestones) the routed areas, auth, and background
     services. References DataAccess (and, transitively, Domain). Data Protection and ASP.NET
-    Core Identity core services come from the shared framework, not packages.
+    Core Identity core services come from the shared framework, not packages. The one third-party
+    package here beyond observability is the QR generator, used to render the TOTP provisioning
+    QR server-side (§3.4).
   -->
   <PropertyGroup>
     <RootNamespace>MyRestaurant.WebApplication</RootNamespace>
@@ -10903,6 +12226,7 @@ public sealed class InProcessDomainEventBroadcaster : IDomainEventBroadcaster
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Net.Codecrete.QrCodeGenerator" />
     <PackageReference Include="Npgsql.OpenTelemetry" />
     <PackageReference Include="OpenTelemetry" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
@@ -11351,15 +12675,15 @@ return 0;
   File name:             app.css
   Relative path:         src/MyRestaurant.WebApplication/wwwroot/app.css
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/wwwroot/app.css
-  Size:                  6.8 KiB (7011 bytes)
-  Last modified:         2026-07-19 08:49:32.000000000 -0400
+  Size:                  8.5 KiB (8654 bytes)
+  Last modified:         2026-07-20 08:01:14.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654785
+  Inode:                 21843818
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               ecba049aad7b05a6f624038cf387c75f123eb0cdaebcbc616a9bd7ab6e7e5857
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               ddbcac5c95e2aa1878d20ac59c6f59a24be78c9a7b613446db4f01649c29a45c
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
 
 --- CONTENT ---
 /*
@@ -11664,6 +12988,75 @@ ul.status-error {
     margin-top: 0.3rem;
     color: var(--danger-ink);
     font-size: 0.85rem;
+}
+
+.status-success {
+    margin: 0 0 1.25rem;
+    padding: 0.75rem 1rem;
+    background-color: #e7f4f1;
+    color: var(--accent-strong);
+    border: 1px solid #b9ddd6;
+    border-radius: 8px;
+    font-size: 0.95rem;
+}
+
+/* --- TOTP enrollment --------------------------------------------------------------------------- */
+
+.totp-qr {
+    display: flex;
+    justify-content: center;
+    margin: 0 0 1.25rem;
+}
+
+.totp-qr .totp-qr-svg {
+    width: 100%;
+    max-width: 16rem;
+    height: auto;
+    padding: 0.75rem;
+    background-color: var(--surface-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+}
+
+.totp-secret-label {
+    margin: 0 0 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+
+.totp-secret {
+    margin: 0 0 1.5rem;
+    padding: 0.6rem 0.75rem;
+    font-family: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+    font-size: 1.05rem;
+    letter-spacing: 0.08em;
+    word-break: break-all;
+    color: var(--ink);
+    background-color: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+}
+
+.recovery-codes {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem 0.75rem;
+    margin: 0 0 1.25rem;
+    padding: 0;
+}
+
+.recovery-codes li {
+    padding: 0.5rem 0.65rem;
+    font-family: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+    font-size: 1rem;
+    letter-spacing: 0.06em;
+    text-align: center;
+    color: var(--ink);
+    background-color: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
 }
 
 a:focus-visible,
@@ -12923,6 +14316,143 @@ public sealed class Argon2PhcStringTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.Domain.Tests/Base32TextTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             Base32TextTests.cs
+  Relative path:         tests/MyRestaurant.Domain.Tests/Base32TextTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.Domain.Tests/Base32TextTests.cs
+  Size:                  3.9 KiB (4035 bytes)
+  Last modified:         2026-07-20 08:01:59.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21843841
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               16c34cb2cf82947b53f0adb00aacf60b9f90c04e1dd08a5543dcdfb2424964b3
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+
+--- CONTENT ---
+using MyRestaurant.Domain.Security;
+using Xunit;
+
+namespace MyRestaurant.Domain.Tests;
+
+/// <summary>
+/// Locks the Base32 encoding (RFC 4648 §6, uppercase, no padding) used for the TOTP secret in the
+/// provisioning URI and the authenticator key (TECHNICAL_SPECIFICATION §3.4). Encoding must match the
+/// published vectors byte-for-byte; decoding must be forgiving of case and grouped-display
+/// separators but reject impossible lengths, nonzero leftover bits, and illegal characters without
+/// throwing.
+/// </summary>
+public sealed class Base32TextTests
+{
+    [Theory]
+    [InlineData("", "")]
+    [InlineData("f", "MY")]
+    [InlineData("fo", "MZXQ")]
+    [InlineData("foo", "MZXW6")]
+    [InlineData("foob", "MZXW6YQ")]
+    [InlineData("fooba", "MZXW6YTB")]
+    [InlineData("foobar", "MZXW6YTBOI")]
+    public void Encode_MatchesRfc4648Vectors(string ascii, string expected)
+    {
+        byte[] input = System.Text.Encoding.ASCII.GetBytes(ascii);
+
+        Assert.Equal(expected, Base32Text.Encode(input));
+    }
+
+    [Fact]
+    public void Encode_TwentyByteSecret_IsThirtyTwoCharactersNoPadding()
+    {
+        // Bytes 0x01..0x14 — a 20-byte secret encodes to exactly 32 Base32 characters, no '='.
+        byte[] secret = new byte[20];
+        for (int index = 0; index < secret.Length; index++)
+        {
+            secret[index] = (byte)(index + 1);
+        }
+
+        string encoded = Base32Text.Encode(secret);
+
+        Assert.Equal("AEBAGBAFAYDQQCIKBMGA2DQPCAIREEYU", encoded);
+        Assert.Equal(32, encoded.Length);
+        Assert.DoesNotContain('=', encoded);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(20)]
+    [InlineData(32)]
+    public void EncodeThenDecode_RoundTripsEveryLength(int length)
+    {
+        byte[] original = new byte[length];
+        for (int index = 0; index < length; index++)
+        {
+            original[index] = (byte)(index * 7 + 3);
+        }
+
+        string encoded = Base32Text.Encode(original);
+
+        Assert.True(Base32Text.TryDecode(encoded, out byte[] decoded));
+        Assert.Equal(original, decoded);
+    }
+
+    [Fact]
+    public void TryDecode_IsCaseInsensitive()
+    {
+        Assert.True(Base32Text.TryDecode("mzxw6ytboi", out byte[] lower));
+        Assert.Equal("foobar", System.Text.Encoding.ASCII.GetString(lower));
+    }
+
+    [Fact]
+    public void TryDecode_IgnoresGroupingSeparators()
+    {
+        // The manual-entry display groups the key with spaces; a user might type dashes too.
+        Assert.True(Base32Text.TryDecode("MZXW 6YTB-OI", out byte[] spaced));
+        Assert.Equal("foobar", System.Text.Encoding.ASCII.GetString(spaced));
+    }
+
+    [Fact]
+    public void TryDecode_AcceptsTrailingPadding()
+    {
+        Assert.True(Base32Text.TryDecode("MY======", out byte[] padded));
+        Assert.Equal("f", System.Text.Encoding.ASCII.GetString(padded));
+    }
+
+    [Theory]
+    [InlineData("A")]      // 5 leftover bits — impossible length
+    [InlineData("ABC")]    // 15 bits → 1 byte + 7 leftover — impossible
+    [InlineData("ABCDEF")] // 30 bits → 3 bytes + 6 leftover — impossible
+    public void TryDecode_RejectsImpossibleLengths(string text)
+        => Assert.False(Base32Text.TryDecode(text, out _));
+
+    [Fact]
+    public void TryDecode_RejectsNonZeroLeftoverBits()
+    {
+        // "MZ" decodes the first byte then leaves nonzero trailing bits — a corrupted tail, not "f".
+        Assert.False(Base32Text.TryDecode("MZ", out _));
+    }
+
+    [Theory]
+    [InlineData("MZXW6YTB0I")] // '0' is not in the RFC alphabet
+    [InlineData("MZXW6YTB1I")] // '1' is not in the RFC alphabet
+    [InlineData("MZXW6=TBOI")] // '=' anywhere but the trailing run
+    [InlineData("****")]
+    public void TryDecode_RejectsIllegalCharacters(string text)
+        => Assert.False(Base32Text.TryDecode(text, out _));
+
+    [Fact]
+    public void TryDecode_RejectsNull()
+        => Assert.False(Base32Text.TryDecode(null!, out _));
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.Domain.Tests/Base64UrlTextTests.cs
 ################################################################################
 
@@ -14133,6 +15663,133 @@ public sealed class PairingAndRecoveryCodeTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.Domain.Tests/Rfc6238TotpTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             Rfc6238TotpTests.cs
+  Relative path:         tests/MyRestaurant.Domain.Tests/Rfc6238TotpTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.Domain.Tests/Rfc6238TotpTests.cs
+  Size:                  4.0 KiB (4102 bytes)
+  Last modified:         2026-07-20 08:02:22.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21843843
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               17f6cfa799d40d56a528b8d67a471bc2227241fea5907a718bc5219f44abd8b5
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+
+--- CONTENT ---
+using System.Text;
+using MyRestaurant.Domain.Security;
+using Xunit;
+
+namespace MyRestaurant.Domain.Tests;
+
+/// <summary>
+/// Locks the RFC 6238 TOTP engine (TECHNICAL_SPECIFICATION §3.4) against the published Appendix B
+/// vectors (6-digit truncation of the SHA-1 suite) and, crucially, the <b>±1 step</b> acceptance
+/// window the spec mandates — one step either side accepted, two steps rejected. The RFC test secret
+/// is the ASCII string "12345678901234567890" (exactly 20 bytes).
+/// </summary>
+public sealed class Rfc6238TotpTests
+{
+    // RFC 6238 Appendix B, SHA-1 shared secret.
+    private static readonly byte[] RfcSecret = Encoding.ASCII.GetBytes("12345678901234567890");
+
+    [Theory]
+    [InlineData(59L, "287082")]
+    [InlineData(1111111109L, "081804")]
+    [InlineData(1111111111L, "050471")]
+    [InlineData(1234567890L, "005924")]
+    [InlineData(2000000000L, "279037")]
+    [InlineData(20000000000L, "353130")]
+    public void ComputeCode_MatchesRfc6238AppendixBVectors(long unixSeconds, string expected)
+    {
+        DateTimeOffset timestamp = DateTimeOffset.FromUnixTimeSeconds(unixSeconds);
+
+        Assert.Equal(expected, Rfc6238Totp.ComputeCode(RfcSecret, timestamp));
+    }
+
+    [Fact]
+    public void ComputeCode_IsAlwaysSixDigits()
+    {
+        // T=59 truncates to a value with a leading zero region in some suites; ensure zero-padding.
+        string code = Rfc6238Totp.ComputeCode(RfcSecret, DateTimeOffset.FromUnixTimeSeconds(59));
+
+        Assert.Equal(6, code.Length);
+        Assert.All(code, character => Assert.InRange(character, '0', '9'));
+    }
+
+    [Fact]
+    public void ValidateCode_AcceptsTheCurrentStep()
+    {
+        DateTimeOffset now = DateTimeOffset.FromUnixTimeSeconds(1111111109);
+
+        Assert.True(Rfc6238Totp.ValidateCode(RfcSecret, "081804", now));
+    }
+
+    [Fact]
+    public void ValidateCode_AcceptsOneStepEitherSide()
+    {
+        // Anchor unix 1111111109 → step 37037036 → "081804". One step earlier/later:
+        DateTimeOffset now = DateTimeOffset.FromUnixTimeSeconds(1111111109);
+
+        Assert.True(Rfc6238Totp.ValidateCode(RfcSecret, "731029", now));  // step −1
+        Assert.True(Rfc6238Totp.ValidateCode(RfcSecret, "050471", now));  // step +1 (== T=1111111111)
+    }
+
+    [Fact]
+    public void ValidateCode_RejectsTwoStepsEitherSide()
+    {
+        DateTimeOffset now = DateTimeOffset.FromUnixTimeSeconds(1111111109);
+
+        Assert.False(Rfc6238Totp.ValidateCode(RfcSecret, "150727", now)); // step −2
+        Assert.False(Rfc6238Totp.ValidateCode(RfcSecret, "266759", now)); // step +2
+    }
+
+    [Fact]
+    public void ValidateCode_HonoursAWiderExplicitSkew()
+    {
+        DateTimeOffset now = DateTimeOffset.FromUnixTimeSeconds(1111111109);
+
+        // The default rejects ±2, but an explicit window of 2 accepts it — guards the parameter.
+        Assert.False(Rfc6238Totp.ValidateCode(RfcSecret, "266759", now));
+        Assert.True(Rfc6238Totp.ValidateCode(RfcSecret, "266759", now, allowedStepSkew: 2));
+    }
+
+    [Theory]
+    [InlineData("81804")]     // too short
+    [InlineData("0818040")]   // too long
+    [InlineData("08180a")]    // non-numeric
+    [InlineData("")]
+    public void ValidateCode_RejectsMalformedInput(string code)
+    {
+        DateTimeOffset now = DateTimeOffset.FromUnixTimeSeconds(1111111109);
+
+        Assert.False(Rfc6238Totp.ValidateCode(RfcSecret, code, now));
+    }
+
+    [Fact]
+    public void ValidateCode_RejectsNull()
+        => Assert.False(Rfc6238Totp.ValidateCode(RfcSecret, null!, DateTimeOffset.FromUnixTimeSeconds(1111111109)));
+
+    [Fact]
+    public void ValidateCode_NegativeSkew_Throws()
+        => Assert.Throws<ArgumentOutOfRangeException>(
+            () => Rfc6238Totp.ValidateCode(RfcSecret, "081804", DateTimeOffset.UtcNow, allowedStepSkew: -1));
+
+    [Fact]
+    public void GenerateSecret_IsTwentyBytes()
+        => Assert.Equal(Rfc6238Totp.SecretSizeInBytes, Rfc6238Totp.GenerateSecret().Length);
+
+    [Fact]
+    public void GenerateSecret_IsRandom()
+        => Assert.NotEqual(Rfc6238Totp.GenerateSecret(), Rfc6238Totp.GenerateSecret());
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.Domain.Tests/SecretGeneratorTests.cs
 ################################################################################
 
@@ -14425,6 +16082,85 @@ public sealed class SignInAuditTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.Domain.Tests/TotpProvisioningUriTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TotpProvisioningUriTests.cs
+  Relative path:         tests/MyRestaurant.Domain.Tests/TotpProvisioningUriTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.Domain.Tests/TotpProvisioningUriTests.cs
+  Size:                  2.4 KiB (2407 bytes)
+  Last modified:         2026-07-20 08:12:42.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21843842
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               02ddfbbc66c475bf6fc7d73338f4bedbaf9ead9ab7df372f7db8816286433652
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+
+--- CONTENT ---
+using MyRestaurant.Domain.Security;
+using Xunit;
+
+namespace MyRestaurant.Domain.Tests;
+
+/// <summary>
+/// Locks the <c>otpauth://totp/…</c> provisioning URI (TECHNICAL_SPECIFICATION §3.4): the label is
+/// <c>{issuer}:{username}</c>, the issuer is repeated as the <c>issuer</c> parameter, and every
+/// user- or configuration-supplied component is percent-encoded so a space, <c>':'</c>, <c>'&amp;'</c>,
+/// or non-ASCII character cannot break out of its field.
+/// </summary>
+public sealed class TotpProvisioningUriTests
+{
+    [Fact]
+    public void Build_ProducesTheExpectedKeyUriFormat()
+    {
+        string uri = TotpProvisioningUri.Build("My Bistro", "casey", "GEZDGNBVGY3TQOJQ");
+
+        // Space in the issuer is percent-encoded (%20) in both the label and the issuer parameter.
+        Assert.Equal(
+            "otpauth://totp/My%20Bistro:casey?secret=GEZDGNBVGY3TQOJQ&issuer=My%20Bistro",
+            uri);
+    }
+
+    [Fact]
+    public void Build_EscapesSeparatorsAndAmpersandsInComponents()
+    {
+        string uri = TotpProvisioningUri.Build("A&B: Grill", "user:name", "ABCDEF");
+
+        // ':' → %3A, '&' → %26, ' ' → %20; the only literal ':' between label parts is the separator,
+        // and the only literal '&' is the query parameter separator.
+        Assert.Equal(
+            "otpauth://totp/A%26B%3A%20Grill:user%3Aname?secret=ABCDEF&issuer=A%26B%3A%20Grill",
+            uri);
+
+        // Splitting the query on '&' yields exactly the two parameters — no stray separator leaked in.
+        string query = uri[(uri.IndexOf('?', StringComparison.Ordinal) + 1)..];
+        Assert.Equal(new[] { "secret=ABCDEF", "issuer=A%26B%3A%20Grill" }, query.Split('&'));
+    }
+
+    [Fact]
+    public void Build_EscapesNonAsciiIssuer()
+    {
+        string uri = TotpProvisioningUri.Build("Café", "u", "ABCDEF");
+
+        Assert.Contains("Caf%C3%A9:u", uri, StringComparison.Ordinal);
+        Assert.Contains("issuer=Caf%C3%A9", uri, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(null, "u", "S")]
+    [InlineData("", "u", "S")]
+    [InlineData("i", null, "S")]
+    [InlineData("i", "", "S")]
+    [InlineData("i", "u", null)]
+    [InlineData("i", "u", "")]
+    public void Build_RejectsMissingComponents(string? issuer, string? username, string? secret)
+        => Assert.ThrowsAny<ArgumentException>(() => TotpProvisioningUri.Build(issuer!, username!, secret!));
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.Domain.Tests/UuidV7IdentifierFactoryTests.cs
 ################################################################################
 
@@ -14649,15 +16385,15 @@ public sealed class EndToEndScenarios
   File name:             IdentityWiringTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs
-  Size:                  7.7 KiB (7860 bytes)
-  Last modified:         2026-07-19 08:50:06.000000000 -0400
+  Size:                  8.7 KiB (8878 bytes)
+  Last modified:         2026-07-20 08:04:25.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654813
+  Inode:                 21843838
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               8b9ac45b50664096457e6ae3abe92b518087c911b1c61272277f828e37af0d72
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               d2dec87ae50b8402aa8e0117cfcc0507f8d138d45508ce93a2b2f093d364b511
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -14760,6 +16496,30 @@ public sealed class IdentityWiringTests
     }
 
     [Fact]
+    public void AuthenticatorTokenProvider_IsTheRestaurantOnePointOneStepOverride()
+    {
+        // §3.4 requires a ±1 window; the framework default is ±2. Registering our provider under the
+        // same DefaultAuthenticatorProvider name after AddDefaultTokenProviders must win the map.
+        using ServiceProvider provider = BuildProvider();
+
+        IdentityOptions options = provider.GetRequiredService<IOptions<IdentityOptions>>().Value;
+
+        Assert.True(options.Tokens.ProviderMap.TryGetValue(TokenOptions.DefaultAuthenticatorProvider, out var descriptor));
+        Assert.Equal(typeof(RestaurantAuthenticatorTokenProvider), descriptor!.ProviderType);
+    }
+
+    [Fact]
+    public void TotpEnrollment_IsResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        TotpEnrollment enrollment = scope.ServiceProvider.GetRequiredService<TotpEnrollment>();
+
+        Assert.NotNull(enrollment);
+    }
+
+    [Fact]
     public async Task TablePolicy_RequiresOnlyAuthentication()
     {
         AuthorizationPolicy policy = await GetPolicyAsync(AuthorizationPolicies.Table);
@@ -14856,15 +16616,15 @@ public sealed class IdentityWiringTests
   File name:             ObligationsEnforcementTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/ObligationsEnforcementTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/ObligationsEnforcementTests.cs
-  Size:                  5.8 KiB (5926 bytes)
-  Last modified:         2026-07-19 08:50:32.000000000 -0400
+  Size:                  6.2 KiB (6331 bytes)
+  Last modified:         2026-07-20 08:04:38.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654812
+  Inode:                 21843837
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               37e9c2c2a00ba0c9a9b343bc3af33f4e4c9c4de8fad43fb499b991b18cd7be68
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               0a44a58800a6d63fae418504a4712ee1327f7ea100d84c092c12c8b56ba4010c
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
 
 --- CONTENT ---
 using System.Security.Claims;
@@ -14948,6 +16708,11 @@ public sealed class ObligationsEnforcementTests
     [InlineData("/sign-in/two-factor")]
     [InlineData("/_blazor")] // circuits are deliberately blocked while an obligation is outstanding
     [InlineData("/administration")]
+    // The voluntary authenticator page is a normal authenticated destination, NOT a pipeline page:
+    // a user with an outstanding obligation must be routed to the pipeline, never here. Its route is
+    // also a distinct segment from the forced page (…/enroll-totp vs …/enroll-totp-required), so the
+    // forced exemption does not accidentally cover it.
+    [InlineData("/account/enroll-totp")]
     public void IsExemptPath_EverythingElse_IsBlocked(string path)
     {
         Assert.False(ObligationsEnforcement.IsExemptPath(new PathString(path)));
@@ -15024,6 +16789,241 @@ public sealed class ObligationsEnforcementTests
         }
 
         return new ClaimsPrincipal(identity);
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Identity/RestaurantAuthenticatorTokenProviderTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             RestaurantAuthenticatorTokenProviderTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/RestaurantAuthenticatorTokenProviderTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/RestaurantAuthenticatorTokenProviderTests.cs
+  Size:                  8.7 KiB (8947 bytes)
+  Last modified:         2026-07-20 08:03:34.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21843836
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               f6a7d63e82a72a08ce8cf796ef9a19b4eb12b23c436ca4e84e0afd09cc0d3571
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+
+--- CONTENT ---
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Security;
+using MyRestaurant.Domain.Time;
+using MyRestaurant.WebApplication.Identity;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests.Identity;
+
+/// <summary>
+/// Unit tests for <see cref="RestaurantAuthenticatorTokenProvider"/> (TECHNICAL_SPECIFICATION §3.4):
+/// it must accept a code within <b>±1</b> step of the injected clock and reject ±2 (the reason this
+/// provider replaces the framework's ±2 one), tolerate grouped-display spaces/dashes, and fail
+/// closed on a missing key or malformed input. Time is pinned with a fixed clock at the RFC 6238
+/// anchor unix 1111111109; the RFC secret's code at that step is 081804. Driven through a hand-written
+/// fake key store and the 9-argument <see cref="UserManager{TUser}"/> constructor (§16.1: fakes
+/// preferred, no server).
+/// </summary>
+public sealed class RestaurantAuthenticatorTokenProviderTests
+{
+    // RFC 6238 SHA-1 secret "12345678901234567890", Base32 (what the store returns as the key).
+    private const string RfcSecretBase32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    private static readonly DateTimeOffset Anchor = DateTimeOffset.FromUnixTimeSeconds(1111111109);
+
+    [Theory]
+    [InlineData("081804")] // current step
+    [InlineData("731029")] // step −1
+    [InlineData("050471")] // step +1
+    public async Task ValidateAsync_AcceptsCodesWithinOneStep(string code)
+    {
+        (RestaurantAuthenticatorTokenProvider provider, UserManager<Person> manager, Person user) = Build(RfcSecretBase32);
+        using (manager)
+        {
+            Assert.True(await provider.ValidateAsync("TwoFactor", code, manager, user));
+        }
+    }
+
+    [Theory]
+    [InlineData("150727")] // step −2
+    [InlineData("266759")] // step +2
+    public async Task ValidateAsync_RejectsCodesTwoStepsAway(string code)
+    {
+        (RestaurantAuthenticatorTokenProvider provider, UserManager<Person> manager, Person user) = Build(RfcSecretBase32);
+        using (manager)
+        {
+            Assert.False(await provider.ValidateAsync("TwoFactor", code, manager, user));
+        }
+    }
+
+    [Theory]
+    [InlineData("050 471")]
+    [InlineData("050-471")]
+    public async Task ValidateAsync_ToleratesGroupedDisplaySeparators(string code)
+    {
+        (RestaurantAuthenticatorTokenProvider provider, UserManager<Person> manager, Person user) = Build(RfcSecretBase32);
+        using (manager)
+        {
+            Assert.True(await provider.ValidateAsync("TwoFactor", code, manager, user));
+        }
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WrongCode_IsRejected()
+    {
+        (RestaurantAuthenticatorTokenProvider provider, UserManager<Person> manager, Person user) = Build(RfcSecretBase32);
+        using (manager)
+        {
+            Assert.False(await provider.ValidateAsync("TwoFactor", "000000", manager, user));
+        }
+    }
+
+    [Theory]
+    [InlineData("81804")]   // too short
+    [InlineData("08180a")]  // non-numeric
+    [InlineData("")]
+    public async Task ValidateAsync_MalformedInput_IsRejected(string code)
+    {
+        (RestaurantAuthenticatorTokenProvider provider, UserManager<Person> manager, Person user) = Build(RfcSecretBase32);
+        using (manager)
+        {
+            Assert.False(await provider.ValidateAsync("TwoFactor", code, manager, user));
+        }
+    }
+
+    [Fact]
+    public async Task ValidateAsync_NoKey_IsRejected()
+    {
+        (RestaurantAuthenticatorTokenProvider provider, UserManager<Person> manager, Person user) = Build(key: null);
+        using (manager)
+        {
+            Assert.False(await provider.ValidateAsync("TwoFactor", "081804", manager, user));
+        }
+    }
+
+    [Fact]
+    public async Task CanGenerateTwoFactorTokenAsync_TracksWhetherAKeyIsPresent()
+    {
+        (RestaurantAuthenticatorTokenProvider withKey, UserManager<Person> withKeyManager, Person a) = Build(RfcSecretBase32);
+        using (withKeyManager)
+        {
+            Assert.True(await withKey.CanGenerateTwoFactorTokenAsync(withKeyManager, a));
+        }
+
+        (RestaurantAuthenticatorTokenProvider noKey, UserManager<Person> noKeyManager, Person b) = Build(key: null);
+        using (noKeyManager)
+        {
+            Assert.False(await noKey.CanGenerateTwoFactorTokenAsync(noKeyManager, b));
+        }
+    }
+
+    [Fact]
+    public async Task GenerateAsync_ReturnsEmpty()
+    {
+        (RestaurantAuthenticatorTokenProvider provider, UserManager<Person> manager, Person user) = Build(RfcSecretBase32);
+        using (manager)
+        {
+            Assert.Equal(string.Empty, await provider.GenerateAsync("TwoFactor", manager, user));
+        }
+    }
+
+    // --- helpers -----------------------------------------------------------------------------------
+
+    private static (RestaurantAuthenticatorTokenProvider, UserManager<Person>, Person) Build(string? key)
+    {
+        Person user = new()
+        {
+            PersonIdentifier = Guid.CreateVersion7(),
+            Username = "casey",
+            SecurityStamp = Guid.NewGuid(),
+            CreatedAt = Anchor,
+        };
+
+        UserManager<Person> manager = new(
+            new FakeAuthenticatorKeyStore(user, key),
+            Options.Create(new IdentityOptions()),
+            passwordHasher: null!,
+            userValidators: [],
+            passwordValidators: [],
+            keyNormalizer: null!,
+            errors: new IdentityErrorDescriber(),
+            services: null!,
+            logger: NullLogger<UserManager<Person>>.Instance);
+
+        RestaurantAuthenticatorTokenProvider provider = new(new FixedClock(Anchor));
+        return (provider, manager, user);
+    }
+
+    private sealed class FixedClock : IClock
+    {
+        public FixedClock(DateTimeOffset now) => UtcNow = now;
+
+        public DateTimeOffset UtcNow { get; }
+    }
+
+    /// <summary>
+    /// A hand-written fake covering exactly what the provider touches on the manager:
+    /// <c>GetAuthenticatorKeyAsync</c>, which resolves through <see cref="IUserAuthenticatorKeyStore{TUser}"/>.
+    /// Everything else on <see cref="IUserStore{TUser}"/> is unreachable here and says so.
+    /// </summary>
+    private sealed class FakeAuthenticatorKeyStore : IUserAuthenticatorKeyStore<Person>
+    {
+        private readonly Person _user;
+        private readonly string? _key;
+
+        public FakeAuthenticatorKeyStore(Person user, string? key)
+        {
+            _user = user;
+            _key = key;
+        }
+
+        public Task<string?> GetAuthenticatorKeyAsync(Person user, CancellationToken cancellationToken)
+            => Task.FromResult(_key);
+
+        public Task SetAuthenticatorKeyAsync(Person user, string key, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the token provider.");
+
+        // --- IUserStore members (unreachable in these tests) ---------------------------------------
+
+        public Task<string> GetUserIdAsync(Person user, CancellationToken cancellationToken)
+            => Task.FromResult(user.PersonIdentifier.ToString());
+
+        public Task<string?> GetUserNameAsync(Person user, CancellationToken cancellationToken)
+            => Task.FromResult<string?>(user.Username);
+
+        public Task SetUserNameAsync(Person user, string? userName, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the token provider.");
+
+        public Task<string?> GetNormalizedUserNameAsync(Person user, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the token provider.");
+
+        public Task SetNormalizedUserNameAsync(Person user, string? normalizedName, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the token provider.");
+
+        public Task<IdentityResult> CreateAsync(Person user, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the token provider.");
+
+        public Task<IdentityResult> UpdateAsync(Person user, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the token provider.");
+
+        public Task<IdentityResult> DeleteAsync(Person user, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the token provider.");
+
+        public Task<Person?> FindByIdAsync(string userId, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the token provider.");
+
+        public Task<Person?> FindByNameAsync(string normalizedUserName, CancellationToken cancellationToken)
+            => throw new NotSupportedException("Not exercised by the token provider.");
+
+        public void Dispose()
+        {
+        }
     }
 }
 
@@ -15225,6 +17225,168 @@ public sealed class RestaurantClaimsPrincipalFactoryTests
         public Task<IList<Person>> GetUsersInRoleAsync(string roleName, CancellationToken cancellationToken)
             => throw new NotSupportedException("Not exercised by the claims factory.");
     }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Identity/TotpEnrollmentTicketTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TotpEnrollmentTicketTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/TotpEnrollmentTicketTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/TotpEnrollmentTicketTests.cs
+  Size:                  5.7 KiB (5873 bytes)
+  Last modified:         2026-07-20 08:04:03.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21843839
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               87ab9005549f12a94a1d3da6fd8195ef3405af6a2675953e30ea65ec36c54a21
+  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+
+--- CONTENT ---
+using Microsoft.AspNetCore.DataProtection;
+using MyRestaurant.Domain.Security;
+using MyRestaurant.WebApplication.Identity;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests.Identity;
+
+/// <summary>
+/// Unit tests for the stateless enrollment ticket (<see cref="TotpEnrollmentTicket"/>) that carries
+/// an unconfirmed TOTP secret between the QR-issuing GET and the confirming POST
+/// (TECHNICAL_SPECIFICATION §3.4). The ticket is Data-Protection-protected, so tampering, a foreign
+/// key, a wrong person, expiry, and malformed payloads must all fail closed. Uses an
+/// <see cref="EphemeralDataProtectionProvider"/> — a process-lifetime, in-memory key ring — so no key
+/// directory or server is involved.
+/// </summary>
+public sealed class TotpEnrollmentTicketTests
+{
+    private static readonly Guid Person = Guid.CreateVersion7();
+    private const string SecretBase32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(15);
+
+    private static IDataProtector NewProtector()
+        => new EphemeralDataProtectionProvider().CreateProtector("MyRestaurant.Identity.TotpEnrollmentTicket.v1");
+
+    [Fact]
+    public void ProtectThenUnprotect_RoundTripsAllFields()
+    {
+        IDataProtector protector = NewProtector();
+        DateTimeOffset issuedAt = DateTimeOffset.FromUnixTimeSeconds(1111111109);
+
+        string ticket = new TotpEnrollmentTicket(Person, issuedAt, SecretBase32).Protect(protector);
+
+        Assert.True(TotpEnrollmentTicket.TryUnprotect(protector, ticket, out TotpEnrollmentTicket? decoded));
+        Assert.Equal(Person, decoded!.PersonIdentifier);
+        Assert.Equal(issuedAt.ToUnixTimeSeconds(), decoded.IssuedAt.ToUnixTimeSeconds());
+        Assert.Equal(SecretBase32, decoded.SecretBase32);
+    }
+
+    [Fact]
+    public void TryUnprotect_TamperedPayload_Fails()
+    {
+        IDataProtector protector = NewProtector();
+        string ticket = new TotpEnrollmentTicket(Person, DateTimeOffset.UtcNow, SecretBase32).Protect(protector);
+
+        string tampered = ticket[..^2] + (ticket[^1] == 'A' ? "BB" : "AA");
+
+        Assert.False(TotpEnrollmentTicket.TryUnprotect(protector, tampered, out _));
+    }
+
+    [Fact]
+    public void TryUnprotect_DifferentKeyRing_Fails()
+    {
+        // A ticket protected by one provider cannot be read by another (different ephemeral keys).
+        string ticket = new TotpEnrollmentTicket(Person, DateTimeOffset.UtcNow, SecretBase32).Protect(NewProtector());
+
+        Assert.False(TotpEnrollmentTicket.TryUnprotect(NewProtector(), ticket, out _));
+    }
+
+    [Fact]
+    public void TryUnprotect_EmptyOrNull_Fails()
+    {
+        IDataProtector protector = NewProtector();
+
+        Assert.False(TotpEnrollmentTicket.TryUnprotect(protector, null, out _));
+        Assert.False(TotpEnrollmentTicket.TryUnprotect(protector, string.Empty, out _));
+    }
+
+    [Fact]
+    public void HasExpired_IsTrueOnlyPastTheLifetime()
+    {
+        DateTimeOffset issuedAt = DateTimeOffset.FromUnixTimeSeconds(1111111109);
+        TotpEnrollmentTicket ticket = new(Person, issuedAt, SecretBase32);
+
+        Assert.False(ticket.HasExpired(issuedAt, Lifetime));
+        Assert.False(ticket.HasExpired(issuedAt + Lifetime, Lifetime));               // exactly at the edge
+        Assert.True(ticket.HasExpired(issuedAt + Lifetime + TimeSpan.FromSeconds(1), Lifetime));
+    }
+
+    [Fact]
+    public void WrongPerson_IsDetectableAfterUnprotect()
+    {
+        // The service checks PersonIdentifier after unprotecting; prove the field survives so that
+        // check is meaningful (a ticket minted for one person decodes with that person's id).
+        IDataProtector protector = NewProtector();
+        string ticket = new TotpEnrollmentTicket(Person, DateTimeOffset.UtcNow, SecretBase32).Protect(protector);
+
+        Assert.True(TotpEnrollmentTicket.TryUnprotect(protector, ticket, out TotpEnrollmentTicket? decoded));
+        Assert.NotEqual(Guid.CreateVersion7(), decoded!.PersonIdentifier);
+        Assert.Equal(Person, decoded.PersonIdentifier);
+    }
+}
+
+/// <summary>
+/// Unit tests for <see cref="TotpQrCode"/>: the server-side SVG must be a self-contained, inline
+/// element (no XML prolog, no DOCTYPE, no external references), carry a viewBox and a non-empty path,
+/// and escape its accessible label (TECHNICAL_SPECIFICATION §3.4).
+/// </summary>
+public sealed class TotpQrCodeTests
+{
+    private static readonly string Uri = TotpProvisioningUri.Build("Test Bistro", "casey", "GEZDGNBVGY3TQOJQ");
+
+    [Fact]
+    public void RenderSvg_StartsWithAnInlineSvgElement()
+    {
+        string svg = TotpQrCode.RenderSvg(Uri);
+
+        Assert.StartsWith("<svg", svg, StringComparison.Ordinal);
+        Assert.DoesNotContain("<?xml", svg, StringComparison.Ordinal);
+        Assert.DoesNotContain("<!DOCTYPE", svg, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RenderSvg_HasAViewBoxAndANonEmptyPath()
+    {
+        string svg = TotpQrCode.RenderSvg(Uri);
+
+        Assert.Contains("viewBox=\"0 0 ", svg, StringComparison.Ordinal);
+        Assert.Contains("<path d=\"M", svg, StringComparison.Ordinal); // graphics path begins with a moveto
+    }
+
+    [Fact]
+    public void RenderSvg_MakesNoExternalReferences()
+    {
+        string svg = TotpQrCode.RenderSvg(Uri);
+
+        Assert.DoesNotContain("http://", svg, StringComparison.Ordinal);
+        Assert.DoesNotContain("https://", svg, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RenderSvg_ProvidesAnAccessibleLabel()
+    {
+        string svg = TotpQrCode.RenderSvg(Uri);
+
+        Assert.Contains("role=\"img\"", svg, StringComparison.Ordinal);
+        Assert.Contains("aria-label=\"", svg, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RenderSvg_RejectsEmptyInput()
+        => Assert.ThrowsAny<ArgumentException>(() => TotpQrCode.RenderSvg(string.Empty));
 }
 
 ################################################################################
@@ -15478,10 +17640,10 @@ public sealed class RestaurantOptionsTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 123
-  Total size     : 616.5 KiB (631310 bytes)
+  Files dumped   : 133
+  Total size     : 697.2 KiB (713969 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-19T17:21:41-04:00
+  Completed at   : 2026-07-20T15:30:36-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
