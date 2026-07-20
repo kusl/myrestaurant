@@ -123,6 +123,9 @@ public sealed class TotpQrCodeTests
     {
         string svg = TotpQrCode.RenderSvg(Uri);
 
+        // Remove the safe, mandatory namespace declaration
+        string cleanedSvg = svgOutput.Replace("xmlns=\"http://w3.org\"", "");
+
         Assert.DoesNotContain("http://", svg, StringComparison.Ordinal);
         Assert.DoesNotContain("https://", svg, StringComparison.Ordinal);
     }
