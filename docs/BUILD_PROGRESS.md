@@ -11,19 +11,21 @@ The scaffold and each subsequent milestone are written in an environment
 **without a .NET SDK** and without NuGet/.NET download hosts. Consequences:
 
 - **The C# for a milestone is written to match the spec and the .NET 10 APIs, then
-  first compiled on your machine.** M1 built green, and so did the first two M2 slices
-  (identity persistence + Argon2id hasher, then sign-in/cookie/authorization wiring —
-  the latest local sweep: build green, 220 tests, 0 failed, 177 passed, 43 skipped,
-  `run.sh --smoke` passing end to end). The newest slice — the sign-in **pages**, the
-  obligations middleware, and the claims factory — is, like its predecessors were,
+  first compiled on your machine.** M1 built green, and so did the first three M2
+  slices (identity persistence + Argon2id hasher; sign-in/cookie/authorization wiring;
+  the password sign-in pages + obligations middleware + claims factory). After
+  enabling the Podman socket, the last full local sweep was **green with zero
+  warnings: 257 tests, 0 failed, 242 passed, 15 skipped** (the 15 remaining skips are
+  the M6 Playwright end-to-end matrix), and `run.sh --smoke` passed end to end. The
+  newest slice — **TOTP enrollment** (this change) — is, like its predecessors were,
   unbuilt until your next build/test run; expect to fix the occasional thing a
-  compiler would catch, most likely in the Razor components.
+  compiler would catch, most likely in the two enrollment Razor components.
 - **Package versions in `Directory.Packages.props` are best-effort.** They target
   the .NET 10 GA era. Run `dotnet restore`; if a version does not exist, bump it
-  there to the nearest available. Nothing else references versions. The sign-in
-  slice adds **no** packages — static-SSR Razor components, cookie auth,
-  `SignInManager`, antiforgery, and authorization all come from the ASP.NET Core
-  shared framework.
+  there to the nearest available. Nothing else references versions. This slice adds
+  **one** package — `Net.Codecrete.QrCodeGenerator` 3.0.0 (MIT, zero dependencies),
+  used only for the server-side provisioning-QR geometry; everything else (Identity
+  token providers, Data Protection, static-SSR components) is shared-framework.
 - Shell scripts are syntax-checked with `bash -n`; they may need `chmod +x`.
 
 ## Staged plan
@@ -32,7 +34,7 @@ The work is split into six stages aligned to the spec's milestones (§19). Each
 stage is meant to leave the tree buildable and testable.
 
 - [x] **Stage 1 — M1: skeleton + pure Domain** *(built green: 139 passed, 28 skipped)*
-- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, and now the password sign-in flow + obligations middleware have landed; last verified local run before this slice: 177 passed, 43 skipped)*
+- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, and now TOTP enrollment have landed; last verified local run before this slice: 242 passed, 15 skipped, 0 warnings)*
 - [ ] **Stage 3 — M3: tables & joining**
 - [ ] **Stage 4 — M4: ordering**
 - [ ] **Stage 5 — M5: counter & administration**
@@ -311,19 +313,103 @@ cleanly. What *looked* like a wall of errors was two things, both now addressed:
   prominent banner the moment cloudflared reports it, while keeping the tunnel in
   the foreground — see the `run.sh`/quick-tunnel note near the top of this file.
 
+### Slice 4 — TOTP enrollment (this change)
+
+Authenticator enrollment is now real, on both the voluntary page and the forced
+re-enrollment obligation. A signed-in user can scan a QR, confirm a code, and receive
+recovery codes; an enrolled user can regenerate those codes; and the §3.5 obligation
+(2) page finally clears its flag instead of parking the user.
+
+- **±1-step TOTP engine** (`Domain/Security/Rfc6238Totp.cs`) — HMAC-SHA-1, 6 digits,
+  30-second step, **±1** acceptance window, constant-time compare, RFC 4226 dynamic
+  truncation. Pure and BCL-only; verified against the RFC 6238 Appendix B vectors.
+  Companions: `Base32Text` (RFC 4648 §6, the secret's on-the-wire/at-rest encoding,
+  tolerant of case and grouping on decode) and `TotpProvisioningUri` (the
+  `otpauth://totp/…` Key Uri, every component percent-encoded).
+- **Why a custom token provider** (`WebApplication/Identity/RestaurantAuthenticatorTokenProvider.cs`)
+  — the framework's built-in `AuthenticatorTokenProvider<TUser>` accepts a **±2-step**
+  window (confirmed in the .NET 10 source, `Rfc6238AuthenticationService`); §3.4 says
+  **±1**. So a custom `IUserTwoFactorTokenProvider<Person>` delegates to the Domain
+  engine with the spec's skew and takes "now" from `IClock`. It is registered under
+  the same `TokenOptions.DefaultAuthenticatorProvider` name **after**
+  `AddDefaultTokenProviders()`; Identity's provider map keeps the last registration
+  under a given name, so ours wins (asserted in `IdentityWiringTests`). This changes
+  nothing in `RestaurantSignInManager` — `TwoFactorAuthenticatorSignInAsync` dispatches
+  by that provider name.
+- **Why a stateless protected ticket** (`WebApplication/Identity/TotpEnrollment.cs`)
+  — enrollment state is **derived** (`totp_secret_protected IS NOT NULL`; there is no
+  pending-secret column), so persisting an unconfirmed secret would switch two-factor
+  on before the user proved possession. Instead the GET generates the secret and hands
+  the page a Data-Protection-**protected** ticket
+  (`v1|{personId}|{issuedAtUnix}|{base32}`, purpose
+  `MyRestaurant.Identity.TotpEnrollmentTicket.v1`, distinct from the at-rest secret
+  purpose) carried in a hidden field. Confirm unprotects it (catching
+  `CryptographicException`), checks it belongs to the signed-in person and is within a
+  15-minute lifetime (via `IClock`), verifies the code, and only then writes the
+  secret. A **failed code re-posts the same ticket** so the scanned QR stays valid
+  (`ResumeEnrollment`); an **expired** ticket yields a fresh QR. Ephemeral-provider
+  round-trip, tamper, foreign-key-ring, wrong-person, expiry, and malformed cases are
+  unit-tested (`TotpEnrollmentTicketTests`).
+- **Commit shape** — confirm sets the key and clears `must_enroll_totp` on the tracked
+  entity, then persists both in the single update `UpdateSecurityStampAsync` performs;
+  the **stamp bump is the §3.1 credential-changed signal**, and the current session
+  survives it via `RefreshSignInAsync` on the page. Recovery codes are written
+  separately with the Domain `RecoveryCode.GenerateSet()` (10 × `XXXXX-XXXXX`), because
+  the framework's `GenerateNewTwoFactorRecoveryCodesAsync` uses a different format and
+  does **not** bump the stamp. **Regeneration alone does not bump the stamp** (it
+  changes no sign-in credential) — matching the framework's own behaviour. Exactly one
+  security event is recorded per action: `totp_enrolled` (voluntary),
+  `forced_totp_enrollment_completed` (forced), or `recovery_codes_regenerated`.
+- **QR is server-side and inline** (`TotpQrCode` in the same file) — modules from
+  `Net.Codecrete.QrCodeGenerator` (its `Ecc` became an **enum** in 3.x — `QrCode.Ecc.Medium`),
+  but the SVG is composed by hand: the library's `ToSvgString` emits an XML prolog and
+  DOCTYPE unfit for inlining, so we take `ToGraphicsPath(border: 4)` (the four-module
+  quiet zone baked into the path and the `viewBox`) and wrap it in a minimal
+  `<svg role="img" aria-label="…">` with a white backing rect. The label is
+  HTML-escaped. `TotpQrCodeTests` asserts no prolog/DOCTYPE, a viewBox, a non-empty
+  path, no external references, and the accessible label.
+- **Pages** (`Components/Account/Pages/`, both static SSR) —
+  - `EnrollTotp.razor` (`/account/enroll-totp`, voluntary): two named EditForms on one
+    page (`enroll-totp-confirm` / `enroll-totp-regenerate`), each with a matching
+    `[SupplyParameterFromForm(FormName = …)]` model so a post binds only its own form;
+    the GET picks the setup vs already-enrolled UI from the derived state. **Not** in
+    the obligations-exempt list — a user with an outstanding obligation is routed to the
+    pipeline, never here.
+  - `EnrollTotpRequired.razor` (`/account/enroll-totp-required`, forced): the former
+    stub, now the real obligation-(2) flow — same mechanics, `forced: true`, a
+    sign-out escape hatch, and GET-time deference to the earlier password-change step
+    if that flag is also set. Reads the flag from the database, not the claim, so a
+    just-cleared obligation never re-traps.
+- **Wiring & chrome** — `AccountRoutes.TotpEnrollment` constant; `TotpEnrollment`
+  registered scoped via a factory closing over `RESTAURANT_NAME` (the provisioning
+  issuer, §13) so it shares the request's `UserManager`/`DapperUserStore` instance;
+  a **Security** link in the authenticated `MainLayout` header; QR/manual-key/recovery
+  chip styles plus a `.status-success` in the same quiet palette.
+- **Tests**: `Base32TextTests`, `Rfc6238TotpTests` (RFC vectors + ±1/±2 boundaries),
+  `TotpProvisioningUriTests` (escaping), `RestaurantAuthenticatorTokenProviderTests`
+  (fixed clock at the RFC anchor + fake key store; accept ±1, reject ±2, tolerate
+  grouping, fail closed on no key/malformed), `TotpEnrollmentTicketTests` +
+  `TotpQrCodeTests`; `IdentityWiringTests` extended (provider-map override +
+  `TotpEnrollment` resolves); `ObligationsEnforcementTests` extended
+  (`/account/enroll-totp` is blocked).
+
 ### Build/test checklist for this slice
 
-1. `dotnet restore` — no new packages; should be a no-op.
-2. `dotnet build` — the Razor components and middleware are unverified until this
-   runs; the account pages are the most likely home of anything a compiler catches.
-3. *(one time, dev machine)* `systemctl --user enable --now podman.socket` — lets
-   the DataAccess integration tests run instead of skipping.
-4. `dotnet test` — expect the pure Domain/web tests plus, with the socket active,
-   the Testcontainers suites; the EndToEnd matrix still skips (M6).
+1. `dotnet restore` — pulls **one** new package (`Net.Codecrete.QrCodeGenerator`
+   3.0.0). If that exact version cannot be found, bump it in
+   `Directory.Packages.props` to the nearest available (the API is stable across 3.x).
+2. `dotnet build` — the two enrollment Razor components are the most likely home of
+   anything a compiler catches.
+3. *(one time, dev machine — already done in the last sweep)* `systemctl --user
+   enable --now podman.socket` — lets the DataAccess integration tests run.
+4. `dotnet test` — expect the previous green set plus the new TOTP suites (roughly a
+   dozen-plus new pure/web tests); the EndToEnd matrix still skips (M6).
 5. `./run.sh --smoke` — boots once, verifies `/healthz/ready`, exits.
-6. Manual: `./run.sh`, then visit `/table` → you should be bounced to `/sign-in`
-   with a `ReturnUrl`. (Until `/setup` lands, creating a person to sign in **as**
-   means inserting a row by hand or waiting for the bootstrap slice.)
+6. Manual: sign in, click **Security** in the header → scan the QR in any
+   authenticator app → enter the code → you should see ten recovery codes once.
+   Re-visiting **Security** should now offer recovery-code regeneration. (Until
+   `/setup` lands, creating a person to sign in **as** still means inserting a row by
+   hand or waiting for the bootstrap slice.)
 
 ## Known caveats and deliberate decisions
 
@@ -372,8 +458,20 @@ cleanly. What *looked* like a wall of errors was two things, both now addressed:
   after the reset in practice, because the reset rotates the security stamp and the
   5-minute revalidation then rebuilds the principal (§3.1). Clearing is immediate
   via `RefreshSignInAsync`.
-- **M2 — the forced-TOTP-enrollment page is a stub** (see Slice 3). Its route,
-  middleware exemption, and tests are final; its body arrives with TOTP enrollment.
+- **M2 — TOTP skew is ±1 by a custom provider** (see Slice 4). The built-in
+  authenticator provider is ±2; §3.4 is ±1, so `RestaurantAuthenticatorTokenProvider`
+  overrides it under the default provider name. If a future framework bump changes the
+  built-in window or the provider-map ordering, `IdentityWiringTests` will catch it.
+- **M2 — the forced-TOTP-enrollment page is real** (see Slice 4): it clears
+  `must_enroll_totp` and records `forced_totp_enrollment_completed`. Nothing in the app
+  **sets** that flag yet — administrative reset arrives in the account-administration
+  slice — so in practice the page is still reached only by hand-setting the flag, but
+  the flow behind it is complete and tested. Voluntary enrollment (the Security page)
+  is reachable today by anyone signed in.
+- **M2 — no voluntary TOTP *removal* surface yet.** The Security page enrolls and
+  regenerates recovery codes; it does not remove an enrollment. Removal (and the §4.2
+  rule that an admin cannot remove their **own** enrollment) belongs with the
+  account-administration / profile slice, alongside the store-level `TotpRemoved` path.
 - **Dev-machine note — inotify watch limit (handled in `run.sh`).** `dotnet watch`
   can exhaust the kernel's inotify **instance** limit on a busy workstation
   (`The configured user limit (128) on the number of inotify instances has been
@@ -387,23 +485,20 @@ cleanly. What *looked* like a wall of errors was two things, both now addressed:
 
 ## Next: remaining M2 slices (in order)
 
-1. **TOTP enrollment**: provisioning URI → server-side SVG QR, confirm-code, fresh
-   recovery codes, records `totp_enrolled` / `recovery_codes_regenerated` — and the
-   body of the forced re-enrollment page (obligation (2), clearing `must_enroll_totp`
-   with `forced_totp_enrollment_completed`). Verify Identity's Rfc6238 skew; if it is
-   not ±1 step (§3.4), add a custom authenticator token provider.
-2. **Passkeys** (`IUserPasskeyStore`, .NET 10 WebAuthn): registration/assertion,
+1. **Passkeys** (`IUserPasskeyStore`, .NET 10 WebAuthn): registration/assertion,
    username-first and discoverable flows, the passkey sign-in path (never a TOTP
    challenge — records `sign_in_succeeded` with method `passkey`). Verify the new
    .NET 10 passkey API against the framework source first.
-3. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
+2. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
    zero-administrator re-check, self-granting the administrator role in one
    transaction (§3.6) — the first home for role grants, and the first in-app way to
    create an account.
-4. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
+3. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
    + `role_granted`/`role_revoked` events), **Reset credentials** (temp password +
    `must_change_password`; clear TOTP + set `must_enroll_totp` iff enrolled; new
    stamp; `password_reset_by_administrator` [+ `totp_cleared_by_administrator`]),
-   deactivate/reactivate — the first thing that actually sets the obligation flags
-   the Slice-3 pipeline enforces. Store-level integration tests + middleware tests
+   deactivate/reactivate — the first thing that actually **sets** the obligation flags
+   the pipeline enforces (Slice 3) and the enrollment pages clear (Slice 4). This is
+   also the home for **voluntary TOTP removal** and the §4.2 "an admin cannot remove
+   their own enrollment" rule. Store-level integration tests + middleware tests
    throughout.

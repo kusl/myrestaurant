@@ -1,48 +1,150 @@
 @page "/account/enroll-totp-required"
 @attribute [ExcludeFromInteractiveRouting]
 @attribute [Authorize]
+@using MyRestaurant.Domain.Authentication
 @inject UserManager<Person> UserManager
+@inject SignInManager<Person> SignInManager
+@inject TotpEnrollment Enrollment
 @inject NavigationManager Navigation
 
 @* Obligation (2) of the post-authentication pipeline (TECHNICAL_SPECIFICATION §3.5): forced TOTP
-   re-enrollment after an administrative reset wiped an enrolled secret. The enrollment mechanics
-   (provisioning URI → server-side SVG QR → confirm code → fresh recovery codes → clear flag →
-   `forced_totp_enrollment_completed`) are the next M2 slice; this page is its addressable, exempt
-   HOME so the middleware, routes, and tests are final now. Nothing in the application can set
-   `must_enroll_totp` yet — administrative reset arrives in a later slice — so in practice this page
-   is only reachable by hand-editing the database (BUILD_PROGRESS: deliberate stub). *@
+   re-enrollment after an administrative reset wiped an enrolled secret and set `must_enroll_totp`.
+   ObligationsMiddleware routes every request here (this route is exempt) until the flag clears.
+
+   Same mechanics as the voluntary page, three differences that suit an obligation:
+     • the copy explains WHY re-enrollment is required, not "would you like to";
+     • ConfirmAsync is called with forced: true, so it records `forced_totp_enrollment_completed`
+       and clears `must_enroll_totp` in the same store update that writes the secret (mirroring the
+       forced password page's one-update pattern);
+     • there is no recovery-code regeneration branch — the point here is to (re)enroll.
+   On GET: if the obligation is already clear (stale link / cleared in another tab) the visitor is
+   passed along; if a password change is ALSO outstanding, the earlier pipeline step wins and we
+   send them there (both pipeline pages are exempt, so navigating between them by hand is allowed).
+   Static SSR: confirmation rotates the stamp and re-issues the cookie, which a circuit cannot do. *@
 
 <PageTitle>Re-enroll your authenticator</PageTitle>
 
 <section class="panel account-panel">
     <p class="eyebrow">Action required</p>
-    <h1>Re-enroll your authenticator</h1>
-    <p class="lede">
-        An administrator reset this account, which wiped its previous authenticator enrollment and
-        recovery codes. A fresh enrollment (QR code, confirmation, new recovery codes) is required
-        before you can continue.
-    </p>
-    <p class="lede">
-        <strong>The enrollment screen is not built yet</strong> — it arrives with the TOTP milestone
-        slice. Until then this account stays parked here; an administrator can clear the requirement
-        directly if it is blocking someone.
-    </p>
 
-    <form class="sign-out-form form-footnote" method="post" action="@AccountRoutes.SignOut">
-        <AntiforgeryToken />
-        <span>Done for now?</span>
-        <button type="submit" class="link-button">Sign out</button>
-    </form>
+    @if (_recoveryCodes is not null)
+    {
+        <h1>Save your new recovery codes</h1>
+        <p class="lede">
+            Your authenticator is enrolled again. Each code works once — store them somewhere safe. If
+            you lose your authenticator, a recovery code is the only way back in.
+        </p>
+
+        <ul class="recovery-codes" aria-label="Recovery codes">
+            @foreach (string recoveryCode in _recoveryCodes)
+            {
+                <li>@recoveryCode</li>
+            }
+        </ul>
+
+        <p class="status-success" role="status">These codes will not be shown again.</p>
+
+        <div class="form-actions">
+            <a class="button-primary" href="@_destination">Continue</a>
+        </div>
+    }
+    else
+    {
+        <h1>Re-enroll your authenticator</h1>
+        <p class="lede">
+            An administrator reset this account, which wiped its previous authenticator enrollment and
+            recovery codes. Scan the QR code below with an authenticator app, then enter the six-digit
+            code to confirm — you cannot continue until this is done.
+        </p>
+
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <div class="totp-qr">
+            @((MarkupString)_start!.QrCodeSvg)
+        </div>
+
+        <p class="totp-secret-label">Can't scan? Enter this key manually:</p>
+        <p class="totp-secret">@_start!.ManualEntrySecret</p>
+
+        <EditForm Model="Input" method="post" OnValidSubmit="ConfirmAsync" FormName="enroll-totp-required">
+            <DataAnnotationsValidator />
+
+            <input type="hidden" name="Input.ProtectedTicket" value="@_start!.ProtectedTicket" />
+
+            <div class="form-field">
+                <label for="totp-code">Six-digit code</label>
+                <InputText id="totp-code" @bind-Value="Input.Code" autocomplete="one-time-code"
+                           inputmode="numeric" autofocus />
+                <ValidationMessage For="@(() => Input.Code)" />
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Confirm enrollment</button>
+            </div>
+        </EditForm>
+
+        <form class="sign-out-form form-footnote" method="post" action="@AccountRoutes.SignOut">
+            <AntiforgeryToken />
+            <span>Done for now?</span>
+            <button type="submit" class="link-button">Sign out</button>
+        </form>
+    }
 </section>
 
 @code {
+    private TotpEnrollmentStart? _start;
+    private IReadOnlyList<string>? _recoveryCodes;
+    private string? _errorMessage;
+    private string _destination = "/";
+
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "enroll-totp-required")]
+    private ConfirmInputModel Input { get; set; } = default!;
 
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
     protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
+        Input ??= new();
+
+        _destination = ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl);
+
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // The database is consulted rather than the claim so a just-cleared flag never re-traps anyone.
+        if (HttpContext.Request.Method == HttpMethods.Get)
+        {
+            // Password change is the earlier pipeline step; if it is also outstanding, defer to it.
+            if (user.MustChangePassword)
+            {
+                Navigation.NavigateTo(AccountRoutes.ForcedPasswordChange);
+                return;
+            }
+
+            if (!user.MustEnrollTotp)
+            {
+                Navigation.NavigateTo(_destination);
+                return;
+            }
+        }
+
+        // Still outstanding: prepare a secret + QR + ticket to display.
+        _start = Enrollment.BeginEnrollment(user);
+    }
+
+    private async Task ConfirmAsync()
     {
         Person? user = await UserManager.GetUserAsync(HttpContext.User);
         if (user is null)
@@ -51,10 +153,50 @@
             return;
         }
 
-        // Nothing outstanding: pass the visitor along instead of showing a stale demand.
+        // Cleared elsewhere in the meantime: move along instead of showing a stale demand.
         if (!user.MustEnrollTotp)
         {
-            Navigation.NavigateTo(ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl));
+            Navigation.NavigateTo(_destination);
+            return;
         }
+
+        (TotpEnrollmentConfirmation confirmation, TotpEnrollmentResult? result) = await Enrollment.ConfirmAsync(
+            user,
+            Input.ProtectedTicket,
+            Input.Code,
+            forced: true,
+            HttpContext.RequestAborted);
+
+        switch (confirmation)
+        {
+            case TotpEnrollmentConfirmation.Succeeded:
+                // Confirm cleared must_enroll_totp and rotated the stamp; refresh the cookie so the
+                // stale obligation claim does not keep the middleware redirecting here (and so the
+                // session survives the next stamp revalidation). Cookie is written in this SSR submit
+                // handler, before the recovery codes render below.
+                await SignInManager.RefreshSignInAsync(user);
+                _recoveryCodes = result!.RecoveryCodes;
+                _start = null;
+                break;
+
+            case TotpEnrollmentConfirmation.InvalidCode:
+                _errorMessage = "That code did not verify. Codes rotate every 30 seconds — check the app and try the current one.";
+                _start = Enrollment.ResumeEnrollment(user, Input.ProtectedTicket) ?? Enrollment.BeginEnrollment(user);
+                break;
+
+            case TotpEnrollmentConfirmation.TicketInvalid:
+            default:
+                _errorMessage = "This setup step expired. Scan the new QR code and enter a fresh six-digit code.";
+                _start = Enrollment.BeginEnrollment(user);
+                break;
+        }
+    }
+
+    private sealed class ConfirmInputModel
+    {
+        public string ProtectedTicket { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter the six-digit code from your authenticator app.")]
+        public string Code { get; set; } = string.Empty;
     }
 }

@@ -79,6 +79,11 @@ public sealed class ObligationsEnforcementTests
     [InlineData("/sign-in/two-factor")]
     [InlineData("/_blazor")] // circuits are deliberately blocked while an obligation is outstanding
     [InlineData("/administration")]
+    // The voluntary authenticator page is a normal authenticated destination, NOT a pipeline page:
+    // a user with an outstanding obligation must be routed to the pipeline, never here. Its route is
+    // also a distinct segment from the forced page (…/enroll-totp vs …/enroll-totp-required), so the
+    // forced exemption does not accidentally cover it.
+    [InlineData("/account/enroll-totp")]
     public void IsExemptPath_EverythingElse_IsBlocked(string path)
     {
         Assert.False(ObligationsEnforcement.IsExemptPath(new PathString(path)));

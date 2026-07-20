@@ -29,6 +29,9 @@ public static class AccountRoutes
 
     /// <summary>The forced TOTP re-enrollment page — obligation (2) of §3.5.</summary>
     public const string ForcedTotpEnrollment = "/account/enroll-totp-required";
+
+    /// <summary>The voluntary authenticator page: enroll, or regenerate recovery codes (§3.4, §4.2).</summary>
+    public const string TotpEnrollment = "/account/enroll-totp";
 }
 
 /// <summary>

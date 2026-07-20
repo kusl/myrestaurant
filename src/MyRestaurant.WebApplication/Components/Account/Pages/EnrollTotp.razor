@@ -1,0 +1,236 @@
+@page "/account/enroll-totp"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize]
+@using MyRestaurant.Domain.Authentication
+@inject UserManager<Person> UserManager
+@inject SignInManager<Person> SignInManager
+@inject TotpEnrollment Enrollment
+@inject NavigationManager Navigation
+
+@* The voluntary authenticator page (TECHNICAL_SPECIFICATION §3.4, §4.2): any signed-in user can
+   enroll here, and an already-enrolled user can regenerate their recovery codes. Static SSR, like
+   every account page, because confirming enrollment rotates the security stamp and re-issues the
+   cookie — a Blazor circuit cannot write cookies. This page is NOT in the obligations-exempt list:
+   it is a normal authenticated destination, so a user with an outstanding obligation is routed to
+   the relevant pipeline page by the middleware, never here. The forced re-enrollment obligation has
+   its own page (EnrollTotpRequired.razor).
+
+   Two POSTs share this page, each with its own form name and bound model:
+     • "enroll-totp-confirm" — confirm a scanned secret (carries the protected ticket + the code);
+     • "enroll-totp-regenerate" — regenerate recovery codes for an already-enrolled account.
+   The GET decides which UI to show from the derived enrollment state (secret present or not). *@
+
+<PageTitle>Authenticator</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">Security</p>
+
+    @if (_recoveryCodes is not null)
+    {
+        <h1>Save your recovery codes</h1>
+        <p class="lede">
+            @_recoveryCodesLede Each code works once. Store them somewhere safe — a password manager
+            is ideal. If you lose your authenticator, a recovery code is the only way back in.
+        </p>
+
+        <ul class="recovery-codes" aria-label="Recovery codes">
+            @foreach (string recoveryCode in _recoveryCodes)
+            {
+                <li>@recoveryCode</li>
+            }
+        </ul>
+
+        <p class="status-success" role="status">Enrollment is active. These codes will not be shown again.</p>
+
+        <div class="form-actions">
+            <a class="button-primary" href="/">Done</a>
+        </div>
+    }
+    else if (_enrolled)
+    {
+        <h1>Authenticator enrolled</h1>
+        <p class="lede">
+            This account is protected by an authenticator app. You have
+            <strong>@_remainingRecoveryCodes</strong> unused recovery code@(_remainingRecoveryCodes == 1 ? "" : "s")
+            left. Regenerating replaces every remaining code with a fresh set and invalidates the old
+            ones.
+        </p>
+
+        <EditForm Model="RegenerateInput" method="post" OnValidSubmit="RegenerateAsync" FormName="enroll-totp-regenerate">
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Regenerate recovery codes</button>
+            </div>
+        </EditForm>
+    }
+    else
+    {
+        <h1>Set up an authenticator</h1>
+        <p class="lede">
+            Scan this QR code with an authenticator app (Google Authenticator, 1Password, Aegis, and
+            the like), then enter the six-digit code it shows to confirm. Codes rotate every 30
+            seconds.
+        </p>
+
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <div class="totp-qr">
+            @((MarkupString)_start!.QrCodeSvg)
+        </div>
+
+        <p class="totp-secret-label">Can't scan? Enter this key manually:</p>
+        <p class="totp-secret">@_start!.ManualEntrySecret</p>
+
+        <EditForm Model="ConfirmInput" method="post" OnValidSubmit="ConfirmAsync" FormName="enroll-totp-confirm">
+            <DataAnnotationsValidator />
+
+            <input type="hidden" name="ConfirmInput.ProtectedTicket" value="@_start!.ProtectedTicket" />
+
+            <div class="form-field">
+                <label for="totp-code">Six-digit code</label>
+                <InputText id="totp-code" @bind-Value="ConfirmInput.Code" autocomplete="one-time-code"
+                           inputmode="numeric" autofocus />
+                <ValidationMessage For="@(() => ConfirmInput.Code)" />
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Confirm enrollment</button>
+            </div>
+        </EditForm>
+    }
+</section>
+
+@code {
+    private bool _enrolled;
+    private int _remainingRecoveryCodes;
+    private TotpEnrollmentStart? _start;
+    private IReadOnlyList<string>? _recoveryCodes;
+    private string? _recoveryCodesLede;
+    private string? _errorMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "enroll-totp-confirm")]
+    private ConfirmInputModel ConfirmInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "enroll-totp-regenerate")]
+    private RegenerateInputModel RegenerateInput { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form POST binds these itself and may assign null, so defaults live here.
+        ConfirmInput ??= new();
+        RegenerateInput ??= new();
+
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // A GET (or a POST that did not already produce codes to show) renders the state-appropriate
+        // UI; if the account is not enrolled, a fresh secret + QR + ticket is prepared to display.
+        _enrolled = await UserManager.GetTwoFactorEnabledAsync(user);
+        if (_enrolled)
+        {
+            _remainingRecoveryCodes = await Enrollment.CountRecoveryCodesAsync(user, HttpContext.RequestAborted);
+        }
+        else
+        {
+            _start = Enrollment.BeginEnrollment(user);
+        }
+    }
+
+    private async Task ConfirmAsync()
+    {
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // Already enrolled (e.g. a stale tab): nothing to confirm.
+        if (await UserManager.GetTwoFactorEnabledAsync(user))
+        {
+            _enrolled = true;
+            _start = null;
+            _remainingRecoveryCodes = await Enrollment.CountRecoveryCodesAsync(user, HttpContext.RequestAborted);
+            return;
+        }
+
+        (TotpEnrollmentConfirmation confirmation, TotpEnrollmentResult? result) = await Enrollment.ConfirmAsync(
+            user,
+            ConfirmInput.ProtectedTicket,
+            ConfirmInput.Code,
+            forced: false,
+            HttpContext.RequestAborted);
+
+        switch (confirmation)
+        {
+            case TotpEnrollmentConfirmation.Succeeded:
+                // Confirm rotated the security stamp; refresh the cookie so this session survives the
+                // next stamp revalidation. The cookie is written during this SSR submit handler,
+                // before the recovery codes are rendered below, so showing them here is safe.
+                await SignInManager.RefreshSignInAsync(user);
+                _recoveryCodes = result!.RecoveryCodes;
+                _recoveryCodesLede = "Your authenticator is now enrolled.";
+                _enrolled = true;
+                _start = null;
+                break;
+
+            case TotpEnrollmentConfirmation.InvalidCode:
+                // Keep the same secret/QR/ticket so the user can retry the code they just mistyped;
+                // if the ticket has since expired, ResumeEnrollment returns null and we start fresh.
+                _errorMessage = "That code did not verify. Codes rotate every 30 seconds — check the app and try the current one.";
+                _start = Enrollment.ResumeEnrollment(user, ConfirmInput.ProtectedTicket) ?? Enrollment.BeginEnrollment(user);
+                break;
+
+            case TotpEnrollmentConfirmation.TicketInvalid:
+            default:
+                // The scanned secret expired or the ticket was unusable: issue a fresh QR to scan.
+                _errorMessage = "This setup step expired. Scan the new QR code and enter a fresh six-digit code.";
+                _start = Enrollment.BeginEnrollment(user);
+                break;
+        }
+    }
+
+    private async Task RegenerateAsync()
+    {
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // Regeneration only makes sense once enrolled; a non-enrolled POST falls back to setup.
+        if (!await UserManager.GetTwoFactorEnabledAsync(user))
+        {
+            _enrolled = false;
+            _start = Enrollment.BeginEnrollment(user);
+            return;
+        }
+
+        TotpEnrollmentResult result = await Enrollment.RegenerateRecoveryCodesAsync(user, HttpContext.RequestAborted);
+        _recoveryCodes = result.RecoveryCodes;
+        _recoveryCodesLede = "Your recovery codes have been regenerated.";
+        _enrolled = true;
+    }
+
+    private sealed class ConfirmInputModel
+    {
+        public string ProtectedTicket { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter the six-digit code from your authenticator app.")]
+        public string Code { get; set; } = string.Empty;
+    }
+
+    private sealed class RegenerateInputModel
+    {
+    }
+}

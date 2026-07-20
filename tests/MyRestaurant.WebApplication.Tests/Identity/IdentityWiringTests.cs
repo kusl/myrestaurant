@@ -98,6 +98,30 @@ public sealed class IdentityWiringTests
     }
 
     [Fact]
+    public void AuthenticatorTokenProvider_IsTheRestaurantOnePointOneStepOverride()
+    {
+        // §3.4 requires a ±1 window; the framework default is ±2. Registering our provider under the
+        // same DefaultAuthenticatorProvider name after AddDefaultTokenProviders must win the map.
+        using ServiceProvider provider = BuildProvider();
+
+        IdentityOptions options = provider.GetRequiredService<IOptions<IdentityOptions>>().Value;
+
+        Assert.True(options.Tokens.ProviderMap.TryGetValue(TokenOptions.DefaultAuthenticatorProvider, out var descriptor));
+        Assert.Equal(typeof(RestaurantAuthenticatorTokenProvider), descriptor!.ProviderType);
+    }
+
+    [Fact]
+    public void TotpEnrollment_IsResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        TotpEnrollment enrollment = scope.ServiceProvider.GetRequiredService<TotpEnrollment>();
+
+        Assert.NotNull(enrollment);
+    }
+
+    [Fact]
     public async Task TablePolicy_RequiresOnlyAuthentication()
     {
         AuthorizationPolicy policy = await GetPolicyAsync(AuthorizationPolicies.Table);

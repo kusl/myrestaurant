@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Time;
 using MyRestaurant.WebApplication.Authorization;
 using MyRestaurant.WebApplication.Configuration;
 using MyRestaurant.WebApplication.Observability;
@@ -102,6 +104,10 @@ public static class IdentityServiceCollectionExtensions
             .AddUserStore<DapperUserStore>()
             .AddClaimsPrincipalFactory<RestaurantClaimsPrincipalFactory>()
             .AddDefaultTokenProviders() // Authenticator (TOTP), Data-Protection, email/phone token providers.
+            // Override the built-in authenticator provider (±2-step window) with the §3.4 ±1 one.
+            // Identity's provider map keeps the last registration under a given name, so registering
+            // ours under the same DefaultAuthenticatorProvider name after the defaults wins.
+            .AddTokenProvider<RestaurantAuthenticatorTokenProvider>(TokenOptions.DefaultAuthenticatorProvider)
             .AddSignInManager<RestaurantSignInManager>();
 
         // AddIdentityCookies wires the application cookie's OnValidatePrincipal to the static
@@ -152,6 +158,17 @@ public static class IdentityServiceCollectionExtensions
         // The append-only security-event trail (§3.5, §3.7). Scoped, matching the Identity lifetime;
         // it holds no state and opens a connection per write from the singleton factory.
         services.AddScoped<ISecurityEventLog, DapperSecurityEventLog>();
+
+        // TOTP enrollment (§3.4) for the voluntary and forced pages. Scoped so it shares the request's
+        // UserManager/DapperUserStore instance (it mutates the tracked entity through the store cast);
+        // the factory closes over the configured RESTAURANT_NAME, which is the provisioning issuer (§13).
+        services.AddScoped(serviceProvider => new TotpEnrollment(
+            serviceProvider.GetRequiredService<UserManager<Person>>(),
+            serviceProvider.GetRequiredService<IUserStore<Person>>(),
+            serviceProvider.GetRequiredService<ISecurityEventLog>(),
+            serviceProvider.GetRequiredService<IDataProtectionProvider>(),
+            serviceProvider.GetRequiredService<IClock>(),
+            options.RestaurantName));
 
         return services;
     }
