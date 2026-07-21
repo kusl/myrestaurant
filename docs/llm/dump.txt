@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-21T08:36:09-04:00
+  Generated at   : 2026-07-21T09:10:15-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : a09613ffdb713c701e55f88c0f3a135c16f4e395
-  Commit (short) : a09613f
-  Commit date    : 2026-07-21 08:35:59 -0400
-  Commit message : remove reserved keyword @code
+  Commit (full)  : d8de5c8ff96832e05531b2598aabd25aa28f9a8e
+  Commit (short) : d8de5c8
+  Commit date    : 2026-07-21 09:07:53 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 144
+  Files included : 146
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (144 included files)
+# FILE TREE  (146 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -582,7 +582,8 @@ cat "$OUTPUT_FILE"
 │   │   │   ├── DapperUserStore.cs
 │   │   │   ├── FirstAdministratorBootstrap.cs
 │   │   │   ├── ISecurityEventLog.cs
-│   │   │   └── Person.cs
+│   │   │   ├── Person.cs
+│   │   │   └── PersonDirectory.cs
 │   │   ├── Migrations
 │   │   │   ├── 0001_initial_schema.sql
 │   │   │   └── 0002_passkey_credential_webauthn_state.sql
@@ -639,6 +640,8 @@ cat "$OUTPUT_FILE"
 │       │   ├── Layout
 │       │   │   └── MainLayout.razor
 │       │   ├── Pages
+│       │   │   ├── Administration
+│       │   │   │   └── AdministrationHome.razor
 │       │   │   ├── Home.razor
 │       │   │   ├── Setup.razor
 │       │   │   └── Table
@@ -7192,6 +7195,190 @@ public sealed class Person
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.DataAccess/Identity/PersonDirectory.cs
+################################################################################
+
+--- METADATA ---
+  File name:             PersonDirectory.cs
+  Relative path:         src/MyRestaurant.DataAccess/Identity/PersonDirectory.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Identity/PersonDirectory.cs
+  Size:                  7.3 KiB (7427 bytes)
+  Last modified:         2026-07-21 08:57:22.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 22486178
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               92bf1c7abe2b05627fd0f7e85acd2df13beef8003b623ad4fb9c08c5c5197099
+  Last git commit:       d8de5c8 2026-07-21 09:07:53 -0400 add claude response
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+
+namespace MyRestaurant.DataAccess.Identity;
+
+/// <summary>
+/// A read-only projection of a <c>person</c> row plus the person's granted roles, for the
+/// administration people list (TECHNICAL_SPECIFICATION §3.6/§3.7). It is deliberately presentational:
+/// it carries the raw <see cref="LockoutEndAt"/> rather than a computed "locked" flag, so the decision
+/// is made against the application <see cref="MyRestaurant.Domain.Time.IClock"/> at render time; and it
+/// never exposes the password hash or the protected TOTP secret — only whether each is set.
+/// </summary>
+/// <param name="PersonIdentifier">The person's UUIDv7 primary key (ADR-0011).</param>
+/// <param name="Username">The unique <c>citext</c> username (§3.1).</param>
+/// <param name="DisplayName">Optional human display name, or <c>null</c>.</param>
+/// <param name="IsActive">False once an administrator has deactivated the account (F-10b).</param>
+/// <param name="HasPassword">True when a password hash is set (a passkey-only account has none, §3.2).</param>
+/// <param name="HasAuthenticator">True when a TOTP secret is enrolled (<c>totp_secret_protected IS NOT NULL</c>, §3.4).</param>
+/// <param name="MustChangePassword">The §3.5 obligation (1) flag: a reset forces a change before any destination.</param>
+/// <param name="MustEnrollTotp">The §3.5 obligation (2) flag: a reset that cleared TOTP forces re-enrollment.</param>
+/// <param name="FailedAccessCount">Consecutive failed sign-ins; five triggers a lockout (§3.1).</param>
+/// <param name="LockoutEndAt">When a lockout ends, or <c>null</c> when the account is not locked (§3.1).</param>
+/// <param name="CreatedAt">Row creation timestamp (UTC).</param>
+/// <param name="Roles">
+/// The granted role names, in the fixed display order administrator, counter, kitchen. Empty for an
+/// account that holds no staff role (e.g. a guest, §3.7).
+/// </param>
+public sealed record PersonSummary(
+    Guid PersonIdentifier,
+    string Username,
+    string? DisplayName,
+    bool IsActive,
+    bool HasPassword,
+    bool HasAuthenticator,
+    bool MustChangePassword,
+    bool MustEnrollTotp,
+    int FailedAccessCount,
+    DateTimeOffset? LockoutEndAt,
+    DateTimeOffset CreatedAt,
+    IReadOnlyList<string> Roles);
+
+/// <summary>
+/// Reads people for the administration area (TECHNICAL_SPECIFICATION §3.6/§3.7). This is a read-only
+/// reporting companion to the Identity stores: enumerating every account is an administrative concern,
+/// not part of the sign-in write path, so it lives behind its own interface (substitutable in tests)
+/// rather than being bolted onto <c>UserManager</c>.
+/// </summary>
+public interface IPersonDirectory
+{
+    /// <summary>
+    /// Every person, oldest first (so the first administrator created at <c>/setup</c> leads the list),
+    /// each with the person's granted role names.
+    /// </summary>
+    Task<IReadOnlyList<PersonSummary>> ListPeopleAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// The Dapper implementation of <see cref="IPersonDirectory"/>. One connection, two round trips
+/// (people, then their role rows), joined in memory — simpler and more portable than an
+/// <c>array_agg</c> that would lean on Npgsql array mapping, and the row counts here are small (staff
+/// plus guests, §11.1). Columns are aliased to the record's member names so Dapper maps them without
+/// needing <c>MatchNamesWithUnderscores</c>. The connection comes from the singleton
+/// <see cref="IDatabaseConnectionFactory"/>, matching the rest of the data layer.
+/// </summary>
+public sealed class DapperPersonDirectory : IPersonDirectory
+{
+    private const string PeopleSql = """
+        SELECT
+            person_identifier                   AS PersonIdentifier,
+            username                            AS Username,
+            display_name                        AS DisplayName,
+            is_active                           AS IsActive,
+            (password_hash IS NOT NULL)         AS HasPassword,
+            (totp_secret_protected IS NOT NULL) AS HasAuthenticator,
+            must_change_password                AS MustChangePassword,
+            must_enroll_totp                    AS MustEnrollTotp,
+            failed_access_count                 AS FailedAccessCount,
+            lockout_end_at                      AS LockoutEndAt,
+            created_at                          AS CreatedAt
+        FROM person
+        ORDER BY created_at, username;
+        """;
+
+    private const string RolesSql = """
+        SELECT
+            person_identifier AS PersonIdentifier,
+            role_name         AS RoleName
+        FROM person_role;
+        """;
+
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+
+    public DapperPersonDirectory(IDatabaseConnectionFactory connectionFactory)
+    {
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+        _connectionFactory = connectionFactory;
+    }
+
+    public async Task<IReadOnlyList<PersonSummary>> ListPeopleAsync(CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        IEnumerable<PersonRow> personRows = await connection.QueryAsync<PersonRow>(new CommandDefinition(
+            PeopleSql, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        IEnumerable<RoleRow> roleRows = await connection.QueryAsync<RoleRow>(new CommandDefinition(
+            RolesSql, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        // Group roles by person so each summary carries a stable, order-independent role list.
+        ILookup<Guid, string> rolesByPerson =
+            roleRows.ToLookup(row => row.PersonIdentifier, row => row.RoleName);
+
+        List<PersonSummary> people = [];
+        foreach (PersonRow row in personRows)
+        {
+            IReadOnlyList<string> roles = rolesByPerson[row.PersonIdentifier]
+                .OrderBy(RoleSortKey)
+                .ToArray();
+
+            people.Add(new PersonSummary(
+                row.PersonIdentifier,
+                row.Username,
+                row.DisplayName,
+                row.IsActive,
+                row.HasPassword,
+                row.HasAuthenticator,
+                row.MustChangePassword,
+                row.MustEnrollTotp,
+                row.FailedAccessCount,
+                row.LockoutEndAt,
+                row.CreatedAt,
+                roles));
+        }
+
+        return people;
+    }
+
+    // administrator first, then counter, then kitchen; anything unexpected sorts last.
+    private static int RoleSortKey(string role) => role switch
+    {
+        "administrator" => 0,
+        "counter" => 1,
+        "kitchen" => 2,
+        _ => 3,
+    };
+
+    // Dapper maps these positional records by constructor-parameter name (case-insensitive) against
+    // the aliased columns above.
+    private sealed record PersonRow(
+        Guid PersonIdentifier,
+        string Username,
+        string? DisplayName,
+        bool IsActive,
+        bool HasPassword,
+        bool HasAuthenticator,
+        bool MustChangePassword,
+        bool MustEnrollTotp,
+        int FailedAccessCount,
+        DateTimeOffset? LockoutEndAt,
+        DateTimeOffset CreatedAt);
+
+    private sealed record RoleRow(Guid PersonIdentifier, string RoleName);
+}
+
+################################################################################
 # FILE: src/MyRestaurant.DataAccess/Migrations/0001_initial_schema.sql
 ################################################################################
 
@@ -11646,22 +11833,25 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             MainLayout.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
-  Size:                  1.3 KiB (1359 bytes)
-  Last modified:         2026-07-20 16:44:23.000000000 -0400
+  Size:                  1.8 KiB (1844 bytes)
+  Last modified:         2026-07-21 09:00:16.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21956036
+  Inode:                 22486184
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               80d11de60eb598036598aafa6f5c0440a8afd759ddc6e8e35f3cd090cdf956d7
-  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+  SHA-256:               afbbf3f10db4468c01b626ab218975c7ed2b0431e988272d3850fcd99e7af7e0
+  Last git commit:       d8de5c8 2026-07-21 09:07:53 -0400 add claude response
 
 --- CONTENT ---
 @inherits LayoutComponentBase
 
 @* The shared shell. The session header uses a plain HTML form for sign-out — a full-page POST to
    the /sign-out endpoint with the antiforgery token — so it behaves identically whether the hosting
-   page renders as static SSR (the account pages) or over an interactive circuit. *@
+   page renders as static SSR (the account pages) or over an interactive circuit. The Administration
+   link is shown only to the administrator role: <AuthorizeView Roles="administrator"> matches the role
+   claim the RestaurantClaimsPrincipalFactory emits under the configured RoleClaimType, the same claim
+   the area.administration policy checks (§3.7). *@
 <div class="app-shell">
     <header class="app-header">
         <a class="app-brand" href="/">MyRestaurant</a>
@@ -11669,6 +11859,9 @@ public static class AuthorizationServiceCollectionExtensions
             <AuthorizeView>
                 <Authorized>
                     <span class="session-name">@context.User.Identity?.Name</span>
+                    <AuthorizeView Roles="administrator" Context="administrator">
+                        <a class="session-link" href="/administration">Administration</a>
+                    </AuthorizeView>
                     <a class="session-link" href="@AccountRoutes.TotpEnrollment">Security</a>
                     <a class="session-link" href="@AccountRoutes.Passkeys">Passkeys</a>
                     <form class="sign-out-form" method="post" action="@AccountRoutes.SignOut">
@@ -11687,6 +11880,231 @@ public static class AuthorizationServiceCollectionExtensions
         @Body
     </main>
 </div>
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor
+################################################################################
+
+--- METADATA ---
+  File name:             AdministrationHome.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor
+  Size:                  7.4 KiB (7551 bytes)
+  Last modified:         2026-07-21 09:01:42.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 22486187
+  Hard links:            1
+  MIME type:             text/html
+  SHA-256:               ae1661aae25b4a4e4c0b2593665ae3a9360b31308d60bb0d19bc84149cce9597
+  Last git commit:       d8de5c8 2026-07-21 09:07:53 -0400 add claude response
+
+--- CONTENT ---
+@page "/administration"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.Domain.Time
+@inject IPersonDirectory People
+@inject IClock Clock
+
+@* The administration landing (TECHNICAL_SPECIFICATION §3.6/§3.7 — `area.administration`: the
+   administrator role). This first increment is read-only: it lists every account with its roles and
+   status, and is where the /setup success screen's "Go to administration" link lands. Static SSR, like
+   every account/administration surface, so the mutating tools that follow (create staff, reset
+   password/authenticator, grant/revoke roles, deactivate/reactivate) can post full pages and write the
+   authentication/redirect responses a Blazor circuit cannot. Endpoint authorization enforces the policy
+   on the server for this static-SSR page (an anonymous visitor is sent to /sign-in, a signed-in
+   non-administrator to /access-denied). Not exempt from the obligations pipeline: an administrator with
+   an outstanding §3.5 flag is routed to clear it first. *@
+
+<PageTitle>Administration — people</PageTitle>
+
+<section class="panel">
+    <p class="eyebrow">Administration</p>
+    <h1>People</h1>
+
+    <p class="lede">
+        Every account in the system, oldest first. Guests appear here once they register by joining a
+        table; staff are created here (that tool arrives next).
+    </p>
+
+    @if (_people is null)
+    {
+        <p class="lede">Loading…</p>
+    }
+    else if (_people.Count == 0)
+    {
+        <p class="lede">No accounts yet.</p>
+    }
+    else
+    {
+        <div class="admin-people">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">Username</th>
+                        <th scope="col">Roles</th>
+                        <th scope="col">Credentials</th>
+                        <th scope="col">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (PersonSummary person in _people)
+                    {
+                        <tr>
+                            <td>
+                                <span class="person-username">@person.Username</span>
+                                @if (!string.IsNullOrWhiteSpace(person.DisplayName))
+                                {
+                                    <span class="person-display-name">@person.DisplayName</span>
+                                }
+                            </td>
+                            <td>
+                                @if (person.Roles.Count == 0)
+                                {
+                                    <span class="muted">—</span>
+                                }
+                                else
+                                {
+                                    @foreach (string role in person.Roles)
+                                    {
+                                        <span class="chip chip-role">@role</span>
+                                    }
+                                }
+                            </td>
+                            <td>
+                                @if (person.HasPassword)
+                                {
+                                    <span class="chip">Password</span>
+                                }
+                                @if (person.HasAuthenticator)
+                                {
+                                    <span class="chip">Authenticator</span>
+                                }
+                                @if (!person.HasPassword && !person.HasAuthenticator)
+                                {
+                                    <span class="muted">—</span>
+                                }
+                            </td>
+                            <td>
+                                @if (!person.IsActive)
+                                {
+                                    <span class="chip chip-warn">Deactivated</span>
+                                }
+                                else if (IsLockedOut(person))
+                                {
+                                    <span class="chip chip-warn">Locked until @(person.LockoutEndAt!.Value.ToLocalTime().ToString("g"))</span>
+                                }
+                                else
+                                {
+                                    <span class="chip chip-ok">Active</span>
+                                }
+
+                                @if (person.MustChangePassword)
+                                {
+                                    <span class="chip chip-warn">Must change password</span>
+                                }
+                                @if (person.MustEnrollTotp)
+                                {
+                                    <span class="chip chip-warn">Must set up authenticator</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <p class="form-footnote">
+        Creating staff, resetting a password or authenticator, granting or revoking roles, and
+        deactivating or reactivating an account arrive in the next administration slice. Role and
+        credential changes take effect on affected sessions within a few minutes (the security-stamp
+        revalidation window, §3.1).
+    </p>
+
+    <p><a href="/">Back to the home page</a></p>
+</section>
+
+@* A handful of table rules, namespaced under .admin-people. App.razor links the static wwwroot/app.css
+   rather than the component-scoped bundle, so component CSS isolation is not active here; these live
+   inline to avoid editing the shared stylesheet for one screen. *@
+<style>
+    .admin-people {
+        overflow-x: auto;
+    }
+
+    .admin-people table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+    }
+
+    .admin-people th,
+    .admin-people td {
+        text-align: left;
+        padding: 0.6rem 0.75rem;
+        border-bottom: 1px solid var(--rule, #e5e5e5);
+        vertical-align: top;
+    }
+
+    .admin-people thead th {
+        font-weight: 600;
+        color: var(--muted-foreground, #666);
+        border-bottom-width: 2px;
+    }
+
+    .admin-people .person-username {
+        display: block;
+        font-weight: 600;
+    }
+
+    .admin-people .person-display-name {
+        display: block;
+        color: var(--muted-foreground, #666);
+        font-size: 0.85rem;
+    }
+
+    .admin-people .muted {
+        color: var(--muted-foreground, #999);
+    }
+
+    .admin-people .chip {
+        display: inline-block;
+        margin: 0.1rem 0.2rem 0.1rem 0;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        background: var(--chip-background, #f0f0f0);
+        color: var(--chip-foreground, #333);
+        white-space: nowrap;
+    }
+
+    .admin-people .chip-role {
+        text-transform: capitalize;
+    }
+
+    .admin-people .chip-ok {
+        background: #e6f4ea;
+        color: #1e7a37;
+    }
+
+    .admin-people .chip-warn {
+        background: #fdecea;
+        color: #a3261c;
+    }
+</style>
+
+@code {
+    private IReadOnlyList<PersonSummary>? _people;
+
+    protected override async Task OnInitializedAsync()
+        => _people = await People.ListPeopleAsync();
+
+    private bool IsLockedOut(PersonSummary person)
+        => person.LockoutEndAt is { } end && end > Clock.UtcNow;
+}
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/Pages/Home.razor
@@ -12856,15 +13274,15 @@ public static class AccountEndpoints
   File name:             IdentityServiceCollectionExtensions.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
-  Size:                  12.3 KiB (12623 bytes)
-  Last modified:         2026-07-21 12:14:18.000000000 -0400
-  Permissions:           -rw-------
+  Size:                  12.8 KiB (13141 bytes)
+  Last modified:         2026-07-21 09:00:04.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 22331453
+  Inode:                 22486181
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               0a031a43edd5722f32da0f799485556fd806968aca3a585c79d4061b6a86cebb
-  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
+  SHA-256:               7667dd113b023720df309c234cc82d2cc9adf0287e2de00b910dd8ef921edfcb
+  Last git commit:       d8de5c8 2026-07-21 09:07:53 -0400 add claude response
 
 --- CONTENT ---
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -12899,7 +13317,8 @@ namespace MyRestaurant.WebApplication.Identity;
 ///   <item>the area authorization policies (§3.7), via <see cref="AuthorizationServiceCollectionExtensions"/>;</item>
 ///   <item>the cascading <c>Task&lt;AuthenticationState&gt;</c> the Blazor router and
 ///   <c>AuthorizeView</c> consume;</item>
-///   <item>the append-only <see cref="ISecurityEventLog"/> that sign-in outcomes are recorded to (§3.5).</item>
+///   <item>the append-only <see cref="ISecurityEventLog"/> that sign-in outcomes are recorded to (§3.5);</item>
+///   <item>the read-only <see cref="IPersonDirectory"/> the administration people list reads from (§3.6/§3.7).</item>
 /// </list>
 ///
 /// The obligations pipeline itself is enforced by <see cref="ObligationsMiddleware"/> in the request
@@ -13048,6 +13467,12 @@ public static class IdentityServiceCollectionExtensions
         // The append-only security-event trail (§3.5, §3.7). Scoped, matching the Identity lifetime;
         // it holds no state and opens a connection per write from the singleton factory.
         services.AddScoped<ISecurityEventLog, DapperSecurityEventLog>();
+
+        // Read-only people directory for the administration area (§3.6/§3.7). Scoped, matching the
+        // Identity lifetime; it holds no state and opens a connection per read from the singleton
+        // factory. Its only dependency is IDatabaseConnectionFactory, so a plain type registration
+        // resolves it.
+        services.AddScoped<IPersonDirectory, DapperPersonDirectory>();
 
         // TOTP enrollment (§3.4) for the voluntary and forced pages. Scoped so it shares the request's
         // UserManager/DapperUserStore instance (it mutates the tracked entity through the store cast);
@@ -19777,15 +20202,15 @@ public sealed class EndToEndScenarios
   File name:             IdentityWiringTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs
-  Size:                  11.0 KiB (11305 bytes)
-  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Size:                  11.4 KiB (11660 bytes)
+  Last modified:         2026-07-21 09:07:21.268003966 -0400
   Permissions:           -rw-------
   Owner:                 kushal:kushal
   Inode:                 22331462
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               3cd28540ecad3c750fb211321cff21f5d27be7d15bd449d99e1e8c9e6bfe84c7
-  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
+  SHA-256:               9200f2ff224e0a57d47ea38189cf45268a966a9c3336ebd55c05a58fc6391197
+  Last git commit:       d8de5c8 2026-07-21 09:07:53 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -19996,6 +20421,17 @@ public sealed class IdentityWiringTests
 
         RolesAuthorizationRequirement roles = Assert.Single(policy.Requirements.OfType<RolesAuthorizationRequirement>());
         Assert.Equal(new[] { RestaurantRoles.Administrator }, roles.AllowedRoles);
+    }
+
+    [Fact]
+    public void PersonDirectory_IsResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        IPersonDirectory directory = scope.ServiceProvider.GetRequiredService<IPersonDirectory>();
+
+        Assert.IsType<DapperPersonDirectory>(directory);
     }
 
     // --- helpers -----------------------------------------------------------------------------------
@@ -21261,10 +21697,10 @@ public sealed class RestaurantOptionsTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 144
-  Total size     : 850.0 KiB (870429 bytes)
+  Files dumped   : 146
+  Total size     : 866.0 KiB (886765 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-21T08:36:14-04:00
+  Completed at   : 2026-07-21T09:10:20-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
