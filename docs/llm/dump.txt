@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-20T15:52:19-04:00
+  Generated at   : 2026-07-21T00:35:11-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : d4b2ec449d5e170765a96d73cbcb02b8521b33ea
-  Commit (short) : d4b2ec4
-  Commit date    : 2026-07-20 15:52:09 -0400
-  Commit message : update test
+  Commit (full)  : 6f20423e5722a2fd3985a61d205e66bed098c823
+  Commit (short) : 6f20423
+  Commit date    : 2026-07-21 00:34:59 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 133
+  Files included : 139
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (133 included files)
+# FILE TREE  (139 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -583,7 +583,8 @@ cat "$OUTPUT_FILE"
 │   │   │   ├── ISecurityEventLog.cs
 │   │   │   └── Person.cs
 │   │   ├── Migrations
-│   │   │   └── 0001_initial_schema.sql
+│   │   │   ├── 0001_initial_schema.sql
+│   │   │   └── 0002_passkey_credential_webauthn_state.sql
 │   │   ├── MyRestaurant.DataAccess.csproj
 │   │   ├── NpgsqlDatabaseConnectionFactory.cs
 │   │   └── SchemaMigrationRunner.cs
@@ -627,9 +628,11 @@ cat "$OUTPUT_FILE"
 │       │   │   │   ├── ChangePasswordRequired.razor
 │       │   │   │   ├── EnrollTotp.razor
 │       │   │   │   ├── EnrollTotpRequired.razor
+│       │   │   │   ├── Passkeys.razor
 │       │   │   │   ├── SignIn.razor
 │       │   │   │   ├── SignInRecoveryCode.razor
 │       │   │   │   └── SignInTwoFactor.razor
+│       │   │   ├── PasskeySubmit.razor
 │       │   │   └── RedirectToSignIn.razor
 │       │   ├── App.razor
 │       │   ├── Layout
@@ -647,6 +650,7 @@ cat "$OUTPUT_FILE"
 │       │   ├── IdentityServiceCollectionExtensions.cs
 │       │   ├── ObligationsEnforcement.cs
 │       │   ├── ObligationsMiddleware.cs
+│       │   ├── PasskeyContracts.cs
 │       │   ├── RestaurantAuthenticatorTokenProvider.cs
 │       │   ├── RestaurantClaimsPrincipalFactory.cs
 │       │   ├── RestaurantSignInManager.cs
@@ -662,13 +666,16 @@ cat "$OUTPUT_FILE"
 │       ├── appsettings.Development.json
 │       ├── appsettings.json
 │       └── wwwroot
-│           └── app.css
+│           ├── app.css
+│           └── js
+│               └── passkey.js
 └── tests
     ├── MyRestaurant.DataAccess.Tests
     │   ├── ContainerEngineDiscovery.cs
     │   ├── Identity
     │   │   ├── Argon2idPasswordHasherTests.cs
     │   │   ├── DapperSecurityEventLogTests.cs
+    │   │   ├── DapperUserStorePasskeyTests.cs
     │   │   ├── DapperUserStoreTests.cs
     │   │   └── FixedClock.cs
     │   ├── MyRestaurant.DataAccess.Tests.csproj
@@ -2219,15 +2226,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  34.9 KiB (35745 bytes)
-  Last modified:         2026-07-20 08:06:21.000000000 -0400
+  Size:                  42.8 KiB (43869 bytes)
+  Last modified:         2026-07-20 17:40:43.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21843845
+  Inode:                 21956018
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               53a726463df1fa6f4ab1a183a7b411da960ade3786828c82d7b858e58ae85b95
-  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+  SHA-256:               6c6375e1ae52823219c623864537fd592b7de6f7ab73f167b0c452c6435bd18d
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
 
 --- CONTENT ---
 # Build progress
@@ -2243,21 +2250,22 @@ The scaffold and each subsequent milestone are written in an environment
 **without a .NET SDK** and without NuGet/.NET download hosts. Consequences:
 
 - **The C# for a milestone is written to match the spec and the .NET 10 APIs, then
-  first compiled on your machine.** M1 built green, and so did the first three M2
+  first compiled on your machine.** M1 built green, and so did the first four M2
   slices (identity persistence + Argon2id hasher; sign-in/cookie/authorization wiring;
-  the password sign-in pages + obligations middleware + claims factory). After
-  enabling the Podman socket, the last full local sweep was **green with zero
-  warnings: 257 tests, 0 failed, 242 passed, 15 skipped** (the 15 remaining skips are
-  the M6 Playwright end-to-end matrix), and `run.sh --smoke` passed end to end. The
-  newest slice — **TOTP enrollment** (this change) — is, like its predecessors were,
-  unbuilt until your next build/test run; expect to fix the occasional thing a
-  compiler would catch, most likely in the two enrollment Razor components.
+  the password sign-in pages + obligations middleware + claims factory; and TOTP
+  enrollment). After enabling the Podman socket, the last full local sweep was
+  **green with zero warnings: 341 tests, 0 failed, 326 passed, 15 skipped** (the 15
+  remaining skips are the M6 Playwright end-to-end matrix), and `run.sh --smoke` passed
+  end to end. The newest slice — **passkeys** (this change) — is, like its predecessors
+  were, unbuilt until your next build/test run; expect to fix the occasional thing a
+  compiler would catch, most likely in the passkey Razor components (`SignIn.razor`,
+  `Passkeys.razor`, `PasskeySubmit.razor`).
 - **Package versions in `Directory.Packages.props` are best-effort.** They target
   the .NET 10 GA era. Run `dotnet restore`; if a version does not exist, bump it
-  there to the nearest available. Nothing else references versions. This slice adds
-  **one** package — `Net.Codecrete.QrCodeGenerator` 3.0.0 (MIT, zero dependencies),
-  used only for the server-side provisioning-QR geometry; everything else (Identity
-  token providers, Data Protection, static-SSR components) is shared-framework.
+  there to the nearest available. Nothing else references versions. **This slice adds
+  no packages** — the whole passkey stack (the WebAuthn ceremony handler,
+  `IUserPasskeyStore`, `IdentityPasskeyOptions`) is shared-framework in .NET 10; the
+  only new front-end asset is a small classic script, `wwwroot/js/passkey.js`.
 - Shell scripts are syntax-checked with `bash -n`; they may need `chmod +x`.
 
 ## Staged plan
@@ -2266,7 +2274,7 @@ The work is split into six stages aligned to the spec's milestones (§19). Each
 stage is meant to leave the tree buildable and testable.
 
 - [x] **Stage 1 — M1: skeleton + pure Domain** *(built green: 139 passed, 28 skipped)*
-- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, and now TOTP enrollment have landed; last verified local run before this slice: 242 passed, 15 skipped, 0 warnings)*
+- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, TOTP enrollment, and now passkeys have landed; last verified local run before this slice: 326 passed, 15 skipped, 0 warnings)*
 - [ ] **Stage 3 — M3: tables & joining**
 - [ ] **Stage 4 — M4: ordering**
 - [ ] **Stage 5 — M5: counter & administration**
@@ -2643,6 +2651,90 @@ recovery codes; an enrolled user can regenerate those codes; and the §3.5 oblig
    `/setup` lands, creating a person to sign in **as** still means inserting a row by
    hand or waiting for the bootstrap slice.)
 
+### Slice 5 — passkeys (this change)
+
+WebAuthn passkeys via ASP.NET Core Identity's new .NET 10 passkey API (§3.3). The API
+was verified against the framework source before a line was written (BUILD_PROGRESS's
+standing instruction), and that reading drove two decisions worth recording (below and
+in the caveats): the store persists more than §8.2's original columns, and the passkey
+handler is registered by hand.
+
+- **Store — `IUserPasskeyStore<Person>`** (`DapperUserStore.cs`, new region). The
+  sixth and last capability interface `UserManager<Person>` needs; the class now
+  advertises passkey support (`SupportsUserPasskey`). Own table `passkey_credential`
+  (§8.2 + migration 0002), one row per credential: `AddOrUpdatePasskeyAsync` does a
+  find-then-insert-or-update, and — mirroring the reference EF store exactly — an
+  update writes only the mutable fields (sign count, display name, backed-up,
+  user-verified), so the public key and backup-eligible bit captured at registration
+  are never clobbered by a later assertion. `FindByPasskeyIdAsync` joins to the owning
+  person; transports round-trip as a comma-joined list; attestation object / client
+  data are reconstructed as empty on read (see caveats).
+- **Migration `0002_passkey_credential_webauthn_state.sql`** — additive, three boolean
+  columns (`is_user_verified`, `is_backup_eligible`, `is_backed_up`), all `NOT NULL
+  DEFAULT false`. Required because the .NET 10 `UserPasskeyInfo` carries them and
+  assertion *reads* the stored backup-eligible bit (see caveats). 0001 is untouched
+  (DbUp journals per script, ADR-0012).
+- **Wiring** (`IdentityServiceCollectionExtensions.cs`). Registers
+  `IPasskeyHandler<Person>` explicitly (see caveats) and configures
+  `IdentityPasskeyOptions`: `ServerDomain` = the host of `RESTAURANT_PUBLIC_ORIGIN`
+  (the §14.2 origin truth, set so it never drifts to the request host behind the
+  tunnel), `UserVerificationRequirement` / `ResidentKeyRequirement` = `preferred`,
+  attestation left at the browser default (`none`). `IdentityWiringTests` extended:
+  handler resolves, `SupportsUserPasskey` is true, options carry the RP ID + preferred
+  settings.
+- **Sign-in path** (`RestaurantSignInManager.PasskeySignInAsync` override). Reproduces
+  the framework's assertion → `PreSignInCheck` → `AddOrUpdatePasskeyAsync` →
+  `SignInOrTwoFactorAsync(bypassTwoFactor: true)` core (assertion is single-use, so it
+  is performed exactly once) and adds the central auditing the rest of the manager
+  does: `sign_ins_total{method=passkey}` plus a `security_event` once there is a
+  subject. `bypassTwoFactor` is the framework's own default here — a passkey is
+  already a second factor, so §3.5's "passkey path never gets a TOTP challenge" holds
+  by construction; `PreSignInCheck` means the §3.7 deactivation gate still applies.
+  The `AuditAsync`/`RecordMetric` helpers grew a `method` parameter (the password and
+  two-factor paths pass `password`).
+- **Options endpoints** (`AccountEndpoints.cs`): `POST /account/passkey/creation-options`
+  (authenticated, attestation) and `POST /account/passkey/request-options` (anonymous,
+  assertion — sign-in has no session yet; a username scopes `allowCredentials`, its
+  absence enables discoverable/username-less). Both validate the antiforgery token
+  from the request header (they are `fetch`ed, not form-posted), matching the template.
+  Three route constants added to `AccountRoutes`; none are obligations-exempt (the
+  management page is a normal authenticated destination, request-options is anonymous).
+- **Client** (`wwwroot/js/passkey.js`) — a classic-script adaptation of the template's
+  `passkey-submit` form-associated custom element, pointed at the routes above and
+  loaded once from `App.razor`. It runs the browser ceremony, writes the credential
+  JSON (or an error) into the surrounding form, and submits natively — which bypasses
+  EditForm validation so the passkey button never trips the password rules.
+- **Pages.** `SignIn.razor` switched from `OnValidSubmit` to `OnSubmit` (so the passkey
+  button can skip the password DataAnnotations; the handler validates by hand only on
+  the password path) and gained a "Sign in with a passkey" button + `autocomplete=
+  "username webauthn"` for conditional-mediation autofill. New `Passkeys.razor`
+  (`/account/passkeys`, static SSR, `[Authorize]`) lists, adds, renames, and removes
+  passkeys, recording `passkey_registered` / `passkey_removed`; a **Passkeys** link
+  sits beside **Security** in the header. `PasskeySubmit.razor` wraps the custom
+  element and supplies the antiforgery header token via `IAntiforgery`.
+- **Contracts** (`Identity/PasskeyContracts.cs`): `PasskeyOperation { Create, Request }`
+  (names matched to the JS) and the shared `PasskeyInputModel { CredentialJson, Error }`.
+- **Tests.** New `DapperUserStorePasskeyTests` (Testcontainers): add/get round-trips
+  every stored field, find-by-credential returns the owner, find-passkey is per-user,
+  add-or-update rewrites mutable fields only (public key + backup-eligible preserved,
+  no duplicate row), remove deletes. `IdentityWiringTests` extended as above.
+
+### Build/test checklist for this slice
+
+1. `dotnet restore` — **no new packages** this slice.
+2. `dotnet build` — the passkey Razor components (`SignIn.razor`, `Passkeys.razor`,
+   `PasskeySubmit.razor`) are the most likely home of anything a compiler catches.
+3. `dotnet test` — expect the previous green set plus the new passkey store suite and
+   the three new wiring facts; the EndToEnd matrix still skips (M6). The new store
+   tests skip too if no container engine is available.
+4. `./run.sh --smoke` — boots once (which applies migration 0002), verifies
+   `/healthz/ready`, exits.
+5. Manual, on the **stable named-tunnel domain** (passkeys bind to the RP ID, so quick
+   tunnels won't keep them — ADR-0005): sign in → **Passkeys** in the header → **Add a
+   passkey** → complete the platform prompt → the credential appears in the list. Sign
+   out, then **Sign in with a passkey** (or let the username field autofill one). An
+   enrolled passkey sign-in should land you in **without** a TOTP challenge.
+
 ## Known caveats and deliberate decisions
 
 - **Warnings are not errors.** `TreatWarningsAsErrors=false` keeps a fresh clone
@@ -2704,6 +2796,32 @@ recovery codes; an enrolled user can regenerate those codes; and the §3.5 oblig
   regenerates recovery codes; it does not remove an enrollment. Removal (and the §4.2
   rule that an admin cannot remove their **own** enrollment) belongs with the
   account-administration / profile slice, alongside the store-level `TotpRemoved` path.
+- **M2 — passkeys required a schema addition (0002), a documented deviation from
+  §8.2's "verbatim" table** (see Slice 5). The .NET 10 `UserPasskeyInfo` carries
+  WebAuthn state the original `passkey_credential` columns did not model, and assertion
+  *reads* the stored **backup-eligible** bit and fails the ceremony on a mismatch — so
+  it must persist. `0002_passkey_credential_webauthn_state.sql` adds
+  `is_user_verified` / `is_backup_eligible` / `is_backed_up` (additive, all `DEFAULT
+  false`). Recorded in the spec (§8.2 note) and the review ledger (F-34). This is the
+  framework gap §3.3 anticipated ("fallback if a framework gap is found"); no fallback
+  library was needed — only these columns.
+- **M2 — attestation object and client-data JSON are deliberately not stored.**
+  `UserPasskeyInfo` exposes both, but attestation is `none` (§3.3) and nothing in v1
+  re-reads either blob (assertion never consults them), so the store reconstructs them
+  as empty on read rather than persisting the largest fields for no consumer. If a
+  future need appears (e.g. attestation-statement verification), add two `bytea`
+  columns in a later migration.
+- **M2 — the passkey handler is registered by hand.** `AddIdentityCore` (what this app
+  uses) does **not** register `IPasskeyHandler<TUser>` — only the monolithic
+  `AddIdentity` does — so `AddRestaurantIdentity` registers `PasskeyHandler<Person>`
+  itself, exactly as it already does for the two security-stamp validators. Without it,
+  `MakePasskey*OptionsAsync` throws "requires an IPasskeyHandler service" at runtime;
+  `IdentityWiringTests` guards the registration.
+- **M2 — no post-registration passkey nudge yet.** §3.3 offers passkey enrollment as a
+  dismissible nudge *after registration and after sign-in*. There is no registration
+  page yet (guests join at a table in M3; staff via admin in a later M2 slice), so the
+  durable home — the voluntary **Passkeys** management page — is what ships now; the
+  post-registration/sign-in nudge lands with those registration surfaces.
 - **Dev-machine note — inotify watch limit (handled in `run.sh`).** `dotnet watch`
   can exhaust the kernel's inotify **instance** limit on a busy workstation
   (`The configured user limit (128) on the number of inotify instances has been
@@ -2717,22 +2835,19 @@ recovery codes; an enrolled user can regenerate those codes; and the §3.5 oblig
 
 ## Next: remaining M2 slices (in order)
 
-1. **Passkeys** (`IUserPasskeyStore`, .NET 10 WebAuthn): registration/assertion,
-   username-first and discoverable flows, the passkey sign-in path (never a TOTP
-   challenge — records `sign_in_succeeded` with method `passkey`). Verify the new
-   .NET 10 passkey API against the framework source first.
-2. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
+1. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
    zero-administrator re-check, self-granting the administrator role in one
    transaction (§3.6) — the first home for role grants, and the first in-app way to
    create an account.
-3. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
+2. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
    + `role_granted`/`role_revoked` events), **Reset credentials** (temp password +
    `must_change_password`; clear TOTP + set `must_enroll_totp` iff enrolled; new
    stamp; `password_reset_by_administrator` [+ `totp_cleared_by_administrator`]),
    deactivate/reactivate — the first thing that actually **sets** the obligation flags
    the pipeline enforces (Slice 3) and the enrollment pages clear (Slice 4). This is
-   also the home for **voluntary TOTP removal** and the §4.2 "an admin cannot remove
-   their own enrollment" rule. Store-level integration tests + middleware tests
+   also the home for **voluntary TOTP removal**, the §4.2 "an admin cannot remove
+   their own enrollment" rule, and the grant-time passkey mandate for the kitchen and
+   administrator roles (§3.7). Store-level integration tests + middleware tests
    throughout.
 
 ################################################################################
@@ -2743,15 +2858,15 @@ recovery codes; an enrolled user can regenerate those codes; and the §3.5 oblig
   File name:             DOCUMENTATION_REVIEW.md
   Relative path:         docs/DOCUMENTATION_REVIEW.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/DOCUMENTATION_REVIEW.md
-  Size:                  12.1 KiB (12383 bytes)
-  Last modified:         2026-07-17 11:53:40.000000000 -0400
+  Size:                  13.4 KiB (13713 bytes)
+  Last modified:         2026-07-20 17:42:04.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21195455
+  Inode:                 21956019
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               7d78e44b2e619c1dada507622a8525f1b4f70c4da9fe68440ec22d2bb5de7839
-  Last git commit:       f4b25f9 2026-07-17 09:22:33 -0400 update documentation
+  SHA-256:               0b4eed3e49fd600d74625bbab2dd148f34035a5449bdc1a661b5408b3bca182a
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
@@ -2819,6 +2934,14 @@ All nine are fixed in the current `export.sh`; the script's own comments cite th
 | F-31 | Fallback tree renderer used `└──`/`├──` by node kind instead of by position | Correct connectors and `│` continuation lines rendered by position. |
 | F-32 | `yarn.lock` leftover in a .NET repository's exclusion list | Removed. |
 | F-33 | "all 1 included files" | Singular/plural noun selected from the count. |
+
+## Group E — Implementation findings (deviations discovered while building)
+
+Found while implementing against the real .NET 10 framework, and resolved in the same slice per the atomic-documentation rule (R§10 · S§18).
+
+| ID | Finding | Resolution | Embodied in |
+|---|---|---|---|
+| F-34 | §8.2's `passkey_credential` was specified before ASP.NET Core Identity's .NET 10 passkey API was verified against source. That API's `UserPasskeyInfo` credential record carries WebAuthn state the table did not model (user-verified, backup-eligible, backed-up), and assertion **reads** the stored backup-eligible bit and fails the ceremony on a mismatch — so it cannot be dropped and reconstructed. | Additive migration `0002_passkey_credential_webauthn_state.sql` adds `is_user_verified` / `is_backup_eligible` / `is_backed_up` (all `NOT NULL DEFAULT false`); `0001` is left untouched (DbUp journals per script). The raw attestation object and client-data JSON `UserPasskeyInfo` also exposes are deliberately not stored (attestation is `none`, §3.3; nothing re-reads them) and are reconstructed as empty on read. This is the framework gap §3.3 anticipated — no fallback library was needed, only the columns. | S§8.2 (schema-evolution note), S§3.3 · `0002_*.sql`, `DapperUserStore` passkey region · BUILD_PROGRESS Slice 5 |
 
 ---
 
@@ -3213,15 +3336,15 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
   File name:             TECHNICAL_SPECIFICATION.md
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/TECHNICAL_SPECIFICATION.md
-  Size:                  67.1 KiB (68731 bytes)
-  Last modified:         2026-07-17 11:56:04.000000000 -0400
+  Size:                  68.2 KiB (69850 bytes)
+  Last modified:         2026-07-20 17:41:33.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21195454
+  Inode:                 21956020
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               6a3b04a76f48ea96fa48700b443c8398267f7e3157ec71a453e945127ebef2f0
-  Last git commit:       f4b25f9 2026-07-17 09:22:33 -0400 update documentation
+  SHA-256:               c44ec471141df5446f14d93ce695c1fade511f9889ce877e6cbbbb4bfa85a198
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
@@ -3729,6 +3852,8 @@ CREATE INDEX order_visibility_event_order_index
 ```
 
 Note on the `menu_item_event` CHECKs: they are biconditionals — `new_name` is present exactly when the type is `created` or `name_changed`, and `new_price_amount` exactly when the type is `created` or `price_changed`; `activated`/`deactivated` therefore carry neither. Integration tests must assert all ten combinations (five types × payload present/absent).
+
+Schema evolution — `passkey_credential` (M2 passkey slice). The DDL above is what ships as `0001_initial_schema.sql` and is left unchanged. Implementing passkeys against ASP.NET Core Identity's .NET 10 API revealed that its `UserPasskeyInfo` credential record carries WebAuthn state the original table did not model, and that assertion (§7.2, verifying an authentication assertion, step 19) *reads* the stored backup-eligible bit and fails the ceremony on a mismatch — so it must persist. An additive migration, `0002_passkey_credential_webauthn_state.sql`, therefore adds three columns to this table: `is_user_verified boolean NOT NULL DEFAULT false`, `is_backup_eligible boolean NOT NULL DEFAULT false`, and `is_backed_up boolean NOT NULL DEFAULT false`. The raw attestation object and client-data JSON that `UserPasskeyInfo` also exposes are intentionally **not** stored (attestation is `none` per §3.3 and nothing re-reads them), and are reconstructed as empty on read. This is the framework gap §3.3 anticipated; no fallback library was required, only these columns. Recorded in the review ledger as F-34.
 
 ### 8.3 Projection views
 
@@ -5599,15 +5724,15 @@ public sealed class DapperSecurityEventLog : ISecurityEventLog
   File name:             DapperUserStore.cs
   Relative path:         src/MyRestaurant.DataAccess/Identity/DapperUserStore.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Identity/DapperUserStore.cs
-  Size:                  29.6 KiB (30333 bytes)
-  Last modified:         2026-07-19 21:14:34.000000000 -0400
-  Permissions:           -rw-------
+  Size:                  39.6 KiB (40509 bytes)
+  Last modified:         2026-07-20 16:47:41.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21675157
+  Inode:                 21956024
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               687a17e87f0b1b8c5d9c4106ec75027bfccde8df8a1f4ac3f63fa5673d8b21f6
-  Last git commit:       a4423d9 2026-07-19 17:19:43 -0400 add claude response
+  SHA-256:               5ac7b1dcaf00e08981a6c5f2ce609e8fd4d995009a99c44deaab51f869bbc259
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -5625,8 +5750,8 @@ namespace MyRestaurant.DataAccess.Identity;
 /// The custom ASP.NET Core Identity store over the <c>person*</c> tables with Dapper
 /// (TECHNICAL_SPECIFICATION §3.1, ADR-0003 — Identity core services over Dapper, never EF). One
 /// class implements the whole family a <see cref="UserManager{TUser}"/> needs for passwords,
-/// security stamps, lockout, TOTP, recovery codes, roles, email, and phone; the passkey store
-/// (<c>IUserPasskeyStore</c>, new in .NET 10) arrives in a dedicated increment. <see cref="UserManager{TUser}"/>
+/// security stamps, lockout, TOTP, recovery codes, roles, email, phone, and — as of the M2 passkey
+/// slice — WebAuthn passkeys (<c>IUserPasskeyStore</c>, new in .NET 10). <see cref="UserManager{TUser}"/>
 /// discovers each capability by casting the resolved <see cref="IUserStore{TUser}"/> to the
 /// relevant interface, so registering this once via <c>AddUserStore&lt;DapperUserStore&gt;()</c> is enough.
 ///
@@ -5664,7 +5789,8 @@ public sealed class DapperUserStore :
     IUserTwoFactorRecoveryCodeStore<Person>,
     IUserRoleStore<Person>,
     IUserEmailStore<Person>,
-    IUserPhoneNumberStore<Person>
+    IUserPhoneNumberStore<Person>,
+    IUserPasskeyStore<Person>
 {
     /// <summary>Data-Protection purpose for the at-rest TOTP secret (§3.4). Do not change without a migration plan.</summary>
     private const string TotpSecretProtectorPurpose = "MyRestaurant.Identity.TotpSecret.v1";
@@ -5690,6 +5816,21 @@ public sealed class DapperUserStore :
         person.lockout_end_at         AS LockoutEndAt,
         person.is_active              AS IsActive,
         person.created_at             AS CreatedAt
+        """;
+
+    // The passkey_credential columns, aliased to PasskeyCredentialRow. is_user_verified /
+    // is_backup_eligible / is_backed_up arrive in migration 0002 (the .NET 10 UserPasskeyInfo carries
+    // them; assertion reads the backup-eligible bit — see the passkey region below).
+    private const string PasskeyColumns = """
+        credential_id            AS CredentialId,
+        public_key               AS PublicKey,
+        signature_counter        AS SignatureCounter,
+        transports               AS Transports,
+        credential_display_name  AS CredentialDisplayName,
+        created_at               AS CreatedAt,
+        is_user_verified         AS IsUserVerified,
+        is_backup_eligible       AS IsBackupEligible,
+        is_backed_up             AS IsBackedUp
         """;
 
     private readonly IDatabaseConnectionFactory _connectionFactory;
@@ -6215,6 +6356,200 @@ public sealed class DapperUserStore :
 
     public Task SetPhoneNumberConfirmedAsync(Person user, bool confirmed, CancellationToken cancellationToken)
         => Task.CompletedTask;
+
+    // ---------------------------------------------------------------------------------------------
+    // IUserPasskeyStore — WebAuthn passkeys (§3.3, .NET 10). Own table (passkey_credential, §8.2 +
+    // migration 0002), one row per credential. These write directly rather than mutating the entity.
+    //
+    // A UserPasskeyInfo carries more than §8.2's original columns: the backup-eligible / backed-up /
+    // user-verified flags. The framework's assertion path reads the STORED backup-eligible bit and
+    // fails the ceremony if it disagrees with the authenticator, so it must round-trip — 0002 adds it.
+    // The attestation object and client-data JSON are NOT persisted (attestation is 'none' and nothing
+    // re-reads them in v1); they are reconstructed as empty on read, which the framework never consults
+    // after registration. AddOrUpdate mirrors the reference EF store: on an existing credential only the
+    // mutable fields (sign count, name, backed-up, user-verified) are written, so the immutable public
+    // key and backup-eligible bit captured at registration are never clobbered by a later assertion.
+    // ---------------------------------------------------------------------------------------------
+
+    public async Task AddOrUpdatePasskeyAsync(Person user, UserPasskeyInfo passkey, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(passkey);
+
+        UserPasskeyInfo? existing = await FindPasskeyAsync(user, passkey.CredentialId, cancellationToken).ConfigureAwait(false);
+
+        await using DbConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        if (existing is not null)
+        {
+            // Update only the fields the WebAuthn assertion step legitimately changes (sign count and
+            // backup state) plus the user-settable display name — matching the reference store.
+            const string updateSql = """
+                UPDATE passkey_credential SET
+                    signature_counter       = @SignatureCounter,
+                    credential_display_name = @CredentialDisplayName,
+                    is_backed_up            = @IsBackedUp,
+                    is_user_verified        = @IsUserVerified
+                WHERE person_identifier = @PersonIdentifier
+                  AND credential_id     = @CredentialId;
+                """;
+
+            await connection.ExecuteAsync(new CommandDefinition(
+                updateSql,
+                new
+                {
+                    user.PersonIdentifier,
+                    CredentialId = passkey.CredentialId,
+                    SignatureCounter = (long)passkey.SignCount,
+                    CredentialDisplayName = passkey.Name,
+                    passkey.IsBackedUp,
+                    passkey.IsUserVerified,
+                },
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            return;
+        }
+
+        const string insertSql = """
+            INSERT INTO passkey_credential (
+                passkey_credential_identifier, person_identifier, credential_id, public_key,
+                signature_counter, transports, credential_display_name, created_at,
+                is_user_verified, is_backup_eligible, is_backed_up)
+            VALUES (
+                @PasskeyCredentialIdentifier, @PersonIdentifier, @CredentialId, @PublicKey,
+                @SignatureCounter, @Transports, @CredentialDisplayName, @CreatedAt,
+                @IsUserVerified, @IsBackupEligible, @IsBackedUp);
+            """;
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            insertSql,
+            new
+            {
+                PasskeyCredentialIdentifier = _identifierFactory.Create(),
+                user.PersonIdentifier,
+                CredentialId = passkey.CredentialId,
+                PublicKey = passkey.PublicKey,
+                SignatureCounter = (long)passkey.SignCount,
+                Transports = JoinTransports(passkey.Transports),
+                CredentialDisplayName = passkey.Name,
+                passkey.CreatedAt,
+                passkey.IsUserVerified,
+                passkey.IsBackupEligible,
+                passkey.IsBackedUp,
+            },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+    }
+
+    public async Task<IList<UserPasskeyInfo>> GetPasskeysAsync(Person user, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        string sql = $"""
+            SELECT {PasskeyColumns}
+            FROM passkey_credential
+            WHERE person_identifier = @PersonIdentifier
+            ORDER BY created_at;
+            """;
+
+        await using DbConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        IEnumerable<PasskeyCredentialRow> rows = await connection.QueryAsync<PasskeyCredentialRow>(
+            new CommandDefinition(sql, new { user.PersonIdentifier }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return rows.Select(ToPasskeyInfo).ToList();
+    }
+
+    public async Task<Person?> FindByPasskeyIdAsync(byte[] credentialId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(credentialId);
+
+        string sql = $"""
+            SELECT {PersonColumns}
+            FROM person
+            JOIN passkey_credential ON passkey_credential.person_identifier = person.person_identifier
+            WHERE passkey_credential.credential_id = @CredentialId;
+            """;
+
+        await using DbConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        return await connection.QuerySingleOrDefaultAsync<Person>(new CommandDefinition(
+            sql, new { CredentialId = credentialId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+    }
+
+    public async Task<UserPasskeyInfo?> FindPasskeyAsync(Person user, byte[] credentialId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(credentialId);
+
+        string sql = $"""
+            SELECT {PasskeyColumns}
+            FROM passkey_credential
+            WHERE person_identifier = @PersonIdentifier
+              AND credential_id     = @CredentialId;
+            """;
+
+        await using DbConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        PasskeyCredentialRow? row = await connection.QuerySingleOrDefaultAsync<PasskeyCredentialRow>(
+            new CommandDefinition(
+                sql,
+                new { user.PersonIdentifier, CredentialId = credentialId },
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return row is null ? null : ToPasskeyInfo(row);
+    }
+
+    public async Task RemovePasskeyAsync(Person user, byte[] credentialId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(credentialId);
+
+        await using DbConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await connection.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM passkey_credential WHERE person_identifier = @PersonIdentifier AND credential_id = @CredentialId;",
+            new { user.PersonIdentifier, CredentialId = credentialId },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+    }
+
+    private static UserPasskeyInfo ToPasskeyInfo(PasskeyCredentialRow row) =>
+        new(
+            row.CredentialId,
+            row.PublicKey,
+            row.CreatedAt,
+            (uint)row.SignatureCounter,
+            SplitTransports(row.Transports),
+            row.IsUserVerified,
+            row.IsBackupEligible,
+            row.IsBackedUp,
+            // Not persisted (attestation is 'none', §3.3) and never read after registration.
+            attestationObject: [],
+            clientDataJson: [])
+        {
+            Name = row.CredentialDisplayName,
+        };
+
+    // Transports are opaque tokens the server only echoes back into allowCredentials; store them as a
+    // comma-separated list (tokens never contain commas) and split on read; null when absent.
+    private static string? JoinTransports(string[]? transports)
+        => transports is { Length: > 0 } ? string.Join(',', transports) : null;
+
+    private static string[]? SplitTransports(string? transports)
+        => string.IsNullOrEmpty(transports)
+            ? null
+            : transports.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>The read shape of one <c>passkey_credential</c> row (Dapper maps the aliased columns).</summary>
+    private sealed class PasskeyCredentialRow
+    {
+        public byte[] CredentialId { get; set; } = [];
+        public byte[] PublicKey { get; set; } = [];
+        public long SignatureCounter { get; set; }
+        public string? Transports { get; set; }
+        public string? CredentialDisplayName { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+        public bool IsUserVerified { get; set; }
+        public bool IsBackupEligible { get; set; }
+        public bool IsBackedUp { get; set; }
+    }
 
     // ---------------------------------------------------------------------------------------------
 
@@ -6820,6 +7155,57 @@ SELECT DISTINCT ON (guest_order_identifier)
     (event_type = 'hidden') AS is_hidden
 FROM order_visibility_event
 ORDER BY guest_order_identifier, occurred_at DESC, order_visibility_event_identifier DESC;
+
+################################################################################
+# FILE: src/MyRestaurant.DataAccess/Migrations/0002_passkey_credential_webauthn_state.sql
+################################################################################
+
+--- METADATA ---
+  File name:             0002_passkey_credential_webauthn_state.sql
+  Relative path:         src/MyRestaurant.DataAccess/Migrations/0002_passkey_credential_webauthn_state.sql
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Migrations/0002_passkey_credential_webauthn_state.sql
+  Size:                  1.9 KiB (1897 bytes)
+  Last modified:         2026-07-20 16:34:29.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21956026
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               47140321235e073aea04e5ca9c34386ec2f919cbc58603c03d52771ae1661d08
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+
+--- CONTENT ---
+-- =============================================================================
+-- 0002_passkey_credential_webauthn_state.sql
+--
+-- M2 passkey slice (TECHNICAL_SPECIFICATION §3.3). The .NET 10 Identity passkey
+-- store round-trips a `UserPasskeyInfo` whose credential record carries WebAuthn
+-- backup flags and a user-verification flag. The 0001 `passkey_credential` table
+-- (verbatim from §8.2) predates that API and stores only the public key, sign
+-- counter, transports, and display name.
+--
+-- Why this is not optional: WebAuthn assertion (§7.2 of the spec, verifying an
+-- authentication assertion, step 19) compares the STORED backup-eligible bit
+-- against the authenticator data on every passkey sign-in and fails the ceremony
+-- on a mismatch. If that bit is not persisted it cannot be compared faithfully,
+-- so sign-in would spuriously accept or reject. These three boolean columns close
+-- that framework gap — exactly the "verify the .NET 10 passkey API against the
+-- framework source first" check called out in BUILD_PROGRESS.
+--
+-- What is deliberately NOT added: `UserPasskeyInfo` also exposes the raw
+-- attestation object and client-data JSON. Attestation is 'none' (§3.3), nothing
+-- in version 1 re-reads either blob, and they are the large fields, so the store
+-- reconstructs them as empty on read rather than persisting dead weight.
+--
+-- Shape: additive and safe. Every column is NOT NULL DEFAULT false, so the
+-- (currently empty) table backfills without a rewrite, and DbUp journals this as
+-- a distinct script — 0001 is never edited (ADR-0012).
+-- =============================================================================
+
+ALTER TABLE passkey_credential
+    ADD COLUMN is_user_verified   boolean NOT NULL DEFAULT false,
+    ADD COLUMN is_backup_eligible boolean NOT NULL DEFAULT false,
+    ADD COLUMN is_backed_up       boolean NOT NULL DEFAULT false;
 
 ################################################################################
 # FILE: src/MyRestaurant.DataAccess/MyRestaurant.DataAccess.csproj
@@ -9891,6 +10277,262 @@ public static class AuthorizationServiceCollectionExtensions
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/Passkeys.razor
+################################################################################
+
+--- METADATA ---
+  File name:             Passkeys.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/Passkeys.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/Passkeys.razor
+  Size:                  9.1 KiB (9339 bytes)
+  Last modified:         2026-07-20 16:43:07.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21956031
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               c87b5cf479058d22838a9a779fc56658d23c6f745f515981b91ce159fed645e2
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+
+--- CONTENT ---
+@page "/account/passkeys"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize]
+@using System.Buffers.Text
+@using MyRestaurant.Domain.Authentication
+@inject UserManager<Person> UserManager
+@inject SignInManager<Person> SignInManager
+@inject ISecurityEventLog SecurityEventLog
+@inject NavigationManager Navigation
+
+@* The voluntary passkey-management page (TECHNICAL_SPECIFICATION §3.3): any signed-in user can add a
+   passkey, rename it, or remove it. Static SSR, like every account page — registering a passkey writes
+   through the Identity store and records a security_event, and the ceremony's challenge lives in a
+   cookie the server sets. Not in the obligations-exempt list: it is a normal authenticated destination,
+   so a user with an outstanding obligation is routed to the relevant pipeline page, never here.
+
+   Forms on this page all submit natively (the add button via the passkey-submit custom element, the
+   per-row buttons as ordinary posts), each carrying its @formname so the framework can dispatch it:
+     • "add-passkey"      — the attestation credential the browser produced (bound to Input);
+     • "passkey-{id}"     — one per credential, carrying the credential id, an Action (rename|delete),
+                            and the new name for a rename. The shared Action/CredentialId/NewName bind
+                            from whichever row posted. *@
+
+<PageTitle>Passkeys</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">Security</p>
+    <h1>Passkeys</h1>
+    <p class="lede">
+        A passkey lets you sign in with your fingerprint, face, or device PIN instead of a password —
+        and it can't be phished. Add one for each device you use. You can keep your password as a
+        backup.
+    </p>
+
+    @if (_statusMessage is not null)
+    {
+        <p class="status-success" role="status">@_statusMessage</p>
+    }
+    @if (_errorMessage is not null)
+    {
+        <p class="status-error" role="alert">@_errorMessage</p>
+    }
+
+    @if (_passkeys is { Count: > 0 })
+    {
+        <ul class="passkey-list">
+            @foreach (UserPasskeyInfo passkey in _passkeys)
+            {
+                string credentialId = Base64Url.EncodeToString(passkey.CredentialId);
+                <li class="passkey-row">
+                    <div class="passkey-meta">
+                        <span class="passkey-name">@(string.IsNullOrWhiteSpace(passkey.Name) ? "Unnamed passkey" : passkey.Name)</span>
+                        <span class="passkey-date">Added @passkey.CreatedAt.ToLocalTime().ToString("d MMM yyyy")</span>
+                    </div>
+                    <form class="passkey-actions" @formname="@($"passkey-{credentialId}")" method="post" @onsubmit="UpdatePasskeyAsync">
+                        <AntiforgeryToken />
+                        <input type="hidden" name="CredentialId" value="@credentialId" />
+                        <input class="passkey-rename" name="NewName" value="@passkey.Name"
+                               aria-label="Passkey name" maxlength="64" />
+                        <button type="submit" name="Action" value="rename" class="button-secondary">Rename</button>
+                        <button type="submit" name="Action" value="delete" class="link-button danger">Remove</button>
+                    </form>
+                </li>
+            }
+        </ul>
+    }
+    else
+    {
+        <p class="lede">You have no passkeys yet. Add one so you can sign in without a password.</p>
+    }
+
+    <form class="passkey-add" @formname="add-passkey" method="post" @onsubmit="AddPasskeyAsync">
+        <AntiforgeryToken />
+        <PasskeySubmit Operation="PasskeyOperation.Create" Name="Input" class="button-primary">
+            Add a passkey
+        </PasskeySubmit>
+    </form>
+</section>
+
+@code {
+    private IList<UserPasskeyInfo>? _passkeys;
+    private string? _statusMessage;
+    private string? _errorMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "add-passkey")]
+    private PasskeyInputModel Input { get; set; } = default!;
+
+    // Shared by every per-row "passkey-{id}" form; only the submitted row's values arrive.
+    [SupplyParameterFromForm]
+    private string? Action { get; set; }
+
+    [SupplyParameterFromForm]
+    private string? CredentialId { get; set; }
+
+    [SupplyParameterFromForm]
+    private string? NewName { get; set; }
+
+    [SupplyParameterFromQuery(Name = "status")]
+    private string? Status { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
+        Input ??= new();
+        _statusMessage = Status;
+
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        _passkeys = await UserManager.GetPasskeysAsync(user);
+    }
+
+    private async Task AddPasskeyAsync()
+    {
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(Input.Error))
+        {
+            await FailAsync(user, "That passkey could not be added. Please try again.");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(Input.CredentialJson))
+        {
+            await FailAsync(user, "Your browser did not provide a passkey.");
+            return;
+        }
+
+        PasskeyAttestationResult attestation = await SignInManager.PerformPasskeyAttestationAsync(Input.CredentialJson);
+        if (!attestation.Succeeded || attestation.Passkey is null)
+        {
+            await FailAsync(user, "That passkey could not be registered. Please try again.");
+            return;
+        }
+
+        // The authenticator does not supply a name; give it a readable default the user can change.
+        UserPasskeyInfo passkey = attestation.Passkey;
+        passkey.Name = $"Passkey added {DateTimeOffset.UtcNow.ToLocalTime():d MMM yyyy}";
+
+        IdentityResult added = await UserManager.AddOrUpdatePasskeyAsync(user, passkey);
+        if (!added.Succeeded)
+        {
+            await FailAsync(user, "The passkey could not be saved to your account.");
+            return;
+        }
+
+        await SecurityEventLog.RecordAsync(
+            user.PersonIdentifier, actorPersonIdentifier: null, SecurityEventType.PasskeyRegistered, HttpContext.RequestAborted);
+
+        Redirect("Passkey added. You can rename it below.");
+    }
+
+    private async Task UpdatePasskeyAsync()
+    {
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        byte[] credentialId;
+        try
+        {
+            credentialId = Base64Url.DecodeFromChars(CredentialId);
+        }
+        catch (FormatException)
+        {
+            await FailAsync(user, "That passkey could not be identified.");
+            return;
+        }
+
+        if (string.Equals(Action, "delete", StringComparison.Ordinal))
+        {
+            IdentityResult removed = await UserManager.RemovePasskeyAsync(user, credentialId);
+            if (!removed.Succeeded)
+            {
+                await FailAsync(user, "The passkey could not be removed.");
+                return;
+            }
+
+            await SecurityEventLog.RecordAsync(
+                user.PersonIdentifier, actorPersonIdentifier: null, SecurityEventType.PasskeyRemoved, HttpContext.RequestAborted);
+            Redirect("Passkey removed.");
+            return;
+        }
+
+        if (string.Equals(Action, "rename", StringComparison.Ordinal))
+        {
+            UserPasskeyInfo? existing = await UserManager.GetPasskeyAsync(user, credentialId);
+            if (existing is null)
+            {
+                await FailAsync(user, "That passkey no longer exists.");
+                return;
+            }
+
+            // Blank keeps the current name; the store's update path writes only the mutable fields,
+            // so the public key and backup-eligible bit captured at registration are untouched.
+            existing.Name = string.IsNullOrWhiteSpace(NewName) ? existing.Name : NewName.Trim();
+            IdentityResult renamed = await UserManager.AddOrUpdatePasskeyAsync(user, existing);
+            if (!renamed.Succeeded)
+            {
+                await FailAsync(user, "The passkey could not be renamed.");
+                return;
+            }
+
+            Redirect("Passkey renamed.");
+            return;
+        }
+
+        await FailAsync(user, "That action was not recognized.");
+    }
+
+    // Re-load the list and show an error on the same render (no redirect, so no status query needed).
+    private async Task FailAsync(Person user, string message)
+    {
+        _errorMessage = message;
+        _passkeys = await UserManager.GetPasskeysAsync(user);
+    }
+
+    // Post/redirect/get: carry a one-line confirmation back through the query string.
+    private void Redirect(string status)
+        => Navigation.NavigateTo($"{AccountRoutes.Passkeys}?status={Uri.EscapeDataString(status)}");
+}
+
+################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor
 ################################################################################
 
@@ -9898,15 +10540,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             SignIn.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor
-  Size:                  4.4 KiB (4508 bytes)
-  Last modified:         2026-07-19 21:14:34.000000000 -0400
-  Permissions:           -rw-------
+  Size:                  7.4 KiB (7537 bytes)
+  Last modified:         2026-07-20 16:44:07.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21675159
+  Inode:                 21956032
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               7ca49793281d6e672264a3d1dbd2fadfbb530085c934ef0209a4457c1c08df00
-  Last git commit:       a4423d9 2026-07-19 17:19:43 -0400 add claude response
+  SHA-256:               1b5a26e24508926e1b9319f5cd5580bc5b759260cdd8271e8014d10c76717a52
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
 
 --- CONTENT ---
 @page "/sign-in"
@@ -9914,10 +10556,17 @@ public static class AuthorizationServiceCollectionExtensions
 @inject SignInManager<Person> SignInManager
 @inject NavigationManager Navigation
 
-@* The password sign-in page (TECHNICAL_SPECIFICATION §3.5, §4.1). Static SSR on purpose: issuing the
+@* The sign-in page (TECHNICAL_SPECIFICATION §3.3, §3.5, §4.1). Static SSR on purpose: issuing the
    authentication cookie needs a real HTTP response, which a Blazor circuit does not have. The form
    is a plain full-page POST (EditForm in SSR emits the antiforgery token itself). Auditing and
-   metering happen centrally in RestaurantSignInManager, never here. *@
+   metering happen centrally in RestaurantSignInManager, never here.
+
+   Password and passkey share one form. It uses OnSubmit (not OnValidSubmit) so the passkey button can
+   skip the password DataAnnotations: the passkey-submit element writes the assertion credential into
+   Input.Passkey and submits natively, and the handler runs PasskeySignInAsync on that before it
+   validates anything. A passkey sign-in never gets a TOTP challenge (§3.5) — that is guaranteed in the
+   sign-in manager, not here. The username carries autocomplete="username webauthn" so browsers can
+   surface a discoverable passkey inline (conditional mediation). *@
 
 <PageTitle>Sign in</PageTitle>
 
@@ -9939,12 +10588,12 @@ public static class AuthorizationServiceCollectionExtensions
             <p class="status-error" role="alert">@_errorMessage</p>
         }
 
-        <EditForm Model="Input" method="post" OnValidSubmit="SignInUserAsync" FormName="sign-in">
+        <EditForm EditContext="_editContext" method="post" OnSubmit="SignInUserAsync" FormName="sign-in">
             <DataAnnotationsValidator />
 
             <div class="form-field">
                 <label for="username">Username</label>
-                <InputText id="username" @bind-Value="Input.Username" autocomplete="username"
+                <InputText id="username" @bind-Value="Input.Username" autocomplete="username webauthn"
                            autocapitalize="none" spellcheck="false" autofocus />
                 <ValidationMessage For="@(() => Input.Username)" />
             </div>
@@ -9959,6 +10608,14 @@ public static class AuthorizationServiceCollectionExtensions
             <div class="form-actions">
                 <button type="submit" class="button-primary">Sign in</button>
             </div>
+
+            <div class="sign-in-alternative">
+                <span class="sign-in-or">or</span>
+                <PasskeySubmit Operation="PasskeyOperation.Request" Name="Input.Passkey"
+                               EmailName="Input.Username" class="button-secondary">
+                    Sign in with a passkey
+                </PasskeySubmit>
+            </div>
         </EditForm>
 
         <p class="form-footnote">
@@ -9970,6 +10627,7 @@ public static class AuthorizationServiceCollectionExtensions
 
 @code {
     private string? _errorMessage;
+    private EditContext _editContext = default!;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
@@ -9982,11 +10640,56 @@ public static class AuthorizationServiceCollectionExtensions
 
     // BL0008: on a static-SSR form POST the framework binds [SupplyParameterFromForm] itself and may
     // assign null, silently discarding a `= new()` initializer — so the default is applied here instead.
-    protected override void OnInitialized() => Input ??= new();
+    // OnSubmit means we validate by hand (below), so we drive an explicit EditContext.
+    protected override void OnInitialized()
+    {
+        Input ??= new();
+        _editContext = new EditContext(Input);
+    }
 
     private async Task SignInUserAsync()
     {
         string destination = ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl);
+
+        // Passkey path (§3.3): the element posted an assertion credential (or an error). Handle it
+        // before any password validation — the username/password fields are irrelevant here — and
+        // note PasskeySignInAsync never returns RequiresTwoFactor (a passkey bypasses the §3.5 second
+        // factor by construction).
+        if (!string.IsNullOrEmpty(Input.Passkey?.Error))
+        {
+            _errorMessage = "That passkey could not be used. Try again, or sign in with your password.";
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(Input.Passkey?.CredentialJson))
+        {
+            SignInResult passkeyResult = await SignInManager.PasskeySignInAsync(Input.Passkey.CredentialJson);
+
+            if (passkeyResult.Succeeded)
+            {
+                Navigation.NavigateTo(destination);
+            }
+            else if (passkeyResult.IsLockedOut)
+            {
+                _errorMessage = "Too many failed attempts. The account is locked for about five minutes — try again then.";
+            }
+            else if (passkeyResult.IsNotAllowed)
+            {
+                _errorMessage = "This account has been deactivated. Ask at the counter if you think that is a mistake.";
+            }
+            else
+            {
+                _errorMessage = "That passkey did not work. Try again, or sign in with your password.";
+            }
+
+            return;
+        }
+
+        // Password path: OnSubmit fires regardless of validity, so enforce the DataAnnotations now.
+        if (!_editContext.Validate())
+        {
+            return;
+        }
 
         // isPersistent: the §3.1 session is a 24-hour sliding cookie either way; persisting it lets
         // a guest's phone survive a browser restart mid-meal. lockoutOnFailure per §3.1.
@@ -10027,6 +10730,10 @@ public static class AuthorizationServiceCollectionExtensions
 
         [Required(ErrorMessage = "Enter your password.")]
         public string Password { get; set; } = string.Empty;
+
+        // Populated by the passkey-submit element on the assertion path; ignored by the password path.
+        // Not [Required] — the passkey button must submit without a username or password.
+        public PasskeyInputModel? Passkey { get; set; }
     }
 }
 
@@ -10278,6 +10985,76 @@ public static class AuthorizationServiceCollectionExtensions
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Account/PasskeySubmit.razor
+################################################################################
+
+--- METADATA ---
+  File name:             PasskeySubmit.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Account/PasskeySubmit.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/PasskeySubmit.razor
+  Size:                  1.9 KiB (1947 bytes)
+  Last modified:         2026-07-20 16:41:40.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21956033
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               3a4097c4c86ee8905a4177d587e2e6b6c587431c2029d7c52211953de2b5dab0
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+
+--- CONTENT ---
+@using Microsoft.AspNetCore.Antiforgery
+@using Microsoft.Extensions.DependencyInjection
+@inject IServiceProvider Services
+
+@*
+    Renders the passkey button plus the form-associated <passkey-submit> custom element (passkey.js).
+    The element needs an antiforgery token it can send as a request header on its fetch() to the
+    ceremony endpoints (those endpoints are not form posts, so the token cannot ride along in form
+    data); we resolve it here from IAntiforgery and hand it over via attributes. Adapted from the
+    ASP.NET Core Blazor Web template's PasskeySubmit component.
+*@
+
+<button type="submit" name="__passkeySubmit" @attributes="AdditionalAttributes">@ChildContent</button>
+<passkey-submit
+    operation="@Operation"
+    name="@Name"
+    email-name="@EmailName"
+    request-token-name="@_tokens?.HeaderName"
+    request-token-value="@_tokens?.RequestToken">
+</passkey-submit>
+
+@code {
+    private AntiforgeryTokenSet? _tokens;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    /// <summary>Which ceremony to drive — <see cref="PasskeyOperation.Create"/> or <see cref="PasskeyOperation.Request"/>.</summary>
+    [Parameter]
+    [EditorRequired]
+    public PasskeyOperation Operation { get; set; }
+
+    /// <summary>Form-field prefix the element writes back to (e.g. "Input" or "Input.Passkey").</summary>
+    [Parameter]
+    [EditorRequired]
+    public string Name { get; set; } = default!;
+
+    /// <summary>For the Request operation: the username field to read for the username-first flow.</summary>
+    [Parameter]
+    public string? EmailName { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IDictionary<string, object>? AdditionalAttributes { get; set; }
+
+    protected override void OnInitialized()
+        => _tokens = Services.GetService<IAntiforgery>()?.GetTokens(HttpContext);
+}
+
+################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/Account/RedirectToSignIn.razor
 ################################################################################
 
@@ -10321,15 +11098,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             App.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/App.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/App.razor
-  Size:                  1.3 KiB (1359 bytes)
-  Last modified:         2026-07-19 08:46:02.000000000 -0400
+  Size:                  1.6 KiB (1609 bytes)
+  Last modified:         2026-07-20 16:44:19.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654787
+  Inode:                 21956034
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               37515d5ed875a03c37b63cb2d5a45c9e541ab376ece542f50d36a902625d194d
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               bcbde27720d5f63f5691e10f8c16e8a17127394d832e8f97932c7432a8b444d6
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
 
 --- CONTENT ---
 @* The root HTML document. Interactive-server rendering is the default for the whole app (ADR-0004),
@@ -10346,6 +11123,9 @@ public static class AuthorizationServiceCollectionExtensions
     <base href="/" />
     <link rel="stylesheet" href="app.css" />
     <link rel="icon" href="data:," />
+    @* Defines the <passkey-submit> custom element (§3.3). A plain classic script, loaded up front so
+       the element is registered for the static-SSR account pages, which run no Blazor circuit. *@
+    <script src="js/passkey.js" defer></script>
     <HeadOutlet @rendermode="RenderModeForPage" />
 </head>
 
@@ -10376,15 +11156,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             MainLayout.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
-  Size:                  1.2 KiB (1271 bytes)
-  Last modified:         2026-07-20 08:00:58.000000000 -0400
+  Size:                  1.3 KiB (1359 bytes)
+  Last modified:         2026-07-20 16:44:23.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21843822
+  Inode:                 21956036
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               7e27e6325cec4ddea3287e635da77ae72a168400ed5e72fd35c35a44a73dd36d
-  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+  SHA-256:               80d11de60eb598036598aafa6f5c0440a8afd759ddc6e8e35f3cd090cdf956d7
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
 
 --- CONTENT ---
 @inherits LayoutComponentBase
@@ -10400,6 +11180,7 @@ public static class AuthorizationServiceCollectionExtensions
                 <Authorized>
                     <span class="session-name">@context.User.Identity?.Name</span>
                     <a class="session-link" href="@AccountRoutes.TotpEnrollment">Security</a>
+                    <a class="session-link" href="@AccountRoutes.Passkeys">Passkeys</a>
                     <form class="sign-out-form" method="post" action="@AccountRoutes.SignOut">
                         <AntiforgeryToken />
                         <button type="submit" class="link-button">Sign out</button>
@@ -10811,17 +11592,18 @@ public sealed class RestaurantOptions
   File name:             AccountEndpoints.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/AccountEndpoints.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/AccountEndpoints.cs
-  Size:                  1.7 KiB (1748 bytes)
-  Last modified:         2026-07-19 08:44:05.000000000 -0400
+  Size:                  4.6 KiB (4661 bytes)
+  Last modified:         2026-07-20 16:39:34.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654782
+  Inode:                 21956038
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               9d8b21f7117a473ee058b8d25aa7461d70bae416f1eb72678e11370e39a0d261
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               450bcc7e8d3c3450303560969a282e2bf28acc5765f62523425fa02ef93ab570
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
 
 --- CONTENT ---
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using MyRestaurant.DataAccess.Identity;
@@ -10836,6 +11618,13 @@ namespace MyRestaurant.WebApplication.Identity;
 /// Binding the optional form field makes the endpoint "accept form data", which switches on the
 /// framework's automatic antiforgery validation for it — the layout's sign-out form supplies the
 /// token via <c>&lt;AntiforgeryToken /&gt;</c>.
+///
+/// <para>The two passkey-options endpoints (§3.3) return the WebAuthn ceremony JSON that the browser
+/// feeds to <c>navigator.credentials</c>. They are fetched by the <c>passkey-submit</c> element, not
+/// posted by a form, so they validate the antiforgery token manually from the request header (the
+/// element carries it) rather than via form binding. Creation options require an authenticated user
+/// (you register a passkey for yourself); request options are anonymous, because sign-in — including
+/// the username-first and discoverable flows — happens before there is a session.</para>
 /// </summary>
 public static class AccountEndpoints
 {
@@ -10855,6 +11644,55 @@ public static class AccountEndpoints
             return Results.LocalRedirect(ObligationsEnforcement.SafeLocalReturnUrl(returnUrl));
         });
 
+        // Registration ceremony options for the signed-in user (attestation). The user entity's Id is
+        // the WebAuthn user handle; the framework stashes the challenge in a short-lived cookie that
+        // PerformPasskeyAttestationAsync later reads.
+        endpoints.MapPost(AccountRoutes.PasskeyCreationOptions, async (
+            HttpContext context,
+            UserManager<Person> userManager,
+            SignInManager<Person> signInManager,
+            IAntiforgery antiforgery) =>
+        {
+            await antiforgery.ValidateRequestAsync(context);
+
+            Person? user = await userManager.GetUserAsync(context.User);
+            if (user is null)
+            {
+                return Results.Unauthorized();
+            }
+
+            string userId = await userManager.GetUserIdAsync(user);
+            string userName = await userManager.GetUserNameAsync(user) ?? user.Username;
+            string optionsJson = await signInManager.MakePasskeyCreationOptionsAsync(new PasskeyUserEntity
+            {
+                Id = userId,
+                Name = userName,
+                DisplayName = string.IsNullOrWhiteSpace(user.DisplayName) ? userName : user.DisplayName,
+            });
+
+            return Results.Content(optionsJson, "application/json");
+        }).RequireAuthorization();
+
+        // Assertion ceremony options for sign-in (anonymous). With a username we scope allowCredentials
+        // to that account (username-first); without one we return no allowCredentials so the browser
+        // offers any discoverable passkey for this relying party.
+        endpoints.MapPost(AccountRoutes.PasskeyRequestOptions, async (
+            HttpContext context,
+            UserManager<Person> userManager,
+            SignInManager<Person> signInManager,
+            IAntiforgery antiforgery,
+            [FromQuery] string? username) =>
+        {
+            await antiforgery.ValidateRequestAsync(context);
+
+            Person? user = string.IsNullOrWhiteSpace(username)
+                ? null
+                : await userManager.FindByNameAsync(username);
+            string optionsJson = await signInManager.MakePasskeyRequestOptionsAsync(user);
+
+            return Results.Content(optionsJson, "application/json");
+        });
+
         return endpoints;
     }
 }
@@ -10867,15 +11705,15 @@ public static class AccountEndpoints
   File name:             IdentityServiceCollectionExtensions.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
-  Size:                  10.1 KiB (10334 bytes)
-  Last modified:         2026-07-20 08:00:45.000000000 -0400
+  Size:                  11.4 KiB (11639 bytes)
+  Last modified:         2026-07-20 16:38:57.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21843813
+  Inode:                 21956039
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               0dc8e16cb1c29926c25804508bab6a4c55b206022c092c2a20c3a214d9fb7f09
-  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+  SHA-256:               942b63abf91aa8309b3958812d52207a5e9a1058ca816363a73fdba04e347ab6
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
 
 --- CONTENT ---
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -10996,6 +11834,25 @@ public static class IdentityServiceCollectionExtensions
         services.TryAddScoped<ISecurityStampValidator, SecurityStampValidator<Person>>();
         services.TryAddScoped<ITwoFactorSecurityStampValidator, TwoFactorSecurityStampValidator<Person>>();
 
+        // The .NET 10 WebAuthn ceremony handler (§3.3). Same story as the stamp validators: the
+        // monolithic AddIdentity registers it, AddIdentityCore does not (verified against the framework
+        // source), so register it explicitly or MakePasskey*OptionsAsync throws "requires an
+        // IPasskeyHandler service". It reads the options configured just below.
+        services.TryAddScoped<IPasskeyHandler<Person>, PasskeyHandler<Person>>();
+
+        // Relying-party options for every passkey ceremony (§3.3). The RP ID is the FULL host of
+        // RESTAURANT_PUBLIC_ORIGIN — the single origin truth of §14.2 — set explicitly so it never
+        // silently falls back to the request host behind the tunnel or a hairpin. residentKey and
+        // userVerification are "preferred" (discoverable + username-first both work; verification is
+        // encouraged, not demanded); attestation is left at the browser default of "none", so no
+        // attestation statement is requested or verified.
+        services.Configure<IdentityPasskeyOptions>(passkey =>
+        {
+            passkey.ServerDomain = options.ResolveWebAuthnRelyingPartyId();
+            passkey.UserVerificationRequirement = "preferred";
+            passkey.ResidentKeyRequirement = "preferred";
+        });
+
         // Harden the application cookie (§3.1). Secure + HttpOnly + SameSite=Lax; 24-hour sliding
         // expiration. The login/logout/access-denied paths are the real account surfaces now (this
         // slice); an unauthenticated hit on an [Authorize] page redirects to /sign-in?ReturnUrl=….
@@ -11062,15 +11919,15 @@ public static class IdentityServiceCollectionExtensions
   File name:             ObligationsEnforcement.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
-  Size:                  6.0 KiB (6117 bytes)
-  Last modified:         2026-07-20 08:00:12.000000000 -0400
+  Size:                  6.5 KiB (6690 bytes)
+  Last modified:         2026-07-20 16:39:48.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21843816
+  Inode:                 21956040
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               1d37935ea9073fba708420b9d471b2ae444301c1820da26ec84c1d45172340d5
-  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+  SHA-256:               4516239aa86236fc8527cb9df65a564ad0bb8435623904c889ff4f72e1e867b2
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
 
 --- CONTENT ---
 using System.Security.Claims;
@@ -11107,6 +11964,15 @@ public static class AccountRoutes
 
     /// <summary>The voluntary authenticator page: enroll, or regenerate recovery codes (§3.4, §4.2).</summary>
     public const string TotpEnrollment = "/account/enroll-totp";
+
+    /// <summary>The voluntary passkey-management page: list, add, rename, remove passkeys (§3.3).</summary>
+    public const string Passkeys = "/account/passkeys";
+
+    /// <summary>POST endpoint returning WebAuthn registration (attestation) options — signed-in only (§3.3).</summary>
+    public const string PasskeyCreationOptions = "/account/passkey/creation-options";
+
+    /// <summary>POST endpoint returning WebAuthn sign-in (assertion) options — anonymous (§3.3).</summary>
+    public const string PasskeyRequestOptions = "/account/passkey/request-options";
 }
 
 /// <summary>
@@ -11268,6 +12134,56 @@ public sealed class ObligationsMiddleware
 
         return _next(context);
     }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Identity/PasskeyContracts.cs
+################################################################################
+
+--- METADATA ---
+  File name:             PasskeyContracts.cs
+  Relative path:         src/MyRestaurant.WebApplication/Identity/PasskeyContracts.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/PasskeyContracts.cs
+  Size:                  1.4 KiB (1437 bytes)
+  Last modified:         2026-07-20 16:39:58.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21956041
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               0d786989368911b63e69db17062bcde9599c4bfe60782e42f3962f47f35cc491
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+
+--- CONTENT ---
+namespace MyRestaurant.WebApplication.Identity;
+
+/// <summary>
+/// Which WebAuthn ceremony the browser-side <c>passkey-submit</c> element should drive. The names are
+/// significant: they are rendered verbatim into the element's <c>operation</c> attribute and compared
+/// as strings ("Create" / "Request") by passkey.js, so they must not be renamed independently.
+/// </summary>
+public enum PasskeyOperation
+{
+    /// <summary><c>navigator.credentials.create()</c> — register a new passkey (attestation).</summary>
+    Create,
+
+    /// <summary><c>navigator.credentials.get()</c> — sign in with an existing passkey (assertion).</summary>
+    Request,
+}
+
+/// <summary>
+/// The two form fields the <c>passkey-submit</c> element writes back before it submits the surrounding
+/// form: the JSON-serialized <c>PublicKeyCredential</c> on success, or a human-readable message when the
+/// browser ceremony could not complete (cancelled, no authenticator, and so on). Reused by the sign-in
+/// page (assertion, nested under the login model) and the passkey-management page (attestation).
+/// </summary>
+public sealed class PasskeyInputModel
+{
+    /// <summary>The serialized credential the server hands to <c>PerformPasskey*Async</c>.</summary>
+    public string? CredentialJson { get; set; }
+
+    /// <summary>Set instead of <see cref="CredentialJson"/> when the browser ceremony failed.</summary>
+    public string? Error { get; set; }
 }
 
 ################################################################################
@@ -11477,15 +12393,15 @@ public sealed class RestaurantClaimsPrincipalFactory : UserClaimsPrincipalFactor
   File name:             RestaurantSignInManager.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/RestaurantSignInManager.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/RestaurantSignInManager.cs
-  Size:                  8.5 KiB (8725 bytes)
-  Last modified:         2026-07-19 08:45:18.000000000 -0400
+  Size:                  11.4 KiB (11673 bytes)
+  Last modified:         2026-07-20 16:38:15.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654779
+  Inode:                 21956042
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               d83e08907686b4d9bbcb71464b035b9c759bb40eb79e1f790bb3e3c8c9487904
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               248d8e8632a3f78f71a0b174f776cd06f4af25fea1eede0f6d14238bf184bd55
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
 
 --- CONTENT ---
 using Microsoft.AspNetCore.Authentication;
@@ -11510,11 +12426,13 @@ namespace MyRestaurant.WebApplication.Identity;
 /// <see cref="SignInResult.NotAllowed"/> — audited as a failed sign-in. Deactivation additionally
 /// kills live sessions through the security stamp; this gate closes the front door.</para>
 ///
-/// <para>Only the password and second-factor paths are overridden here. The passkey path
-/// (<c>SignInManager.SignInAsync</c> after a WebAuthn assertion, method = <c>passkey</c>) records its
-/// own success in the passkey slice, so <see cref="SignInManager{TUser}.SignInAsync(TUser,bool,string)"/>
-/// is intentionally not overridden — overriding it would double-count the password path, which calls it
-/// internally on success.</para>
+/// <para>The password, second-factor, and passkey paths are overridden here; each audits with its own
+/// <c>method</c> tag. <see cref="SignInManager{TUser}.SignInAsync(TUser,bool,string)"/> is intentionally
+/// <b>not</b> overridden — the password path calls it internally on success, so auditing there would
+/// double-count. The passkey override (<see cref="PasskeySignInAsync"/>) reproduces the framework's tiny
+/// assertion → pre-check → sign-in core so it can attribute the outcome, and it inherits the framework's
+/// <c>bypassTwoFactor: true</c> — a passkey is already a second factor, so §3.5's "passkey path never
+/// receives a TOTP challenge" holds by construction.</para>
 ///
 /// <para>A subject is required for a <c>security_event</c> row (the column is NOT NULL, §8.2), so a
 /// failed attempt against a non-existent username is metered but not audited — there is no account to
@@ -11525,6 +12443,9 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
 {
     /// <summary>The <c>method</c> tag for the password path, including its TOTP/recovery second factor (§3.5).</summary>
     private const string PasswordMethod = "password";
+
+    /// <summary>The <c>method</c> tag for the WebAuthn passkey path (§3.3, §12).</summary>
+    private const string PasskeyMethod = "passkey";
 
     private readonly ISecurityEventLog _securityEventLog;
     private readonly RestaurantMetrics _metrics;
@@ -11577,7 +12498,7 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
         if (user is null)
         {
             // No account to attribute a security_event to; still meter the failed attempt (§12).
-            RecordMetric(SignInAttemptResult.Failed);
+            RecordMetric(SignInAttemptResult.Failed, PasswordMethod);
             return SignInResult.Failed;
         }
 
@@ -11595,7 +12516,7 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
             .PasswordSignInAsync(user, password, isPersistent, lockoutOnFailure)
             .ConfigureAwait(false);
 
-        await AuditAsync(user, result).ConfigureAwait(false);
+        await AuditAsync(user, result, PasswordMethod).ConfigureAwait(false);
         return result;
     }
 
@@ -11612,7 +12533,7 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
             .TwoFactorAuthenticatorSignInAsync(code, isPersistent, rememberClient)
             .ConfigureAwait(false);
 
-        await AuditAsync(user, result).ConfigureAwait(false);
+        await AuditAsync(user, result, PasswordMethod).ConfigureAwait(false);
         return result;
     }
 
@@ -11628,7 +12549,7 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
             .TwoFactorRecoveryCodeSignInAsync(recoveryCode)
             .ConfigureAwait(false);
 
-        await AuditAsync(user, result).ConfigureAwait(false);
+        await AuditAsync(user, result, PasswordMethod).ConfigureAwait(false);
 
         if (result.Succeeded && user is not null)
         {
@@ -11640,13 +12561,56 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
         return result;
     }
 
+    /// <summary>
+    /// The WebAuthn passkey path (§3.3, §3.5): assert, run the deactivation/lockout pre-check, refresh
+    /// the stored credential's sign count, then sign in — <b>never</b> challenging TOTP. This reproduces
+    /// the framework's <c>PasskeySignInCoreAsync</c> (verified against the .NET 10 source) so the terminal
+    /// outcome can be audited once as a <c>security_event</c> and once on <c>sign_ins_total{method=passkey}</c>.
+    /// A failed assertion has no account to attribute, so it is metered but not audited (mirroring an
+    /// unknown username on the password path); once the assertion yields a user, every terminal result is
+    /// audited. The assertion is performed exactly once — its challenge state is single-use — so this does
+    /// not call <see cref="SignInManager{TUser}.PasskeySignInAsync"/>'s core a second time.
+    /// </summary>
+    public override async Task<SignInResult> PasskeySignInAsync(string credentialJson)
+    {
+        PasskeyAssertionResult<Person> assertion = await PerformPasskeyAssertionAsync(credentialJson).ConfigureAwait(false);
+        if (!assertion.Succeeded || assertion.User is null || assertion.Passkey is null)
+        {
+            RecordMetric(SignInAttemptResult.Failed, PasskeyMethod);
+            return SignInResult.Failed;
+        }
+
+        Person user = assertion.User;
+
+        // PreSignInCheck runs CanSignInAsync (our deactivation gate, §3.7) and the lockout gate.
+        SignInResult? preCheck = await PreSignInCheck(user).ConfigureAwait(false);
+        if (preCheck is not null)
+        {
+            await AuditAsync(user, preCheck, PasskeyMethod).ConfigureAwait(false);
+            return preCheck;
+        }
+
+        // Persist the updated sign count / backup state the assertion produced.
+        IdentityResult updated = await UserManager.AddOrUpdatePasskeyAsync(user, assertion.Passkey).ConfigureAwait(false);
+        if (!updated.Succeeded)
+        {
+            await AuditAsync(user, SignInResult.Failed, PasskeyMethod).ConfigureAwait(false);
+            return SignInResult.Failed;
+        }
+
+        // bypassTwoFactor: a passkey is already a second factor, so the passkey path never challenges TOTP.
+        SignInResult result = await SignInOrTwoFactorAsync(user, isPersistent: false, bypassTwoFactor: true).ConfigureAwait(false);
+        await AuditAsync(user, result, PasskeyMethod).ConfigureAwait(false);
+        return result;
+    }
+
     // ---------------------------------------------------------------------------------------------
 
     /// <summary>Meters the attempt and, when there is a subject, records the security event.</summary>
-    private async Task AuditAsync(Person? user, SignInResult result)
+    private async Task AuditAsync(Person? user, SignInResult result, string method)
     {
         SignInAttemptResult attempt = Classify(result);
-        RecordMetric(attempt);
+        RecordMetric(attempt, method);
 
         if (user is null)
         {
@@ -11663,12 +12627,12 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
         }
     }
 
-    private void RecordMetric(SignInAttemptResult attempt)
+    private void RecordMetric(SignInAttemptResult attempt, string method)
     {
         string? metricResult = SignInAudit.MetricResultFor(attempt);
         if (metricResult is not null)
         {
-            _metrics.RecordSignIn(PasswordMethod, metricResult);
+            _metrics.RecordSignIn(method, metricResult);
         }
     }
 
@@ -12675,15 +13639,15 @@ return 0;
   File name:             app.css
   Relative path:         src/MyRestaurant.WebApplication/wwwroot/app.css
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/wwwroot/app.css
-  Size:                  8.5 KiB (8654 bytes)
-  Last modified:         2026-07-20 08:01:14.000000000 -0400
+  Size:                  10.7 KiB (11003 bytes)
+  Last modified:         2026-07-20 16:44:50.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21843818
+  Inode:                 21956044
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               ddbcac5c95e2aa1878d20ac59c6f59a24be78c9a7b613446db4f01649c29a45c
-  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+  SHA-256:               59a1a60e37f4dd5c775b28d931253b29f4c380fb960653dee9143ed4d7366042
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
 
 --- CONTENT ---
 /*
@@ -13085,6 +14049,282 @@ a:focus-visible,
         animation: none !important;
     }
 }
+
+/* -----------------------------------------------------------------------------
+ * Passkeys (§3.3): the sign-in alternative button, the management list, and the
+ * two shared button variants they introduce. Same quiet palette as the rest —
+ * the secondary button is an outline of the pine accent, destructive actions
+ * borrow the danger ink already used for alerts.
+ * ---------------------------------------------------------------------------*/
+
+.button-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.65rem 1.4rem;
+    font: inherit;
+    font-weight: 600;
+    color: var(--accent-strong);
+    background-color: var(--surface-raised);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 120ms ease;
+}
+
+.button-secondary:hover {
+    background-color: var(--surface);
+}
+
+.link-button.danger {
+    color: var(--danger-ink);
+}
+
+/* The passkey button on the sign-in form sits under the primary action, split
+ * off by a faint "or". */
+.sign-in-alternative {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+}
+
+.sign-in-or {
+    align-self: center;
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+    text-transform: lowercase;
+}
+
+.passkey-list {
+    list-style: none;
+    margin: 1.25rem 0 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.passkey-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    background-color: var(--surface-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+}
+
+.passkey-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 12rem;
+}
+
+.passkey-name {
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.passkey-date {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+.passkey-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.passkey-rename {
+    padding: 0.4rem 0.6rem;
+    font: inherit;
+    color: var(--ink);
+    background-color: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    max-width: 12rem;
+}
+
+.passkey-add {
+    margin-top: 1.25rem;
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/wwwroot/js/passkey.js
+################################################################################
+
+--- METADATA ---
+  File name:             passkey.js
+  Relative path:         src/MyRestaurant.WebApplication/wwwroot/js/passkey.js
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/wwwroot/js/passkey.js
+  Size:                  6.4 KiB (6582 bytes)
+  Last modified:         2026-07-20 16:40:55.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21956046
+  Hard links:            1
+  MIME type:             application/javascript
+  SHA-256:               68b381fea6990932c13190b9ea58ae1893fed4387a44f975288078430667d340
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+
+--- CONTENT ---
+// Passkey (WebAuthn) client helper — TECHNICAL_SPECIFICATION §3.3.
+//
+// Adapted from the ASP.NET Core Blazor Web template's PasskeySubmit.razor.js, with two changes:
+//   * it is a plain classic script (the account pages are static-SSR and load no JS modules), loaded
+//     once from App.razor, guarded against double-definition; and
+//   * the ceremony endpoints are this app's routes (AccountRoutes.PasskeyCreationOptions /
+//     PasskeyRequestOptions) rather than the template's /Account/* paths — keep these two URLs in
+//     sync with ObligationsEnforcement.AccountRoutes.
+//
+// The <passkey-submit> element is form-associated: it intercepts the __passkeySubmit button, runs the
+// browser ceremony, writes {Name}.CredentialJson (or {Name}.Error) into the form, and submits natively
+// — which bypasses Blazor's EditForm validation so the passkey button never trips the password rules.
+(function () {
+    'use strict';
+
+    if (customElements.get('passkey-submit')) {
+        return;
+    }
+
+    const CREATION_OPTIONS_URL = '/account/passkey/creation-options';
+    const REQUEST_OPTIONS_URL = '/account/passkey/request-options';
+
+    const browserSupportsPasskeys =
+        typeof navigator.credentials !== 'undefined' &&
+        typeof window.PublicKeyCredential !== 'undefined' &&
+        typeof window.PublicKeyCredential.parseCreationOptionsFromJSON === 'function' &&
+        typeof window.PublicKeyCredential.parseRequestOptionsFromJSON === 'function';
+
+    async function fetchWithErrorHandling(url, options = {}) {
+        const response = await fetch(url, {
+            credentials: 'include',
+            ...options,
+        });
+        if (!response.ok) {
+            const text = await response.text();
+            console.error(text);
+            throw new Error(`The server responded with status ${response.status}.`);
+        }
+        return response;
+    }
+
+    async function createCredential(headers, signal) {
+        const optionsResponse = await fetchWithErrorHandling(CREATION_OPTIONS_URL, {
+            method: 'POST',
+            headers,
+            signal,
+        });
+        const optionsJson = await optionsResponse.json();
+        const options = PublicKeyCredential.parseCreationOptionsFromJSON(optionsJson);
+        return await navigator.credentials.create({ publicKey: options, signal });
+    }
+
+    async function requestCredential(username, mediation, headers, signal) {
+        const query = encodeURIComponent(username ?? '');
+        const optionsResponse = await fetchWithErrorHandling(`${REQUEST_OPTIONS_URL}?username=${query}`, {
+            method: 'POST',
+            headers,
+            signal,
+        });
+        const optionsJson = await optionsResponse.json();
+        const options = PublicKeyCredential.parseRequestOptionsFromJSON(optionsJson);
+        return await navigator.credentials.get({ publicKey: options, mediation, signal });
+    }
+
+    customElements.define('passkey-submit', class extends HTMLElement {
+        static formAssociated = true;
+
+        connectedCallback() {
+            this.internals = this.attachInternals();
+            this.attrs = {
+                operation: this.getAttribute('operation'),
+                name: this.getAttribute('name'),
+                emailName: this.getAttribute('email-name'),
+                requestTokenName: this.getAttribute('request-token-name'),
+                requestTokenValue: this.getAttribute('request-token-value'),
+            };
+
+            this.internals.form.addEventListener('submit', (event) => {
+                if (event.submitter?.name === '__passkeySubmit') {
+                    event.preventDefault();
+                    this.obtainAndSubmitCredential();
+                }
+            });
+
+            this.tryAutofillPasskey();
+        }
+
+        disconnectedCallback() {
+            this.abortController?.abort();
+        }
+
+        async obtainCredential(useConditionalMediation, signal) {
+            if (!browserSupportsPasskeys) {
+                throw new Error('Some passkey features are missing. Please update your browser.');
+            }
+
+            const headers = {
+                [this.attrs.requestTokenName]: this.attrs.requestTokenValue,
+            };
+
+            if (this.attrs.operation === 'Create') {
+                return await createCredential(headers, signal);
+            } else if (this.attrs.operation === 'Request') {
+                const username = this.attrs.emailName
+                    ? new FormData(this.internals.form).get(this.attrs.emailName)
+                    : '';
+                const mediation = useConditionalMediation ? 'conditional' : undefined;
+                return await requestCredential(username, mediation, headers, signal);
+            } else {
+                throw new Error(`Unknown passkey operation '${this.attrs.operation}'.`);
+            }
+        }
+
+        async obtainAndSubmitCredential(useConditionalMediation = false) {
+            this.abortController?.abort();
+            this.abortController = new AbortController();
+            const signal = this.abortController.signal;
+            const formData = new FormData();
+            try {
+                const credential = await this.obtainCredential(useConditionalMediation, signal);
+                const credentialJson = JSON.stringify(credential);
+                formData.append(`${this.attrs.name}.CredentialJson`, credentialJson);
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    // The user explicitly canceled the operation — return without error.
+                    return;
+                }
+                console.error(error);
+                if (useConditionalMediation) {
+                    // Conditional mediation is not user-initiated; log but do not surface an error.
+                    return;
+                }
+                const errorMessage = error.name === 'NotAllowedError'
+                    ? 'No passkey was provided by the authenticator.'
+                    : error.message;
+                formData.append(`${this.attrs.name}.Error`, errorMessage);
+            }
+            this.internals.setFormValue(formData);
+            this.internals.form.submit();
+        }
+
+        async tryAutofillPasskey() {
+            if (browserSupportsPasskeys &&
+                this.attrs.operation === 'Request' &&
+                await PublicKeyCredential.isConditionalMediationAvailable?.()) {
+                await this.obtainAndSubmitCredential(/* useConditionalMediation */ true);
+            }
+        }
+    });
+})();
 
 ################################################################################
 # FILE: tests/MyRestaurant.DataAccess.Tests/ContainerEngineDiscovery.cs
@@ -13489,6 +14729,306 @@ public sealed class DapperSecurityEventLogTests : IClassFixture<PostgreSqlFixtur
         public ValueTask<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("The connection factory must not be reached for an invalid event type.");
     }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.DataAccess.Tests/Identity/DapperUserStorePasskeyTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             DapperUserStorePasskeyTests.cs
+  Relative path:         tests/MyRestaurant.DataAccess.Tests/Identity/DapperUserStorePasskeyTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/Identity/DapperUserStorePasskeyTests.cs
+  Size:                  10.7 KiB (10999 bytes)
+  Last modified:         2026-07-20 16:47:03.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 21956050
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               62f3afff7c67c0182e2075d665be7bc2f10be8f9ac905e4e611ecd8ac9676bfd
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
+using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Identifiers;
+using Xunit;
+
+namespace MyRestaurant.DataAccess.Tests.Identity;
+
+/// <summary>
+/// Integration tests for <see cref="DapperUserStore"/>'s <c>IUserPasskeyStore</c> implementation
+/// (TECHNICAL_SPECIFICATION §3.3, §16.2 — "every Identity store method") against a real PostgreSQL 17
+/// container, exercising the store directly rather than through the WebAuthn ceremony. They pin the two
+/// behaviours that matter for correctness: every field of a <see cref="UserPasskeyInfo"/> the store
+/// persists round-trips (the backup-eligible bit especially — assertion reads it), and an add-or-update
+/// against an already-stored credential rewrites only the mutable fields, never the public key or the
+/// backup-eligible bit captured at registration.
+///
+/// Separate container from <see cref="DapperUserStoreTests"/> (own <c>IClassFixture</c>); unique
+/// usernames keep the cases independent. If no container engine is available, every test skips.
+/// </summary>
+public sealed class DapperUserStorePasskeyTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
+{
+    private readonly PostgreSqlFixture _fixture;
+    private readonly FixedClock _clock = new(new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero));
+    private readonly EphemeralDataProtectionProvider _dataProtectionProvider = new();
+    private NpgsqlDatabaseConnectionFactory? _connectionFactory;
+
+    public DapperUserStorePasskeyTests(PostgreSqlFixture fixture) => _fixture = fixture;
+
+    public ValueTask InitializeAsync()
+    {
+        if (_fixture.ConnectionString is not null)
+        {
+            // Idempotent: brings the schema (including migration 0002) up so the table exists.
+            new SchemaMigrationRunner(_fixture.ConnectionString)
+            {
+                MaximumAttempts = 3,
+                DelayBetweenAttempts = TimeSpan.FromMilliseconds(200),
+            }.Run();
+
+            _connectionFactory = new NpgsqlDatabaseConnectionFactory(_fixture.ConnectionString);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connectionFactory is not null)
+        {
+            await _connectionFactory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task AddThenGetPasskeys_RoundTripsEveryStoredField()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperUserStore store = BuildStore();
+
+        Person person = await CreatePersonAsync(store, "pk_roundtrip", cancellationToken);
+
+        byte[] credentialId = Bytes(0xA1, 8);
+        UserPasskeyInfo passkey = MakePasskey(
+            credentialId,
+            publicKey: Bytes(0xB2, 16),
+            signCount: 7,
+            transports: ["internal", "hybrid"],
+            isUserVerified: true,
+            isBackupEligible: true,
+            isBackedUp: true,
+            name: "Pixel");
+
+        await store.AddOrUpdatePasskeyAsync(person, passkey, cancellationToken);
+
+        IList<UserPasskeyInfo> all = await store.GetPasskeysAsync(person, cancellationToken);
+
+        UserPasskeyInfo stored = Assert.Single(all);
+        Assert.Equal(credentialId, stored.CredentialId);
+        Assert.Equal(passkey.PublicKey, stored.PublicKey);
+        Assert.Equal(7u, stored.SignCount);
+        Assert.Equal(new[] { "internal", "hybrid" }, stored.Transports);
+        Assert.True(stored.IsUserVerified);
+        Assert.True(stored.IsBackupEligible);
+        Assert.True(stored.IsBackedUp);
+        Assert.Equal("Pixel", stored.Name);
+        Assert.Equal(_clock.UtcNow.UtcDateTime, stored.CreatedAt.UtcDateTime);
+    }
+
+    [Fact]
+    public async Task GetPasskeys_WithNoTransports_ReturnsNull()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperUserStore store = BuildStore();
+
+        Person person = await CreatePersonAsync(store, "pk_notransports", cancellationToken);
+        await store.AddOrUpdatePasskeyAsync(person, MakePasskey(Bytes(0xC3, 8), transports: null), cancellationToken);
+
+        UserPasskeyInfo stored = Assert.Single(await store.GetPasskeysAsync(person, cancellationToken));
+
+        Assert.Null(stored.Transports);
+    }
+
+    [Fact]
+    public async Task FindByPasskeyId_ReturnsTheOwningPerson()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperUserStore store = BuildStore();
+
+        Person person = await CreatePersonAsync(store, "pk_owner", cancellationToken);
+        byte[] credentialId = Bytes(0xD4, 8);
+        await store.AddOrUpdatePasskeyAsync(person, MakePasskey(credentialId), cancellationToken);
+
+        Person? found = await store.FindByPasskeyIdAsync(credentialId, cancellationToken);
+
+        Assert.NotNull(found);
+        Assert.Equal(person.PersonIdentifier, found!.PersonIdentifier);
+    }
+
+    [Fact]
+    public async Task FindByPasskeyId_ForUnknownCredential_ReturnsNull()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperUserStore store = BuildStore();
+
+        Person? found = await store.FindByPasskeyIdAsync(Bytes(0xEE, 8), cancellationToken);
+
+        Assert.Null(found);
+    }
+
+    [Fact]
+    public async Task FindPasskey_ReturnsForOwner_AndNullForAnotherPerson()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperUserStore store = BuildStore();
+
+        Person owner = await CreatePersonAsync(store, "pk_find_owner", cancellationToken);
+        Person other = await CreatePersonAsync(store, "pk_find_other", cancellationToken);
+        byte[] credentialId = Bytes(0x5A, 8);
+        await store.AddOrUpdatePasskeyAsync(owner, MakePasskey(credentialId), cancellationToken);
+
+        UserPasskeyInfo? forOwner = await store.FindPasskeyAsync(owner, credentialId, cancellationToken);
+        UserPasskeyInfo? forOther = await store.FindPasskeyAsync(other, credentialId, cancellationToken);
+
+        Assert.NotNull(forOwner);
+        Assert.Equal(credentialId, forOwner!.CredentialId);
+        Assert.Null(forOther);
+    }
+
+    [Fact]
+    public async Task AddOrUpdatePasskey_OnExistingCredential_UpdatesMutableFieldsOnly()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperUserStore store = BuildStore();
+
+        Person person = await CreatePersonAsync(store, "pk_update", cancellationToken);
+        byte[] credentialId = Bytes(0x6B, 8);
+        byte[] originalPublicKey = Bytes(0x11, 16);
+
+        await store.AddOrUpdatePasskeyAsync(
+            person,
+            MakePasskey(
+                credentialId,
+                publicKey: originalPublicKey,
+                signCount: 3,
+                isUserVerified: false,
+                isBackupEligible: true,
+                isBackedUp: false,
+                name: "Before"),
+            cancellationToken);
+
+        // Same credential id, but a later assertion: higher sign count, backup state flipped, renamed —
+        // and (deliberately, to prove they are ignored) a different public key and backup-eligible bit.
+        await store.AddOrUpdatePasskeyAsync(
+            person,
+            MakePasskey(
+                credentialId,
+                publicKey: Bytes(0x99, 16),
+                signCount: 12,
+                isUserVerified: true,
+                isBackupEligible: false,
+                isBackedUp: true,
+                name: "After"),
+            cancellationToken);
+
+        IList<UserPasskeyInfo> all = await store.GetPasskeysAsync(person, cancellationToken);
+        UserPasskeyInfo stored = Assert.Single(all);   // updated in place, not duplicated
+
+        // Mutable fields were written:
+        Assert.Equal(12u, stored.SignCount);
+        Assert.True(stored.IsBackedUp);
+        Assert.True(stored.IsUserVerified);
+        Assert.Equal("After", stored.Name);
+
+        // Immutable registration fields were preserved:
+        Assert.Equal(originalPublicKey, stored.PublicKey);
+        Assert.True(stored.IsBackupEligible);
+    }
+
+    [Fact]
+    public async Task RemovePasskey_DeletesTheCredential()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperUserStore store = BuildStore();
+
+        Person person = await CreatePersonAsync(store, "pk_remove", cancellationToken);
+        byte[] credentialId = Bytes(0x7C, 8);
+        await store.AddOrUpdatePasskeyAsync(person, MakePasskey(credentialId), cancellationToken);
+
+        await store.RemovePasskeyAsync(person, credentialId, cancellationToken);
+
+        Assert.Empty(await store.GetPasskeysAsync(person, cancellationToken));
+        Assert.Null(await store.FindByPasskeyIdAsync(credentialId, cancellationToken));
+    }
+
+    // --- helpers -----------------------------------------------------------------------------------
+
+    private DapperUserStore BuildStore() => new(
+        _connectionFactory!,
+        _clock,
+        new UuidV7IdentifierFactory(),
+        _dataProtectionProvider,
+        new IdentityErrorDescriber());
+
+    private async Task<Person> CreatePersonAsync(DapperUserStore store, string prefix, CancellationToken cancellationToken)
+    {
+        Person person = new() { Username = UniqueUsername(prefix) };
+        IdentityResult created = await store.CreateAsync(person, cancellationToken);
+        Assert.True(created.Succeeded);
+        return person;
+    }
+
+    // Builds a UserPasskeyInfo the way the framework's attestation would. attestationObject /
+    // clientDataJson are set here but the store does not persist them (attestation is 'none', §3.3).
+    private UserPasskeyInfo MakePasskey(
+        byte[] credentialId,
+        byte[]? publicKey = null,
+        uint signCount = 0,
+        string[]? transports = null,
+        bool isUserVerified = false,
+        bool isBackupEligible = false,
+        bool isBackedUp = false,
+        string? name = null)
+        => new(
+            credentialId,
+            publicKey ?? Bytes(0x20, 16),
+            _clock.UtcNow,
+            signCount,
+            transports,
+            isUserVerified,
+            isBackupEligible,
+            isBackedUp,
+            attestationObject: Bytes(0x30, 4),
+            clientDataJson: Bytes(0x40, 4))
+        {
+            Name = name,
+        };
+
+    private static byte[] Bytes(byte seed, int length)
+    {
+        byte[] value = new byte[length];
+        for (int i = 0; i < length; i++)
+        {
+            value[i] = (byte)(seed + i);
+        }
+
+        return value;
+    }
+
+    private static string UniqueUsername(string prefix) => $"{prefix}_{Guid.NewGuid():N}";
 }
 
 ################################################################################
@@ -16385,15 +17925,15 @@ public sealed class EndToEndScenarios
   File name:             IdentityWiringTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs
-  Size:                  8.7 KiB (8878 bytes)
-  Last modified:         2026-07-20 08:04:25.000000000 -0400
+  Size:                  10.3 KiB (10590 bytes)
+  Last modified:         2026-07-20 16:45:17.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21843838
+  Inode:                 21956053
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               d2dec87ae50b8402aa8e0117cfcc0507f8d138d45508ce93a2b2f093d364b511
-  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+  SHA-256:               f7f6e227393bbe6f5e41e42b83ad6d26fcbe76c50915b320da693f67be8babbd
+  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -16517,6 +18057,46 @@ public sealed class IdentityWiringTests
         TotpEnrollment enrollment = scope.ServiceProvider.GetRequiredService<TotpEnrollment>();
 
         Assert.NotNull(enrollment);
+    }
+
+    [Fact]
+    public void PasskeyHandler_IsRegistered()
+    {
+        // AddIdentityCore does not register IPasskeyHandler (only the monolithic AddIdentity does), so
+        // AddRestaurantIdentity must — otherwise MakePasskey*OptionsAsync throws at runtime (§3.3).
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        IPasskeyHandler<Person> handler = scope.ServiceProvider.GetRequiredService<IPasskeyHandler<Person>>();
+
+        Assert.IsType<PasskeyHandler<Person>>(handler);
+    }
+
+    [Fact]
+    public void UserManager_SupportsPasskeys()
+    {
+        // The Dapper store now implements IUserPasskeyStore, which is how UserManager exposes the
+        // passkey capability (it casts its store).
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        UserManager<Person> userManager = scope.ServiceProvider.GetRequiredService<UserManager<Person>>();
+
+        Assert.True(userManager.SupportsUserPasskey);
+    }
+
+    [Fact]
+    public void PasskeyOptions_UseTheConfiguredRelyingPartyAndPreferredVerification()
+    {
+        // §3.3: RP ID is the host of RESTAURANT_PUBLIC_ORIGIN (localhost for the test options), and
+        // residentKey + userVerification are both "preferred".
+        using ServiceProvider provider = BuildProvider();
+
+        IdentityPasskeyOptions options = provider.GetRequiredService<IOptions<IdentityPasskeyOptions>>().Value;
+
+        Assert.Equal("localhost", options.ServerDomain);
+        Assert.Equal("preferred", options.UserVerificationRequirement);
+        Assert.Equal("preferred", options.ResidentKeyRequirement);
     }
 
     [Fact]
@@ -17643,10 +19223,10 @@ public sealed class RestaurantOptionsTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 133
-  Total size     : 697.4 KiB (714185 bytes)
+  Files dumped   : 139
+  Total size     : 764.0 KiB (782302 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-20T15:52:23-04:00
+  Completed at   : 2026-07-21T00:35:16-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
