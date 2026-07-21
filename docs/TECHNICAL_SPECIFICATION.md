@@ -504,6 +504,8 @@ CREATE INDEX order_visibility_event_order_index
 
 Note on the `menu_item_event` CHECKs: they are biconditionals — `new_name` is present exactly when the type is `created` or `name_changed`, and `new_price_amount` exactly when the type is `created` or `price_changed`; `activated`/`deactivated` therefore carry neither. Integration tests must assert all ten combinations (five types × payload present/absent).
 
+Schema evolution — `passkey_credential` (M2 passkey slice). The DDL above is what ships as `0001_initial_schema.sql` and is left unchanged. Implementing passkeys against ASP.NET Core Identity's .NET 10 API revealed that its `UserPasskeyInfo` credential record carries WebAuthn state the original table did not model, and that assertion (§7.2, verifying an authentication assertion, step 19) *reads* the stored backup-eligible bit and fails the ceremony on a mismatch — so it must persist. An additive migration, `0002_passkey_credential_webauthn_state.sql`, therefore adds three columns to this table: `is_user_verified boolean NOT NULL DEFAULT false`, `is_backup_eligible boolean NOT NULL DEFAULT false`, and `is_backed_up boolean NOT NULL DEFAULT false`. The raw attestation object and client-data JSON that `UserPasskeyInfo` also exposes are intentionally **not** stored (attestation is `none` per §3.3 and nothing re-reads them), and are reconstructed as empty on read. This is the framework gap §3.3 anticipated; no fallback library was required, only these columns. Recorded in the review ledger as F-34.
+
 ### 8.3 Projection views
 
 ```sql

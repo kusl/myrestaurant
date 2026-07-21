@@ -32,6 +32,15 @@ public static class AccountRoutes
 
     /// <summary>The voluntary authenticator page: enroll, or regenerate recovery codes (§3.4, §4.2).</summary>
     public const string TotpEnrollment = "/account/enroll-totp";
+
+    /// <summary>The voluntary passkey-management page: list, add, rename, remove passkeys (§3.3).</summary>
+    public const string Passkeys = "/account/passkeys";
+
+    /// <summary>POST endpoint returning WebAuthn registration (attestation) options — signed-in only (§3.3).</summary>
+    public const string PasskeyCreationOptions = "/account/passkey/creation-options";
+
+    /// <summary>POST endpoint returning WebAuthn sign-in (assertion) options — anonymous (§3.3).</summary>
+    public const string PasskeyRequestOptions = "/account/passkey/request-options";
 }
 
 /// <summary>

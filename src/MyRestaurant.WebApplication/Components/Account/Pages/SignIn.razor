@@ -3,10 +3,17 @@
 @inject SignInManager<Person> SignInManager
 @inject NavigationManager Navigation
 
-@* The password sign-in page (TECHNICAL_SPECIFICATION §3.5, §4.1). Static SSR on purpose: issuing the
+@* The sign-in page (TECHNICAL_SPECIFICATION §3.3, §3.5, §4.1). Static SSR on purpose: issuing the
    authentication cookie needs a real HTTP response, which a Blazor circuit does not have. The form
    is a plain full-page POST (EditForm in SSR emits the antiforgery token itself). Auditing and
-   metering happen centrally in RestaurantSignInManager, never here. *@
+   metering happen centrally in RestaurantSignInManager, never here.
+
+   Password and passkey share one form. It uses OnSubmit (not OnValidSubmit) so the passkey button can
+   skip the password DataAnnotations: the passkey-submit element writes the assertion credential into
+   Input.Passkey and submits natively, and the handler runs PasskeySignInAsync on that before it
+   validates anything. A passkey sign-in never gets a TOTP challenge (§3.5) — that is guaranteed in the
+   sign-in manager, not here. The username carries autocomplete="username webauthn" so browsers can
+   surface a discoverable passkey inline (conditional mediation). *@
 
 <PageTitle>Sign in</PageTitle>
 
@@ -28,12 +35,12 @@
             <p class="status-error" role="alert">@_errorMessage</p>
         }
 
-        <EditForm Model="Input" method="post" OnValidSubmit="SignInUserAsync" FormName="sign-in">
+        <EditForm EditContext="_editContext" method="post" OnSubmit="SignInUserAsync" FormName="sign-in">
             <DataAnnotationsValidator />
 
             <div class="form-field">
                 <label for="username">Username</label>
-                <InputText id="username" @bind-Value="Input.Username" autocomplete="username"
+                <InputText id="username" @bind-Value="Input.Username" autocomplete="username webauthn"
                            autocapitalize="none" spellcheck="false" autofocus />
                 <ValidationMessage For="@(() => Input.Username)" />
             </div>
@@ -48,6 +55,14 @@
             <div class="form-actions">
                 <button type="submit" class="button-primary">Sign in</button>
             </div>
+
+            <div class="sign-in-alternative">
+                <span class="sign-in-or">or</span>
+                <PasskeySubmit Operation="PasskeyOperation.Request" Name="Input.Passkey"
+                               EmailName="Input.Username" class="button-secondary">
+                    Sign in with a passkey
+                </PasskeySubmit>
+            </div>
         </EditForm>
 
         <p class="form-footnote">
@@ -59,6 +74,7 @@
 
 @code {
     private string? _errorMessage;
+    private EditContext _editContext = default!;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
@@ -71,11 +87,56 @@
 
     // BL0008: on a static-SSR form POST the framework binds [SupplyParameterFromForm] itself and may
     // assign null, silently discarding a `= new()` initializer — so the default is applied here instead.
-    protected override void OnInitialized() => Input ??= new();
+    // OnSubmit means we validate by hand (below), so we drive an explicit EditContext.
+    protected override void OnInitialized()
+    {
+        Input ??= new();
+        _editContext = new EditContext(Input);
+    }
 
     private async Task SignInUserAsync()
     {
         string destination = ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl);
+
+        // Passkey path (§3.3): the element posted an assertion credential (or an error). Handle it
+        // before any password validation — the username/password fields are irrelevant here — and
+        // note PasskeySignInAsync never returns RequiresTwoFactor (a passkey bypasses the §3.5 second
+        // factor by construction).
+        if (!string.IsNullOrEmpty(Input.Passkey?.Error))
+        {
+            _errorMessage = "That passkey could not be used. Try again, or sign in with your password.";
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(Input.Passkey?.CredentialJson))
+        {
+            SignInResult passkeyResult = await SignInManager.PasskeySignInAsync(Input.Passkey.CredentialJson);
+
+            if (passkeyResult.Succeeded)
+            {
+                Navigation.NavigateTo(destination);
+            }
+            else if (passkeyResult.IsLockedOut)
+            {
+                _errorMessage = "Too many failed attempts. The account is locked for about five minutes — try again then.";
+            }
+            else if (passkeyResult.IsNotAllowed)
+            {
+                _errorMessage = "This account has been deactivated. Ask at the counter if you think that is a mistake.";
+            }
+            else
+            {
+                _errorMessage = "That passkey did not work. Try again, or sign in with your password.";
+            }
+
+            return;
+        }
+
+        // Password path: OnSubmit fires regardless of validity, so enforce the DataAnnotations now.
+        if (!_editContext.Validate())
+        {
+            return;
+        }
 
         // isPersistent: the §3.1 session is a 24-hour sliding cookie either way; persisting it lets
         // a guest's phone survive a browser restart mid-meal. lockoutOnFailure per §3.1.
@@ -116,5 +177,9 @@
 
         [Required(ErrorMessage = "Enter your password.")]
         public string Password { get; set; } = string.Empty;
+
+        // Populated by the passkey-submit element on the assertion path; ignored by the password path.
+        // Not [Required] — the passkey button must submit without a username or password.
+        public PasskeyInputModel? Passkey { get; set; }
     }
 }

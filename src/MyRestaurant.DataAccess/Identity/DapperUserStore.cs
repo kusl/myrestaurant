@@ -13,8 +13,8 @@ namespace MyRestaurant.DataAccess.Identity;
 /// The custom ASP.NET Core Identity store over the <c>person*</c> tables with Dapper
 /// (TECHNICAL_SPECIFICATION §3.1, ADR-0003 — Identity core services over Dapper, never EF). One
 /// class implements the whole family a <see cref="UserManager{TUser}"/> needs for passwords,
-/// security stamps, lockout, TOTP, recovery codes, roles, email, and phone; the passkey store
-/// (<c>IUserPasskeyStore</c>, new in .NET 10) arrives in a dedicated increment. <see cref="UserManager{TUser}"/>
+/// security stamps, lockout, TOTP, recovery codes, roles, email, phone, and — as of the M2 passkey
+/// slice — WebAuthn passkeys (<c>IUserPasskeyStore</c>, new in .NET 10). <see cref="UserManager{TUser}"/>
 /// discovers each capability by casting the resolved <see cref="IUserStore{TUser}"/> to the
 /// relevant interface, so registering this once via <c>AddUserStore&lt;DapperUserStore&gt;()</c> is enough.
 ///
@@ -52,7 +52,8 @@ public sealed class DapperUserStore :
     IUserTwoFactorRecoveryCodeStore<Person>,
     IUserRoleStore<Person>,
     IUserEmailStore<Person>,
-    IUserPhoneNumberStore<Person>
+    IUserPhoneNumberStore<Person>,
+    IUserPasskeyStore<Person>
 {
     /// <summary>Data-Protection purpose for the at-rest TOTP secret (§3.4). Do not change without a migration plan.</summary>
     private const string TotpSecretProtectorPurpose = "MyRestaurant.Identity.TotpSecret.v1";
@@ -78,6 +79,21 @@ public sealed class DapperUserStore :
         person.lockout_end_at         AS LockoutEndAt,
         person.is_active              AS IsActive,
         person.created_at             AS CreatedAt
+        """;
+
+    // The passkey_credential columns, aliased to PasskeyCredentialRow. is_user_verified /
+    // is_backup_eligible / is_backed_up arrive in migration 0002 (the .NET 10 UserPasskeyInfo carries
+    // them; assertion reads the backup-eligible bit — see the passkey region below).
+    private const string PasskeyColumns = """
+        credential_id            AS CredentialId,
+        public_key               AS PublicKey,
+        signature_counter        AS SignatureCounter,
+        transports               AS Transports,
+        credential_display_name  AS CredentialDisplayName,
+        created_at               AS CreatedAt,
+        is_user_verified         AS IsUserVerified,
+        is_backup_eligible       AS IsBackupEligible,
+        is_backed_up             AS IsBackedUp
         """;
 
     private readonly IDatabaseConnectionFactory _connectionFactory;
@@ -603,6 +619,200 @@ public sealed class DapperUserStore :
 
     public Task SetPhoneNumberConfirmedAsync(Person user, bool confirmed, CancellationToken cancellationToken)
         => Task.CompletedTask;
+
+    // ---------------------------------------------------------------------------------------------
+    // IUserPasskeyStore — WebAuthn passkeys (§3.3, .NET 10). Own table (passkey_credential, §8.2 +
+    // migration 0002), one row per credential. These write directly rather than mutating the entity.
+    //
+    // A UserPasskeyInfo carries more than §8.2's original columns: the backup-eligible / backed-up /
+    // user-verified flags. The framework's assertion path reads the STORED backup-eligible bit and
+    // fails the ceremony if it disagrees with the authenticator, so it must round-trip — 0002 adds it.
+    // The attestation object and client-data JSON are NOT persisted (attestation is 'none' and nothing
+    // re-reads them in v1); they are reconstructed as empty on read, which the framework never consults
+    // after registration. AddOrUpdate mirrors the reference EF store: on an existing credential only the
+    // mutable fields (sign count, name, backed-up, user-verified) are written, so the immutable public
+    // key and backup-eligible bit captured at registration are never clobbered by a later assertion.
+    // ---------------------------------------------------------------------------------------------
+
+    public async Task AddOrUpdatePasskeyAsync(Person user, UserPasskeyInfo passkey, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(passkey);
+
+        UserPasskeyInfo? existing = await FindPasskeyAsync(user, passkey.CredentialId, cancellationToken).ConfigureAwait(false);
+
+        await using DbConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        if (existing is not null)
+        {
+            // Update only the fields the WebAuthn assertion step legitimately changes (sign count and
+            // backup state) plus the user-settable display name — matching the reference store.
+            const string updateSql = """
+                UPDATE passkey_credential SET
+                    signature_counter       = @SignatureCounter,
+                    credential_display_name = @CredentialDisplayName,
+                    is_backed_up            = @IsBackedUp,
+                    is_user_verified        = @IsUserVerified
+                WHERE person_identifier = @PersonIdentifier
+                  AND credential_id     = @CredentialId;
+                """;
+
+            await connection.ExecuteAsync(new CommandDefinition(
+                updateSql,
+                new
+                {
+                    user.PersonIdentifier,
+                    CredentialId = passkey.CredentialId,
+                    SignatureCounter = (long)passkey.SignCount,
+                    CredentialDisplayName = passkey.Name,
+                    passkey.IsBackedUp,
+                    passkey.IsUserVerified,
+                },
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            return;
+        }
+
+        const string insertSql = """
+            INSERT INTO passkey_credential (
+                passkey_credential_identifier, person_identifier, credential_id, public_key,
+                signature_counter, transports, credential_display_name, created_at,
+                is_user_verified, is_backup_eligible, is_backed_up)
+            VALUES (
+                @PasskeyCredentialIdentifier, @PersonIdentifier, @CredentialId, @PublicKey,
+                @SignatureCounter, @Transports, @CredentialDisplayName, @CreatedAt,
+                @IsUserVerified, @IsBackupEligible, @IsBackedUp);
+            """;
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            insertSql,
+            new
+            {
+                PasskeyCredentialIdentifier = _identifierFactory.Create(),
+                user.PersonIdentifier,
+                CredentialId = passkey.CredentialId,
+                PublicKey = passkey.PublicKey,
+                SignatureCounter = (long)passkey.SignCount,
+                Transports = JoinTransports(passkey.Transports),
+                CredentialDisplayName = passkey.Name,
+                passkey.CreatedAt,
+                passkey.IsUserVerified,
+                passkey.IsBackupEligible,
+                passkey.IsBackedUp,
+            },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+    }
+
+    public async Task<IList<UserPasskeyInfo>> GetPasskeysAsync(Person user, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        string sql = $"""
+            SELECT {PasskeyColumns}
+            FROM passkey_credential
+            WHERE person_identifier = @PersonIdentifier
+            ORDER BY created_at;
+            """;
+
+        await using DbConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        IEnumerable<PasskeyCredentialRow> rows = await connection.QueryAsync<PasskeyCredentialRow>(
+            new CommandDefinition(sql, new { user.PersonIdentifier }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return rows.Select(ToPasskeyInfo).ToList();
+    }
+
+    public async Task<Person?> FindByPasskeyIdAsync(byte[] credentialId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(credentialId);
+
+        string sql = $"""
+            SELECT {PersonColumns}
+            FROM person
+            JOIN passkey_credential ON passkey_credential.person_identifier = person.person_identifier
+            WHERE passkey_credential.credential_id = @CredentialId;
+            """;
+
+        await using DbConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        return await connection.QuerySingleOrDefaultAsync<Person>(new CommandDefinition(
+            sql, new { CredentialId = credentialId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+    }
+
+    public async Task<UserPasskeyInfo?> FindPasskeyAsync(Person user, byte[] credentialId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(credentialId);
+
+        string sql = $"""
+            SELECT {PasskeyColumns}
+            FROM passkey_credential
+            WHERE person_identifier = @PersonIdentifier
+              AND credential_id     = @CredentialId;
+            """;
+
+        await using DbConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        PasskeyCredentialRow? row = await connection.QuerySingleOrDefaultAsync<PasskeyCredentialRow>(
+            new CommandDefinition(
+                sql,
+                new { user.PersonIdentifier, CredentialId = credentialId },
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return row is null ? null : ToPasskeyInfo(row);
+    }
+
+    public async Task RemovePasskeyAsync(Person user, byte[] credentialId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(credentialId);
+
+        await using DbConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        await connection.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM passkey_credential WHERE person_identifier = @PersonIdentifier AND credential_id = @CredentialId;",
+            new { user.PersonIdentifier, CredentialId = credentialId },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+    }
+
+    private static UserPasskeyInfo ToPasskeyInfo(PasskeyCredentialRow row) =>
+        new(
+            row.CredentialId,
+            row.PublicKey,
+            row.CreatedAt,
+            (uint)row.SignatureCounter,
+            SplitTransports(row.Transports),
+            row.IsUserVerified,
+            row.IsBackupEligible,
+            row.IsBackedUp,
+            // Not persisted (attestation is 'none', §3.3) and never read after registration.
+            attestationObject: [],
+            clientDataJson: [])
+        {
+            Name = row.CredentialDisplayName,
+        };
+
+    // Transports are opaque tokens the server only echoes back into allowCredentials; store them as a
+    // comma-separated list (tokens never contain commas) and split on read; null when absent.
+    private static string? JoinTransports(string[]? transports)
+        => transports is { Length: > 0 } ? string.Join(',', transports) : null;
+
+    private static string[]? SplitTransports(string? transports)
+        => string.IsNullOrEmpty(transports)
+            ? null
+            : transports.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>The read shape of one <c>passkey_credential</c> row (Dapper maps the aliased columns).</summary>
+    private sealed class PasskeyCredentialRow
+    {
+        public byte[] CredentialId { get; set; } = [];
+        public byte[] PublicKey { get; set; } = [];
+        public long SignatureCounter { get; set; }
+        public string? Transports { get; set; }
+        public string? CredentialDisplayName { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+        public bool IsUserVerified { get; set; }
+        public bool IsBackupEligible { get; set; }
+        public bool IsBackedUp { get; set; }
+    }
 
     // ---------------------------------------------------------------------------------------------
 

@@ -20,11 +20,13 @@ namespace MyRestaurant.WebApplication.Identity;
 /// <see cref="SignInResult.NotAllowed"/> — audited as a failed sign-in. Deactivation additionally
 /// kills live sessions through the security stamp; this gate closes the front door.</para>
 ///
-/// <para>Only the password and second-factor paths are overridden here. The passkey path
-/// (<c>SignInManager.SignInAsync</c> after a WebAuthn assertion, method = <c>passkey</c>) records its
-/// own success in the passkey slice, so <see cref="SignInManager{TUser}.SignInAsync(TUser,bool,string)"/>
-/// is intentionally not overridden — overriding it would double-count the password path, which calls it
-/// internally on success.</para>
+/// <para>The password, second-factor, and passkey paths are overridden here; each audits with its own
+/// <c>method</c> tag. <see cref="SignInManager{TUser}.SignInAsync(TUser,bool,string)"/> is intentionally
+/// <b>not</b> overridden — the password path calls it internally on success, so auditing there would
+/// double-count. The passkey override (<see cref="PasskeySignInAsync"/>) reproduces the framework's tiny
+/// assertion → pre-check → sign-in core so it can attribute the outcome, and it inherits the framework's
+/// <c>bypassTwoFactor: true</c> — a passkey is already a second factor, so §3.5's "passkey path never
+/// receives a TOTP challenge" holds by construction.</para>
 ///
 /// <para>A subject is required for a <c>security_event</c> row (the column is NOT NULL, §8.2), so a
 /// failed attempt against a non-existent username is metered but not audited — there is no account to
@@ -35,6 +37,9 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
 {
     /// <summary>The <c>method</c> tag for the password path, including its TOTP/recovery second factor (§3.5).</summary>
     private const string PasswordMethod = "password";
+
+    /// <summary>The <c>method</c> tag for the WebAuthn passkey path (§3.3, §12).</summary>
+    private const string PasskeyMethod = "passkey";
 
     private readonly ISecurityEventLog _securityEventLog;
     private readonly RestaurantMetrics _metrics;
@@ -87,7 +92,7 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
         if (user is null)
         {
             // No account to attribute a security_event to; still meter the failed attempt (§12).
-            RecordMetric(SignInAttemptResult.Failed);
+            RecordMetric(SignInAttemptResult.Failed, PasswordMethod);
             return SignInResult.Failed;
         }
 
@@ -105,7 +110,7 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
             .PasswordSignInAsync(user, password, isPersistent, lockoutOnFailure)
             .ConfigureAwait(false);
 
-        await AuditAsync(user, result).ConfigureAwait(false);
+        await AuditAsync(user, result, PasswordMethod).ConfigureAwait(false);
         return result;
     }
 
@@ -122,7 +127,7 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
             .TwoFactorAuthenticatorSignInAsync(code, isPersistent, rememberClient)
             .ConfigureAwait(false);
 
-        await AuditAsync(user, result).ConfigureAwait(false);
+        await AuditAsync(user, result, PasswordMethod).ConfigureAwait(false);
         return result;
     }
 
@@ -138,7 +143,7 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
             .TwoFactorRecoveryCodeSignInAsync(recoveryCode)
             .ConfigureAwait(false);
 
-        await AuditAsync(user, result).ConfigureAwait(false);
+        await AuditAsync(user, result, PasswordMethod).ConfigureAwait(false);
 
         if (result.Succeeded && user is not null)
         {
@@ -150,13 +155,56 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
         return result;
     }
 
+    /// <summary>
+    /// The WebAuthn passkey path (§3.3, §3.5): assert, run the deactivation/lockout pre-check, refresh
+    /// the stored credential's sign count, then sign in — <b>never</b> challenging TOTP. This reproduces
+    /// the framework's <c>PasskeySignInCoreAsync</c> (verified against the .NET 10 source) so the terminal
+    /// outcome can be audited once as a <c>security_event</c> and once on <c>sign_ins_total{method=passkey}</c>.
+    /// A failed assertion has no account to attribute, so it is metered but not audited (mirroring an
+    /// unknown username on the password path); once the assertion yields a user, every terminal result is
+    /// audited. The assertion is performed exactly once — its challenge state is single-use — so this does
+    /// not call <see cref="SignInManager{TUser}.PasskeySignInAsync"/>'s core a second time.
+    /// </summary>
+    public override async Task<SignInResult> PasskeySignInAsync(string credentialJson)
+    {
+        PasskeyAssertionResult<Person> assertion = await PerformPasskeyAssertionAsync(credentialJson).ConfigureAwait(false);
+        if (!assertion.Succeeded || assertion.User is null || assertion.Passkey is null)
+        {
+            RecordMetric(SignInAttemptResult.Failed, PasskeyMethod);
+            return SignInResult.Failed;
+        }
+
+        Person user = assertion.User;
+
+        // PreSignInCheck runs CanSignInAsync (our deactivation gate, §3.7) and the lockout gate.
+        SignInResult? preCheck = await PreSignInCheck(user).ConfigureAwait(false);
+        if (preCheck is not null)
+        {
+            await AuditAsync(user, preCheck, PasskeyMethod).ConfigureAwait(false);
+            return preCheck;
+        }
+
+        // Persist the updated sign count / backup state the assertion produced.
+        IdentityResult updated = await UserManager.AddOrUpdatePasskeyAsync(user, assertion.Passkey).ConfigureAwait(false);
+        if (!updated.Succeeded)
+        {
+            await AuditAsync(user, SignInResult.Failed, PasskeyMethod).ConfigureAwait(false);
+            return SignInResult.Failed;
+        }
+
+        // bypassTwoFactor: a passkey is already a second factor, so the passkey path never challenges TOTP.
+        SignInResult result = await SignInOrTwoFactorAsync(user, isPersistent: false, bypassTwoFactor: true).ConfigureAwait(false);
+        await AuditAsync(user, result, PasskeyMethod).ConfigureAwait(false);
+        return result;
+    }
+
     // ---------------------------------------------------------------------------------------------
 
     /// <summary>Meters the attempt and, when there is a subject, records the security event.</summary>
-    private async Task AuditAsync(Person? user, SignInResult result)
+    private async Task AuditAsync(Person? user, SignInResult result, string method)
     {
         SignInAttemptResult attempt = Classify(result);
-        RecordMetric(attempt);
+        RecordMetric(attempt, method);
 
         if (user is null)
         {
@@ -173,12 +221,12 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
         }
     }
 
-    private void RecordMetric(SignInAttemptResult attempt)
+    private void RecordMetric(SignInAttemptResult attempt, string method)
     {
         string? metricResult = SignInAudit.MetricResultFor(attempt);
         if (metricResult is not null)
         {
-            _metrics.RecordSignIn(PasswordMethod, metricResult);
+            _metrics.RecordSignIn(method, metricResult);
         }
     }
 

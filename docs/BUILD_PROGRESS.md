@@ -11,21 +11,22 @@ The scaffold and each subsequent milestone are written in an environment
 **without a .NET SDK** and without NuGet/.NET download hosts. Consequences:
 
 - **The C# for a milestone is written to match the spec and the .NET 10 APIs, then
-  first compiled on your machine.** M1 built green, and so did the first three M2
+  first compiled on your machine.** M1 built green, and so did the first four M2
   slices (identity persistence + Argon2id hasher; sign-in/cookie/authorization wiring;
-  the password sign-in pages + obligations middleware + claims factory). After
-  enabling the Podman socket, the last full local sweep was **green with zero
-  warnings: 257 tests, 0 failed, 242 passed, 15 skipped** (the 15 remaining skips are
-  the M6 Playwright end-to-end matrix), and `run.sh --smoke` passed end to end. The
-  newest slice — **TOTP enrollment** (this change) — is, like its predecessors were,
-  unbuilt until your next build/test run; expect to fix the occasional thing a
-  compiler would catch, most likely in the two enrollment Razor components.
+  the password sign-in pages + obligations middleware + claims factory; and TOTP
+  enrollment). After enabling the Podman socket, the last full local sweep was
+  **green with zero warnings: 341 tests, 0 failed, 326 passed, 15 skipped** (the 15
+  remaining skips are the M6 Playwright end-to-end matrix), and `run.sh --smoke` passed
+  end to end. The newest slice — **passkeys** (this change) — is, like its predecessors
+  were, unbuilt until your next build/test run; expect to fix the occasional thing a
+  compiler would catch, most likely in the passkey Razor components (`SignIn.razor`,
+  `Passkeys.razor`, `PasskeySubmit.razor`).
 - **Package versions in `Directory.Packages.props` are best-effort.** They target
   the .NET 10 GA era. Run `dotnet restore`; if a version does not exist, bump it
-  there to the nearest available. Nothing else references versions. This slice adds
-  **one** package — `Net.Codecrete.QrCodeGenerator` 3.0.0 (MIT, zero dependencies),
-  used only for the server-side provisioning-QR geometry; everything else (Identity
-  token providers, Data Protection, static-SSR components) is shared-framework.
+  there to the nearest available. Nothing else references versions. **This slice adds
+  no packages** — the whole passkey stack (the WebAuthn ceremony handler,
+  `IUserPasskeyStore`, `IdentityPasskeyOptions`) is shared-framework in .NET 10; the
+  only new front-end asset is a small classic script, `wwwroot/js/passkey.js`.
 - Shell scripts are syntax-checked with `bash -n`; they may need `chmod +x`.
 
 ## Staged plan
@@ -34,7 +35,7 @@ The work is split into six stages aligned to the spec's milestones (§19). Each
 stage is meant to leave the tree buildable and testable.
 
 - [x] **Stage 1 — M1: skeleton + pure Domain** *(built green: 139 passed, 28 skipped)*
-- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, and now TOTP enrollment have landed; last verified local run before this slice: 242 passed, 15 skipped, 0 warnings)*
+- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, TOTP enrollment, and now passkeys have landed; last verified local run before this slice: 326 passed, 15 skipped, 0 warnings)*
 - [ ] **Stage 3 — M3: tables & joining**
 - [ ] **Stage 4 — M4: ordering**
 - [ ] **Stage 5 — M5: counter & administration**
@@ -411,6 +412,90 @@ recovery codes; an enrolled user can regenerate those codes; and the §3.5 oblig
    `/setup` lands, creating a person to sign in **as** still means inserting a row by
    hand or waiting for the bootstrap slice.)
 
+### Slice 5 — passkeys (this change)
+
+WebAuthn passkeys via ASP.NET Core Identity's new .NET 10 passkey API (§3.3). The API
+was verified against the framework source before a line was written (BUILD_PROGRESS's
+standing instruction), and that reading drove two decisions worth recording (below and
+in the caveats): the store persists more than §8.2's original columns, and the passkey
+handler is registered by hand.
+
+- **Store — `IUserPasskeyStore<Person>`** (`DapperUserStore.cs`, new region). The
+  sixth and last capability interface `UserManager<Person>` needs; the class now
+  advertises passkey support (`SupportsUserPasskey`). Own table `passkey_credential`
+  (§8.2 + migration 0002), one row per credential: `AddOrUpdatePasskeyAsync` does a
+  find-then-insert-or-update, and — mirroring the reference EF store exactly — an
+  update writes only the mutable fields (sign count, display name, backed-up,
+  user-verified), so the public key and backup-eligible bit captured at registration
+  are never clobbered by a later assertion. `FindByPasskeyIdAsync` joins to the owning
+  person; transports round-trip as a comma-joined list; attestation object / client
+  data are reconstructed as empty on read (see caveats).
+- **Migration `0002_passkey_credential_webauthn_state.sql`** — additive, three boolean
+  columns (`is_user_verified`, `is_backup_eligible`, `is_backed_up`), all `NOT NULL
+  DEFAULT false`. Required because the .NET 10 `UserPasskeyInfo` carries them and
+  assertion *reads* the stored backup-eligible bit (see caveats). 0001 is untouched
+  (DbUp journals per script, ADR-0012).
+- **Wiring** (`IdentityServiceCollectionExtensions.cs`). Registers
+  `IPasskeyHandler<Person>` explicitly (see caveats) and configures
+  `IdentityPasskeyOptions`: `ServerDomain` = the host of `RESTAURANT_PUBLIC_ORIGIN`
+  (the §14.2 origin truth, set so it never drifts to the request host behind the
+  tunnel), `UserVerificationRequirement` / `ResidentKeyRequirement` = `preferred`,
+  attestation left at the browser default (`none`). `IdentityWiringTests` extended:
+  handler resolves, `SupportsUserPasskey` is true, options carry the RP ID + preferred
+  settings.
+- **Sign-in path** (`RestaurantSignInManager.PasskeySignInAsync` override). Reproduces
+  the framework's assertion → `PreSignInCheck` → `AddOrUpdatePasskeyAsync` →
+  `SignInOrTwoFactorAsync(bypassTwoFactor: true)` core (assertion is single-use, so it
+  is performed exactly once) and adds the central auditing the rest of the manager
+  does: `sign_ins_total{method=passkey}` plus a `security_event` once there is a
+  subject. `bypassTwoFactor` is the framework's own default here — a passkey is
+  already a second factor, so §3.5's "passkey path never gets a TOTP challenge" holds
+  by construction; `PreSignInCheck` means the §3.7 deactivation gate still applies.
+  The `AuditAsync`/`RecordMetric` helpers grew a `method` parameter (the password and
+  two-factor paths pass `password`).
+- **Options endpoints** (`AccountEndpoints.cs`): `POST /account/passkey/creation-options`
+  (authenticated, attestation) and `POST /account/passkey/request-options` (anonymous,
+  assertion — sign-in has no session yet; a username scopes `allowCredentials`, its
+  absence enables discoverable/username-less). Both validate the antiforgery token
+  from the request header (they are `fetch`ed, not form-posted), matching the template.
+  Three route constants added to `AccountRoutes`; none are obligations-exempt (the
+  management page is a normal authenticated destination, request-options is anonymous).
+- **Client** (`wwwroot/js/passkey.js`) — a classic-script adaptation of the template's
+  `passkey-submit` form-associated custom element, pointed at the routes above and
+  loaded once from `App.razor`. It runs the browser ceremony, writes the credential
+  JSON (or an error) into the surrounding form, and submits natively — which bypasses
+  EditForm validation so the passkey button never trips the password rules.
+- **Pages.** `SignIn.razor` switched from `OnValidSubmit` to `OnSubmit` (so the passkey
+  button can skip the password DataAnnotations; the handler validates by hand only on
+  the password path) and gained a "Sign in with a passkey" button + `autocomplete=
+  "username webauthn"` for conditional-mediation autofill. New `Passkeys.razor`
+  (`/account/passkeys`, static SSR, `[Authorize]`) lists, adds, renames, and removes
+  passkeys, recording `passkey_registered` / `passkey_removed`; a **Passkeys** link
+  sits beside **Security** in the header. `PasskeySubmit.razor` wraps the custom
+  element and supplies the antiforgery header token via `IAntiforgery`.
+- **Contracts** (`Identity/PasskeyContracts.cs`): `PasskeyOperation { Create, Request }`
+  (names matched to the JS) and the shared `PasskeyInputModel { CredentialJson, Error }`.
+- **Tests.** New `DapperUserStorePasskeyTests` (Testcontainers): add/get round-trips
+  every stored field, find-by-credential returns the owner, find-passkey is per-user,
+  add-or-update rewrites mutable fields only (public key + backup-eligible preserved,
+  no duplicate row), remove deletes. `IdentityWiringTests` extended as above.
+
+### Build/test checklist for this slice
+
+1. `dotnet restore` — **no new packages** this slice.
+2. `dotnet build` — the passkey Razor components (`SignIn.razor`, `Passkeys.razor`,
+   `PasskeySubmit.razor`) are the most likely home of anything a compiler catches.
+3. `dotnet test` — expect the previous green set plus the new passkey store suite and
+   the three new wiring facts; the EndToEnd matrix still skips (M6). The new store
+   tests skip too if no container engine is available.
+4. `./run.sh --smoke` — boots once (which applies migration 0002), verifies
+   `/healthz/ready`, exits.
+5. Manual, on the **stable named-tunnel domain** (passkeys bind to the RP ID, so quick
+   tunnels won't keep them — ADR-0005): sign in → **Passkeys** in the header → **Add a
+   passkey** → complete the platform prompt → the credential appears in the list. Sign
+   out, then **Sign in with a passkey** (or let the username field autofill one). An
+   enrolled passkey sign-in should land you in **without** a TOTP challenge.
+
 ## Known caveats and deliberate decisions
 
 - **Warnings are not errors.** `TreatWarningsAsErrors=false` keeps a fresh clone
@@ -472,6 +557,32 @@ recovery codes; an enrolled user can regenerate those codes; and the §3.5 oblig
   regenerates recovery codes; it does not remove an enrollment. Removal (and the §4.2
   rule that an admin cannot remove their **own** enrollment) belongs with the
   account-administration / profile slice, alongside the store-level `TotpRemoved` path.
+- **M2 — passkeys required a schema addition (0002), a documented deviation from
+  §8.2's "verbatim" table** (see Slice 5). The .NET 10 `UserPasskeyInfo` carries
+  WebAuthn state the original `passkey_credential` columns did not model, and assertion
+  *reads* the stored **backup-eligible** bit and fails the ceremony on a mismatch — so
+  it must persist. `0002_passkey_credential_webauthn_state.sql` adds
+  `is_user_verified` / `is_backup_eligible` / `is_backed_up` (additive, all `DEFAULT
+  false`). Recorded in the spec (§8.2 note) and the review ledger (F-34). This is the
+  framework gap §3.3 anticipated ("fallback if a framework gap is found"); no fallback
+  library was needed — only these columns.
+- **M2 — attestation object and client-data JSON are deliberately not stored.**
+  `UserPasskeyInfo` exposes both, but attestation is `none` (§3.3) and nothing in v1
+  re-reads either blob (assertion never consults them), so the store reconstructs them
+  as empty on read rather than persisting the largest fields for no consumer. If a
+  future need appears (e.g. attestation-statement verification), add two `bytea`
+  columns in a later migration.
+- **M2 — the passkey handler is registered by hand.** `AddIdentityCore` (what this app
+  uses) does **not** register `IPasskeyHandler<TUser>` — only the monolithic
+  `AddIdentity` does — so `AddRestaurantIdentity` registers `PasskeyHandler<Person>`
+  itself, exactly as it already does for the two security-stamp validators. Without it,
+  `MakePasskey*OptionsAsync` throws "requires an IPasskeyHandler service" at runtime;
+  `IdentityWiringTests` guards the registration.
+- **M2 — no post-registration passkey nudge yet.** §3.3 offers passkey enrollment as a
+  dismissible nudge *after registration and after sign-in*. There is no registration
+  page yet (guests join at a table in M3; staff via admin in a later M2 slice), so the
+  durable home — the voluntary **Passkeys** management page — is what ships now; the
+  post-registration/sign-in nudge lands with those registration surfaces.
 - **Dev-machine note — inotify watch limit (handled in `run.sh`).** `dotnet watch`
   can exhaust the kernel's inotify **instance** limit on a busy workstation
   (`The configured user limit (128) on the number of inotify instances has been
@@ -485,20 +596,17 @@ recovery codes; an enrolled user can regenerate those codes; and the §3.5 oblig
 
 ## Next: remaining M2 slices (in order)
 
-1. **Passkeys** (`IUserPasskeyStore`, .NET 10 WebAuthn): registration/assertion,
-   username-first and discoverable flows, the passkey sign-in path (never a TOTP
-   challenge — records `sign_in_succeeded` with method `passkey`). Verify the new
-   .NET 10 passkey API against the framework source first.
-2. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
+1. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
    zero-administrator re-check, self-granting the administrator role in one
    transaction (§3.6) — the first home for role grants, and the first in-app way to
    create an account.
-3. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
+2. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
    + `role_granted`/`role_revoked` events), **Reset credentials** (temp password +
    `must_change_password`; clear TOTP + set `must_enroll_totp` iff enrolled; new
    stamp; `password_reset_by_administrator` [+ `totp_cleared_by_administrator`]),
    deactivate/reactivate — the first thing that actually **sets** the obligation flags
    the pipeline enforces (Slice 3) and the enrollment pages clear (Slice 4). This is
-   also the home for **voluntary TOTP removal** and the §4.2 "an admin cannot remove
-   their own enrollment" rule. Store-level integration tests + middleware tests
+   also the home for **voluntary TOTP removal**, the §4.2 "an admin cannot remove
+   their own enrollment" rule, and the grant-time passkey mandate for the kitchen and
+   administrator roles (§3.7). Store-level integration tests + middleware tests
    throughout.

@@ -1,0 +1,50 @@
+@using Microsoft.AspNetCore.Antiforgery
+@using Microsoft.Extensions.DependencyInjection
+@inject IServiceProvider Services
+
+@*
+    Renders the passkey button plus the form-associated <passkey-submit> custom element (passkey.js).
+    The element needs an antiforgery token it can send as a request header on its fetch() to the
+    ceremony endpoints (those endpoints are not form posts, so the token cannot ride along in form
+    data); we resolve it here from IAntiforgery and hand it over via attributes. Adapted from the
+    ASP.NET Core Blazor Web template's PasskeySubmit component.
+*@
+
+<button type="submit" name="__passkeySubmit" @attributes="AdditionalAttributes">@ChildContent</button>
+<passkey-submit
+    operation="@Operation"
+    name="@Name"
+    email-name="@EmailName"
+    request-token-name="@_tokens?.HeaderName"
+    request-token-value="@_tokens?.RequestToken">
+</passkey-submit>
+
+@code {
+    private AntiforgeryTokenSet? _tokens;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    /// <summary>Which ceremony to drive — <see cref="PasskeyOperation.Create"/> or <see cref="PasskeyOperation.Request"/>.</summary>
+    [Parameter]
+    [EditorRequired]
+    public PasskeyOperation Operation { get; set; }
+
+    /// <summary>Form-field prefix the element writes back to (e.g. "Input" or "Input.Passkey").</summary>
+    [Parameter]
+    [EditorRequired]
+    public string Name { get; set; } = default!;
+
+    /// <summary>For the Request operation: the username field to read for the username-first flow.</summary>
+    [Parameter]
+    public string? EmailName { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IDictionary<string, object>? AdditionalAttributes { get; set; }
+
+    protected override void OnInitialized()
+        => _tokens = Services.GetService<IAntiforgery>()?.GetTokens(HttpContext);
+}

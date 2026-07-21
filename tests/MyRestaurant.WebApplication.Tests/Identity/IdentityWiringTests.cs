@@ -122,6 +122,46 @@ public sealed class IdentityWiringTests
     }
 
     [Fact]
+    public void PasskeyHandler_IsRegistered()
+    {
+        // AddIdentityCore does not register IPasskeyHandler (only the monolithic AddIdentity does), so
+        // AddRestaurantIdentity must — otherwise MakePasskey*OptionsAsync throws at runtime (§3.3).
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        IPasskeyHandler<Person> handler = scope.ServiceProvider.GetRequiredService<IPasskeyHandler<Person>>();
+
+        Assert.IsType<PasskeyHandler<Person>>(handler);
+    }
+
+    [Fact]
+    public void UserManager_SupportsPasskeys()
+    {
+        // The Dapper store now implements IUserPasskeyStore, which is how UserManager exposes the
+        // passkey capability (it casts its store).
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        UserManager<Person> userManager = scope.ServiceProvider.GetRequiredService<UserManager<Person>>();
+
+        Assert.True(userManager.SupportsUserPasskey);
+    }
+
+    [Fact]
+    public void PasskeyOptions_UseTheConfiguredRelyingPartyAndPreferredVerification()
+    {
+        // §3.3: RP ID is the host of RESTAURANT_PUBLIC_ORIGIN (localhost for the test options), and
+        // residentKey + userVerification are both "preferred".
+        using ServiceProvider provider = BuildProvider();
+
+        IdentityPasskeyOptions options = provider.GetRequiredService<IOptions<IdentityPasskeyOptions>>().Value;
+
+        Assert.Equal("localhost", options.ServerDomain);
+        Assert.Equal("preferred", options.UserVerificationRequirement);
+        Assert.Equal("preferred", options.ResidentKeyRequirement);
+    }
+
+    [Fact]
     public async Task TablePolicy_RequiresOnlyAuthentication()
     {
         AuthorizationPolicy policy = await GetPolicyAsync(AuthorizationPolicies.Table);

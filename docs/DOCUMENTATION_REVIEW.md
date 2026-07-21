@@ -64,6 +64,14 @@ All nine are fixed in the current `export.sh`; the script's own comments cite th
 | F-32 | `yarn.lock` leftover in a .NET repository's exclusion list | Removed. |
 | F-33 | "all 1 included files" | Singular/plural noun selected from the count. |
 
+## Group E — Implementation findings (deviations discovered while building)
+
+Found while implementing against the real .NET 10 framework, and resolved in the same slice per the atomic-documentation rule (R§10 · S§18).
+
+| ID | Finding | Resolution | Embodied in |
+|---|---|---|---|
+| F-34 | §8.2's `passkey_credential` was specified before ASP.NET Core Identity's .NET 10 passkey API was verified against source. That API's `UserPasskeyInfo` credential record carries WebAuthn state the table did not model (user-verified, backup-eligible, backed-up), and assertion **reads** the stored backup-eligible bit and fails the ceremony on a mismatch — so it cannot be dropped and reconstructed. | Additive migration `0002_passkey_credential_webauthn_state.sql` adds `is_user_verified` / `is_backup_eligible` / `is_backed_up` (all `NOT NULL DEFAULT false`); `0001` is left untouched (DbUp journals per script). The raw attestation object and client-data JSON `UserPasskeyInfo` also exposes are deliberately not stored (attestation is `none`, §3.3; nothing re-reads them) and are reconstructed as empty on read. This is the framework gap §3.3 anticipated — no fallback library was needed, only the columns. | S§8.2 (schema-evolution note), S§3.3 · `0002_*.sql`, `DapperUserStore` passkey region · BUILD_PROGRESS Slice 5 |
+
 ---
 
 ## Going forward

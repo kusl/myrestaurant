@@ -116,6 +116,25 @@ public static class IdentityServiceCollectionExtensions
         services.TryAddScoped<ISecurityStampValidator, SecurityStampValidator<Person>>();
         services.TryAddScoped<ITwoFactorSecurityStampValidator, TwoFactorSecurityStampValidator<Person>>();
 
+        // The .NET 10 WebAuthn ceremony handler (§3.3). Same story as the stamp validators: the
+        // monolithic AddIdentity registers it, AddIdentityCore does not (verified against the framework
+        // source), so register it explicitly or MakePasskey*OptionsAsync throws "requires an
+        // IPasskeyHandler service". It reads the options configured just below.
+        services.TryAddScoped<IPasskeyHandler<Person>, PasskeyHandler<Person>>();
+
+        // Relying-party options for every passkey ceremony (§3.3). The RP ID is the FULL host of
+        // RESTAURANT_PUBLIC_ORIGIN — the single origin truth of §14.2 — set explicitly so it never
+        // silently falls back to the request host behind the tunnel or a hairpin. residentKey and
+        // userVerification are "preferred" (discoverable + username-first both work; verification is
+        // encouraged, not demanded); attestation is left at the browser default of "none", so no
+        // attestation statement is requested or verified.
+        services.Configure<IdentityPasskeyOptions>(passkey =>
+        {
+            passkey.ServerDomain = options.ResolveWebAuthnRelyingPartyId();
+            passkey.UserVerificationRequirement = "preferred";
+            passkey.ResidentKeyRequirement = "preferred";
+        });
+
         // Harden the application cookie (§3.1). Secure + HttpOnly + SameSite=Lax; 24-hour sliding
         // expiration. The login/logout/access-denied paths are the real account surfaces now (this
         // slice); an unauthenticated hit on an [Authorize] page redirects to /sign-in?ReturnUrl=….

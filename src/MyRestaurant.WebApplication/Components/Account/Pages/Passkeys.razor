@@ -1,0 +1,236 @@
+@page "/account/passkeys"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize]
+@using System.Buffers.Text
+@using MyRestaurant.Domain.Authentication
+@inject UserManager<Person> UserManager
+@inject SignInManager<Person> SignInManager
+@inject ISecurityEventLog SecurityEventLog
+@inject NavigationManager Navigation
+
+@* The voluntary passkey-management page (TECHNICAL_SPECIFICATION §3.3): any signed-in user can add a
+   passkey, rename it, or remove it. Static SSR, like every account page — registering a passkey writes
+   through the Identity store and records a security_event, and the ceremony's challenge lives in a
+   cookie the server sets. Not in the obligations-exempt list: it is a normal authenticated destination,
+   so a user with an outstanding obligation is routed to the relevant pipeline page, never here.
+
+   Forms on this page all submit natively (the add button via the passkey-submit custom element, the
+   per-row buttons as ordinary posts), each carrying its @formname so the framework can dispatch it:
+     • "add-passkey"      — the attestation credential the browser produced (bound to Input);
+     • "passkey-{id}"     — one per credential, carrying the credential id, an Action (rename|delete),
+                            and the new name for a rename. The shared Action/CredentialId/NewName bind
+                            from whichever row posted. *@
+
+<PageTitle>Passkeys</PageTitle>
+
+<section class="panel account-panel">
+    <p class="eyebrow">Security</p>
+    <h1>Passkeys</h1>
+    <p class="lede">
+        A passkey lets you sign in with your fingerprint, face, or device PIN instead of a password —
+        and it can't be phished. Add one for each device you use. You can keep your password as a
+        backup.
+    </p>
+
+    @if (_statusMessage is not null)
+    {
+        <p class="status-success" role="status">@_statusMessage</p>
+    }
+    @if (_errorMessage is not null)
+    {
+        <p class="status-error" role="alert">@_errorMessage</p>
+    }
+
+    @if (_passkeys is { Count: > 0 })
+    {
+        <ul class="passkey-list">
+            @foreach (UserPasskeyInfo passkey in _passkeys)
+            {
+                string credentialId = Base64Url.EncodeToString(passkey.CredentialId);
+                <li class="passkey-row">
+                    <div class="passkey-meta">
+                        <span class="passkey-name">@(string.IsNullOrWhiteSpace(passkey.Name) ? "Unnamed passkey" : passkey.Name)</span>
+                        <span class="passkey-date">Added @passkey.CreatedAt.ToLocalTime().ToString("d MMM yyyy")</span>
+                    </div>
+                    <form class="passkey-actions" @formname="@($"passkey-{credentialId}")" method="post" @onsubmit="UpdatePasskeyAsync">
+                        <AntiforgeryToken />
+                        <input type="hidden" name="CredentialId" value="@credentialId" />
+                        <input class="passkey-rename" name="NewName" value="@passkey.Name"
+                               aria-label="Passkey name" maxlength="64" />
+                        <button type="submit" name="Action" value="rename" class="button-secondary">Rename</button>
+                        <button type="submit" name="Action" value="delete" class="link-button danger">Remove</button>
+                    </form>
+                </li>
+            }
+        </ul>
+    }
+    else
+    {
+        <p class="lede">You have no passkeys yet. Add one so you can sign in without a password.</p>
+    }
+
+    <form class="passkey-add" @formname="add-passkey" method="post" @onsubmit="AddPasskeyAsync">
+        <AntiforgeryToken />
+        <PasskeySubmit Operation="PasskeyOperation.Create" Name="Input" class="button-primary">
+            Add a passkey
+        </PasskeySubmit>
+    </form>
+</section>
+
+@code {
+    private IList<UserPasskeyInfo>? _passkeys;
+    private string? _statusMessage;
+    private string? _errorMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "add-passkey")]
+    private PasskeyInputModel Input { get; set; } = default!;
+
+    // Shared by every per-row "passkey-{id}" form; only the submitted row's values arrive.
+    [SupplyParameterFromForm]
+    private string? Action { get; set; }
+
+    [SupplyParameterFromForm]
+    private string? CredentialId { get; set; }
+
+    [SupplyParameterFromForm]
+    private string? NewName { get; set; }
+
+    [SupplyParameterFromQuery(Name = "status")]
+    private string? Status { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
+        Input ??= new();
+        _statusMessage = Status;
+
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        _passkeys = await UserManager.GetPasskeysAsync(user);
+    }
+
+    private async Task AddPasskeyAsync()
+    {
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(Input.Error))
+        {
+            await FailAsync(user, "That passkey could not be added. Please try again.");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(Input.CredentialJson))
+        {
+            await FailAsync(user, "Your browser did not provide a passkey.");
+            return;
+        }
+
+        PasskeyAttestationResult attestation = await SignInManager.PerformPasskeyAttestationAsync(Input.CredentialJson);
+        if (!attestation.Succeeded || attestation.Passkey is null)
+        {
+            await FailAsync(user, "That passkey could not be registered. Please try again.");
+            return;
+        }
+
+        // The authenticator does not supply a name; give it a readable default the user can change.
+        UserPasskeyInfo passkey = attestation.Passkey;
+        passkey.Name = $"Passkey added {DateTimeOffset.UtcNow.ToLocalTime():d MMM yyyy}";
+
+        IdentityResult added = await UserManager.AddOrUpdatePasskeyAsync(user, passkey);
+        if (!added.Succeeded)
+        {
+            await FailAsync(user, "The passkey could not be saved to your account.");
+            return;
+        }
+
+        await SecurityEventLog.RecordAsync(
+            user.PersonIdentifier, actorPersonIdentifier: null, SecurityEventType.PasskeyRegistered, HttpContext.RequestAborted);
+
+        Redirect("Passkey added. You can rename it below.");
+    }
+
+    private async Task UpdatePasskeyAsync()
+    {
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        byte[] credentialId;
+        try
+        {
+            credentialId = Base64Url.DecodeFromChars(CredentialId);
+        }
+        catch (FormatException)
+        {
+            await FailAsync(user, "That passkey could not be identified.");
+            return;
+        }
+
+        if (string.Equals(Action, "delete", StringComparison.Ordinal))
+        {
+            IdentityResult removed = await UserManager.RemovePasskeyAsync(user, credentialId);
+            if (!removed.Succeeded)
+            {
+                await FailAsync(user, "The passkey could not be removed.");
+                return;
+            }
+
+            await SecurityEventLog.RecordAsync(
+                user.PersonIdentifier, actorPersonIdentifier: null, SecurityEventType.PasskeyRemoved, HttpContext.RequestAborted);
+            Redirect("Passkey removed.");
+            return;
+        }
+
+        if (string.Equals(Action, "rename", StringComparison.Ordinal))
+        {
+            UserPasskeyInfo? existing = await UserManager.GetPasskeyAsync(user, credentialId);
+            if (existing is null)
+            {
+                await FailAsync(user, "That passkey no longer exists.");
+                return;
+            }
+
+            // Blank keeps the current name; the store's update path writes only the mutable fields,
+            // so the public key and backup-eligible bit captured at registration are untouched.
+            existing.Name = string.IsNullOrWhiteSpace(NewName) ? existing.Name : NewName.Trim();
+            IdentityResult renamed = await UserManager.AddOrUpdatePasskeyAsync(user, existing);
+            if (!renamed.Succeeded)
+            {
+                await FailAsync(user, "The passkey could not be renamed.");
+                return;
+            }
+
+            Redirect("Passkey renamed.");
+            return;
+        }
+
+        await FailAsync(user, "That action was not recognized.");
+    }
+
+    // Re-load the list and show an error on the same render (no redirect, so no status query needed).
+    private async Task FailAsync(Person user, string message)
+    {
+        _errorMessage = message;
+        _passkeys = await UserManager.GetPasskeysAsync(user);
+    }
+
+    // Post/redirect/get: carry a one-line confirmation back through the query string.
+    private void Redirect(string status)
+        => Navigation.NavigateTo($"{AccountRoutes.Passkeys}?status={Uri.EscapeDataString(status)}");
+}
