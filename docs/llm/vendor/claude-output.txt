@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-21T00:54:24-04:00
+  Generated at   : 2026-07-21T08:24:28-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : f25bba3956eba0613beaa65113a1deda15b01431
-  Commit (short) : f25bba3
-  Commit date    : 2026-07-21 00:54:10 -0400
-  Commit message : add script
+  Commit (full)  : abd7e615a736b9c3a5ee6229d4e77734e5c7db9f
+  Commit (short) : abd7e61
+  Commit date    : 2026-07-21 08:24:16 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 139
+  Files included : 144
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (139 included files)
+# FILE TREE  (144 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -580,6 +580,7 @@ cat "$OUTPUT_FILE"
 │   │   │   ├── Argon2idPasswordHasher.cs
 │   │   │   ├── DapperSecurityEventLog.cs
 │   │   │   ├── DapperUserStore.cs
+│   │   │   ├── FirstAdministratorBootstrap.cs
 │   │   │   ├── ISecurityEventLog.cs
 │   │   │   └── Person.cs
 │   │   ├── Migrations
@@ -639,6 +640,7 @@ cat "$OUTPUT_FILE"
 │       │   │   └── MainLayout.razor
 │       │   ├── Pages
 │       │   │   ├── Home.razor
+│       │   │   ├── Setup.razor
 │       │   │   └── Table
 │       │   │       └── TableArea.razor
 │       │   ├── Routes.razor
@@ -654,6 +656,7 @@ cat "$OUTPUT_FILE"
 │       │   ├── RestaurantAuthenticatorTokenProvider.cs
 │       │   ├── RestaurantClaimsPrincipalFactory.cs
 │       │   ├── RestaurantSignInManager.cs
+│       │   ├── SetupState.cs
 │       │   └── TotpEnrollment.cs
 │       ├── LiveUpdates
 │       │   └── InProcessDomainEventBroadcaster.cs
@@ -677,6 +680,7 @@ cat "$OUTPUT_FILE"
     │   │   ├── DapperSecurityEventLogTests.cs
     │   │   ├── DapperUserStorePasskeyTests.cs
     │   │   ├── DapperUserStoreTests.cs
+    │   │   ├── FirstAdministratorBootstrapTests.cs
     │   │   └── FixedClock.cs
     │   ├── MyRestaurant.DataAccess.Tests.csproj
     │   ├── PostgreSqlFixture.cs
@@ -708,6 +712,7 @@ cat "$OUTPUT_FILE"
         │   ├── ObligationsEnforcementTests.cs
         │   ├── RestaurantAuthenticatorTokenProviderTests.cs
         │   ├── RestaurantClaimsPrincipalFactoryTests.cs
+        │   ├── SetupTicketTests.cs
         │   └── TotpEnrollmentTicketTests.cs
         ├── MyRestaurant.WebApplication.Tests.csproj
         └── RestaurantOptionsTests.cs
@@ -2224,15 +2229,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  42.8 KiB (43869 bytes)
-  Last modified:         2026-07-20 17:40:43.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  50.6 KiB (51864 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21956018
+  Inode:                 22331463
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               6c6375e1ae52823219c623864537fd592b7de6f7ab73f167b0c452c6435bd18d
-  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+  SHA-256:               e84fd18db4226344ccb8f592e02e08b4fba488a1d4e94fca8cd6bc0916a70d21
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
 
 --- CONTENT ---
 # Build progress
@@ -2248,22 +2253,23 @@ The scaffold and each subsequent milestone are written in an environment
 **without a .NET SDK** and without NuGet/.NET download hosts. Consequences:
 
 - **The C# for a milestone is written to match the spec and the .NET 10 APIs, then
-  first compiled on your machine.** M1 built green, and so did the first four M2
+  first compiled on your machine.** M1 built green, and so did the first five M2
   slices (identity persistence + Argon2id hasher; sign-in/cookie/authorization wiring;
-  the password sign-in pages + obligations middleware + claims factory; and TOTP
-  enrollment). After enabling the Podman socket, the last full local sweep was
-  **green with zero warnings: 341 tests, 0 failed, 326 passed, 15 skipped** (the 15
-  remaining skips are the M6 Playwright end-to-end matrix), and `run.sh --smoke` passed
-  end to end. The newest slice — **passkeys** (this change) — is, like its predecessors
-  were, unbuilt until your next build/test run; expect to fix the occasional thing a
-  compiler would catch, most likely in the passkey Razor components (`SignIn.razor`,
-  `Passkeys.razor`, `PasskeySubmit.razor`).
+  the password sign-in pages + obligations middleware + claims factory; TOTP
+  enrollment; and passkeys). After enabling the Podman socket, the last full local
+  sweep was **green with zero warnings: 351 tests, 0 failed, 336 passed, 15 skipped**
+  (the 15 remaining skips are the M6 Playwright end-to-end matrix), and `run.sh
+  --smoke` passed end to end. The newest slice — the **first-administrator `/setup`
+  bootstrap** (this change) — is, like its predecessors were, unbuilt until your next
+  build/test run; expect to fix the occasional thing a compiler would catch, most
+  likely in the multi-step wizard component (`Components/Account/Pages/Setup.razor`).
 - **Package versions in `Directory.Packages.props` are best-effort.** They target
   the .NET 10 GA era. Run `dotnet restore`; if a version does not exist, bump it
   there to the nearest available. Nothing else references versions. **This slice adds
-  no packages** — the whole passkey stack (the WebAuthn ceremony handler,
-  `IUserPasskeyStore`, `IdentityPasskeyOptions`) is shared-framework in .NET 10; the
-  only new front-end asset is a small classic script, `wwwroot/js/passkey.js`.
+  no packages** and **no new front-end assets** — the wizard reuses the passkey
+  ceremony from Slice 5, pointing the existing `wwwroot/js/passkey.js` at a new
+  anonymous creation-options endpoint via an optional attribute on `PasskeySubmit`
+  (both changes are backward-compatible; the account passkey pages are untouched).
 - Shell scripts are syntax-checked with `bash -n`; they may need `chmod +x`.
 
 ## Staged plan
@@ -2272,7 +2278,7 @@ The work is split into six stages aligned to the spec's milestones (§19). Each
 stage is meant to leave the tree buildable and testable.
 
 - [x] **Stage 1 — M1: skeleton + pure Domain** *(built green: 139 passed, 28 skipped)*
-- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, TOTP enrollment, and now passkeys have landed; last verified local run before this slice: 326 passed, 15 skipped, 0 warnings)*
+- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, TOTP enrollment, passkeys, and now the first-administrator `/setup` bootstrap have landed; last verified local run before this slice: 336 passed, 15 skipped, 0 warnings)*
 - [ ] **Stage 3 — M3: tables & joining**
 - [ ] **Stage 4 — M4: ordering**
 - [ ] **Stage 5 — M5: counter & administration**
@@ -2733,6 +2739,98 @@ handler is registered by hand.
    out, then **Sign in with a passkey** (or let the username field autofill one). An
    enrolled passkey sign-in should land you in **without** a TOTP challenge.
 
+### Slice 6 — `/setup` first-administrator bootstrap (this change)
+
+The one-time bootstrap that turns a freshly migrated, empty database into a running
+system with an administrator (§3.6). `/setup` is reachable **only while zero
+administrators exist**; it collects a username, display name, and password, then makes
+the operator register a passkey and enroll TOTP (neither is skippable), and finally
+grants the `administrator` role — the person recorded as their own grantor — in one
+transaction. Once any administrator exists, `/setup` is gone (404).
+
+The tension §3.6 sets up is that a passkey ceremony and a TOTP enrollment each span
+several requests, yet the account must be written "in one transaction". This slice
+reconciles them by treating everything before the final submit as *verification*, not
+persistence: a Data-Protection-protected cookie carries the assembled state across the
+wizard's steps, and only the last post writes anything.
+
+- **Bootstrap — `FirstAdministratorBootstrap.cs`** (DataAccess). `IFirstAdministratorBootstrap`
+  has the cheap, unlocked `AdministratorExistsAsync` gate and the authoritative
+  `CreateFirstAdministratorAsync`. The latter opens its own transaction, takes
+  `pg_advisory_xact_lock(hashtext('myrestaurant_setup'))`, **re-checks the
+  zero-administrator condition under the lock**, then inserts the person (obligation
+  flags cleared — it enrolled its own TOTP; `is_active=true`; a fresh security stamp),
+  the verified passkey (including the migration-0002 WebAuthn flags and comma-joined
+  transports), ten fresh recovery codes, the self-granted `administrator` row
+  (`granted_by_person_identifier` = the new person), and the four `security_event`
+  rows (`account_created` / `passkey_registered` / `totp_enrolled` with a NULL actor,
+  `role_granted` with the person as their own actor) — all stamped with one clock
+  instant. Recovery codes are generated **inside** the commit and returned once (stored
+  only as SHA-256 hashes, §3.4). The TOTP secret is protected under the *same*
+  Data-Protection purpose the store unprotects with, so the new administrator's
+  authenticator works on their first sign-in. If the under-lock re-check finds an
+  administrator, nothing is written and the result is `AdministratorAlreadyExists`.
+- **Wizard page — `Setup.razor`** (`/setup`, static SSR, `[ExcludeFromInteractiveRouting]`).
+  One page, four steps — account details → register a passkey → enroll TOTP → review &
+  create — with state accumulating in a Data-Protection-protected, 30-minute cookie
+  (`myrestaurant.setup`), never in a circuit (account pages are static SSR by design,
+  and a circuit cannot set cookies). The person's UUIDv7 is minted at step one so it
+  can double as the WebAuthn **user handle** and equal the eventual `person` id. The
+  passkey attestation (`PerformPasskeyAttestationAsync`) and the TOTP code are verified
+  as they arrive but **not** persisted; only **Create administrator** calls the
+  bootstrap. On success the recovery codes render once (no redirect that would lose
+  them) and the operator is signed in as administrator.
+- **Reachability.** The page and the endpoint both check `AdministratorExistsAsync` on
+  every request and return 404 once an administrator exists — which also covers the
+  losing side of a two-browser race (the bootstrap's under-lock result maps to the same
+  404 on the final submit). The obligations middleware already ignores anonymous
+  requests, so `/setup` needs no exemption.
+- **Setup passkey endpoint** (`AccountEndpoints.cs`): a new **anonymous**
+  `POST /setup/passkey/creation-options` that reads the pending person id from the setup
+  cookie and returns creation options for that handle (404 once an administrator exists;
+  400 without a valid cookie). The account creation-options endpoint stays
+  authenticated; this one exists because the wizard has no session yet. Two route
+  constants added to `AccountRoutes` (`/setup`, `/setup/passkey/creation-options`).
+- **Client reuse — no new assets.** `passkey.js` and `PasskeySubmit.razor` gained an
+  *optional* creation-/request-options URL (an attribute on the custom element); when
+  absent the script keeps its Slice-5 defaults, so the account **Passkeys** page is
+  byte-for-byte unaffected. `Setup.razor` simply points `PasskeySubmit` at the new
+  setup endpoint.
+- **Landing page** (`Home.razor`): a one-time **Set up the first administrator** callout
+  linking to `/setup` shows only while no administrator exists, and disappears once one
+  does.
+- **Store visibility** (`DapperUserStore.cs`): the TOTP-secret Data-Protection purpose
+  constant went `private` → `internal` so the bootstrap can protect the secret under the
+  exact same purpose without duplicating the string. Store behaviour is otherwise
+  unchanged.
+- **Wiring** (`IdentityServiceCollectionExtensions.cs`): `IFirstAdministratorBootstrap`
+  registered scoped as `DapperFirstAdministratorBootstrap`; `IdentityWiringTests` gains a
+  fact that it resolves.
+- **Tests.** New `FirstAdministratorBootstrapTests` (Testcontainers): the exists-gate
+  flips; a create on an empty database writes every row (person fields, the passkey with
+  its flags and transports, ten recovery codes, the self-granted role, all four events
+  with the right subject/actor) and the TOTP secret + recovery codes round-trip through
+  the store; a second create once an administrator exists writes nothing. New
+  `SetupTicketTests` (pure): the protected cookie round-trips every field including the
+  verified passkey, and tampered / foreign-key / expired tickets are rejected.
+
+### Build/test checklist for this slice
+
+1. `dotnet restore` — **no new packages** this slice.
+2. `dotnet build` — the multi-step wizard component
+   (`Components/Account/Pages/Setup.razor`) is the most likely home of anything a
+   compiler catches.
+3. `dotnet test` — expect the previous green set plus the new `SetupTicketTests` and the
+   new wiring fact (both pure, so they always run) and the `FirstAdministratorBootstrapTests`
+   suite; that suite skips if no container engine is available, exactly like the other
+   Testcontainers tests.
+4. `./run.sh --smoke` — boots once, verifies `/healthz/ready`, exits.
+5. Manual, on the **stable named-tunnel domain** (the passkey binds to the RP ID, so a
+   quick tunnel won't keep it — ADR-0005): visit `/setup` → username + display name +
+   password → **register a passkey** (platform prompt) → **scan the TOTP QR** and confirm
+   a code → review → **Create administrator**. The recovery codes show **once**, and you
+   land signed in as the administrator. Revisit `/setup`: it now returns **404**.
+
 ## Known caveats and deliberate decisions
 
 - **Warnings are not errors.** `TreatWarningsAsErrors=false` keeps a fresh clone
@@ -2757,9 +2855,10 @@ handler is registered by hand.
   accessors are inert and sign-in never gates on them.
 - **M2 — role grant/revoke via the store is `NotSupported`.** `person_role` requires
   the granting administrator (self-referencing for the first admin, §3.6), which the
-  parameterless `AddToRoleAsync`/`RemoveFromRoleAsync` contract cannot supply. Grants
-  land in the transactional account-administration service / `/setup` (later slices);
-  the store's role **read** path is complete so claims flow at sign-in.
+  parameterless `AddToRoleAsync`/`RemoveFromRoleAsync` contract cannot supply. The
+  first-admin self-grant now lands in the transactional `/setup` bootstrap (Slice 6);
+  grant/revoke for other people arrives with account administration (next slice). The
+  store's role **read** path is complete so claims flow at sign-in.
 - **M2 — deletion does not exist (F-10b).** `DeleteAsync` throws; accounts are
   deactivated (`is_active=false`) so history keeps its actors — and, as of Slice 3,
   a deactivated account is also refused at the front door (`CanSignInAsync`).
@@ -2767,10 +2866,11 @@ handler is registered by hand.
   cookies on the response; do not convert them to interactive components — a Blazor
   circuit cannot set cookies. The per-page render mode in `App.razor` is what makes
   the two worlds coexist.
-- **M2 — no registration page exists yet.** Guests register at the moment of joining
-  a table (§4.3, M3) and staff are created by an administrator (later M2 slice), so
-  `/sign-in` is deliberately the only public account surface. Until `/setup` lands
-  there is no in-app way to create the first account.
+- **M2 — no *self*-registration page exists.** Guests register at the moment of joining
+  a table (§4.3, M3) and staff are created by an administrator (next M2 slice). The
+  first account is now created by the `/setup` bootstrap (Slice 6); apart from `/setup`
+  (reachable only until an administrator exists) and that future admin surface,
+  `/sign-in` is the only public account surface.
 - **M2 — obligations block Blazor circuits too.** `/_blazor` is not exempt in the
   middleware: an interactive tab open when a reset lands loses its circuit until the
   pipeline clears. Intended ("nothing else reachable", §3.5); expect the reconnect
@@ -2820,6 +2920,20 @@ handler is registered by hand.
   page yet (guests join at a table in M3; staff via admin in a later M2 slice), so the
   durable home — the voluntary **Passkeys** management page — is what ships now; the
   post-registration/sign-in nudge lands with those registration surfaces.
+- **M2 — `/setup` verifies across requests but persists in one transaction** (see
+  Slice 6). §3.6 requires the first administrator to be written atomically, yet a passkey
+  ceremony and TOTP enrollment each span several requests. The wizard resolves this by
+  carrying the in-progress state — including the already-verified passkey and the
+  confirmed TOTP secret — in a Data-Protection-protected, 30-minute cookie
+  (`myrestaurant.setup`) and writing **nothing** until the final **Create administrator**
+  post, which commits the whole account in one locked transaction. The person's UUIDv7 is
+  minted at step one so it is stable as the WebAuthn user handle and becomes the `person`
+  id. Because the state is tamper-evident and short-lived and the endpoint re-checks
+  reachability, a stale or forged cookie cannot create an account; `SetupTicketTests`
+  pins the round-trip and the rejections. One consequence: `/setup/passkey/creation-options`
+  is **anonymous** (unlike the account creation-options endpoint), since there is no
+  session yet — it is gated instead by the setup cookie and the zero-administrator
+  condition.
 - **Dev-machine note — inotify watch limit (handled in `run.sh`).** `dotnet watch`
   can exhaust the kernel's inotify **instance** limit on a busy workstation
   (`The configured user limit (128) on the number of inotify instances has been
@@ -2831,22 +2945,19 @@ handler is registered by hand.
   `/etc/sysctl.d/`) — or force it with `DOTNET_USE_POLLING_FILE_WATCHER=0`. Neither
   the container runtime nor CI is affected.
 
-## Next: remaining M2 slices (in order)
+## Next: remaining M2 slice
 
-1. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
-   zero-administrator re-check, self-granting the administrator role in one
-   transaction (§3.6) — the first home for role grants, and the first in-app way to
-   create an account.
-2. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
-   + `role_granted`/`role_revoked` events), **Reset credentials** (temp password +
-   `must_change_password`; clear TOTP + set `must_enroll_totp` iff enrolled; new
-   stamp; `password_reset_by_administrator` [+ `totp_cleared_by_administrator`]),
-   deactivate/reactivate — the first thing that actually **sets** the obligation flags
-   the pipeline enforces (Slice 3) and the enrollment pages clear (Slice 4). This is
-   also the home for **voluntary TOTP removal**, the §4.2 "an admin cannot remove
-   their own enrollment" rule, and the grant-time passkey mandate for the kitchen and
-   administrator roles (§3.7). Store-level integration tests + middleware tests
-   throughout.
+**Account administration** (§3.7), the last M2 slice: create staff, grant/revoke roles
+(with grantor + `role_granted`/`role_revoked` events), **Reset credentials** (temp
+password + `must_change_password`; clear TOTP + set `must_enroll_totp` iff enrolled; new
+stamp; `password_reset_by_administrator` [+ `totp_cleared_by_administrator`]),
+deactivate/reactivate — the first thing that actually **sets** the obligation flags the
+pipeline enforces (Slice 3) and the enrollment pages clear (Slice 4). It reuses the
+transactional, self-referencing grant machinery `/setup` introduced (Slice 6), now with a
+real grantor. This is also the home for **voluntary TOTP removal**, the §4.2 "an admin
+cannot remove their own enrollment" rule, and the grant-time passkey mandate for the
+kitchen and administrator roles (§3.7). Store-level integration tests + middleware tests
+throughout.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -5722,15 +5833,15 @@ public sealed class DapperSecurityEventLog : ISecurityEventLog
   File name:             DapperUserStore.cs
   Relative path:         src/MyRestaurant.DataAccess/Identity/DapperUserStore.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Identity/DapperUserStore.cs
-  Size:                  39.6 KiB (40509 bytes)
-  Last modified:         2026-07-20 16:47:41.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  39.9 KiB (40872 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21956024
+  Inode:                 22331455
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               5ac7b1dcaf00e08981a6c5f2ce609e8fd4d995009a99c44deaab51f869bbc259
-  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+  SHA-256:               27506ce132a1f945ed974bcee38fc20ea52ea55ce261a8ed80380a9cc30de06c
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -5790,8 +5901,14 @@ public sealed class DapperUserStore :
     IUserPhoneNumberStore<Person>,
     IUserPasskeyStore<Person>
 {
-    /// <summary>Data-Protection purpose for the at-rest TOTP secret (§3.4). Do not change without a migration plan.</summary>
-    private const string TotpSecretProtectorPurpose = "MyRestaurant.Identity.TotpSecret.v1";
+    /// <summary>
+    /// Data-Protection purpose for the at-rest TOTP secret (§3.4). Do not change without a migration
+    /// plan. <c>internal</c> because <see cref="DapperFirstAdministratorBootstrap"/> protects the first
+    /// administrator's secret with the exact same purpose (it writes the <c>person</c> row directly, in
+    /// one transaction, §3.6), so the secret this store unprotects at sign-in must have been protected
+    /// with an identical purpose.
+    /// </summary>
+    internal const string TotpSecretProtectorPurpose = "MyRestaurant.Identity.TotpSecret.v1";
 
     // Every SELECT aliases snake_case columns to the POCO's PascalCase properties. Postgres folds the
     // unquoted aliases to lower case and Dapper matches case-insensitively, so no global
@@ -6576,6 +6693,363 @@ public sealed class DapperUserStore :
         user.IsActive,
         user.CreatedAt,
     };
+}
+
+################################################################################
+# FILE: src/MyRestaurant.DataAccess/Identity/FirstAdministratorBootstrap.cs
+################################################################################
+
+--- METADATA ---
+  File name:             FirstAdministratorBootstrap.cs
+  Relative path:         src/MyRestaurant.DataAccess/Identity/FirstAdministratorBootstrap.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Identity/FirstAdministratorBootstrap.cs
+  Size:                  16.8 KiB (17155 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 22331450
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               0a35f2871c37b30005e7ac862ddaaa26bac8d823c8d768c4ea2ae70f45769ac4
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
+using MyRestaurant.Domain.Authentication;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.Security;
+using MyRestaurant.Domain.Time;
+
+namespace MyRestaurant.DataAccess.Identity;
+
+/// <summary>
+/// The identity the <c>/setup</c> wizard has fully assembled — a username/display name, an
+/// already-Argon2id-hashed password (§3.2), a confirmed passkey, and a confirmed TOTP secret — ready
+/// to become the first administrator. Nothing here is persisted yet: the wizard verifies the passkey
+/// (WebAuthn attestation) and the TOTP code across earlier requests and carries the results forward,
+/// so <see cref="IFirstAdministratorBootstrap.CreateFirstAdministratorAsync"/> can write the whole
+/// account in one transaction (TECHNICAL_SPECIFICATION §3.6).
+/// </summary>
+/// <param name="PersonIdentifier">
+/// The person's UUIDv7, minted by the wizard at its first step so it can double as the stable
+/// WebAuthn user handle for the passkey ceremony — it must equal the eventual <c>person</c> row's id
+/// (the authenticator returns it on a discoverable sign-in, and the framework matches it).
+/// </param>
+/// <param name="Username">The unique <c>citext</c> username, 3–64 characters (§3.1).</param>
+/// <param name="DisplayName">Optional display name shown on rosters and the kitchen queue.</param>
+/// <param name="PasswordHash">The Argon2id PHC string (§3.2); the wizard hashed the plaintext already.</param>
+/// <param name="TotpSecretBase32">
+/// The confirmed authenticator secret, Base32, in the clear — this class protects it with ASP.NET
+/// Data Protection under the same purpose the store reads it back with (§3.4).
+/// </param>
+/// <param name="Passkey">
+/// The verified attestation result. Only its immutable/registration fields are used; the row's
+/// <c>created_at</c> is stamped by this class so every inserted row shares one instant.
+/// </param>
+public sealed record NewAdministrator(
+    Guid PersonIdentifier,
+    string Username,
+    string? DisplayName,
+    string PasswordHash,
+    string TotpSecretBase32,
+    UserPasskeyInfo Passkey);
+
+/// <summary>The outcome of attempting the bootstrap.</summary>
+public enum FirstAdministratorBootstrapStatus
+{
+    /// <summary>The account was created and granted <c>administrator</c> in one transaction.</summary>
+    Created,
+
+    /// <summary>
+    /// An administrator already existed when the transaction took the lock, so nothing was written —
+    /// the wizard must now behave as if <c>/setup</c> is gone (return 404). This is the losing side of
+    /// a two-browser race, or a second submission after setup already completed.
+    /// </summary>
+    AdministratorAlreadyExists,
+}
+
+/// <summary>
+/// The result of <see cref="IFirstAdministratorBootstrap.CreateFirstAdministratorAsync"/>. The
+/// plaintext recovery codes are populated only when <see cref="Status"/> is
+/// <see cref="FirstAdministratorBootstrapStatus.Created"/>, and are shown to the operator exactly
+/// once (they are stored only as SHA-256 hashes, §3.4).
+/// </summary>
+public sealed record FirstAdministratorBootstrapResult(
+    FirstAdministratorBootstrapStatus Status,
+    IReadOnlyList<string> RecoveryCodes);
+
+/// <summary>
+/// Creates the very first administrator (TECHNICAL_SPECIFICATION §3.6). Two operations:
+/// <see cref="AdministratorExistsAsync"/> is the cheap, unlocked gate the <c>/setup</c> page and
+/// endpoints use to decide whether the wizard is reachable at all; <see cref="CreateFirstAdministratorAsync"/>
+/// is the authoritative, serialized commit.
+/// </summary>
+public interface IFirstAdministratorBootstrap
+{
+    /// <summary>
+    /// True when at least one <c>administrator</c> role grant exists. Used only as the user-facing
+    /// gate (render the wizard, or 404); the definitive check happens under the advisory lock inside
+    /// <see cref="CreateFirstAdministratorAsync"/>, so a race here is harmless.
+    /// </summary>
+    Task<bool> AdministratorExistsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes the person, their passkey, their TOTP secret, ten fresh recovery codes, and the
+    /// self-granted <c>administrator</c> role — plus the matching <c>security_event</c> rows — in a
+    /// single transaction that first takes <c>pg_advisory_xact_lock(hashtext('myrestaurant_setup'))</c>
+    /// and re-checks the zero-administrator condition under that lock. If an administrator already
+    /// exists, nothing is written and <see cref="FirstAdministratorBootstrapStatus.AdministratorAlreadyExists"/>
+    /// is returned (§3.6: "one wins, the other sees 404 on retry").
+    /// </summary>
+    Task<FirstAdministratorBootstrapResult> CreateFirstAdministratorAsync(
+        NewAdministrator administrator,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// The Dapper implementation of <see cref="IFirstAdministratorBootstrap"/>. It owns its own
+/// connection and transaction for the commit (the Identity stores each open a connection per method,
+/// so they cannot share one transaction — the whole point of §3.6 is that this is atomic), and it
+/// protects the TOTP secret with the exact same Data-Protection purpose
+/// (<see cref="DapperUserStore.TotpSecretProtectorPurpose"/>) the store unprotects it with, so the
+/// new administrator's authenticator works on their first sign-in.
+///
+/// <para>Every row is stamped with one <see cref="IClock.UtcNow"/> instant, and all surrogate
+/// identifiers are minted with the application <see cref="IIdentifierFactory"/> (UUIDv7, ADR-0011),
+/// matching how the rest of the data layer writes.</para>
+/// </summary>
+public sealed class DapperFirstAdministratorBootstrap : IFirstAdministratorBootstrap
+{
+    /// <summary>
+    /// The advisory-lock key text (§3.6). <c>hashtext</c> maps it to the <c>integer</c> the
+    /// transaction-scoped lock takes; the lock is released automatically on commit or rollback.
+    /// </summary>
+    private const string AdvisoryLockKey = "myrestaurant_setup";
+
+    /// <summary>The role granted to the first administrator (matches the <c>person_role</c> CHECK, §3.7).</summary>
+    private const string AdministratorRole = "administrator";
+
+    private const string AdministratorExistsSql =
+        "SELECT EXISTS (SELECT 1 FROM person_role WHERE role_name = @Role);";
+
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+    private readonly IClock _clock;
+    private readonly IIdentifierFactory _identifierFactory;
+    private readonly IDataProtector _totpSecretProtector;
+
+    public DapperFirstAdministratorBootstrap(
+        IDatabaseConnectionFactory connectionFactory,
+        IClock clock,
+        IIdentifierFactory identifierFactory,
+        IDataProtectionProvider dataProtectionProvider)
+    {
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+        ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(identifierFactory);
+        ArgumentNullException.ThrowIfNull(dataProtectionProvider);
+
+        _connectionFactory = connectionFactory;
+        _clock = clock;
+        _identifierFactory = identifierFactory;
+
+        // Same purpose the store protects/unprotects the at-rest secret with, so the new admin's
+        // authenticator secret round-trips on their first sign-in.
+        _totpSecretProtector = dataProtectionProvider.CreateProtector(DapperUserStore.TotpSecretProtectorPurpose);
+    }
+
+    public async Task<bool> AdministratorExistsAsync(CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        return await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            AdministratorExistsSql,
+            new { Role = AdministratorRole },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+    }
+
+    public async Task<FirstAdministratorBootstrapResult> CreateFirstAdministratorAsync(
+        NewAdministrator administrator,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(administrator);
+        ArgumentNullException.ThrowIfNull(administrator.Passkey);
+        ArgumentException.ThrowIfNullOrEmpty(administrator.Username);
+        ArgumentException.ThrowIfNullOrEmpty(administrator.PasswordHash);
+        ArgumentException.ThrowIfNullOrEmpty(administrator.TotpSecretBase32);
+
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        // (1) Serialize concurrent setups on a transaction-scoped advisory lock. A second browser
+        // that got past the unlocked gate blocks here until this transaction ends.
+        await connection.ExecuteAsync(new CommandDefinition(
+            "SELECT pg_advisory_xact_lock(hashtext(@Key));",
+            new { Key = AdvisoryLockKey },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        // (2) Re-check the zero-administrator condition UNDER the lock — the authoritative gate.
+        bool administratorExists = await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            AdministratorExistsSql,
+            new { Role = AdministratorRole },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        if (administratorExists)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new FirstAdministratorBootstrapResult(
+                FirstAdministratorBootstrapStatus.AdministratorAlreadyExists,
+                []);
+        }
+
+        // (3) The person row. must_change_password / must_enroll_totp are false: this account
+        // enrolled its own TOTP here, so it carries no obligations (§3.5). is_active is true.
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO person (
+                person_identifier, username, display_name, email_address, phone_number,
+                password_hash, totp_secret_protected, must_change_password, must_enroll_totp,
+                security_stamp, failed_access_count, lockout_end_at, is_active, created_at)
+            VALUES (
+                @PersonIdentifier, @Username, @DisplayName, NULL, NULL,
+                @PasswordHash, @TotpSecretProtected, false, false,
+                @SecurityStamp, 0, NULL, true, @CreatedAt);
+            """,
+            new
+            {
+                administrator.PersonIdentifier,
+                administrator.Username,
+                administrator.DisplayName,
+                administrator.PasswordHash,
+                TotpSecretProtected = _totpSecretProtector.Protect(administrator.TotpSecretBase32),
+                SecurityStamp = Guid.NewGuid(),
+                CreatedAt = now,
+            },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        // (4) The confirmed passkey. Mirrors DapperUserStore's insert: attestation object and
+        // client-data JSON are not stored (attestation is 'none', §3.3); the backup-eligible bit and
+        // the other WebAuthn flags are (assertion reads them — migration 0002).
+        UserPasskeyInfo passkey = administrator.Passkey;
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO passkey_credential (
+                passkey_credential_identifier, person_identifier, credential_id, public_key,
+                signature_counter, transports, credential_display_name, created_at,
+                is_user_verified, is_backup_eligible, is_backed_up)
+            VALUES (
+                @PasskeyCredentialIdentifier, @PersonIdentifier, @CredentialId, @PublicKey,
+                @SignatureCounter, @Transports, @CredentialDisplayName, @CreatedAt,
+                @IsUserVerified, @IsBackupEligible, @IsBackedUp);
+            """,
+            new
+            {
+                PasskeyCredentialIdentifier = _identifierFactory.Create(),
+                administrator.PersonIdentifier,
+                CredentialId = passkey.CredentialId,
+                PublicKey = passkey.PublicKey,
+                SignatureCounter = (long)passkey.SignCount,
+                Transports = JoinTransports(passkey.Transports),
+                CredentialDisplayName = passkey.Name,
+                CreatedAt = now,
+                passkey.IsUserVerified,
+                passkey.IsBackupEligible,
+                passkey.IsBackedUp,
+            },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        // (5) Ten fresh single-use recovery codes, stored SHA-256-hashed (§3.4). The plaintext is
+        // returned to the caller to display once and never persisted.
+        IReadOnlyList<string> recoveryCodes = RecoveryCode.GenerateSet();
+        var recoveryRows = recoveryCodes.Select(code => new
+        {
+            TotpRecoveryCodeIdentifier = _identifierFactory.Create(),
+            administrator.PersonIdentifier,
+            CodeHash = Sha256Hashing.Hash(code),
+            CreatedAt = now,
+        }).ToList();
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO totp_recovery_code (totp_recovery_code_identifier, person_identifier, code_hash, created_at)
+            VALUES (@TotpRecoveryCodeIdentifier, @PersonIdentifier, @CodeHash, @CreatedAt);
+            """,
+            recoveryRows,
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        // (6) The administrator grant, self-referencing its grantor (§3.6): the new administrator is
+        // recorded as their own granter, satisfying person_role.granted_by_person_identifier NOT NULL.
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO person_role (
+                person_role_identifier, person_identifier, role_name, granted_by_person_identifier, granted_at)
+            VALUES (
+                @PersonRoleIdentifier, @PersonIdentifier, @RoleName, @PersonIdentifier, @GrantedAt);
+            """,
+            new
+            {
+                PersonRoleIdentifier = _identifierFactory.Create(),
+                administrator.PersonIdentifier,
+                RoleName = AdministratorRole,
+                GrantedAt = now,
+            },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        // (7) The audit trail (§3.7). The self-actions carry a NULL actor; the role grant records the
+        // new administrator as their own actor, matching the self-grant above.
+        var securityEvents = new[]
+        {
+            NewSecurityEvent(administrator.PersonIdentifier, actor: null, SecurityEventType.AccountCreated, now),
+            NewSecurityEvent(administrator.PersonIdentifier, actor: null, SecurityEventType.PasskeyRegistered, now),
+            NewSecurityEvent(administrator.PersonIdentifier, actor: null, SecurityEventType.TotpEnrolled, now),
+            NewSecurityEvent(administrator.PersonIdentifier, actor: administrator.PersonIdentifier, SecurityEventType.RoleGranted, now),
+        };
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO security_event (
+                security_event_identifier, subject_person_identifier, actor_person_identifier, event_type, occurred_at)
+            VALUES (
+                @SecurityEventIdentifier, @SubjectPersonIdentifier, @ActorPersonIdentifier, @EventType, @OccurredAt);
+            """,
+            securityEvents,
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        return new FirstAdministratorBootstrapResult(
+            FirstAdministratorBootstrapStatus.Created,
+            recoveryCodes);
+    }
+
+    private SecurityEventRow NewSecurityEvent(Guid subject, Guid? actor, string eventType, DateTimeOffset occurredAt)
+        => new(_identifierFactory.Create(), subject, actor, eventType, occurredAt);
+
+    // Transports are opaque tokens the server only echoes back; store them comma-joined (tokens never
+    // contain commas), matching DapperUserStore. Null when the authenticator reported none.
+    private static string? JoinTransports(string[]? transports)
+        => transports is { Length: > 0 } ? string.Join(',', transports) : null;
+
+    private sealed record SecurityEventRow(
+        Guid SecurityEventIdentifier,
+        Guid SubjectPersonIdentifier,
+        Guid? ActorPersonIdentifier,
+        string EventType,
+        DateTimeOffset OccurredAt);
 }
 
 ################################################################################
@@ -10990,15 +11464,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             PasskeySubmit.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Account/PasskeySubmit.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/PasskeySubmit.razor
-  Size:                  1.9 KiB (1947 bytes)
-  Last modified:         2026-07-20 16:41:40.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  2.7 KiB (2811 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21956033
+  Inode:                 22331456
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               3a4097c4c86ee8905a4177d587e2e6b6c587431c2029d7c52211953de2b5dab0
-  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+  SHA-256:               df6af761d9d6c57545a3ca2c1e43ddebcbffdd5dc540e9a2b597196f847b7d34
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
 
 --- CONTENT ---
 @using Microsoft.AspNetCore.Antiforgery
@@ -11018,6 +11492,8 @@ public static class AuthorizationServiceCollectionExtensions
     operation="@Operation"
     name="@Name"
     email-name="@EmailName"
+    creation-options-url="@CreationOptionsUrl"
+    request-options-url="@RequestOptionsUrl"
     request-token-name="@_tokens?.HeaderName"
     request-token-value="@_tokens?.RequestToken">
 </passkey-submit>
@@ -11041,6 +11517,22 @@ public static class AuthorizationServiceCollectionExtensions
     /// <summary>For the Request operation: the username field to read for the username-first flow.</summary>
     [Parameter]
     public string? EmailName { get; set; }
+
+    /// <summary>
+    /// Overrides the creation (attestation) options endpoint the element fetches. Null (the default)
+    /// leaves passkey.js on <see cref="AccountRoutes.PasskeyCreationOptions"/>; the setup wizard sets
+    /// it to <see cref="AccountRoutes.SetupPasskeyCreationOptions"/> (§3.6).
+    /// </summary>
+    [Parameter]
+    public string? CreationOptionsUrl { get; set; }
+
+    /// <summary>
+    /// Overrides the request (assertion) options endpoint the element fetches. Null (the default)
+    /// leaves passkey.js on <see cref="AccountRoutes.PasskeyRequestOptions"/>. Provided for symmetry;
+    /// the setup wizard only registers passkeys, so it does not set this.
+    /// </summary>
+    [Parameter]
+    public string? RequestOptionsUrl { get; set; }
 
     [Parameter]
     public RenderFragment? ChildContent { get; set; }
@@ -11204,32 +11696,46 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             Home.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Home.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Home.razor
-  Size:                  1.1 KiB (1174 bytes)
-  Last modified:         2026-07-19 08:49:02.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  2.4 KiB (2447 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21654790
+  Inode:                 22331458
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               7cc9853eb40ec8f149a499d656633983511bd95fe1d8f37b98db4f07d245901e
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               de4c673096df14823db610c10ed94647ad55e5c6d7504363df671264fc0aa9a5
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
 
 --- CONTENT ---
 @page "/"
 @inject RestaurantOptions Options
+@inject IFirstAdministratorBootstrap Bootstrap
 
 <PageTitle>@Options.RestaurantName</PageTitle>
 
 <section class="landing">
+    @if (_needsSetup)
+    {
+        <div class="setup-callout" role="note">
+            <p class="eyebrow">First-run setup</p>
+            <h2>No administrator has been set up yet</h2>
+            <p>
+                Create the first administrator to start using @Options.RestaurantName. You'll choose a
+                username and password, add a passkey, and set up an authenticator.
+            </p>
+            <p><a class="button-primary" href="@AccountRoutes.Setup">Set up the first administrator</a></p>
+        </div>
+    }
+
     <p class="eyebrow">Ordering system</p>
     <h1 class="landing-title">@Options.RestaurantName</h1>
 
     <p class="landing-lede">
         The application shell is running. The Milestone&nbsp;1 skeleton (domain, data access, web
         host, startup migrations) is in place, and Milestone&nbsp;2 is under way: password sign-in
-        with the TOTP/recovery challenge, lockout, and the forced-password-change pipeline work now.
-        Guest ordering, the kitchen and counter boards, and administration arrive in later
-        milestones.
+        with the TOTP/recovery challenge, lockout, the forced-password-change pipeline, TOTP and
+        passkey enrollment, and the first-administrator bootstrap work now. Guest ordering, the
+        kitchen and counter boards, and administration arrive in later milestones.
     </p>
 
     <dl class="facts">
@@ -11249,6 +11755,609 @@ public static class AuthorizationServiceCollectionExtensions
         <a href="/table">Table area (sign-in required)</a>
     </nav>
 </section>
+
+@code {
+    private bool _needsSetup;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Point a fresh deployment at /setup while no administrator exists (§3.6). Best-effort: the
+        // landing page must still render if the database is briefly unreachable (that is what
+        // /healthz/ready is for), so a failure here simply hides the pointer.
+        try
+        {
+            _needsSetup = !await Bootstrap.AdministratorExistsAsync();
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _needsSetup = false;
+        }
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Pages/Setup.razor
+################################################################################
+
+--- METADATA ---
+  File name:             Setup.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Setup.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Setup.razor
+  Size:                  21.4 KiB (21948 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 22331449
+  Hard links:            1
+  MIME type:             text/html
+  SHA-256:               0d19463471b9e70c2c92161234c02ca08043b61d8da0ccff418675ef36635b55
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
+
+--- CONTENT ---
+@page "/setup"
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Text
+@using MyRestaurant.Domain.Identifiers
+@using MyRestaurant.Domain.Security
+@using MyRestaurant.Domain.Time
+@using Microsoft.AspNetCore.DataProtection
+@inject IFirstAdministratorBootstrap Bootstrap
+@inject IPasswordHasher<Person> PasswordHasher
+@inject SignInManager<Person> SignInManager
+@inject UserManager<Person> UserManager
+@inject IIdentifierFactory IdentifierFactory
+@inject IClock Clock
+@inject IDataProtectionProvider DataProtection
+@inject RestaurantOptions Options
+@inject NavigationManager Navigation
+
+@* The first-administrator bootstrap wizard (TECHNICAL_SPECIFICATION §3.6). Reachable only while ZERO
+   administrators exist; the moment one does, this page returns 404. Anonymous by design — there is no
+   one to sign in as yet (the chicken-and-egg the whole feature resolves). Static SSR, like every
+   account surface, because it writes cookies on the response (the accumulating setup ticket, and the
+   authentication cookie once the administrator is created).
+
+   The wizard is a single page driven by a Data-Protection-protected cookie (SetupTicket): collect
+   account details → register a passkey → enroll TOTP → review and commit. The passkey and TOTP steps
+   run their real ceremonies and cannot be skipped; nothing touches the database until the final step
+   writes the whole account — person, passkey, TOTP secret, ten recovery codes, and the self-granted
+   administrator role — in one advisory-locked transaction (FirstAdministratorBootstrap). *@
+
+<PageTitle>Set up @Options.RestaurantName</PageTitle>
+
+@if (_adminExists)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Setup</p>
+        <h1>Setup is already complete</h1>
+        <p class="lede">
+            An administrator already exists for @Options.RestaurantName, so first-run setup is closed.
+            If you are staff, sign in as usual.
+        </p>
+        <p><a href="@AccountRoutes.SignIn">Go to sign in</a></p>
+    </section>
+}
+else if (_completed && _recoveryCodes is not null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Setup complete</p>
+        <h1>You are the administrator</h1>
+        <p class="status-success" role="status">
+            The administrator account <strong>@_completedUsername</strong> was created and you are now
+            signed in.
+        </p>
+
+        <p class="totp-secret-label">Save these recovery codes now — this is the only time they are shown.</p>
+        <p class="lede">
+            Each works once, in place of your authenticator code, on the password sign-in. Keep them
+            somewhere safe and offline.
+        </p>
+        <ul class="recovery-codes">
+            @foreach (string code in _recoveryCodes)
+            {
+                <li>@code</li>
+            }
+        </ul>
+
+        <div class="form-actions">
+            <a class="button-primary" href="/administration">Go to administration</a>
+            <a class="button-secondary" href="/">Home</a>
+        </div>
+    </section>
+}
+else
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">First-run setup</p>
+
+        <ol class="setup-steps" aria-label="Setup progress">
+            <li class="@StepClass(0)">Account</li>
+            <li class="@StepClass(1)">Passkey</li>
+            <li class="@StepClass(2)">Authenticator</li>
+            <li class="@StepClass(3)">Finish</li>
+        </ol>
+
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        @if (_ticket is null)
+        {
+            @* Step 1 — account details. *@
+            <h1>Create the first administrator</h1>
+            <p class="lede">
+                No administrator exists yet. Set one up now: choose a username and password, then add a
+                passkey and an authenticator. All three are required — the passkey and the authenticator
+                cannot be skipped.
+            </p>
+
+            <EditForm Model="AccountInput" method="post" OnValidSubmit="StartAsync" FormName="setup-account">
+                <DataAnnotationsValidator />
+
+                <div class="form-field">
+                    <label for="username">Username</label>
+                    <InputText id="username" @bind-Value="AccountInput.Username" autocomplete="username"
+                               autocapitalize="none" spellcheck="false" autofocus />
+                    <ValidationMessage For="@(() => AccountInput.Username)" />
+                </div>
+
+                <div class="form-field">
+                    <label for="display-name">Display name <span class="optional">(optional)</span></label>
+                    <InputText id="display-name" @bind-Value="AccountInput.DisplayName" autocomplete="name" />
+                    <ValidationMessage For="@(() => AccountInput.DisplayName)" />
+                </div>
+
+                <div class="form-field">
+                    <label for="password">Password</label>
+                    <InputText id="password" type="password" @bind-Value="AccountInput.Password"
+                               autocomplete="new-password" />
+                    <ValidationMessage For="@(() => AccountInput.Password)" />
+                </div>
+
+                <div class="form-field">
+                    <label for="confirm-password">Confirm password</label>
+                    <InputText id="confirm-password" type="password" @bind-Value="AccountInput.ConfirmPassword"
+                               autocomplete="new-password" />
+                    <ValidationMessage For="@(() => AccountInput.ConfirmPassword)" />
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="button-primary">Continue to passkey</button>
+                </div>
+            </EditForm>
+
+            <p class="form-footnote">
+                Use at least 12 characters. Your operating system's password manager can generate and
+                store a strong one for you.
+            </p>
+        }
+        else if (_ticket.Step == SetupStep.Passkey)
+        {
+            @* Step 2 — passkey registration (WebAuthn attestation). *@
+            <h1>Add a passkey</h1>
+            <p class="lede">
+                A passkey lets you sign in with your fingerprint, face, or device PIN, and it cannot be
+                phished. Register one now for <strong>@_ticket.Username</strong>. You can add more, and
+                rename this one, later.
+            </p>
+
+            <form class="passkey-add" @formname="setup-passkey" method="post" @onsubmit="RegisterPasskeyAsync">
+                <AntiforgeryToken />
+                <PasskeySubmit Operation="PasskeyOperation.Create" Name="PasskeyInput"
+                               CreationOptionsUrl="@AccountRoutes.SetupPasskeyCreationOptions" class="button-primary">
+                    Register a passkey
+                </PasskeySubmit>
+            </form>
+        }
+        else if (_ticket.Step == SetupStep.Totp)
+        {
+            @* Step 3 — authenticator (TOTP) enrollment. *@
+            <h1>Set up your authenticator</h1>
+            <p class="lede">
+                Scan this QR code with an authenticator app (or type the key), then enter the six-digit
+                code it shows. This is your second factor when you sign in with a password.
+            </p>
+
+            <div class="totp-qr">
+                @((MarkupString)_qrCodeSvg)
+            </div>
+
+            <p class="totp-secret-label">Can't scan? Enter this key manually:</p>
+            <p class="totp-secret">@_manualEntrySecret</p>
+
+            <EditForm Model="TotpInput" method="post" OnValidSubmit="ConfirmTotpAsync" FormName="setup-totp">
+                <DataAnnotationsValidator />
+
+                <div class="form-field">
+                    <label for="code">Six-digit code</label>
+                    <InputText id="code" @bind-Value="TotpInput.Code" autocomplete="one-time-code"
+                               inputmode="numeric" autocapitalize="none" spellcheck="false" autofocus />
+                    <ValidationMessage For="@(() => TotpInput.Code)" />
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="button-primary">Confirm and review</button>
+                </div>
+            </EditForm>
+        }
+        else
+        {
+            @* Step 4 — review and commit. *@
+            <h1>Review and finish</h1>
+            <p class="lede">
+                Everything is ready. Creating the administrator writes the account, your passkey, your
+                authenticator, and your recovery codes together, and grants the administrator role.
+            </p>
+
+            <dl class="setup-summary">
+                <div>
+                    <dt>Username</dt>
+                    <dd>@_ticket.Username</dd>
+                </div>
+                <div>
+                    <dt>Display name</dt>
+                    <dd>@(string.IsNullOrWhiteSpace(_ticket.DisplayName) ? "—" : _ticket.DisplayName)</dd>
+                </div>
+                <div>
+                    <dt>Passkey</dt>
+                    <dd>Registered</dd>
+                </div>
+                <div>
+                    <dt>Authenticator</dt>
+                    <dd>Confirmed</dd>
+                </div>
+            </dl>
+
+            <form @formname="setup-finish" method="post" @onsubmit="FinishAsync">
+                <AntiforgeryToken />
+                <div class="form-actions">
+                    <button type="submit" class="button-primary">Create administrator</button>
+                </div>
+            </form>
+        }
+
+        @if (_ticket is not null)
+        {
+            <form @formname="setup-restart" method="post" @onsubmit="RestartAsync" class="setup-restart">
+                <AntiforgeryToken />
+                <button type="submit" class="link-button">Start over</button>
+            </form>
+        }
+    </section>
+}
+
+@code {
+    private SetupTicketProtector _protector = default!;
+    private SetupTicket? _ticket;
+    private bool _adminExists;
+    private bool _completed;
+    private string? _completedUsername;
+    private IReadOnlyList<string>? _recoveryCodes;
+    private string? _errorMessage;
+
+    // Prepared once for the TOTP step so the same QR survives a mistyped-code re-render.
+    private string _qrCodeSvg = string.Empty;
+    private string _manualEntrySecret = string.Empty;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "setup-account")]
+    private AccountInputModel AccountInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "setup-passkey")]
+    private PasskeyInputModel PasskeyInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "setup-totp")]
+    private TotpInputModel TotpInput { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form POST binds these itself and may assign null, so defaults live here.
+        AccountInput ??= new();
+        PasskeyInput ??= new();
+        TotpInput ??= new();
+        _protector = new SetupTicketProtector(DataProtection);
+
+        // The unlocked gate: if any administrator exists, /setup is gone (§3.6). The authoritative
+        // re-check happens under the advisory lock at commit, so a race here is harmless.
+        _adminExists = await Bootstrap.AdministratorExistsAsync(HttpContext.RequestAborted);
+        if (_adminExists)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        if (HttpContext.Request.Cookies.TryGetValue(SetupCookie.Name, out string? cookie)
+            && _protector.TryUnprotect(cookie, out SetupTicket? ticket)
+            && ticket is not null
+            && !ticket.HasExpired(Clock.UtcNow, SetupCookie.Lifetime))
+        {
+            _ticket = ticket;
+            if (_ticket.Step == SetupStep.Totp && !string.IsNullOrEmpty(_ticket.TotpSecretBase32))
+            {
+                PrepareTotpDisplay(_ticket);
+            }
+        }
+        else if (!string.IsNullOrEmpty(cookie))
+        {
+            // Stale, tampered, or from another key: drop it and start clean.
+            SetupCookie.Delete(HttpContext.Response);
+            _errorMessage = "Your setup session expired. Please start again.";
+        }
+    }
+
+    private async Task StartAsync()
+    {
+        if (_adminExists)
+        {
+            return;
+        }
+
+        string username = AccountInput.Username.Trim();
+        string? displayName = string.IsNullOrWhiteSpace(AccountInput.DisplayName)
+            ? null
+            : AccountInput.DisplayName.Trim();
+
+        // Best-effort duplicate check; the person UNIQUE constraint and the commit are authoritative.
+        if (await UserManager.FindByNameAsync(username) is not null)
+        {
+            _errorMessage = "That username is already taken. Please choose another.";
+            return;
+        }
+
+        Guid personIdentifier = IdentifierFactory.Create();
+
+        // Hash immediately so the plaintext is never carried in the ticket. The hasher ignores the
+        // user argument (no per-user pepper, §3.2); a throwaway carrier is fine.
+        string passwordHash = PasswordHasher.HashPassword(
+            new Person { PersonIdentifier = personIdentifier, Username = username },
+            AccountInput.Password);
+
+        WriteTicketAndReload(new SetupTicket(
+            personIdentifier,
+            Clock.UtcNow,
+            SetupStep.Passkey,
+            username,
+            displayName,
+            passwordHash,
+            Passkey: null,
+            TotpSecretBase32: null));
+    }
+
+    private async Task RegisterPasskeyAsync()
+    {
+        if (_adminExists)
+        {
+            return;
+        }
+
+        if (_ticket is null || _ticket.Step != SetupStep.Passkey)
+        {
+            Navigation.NavigateTo(AccountRoutes.Setup);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(PasskeyInput.Error))
+        {
+            _errorMessage = "That passkey could not be added. Please try again.";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(PasskeyInput.CredentialJson))
+        {
+            _errorMessage = "Your browser did not provide a passkey.";
+            return;
+        }
+
+        PasskeyAttestationResult attestation =
+            await SignInManager.PerformPasskeyAttestationAsync(PasskeyInput.CredentialJson);
+        if (!attestation.Succeeded || attestation.Passkey is null)
+        {
+            _errorMessage = "That passkey could not be registered. Please try again.";
+            return;
+        }
+
+        UserPasskeyInfo info = attestation.Passkey;
+        SetupPasskey passkey = new(
+            info.CredentialId,
+            info.PublicKey,
+            (long)info.SignCount,
+            info.Transports,
+            Name: $"Passkey added {Clock.UtcNow.ToLocalTime():d MMM yyyy}",
+            info.IsUserVerified,
+            info.IsBackupEligible,
+            info.IsBackedUp);
+
+        // Mint the authenticator secret now so the TOTP step's QR is stable across re-renders.
+        string totpSecretBase32 = Base32Text.Encode(Rfc6238Totp.GenerateSecret());
+
+        WriteTicketAndReload(_ticket with
+        {
+            Step = SetupStep.Totp,
+            Passkey = passkey,
+            TotpSecretBase32 = totpSecretBase32,
+        });
+    }
+
+    private Task ConfirmTotpAsync()
+    {
+        if (_adminExists)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (_ticket is null || _ticket.Step != SetupStep.Totp || string.IsNullOrEmpty(_ticket.TotpSecretBase32))
+        {
+            Navigation.NavigateTo(AccountRoutes.Setup);
+            return Task.CompletedTask;
+        }
+
+        if (!Base32Text.TryDecode(_ticket.TotpSecretBase32, out byte[] secret))
+        {
+            SetupCookie.Delete(HttpContext.Response);
+            _ticket = null;
+            _errorMessage = "Something went wrong with the setup code. Please start again.";
+            return Task.CompletedTask;
+        }
+
+        string normalized = (TotpInput.Code ?? string.Empty).Replace(" ", string.Empty).Replace("-", string.Empty);
+        if (!Rfc6238Totp.ValidateCode(secret, normalized, Clock.UtcNow))
+        {
+            // The QR was already prepared in OnInitializedAsync (step is still Totp); it re-renders.
+            _errorMessage = "That code did not match. Check your authenticator and try again.";
+            return Task.CompletedTask;
+        }
+
+        WriteTicketAndReload(_ticket with { Step = SetupStep.Review });
+        return Task.CompletedTask;
+    }
+
+    private async Task FinishAsync()
+    {
+        if (_adminExists)
+        {
+            return;
+        }
+
+        if (_ticket is null
+            || _ticket.Step != SetupStep.Review
+            || _ticket.Passkey is null
+            || string.IsNullOrEmpty(_ticket.TotpSecretBase32))
+        {
+            Navigation.NavigateTo(AccountRoutes.Setup);
+            return;
+        }
+
+        SetupPasskey stored = _ticket.Passkey;
+        UserPasskeyInfo passkey = new(
+            stored.CredentialId,
+            stored.PublicKey,
+            Clock.UtcNow, // placeholder; the bootstrap stamps created_at itself
+            (uint)stored.SignatureCounter,
+            stored.Transports,
+            stored.IsUserVerified,
+            stored.IsBackupEligible,
+            stored.IsBackedUp,
+            attestationObject: [],
+            clientDataJson: [])
+        {
+            Name = stored.Name,
+        };
+
+        FirstAdministratorBootstrapResult result = await Bootstrap.CreateFirstAdministratorAsync(
+            new NewAdministrator(
+                _ticket.PersonIdentifier,
+                _ticket.Username,
+                _ticket.DisplayName,
+                _ticket.PasswordHash,
+                _ticket.TotpSecretBase32,
+                passkey),
+            HttpContext.RequestAborted);
+
+        // Whatever happens next, the wizard is finished with the cookie.
+        SetupCookie.Delete(HttpContext.Response);
+
+        if (result.Status == FirstAdministratorBootstrapStatus.AdministratorAlreadyExists)
+        {
+            // Lost the race (or setup already ran): behave as if /setup is gone.
+            _adminExists = true;
+            _ticket = null;
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        // Created: sign the new administrator in on this response, then show the codes once.
+        Person? administrator = await UserManager.FindByIdAsync(_ticket.PersonIdentifier.ToString());
+        if (administrator is not null)
+        {
+            await SignInManager.SignInAsync(administrator, isPersistent: true);
+        }
+
+        _completedUsername = _ticket.Username;
+        _recoveryCodes = result.RecoveryCodes;
+        _completed = true;
+        _ticket = null;
+    }
+
+    private void RestartAsync()
+    {
+        SetupCookie.Delete(HttpContext.Response);
+        Navigation.NavigateTo(AccountRoutes.Setup);
+    }
+
+    // Writes the protected ticket cookie and follows post/redirect/get so a refresh does not re-post
+    // the step. NavigateTo during static SSR surfaces as an HTTP redirect carrying the fresh cookie.
+    private void WriteTicketAndReload(SetupTicket ticket)
+    {
+        SetupCookie.Write(HttpContext.Response, _protector.Protect(ticket));
+        Navigation.NavigateTo(AccountRoutes.Setup);
+    }
+
+    private void PrepareTotpDisplay(SetupTicket ticket)
+    {
+        string provisioningUri = TotpProvisioningUri.Build(Options.RestaurantName, ticket.Username, ticket.TotpSecretBase32!);
+        _qrCodeSvg = TotpQrCode.RenderSvg(provisioningUri);
+        _manualEntrySecret = GroupForManualEntry(ticket.TotpSecretBase32!);
+    }
+
+    // The active step index (Account=0, Passkey=1, Authenticator=2, Finish=3).
+    private int ActiveStepIndex => _ticket is null
+        ? 0
+        : _ticket.Step switch
+        {
+            SetupStep.Passkey => 1,
+            SetupStep.Totp => 2,
+            _ => 3,
+        };
+
+    private string StepClass(int index)
+        => index == ActiveStepIndex ? "setup-step is-current"
+            : index < ActiveStepIndex ? "setup-step is-done"
+            : "setup-step";
+
+    /// <summary>Groups the Base32 secret into space-separated blocks of four for easier manual entry.</summary>
+    private static string GroupForManualEntry(string base32)
+    {
+        StringBuilder builder = new(base32.Length + (base32.Length / 4));
+        for (int index = 0; index < base32.Length; index++)
+        {
+            if (index > 0 && index % 4 == 0)
+            {
+                builder.Append(' ');
+            }
+
+            builder.Append(base32[index]);
+        }
+
+        return builder.ToString();
+    }
+
+    private sealed class AccountInputModel
+    {
+        [Required(ErrorMessage = "Choose a username.")]
+        [StringLength(64, MinimumLength = 3, ErrorMessage = "The username must be 3–64 characters.")]
+        public string Username { get; set; } = string.Empty;
+
+        [StringLength(120, ErrorMessage = "That display name is too long.")]
+        public string? DisplayName { get; set; }
+
+        [Required(ErrorMessage = "Choose a password.")]
+        [StringLength(256, MinimumLength = 12, ErrorMessage = "Use at least 12 characters.")]
+        public string Password { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Re-enter the password.")]
+        [Compare(nameof(Password), ErrorMessage = "The passwords do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+
+    private sealed class TotpInputModel
+    {
+        [Required(ErrorMessage = "Enter the six-digit code from your authenticator app.")]
+        public string Code { get; set; } = string.Empty;
+    }
+}
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor
@@ -11590,21 +12699,23 @@ public sealed class RestaurantOptions
   File name:             AccountEndpoints.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/AccountEndpoints.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/AccountEndpoints.cs
-  Size:                  4.6 KiB (4661 bytes)
-  Last modified:         2026-07-20 16:39:34.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  6.8 KiB (6956 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21956038
+  Inode:                 22331452
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               450bcc7e8d3c3450303560969a282e2bf28acc5765f62523425fa02ef93ab570
-  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+  SHA-256:               2b835e820a741fefbfa951bfeaebd2701ab17ed8dee2ef255681f54e29b6b407
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
 
 --- CONTENT ---
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Time;
 
 namespace MyRestaurant.WebApplication.Identity;
 
@@ -11691,6 +12802,48 @@ public static class AccountEndpoints
             return Results.Content(optionsJson, "application/json");
         });
 
+        // Registration ceremony options for the FIRST-ADMINISTRATOR wizard (§3.6). Anonymous — there is
+        // no session during setup — and gated on the zero-administrator condition, so it is dead the
+        // moment an administrator exists. The pending identity lives in the setup cookie (the wizard
+        // minted the person id at its first step); we use that id as the WebAuthn user handle so it
+        // equals the account the wizard will create, which a later discoverable sign-in relies on. Like
+        // the other options endpoints it is fetched (not form-posted), so the antiforgery token is read
+        // from the request header the passkey element supplies.
+        endpoints.MapPost(AccountRoutes.SetupPasskeyCreationOptions, async (
+            HttpContext context,
+            IFirstAdministratorBootstrap bootstrap,
+            SignInManager<Person> signInManager,
+            IAntiforgery antiforgery,
+            IDataProtectionProvider dataProtectionProvider,
+            IClock clock) =>
+        {
+            await antiforgery.ValidateRequestAsync(context);
+
+            if (await bootstrap.AdministratorExistsAsync(context.RequestAborted))
+            {
+                return Results.NotFound();
+            }
+
+            SetupTicketProtector protector = new(dataProtectionProvider);
+            if (!context.Request.Cookies.TryGetValue(SetupCookie.Name, out string? cookie)
+                || !protector.TryUnprotect(cookie, out SetupTicket? ticket)
+                || ticket is null
+                || ticket.HasExpired(clock.UtcNow, SetupCookie.Lifetime))
+            {
+                // No valid in-flight setup — the wizard must be (re)started before a passkey can be added.
+                return Results.BadRequest();
+            }
+
+            string optionsJson = await signInManager.MakePasskeyCreationOptionsAsync(new PasskeyUserEntity
+            {
+                Id = ticket.PersonIdentifier.ToString(),
+                Name = ticket.Username,
+                DisplayName = string.IsNullOrWhiteSpace(ticket.DisplayName) ? ticket.Username : ticket.DisplayName,
+            });
+
+            return Results.Content(optionsJson, "application/json");
+        });
+
         return endpoints;
     }
 }
@@ -11703,15 +12856,15 @@ public static class AccountEndpoints
   File name:             IdentityServiceCollectionExtensions.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
-  Size:                  11.4 KiB (11639 bytes)
-  Last modified:         2026-07-20 16:38:57.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  12.3 KiB (12623 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21956039
+  Inode:                 22331453
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               942b63abf91aa8309b3958812d52207a5e9a1058ca816363a73fdba04e347ab6
-  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+  SHA-256:               0a031a43edd5722f32da0f799485556fd806968aca3a585c79d4061b6a86cebb
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
 
 --- CONTENT ---
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -11719,7 +12872,9 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using MyRestaurant.DataAccess;
 using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Identifiers;
 using MyRestaurant.Domain.Time;
 using MyRestaurant.WebApplication.Authorization;
 using MyRestaurant.WebApplication.Configuration;
@@ -11905,6 +13060,17 @@ public static class IdentityServiceCollectionExtensions
             serviceProvider.GetRequiredService<IClock>(),
             options.RestaurantName));
 
+        // First-administrator bootstrap (§3.6). Writes the whole first account — person, passkey, TOTP
+        // secret, recovery codes, and the self-granted administrator role — in one advisory-locked
+        // transaction, and answers the zero-administrator gate the /setup page and endpoint consult.
+        // Scoped so it shares the request's connection-factory and data-protection lifetimes; it holds
+        // no state and opens its own connection/transaction per commit from the singleton factory.
+        services.AddScoped<IFirstAdministratorBootstrap>(serviceProvider => new DapperFirstAdministratorBootstrap(
+            serviceProvider.GetRequiredService<IDatabaseConnectionFactory>(),
+            serviceProvider.GetRequiredService<IClock>(),
+            serviceProvider.GetRequiredService<IIdentifierFactory>(),
+            serviceProvider.GetRequiredService<IDataProtectionProvider>()));
+
         return services;
     }
 }
@@ -11917,15 +13083,15 @@ public static class IdentityServiceCollectionExtensions
   File name:             ObligationsEnforcement.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
-  Size:                  6.5 KiB (6690 bytes)
-  Last modified:         2026-07-20 16:39:48.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  7.3 KiB (7425 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21956040
+  Inode:                 22331454
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               4516239aa86236fc8527cb9df65a564ad0bb8435623904c889ff4f72e1e867b2
-  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+  SHA-256:               eb5f8f6f581b50ad29fc860f5c98f69d59761122260fbf024e25b7de6f4daf0b
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
 
 --- CONTENT ---
 using System.Security.Claims;
@@ -11971,6 +13137,18 @@ public static class AccountRoutes
 
     /// <summary>POST endpoint returning WebAuthn sign-in (assertion) options — anonymous (§3.3).</summary>
     public const string PasskeyRequestOptions = "/account/passkey/request-options";
+
+    /// <summary>The first-administrator bootstrap wizard — reachable only while zero administrators exist (§3.6).</summary>
+    public const string Setup = "/setup";
+
+    /// <summary>
+    /// POST endpoint returning WebAuthn registration (attestation) options for the setup wizard —
+    /// anonymous (there is no session yet) and gated on the zero-administrator condition (§3.6). It
+    /// reads the pending person identifier from the setup cookie so the WebAuthn user handle matches
+    /// the account that will be created, and is distinct from the signed-in
+    /// <see cref="PasskeyCreationOptions"/> endpoint.
+    /// </summary>
+    public const string SetupPasskeyCreationOptions = "/setup/passkey/creation-options";
 }
 
 /// <summary>
@@ -12657,6 +13835,198 @@ public sealed class RestaurantSignInManager : SignInManager<Person>
         }
 
         return SignInAttemptResult.Failed;
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Identity/SetupState.cs
+################################################################################
+
+--- METADATA ---
+  File name:             SetupState.cs
+  Relative path:         src/MyRestaurant.WebApplication/Identity/SetupState.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/SetupState.cs
+  Size:                  7.1 KiB (7270 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 22331451
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               1058ca1408c02465b4f4bbd7df50637d29d72a8e9164c2d4043cb5dc3ab4e5e1
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
+
+--- CONTENT ---
+using System.Security.Cryptography;
+using System.Text.Json;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
+
+namespace MyRestaurant.WebApplication.Identity;
+
+/// <summary>
+/// Where the first-administrator wizard is (TECHNICAL_SPECIFICATION §3.6). The account step has no
+/// value here — it is the initial state, entered when there is no ticket at all. Each subsequent step
+/// is reached only by completing the previous one, so the wizard cannot be skipped ahead: the page
+/// renders whatever the (tamper-proof) ticket says, and the passkey and TOTP steps each require their
+/// ceremony to have succeeded before the ticket advances.
+/// </summary>
+public enum SetupStep
+{
+    /// <summary>Passkey registration (WebAuthn attestation) — reached after the account details are captured.</summary>
+    Passkey,
+
+    /// <summary>Authenticator (TOTP) enrollment — reached after a passkey is confirmed.</summary>
+    Totp,
+
+    /// <summary>Final review and commit — reached after the TOTP code is confirmed.</summary>
+    Review,
+}
+
+/// <summary>
+/// A confirmed passkey carried between the attestation step and the final commit. Mirrors the fields
+/// of <c>UserPasskeyInfo</c> the store persists — the attestation object and client-data JSON are not
+/// carried, exactly as they are not stored (attestation is 'none', §3.3). Byte arrays serialize as
+/// Base64 in the ticket JSON; the value is then Data-Protection-encrypted, so it is confidential and
+/// tamper-evident in the cookie.
+/// </summary>
+public sealed record SetupPasskey(
+    byte[] CredentialId,
+    byte[] PublicKey,
+    long SignatureCounter,
+    string[]? Transports,
+    string Name,
+    bool IsUserVerified,
+    bool IsBackupEligible,
+    bool IsBackedUp);
+
+/// <summary>
+/// The accumulating state of the <c>/setup</c> wizard (§3.6). Nothing here is written to the database
+/// until the final step commits it in one transaction; until then it lives only in a
+/// Data-Protection-protected cookie, so it is confidential, tamper-evident, and self-contained (no
+/// server-side session store — there is no Redis, ADR-0006).
+///
+/// <para>The <see cref="PersonIdentifier"/> is minted once, at the account step, and reused as the
+/// WebAuthn user handle for the passkey ceremony so it equals the eventual <c>person</c> row's id —
+/// which a discoverable-credential sign-in relies on. <see cref="PasswordHash"/> is the Argon2id PHC
+/// string (the plaintext is hashed immediately and never carried). <see cref="Passkey"/> is present
+/// from the TOTP step onward; <see cref="TotpSecretBase32"/> is generated when the TOTP step is
+/// entered so its QR is stable across re-renders (a mistyped code re-shows the same QR).</para>
+/// </summary>
+public sealed record SetupTicket(
+    Guid PersonIdentifier,
+    DateTimeOffset IssuedAt,
+    SetupStep Step,
+    string Username,
+    string? DisplayName,
+    string PasswordHash,
+    SetupPasskey? Passkey,
+    string? TotpSecretBase32)
+{
+    /// <summary>True once the ticket is older than <paramref name="lifetime"/> (the QR/session expired; start over).</summary>
+    public bool HasExpired(DateTimeOffset now, TimeSpan lifetime) => now - IssuedAt > lifetime;
+}
+
+/// <summary>
+/// Protects and reads the <see cref="SetupTicket"/> with ASP.NET Data Protection. The purpose is
+/// distinct from every other protector in the app (the at-rest TOTP secret, the TOTP enrollment
+/// ticket, the auth/join cookies), so a value from one context can never be unprotected as another.
+/// Constructed ad hoc from the ambient <see cref="IDataProtectionProvider"/> — it holds no state
+/// worth registering in DI.
+/// </summary>
+public sealed class SetupTicketProtector
+{
+    /// <summary>Data-Protection purpose for the setup wizard cookie. Do not change without invalidating in-flight setups.</summary>
+    public const string Purpose = "MyRestaurant.Identity.SetupTicket.v1";
+
+    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+
+    private readonly IDataProtector _protector;
+
+    public SetupTicketProtector(IDataProtectionProvider dataProtectionProvider)
+    {
+        ArgumentNullException.ThrowIfNull(dataProtectionProvider);
+        _protector = dataProtectionProvider.CreateProtector(Purpose);
+    }
+
+    /// <summary>Serializes and protects the ticket into the opaque string carried by the setup cookie.</summary>
+    public string Protect(SetupTicket ticket)
+    {
+        ArgumentNullException.ThrowIfNull(ticket);
+        return _protector.Protect(JsonSerializer.Serialize(ticket, SerializerOptions));
+    }
+
+    /// <summary>
+    /// Unprotects and deserializes a cookie value. Returns <c>false</c> (never throws) when the value
+    /// is missing, tampered, protected with a different purpose/key, or not deserializable — so the
+    /// wizard can treat any bad ticket as "no ticket" and start over.
+    /// </summary>
+    public bool TryUnprotect(string? protectedTicket, out SetupTicket? ticket)
+    {
+        ticket = null;
+        if (string.IsNullOrEmpty(protectedTicket))
+        {
+            return false;
+        }
+
+        string payload;
+        try
+        {
+            payload = _protector.Unprotect(protectedTicket);
+        }
+        catch (CryptographicException)
+        {
+            return false; // tampered, wrong key, or not one of ours
+        }
+
+        try
+        {
+            ticket = JsonSerializer.Deserialize<SetupTicket>(payload, SerializerOptions);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        return ticket is not null;
+    }
+}
+
+/// <summary>
+/// The setup wizard's cookie (§3.6). Short-lived and Data-Protection-protected (see
+/// <see cref="SetupTicketProtector"/>); hardened like the auth cookie (Secure, HttpOnly,
+/// SameSite=Lax) so it survives the same-origin ceremony fetches while staying inaccessible to
+/// script and off-origin requests. Written and cleared by the static-SSR <c>Setup</c> page, and read
+/// by the anonymous setup passkey-options endpoint to recover the pending user handle.
+/// </summary>
+public static class SetupCookie
+{
+    /// <summary>The cookie name.</summary>
+    public const string Name = "myrestaurant.setup";
+
+    /// <summary>How long a setup session (and its passkey/TOTP QR) stays valid before it must be restarted.</summary>
+    public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(30);
+
+    /// <summary>Writes (or overwrites) the protected setup ticket cookie on the response.</summary>
+    public static void Write(HttpResponse response, string protectedTicket)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        response.Cookies.Append(Name, protectedTicket, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Lax,
+            IsEssential = true,
+            Path = "/",
+            MaxAge = Lifetime,
+        });
+    }
+
+    /// <summary>Clears the setup ticket cookie (on completion, on restart, or when it is stale).</summary>
+    public static void Delete(HttpResponse response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        response.Cookies.Delete(Name, new CookieOptions { Path = "/" });
     }
 }
 
@@ -13637,15 +15007,15 @@ return 0;
   File name:             app.css
   Relative path:         src/MyRestaurant.WebApplication/wwwroot/app.css
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/wwwroot/app.css
-  Size:                  10.7 KiB (11003 bytes)
-  Last modified:         2026-07-20 16:44:50.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  12.9 KiB (13227 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21956044
+  Inode:                 22331459
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               59a1a60e37f4dd5c775b28d931253b29f4c380fb960653dee9143ed4d7366042
-  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+  SHA-256:               0cbb5b3d420d3009226b1cc9981602ee8042976d35bf3c472b2adb4c36f6b534
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
 
 --- CONTENT ---
 /*
@@ -14154,6 +15524,118 @@ a:focus-visible,
     margin-top: 1.25rem;
 }
 
+/* First-administrator setup wizard (§3.6). Reuses the account-panel, form-field, TOTP, and
+   recovery-code styles above; these cover only what is specific to the wizard, in the same palette. */
+
+.optional {
+    font-weight: 400;
+    color: var(--ink-soft);
+}
+
+.setup-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.75rem;
+    margin: 0 0 1.5rem;
+    padding: 0;
+    list-style: none;
+    counter-reset: setup-step;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+.setup-step {
+    counter-increment: setup-step;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.setup-step::before {
+    content: counter(setup-step);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 50%;
+    border: 1px solid var(--hairline);
+    background-color: var(--surface);
+    color: var(--ink-soft);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.setup-step.is-current {
+    color: var(--accent-strong);
+    font-weight: 600;
+}
+
+.setup-step.is-current::before {
+    border-color: var(--accent);
+    background-color: var(--surface-raised);
+    color: var(--accent-strong);
+}
+
+.setup-step.is-done::before {
+    content: "\2713"; /* check mark */
+    border-color: var(--accent);
+    background-color: var(--accent);
+    color: #ffffff;
+}
+
+.setup-summary {
+    margin: 0 0 1.5rem;
+    display: grid;
+    gap: 0.6rem;
+}
+
+.setup-summary > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--hairline);
+}
+
+.setup-summary dt {
+    color: var(--ink-soft);
+}
+
+.setup-summary dd {
+    margin: 0;
+    font-weight: 600;
+    color: var(--ink);
+    text-align: right;
+}
+
+.setup-restart {
+    margin-top: 1.25rem;
+}
+
+.setup-callout {
+    margin-bottom: 2rem;
+    padding: 1.25rem 1.5rem;
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    background-color: var(--surface-raised);
+}
+
+.setup-callout h2 {
+    margin: 0.25rem 0 0.5rem;
+    font-size: 1.25rem;
+    color: var(--ink);
+}
+
+.setup-callout p {
+    color: var(--ink-soft);
+    margin: 0 0 0.75rem;
+}
+
+.setup-callout .button-primary {
+    margin-top: 0.25rem;
+}
+
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/wwwroot/js/passkey.js
 ################################################################################
@@ -14162,15 +15644,15 @@ a:focus-visible,
   File name:             passkey.js
   Relative path:         src/MyRestaurant.WebApplication/wwwroot/js/passkey.js
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/wwwroot/js/passkey.js
-  Size:                  6.4 KiB (6582 bytes)
-  Last modified:         2026-07-20 16:40:55.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  6.9 KiB (7076 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21956046
+  Inode:                 22331457
   Hard links:            1
   MIME type:             application/javascript
-  SHA-256:               68b381fea6990932c13190b9ea58ae1893fed4387a44f975288078430667d340
-  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+  SHA-256:               ad51c71ba43503e9a02f7175dbf54717c72a85f17fa865a62f90c5c1fe4ba35b
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
 
 --- CONTENT ---
 // Passkey (WebAuthn) client helper — TECHNICAL_SPECIFICATION §3.3.
@@ -14179,8 +15661,10 @@ a:focus-visible,
 //   * it is a plain classic script (the account pages are static-SSR and load no JS modules), loaded
 //     once from App.razor, guarded against double-definition; and
 //   * the ceremony endpoints are this app's routes (AccountRoutes.PasskeyCreationOptions /
-//     PasskeyRequestOptions) rather than the template's /Account/* paths — keep these two URLs in
-//     sync with ObligationsEnforcement.AccountRoutes.
+//     PasskeyRequestOptions) rather than the template's /Account/* paths — keep these two default
+//     URLs in sync with ObligationsEnforcement.AccountRoutes. An element may override either with a
+//     `creation-options-url` / `request-options-url` attribute; the first-administrator setup wizard
+//     uses this to point attestation at its anonymous /setup/passkey/creation-options endpoint (§3.6).
 //
 // The <passkey-submit> element is form-associated: it intercepts the __passkeySubmit button, runs the
 // browser ceremony, writes {Name}.CredentialJson (or {Name}.Error) into the form, and submits natively
@@ -14214,8 +15698,8 @@ a:focus-visible,
         return response;
     }
 
-    async function createCredential(headers, signal) {
-        const optionsResponse = await fetchWithErrorHandling(CREATION_OPTIONS_URL, {
+    async function createCredential(url, headers, signal) {
+        const optionsResponse = await fetchWithErrorHandling(url, {
             method: 'POST',
             headers,
             signal,
@@ -14225,9 +15709,9 @@ a:focus-visible,
         return await navigator.credentials.create({ publicKey: options, signal });
     }
 
-    async function requestCredential(username, mediation, headers, signal) {
+    async function requestCredential(url, username, mediation, headers, signal) {
         const query = encodeURIComponent(username ?? '');
-        const optionsResponse = await fetchWithErrorHandling(`${REQUEST_OPTIONS_URL}?username=${query}`, {
+        const optionsResponse = await fetchWithErrorHandling(`${url}?username=${query}`, {
             method: 'POST',
             headers,
             signal,
@@ -14246,6 +15730,8 @@ a:focus-visible,
                 operation: this.getAttribute('operation'),
                 name: this.getAttribute('name'),
                 emailName: this.getAttribute('email-name'),
+                creationOptionsUrl: this.getAttribute('creation-options-url') || CREATION_OPTIONS_URL,
+                requestOptionsUrl: this.getAttribute('request-options-url') || REQUEST_OPTIONS_URL,
                 requestTokenName: this.getAttribute('request-token-name'),
                 requestTokenValue: this.getAttribute('request-token-value'),
             };
@@ -14274,13 +15760,13 @@ a:focus-visible,
             };
 
             if (this.attrs.operation === 'Create') {
-                return await createCredential(headers, signal);
+                return await createCredential(this.attrs.creationOptionsUrl, headers, signal);
             } else if (this.attrs.operation === 'Request') {
                 const username = this.attrs.emailName
                     ? new FormData(this.internals.form).get(this.attrs.emailName)
                     : '';
                 const mediation = useConditionalMediation ? 'conditional' : undefined;
-                return await requestCredential(username, mediation, headers, signal);
+                return await requestCredential(this.attrs.requestOptionsUrl, username, mediation, headers, signal);
             } else {
                 throw new Error(`Unknown passkey operation '${this.attrs.operation}'.`);
             }
@@ -15442,6 +16928,372 @@ public sealed class DapperUserStoreTests : IClassFixture<PostgreSqlFixture>, IAs
                 GrantedAt = _clock.UtcNow,
             },
             cancellationToken: cancellationToken));
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.DataAccess.Tests/Identity/FirstAdministratorBootstrapTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             FirstAdministratorBootstrapTests.cs
+  Relative path:         tests/MyRestaurant.DataAccess.Tests/Identity/FirstAdministratorBootstrapTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/Identity/FirstAdministratorBootstrapTests.cs
+  Size:                  16.9 KiB (17354 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 22331460
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               a55173dac2d29a6f417e48d9a5d5e06b41f2e54f9c14248b4b66ae02d28bd0d4
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
+using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Authentication;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.Security;
+using Xunit;
+
+namespace MyRestaurant.DataAccess.Tests.Identity;
+
+/// <summary>
+/// Integration tests for <see cref="DapperFirstAdministratorBootstrap"/> (the <c>/setup</c> commit,
+/// TECHNICAL_SPECIFICATION §3.6) against a real PostgreSQL 17 container. They pin the three things that
+/// make the bootstrap correct: the unlocked <see cref="IFirstAdministratorBootstrap.AdministratorExistsAsync"/>
+/// gate flips once an administrator exists; a create on an empty database writes the whole account —
+/// person, passkey, ten recovery codes, the self-granted <c>administrator</c> role, and all four
+/// <c>security_event</c> rows — in one go, with the TOTP secret and recovery codes round-tripping
+/// through <see cref="DapperUserStore"/> (proving the bootstrap used the same at-rest encoding the sign-in
+/// path reads); and a second create once an administrator already exists writes nothing and reports the
+/// loss (§3.6: "one wins, the other sees 404 on retry").
+///
+/// <para>The bootstrap's zero-administrator condition is global, so — unlike the per-person passkey
+/// tests — the auth tables are truncated before every test. xUnit builds a fresh instance of this class
+/// per test method and runs the methods in a class sequentially, so <see cref="InitializeAsync"/> gives
+/// each test a clean database regardless of order. Own <c>IClassFixture</c> (own container); if no
+/// container engine is available, every test skips.</para>
+/// </summary>
+public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
+{
+    // A plausibly-shaped Argon2id PHC string. The bootstrap stores the wizard-supplied hash verbatim
+    // (it does not hash here, §3.2/§3.6), so the exact bytes never matter — only that it round-trips.
+    private const string SamplePasswordHash =
+        "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0c2FsdA$b3JpZ2luYWxvcmlnaW5hbG9yaWdpbg";
+
+    // A fixed 20-byte secret (exactly 32 Base32 characters) so the round-trip assertion has a known value.
+    private static readonly string TotpSecret = Base32Text.Encode(Bytes(0x5A, 20));
+
+    private readonly PostgreSqlFixture _fixture;
+    private readonly FixedClock _clock = new(new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero));
+    private readonly EphemeralDataProtectionProvider _dataProtectionProvider = new();
+    private readonly UuidV7IdentifierFactory _identifiers = new();
+    private NpgsqlDatabaseConnectionFactory? _connectionFactory;
+
+    public FirstAdministratorBootstrapTests(PostgreSqlFixture fixture) => _fixture = fixture;
+
+    public async ValueTask InitializeAsync()
+    {
+        if (_fixture.ConnectionString is null)
+        {
+            return;
+        }
+
+        // Idempotent: brings the schema (including migration 0002) up so the tables exist.
+        new SchemaMigrationRunner(_fixture.ConnectionString)
+        {
+            MaximumAttempts = 3,
+            DelayBetweenAttempts = TimeSpan.FromMilliseconds(200),
+        }.Run();
+
+        _connectionFactory = new NpgsqlDatabaseConnectionFactory(_fixture.ConnectionString);
+
+        // Reset to a zero-administrator state before each test. CASCADE also clears the child tables
+        // (person_role, passkey_credential, totp_recovery_code, security_event) via their FKs to person.
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(TestContext.Current.CancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            TRUNCATE TABLE person, person_role, passkey_credential, totp_recovery_code, security_event CASCADE;
+            """,
+            cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connectionFactory is not null)
+        {
+            await _connectionFactory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task AdministratorExistsAsync_IsFalseUntilAnAdministratorIsCreated()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperFirstAdministratorBootstrap bootstrap = BuildBootstrap();
+
+        Assert.False(await bootstrap.AdministratorExistsAsync(cancellationToken));
+
+        FirstAdministratorBootstrapResult result = await bootstrap.CreateFirstAdministratorAsync(
+            NewAdmin(_identifiers.Create(), UniqueUsername("exists"), MakePasskey(Bytes(0xA1, 16))),
+            cancellationToken);
+
+        Assert.Equal(FirstAdministratorBootstrapStatus.Created, result.Status);
+        Assert.True(await bootstrap.AdministratorExistsAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateFirstAdministratorAsync_OnAnEmptyDatabase_WritesTheAccountAndSelfGrantsAdministrator()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperFirstAdministratorBootstrap bootstrap = BuildBootstrap();
+
+        Guid personIdentifier = _identifiers.Create();
+        string username = UniqueUsername("owner");
+        UserPasskeyInfo passkey = MakePasskey(
+            credentialId: Bytes(0xA1, 16),
+            publicKey: Bytes(0xB2, 32),
+            signCount: 5,
+            transports: ["internal", "hybrid"],
+            isUserVerified: true,
+            isBackupEligible: true,
+            isBackedUp: true,
+            name: "Owner's laptop");
+
+        FirstAdministratorBootstrapResult result = await bootstrap.CreateFirstAdministratorAsync(
+            NewAdmin(personIdentifier, username, passkey), cancellationToken);
+
+        Assert.Equal(FirstAdministratorBootstrapStatus.Created, result.Status);
+        Assert.Equal(10, result.RecoveryCodes.Count);
+        Assert.Equal(10, result.RecoveryCodes.Distinct().Count());
+
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+
+        // (a) The person row: obligation flags cleared (this account enrolled its own TOTP, §3.5),
+        // active, no contact details, password hash stored verbatim, a real security stamp minted.
+        PersonRow person = await connection.QuerySingleAsync<PersonRow>(new CommandDefinition(
+            """
+            SELECT username AS Username, display_name AS DisplayName, email_address AS EmailAddress,
+                   phone_number AS PhoneNumber, password_hash AS PasswordHash,
+                   must_change_password AS MustChangePassword, must_enroll_totp AS MustEnrollTotp,
+                   is_active AS IsActive, security_stamp AS SecurityStamp
+            FROM person WHERE person_identifier = @Id;
+            """,
+            new { Id = personIdentifier }, cancellationToken: cancellationToken));
+
+        Assert.Equal(username, person.Username);
+        Assert.Equal("Restaurant Owner", person.DisplayName);
+        Assert.Null(person.EmailAddress);
+        Assert.Null(person.PhoneNumber);
+        Assert.Equal(SamplePasswordHash, person.PasswordHash);
+        Assert.False(person.MustChangePassword);
+        Assert.False(person.MustEnrollTotp);
+        Assert.True(person.IsActive);
+        Assert.NotEqual(Guid.Empty, person.SecurityStamp);
+
+        // (b) The passkey row: every registration field the bootstrap carried over, including the three
+        // WebAuthn flags (migration 0002) and the comma-joined transports.
+        PasskeyRow storedPasskey = await connection.QuerySingleAsync<PasskeyRow>(new CommandDefinition(
+            """
+            SELECT credential_id AS CredentialId, public_key AS PublicKey, signature_counter AS SignatureCounter,
+                   transports AS Transports, credential_display_name AS CredentialDisplayName,
+                   is_user_verified AS IsUserVerified, is_backup_eligible AS IsBackupEligible, is_backed_up AS IsBackedUp
+            FROM passkey_credential WHERE person_identifier = @Id;
+            """,
+            new { Id = personIdentifier }, cancellationToken: cancellationToken));
+
+        Assert.Equal(Bytes(0xA1, 16), storedPasskey.CredentialId);
+        Assert.Equal(Bytes(0xB2, 32), storedPasskey.PublicKey);
+        Assert.Equal(5L, storedPasskey.SignatureCounter);
+        Assert.Equal("internal,hybrid", storedPasskey.Transports);
+        Assert.Equal("Owner's laptop", storedPasskey.CredentialDisplayName);
+        Assert.True(storedPasskey.IsUserVerified);
+        Assert.True(storedPasskey.IsBackupEligible);
+        Assert.True(storedPasskey.IsBackedUp);
+
+        // (c) The administrator grant, recorded as its own grantor (§3.6).
+        RoleRow role = await connection.QuerySingleAsync<RoleRow>(new CommandDefinition(
+            """
+            SELECT role_name AS RoleName, granted_by_person_identifier AS GrantedBy
+            FROM person_role WHERE person_identifier = @Id;
+            """,
+            new { Id = personIdentifier }, cancellationToken: cancellationToken));
+
+        Assert.Equal("administrator", role.RoleName);
+        Assert.Equal(personIdentifier, role.GrantedBy);
+
+        // (d) The audit trail (§3.7): four events, all about this person; the self-actions carry a NULL
+        // actor and the role grant records the new administrator as their own actor.
+        List<EventRow> events = (await connection.QueryAsync<EventRow>(new CommandDefinition(
+            """
+            SELECT event_type AS EventType, subject_person_identifier AS Subject, actor_person_identifier AS Actor
+            FROM security_event WHERE subject_person_identifier = @Id;
+            """,
+            new { Id = personIdentifier }, cancellationToken: cancellationToken))).ToList();
+
+        Assert.Equal(4, events.Count);
+        Assert.All(events, e => Assert.Equal(personIdentifier, e.Subject));
+
+        EventRow accountCreated = Assert.Single(events, e => e.EventType == SecurityEventType.AccountCreated);
+        EventRow passkeyRegistered = Assert.Single(events, e => e.EventType == SecurityEventType.PasskeyRegistered);
+        EventRow totpEnrolled = Assert.Single(events, e => e.EventType == SecurityEventType.TotpEnrolled);
+        EventRow roleGranted = Assert.Single(events, e => e.EventType == SecurityEventType.RoleGranted);
+
+        Assert.Null(accountCreated.Actor);
+        Assert.Null(passkeyRegistered.Actor);
+        Assert.Null(totpEnrolled.Actor);
+        Assert.Equal(personIdentifier, roleGranted.Actor);
+
+        // (e) The TOTP secret and recovery codes round-trip through the store, which reads them the way
+        // the sign-in path does. GetAuthenticatorKeyAsync returning the original secret proves the
+        // bootstrap protected it under the encoding the store unprotects with; redeeming one of the
+        // returned plaintext codes proves those codes are exactly the ones persisted (as hashes) and
+        // are single-use.
+        DapperUserStore store = BuildStore();
+        Person? admin = await store.FindByNameAsync(username, cancellationToken);
+        Assert.NotNull(admin);
+        Assert.Equal(personIdentifier, admin!.PersonIdentifier);
+        Assert.Equal(TotpSecret, await store.GetAuthenticatorKeyAsync(admin, cancellationToken));
+
+        Assert.Equal(10, await store.CountCodesAsync(admin, cancellationToken));
+        Assert.True(await store.RedeemCodeAsync(admin, result.RecoveryCodes[0], cancellationToken));
+        Assert.Equal(9, await store.CountCodesAsync(admin, cancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateFirstAdministratorAsync_WhenAnAdministratorAlreadyExists_WritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperFirstAdministratorBootstrap bootstrap = BuildBootstrap();
+
+        FirstAdministratorBootstrapResult first = await bootstrap.CreateFirstAdministratorAsync(
+            NewAdmin(_identifiers.Create(), UniqueUsername("first"), MakePasskey(Bytes(0xA1, 16))),
+            cancellationToken);
+        Assert.Equal(FirstAdministratorBootstrapStatus.Created, first.Status);
+
+        // A second, fully-formed candidate: it got past the unlocked gate in a racing browser, then lost
+        // the re-check under the advisory lock.
+        string loserUsername = UniqueUsername("loser");
+        FirstAdministratorBootstrapResult second = await bootstrap.CreateFirstAdministratorAsync(
+            NewAdmin(_identifiers.Create(), loserUsername, MakePasskey(Bytes(0xC3, 16))),
+            cancellationToken);
+
+        Assert.Equal(FirstAdministratorBootstrapStatus.AdministratorAlreadyExists, second.Status);
+        Assert.Empty(second.RecoveryCodes);
+
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+
+        // Nothing was written for the loser: still exactly one person, one administrator, and no row for
+        // the losing username (the whole transaction rolled back).
+        Assert.Equal(1, await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT count(*)::int FROM person;", cancellationToken: cancellationToken)));
+        Assert.Equal(1, await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT count(*)::int FROM person_role WHERE role_name = 'administrator';",
+            cancellationToken: cancellationToken)));
+        Assert.False(await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "SELECT EXISTS (SELECT 1 FROM person WHERE username = @Username::citext);",
+            new { Username = loserUsername }, cancellationToken: cancellationToken)));
+    }
+
+    // --- helpers -----------------------------------------------------------------------------------
+    private void SkipIfNoContainer()
+        => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+
+    private DapperFirstAdministratorBootstrap BuildBootstrap()
+        => new(_connectionFactory!, _clock, _identifiers, _dataProtectionProvider);
+
+    private DapperUserStore BuildStore()
+        => new(_connectionFactory!, _clock, _identifiers, _dataProtectionProvider, new IdentityErrorDescriber());
+
+    private static NewAdministrator NewAdmin(Guid personIdentifier, string username, UserPasskeyInfo passkey)
+        => new(personIdentifier, username, "Restaurant Owner", SamplePasswordHash, TotpSecret, passkey);
+
+    // Builds a UserPasskeyInfo the way the framework's attestation would. attestationObject /
+    // clientDataJson are set here but the bootstrap does not persist them (attestation is 'none', §3.3).
+    private UserPasskeyInfo MakePasskey(
+        byte[] credentialId,
+        byte[]? publicKey = null,
+        uint signCount = 0,
+        string[]? transports = null,
+        bool isUserVerified = false,
+        bool isBackupEligible = false,
+        bool isBackedUp = false,
+        string? name = null)
+        => new(
+            credentialId,
+            publicKey ?? Bytes(0x20, 16),
+            _clock.UtcNow,
+            signCount,
+            transports,
+            isUserVerified,
+            isBackupEligible,
+            isBackedUp,
+            attestationObject: Bytes(0x30, 4),
+            clientDataJson: Bytes(0x40, 4))
+        {
+            Name = name,
+        };
+
+    private static byte[] Bytes(byte seed, int length)
+    {
+        byte[] value = new byte[length];
+        for (int i = 0; i < length; i++)
+        {
+            value[i] = (byte)(seed + i);
+        }
+
+        return value;
+    }
+
+    private static string UniqueUsername(string prefix) => $"{prefix}_{Guid.NewGuid():N}";
+
+    // Row DTOs for the direct assertion queries. Plain mutable POCOs like Person, so Dapper's default
+    // property mapping applies; every SELECT aliases its snake_case columns to these PascalCase names.
+    private sealed class PersonRow
+    {
+        public string Username { get; set; } = string.Empty;
+        public string? DisplayName { get; set; }
+        public string? EmailAddress { get; set; }
+        public string? PhoneNumber { get; set; }
+        public string PasswordHash { get; set; } = string.Empty;
+        public bool MustChangePassword { get; set; }
+        public bool MustEnrollTotp { get; set; }
+        public bool IsActive { get; set; }
+        public Guid SecurityStamp { get; set; }
+    }
+
+    private sealed class PasskeyRow
+    {
+        public byte[] CredentialId { get; set; } = [];
+        public byte[] PublicKey { get; set; } = [];
+        public long SignatureCounter { get; set; }
+        public string? Transports { get; set; }
+        public string? CredentialDisplayName { get; set; }
+        public bool IsUserVerified { get; set; }
+        public bool IsBackupEligible { get; set; }
+        public bool IsBackedUp { get; set; }
+    }
+
+    private sealed class RoleRow
+    {
+        public string RoleName { get; set; } = string.Empty;
+        public Guid GrantedBy { get; set; }
+    }
+
+    private sealed class EventRow
+    {
+        public string EventType { get; set; } = string.Empty;
+        public Guid Subject { get; set; }
+        public Guid? Actor { get; set; }
     }
 }
 
@@ -17925,15 +19777,15 @@ public sealed class EndToEndScenarios
   File name:             IdentityWiringTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs
-  Size:                  10.3 KiB (10590 bytes)
-  Last modified:         2026-07-20 16:45:17.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  11.0 KiB (11305 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
   Owner:                 kushal:kushal
-  Inode:                 21956053
+  Inode:                 22331462
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               f7f6e227393bbe6f5e41e42b83ad6d26fcbe76c50915b320da693f67be8babbd
-  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+  SHA-256:               3cd28540ecad3c750fb211321cff21f5d27be7d15bd449d99e1e8c9e6bfe84c7
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -18057,6 +19909,21 @@ public sealed class IdentityWiringTests
         TotpEnrollment enrollment = scope.ServiceProvider.GetRequiredService<TotpEnrollment>();
 
         Assert.NotNull(enrollment);
+    }
+
+    [Fact]
+    public void FirstAdministratorBootstrap_IsResolvableInAScope()
+    {
+        // §3.6: the /setup wizard and its options endpoint resolve IFirstAdministratorBootstrap for the
+        // zero-administrator gate and the single advisory-locked commit. Constructing it opens no
+        // connection (only a Data-Protection protector), so this resolves without a database.
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        IFirstAdministratorBootstrap bootstrap =
+            scope.ServiceProvider.GetRequiredService<IFirstAdministratorBootstrap>();
+
+        Assert.IsType<DapperFirstAdministratorBootstrap>(bootstrap);
     }
 
     [Fact]
@@ -18808,6 +20675,177 @@ public sealed class RestaurantClaimsPrincipalFactoryTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Identity/SetupTicketTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             SetupTicketTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/SetupTicketTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/SetupTicketTests.cs
+  Size:                  6.3 KiB (6434 bytes)
+  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 22331461
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               752b92c1ea230dd5a8d2593c18ed368819293a35d10c95bdf61b686ac6c63259
+  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
+
+--- CONTENT ---
+using Microsoft.AspNetCore.DataProtection;
+using MyRestaurant.WebApplication.Identity;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests.Identity;
+
+/// <summary>
+/// Pure tests for the first-administrator setup ticket (TECHNICAL_SPECIFICATION §3.6): the
+/// Data-Protection round-trip carries every field a step needs (including the confirmed passkey and
+/// the TOTP secret), a tampered or foreign-key value is rejected rather than trusted, and the
+/// embedded issued-at bounds how long a setup session stays valid. No server, no container — these
+/// always run. An <see cref="EphemeralDataProtectionProvider"/> gives each test a throwaway key ring.
+/// </summary>
+public sealed class SetupTicketTests
+{
+    private static readonly DateTimeOffset IssuedAt = new(2026, 1, 15, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void Protect_ThenTryUnprotect_RoundTripsEveryField()
+    {
+        SetupTicketProtector protector = NewProtector();
+        SetupPasskey passkey = new(
+            CredentialId: [1, 2, 3, 4],
+            PublicKey: [9, 8, 7, 6, 5],
+            SignatureCounter: 42,
+            Transports: ["internal", "hybrid"],
+            Name: "Setup passkey",
+            IsUserVerified: true,
+            IsBackupEligible: true,
+            IsBackedUp: false);
+        SetupTicket original = new(
+            PersonIdentifier: Guid.NewGuid(),
+            IssuedAt: IssuedAt,
+            Step: SetupStep.Review,
+            Username: "chef",
+            DisplayName: "Head Chef",
+            PasswordHash: "$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHQ$dGFndGFndGFn",
+            Passkey: passkey,
+            TotpSecretBase32: "JBSWY3DPEHPK3PXP");
+
+        string protectedTicket = protector.Protect(original);
+        bool ok = protector.TryUnprotect(protectedTicket, out SetupTicket? roundTripped);
+
+        Assert.True(ok);
+        Assert.NotNull(roundTripped);
+        Assert.Equal(original.PersonIdentifier, roundTripped!.PersonIdentifier);
+        Assert.Equal(original.IssuedAt, roundTripped.IssuedAt);
+        Assert.Equal(SetupStep.Review, roundTripped.Step);
+        Assert.Equal("chef", roundTripped.Username);
+        Assert.Equal("Head Chef", roundTripped.DisplayName);
+        Assert.Equal(original.PasswordHash, roundTripped.PasswordHash);
+        Assert.Equal("JBSWY3DPEHPK3PXP", roundTripped.TotpSecretBase32);
+
+        Assert.NotNull(roundTripped.Passkey);
+        Assert.Equal(new byte[] { 1, 2, 3, 4 }, roundTripped.Passkey!.CredentialId);
+        Assert.Equal(new byte[] { 9, 8, 7, 6, 5 }, roundTripped.Passkey.PublicKey);
+        Assert.Equal(42, roundTripped.Passkey.SignatureCounter);
+        Assert.Equal(new[] { "internal", "hybrid" }, roundTripped.Passkey.Transports);
+        Assert.Equal("Setup passkey", roundTripped.Passkey.Name);
+        Assert.True(roundTripped.Passkey.IsUserVerified);
+        Assert.True(roundTripped.Passkey.IsBackupEligible);
+        Assert.False(roundTripped.Passkey.IsBackedUp);
+    }
+
+    [Fact]
+    public void TryUnprotect_EarlyStepTicket_CarriesNoPasskeyOrSecret()
+    {
+        SetupTicketProtector protector = NewProtector();
+        SetupTicket accountOnly = new(
+            Guid.NewGuid(), IssuedAt, SetupStep.Passkey, "chef", DisplayName: null,
+            PasswordHash: "hash", Passkey: null, TotpSecretBase32: null);
+
+        Assert.True(protector.TryUnprotect(protector.Protect(accountOnly), out SetupTicket? roundTripped));
+        Assert.NotNull(roundTripped);
+        Assert.Equal(SetupStep.Passkey, roundTripped!.Step);
+        Assert.Null(roundTripped.DisplayName);
+        Assert.Null(roundTripped.Passkey);
+        Assert.Null(roundTripped.TotpSecretBase32);
+    }
+
+    [Theory]
+    [InlineData(SetupStep.Passkey)]
+    [InlineData(SetupStep.Totp)]
+    [InlineData(SetupStep.Review)]
+    public void Step_RoundTrips(SetupStep step)
+    {
+        SetupTicketProtector protector = NewProtector();
+        SetupTicket ticket = new(
+            Guid.NewGuid(), IssuedAt, step, "chef", null, "hash", null, "JBSWY3DPEHPK3PXP");
+
+        Assert.True(protector.TryUnprotect(protector.Protect(ticket), out SetupTicket? roundTripped));
+        Assert.Equal(step, roundTripped!.Step);
+    }
+
+    [Fact]
+    public void TryUnprotect_TamperedValue_ReturnsFalse()
+    {
+        SetupTicketProtector protector = NewProtector();
+        string protectedTicket = protector.Protect(SampleTicket());
+
+        // Corrupt the version/header byte; Data Protection authenticates its payload, so any change
+        // fails the integrity check and Unprotect throws — TryUnprotect must swallow that as "false".
+        char[] chars = protectedTicket.ToCharArray();
+        chars[0] = chars[0] == 'A' ? 'B' : 'A';
+        string tampered = new(chars);
+
+        Assert.False(protector.TryUnprotect(tampered, out SetupTicket? ticket));
+        Assert.Null(ticket);
+    }
+
+    [Fact]
+    public void TryUnprotect_ValueFromAnotherKeyRing_ReturnsFalse()
+    {
+        // Two ephemeral providers have different keys, so a ticket protected by one cannot be read by
+        // the other — the same protection a real deployment gets from its persisted key ring.
+        SetupTicketProtector writer = NewProtector();
+        SetupTicketProtector reader = NewProtector();
+
+        string protectedByWriter = writer.Protect(SampleTicket());
+
+        Assert.False(reader.TryUnprotect(protectedByWriter, out _));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not-a-protected-ticket")]
+    public void TryUnprotect_MissingOrGarbageValue_ReturnsFalse(string? value)
+    {
+        SetupTicketProtector protector = NewProtector();
+
+        Assert.False(protector.TryUnprotect(value, out SetupTicket? ticket));
+        Assert.Null(ticket);
+    }
+
+    [Fact]
+    public void HasExpired_IsTrueOnlyPastTheLifetime()
+    {
+        SetupTicket ticket = SampleTicket();
+        TimeSpan lifetime = TimeSpan.FromMinutes(30);
+
+        Assert.False(ticket.HasExpired(IssuedAt, lifetime));
+        Assert.False(ticket.HasExpired(IssuedAt.AddMinutes(30), lifetime)); // exactly at the edge
+        Assert.True(ticket.HasExpired(IssuedAt.AddMinutes(30).AddSeconds(1), lifetime));
+    }
+
+    private static SetupTicketProtector NewProtector() => new(new EphemeralDataProtectionProvider());
+
+    private static SetupTicket SampleTicket() => new(
+        Guid.NewGuid(), IssuedAt, SetupStep.Totp, "chef", "Head Chef", "hash", null, "JBSWY3DPEHPK3PXP");
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.WebApplication.Tests/Identity/TotpEnrollmentTicketTests.cs
 ################################################################################
 
@@ -19223,10 +21261,10 @@ public sealed class RestaurantOptionsTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 139
-  Total size     : 764.0 KiB (782310 bytes)
+  Files dumped   : 144
+  Total size     : 850.0 KiB (870413 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-21T00:54:29-04:00
+  Completed at   : 2026-07-21T08:24:33-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
