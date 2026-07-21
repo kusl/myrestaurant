@@ -8,3 +8,1304 @@ if I can paste the whole folder together in one go
 please do that if possible 
 remember to tell me which files if any I would need to delete 
 
+
+/
+Please continue with the next step 
+and the structured tar zip was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+
+
+Synthesizing TOTP enrollment architecture for restaurant ordering system
+Synthesizing TOTP enrollment architecture for restaurant ordering system
+I'm reviewing the context from the previous conversation to understand what needs to be done. The user wants complete file paths and full file contents for any changes, wants me to examine the current source code in dump.txt, and prefers a structured approach where all files are provided together so there's no ambiguity about which file goes where. They also need to know which files should be deleted. Let me start by looking at the project files to see what we're working with.
+
+
+Listing the project directory to see what files exist
+I need to examine the current state of the files to understand what's been done so far, starting with the main source code file.
+
+
+Relevant chats
+I'm getting context about the myrestaurant project—a .NET 10 Blazor Server restaurant ordering system by Kushal. Looking at the recent work history from July 2026, it seems the focus has been on TOTP enrollment functionality with the EnrollTotpRequired.razor component, though the details are cut off.
+
+Done
+This is the "myrestaurant" project. Let me pull the current state and the most recent work so I continue from the right place.
+
+
+Read the latest terminal output to see current build/test state
+Read the latest terminal output to see current build/test state
+
+Read the latest terminal output to see current build/test state
+The build and tests are passing, so the TOTP enrollment work and SVG namespace fix are complete. Now I'm moving on to implementing the passkey slice, and I want to check the test results in the terminal output to see what's been validated.
+
+Done
+The build is green. Let me see the test results in the truncated section, then map the repo.
+
+
+Scouring documentation to chart next milestone trajectory
+Scouring documentation to chart next milestone trajectory
+
+Read the truncated test-result section of the terminal output
+The test suite is in good shape with all builds passing and the smoke tests working. We've just wrapped up the TOTP enrollment work, so now I need to figure out where we stand in the milestone and what comes next—which looks like the passkey slice. Let me search through the dump to find the relevant context.
+
+Done
+Everything is green: 336 passed, 0 failed, 15 skipped (M6 e2e). Now let me index the dump and read the build-progress doc to confirm the exact next slice.
+
+
+Scrutinizing project foundation and BUILD_PROGRESS documentation
+Scrutinizing project foundation and BUILD_PROGRESS documentation
+
+Index all files in the repo dump with line numbers
+Looking at the project structure, there's already a solid foundation for passkey support with database migrations for WebAuthn state and a Razor component for managing passkeys in the account section. I should check the BUILD_PROGRESS.md file to understand what's been completed and what still needs to be done.
+
+Done
+Now let me read the build-progress doc to confirm exactly what's done and what the next slice is.
+
+
+Surveyed completed authentication work and charted bootstrap endpoint implementation strategy
+Surveyed completed authentication work and charted bootstrap endpoint implementation strategy
+
+Read docs/BUILD_PROGRESS.md in full
+I'm reviewing what's been completed so far across the authentication implementation—identity persistence with Argon2id hashing, sign-in and authorization setup, password flows with middleware, TOTP enrollment, and passkeys support. Looking ahead at the remaining work, the next priority is building out the /setup endpoint for bootstrapping the first admin account, which needs to use database-level locking to handle the zero-administrator scenario safely.
+
+Before diving into implementation, I need to understand the full scope by reviewing the technical specification for the bootstrap wizard, then examining the existing codebase—particularly the user store, role management, migrations, and the current account/sign-in infrastructure—to see what needs to be extended or modified.
+
+Done
+This is very clear now. M2 slices 1–5 (identity, sign-in wiring, password flow, TOTP, passkeys) have landed. The next step is Slice 6: the /setup first-admin bootstrap (§3.6). Let me read the spec sections that govern it.
+
+
+Examined bootstrap setup flow and traced implementation patterns throughout codebase
+Examined bootstrap setup flow and traced implementation patterns throughout codebase
+
+List section headers of the technical specification
+I'm searching through the spec to locate section 3.6 and identify its line numbers.
+
+
+Find §3.6 bootstrap section boundaries
+
+Read §3.1–§3.7 of the technical specification, including the bootstrap section
+Looking at the §3.6 bootstrap specification, the /setup endpoint is only accessible when no administrators exist yet. The wizard guides the first admin through registering a passkey, setting up TOTP with recovery codes, and granting them administrator privileges—all within a single transaction that uses an advisory lock to prevent race conditions.
+
+Now I need to examine the existing codebase to understand how to implement this. I'm checking the database schema for the person and person_role tables, reviewing DapperUserStore to see how user creation works, looking at the existing TOTP enrollment and passkey handling patterns, and tracing through the account endpoints and identity service configuration to understand where the setup flow fits into the routing and middleware stack.
+
+Done
+I have the full §3.6 bootstrap contract. Now I need to study the existing code the bootstrap must reuse and extend. Let me read the schema for person/person_role, then the user store, Person entity, and the enrollment/passkey plumbing.
+
+
+Architecting database schema with authentication and role management
+Architecting database schema with authentication and role management
+
+Read migration 0001 schema — need person, person_role, passkey_credential, recovery/security_event tables
+I'm mapping out the core database schema for the bootstrap—the person table tracks authentication state with fields for password changes and TOTP enrollment, while person_role establishes role assignments with a foreign key constraint back to person, and security_event logs key account activities like creation and role grants.
+
+Now I need to examine the DapperUserStore implementation to understand how user creation works, how roles are managed, the transaction handling, and how it connects to the database—this is the critical piece for the bootstrap logic.
+
+Done
+Now the critical file — the user store. Let me read it in full to understand CreateAsync, the connection model, the role paths, and the passkey store.
+
+
+Architected multi-step bootstrap wizard with transactional atomicity safeguards
+Architected multi-step bootstrap wizard with transactional atomicity safeguards
+
+Read DapperUserStore.cs in full
+I'm getting a clearer picture of how the store operates—each method manages its own database connection lifecycle rather than holding a persistent one. The CreateAsync method safely inserts person records and auto-populates key fields, but role assignments through AddToRoleAsync aren't supported directly, so I'll need a separate transactional service to handle those operations. The connection factory pattern is central to how this all works together.
+
+For the bootstrap flow, I'm realizing this needs to be a multi-step wizard rather than a single operation. The passkey registration and TOTP enrollment are interactive ceremonies that span multiple HTTP requests—the browser performs WebAuthn ceremonies and the user scans a QR code and enters a TOTP code. Only the final step, granting the administrator role, happens in a single transaction with an advisory lock to ensure atomicity and prevent race conditions during that critical moment.
+
+The trick is to collect all the data—username, display name, passkey credential, TOTP secret, recovery codes—into a pending in-memory state (or a Data-Protection-encrypted ticket) as the user progresses through the wizard steps, then commit everything to the database in one atomic transaction at the end.
+
+But the .NET passkey framework is designed to persist credentials through its store immediately after the attestation ceremony completes, which conflicts with holding everything until the final commit step.
+
+The real issue is that WebAuthn attestation requires a stable user handle (the person's ID) in the creation options, but the person doesn't exist in the database yet during bootstrap. I need to generate the person identifier upfront so the user handle is consistent, then create the person record with that same identifier when committing the transaction.
+
+Let me examine how the existing passkey and TOTP enrollment flows work — looking at the AccountEndpoints, the passkey handlers, the Passkeys page, and the SignIn patterns — so I understand the exact API surface I'm working with and can design the bootstrap flow to match. I'll organize these file reads by grouping the account endpoints and identity setup together first.
+
+Show less
+Done
+The store is clear: no held connection, CreateAsync inserts a person, role grants deliberately throw (they need the grantor + a transaction — that's this slice). Now let me read the passkey/TOTP plumbing the wizard must reuse: the account endpoints, identity wiring, the TOTP enrollment service, and the passkey contracts.
+
+
+Architecting passkey attestation verification and response handling
+Architecting passkey attestation verification and response handling
+
+Read AccountEndpoints.cs and IdentityServiceCollectionExtensions.cs
+I'm mapping out the passkey ceremony API surface: the sign-in manager creates attestation options for passkey registration and assertion options for authentication, with an IPasskeyHandler<Person> registered to handle the flow.
+
+For registration, PerformPasskeyAttestationAsync verifies the attestation and returns a PasskeyAttestationResult containing the user's passkey info, while for sign-in, RestaurantSignInManager.PasskeySignInAsync uses PerformPasskeyAssertionAsync to verify the assertion. I need to check how RestaurantSignInManager and TotpEnrollment implement these methods to understand the enrollment ticket and secret mechanism.
+
+Done
+Now the sign-in manager (for the exact passkey attestation/assertion API) and the TOTP enrollment service (which the wizard reuses for QR + confirm + recovery codes).
+
+
+Architected passkey wizard flow with transaction-based state management
+Architected passkey wizard flow with transaction-based state management
+
+Read RestaurantSignInManager.cs and TotpEnrollment.cs in full
+I'm identifying the key API methods I need: PerformPasskeyAssertionAsync returns a result object with success status, user, and passkey details, while for registration I'll use SignInManager.PerformPasskeyAttestationAsync along with MakePasskeyCreationOptionsAsync to set up the flow.
+
+Now I'm thinking through the bootstrap wizard design — the /setup route should only be accessible when no administrators exist, and since the account pages use server-side rendering with form posts while the passkey ceremony is JavaScript-driven, I need to figure out how to persist wizard state across these different request patterns.
+
+The cleanest approach would be to use a Data-Protection-protected ticket (similar to the existing TotpEnrollmentTicket) that threads through hidden form fields and the passkey flow, though the UserPasskeyInfo with its binary public key bytes and credential ID is large and awkward to base64-encode into a hidden field. The alternative is holding pending state server-side in a setup session cookie, but that requires either an in-memory cache or a new session store — both problematic given the app has no Redis or external bus in v1, and in-memory state is fragile across restarts. Let me reconsider what the spec actually requires for the wizard flow.
+
+The key realization is that both the passkey ceremony and TOTP enrollment need an existing identity to work with — a WebAuthn user handle and a place to store the TOTP secret — yet everything must commit in a single transaction. The solution is to generate the person identifier upfront in the wizard's first step using UuidV7IdentifierFactory, stash it in the protected ticket, and use it as both the WebAuthn user handle and the TOTP subject. Then the passkey attestation is verified and carried forward in the ticket without being persisted, while TOTP is confirmed against the ticket's secret. At the final commit, a single transaction handles everything: advisory lock, recheck for zero admins, then insert the person with password hash and TOTP secret, insert the passkey credential, insert recovery codes, grant the person role, and log security events.
+
+Now I'm checking the signature of PerformPasskeyAttestationAsync — in .NET 10, the flow starts with MakePasskeyCreationOptionsAsync which takes a PasskeyUserEntity, returns the options JSON, and stashes the attestation state somewhere for later verification.
+
+Then PerformPasskeyAttestationAsync reads that state back, verifies the attestation object against the challenge, and returns a result with the credential info — but it doesn't persist anything. The key insight is that attestation verification doesn't require the user to already exist in the database; it just validates the cryptographic proof.
+
+I should double-check the exact API names against the .NET 10 source to be sure, but the existing code already uses these APIs and they've been verified against the framework, so I'm confident in the approach. I need to trace through the existing registration flow in the Passkeys and PasskeySubmit components, along with the JavaScript and contract definitions, to understand exactly how the passkey gets persisted so I can replicate that pattern in the setup wizard.
+
+Show less
+Done
+Now the passkey UI + JS + contracts, plus the SignIn page and App.razor, to see exactly how attestation is performed and persisted today (the wizard must mirror this, but defer persistence to the final transaction).
+
+
+Architecting single-page wizard consolidating setup state securely
+Architecting single-page wizard consolidating setup state securely
+
+Read Passkeys.razor, PasskeySubmit.razor, and PasskeyContracts.cs
+I'm looking at the passkey attestation API structure—the SignInManager handles the attestation process and returns a result with the passkey data, which then gets persisted through UserManager.AddOrUpdatePasskeyAsync. There's also a method for creating the initial passkey options, though the thought cuts off there. The creation-options endpoint is currently locked behind authorization, but for setup I need it to be anonymous and gated only when there are zero admins. I'm considering two paths: either create dedicated setup endpoints that bypass the auth requirement, or check if the passkey JavaScript is flexible enough to point at different endpoints. Let me look at how the passkey submission is wired up to see if I can reuse the existing components or need to build setup-specific ones.
+
+For carrying the passkey data across the setup flow, I'm thinking through whether to store the raw attestation response and re-verify it at the end, or perform the attestation immediately and serialize the resulting UserPasskeyInfo into the protected setup ticket. The second approach is cleaner since the ceremony state is single-use anyway—I'll do the attestation at the passkey step, base64-encode the binary fields, stash them in the ticket, then deserialize and insert at commit time.
+
+The core idea is consolidating all pending setup state into a single Data-Protection-protected cookie that accumulates across steps: the person ID, username, display name, password hash (computed upfront so we never hold plaintext), the verified passkey info, and the TOTP secret. Recovery codes get generated only at the final commit, and that's where I'll grab an advisory lock, recheck everything, and insert atomically.
+
+Size-wise this works fine—even with the passkey public key, credential ID, password hash, and TOTP secret all serialized and encrypted, we're well under the 4KB cookie limit. Though there's a tension here: the existing pattern uses protected tickets in hidden form fields rather than cookies, which is cleaner and more testable. The challenge is that the passkey ceremony submits a form, so the accumulated state needs to survive that round-trip somehow.
+
+I'm leaning toward a single-page multi-step wizard where a protected setup ticket gets carried in a hidden field through each step. Each POST validates the incoming ticket, advances to the next step, and re-renders with an updated ticket. When the passkey step completes, the passkey-submit element posts the attestation credential JSON alongside the current ticket, and the handler verifies it using the passkey attestation logic.
+
+But there's a dependency: the passkey attestation verification reads the challenge from a cookie that gets set when the browser fetches creation-options. So I need a creation-options endpoint that's anonymously accessible (since there's no session during setup) but only works while zero admins exist. The endpoint needs the pending person ID from the setup ticket to use as the WebAuthn user handle, so the passkey-submit element will need to send the setup ticket when fetching creation-options.
+
+Let me examine how passkey.js constructs its fetch requests and whether I can parameterize the endpoint to pass the ticket along with the other necessary data. I'll also need to review the existing setup flow, routing, and wiring to finalize how this all connects.
+
+Show less
+Done
+Now passkey.js (to see how the ceremony endpoints are parameterized), the SignIn page, App.razor, ObligationsEnforcement/AccountRoutes, and RestaurantOptions.
+
+
+Architected setup flow using protected cookies and configurable passkey endpoints
+Architected setup flow using protected cookies and configurable passkey endpoints
+
+Read wwwroot/js/passkey.js in full
+I'm looking at how passkey.js currently has hardcoded endpoint URLs, and I need to decide whether to make these configurable through attributes on the <passkey-submit> element so the setup wizard can point to different endpoints like /setup/passkey/creation-options instead of the default account routes. This would involve updating both passkey.js and PasskeySubmit.razor to support optional URL parameters.
+
+The alternative would be to reuse the existing account endpoint but make it work anonymously during setup by reading the pending person ID from the setup ticket, but that's messier since the endpoint currently requires authorization and derives the user from the signed-in context.
+
+I'm going with the first approach — parameterizing the passkey element with optional creation-options-url and request-options-url attributes that default to the current routes, then creating a dedicated anonymous endpoint at POST /setup/passkey/creation-options that reads the setup ticket to get the pending person details and calls the creation options logic. The challenge is that the passkey element currently only sends the antiforgery header in its POST request, so I'll need to figure out how to pass the setup ticket along with it.
+
+Actually, I'm realizing the setup endpoint doesn't strictly need the ticket itself — it just needs a stable WebAuthn user handle and username for the PasskeyUserEntity. Since there's only one bootstrap in flight per browser at a time, the user handle just needs to stay consistent between the creation-options call and the attestation within the same ceremony. The key insight is that the WebAuthn user handle doesn't have to match the person ID — it's just stored separately in the credential record.
+
+For the assertion flow, the framework looks up the passkey by credential ID from the store, and for discoverable credentials, the user handle returned by the authenticator gets validated against the person's user ID string. So the PasskeyUserEntity.Id used during creation must match what the authenticator will return during sign-in.
+
+This means I need to generate the person ID before calling the passkey creation-options endpoint, then pass it as the user handle. The setup page can hold the protected setup ticket in a hidden field, and when adding a passkey, the passkey element fetches creation-options while including that ticket—similar to how the Request operation reads the username from a form field.
+
+But modifying passkey.js feels risky since it's browser code I can't easily test. A cleaner approach would be using a short-lived, Data-Protection-protected setup cookie that carries the pending person ID, username, display name, password hash, and (as the ceremony progresses) the verified passkey and TOTP data—essentially making the cookie itself the entire setup state.
+
+This eliminates the need for hidden fields or sending the ticket in fetch requests. The setup page reads the cookie to determine the current step, and the passkey creation-options endpoint reads it to get the user handle for generating options. Each POST then advances the state in the cookie.
+
+However, the existing creation-options endpoint requires authentication and uses the signed-in user, but during setup there's no signed-in user yet. So I need a separate anonymous endpoint for setup, which means passkey.js needs to support a configurable URL for the setup flow. The minimal change is adding optional attributes to allow pointing to different creation-options and request-options endpoints during setup.
+
+For the SetupTicket design, I'm using a Data-Protection-protected cookie to carry state across the setup flow, storing version, pending person ID, username, display name, password hash, optional passkey info, optional TOTP secret, and issued-at timestamp. The account step presents a form for credentials and validates them on submission.
+
+The passkey step is mandatory — it displays the passkey registration UI and won't advance until attestation succeeds and the verified passkey is serialized into the ticket. The TOTP step comes next.
+
+For TOTP, I need to generate a secret once when entering that step and keep it in the ticket so re-renders show the same QR code. On confirmation, I validate the user's code against that secret and advance to the commit step if it matches. I'm realizing I have an existing TotpEnrollment class that generates secrets and QR codes, but it's designed for persisted enrollments that write to the database — for the setup flow I need the lower-level TOTP utilities to verify without persisting yet.
+
+The commit step then shows a review page and runs a final transaction that acquires an advisory lock, re-checks the setup state, and creates the administrator account. Then I need to insert the person_role record for the administrator, log security events for account creation, passkey registration, TOTP enrollment, and role assignment, commit the transaction, clear the setup cookie, and sign the new admin in while displaying the recovery codes once. I'm debating whether to generate the recovery codes during the commit step or earlier—generating them at commit keeps everything in a single transaction and ensures they're shown only once, which feels cleaner.
+
+Now I'm thinking about how to gate the /setup endpoint itself to only allow access when there are zero administrators, returning a 404 otherwise. I'll need a lightweight service to check if any administrators exist.
+
+For the UX side, the /setup page and endpoints will call this check on entry and return 404 if an admin is found. The real enforcement happens at commit time with the advisory lock and recheck, but the page-level check keeps users from even seeing the setup flow.
+
+Since no admin exists yet, nobody can sign in, so /setup and the passkey creation endpoints need to be completely anonymous with no authorization requirement. I need to verify that anonymous users can actually access the /setup page by checking how Routes.razor and Program.cs handle authorization, and whether there's a fallback [Authorize] that would block it. I'm also thinking about UX — while the spec doesn't require it, redirecting users to setup when no admins exist would be helpful, though the current build status notes there's no in-app way to create admins yet.
+
+I'm leaning toward adding a minimal indicator on the sign-in page when zero admins exist, since that's where fresh deployments naturally funnel anonymous users. It's just one cheap indexed count query, so the performance hit is acceptable. and then I'll review the wiring and obligations tests to make sure everything connects properly before implementing the solution.
+
+Show less
+Done
+Now the SignIn page, App.razor, the routes/obligations enforcement, the options, Program.cs, Home/Routes, and the two web tests I'll extend.
+
+
+Strategizing optimal file placement for seamless setup integration
+Strategizing optimal file placement for seamless setup integration
+
+Read SignIn.razor, App.razor, Home.razor, Routes.razor
+Home.razor is the right place for the setup pointer since it's already anonymous and accessible to visitors, and it's interactive-server so a database check there won't cause issues. This avoids modifying SignIn.razor's logic and puts the setup flow on the most natural landing surface.
+
+Now I need to review the remaining files — ObligationsEnforcement.cs for the account routes and exemption logic, RestaurantOptions.cs for configuration like the restaurant name and RP ID, Program.cs to understand the middleware order and endpoint mapping, the ObligationsMiddleware itself, the web tests, and the IDatabaseConnectionFactory to see how database access is structured.
+
+Done
+Now the routes/exemptions, options, connection factory, Program.cs, and the obligations middleware.
+
+
+Weighing middleware exemptions and defensive security measures
+Weighing middleware exemptions and defensive security measures
+
+Read ObligationsEnforcement.cs and ObligationsMiddleware.cs
+Looking at the options, connection factory, and Program.cs setup along with the wiring and obligations tests. The obligations middleware only processes authenticated principals, so anonymous requests to /setup pass through fine. I should still add /setup to the exemption list defensively in case an authenticated non-admin somehow reaches it—though they'd hit a 404 from the setup gate anyway. I'm also reconsidering /sign-in since it's not currently exempt, and I need to think through how a user with an obligation would actually access that endpoint. Actually, exempting /setup creates a risk: an authenticated user with an obligation could theoretically reach it and bypass the enforcement pipeline, even though the zero-admins scenario that would allow this is practically impossible. Since the setup flow keeps users anonymous until the very end—signing them in only after creating the first admin with no obligations set—the middleware won't interfere with the legitimate flow anyway. So I'll leave /setup non-exempt to be safe and avoid adding unnecessary test coverage.
+
+Now I'm reviewing the remaining files: RestaurantOptions.cs, IDatabaseConnectionFactory.cs, Program.cs, and the web tests.
+
+Show less
+
+Read RestaurantOptions.cs and the connection factory interface + Npgsql implementation
+I need to review the Program.cs file to understand the middleware ordering, endpoint configuration, and service registration, then look at the existing web tests and the Person entity along with the migration to see what I'm working with.
+
+Done
+Now Program.cs and the two web tests I'll extend, plus Person and migration 0002.
+
+
+Architected setup endpoints and reviewed authentication claims structure
+Architected setup endpoints and reviewed authentication claims structure
+
+Read Program.cs in full
+I'm seeing how the setup endpoints and services fit into the existing architecture—I can add them either within the existing MapRestaurantAccountEndpoints() and AddRestaurantIdentity() methods or create dedicated setup-specific ones, then register the setup service and protector alongside the identity configuration.
+
+The Razor setup page will be auto-discovered, and I need to handle antiforgery validation the same way the existing passkey endpoints do—manually calling ValidateRequestAsync and passing the token through the PasskeySubmit element. Now I'm going to review the test files, the Person model, migrations, and the RestaurantClaimsPrincipalFactory to understand the claims structure for sign-in after setup completion.
+
+Done
+Now the two web tests, the Person entity, migration 0002, and the claims factory (for claim-type constants).
+
+
+Examined existing test patterns and domain helper signatures comprehensively
+Examined existing test patterns and domain helper signatures comprehensively
+
+Read migration 0002, Person.cs, and RestaurantClaimsPrincipalFactory.cs
+I'm reviewing the existing web tests and examining the domain helpers' public signatures for RecoveryCode, SecretGenerator, Sha256Hashing, SecurityEventType, Base32Text, Rfc6238Totp, and TotpProvisioningUri, then looking at how DapperUserStorePasskeyTests and PostgreSqlFixture are structured to model my integration test setup.
+
+Done
+Now the wiring/obligations tests, the passkey integration test + fixture (to model a setup test), the SecurityEventType vocabulary, and the Domain helper signatures.
+
+
+Architected comprehensive setup wizard with bootstrap, tickets, and integration tests
+Architected comprehensive setup wizard with bootstrap, tickets, and integration tests
+
+Read IdentityWiringTests.cs and ObligationsEnforcementTests.cs
+I'm working through the test structure for the wiring, making sure the setup service resolves correctly. The key constraint is that AddRestaurantIdentity only depends on services already registered before it, and since my setup service will depend on IDatabaseConnectionFactory, I need to verify the registration order works properly.
+
+Now I'm deciding where the bootstrap class should live — it's fundamentally a DataAccess concern since it handles raw SQL, transactions, and advisory locks, but it also needs to use the same Data Protection purpose string that the store uses for TOTP secrets so decryption works consistently later.
+
+The store manages its own connections per method, so I can't share a transaction through it. Instead, I'll have the bootstrap accept the TOTP secret already protected by the WebApplication layer using an IDataProtector, which means I need to expose that purpose constant from the store so both components use the same value. I'll change the store's const from private to internal so the bootstrap can reference it directly—that's simpler than extracting a separate purposes class. The bootstrap will need the IDataProtectionProvider injected to protect the plaintext secret using the same purpose constant.
+
+The bootstrap handles the full registration flow: it takes the advisory lock, rechecks, then inserts the person, passkey, recovery codes, and role assignments as raw SQL in DataAccess. It receives the plaintext TOTP secret and generates recovery codes using the existing Domain utilities (RecoveryCode.GenerateSet() and Sha256Hashing.Hash), then returns the plaintext codes to the caller—no issue there since DataAccess already depends on Domain.
+
+For the passkey, the bootstrap can accept UserPasskeyInfo directly since DataAccess already references the framework through the store's use of IUserPasskeyStore, so it has access to that type and can extract the fields needed for insertion into the passkey_credential table.
+
+The challenge is that the WebApplication needs to carry the verified passkey across requests in the setup ticket, which means serializing and deserializing UserPasskeyInfo. I'll serialize the essential fields (credential ID, public key, sign count, transports, name, and backup flags) into the ticket, then reconstruct a UserPasskeyInfo at commit time to pass to the bootstrap — or alternatively, I could define a small DTO in DataAccess to hold just the raw fields and keep the bootstrap's signature cleaner.
+
+Defining the bootstrap API... Writing the Dapper implementation... Inserting recovery code hashes, then the person record with initial security settings, the passkey credential with transport details, and recovery codes. After that, granting the administrator role to the new person and logging security events for account creation, passkey registration, TOTP enrollment, and the self-granted role — making sure the actor reference handles nulls for system events and self-references for the role grant.
+
+For transports, I'm joining the array with commas to match the store's behavior, replicating the logic inline to avoid coupling.
+
+Now moving to the WebApplication side with the SetupTicket...
+
+I'll need a SetupSession record to hold the state, a protector for the cookie, and a SetupWizard service that checks if setup is available by delegating to the bootstrap, reads and writes the setup cookie, and manages step progression.
+
+This is accumulating quite a few classes, so I'm thinking through the minimal set of files needed: FirstAdministratorBootstrap in the DataAccess layer...
+
+Adding more files... ector via the setup-state class, which can create its own protector from the injected IDataProtectionProvider. Then I need to add route constants for setup and passkey creation options to the obligations enforcement file. The Razor component needs optional parameters to pass creation and request options URLs through to the underlying element, and the passkey JavaScript needs to read those optional URLs to fetch the appropriate options.
+
+I'll wire everything together by mapping the setup endpoints in Program.cs, and handle the first-run experience by adding a pointer to /setup on the Home page when no admins exist—though I'm thinking it's cleaner to avoid coupling the interactive component directly to the database, so I'll place that check elsewhere instead. , I could show a banner on Home without a DB check, but that creates a confusing 404 after setup. Better to gate it via the service—two cheap queries are acceptable. Actually, I'm reconsidering: the SignIn page is static SSR with a single render, which is cleaner, but a fresh deploy's first hit lands on Home (anonymous, no redirect), and showing just "The application shell is running…" without setup guidance is poor UX. So I'll add a minimal gated banner to Home instead and keep the change focused.
+
+Now I'm realizing that modifying Home, passkey.js, and PasskeySubmit together is a lot of surface area. Let me see if I can avoid the passkey.js and PasskeySubmit changes. The existing /account/passkey/creation-options endpoint requires authorization and pulls the user from context, so I can't easily make it handle both authenticated and anonymous cases. I could try reusing that endpoint for setup, but the auth requirement blocks that approach.
+
+The cleanest path forward is to add a configurable creation-options URL to passkey.js with a sensible default—existing callers won't pass the new attribute and will fall back to the constant, so it's low-risk. I'll need to touch passkey.js, but there's no way around it if the URL needs to differ between flows.
+
+Alternatively, I could overload the existing /account/passkey/creation-options endpoint to handle both authenticated and setup flows: drop the RequireAuthorization() check and branch inside based on whether the user is authenticated or has a valid setup cookie with zero admins. This keeps passkey.js and PasskeySubmit untouched, though it makes the endpoint anonymous and adds branching logic—but the anonymous path is safe since it only works with a valid setup cookie and zero admins. The browser automatically sends the setup cookie with the fetch request, so the endpoint can read it without any JavaScript changes. I'm leaning toward a dedicated /setup/passkey/creation-options endpoint to keep concerns separated and maintain clear documentation of what's authenticated versus what's open. The JavaScript modification needed is minimal—just reading an attribute with a fallback—and it's worth it to keep each endpoint focused on a single responsibility. The cookie approach is the right fit here—it's the natural channel for passing the pending person ID and username to the creation-options endpoint without a form body, and it handles the wizard state across re-renders cleanly. I'll set it up as myrestaurant.setup with Data-Protection, HttpOnly, Secure, and SameSite=Lax flags, keeping it short-lived. Since Setup.razor is static SSR like the account pages, I can manage it the same way through HttpContext.Response.Cookies.
+
+For the serialized content, I'm using a pipe-delimited format with base64 encoding for binary data, protected by Data Protection, starting with a version tag and the pending person ID.
+
+I need to track progress through the setup flow explicitly, so I'll add a step enum that moves through Passkey → Totp → Review as each stage completes. The GET handler renders the appropriate form based on the current step. I'll also include username, display name, and the password hash (which is PHC format and safe to embed since it doesn't contain the pipe delimiter I'm using).
+
+For passkeys, once we reach the Totp step, I'll store the credential ID, public key, sign count, transports, name, and backup flags. The TOTP secret gets generated when entering the Totp step so the QR code stays consistent across re-renders, and it's stored in base32 format which is safe to delimit with pipes.
+
+I'm going to use JSON serialization with System.Text.Json wrapped in Data Protection instead of pipe-delimited fields—it's cleaner and handles escaping automatically. I'll define a SetupTicket record in a new SetupState.cs file with fields for the person identifier, issued timestamp, current step, username, and display name.
+
+Defining the SetupTicket record... Writing the protector methods...
+
+Actually, I should simplify this — the bootstrap can just stamp created_at as clock.UtcNow for all rows consistently, so I don't need to preserve the passkey's original CreatedAt. Instead of passing a full UserPasskeyInfo to the bootstrap, I'll pass just the raw passkey fields and let the bootstrap handle the timestamp itself. This avoids forcing a CreatedAt value and keeps the bootstrap input simpler — either a small passkey DTO from DataAccess or just the individual fields, rather than a type that couples the web layer to data access. for the passkey and keep it clean, I'll have the bootstrap accept a UserPasskeyInfo (it's already the store's currency) and stamp created_at = now itself. The WebApplication reconstructs a UserPasskeyInfo from the ticket (with a placeholder CreatedAt) to hand to the bootstrap. Clean enough. UserPasskeyInfo's ctor requires createdAt; I'll pass clock.UtcNow (it'll be overwritten by the bootstrap's own now anyway — actually the bootstrap will read the fields it needs and set created_at=now, ignoring passkey.CreatedAt). Good.
+
+Now I need to check what properties UserPasskeyInfo exposes. Looking at what the store reads from the passkey object — credential ID, public key, created at, sign count, transports, user verification status, backup eligibility, backed up status, attestation object, and client data JSON — I'll construct the ctor to match exactly what the store's ToPasskeyInfo method does, with Name as an init property.
+
+Now the bootstrap will pass the sign count to the INSERT as a long integer. Next up is the Setup.razor page, which handles the static server-side rendering flow for the wizard. I'm injecting the bootstrap service, password hasher, sign-in manager, user manager, identifier factory, clock, data protection provider, restaurant options, and navigation manager.
+
+The page logic reads a setup cookie into a ticket on initialization. If an administrator already exists, it returns a 404 and clears any stale cookie, short-circuiting all POST handlers with the same check. Otherwise, it determines the current step based on the ticket: no valid ticket means starting at the Account step to collect credentials, while a valid ticket advances through Passkey, Totp, or Review steps, displaying recovery codes after successful completion.
+
+For the Account form, I'm validating the username (3-64 characters, enforced by database constraint too) and password (at least 12 characters to match the identity policy). Rather than instantiating a user just to run the password validators, I'll do a straightforward length check against the configured IdentityOptions.Password.RequiredLength to keep it simple and DRY.
+
+I'm also checking if the username is already taken using UserManager.FindByNameAsync() as a pre-check before commit—though realistically during setup no other persons exist yet, the database UNIQUE constraint is the real guard, and I'll surface a friendly error if there's a collision.
+
+Then I'll generate a person ID, hash the password using Argon2id, build a ticket with the Passkey step, write it to a cookie, and redirect to the setup page.
+
+For the Passkey step itself, I'm rendering the passkey creation element that points to the options endpoint and setting up the form to handle the submission.
+
+In the RegisterPasskeyAsync handler, I reload the ticket to verify we're still on the Passkey step, validate the credential JSON, perform the attestation verification, and if successful, extract the passkey data and assign it a default name. Then I generate a TOTP secret using RFC 6238, update the ticket to move to the TOTP step, and redirect back to setup.
+
+For the TOTP step, I'm rendering a QR code from the secret with a provisioning URI that includes the restaurant name and username, along with a form for entering the six-digit code. The ConfirmTotpAsync handler validates the code by normalizing it and checking it against the secret, then advances to the Review step if valid.
+
+On the Review step, I'm displaying a summary of what's been set up (username, display name, passkey, authenticator) and a final button to create the administrator. The FinishAsync handler reconstructs the passkey info from the ticket, calls the bootstrap method to create the first admin, and handles the race condition where another request might have already created an admin. If successful, I need to sign in the newly created admin, which requires either constructing a Person object or fetching one from the user manager.
+
+I'm going with the cleaner approach: fetch the admin by username since they now exist in the database post-commit, then sign them in with the sign-in manager to issue the auth cookie. For the recovery codes, I can't put them in the query string since they're sensitive, so instead of redirecting, I'll render the success page directly in the same POST response—the auth cookie is already written, so showing the codes and links to administration and home in the same response works fine.
+
+The component sets the recovery codes and marks completion as true, rendering the success panel once. The user then navigates away with the cookie already in place. This mirrors how TOTP enrollment displays codes inline after confirmation.
+
+One thing to verify: after calling sign-in, the current HttpContext.User won't be updated mid-request, but that's okay since we're just rendering a static success panel with the codes and navigation links—the next request will carry the authenticated cookie.
+
+Now I'm thinking through the edge cases, starting with what happens if the ticket expires. Writing the setup endpoint... Building the passkey creation options... includein passkey.js to send cookies along with requests. For the PasskeySubmit component, I'll add optional parameters forCreationOptionsUrlandRequestOptionsUrlthat get rendered as attributes on the<passkey-submit>` element, with passkey.js reading them as fallbacks to the default URLs. I'll include both for symmetry even though setup only needs the creation flow.
+
+For the Home.razor setup banner, I'm injecting IFirstAdministratorBootstrap and checking in OnInitializedAsync whether an administrator exists yet. The interactive component can safely call the database since the service is scoped and available in both prerender and circuit contexts, and the query is lightweight. I'll make the banner check result-based to avoid async dependencies and prerender complications.
+
+But there's a real concern: adding a DB call to the landing page means it depends on the database being up. If the database is down, the health check fails but the home page should still render. So I need to wrap the check in try/catch and default _needsSetup to false on any error, ensuring a database hiccup never breaks the landing page. Actually, stepping back — the spec doesn't mandate an in-app setup pointer on Home. The operator deploying fresh will see the documentation anyway, so maybe this complexity isn't worth it.
+
+On second thought, it's good UX and low-risk if done safely with proper error handling, so I'll include it guarded by try/catch.
+
+For tests, I need to extend IdentityWiringTests to verify IFirstAdministratorBootstrap resolves in a scope, then create a new SetupTicketTests class covering the protect/unprotect round-trip, tampering detection, expiry, step transitions, and passkey/secret serialization using an ephemeral DataProtectionProvider like the TOTP enrollment tests do.
+
+The integration tests in FirstAdministratorBootstrapTests will use Testcontainers and verify that AdministratorExistsAsync returns false on an empty database and true after creation, then validate that CreateFirstAdministratorAsync properly creates the person row with all fields, the passkey row, ten hashed recovery codes, the administrator role with self-granted attribution, the security events for account creation and enrollment steps, and that the TOTP secret unprotects correctly—with a second call correctly throwing AdministratorAlreadyExists.
+
+I'll set up the test using PostgreSqlFixture, FixedClock, UuidV7IdentifierFactory, and an ephemeral data protection provider in the DataAccess.Tests project. For the setup ticket logic, I can skip a dedicated unit test since the serialization is covered by SetupTicketTests and the gate logic is already integration-tested in the bootstrap and endpoint layers. I need to review PostgreSqlFixture.cs, DapperUserStorePasskeyTests.cs for integration patterns, and TotpEnrollmentTicketTests.cs for the ephemeral data protection setup.
+
+I should also check the public signatures of the domain helpers like RecoveryCode, Sha256Hashing, Base32Text, Rfc6238Totp, TotpProvisioningUri, Base64UrlText, and SecretGenerator, verify that DataAccess.Tests has access to IDataProtectionProvider through its AspNetCore framework reference, and review the Razor imports, app styling, and WebApplication.Tests project setup.
+
+Show less
+Done
+Now the integration-test fixture + patterns, the pure ticket-test pattern, the Domain helper signatures, the event vocabulary, and the Razor imports.
+
+
+Assembled multiple file signatures to maintain design consistency
+Assembled multiple file signatures to maintain design consistency
+
+Read PostgreSqlFixture.cs and the head of DapperUserStorePasskeyTests.cs
+I'm looking at the test helper methods from the passkey tests—the store builder, async setup utilities, and test data factories—so I can replicate that same pattern for the bootstrap test. I also need to review the fixed clock, security event types, domain helpers, and the ephemeral ticket tests to understand what else I need to pull in.
+
+
+Read DapperUserStorePasskeyTests helpers, FixedClock, and SecurityEventType
+I need to review the Domain helper signatures across several files—RecoveryCode, Sha256Hashing, Base32Text, Rfc6238Totp, TotpProvisioningUri, Base64UrlText, and SecretGenerator's public methods—along with the DapperSecurityEventLog's RecordAsync signature, the Razor imports, both test project files, and the relevant CSS styling to get a complete picture of what I'm working with.
+
+
+Read Domain security helper public signatures
+I've gathered the Domain helper signatures and now I'm pulling in the DapperSecurityEventLog RecordAsync signature, the Razor imports file, both test project files, and the account status styles from the CSS so I can ensure my new styles align with the existing design patterns.
+
+Done
+Now the security-event-log signature, the Razor imports, the two test csprojs, and the relevant slice of app.css.
+
+
+Architecting setup endpoints and reconciling prerender behavior
+Architecting setup endpoints and reconciling prerender behavior
+
+Read ISecurityEventLog signature, _Imports.razor, and the two test csprojs
+I've confirmed both test projects have the necessary framework references, so the data protection and passkey types are accessible. DataAccess.Tests only depends on DataAccess with Domain flowing through transitively, while WebApplication.Tests pulls in all three projects. Now I need to double-check the .NET 10 passkey attestation API before moving forward.
+
+Looking at the existing Passkeys.razor component, it's already using SignInManager.PerformPasskeyAttestationAsync() returning a PasskeyAttestationResult with .Succeeded and .Passkey properties, plus MakePasskeyCreationOptionsAsync() for generating creation options. The fact that the user's build showed 336 tests passing (more than the 326 baseline mentioned) confirms the passkey slice actually compiled and ran successfully on their machine, which validates that all these APIs—PerformPasskeyAttestationAsync, MakePasskeyCreationOptionsAsync, PasskeyUserEntity, PerformPasskeyAssertionAsync, PasskeyAssertionResult, and the related handler interfaces—are genuinely available in their setup.
+
+The key difference I need to account for is that attestation returns a non-generic PasskeyAttestationResult, while assertion returns the generic PasskeyAssertionResult<Person>. For the setup attestation flow, PerformPasskeyAttestationAsync relies on attestation state stored in a cookie that gets set when MakePasskeyCreationOptionsAsync is called, so my /setup/passkey/creation-options endpoint needs to properly trigger that cookie setup.
+
+The user handle embedded in the creation options comes from ticket.PersonIdentifier.ToString(), and the attestation result's UserPasskeyInfo contains the credential itself — the actual persistence happens downstream. I'm wondering whether PerformPasskeyAttestationAsync requires the user entity in the options to already exist in the system, or if it just validates the attestation object against the stored challenge without caring about user existence.
+
+Looking at how the reference template uses it and the fact that attestation only verifies the attestation object against the challenge and expected RP/origin, it doesn't actually look up a user. The Passkeys.razor flow calls it while authenticated, but the method itself only takes the credential JSON. For the anonymous setup flow, as long as the attestation-state cookie is present with the challenge and user handle, it should work fine.
+
+I'm also checking whether MakePasskeyCreationOptionsAsync needs the HttpContext — it's a method on SignInManager, which gets the current context from IHttpContextAccessor, and in the endpoint the SignInManager resolves that automatically. The Set-Cookie response for the attestation state gets written to context.Response in the endpoint. Everything checks out.
+
+The setup creation-options endpoint returns the options as JSON in the WebAuthn format that the browser expects, which PublicKeyCredential.parseCreationOptionsFromJSON can parse directly — same format as the account flow. And since the Sign-in and Passkeys pages already handle writing cookies and redirects in static SSR with antiforgery, the Setup.razor POST handler can do the same with the setup cookie via HttpContext.Response.Cookies.Append.
+
+For the 404 check when an admin already exists, I need to set the status code in OnInitializedAsync and render a "setup already complete" message. The question is whether Blazor SSR respects HttpContext.Response.StatusCode set before the response starts rendering — for static SSR endpoints, the response hasn't committed yet at that point, so it should work. I need to decide whether to create a separate SetupEndpoints.cs file or fold the setup endpoints into the existing AccountEndpoints. Adding them to AccountEndpoints means fewer wiring calls in Program.cs, but keeping them separate is cleaner architecturally since setup is conceptually distinct. The bootstrap service gets registered in AddRestaurantIdentity, the setup ticket protector is created on-the-fly from the data protection provider without needing registration, and Program.cs remains completely unchanged — which means I only need to emit the files that actually change.
+
+For the Home.razor component, I need to handle the fact that interactive components run twice during the prerender phase and then again on the circuit, so I'll wrap the database call in a try-catch to gracefully handle any availability issues and avoid making the landing page dependent on the database being up.
+
+Now I'm checking the password hasher setup — IPasswordHasher<Person> is registered as a singleton using Argon2id, which I can inject into the static Setup.razor page. I need to verify that the Argon2 hasher's HashPassword method signature accepts a Person instance and password string, and confirm that passing a throwaway Person object is acceptable since the hasher likely ignores the user parameter anyway.
+
+For the sign-in flow after creating the admin, I call UserManager.FindByNameAsync followed by SignInManager.SignInAsync with isPersistent: true. The key thing is that SignInAsync just issues the authentication cookie without running CanSignInAsync — it assumes the user is already authenticated. Since RestaurantSignInManager doesn't override SignInAsync, it skips the check and proceeds directly to signing in, which is fine because the new admin is active. The claims get built through the factory, mapping roles to the administrator claim.
+
+Show less
+Done
+I have essentially everything. Let me confirm the Argon2 hasher's HashPassword signature (the wizard hashes the password before commit), then I'll build.
+
+
+Architecting repository structure and consolidating editable files
+Architecting repository structure and consolidating editable files
+
+Read Argon2idPasswordHasher.cs to confirm HashPassword signature and behavior
+I've identified that the HashPassword function takes a user parameter that isn't actually used, so I can instantiate a throwaway Person object to call it and get the PHC string back. Now I'm ready to finalize the design and set up the repository structure in /home/claude, copying the existing files I'll be editing to ensure I produce complete, accurate versions, while creating any new files needed. The user wants the output as a structured tarball that mirrors the repository tree. I'm debating whether to read the frontend-design skill given that I'm extending an existing stylesheet in a .NET/Blazor project rather than designing new UI from scratch. The system prompt is strict about reading relevant skills first, but this particular skill targets distinctive visual design and document artifacts, whereas I'm working within an established design system and delivering source code. I think the codebase conventions I've already studied are more applicable here than a general frontend-design guide. I'm settling on fidelity to the existing design system as the right call here—the codebase is explicit about maintaining that quiet palette, so consistency is the actual design requirement, not distinctiveness. Now I'll set up the working directory and start editing the files I need to modify, copying them from the dump into their proper paths and then making the necessary changes.
+
+Since I can't compile C# without the .NET SDK (which isn't available in this environment and the network doesn't allow package restoration), I'll rely on careful manual review to ensure everything matches the spec and API contracts—the same approach this project has always used.
+
+Now I need to pull the relevant CSS sections from app.css to align the styles for the account, status, and passkey pages.
+
+Show less
+Done
+Let me read the relevant CSS so my wizard styles match the existing palette exactly.
+
+
+Architected complete setup wizard implementation with structured file organization
+Architected complete setup wizard implementation with structured file organization
+
+Index the relevant CSS class definitions in app.css
+I've got a solid set of CSS classes I can reuse across the setup wizard—things like the account panel styling, form fields, buttons, status indicators, and TOTP-related elements. I'll just need to add a few minimal setup-specific styles on top of what's already there.
+
+Now I'm mapping out the complete file structure. I need to create five new files: the first administrator bootstrap logic with its data access layer, the setup state management and ticket protection system, the Razor component for the wizard itself, and test files for both the ticket logic and the bootstrap integration. Then I'll modify the existing user store to integrate with this new setup flow.
+
+I'm also updating the obligations enforcement to add the setup routes, creating the anonymous endpoint for passkey creation options in the account endpoints, registering the bootstrap service in the dependency injection container, and updating the passkey submit component.
+
+Adding the client-side passkey script and home page setup pointer...
+
+Updating stylesheet and test coverage...
+
+Now I need to update the build progress documentation and consider whether the spec and ledger need edits—since the behavior aligns with what's already specified in §3.6, I'm checking if any documentation review entries are needed. Rather than loosening the store's encapsulation by exposing the purpose as an internal const, I could have the WebApplication protect the TOTP secret before passing it to the bootstrap — but that just shifts the problem since the WebApplication would then need access to the purpose, which is also private in the store. The cleanest approach is to define the purpose once as an internal const on DapperUserStore and reference it from the bootstrap within the same assembly, keeping a single source of truth while minimizing changes. The bootstrap will protect the TOTP secret using the same purpose string that the store uses to unprotect it later, creating a round-trip flow I can verify in integration tests. Now I'll write out the implementation files directly to the repo structure.
+
+For the Setup.razor component, I need to handle the multi-form static-SSR pattern carefully—using @page and [ExcludeFromInteractiveRouting], cascading the HttpContext, binding form models with [SupplyParameterFromForm] and null-coalescing initialization to avoid BL0008 warnings, and setting up named forms with proper antifor
+
+Defining the input models... The passkey form mirrors the existing pattern in Passkeys.razor, using the same PasskeySubmit component with a creation options URL, and binding the PasskeyInputModel via form parameter — though I need to check how the form submission actually works since the component does a native submit that might bypass the @onsubmit handler. The antiforgery token flow is solid — PasskeySubmit passes it to the element for the creation-options fetch, and the form's <AntiforgeryToken/> covers the native POST. The setup creation-options endpoint validates the token from the header, and I need to make sure the element's fetch request includes it. One thing to verify: the setup endpoint reads the pending person ID from a cookie, so I need to confirm the element's fetch preserves that cookie automatically.
+
+For the TOTP step, I'm generating the secret when entering the step — right after passkey success, I encode a random secret and set the step to Totp. This keeps the QR code stable across re-renders, even when invalid codes trigger a refresh. The confirm endpoint then validates the code against the stored secret. Now I'm checking the Base32 encoding/decoding logic to make sure it's consistent. Completing the administrator creation call with the new administrator details, then checking if one already exists to handle that error case. If successful, I'll fetch the created admin user and sign them in persistently, store the recovery codes, mark setup as complete, and render the success page without redirecting.
+
+For rendering, the component checks _completed first to show recovery codes, then _adminExists for a 404 panel, then the current step from the ticket, falling back to the account creation step. I need to set the 404 status code in OnInitializedAsync when the admin already exists, but also handle the case where an admin is created mid-request in the POST handlers.
+
+On the first GET with no cookie and no admin, show the account step. With a valid ticket, show its corresponding step. With an expired or tampered cookie, clear it and return to the account step with a message. For the account form itself, I'll use an EditForm with data annotations validation to match the pattern from the sign-in and TOTP enrollment flows, displaying validation messages as the user fills it out.
+
+For password confirmation, I can use the [Compare] attribute pointing to the password field. Username and password will have length constraints using [StringLength] with MinimumLength set appropriately. Now I'm working through the SetupTicket serialization with System.Text.Json.
+
+By default, byte[] serializes to base64, string arrays become JSON arrays, and enums convert to integers—all of which work fine for this internal format. Records with positional constructors deserialize automatically when property names match, so I don't need to explicitly add [JsonConstructor] since there's only one constructor anyway.
+
+Since this is Blazor Server without AOT trimming, reflection-based serialization is perfectly safe. Now I'm building the SetupTicketProtector class that wraps the data protection API to encrypt and decrypt setup tickets using JSON serialization.
+
+Writing protector methods... For deserialization, I'll stick with default JSON options since the record's constructor parameters match the property names exactly, so case sensitivity won't be an issue. The ticket needs a HasExpired method that checks if the elapsed time since issuance exceeds the lifetime. Now I'm setting up a SetupCookie class with a constant name, a 30-minute lifetime, and methods to write and delete the cookie with appropriate options.
+
+Building cookie options with HttpOnly, Secure, SameSite=Lax, and a 30-minute MaxAge...
+
+The smoke test hits the health endpoint directly over HTTP, but that's fine since it doesn't touch the setup endpoint. For the actual setup flow, everything goes through HTTPS via Caddy, so Secure=true is correct and consistent with the auth cookie's policy. When deleting the cookie, I need to match the path to "/" to ensure it's properly cleared. The endpoint will read the setup cookie from the request using TryGetValue...
+
+For the Razor page and endpoint, I'll inject IDataProtectionProvider directly and instantiate SetupTicketProtector where needed — no separate DI registration required. Then I need to register IFirstAdministratorBootstrap in AddRestaurantIdentity...
+
+Registering the bootstrap implementation...
+
+The bootstrap doesn't need ISecurityEventLog since it writes security events directly within its own transaction rather than using the log's separate connection. So its dependencies are just the connection factory, clock, identifier factory, and data protection provider — scoped lifetime works fine here.
+
+The endpoint resolves IFirstAdministratorBootstrap from DI as a scoped service, which aligns with how minimal-API handlers receive their dependencies per request.
+
+Now I'm writing the bootstrap SQL with a transaction lock...
+
+Writing SQL queries... Protecting the TOTP secret, generating a new security stamp, and using the clock for timestamps. For the recovery codes and security events, I'm building parameterized batch inserts — the recovery codes as a list of hashed values, and the security events as separate rows where account_created, passkey_registered, and totp_enrolled have no actor, while role_granted references the person's own ID. Confirming that UserPasskeyInfo.Transports is a nullable string array, so I'll join those values when inserting. The NewAdministrator record in DataAccess holds a UserPasskeyInfo object, and the WebApplication layer reconstructs it from SetupPasskey in the Razor component.
+
+Reconstructing the passkey info... For the passkey name during setup, I'll use a formatted default like "Passkey added [date]" to match the style in Passkeys.razor, though I need to be careful about timezone handling in a container environment where UTC might not reflect the admin's local time.
+
+On the admin existence check, I'm computing _adminExists in OnInitializedAsync as a UX gate that returns 404 if an admin already exists, while the bootstrap layer performs the authoritative check with advisory locking. For the edge case where a person exists but no admin (which shouldn't happen normally), the account step's username duplicate check via UserManager handles that, and the bootstrap's INSERT would catch any constraint violations. throws a 500, which is acceptable given how unlikely that scenario is. The account step's pre-check handles the normal case, so I'll keep the bootstrap simple and not add special handling for username collisions.
+
+For the wizard flow, I'll add a "Start over" option on the passkey, TOTP, and review steps that clears the session cookie and returns to the account step, letting operators restart if they want to change their username.
+
+Show less
+Done
+I now have a complete, precise understanding of the codebase, the §3.6 contract, and every API the wizard must reuse. The next slice is Slice 6 — the /setup first-administrator bootstrap, and it fits cleanly on top of everything that's landed. Let me build it.
+
+
+Architected transactional bootstrap component for DataAccess layer
+Architected transactional bootstrap component for DataAccess layer
+
+Create the working repo tree at the real relative paths
+I'm starting to write the transactional bootstrap component for the DataAccess layer.
+
+Done
+Now the transactional bootstrap — the heart of the slice (§3.6's single locked transaction).
+
+
+Synthesizing TOTP enrollment architecture for restaurant ordering system
+Synthesizing TOTP enrollment architecture for restaurant ordering system
+
+New DataAccess bootstrap: the single locked transaction that creates the first administrator
+I'm reviewing the context from the previous conversation to understand what needs to be done. The user wants complete file paths and full file contents for any changes, wants me to examine the current source code in dump.txt, and prefers a structured approach where all files are provided together so there's no ambiguity about which file goes where. They also need to know which files should be deleted. Let me start by looking at the project files to see what we're working with.
+
+
+Listing the project directory to see what files exist
+I need to examine the current state of the files to understand what's been done so far, starting with the main source code file.
+
+
+Relevant chats
+I'm getting context about the myrestaurant project—a .NET 10 Blazor Server restaurant ordering system by Kushal. Looking at the recent work history from July 2026, it seems the focus has been on TOTP enrollment functionality with the EnrollTotpRequired.razor component, though the details are cut off.
+
+Done
+This is the "myrestaurant" project. Let me pull the current state and the most recent work so I continue from the right place.
+
+
+Read the latest terminal output to see current build/test state
+Read the latest terminal output to see current build/test state
+
+Read the latest terminal output to see current build/test state
+The build and tests are passing, so the TOTP enrollment work and SVG namespace fix are complete. Now I'm moving on to implementing the passkey slice, and I want to check the test results in the terminal output to see what's been validated.
+
+Done
+The build is green. Let me see the test results in the truncated section, then map the repo.
+
+
+Scouring documentation to chart next milestone trajectory
+Scouring documentation to chart next milestone trajectory
+
+Read the truncated test-result section of the terminal output
+The test suite is in good shape with all builds passing and the smoke tests working. We've just wrapped up the TOTP enrollment work, so now I need to figure out where we stand in the milestone and what comes next—which looks like the passkey slice. Let me search through the dump to find the relevant context.
+
+Done
+Everything is green: 336 passed, 0 failed, 15 skipped (M6 e2e). Now let me index the dump and read the build-progress doc to confirm the exact next slice.
+
+
+Scrutinizing project foundation and BUILD_PROGRESS documentation
+Scrutinizing project foundation and BUILD_PROGRESS documentation
+
+Index all files in the repo dump with line numbers
+Looking at the project structure, there's already a solid foundation for passkey support with database migrations for WebAuthn state and a Razor component for managing passkeys in the account section. I should check the BUILD_PROGRESS.md file to understand what's been completed and what still needs to be done.
+
+Done
+Now let me read the build-progress doc to confirm exactly what's done and what the next slice is.
+
+
+Surveyed completed authentication work and charted bootstrap endpoint implementation strategy
+Surveyed completed authentication work and charted bootstrap endpoint implementation strategy
+
+Read docs/BUILD_PROGRESS.md in full
+I'm reviewing what's been completed so far across the authentication implementation—identity persistence with Argon2id hashing, sign-in and authorization setup, password flows with middleware, TOTP enrollment, and passkeys support. Looking ahead at the remaining work, the next priority is building out the /setup endpoint for bootstrapping the first admin account, which needs to use database-level locking to handle the zero-administrator scenario safely.
+
+Before diving into implementation, I need to understand the full scope by reviewing the technical specification for the bootstrap wizard, then examining the existing codebase—particularly the user store, role management, migrations, and the current account/sign-in infrastructure—to see what needs to be extended or modified.
+
+Done
+This is very clear now. M2 slices 1–5 (identity, sign-in wiring, password flow, TOTP, passkeys) have landed. The next step is Slice 6: the /setup first-admin bootstrap (§3.6). Let me read the spec sections that govern it.
+
+
+Examined bootstrap setup flow and traced implementation patterns throughout codebase
+Examined bootstrap setup flow and traced implementation patterns throughout codebase
+
+List section headers of the technical specification
+I'm searching through the spec to locate section 3.6 and identify its line numbers.
+
+
+Find §3.6 bootstrap section boundaries
+
+Read §3.1–§3.7 of the technical specification, including the bootstrap section
+Looking at the §3.6 bootstrap specification, the /setup endpoint is only accessible when no administrators exist yet. The wizard guides the first admin through registering a passkey, setting up TOTP with recovery codes, and granting them administrator privileges—all within a single transaction that uses an advisory lock to prevent race conditions.
+
+Now I need to examine the existing codebase to understand how to implement this. I'm checking the database schema for the person and person_role tables, reviewing DapperUserStore to see how user creation works, looking at the existing TOTP enrollment and passkey handling patterns, and tracing through the account endpoints and identity service configuration to understand where the setup flow fits into the routing and middleware stack.
+
+Done
+I have the full §3.6 bootstrap contract. Now I need to study the existing code the bootstrap must reuse and extend. Let me read the schema for person/person_role, then the user store, Person entity, and the enrollment/passkey plumbing.
+
+
+Architecting database schema with authentication and role management
+Architecting database schema with authentication and role management
+
+Read migration 0001 schema — need person, person_role, passkey_credential, recovery/security_event tables
+I'm mapping out the core database schema for the bootstrap—the person table tracks authentication state with fields for password changes and TOTP enrollment, while person_role establishes role assignments with a foreign key constraint back to person, and security_event logs key account activities like creation and role grants.
+
+Now I need to examine the DapperUserStore implementation to understand how user creation works, how roles are managed, the transaction handling, and how it connects to the database—this is the critical piece for the bootstrap logic.
+
+Done
+Now the critical file — the user store. Let me read it in full to understand CreateAsync, the connection model, the role paths, and the passkey store.
+
+
+Architected multi-step bootstrap wizard with transactional atomicity safeguards
+Architected multi-step bootstrap wizard with transactional atomicity safeguards
+
+Read DapperUserStore.cs in full
+I'm getting a clearer picture of how the store operates—each method manages its own database connection lifecycle rather than holding a persistent one. The CreateAsync method safely inserts person records and auto-populates key fields, but role assignments through AddToRoleAsync aren't supported directly, so I'll need a separate transactional service to handle those operations. The connection factory pattern is central to how this all works together.
+
+For the bootstrap flow, I'm realizing this needs to be a multi-step wizard rather than a single operation. The passkey registration and TOTP enrollment are interactive ceremonies that span multiple HTTP requests—the browser performs WebAuthn ceremonies and the user scans a QR code and enters a TOTP code. Only the final step, granting the administrator role, happens in a single transaction with an advisory lock to ensure atomicity and prevent race conditions during that critical moment.
+
+The trick is to collect all the data—username, display name, passkey credential, TOTP secret, recovery codes—into a pending in-memory state (or a Data-Protection-encrypted ticket) as the user progresses through the wizard steps, then commit everything to the database in one atomic transaction at the end.
+
+But the .NET passkey framework is designed to persist credentials through its store immediately after the attestation ceremony completes, which conflicts with holding everything until the final commit step.
+
+The real issue is that WebAuthn attestation requires a stable user handle (the person's ID) in the creation options, but the person doesn't exist in the database yet during bootstrap. I need to generate the person identifier upfront so the user handle is consistent, then create the person record with that same identifier when committing the transaction.
+
+Let me examine how the existing passkey and TOTP enrollment flows work — looking at the AccountEndpoints, the passkey handlers, the Passkeys page, and the SignIn patterns — so I understand the exact API surface I'm working with and can design the bootstrap flow to match. I'll organize these file reads by grouping the account endpoints and identity setup together first.
+
+Show less
+Done
+The store is clear: no held connection, CreateAsync inserts a person, role grants deliberately throw (they need the grantor + a transaction — that's this slice). Now let me read the passkey/TOTP plumbing the wizard must reuse: the account endpoints, identity wiring, the TOTP enrollment service, and the passkey contracts.
+
+
+Architecting passkey attestation verification and response handling
+Architecting passkey attestation verification and response handling
+
+Read AccountEndpoints.cs and IdentityServiceCollectionExtensions.cs
+I'm mapping out the passkey ceremony API surface: the sign-in manager creates attestation options for passkey registration and assertion options for authentication, with an IPasskeyHandler<Person> registered to handle the flow.
+
+For registration, PerformPasskeyAttestationAsync verifies the attestation and returns a PasskeyAttestationResult containing the user's passkey info, while for sign-in, RestaurantSignInManager.PasskeySignInAsync uses PerformPasskeyAssertionAsync to verify the assertion. I need to check how RestaurantSignInManager and TotpEnrollment implement these methods to understand the enrollment ticket and secret mechanism.
+
+Done
+Now the sign-in manager (for the exact passkey attestation/assertion API) and the TOTP enrollment service (which the wizard reuses for QR + confirm + recovery codes).
+
+
+Architected passkey wizard flow with transaction-based state management
+Architected passkey wizard flow with transaction-based state management
+
+Read RestaurantSignInManager.cs and TotpEnrollment.cs in full
+I'm identifying the key API methods I need: PerformPasskeyAssertionAsync returns a result object with success status, user, and passkey details, while for registration I'll use SignInManager.PerformPasskeyAttestationAsync along with MakePasskeyCreationOptionsAsync to set up the flow.
+
+Now I'm thinking through the bootstrap wizard design — the /setup route should only be accessible when no administrators exist, and since the account pages use server-side rendering with form posts while the passkey ceremony is JavaScript-driven, I need to figure out how to persist wizard state across these different request patterns.
+
+The cleanest approach would be to use a Data-Protection-protected ticket (similar to the existing TotpEnrollmentTicket) that threads through hidden form fields and the passkey flow, though the UserPasskeyInfo with its binary public key bytes and credential ID is large and awkward to base64-encode into a hidden field. The alternative is holding pending state server-side in a setup session cookie, but that requires either an in-memory cache or a new session store — both problematic given the app has no Redis or external bus in v1, and in-memory state is fragile across restarts. Let me reconsider what the spec actually requires for the wizard flow.
+
+The key realization is that both the passkey ceremony and TOTP enrollment need an existing identity to work with — a WebAuthn user handle and a place to store the TOTP secret — yet everything must commit in a single transaction. The solution is to generate the person identifier upfront in the wizard's first step using UuidV7IdentifierFactory, stash it in the protected ticket, and use it as both the WebAuthn user handle and the TOTP subject. Then the passkey attestation is verified and carried forward in the ticket without being persisted, while TOTP is confirmed against the ticket's secret. At the final commit, a single transaction handles everything: advisory lock, recheck for zero admins, then insert the person with password hash and TOTP secret, insert the passkey credential, insert recovery codes, grant the person role, and log security events.
+
+Now I'm checking the signature of PerformPasskeyAttestationAsync — in .NET 10, the flow starts with MakePasskeyCreationOptionsAsync which takes a PasskeyUserEntity, returns the options JSON, and stashes the attestation state somewhere for later verification.
+
+Then PerformPasskeyAttestationAsync reads that state back, verifies the attestation object against the challenge, and returns a result with the credential info — but it doesn't persist anything. The key insight is that attestation verification doesn't require the user to already exist in the database; it just validates the cryptographic proof.
+
+I should double-check the exact API names against the .NET 10 source to be sure, but the existing code already uses these APIs and they've been verified against the framework, so I'm confident in the approach. I need to trace through the existing registration flow in the Passkeys and PasskeySubmit components, along with the JavaScript and contract definitions, to understand exactly how the passkey gets persisted so I can replicate that pattern in the setup wizard.
+
+Show less
+Done
+Now the passkey UI + JS + contracts, plus the SignIn page and App.razor, to see exactly how attestation is performed and persisted today (the wizard must mirror this, but defer persistence to the final transaction).
+
+
+Architecting single-page wizard consolidating setup state securely
+Architecting single-page wizard consolidating setup state securely
+
+Read Passkeys.razor, PasskeySubmit.razor, and PasskeyContracts.cs
+I'm looking at the passkey attestation API structure—the SignInManager handles the attestation process and returns a result with the passkey data, which then gets persisted through UserManager.AddOrUpdatePasskeyAsync. There's also a method for creating the initial passkey options, though the thought cuts off there. The creation-options endpoint is currently locked behind authorization, but for setup I need it to be anonymous and gated only when there are zero admins. I'm considering two paths: either create dedicated setup endpoints that bypass the auth requirement, or check if the passkey JavaScript is flexible enough to point at different endpoints. Let me look at how the passkey submission is wired up to see if I can reuse the existing components or need to build setup-specific ones.
+
+For carrying the passkey data across the setup flow, I'm thinking through whether to store the raw attestation response and re-verify it at the end, or perform the attestation immediately and serialize the resulting UserPasskeyInfo into the protected setup ticket. The second approach is cleaner since the ceremony state is single-use anyway—I'll do the attestation at the passkey step, base64-encode the binary fields, stash them in the ticket, then deserialize and insert at commit time.
+
+The core idea is consolidating all pending setup state into a single Data-Protection-protected cookie that accumulates across steps: the person ID, username, display name, password hash (computed upfront so we never hold plaintext), the verified passkey info, and the TOTP secret. Recovery codes get generated only at the final commit, and that's where I'll grab an advisory lock, recheck everything, and insert atomically.
+
+Size-wise this works fine—even with the passkey public key, credential ID, password hash, and TOTP secret all serialized and encrypted, we're well under the 4KB cookie limit. Though there's a tension here: the existing pattern uses protected tickets in hidden form fields rather than cookies, which is cleaner and more testable. The challenge is that the passkey ceremony submits a form, so the accumulated state needs to survive that round-trip somehow.
+
+I'm leaning toward a single-page multi-step wizard where a protected setup ticket gets carried in a hidden field through each step. Each POST validates the incoming ticket, advances to the next step, and re-renders with an updated ticket. When the passkey step completes, the passkey-submit element posts the attestation credential JSON alongside the current ticket, and the handler verifies it using the passkey attestation logic.
+
+But there's a dependency: the passkey attestation verification reads the challenge from a cookie that gets set when the browser fetches creation-options. So I need a creation-options endpoint that's anonymously accessible (since there's no session during setup) but only works while zero admins exist. The endpoint needs the pending person ID from the setup ticket to use as the WebAuthn user handle, so the passkey-submit element will need to send the setup ticket when fetching creation-options.
+
+Let me examine how passkey.js constructs its fetch requests and whether I can parameterize the endpoint to pass the ticket along with the other necessary data. I'll also need to review the existing setup flow, routing, and wiring to finalize how this all connects.
+
+Show less
+Done
+Now passkey.js (to see how the ceremony endpoints are parameterized), the SignIn page, App.razor, ObligationsEnforcement/AccountRoutes, and RestaurantOptions.
+
+
+Architected setup flow using protected cookies and configurable passkey endpoints
+Architected setup flow using protected cookies and configurable passkey endpoints
+
+Read wwwroot/js/passkey.js in full
+I'm looking at how passkey.js currently has hardcoded endpoint URLs, and I need to decide whether to make these configurable through attributes on the <passkey-submit> element so the setup wizard can point to different endpoints like /setup/passkey/creation-options instead of the default account routes. This would involve updating both passkey.js and PasskeySubmit.razor to support optional URL parameters.
+
+The alternative would be to reuse the existing account endpoint but make it work anonymously during setup by reading the pending person ID from the setup ticket, but that's messier since the endpoint currently requires authorization and derives the user from the signed-in context.
+
+I'm going with the first approach — parameterizing the passkey element with optional creation-options-url and request-options-url attributes that default to the current routes, then creating a dedicated anonymous endpoint at POST /setup/passkey/creation-options that reads the setup ticket to get the pending person details and calls the creation options logic. The challenge is that the passkey element currently only sends the antiforgery header in its POST request, so I'll need to figure out how to pass the setup ticket along with it.
+
+Actually, I'm realizing the setup endpoint doesn't strictly need the ticket itself — it just needs a stable WebAuthn user handle and username for the PasskeyUserEntity. Since there's only one bootstrap in flight per browser at a time, the user handle just needs to stay consistent between the creation-options call and the attestation within the same ceremony. The key insight is that the WebAuthn user handle doesn't have to match the person ID — it's just stored separately in the credential record.
+
+For the assertion flow, the framework looks up the passkey by credential ID from the store, and for discoverable credentials, the user handle returned by the authenticator gets validated against the person's user ID string. So the PasskeyUserEntity.Id used during creation must match what the authenticator will return during sign-in.
+
+This means I need to generate the person ID before calling the passkey creation-options endpoint, then pass it as the user handle. The setup page can hold the protected setup ticket in a hidden field, and when adding a passkey, the passkey element fetches creation-options while including that ticket—similar to how the Request operation reads the username from a form field.
+
+But modifying passkey.js feels risky since it's browser code I can't easily test. A cleaner approach would be using a short-lived, Data-Protection-protected setup cookie that carries the pending person ID, username, display name, password hash, and (as the ceremony progresses) the verified passkey and TOTP data—essentially making the cookie itself the entire setup state.
+
+This eliminates the need for hidden fields or sending the ticket in fetch requests. The setup page reads the cookie to determine the current step, and the passkey creation-options endpoint reads it to get the user handle for generating options. Each POST then advances the state in the cookie.
+
+However, the existing creation-options endpoint requires authentication and uses the signed-in user, but during setup there's no signed-in user yet. So I need a separate anonymous endpoint for setup, which means passkey.js needs to support a configurable URL for the setup flow. The minimal change is adding optional attributes to allow pointing to different creation-options and request-options endpoints during setup.
+
+For the SetupTicket design, I'm using a Data-Protection-protected cookie to carry state across the setup flow, storing version, pending person ID, username, display name, password hash, optional passkey info, optional TOTP secret, and issued-at timestamp. The account step presents a form for credentials and validates them on submission.
+
+The passkey step is mandatory — it displays the passkey registration UI and won't advance until attestation succeeds and the verified passkey is serialized into the ticket. The TOTP step comes next.
+
+For TOTP, I need to generate a secret once when entering that step and keep it in the ticket so re-renders show the same QR code. On confirmation, I validate the user's code against that secret and advance to the commit step if it matches. I'm realizing I have an existing TotpEnrollment class that generates secrets and QR codes, but it's designed for persisted enrollments that write to the database — for the setup flow I need the lower-level TOTP utilities to verify without persisting yet.
+
+The commit step then shows a review page and runs a final transaction that acquires an advisory lock, re-checks the setup state, and creates the administrator account. Then I need to insert the person_role record for the administrator, log security events for account creation, passkey registration, TOTP enrollment, and role assignment, commit the transaction, clear the setup cookie, and sign the new admin in while displaying the recovery codes once. I'm debating whether to generate the recovery codes during the commit step or earlier—generating them at commit keeps everything in a single transaction and ensures they're shown only once, which feels cleaner.
+
+Now I'm thinking about how to gate the /setup endpoint itself to only allow access when there are zero administrators, returning a 404 otherwise. I'll need a lightweight service to check if any administrators exist.
+
+For the UX side, the /setup page and endpoints will call this check on entry and return 404 if an admin is found. The real enforcement happens at commit time with the advisory lock and recheck, but the page-level check keeps users from even seeing the setup flow.
+
+Since no admin exists yet, nobody can sign in, so /setup and the passkey creation endpoints need to be completely anonymous with no authorization requirement. I need to verify that anonymous users can actually access the /setup page by checking how Routes.razor and Program.cs handle authorization, and whether there's a fallback [Authorize] that would block it. I'm also thinking about UX — while the spec doesn't require it, redirecting users to setup when no admins exist would be helpful, though the current build status notes there's no in-app way to create admins yet.
+
+I'm leaning toward adding a minimal indicator on the sign-in page when zero admins exist, since that's where fresh deployments naturally funnel anonymous users. It's just one cheap indexed count query, so the performance hit is acceptable. and then I'll review the wiring and obligations tests to make sure everything connects properly before implementing the solution.
+
+Show less
+Done
+Now the SignIn page, App.razor, the routes/obligations enforcement, the options, Program.cs, Home/Routes, and the two web tests I'll extend.
+
+
+Strategizing optimal file placement for seamless setup integration
+Strategizing optimal file placement for seamless setup integration
+
+Read SignIn.razor, App.razor, Home.razor, Routes.razor
+Home.razor is the right place for the setup pointer since it's already anonymous and accessible to visitors, and it's interactive-server so a database check there won't cause issues. This avoids modifying SignIn.razor's logic and puts the setup flow on the most natural landing surface.
+
+Now I need to review the remaining files — ObligationsEnforcement.cs for the account routes and exemption logic, RestaurantOptions.cs for configuration like the restaurant name and RP ID, Program.cs to understand the middleware order and endpoint mapping, the ObligationsMiddleware itself, the web tests, and the IDatabaseConnectionFactory to see how database access is structured.
+
+Done
+Now the routes/exemptions, options, connection factory, Program.cs, and the obligations middleware.
+
+
+Weighing middleware exemptions and defensive security measures
+Weighing middleware exemptions and defensive security measures
+
+Read ObligationsEnforcement.cs and ObligationsMiddleware.cs
+Looking at the options, connection factory, and Program.cs setup along with the wiring and obligations tests. The obligations middleware only processes authenticated principals, so anonymous requests to /setup pass through fine. I should still add /setup to the exemption list defensively in case an authenticated non-admin somehow reaches it—though they'd hit a 404 from the setup gate anyway. I'm also reconsidering /sign-in since it's not currently exempt, and I need to think through how a user with an obligation would actually access that endpoint. Actually, exempting /setup creates a risk: an authenticated user with an obligation could theoretically reach it and bypass the enforcement pipeline, even though the zero-admins scenario that would allow this is practically impossible. Since the setup flow keeps users anonymous until the very end—signing them in only after creating the first admin with no obligations set—the middleware won't interfere with the legitimate flow anyway. So I'll leave /setup non-exempt to be safe and avoid adding unnecessary test coverage.
+
+Now I'm reviewing the remaining files: RestaurantOptions.cs, IDatabaseConnectionFactory.cs, Program.cs, and the web tests.
+
+Show less
+
+Read RestaurantOptions.cs and the connection factory interface + Npgsql implementation
+I need to review the Program.cs file to understand the middleware ordering, endpoint configuration, and service registration, then look at the existing web tests and the Person entity along with the migration to see what I'm working with.
+
+Done
+Now Program.cs and the two web tests I'll extend, plus Person and migration 0002.
+
+
+Architected setup endpoints and reviewed authentication claims structure
+Architected setup endpoints and reviewed authentication claims structure
+
+Read Program.cs in full
+I'm seeing how the setup endpoints and services fit into the existing architecture—I can add them either within the existing MapRestaurantAccountEndpoints() and AddRestaurantIdentity() methods or create dedicated setup-specific ones, then register the setup service and protector alongside the identity configuration.
+
+The Razor setup page will be auto-discovered, and I need to handle antiforgery validation the same way the existing passkey endpoints do—manually calling ValidateRequestAsync and passing the token through the PasskeySubmit element. Now I'm going to review the test files, the Person model, migrations, and the RestaurantClaimsPrincipalFactory to understand the claims structure for sign-in after setup completion.
+
+Done
+Now the two web tests, the Person entity, migration 0002, and the claims factory (for claim-type constants).
+
+
+Examined existing test patterns and domain helper signatures comprehensively
+Examined existing test patterns and domain helper signatures comprehensively
+
+Read migration 0002, Person.cs, and RestaurantClaimsPrincipalFactory.cs
+I'm reviewing the existing web tests and examining the domain helpers' public signatures for RecoveryCode, SecretGenerator, Sha256Hashing, SecurityEventType, Base32Text, Rfc6238Totp, and TotpProvisioningUri, then looking at how DapperUserStorePasskeyTests and PostgreSqlFixture are structured to model my integration test setup.
+
+Done
+Now the wiring/obligations tests, the passkey integration test + fixture (to model a setup test), the SecurityEventType vocabulary, and the Domain helper signatures.
+
+
+Architected comprehensive setup wizard with bootstrap, tickets, and integration tests
+Architected comprehensive setup wizard with bootstrap, tickets, and integration tests
+
+Read IdentityWiringTests.cs and ObligationsEnforcementTests.cs
+I'm working through the test structure for the wiring, making sure the setup service resolves correctly. The key constraint is that AddRestaurantIdentity only depends on services already registered before it, and since my setup service will depend on IDatabaseConnectionFactory, I need to verify the registration order works properly.
+
+Now I'm deciding where the bootstrap class should live — it's fundamentally a DataAccess concern since it handles raw SQL, transactions, and advisory locks, but it also needs to use the same Data Protection purpose string that the store uses for TOTP secrets so decryption works consistently later.
+
+The store manages its own connections per method, so I can't share a transaction through it. Instead, I'll have the bootstrap accept the TOTP secret already protected by the WebApplication layer using an IDataProtector, which means I need to expose that purpose constant from the store so both components use the same value. I'll change the store's const from private to internal so the bootstrap can reference it directly—that's simpler than extracting a separate purposes class. The bootstrap will need the IDataProtectionProvider injected to protect the plaintext secret using the same purpose constant.
+
+The bootstrap handles the full registration flow: it takes the advisory lock, rechecks, then inserts the person, passkey, recovery codes, and role assignments as raw SQL in DataAccess. It receives the plaintext TOTP secret and generates recovery codes using the existing Domain utilities (RecoveryCode.GenerateSet() and Sha256Hashing.Hash), then returns the plaintext codes to the caller—no issue there since DataAccess already depends on Domain.
+
+For the passkey, the bootstrap can accept UserPasskeyInfo directly since DataAccess already references the framework through the store's use of IUserPasskeyStore, so it has access to that type and can extract the fields needed for insertion into the passkey_credential table.
+
+The challenge is that the WebApplication needs to carry the verified passkey across requests in the setup ticket, which means serializing and deserializing UserPasskeyInfo. I'll serialize the essential fields (credential ID, public key, sign count, transports, name, and backup flags) into the ticket, then reconstruct a UserPasskeyInfo at commit time to pass to the bootstrap — or alternatively, I could define a small DTO in DataAccess to hold just the raw fields and keep the bootstrap's signature cleaner.
+
+Defining the bootstrap API... Writing the Dapper implementation... Inserting recovery code hashes, then the person record with initial security settings, the passkey credential with transport details, and recovery codes. After that, granting the administrator role to the new person and logging security events for account creation, passkey registration, TOTP enrollment, and the self-granted role — making sure the actor reference handles nulls for system events and self-references for the role grant.
+
+For transports, I'm joining the array with commas to match the store's behavior, replicating the logic inline to avoid coupling.
+
+Now moving to the WebApplication side with the SetupTicket...
+
+I'll need a SetupSession record to hold the state, a protector for the cookie, and a SetupWizard service that checks if setup is available by delegating to the bootstrap, reads and writes the setup cookie, and manages step progression.
+
+This is accumulating quite a few classes, so I'm thinking through the minimal set of files needed: FirstAdministratorBootstrap in the DataAccess layer...
+
+Adding more files... ector via the setup-state class, which can create its own protector from the injected IDataProtectionProvider. Then I need to add route constants for setup and passkey creation options to the obligations enforcement file. The Razor component needs optional parameters to pass creation and request options URLs through to the underlying element, and the passkey JavaScript needs to read those optional URLs to fetch the appropriate options.
+
+I'll wire everything together by mapping the setup endpoints in Program.cs, and handle the first-run experience by adding a pointer to /setup on the Home page when no admins exist—though I'm thinking it's cleaner to avoid coupling the interactive component directly to the database, so I'll place that check elsewhere instead. , I could show a banner on Home without a DB check, but that creates a confusing 404 after setup. Better to gate it via the service—two cheap queries are acceptable. Actually, I'm reconsidering: the SignIn page is static SSR with a single render, which is cleaner, but a fresh deploy's first hit lands on Home (anonymous, no redirect), and showing just "The application shell is running…" without setup guidance is poor UX. So I'll add a minimal gated banner to Home instead and keep the change focused.
+
+Now I'm realizing that modifying Home, passkey.js, and PasskeySubmit together is a lot of surface area. Let me see if I can avoid the passkey.js and PasskeySubmit changes. The existing /account/passkey/creation-options endpoint requires authorization and pulls the user from context, so I can't easily make it handle both authenticated and anonymous cases. I could try reusing that endpoint for setup, but the auth requirement blocks that approach.
+
+The cleanest path forward is to add a configurable creation-options URL to passkey.js with a sensible default—existing callers won't pass the new attribute and will fall back to the constant, so it's low-risk. I'll need to touch passkey.js, but there's no way around it if the URL needs to differ between flows.
+
+Alternatively, I could overload the existing /account/passkey/creation-options endpoint to handle both authenticated and setup flows: drop the RequireAuthorization() check and branch inside based on whether the user is authenticated or has a valid setup cookie with zero admins. This keeps passkey.js and PasskeySubmit untouched, though it makes the endpoint anonymous and adds branching logic—but the anonymous path is safe since it only works with a valid setup cookie and zero admins. The browser automatically sends the setup cookie with the fetch request, so the endpoint can read it without any JavaScript changes. I'm leaning toward a dedicated /setup/passkey/creation-options endpoint to keep concerns separated and maintain clear documentation of what's authenticated versus what's open. The JavaScript modification needed is minimal—just reading an attribute with a fallback—and it's worth it to keep each endpoint focused on a single responsibility. The cookie approach is the right fit here—it's the natural channel for passing the pending person ID and username to the creation-options endpoint without a form body, and it handles the wizard state across re-renders cleanly. I'll set it up as myrestaurant.setup with Data-Protection, HttpOnly, Secure, and SameSite=Lax flags, keeping it short-lived. Since Setup.razor is static SSR like the account pages, I can manage it the same way through HttpContext.Response.Cookies.
+
+For the serialized content, I'm using a pipe-delimited format with base64 encoding for binary data, protected by Data Protection, starting with a version tag and the pending person ID.
+
+I need to track progress through the setup flow explicitly, so I'll add a step enum that moves through Passkey → Totp → Review as each stage completes. The GET handler renders the appropriate form based on the current step. I'll also include username, display name, and the password hash (which is PHC format and safe to embed since it doesn't contain the pipe delimiter I'm using).
+
+For passkeys, once we reach the Totp step, I'll store the credential ID, public key, sign count, transports, name, and backup flags. The TOTP secret gets generated when entering the Totp step so the QR code stays consistent across re-renders, and it's stored in base32 format which is safe to delimit with pipes.
+
+I'm going to use JSON serialization with System.Text.Json wrapped in Data Protection instead of pipe-delimited fields—it's cleaner and handles escaping automatically. I'll define a SetupTicket record in a new SetupState.cs file with fields for the person identifier, issued timestamp, current step, username, and display name.
+
+Defining the SetupTicket record... Writing the protector methods...
+
+Actually, I should simplify this — the bootstrap can just stamp created_at as clock.UtcNow for all rows consistently, so I don't need to preserve the passkey's original CreatedAt. Instead of passing a full UserPasskeyInfo to the bootstrap, I'll pass just the raw passkey fields and let the bootstrap handle the timestamp itself. This avoids forcing a CreatedAt value and keeps the bootstrap input simpler — either a small passkey DTO from DataAccess or just the individual fields, rather than a type that couples the web layer to data access. for the passkey and keep it clean, I'll have the bootstrap accept a UserPasskeyInfo (it's already the store's currency) and stamp created_at = now itself. The WebApplication reconstructs a UserPasskeyInfo from the ticket (with a placeholder CreatedAt) to hand to the bootstrap. Clean enough. UserPasskeyInfo's ctor requires createdAt; I'll pass clock.UtcNow (it'll be overwritten by the bootstrap's own now anyway — actually the bootstrap will read the fields it needs and set created_at=now, ignoring passkey.CreatedAt). Good.
+
+Now I need to check what properties UserPasskeyInfo exposes. Looking at what the store reads from the passkey object — credential ID, public key, created at, sign count, transports, user verification status, backup eligibility, backed up status, attestation object, and client data JSON — I'll construct the ctor to match exactly what the store's ToPasskeyInfo method does, with Name as an init property.
+
+Now the bootstrap will pass the sign count to the INSERT as a long integer. Next up is the Setup.razor page, which handles the static server-side rendering flow for the wizard. I'm injecting the bootstrap service, password hasher, sign-in manager, user manager, identifier factory, clock, data protection provider, restaurant options, and navigation manager.
+
+The page logic reads a setup cookie into a ticket on initialization. If an administrator already exists, it returns a 404 and clears any stale cookie, short-circuiting all POST handlers with the same check. Otherwise, it determines the current step based on the ticket: no valid ticket means starting at the Account step to collect credentials, while a valid ticket advances through Passkey, Totp, or Review steps, displaying recovery codes after successful completion.
+
+For the Account form, I'm validating the username (3-64 characters, enforced by database constraint too) and password (at least 12 characters to match the identity policy). Rather than instantiating a user just to run the password validators, I'll do a straightforward length check against the configured IdentityOptions.Password.RequiredLength to keep it simple and DRY.
+
+I'm also checking if the username is already taken using UserManager.FindByNameAsync() as a pre-check before commit—though realistically during setup no other persons exist yet, the database UNIQUE constraint is the real guard, and I'll surface a friendly error if there's a collision.
+
+Then I'll generate a person ID, hash the password using Argon2id, build a ticket with the Passkey step, write it to a cookie, and redirect to the setup page.
+
+For the Passkey step itself, I'm rendering the passkey creation element that points to the options endpoint and setting up the form to handle the submission.
+
+In the RegisterPasskeyAsync handler, I reload the ticket to verify we're still on the Passkey step, validate the credential JSON, perform the attestation verification, and if successful, extract the passkey data and assign it a default name. Then I generate a TOTP secret using RFC 6238, update the ticket to move to the TOTP step, and redirect back to setup.
+
+For the TOTP step, I'm rendering a QR code from the secret with a provisioning URI that includes the restaurant name and username, along with a form for entering the six-digit code. The ConfirmTotpAsync handler validates the code by normalizing it and checking it against the secret, then advances to the Review step if valid.
+
+On the Review step, I'm displaying a summary of what's been set up (username, display name, passkey, authenticator) and a final button to create the administrator. The FinishAsync handler reconstructs the passkey info from the ticket, calls the bootstrap method to create the first admin, and handles the race condition where another request might have already created an admin. If successful, I need to sign in the newly created admin, which requires either constructing a Person object or fetching one from the user manager.
+
+I'm going with the cleaner approach: fetch the admin by username since they now exist in the database post-commit, then sign them in with the sign-in manager to issue the auth cookie. For the recovery codes, I can't put them in the query string since they're sensitive, so instead of redirecting, I'll render the success page directly in the same POST response—the auth cookie is already written, so showing the codes and links to administration and home in the same response works fine.
+
+The component sets the recovery codes and marks completion as true, rendering the success panel once. The user then navigates away with the cookie already in place. This mirrors how TOTP enrollment displays codes inline after confirmation.
+
+One thing to verify: after calling sign-in, the current HttpContext.User won't be updated mid-request, but that's okay since we're just rendering a static success panel with the codes and navigation links—the next request will carry the authenticated cookie.
+
+Now I'm thinking through the edge cases, starting with what happens if the ticket expires. Writing the setup endpoint... Building the passkey creation options... includein passkey.js to send cookies along with requests. For the PasskeySubmit component, I'll add optional parameters forCreationOptionsUrlandRequestOptionsUrlthat get rendered as attributes on the<passkey-submit>` element, with passkey.js reading them as fallbacks to the default URLs. I'll include both for symmetry even though setup only needs the creation flow.
+
+For the Home.razor setup banner, I'm injecting IFirstAdministratorBootstrap and checking in OnInitializedAsync whether an administrator exists yet. The interactive component can safely call the database since the service is scoped and available in both prerender and circuit contexts, and the query is lightweight. I'll make the banner check result-based to avoid async dependencies and prerender complications.
+
+But there's a real concern: adding a DB call to the landing page means it depends on the database being up. If the database is down, the health check fails but the home page should still render. So I need to wrap the check in try/catch and default _needsSetup to false on any error, ensuring a database hiccup never breaks the landing page. Actually, stepping back — the spec doesn't mandate an in-app setup pointer on Home. The operator deploying fresh will see the documentation anyway, so maybe this complexity isn't worth it.
+
+On second thought, it's good UX and low-risk if done safely with proper error handling, so I'll include it guarded by try/catch.
+
+For tests, I need to extend IdentityWiringTests to verify IFirstAdministratorBootstrap resolves in a scope, then create a new SetupTicketTests class covering the protect/unprotect round-trip, tampering detection, expiry, step transitions, and passkey/secret serialization using an ephemeral DataProtectionProvider like the TOTP enrollment tests do.
+
+The integration tests in FirstAdministratorBootstrapTests will use Testcontainers and verify that AdministratorExistsAsync returns false on an empty database and true after creation, then validate that CreateFirstAdministratorAsync properly creates the person row with all fields, the passkey row, ten hashed recovery codes, the administrator role with self-granted attribution, the security events for account creation and enrollment steps, and that the TOTP secret unprotects correctly—with a second call correctly throwing AdministratorAlreadyExists.
+
+I'll set up the test using PostgreSqlFixture, FixedClock, UuidV7IdentifierFactory, and an ephemeral data protection provider in the DataAccess.Tests project. For the setup ticket logic, I can skip a dedicated unit test since the serialization is covered by SetupTicketTests and the gate logic is already integration-tested in the bootstrap and endpoint layers. I need to review PostgreSqlFixture.cs, DapperUserStorePasskeyTests.cs for integration patterns, and TotpEnrollmentTicketTests.cs for the ephemeral data protection setup.
+
+I should also check the public signatures of the domain helpers like RecoveryCode, Sha256Hashing, Base32Text, Rfc6238Totp, TotpProvisioningUri, Base64UrlText, and SecretGenerator, verify that DataAccess.Tests has access to IDataProtectionProvider through its AspNetCore framework reference, and review the Razor imports, app styling, and WebApplication.Tests project setup.
+
+Show less
+Done
+Now the integration-test fixture + patterns, the pure ticket-test pattern, the Domain helper signatures, the event vocabulary, and the Razor imports.
+
+
+Assembled multiple file signatures to maintain design consistency
+Assembled multiple file signatures to maintain design consistency
+
+Read PostgreSqlFixture.cs and the head of DapperUserStorePasskeyTests.cs
+I'm looking at the test helper methods from the passkey tests—the store builder, async setup utilities, and test data factories—so I can replicate that same pattern for the bootstrap test. I also need to review the fixed clock, security event types, domain helpers, and the ephemeral ticket tests to understand what else I need to pull in.
+
+
+Read DapperUserStorePasskeyTests helpers, FixedClock, and SecurityEventType
+I need to review the Domain helper signatures across several files—RecoveryCode, Sha256Hashing, Base32Text, Rfc6238Totp, TotpProvisioningUri, Base64UrlText, and SecretGenerator's public methods—along with the DapperSecurityEventLog's RecordAsync signature, the Razor imports, both test project files, and the relevant CSS styling to get a complete picture of what I'm working with.
+
+
+Read Domain security helper public signatures
+I've gathered the Domain helper signatures and now I'm pulling in the DapperSecurityEventLog RecordAsync signature, the Razor imports file, both test project files, and the account status styles from the CSS so I can ensure my new styles align with the existing design patterns.
+
+Done
+Now the security-event-log signature, the Razor imports, the two test csprojs, and the relevant slice of app.css.
+
+
+Architecting setup endpoints and reconciling prerender behavior
+Architecting setup endpoints and reconciling prerender behavior
+
+Read ISecurityEventLog signature, _Imports.razor, and the two test csprojs
+I've confirmed both test projects have the necessary framework references, so the data protection and passkey types are accessible. DataAccess.Tests only depends on DataAccess with Domain flowing through transitively, while WebApplication.Tests pulls in all three projects. Now I need to double-check the .NET 10 passkey attestation API before moving forward.
+
+Looking at the existing Passkeys.razor component, it's already using SignInManager.PerformPasskeyAttestationAsync() returning a PasskeyAttestationResult with .Succeeded and .Passkey properties, plus MakePasskeyCreationOptionsAsync() for generating creation options. The fact that the user's build showed 336 tests passing (more than the 326 baseline mentioned) confirms the passkey slice actually compiled and ran successfully on their machine, which validates that all these APIs—PerformPasskeyAttestationAsync, MakePasskeyCreationOptionsAsync, PasskeyUserEntity, PerformPasskeyAssertionAsync, PasskeyAssertionResult, and the related handler interfaces—are genuinely available in their setup.
+
+The key difference I need to account for is that attestation returns a non-generic PasskeyAttestationResult, while assertion returns the generic PasskeyAssertionResult<Person>. For the setup attestation flow, PerformPasskeyAttestationAsync relies on attestation state stored in a cookie that gets set when MakePasskeyCreationOptionsAsync is called, so my /setup/passkey/creation-options endpoint needs to properly trigger that cookie setup.
+
+The user handle embedded in the creation options comes from ticket.PersonIdentifier.ToString(), and the attestation result's UserPasskeyInfo contains the credential itself — the actual persistence happens downstream. I'm wondering whether PerformPasskeyAttestationAsync requires the user entity in the options to already exist in the system, or if it just validates the attestation object against the stored challenge without caring about user existence.
+
+Looking at how the reference template uses it and the fact that attestation only verifies the attestation object against the challenge and expected RP/origin, it doesn't actually look up a user. The Passkeys.razor flow calls it while authenticated, but the method itself only takes the credential JSON. For the anonymous setup flow, as long as the attestation-state cookie is present with the challenge and user handle, it should work fine.
+
+I'm also checking whether MakePasskeyCreationOptionsAsync needs the HttpContext — it's a method on SignInManager, which gets the current context from IHttpContextAccessor, and in the endpoint the SignInManager resolves that automatically. The Set-Cookie response for the attestation state gets written to context.Response in the endpoint. Everything checks out.
+
+The setup creation-options endpoint returns the options as JSON in the WebAuthn format that the browser expects, which PublicKeyCredential.parseCreationOptionsFromJSON can parse directly — same format as the account flow. And since the Sign-in and Passkeys pages already handle writing cookies and redirects in static SSR with antiforgery, the Setup.razor POST handler can do the same with the setup cookie via HttpContext.Response.Cookies.Append.
+
+For the 404 check when an admin already exists, I need to set the status code in OnInitializedAsync and render a "setup already complete" message. The question is whether Blazor SSR respects HttpContext.Response.StatusCode set before the response starts rendering — for static SSR endpoints, the response hasn't committed yet at that point, so it should work. I need to decide whether to create a separate SetupEndpoints.cs file or fold the setup endpoints into the existing AccountEndpoints. Adding them to AccountEndpoints means fewer wiring calls in Program.cs, but keeping them separate is cleaner architecturally since setup is conceptually distinct. The bootstrap service gets registered in AddRestaurantIdentity, the setup ticket protector is created on-the-fly from the data protection provider without needing registration, and Program.cs remains completely unchanged — which means I only need to emit the files that actually change.
+
+For the Home.razor component, I need to handle the fact that interactive components run twice during the prerender phase and then again on the circuit, so I'll wrap the database call in a try-catch to gracefully handle any availability issues and avoid making the landing page dependent on the database being up.
+
+Now I'm checking the password hasher setup — IPasswordHasher<Person> is registered as a singleton using Argon2id, which I can inject into the static Setup.razor page. I need to verify that the Argon2 hasher's HashPassword method signature accepts a Person instance and password string, and confirm that passing a throwaway Person object is acceptable since the hasher likely ignores the user parameter anyway.
+
+For the sign-in flow after creating the admin, I call UserManager.FindByNameAsync followed by SignInManager.SignInAsync with isPersistent: true. The key thing is that SignInAsync just issues the authentication cookie without running CanSignInAsync — it assumes the user is already authenticated. Since RestaurantSignInManager doesn't override SignInAsync, it skips the check and proceeds directly to signing in, which is fine because the new admin is active. The claims get built through the factory, mapping roles to the administrator claim.
+
+Show less
+Done
+I have essentially everything. Let me confirm the Argon2 hasher's HashPassword signature (the wizard hashes the password before commit), then I'll build.
+
+
+Architecting repository structure and consolidating editable files
+Architecting repository structure and consolidating editable files
+
+Read Argon2idPasswordHasher.cs to confirm HashPassword signature and behavior
+I've identified that the HashPassword function takes a user parameter that isn't actually used, so I can instantiate a throwaway Person object to call it and get the PHC string back. Now I'm ready to finalize the design and set up the repository structure in /home/claude, copying the existing files I'll be editing to ensure I produce complete, accurate versions, while creating any new files needed. The user wants the output as a structured tarball that mirrors the repository tree. I'm debating whether to read the frontend-design skill given that I'm extending an existing stylesheet in a .NET/Blazor project rather than designing new UI from scratch. The system prompt is strict about reading relevant skills first, but this particular skill targets distinctive visual design and document artifacts, whereas I'm working within an established design system and delivering source code. I think the codebase conventions I've already studied are more applicable here than a general frontend-design guide. I'm settling on fidelity to the existing design system as the right call here—the codebase is explicit about maintaining that quiet palette, so consistency is the actual design requirement, not distinctiveness. Now I'll set up the working directory and start editing the files I need to modify, copying them from the dump into their proper paths and then making the necessary changes.
+
+Since I can't compile C# without the .NET SDK (which isn't available in this environment and the network doesn't allow package restoration), I'll rely on careful manual review to ensure everything matches the spec and API contracts—the same approach this project has always used.
+
+Now I need to pull the relevant CSS sections from app.css to align the styles for the account, status, and passkey pages.
+
+Show less
+Done
+Let me read the relevant CSS so my wizard styles match the existing palette exactly.
+
+
+Architected complete setup wizard implementation with structured file organization
+Architected complete setup wizard implementation with structured file organization
+
+Index the relevant CSS class definitions in app.css
+I've got a solid set of CSS classes I can reuse across the setup wizard—things like the account panel styling, form fields, buttons, status indicators, and TOTP-related elements. I'll just need to add a few minimal setup-specific styles on top of what's already there.
+
+Now I'm mapping out the complete file structure. I need to create five new files: the first administrator bootstrap logic with its data access layer, the setup state management and ticket protection system, the Razor component for the wizard itself, and test files for both the ticket logic and the bootstrap integration. Then I'll modify the existing user store to integrate with this new setup flow.
+
+I'm also updating the obligations enforcement to add the setup routes, creating the anonymous endpoint for passkey creation options in the account endpoints, registering the bootstrap service in the dependency injection container, and updating the passkey submit component.
+
+Adding the client-side passkey script and home page setup pointer...
+
+Updating stylesheet and test coverage...
+
+Now I need to update the build progress documentation and consider whether the spec and ledger need edits—since the behavior aligns with what's already specified in §3.6, I'm checking if any documentation review entries are needed. Rather than loosening the store's encapsulation by exposing the purpose as an internal const, I could have the WebApplication protect the TOTP secret before passing it to the bootstrap — but that just shifts the problem since the WebApplication would then need access to the purpose, which is also private in the store. The cleanest approach is to define the purpose once as an internal const on DapperUserStore and reference it from the bootstrap within the same assembly, keeping a single source of truth while minimizing changes. The bootstrap will protect the TOTP secret using the same purpose string that the store uses to unprotect it later, creating a round-trip flow I can verify in integration tests. Now I'll write out the implementation files directly to the repo structure.
+
+For the Setup.razor component, I need to handle the multi-form static-SSR pattern carefully—using @page and [ExcludeFromInteractiveRouting], cascading the HttpContext, binding form models with [SupplyParameterFromForm] and null-coalescing initialization to avoid BL0008 warnings, and setting up named forms with proper antifor
+
+Defining the input models... The passkey form mirrors the existing pattern in Passkeys.razor, using the same PasskeySubmit component with a creation options URL, and binding the PasskeyInputModel via form parameter — though I need to check how the form submission actually works since the component does a native submit that might bypass the @onsubmit handler. The antiforgery token flow is solid — PasskeySubmit passes it to the element for the creation-options fetch, and the form's <AntiforgeryToken/> covers the native POST. The setup creation-options endpoint validates the token from the header, and I need to make sure the element's fetch request includes it. One thing to verify: the setup endpoint reads the pending person ID from a cookie, so I need to confirm the element's fetch preserves that cookie automatically.
+
+For the TOTP step, I'm generating the secret when entering the step — right after passkey success, I encode a random secret and set the step to Totp. This keeps the QR code stable across re-renders, even when invalid codes trigger a refresh. The confirm endpoint then validates the code against the stored secret. Now I'm checking the Base32 encoding/decoding logic to make sure it's consistent. Completing the administrator creation call with the new administrator details, then checking if one already exists to handle that error case. If successful, I'll fetch the created admin user and sign them in persistently, store the recovery codes, mark setup as complete, and render the success page without redirecting.
+
+For rendering, the component checks _completed first to show recovery codes, then _adminExists for a 404 panel, then the current step from the ticket, falling back to the account creation step. I need to set the 404 status code in OnInitializedAsync when the admin already exists, but also handle the case where an admin is created mid-request in the POST handlers.
+
+On the first GET with no cookie and no admin, show the account step. With a valid ticket, show its corresponding step. With an expired or tampered cookie, clear it and return to the account step with a message. For the account form itself, I'll use an EditForm with data annotations validation to match the pattern from the sign-in and TOTP enrollment flows, displaying validation messages as the user fills it out.
+
+For password confirmation, I can use the [Compare] attribute pointing to the password field. Username and password will have length constraints using [StringLength] with MinimumLength set appropriately. Now I'm working through the SetupTicket serialization with System.Text.Json.
+
+By default, byte[] serializes to base64, string arrays become JSON arrays, and enums convert to integers—all of which work fine for this internal format. Records with positional constructors deserialize automatically when property names match, so I don't need to explicitly add [JsonConstructor] since there's only one constructor anyway.
+
+Since this is Blazor Server without AOT trimming, reflection-based serialization is perfectly safe. Now I'm building the SetupTicketProtector class that wraps the data protection API to encrypt and decrypt setup tickets using JSON serialization.
+
+Writing protector methods... For deserialization, I'll stick with default JSON options since the record's constructor parameters match the property names exactly, so case sensitivity won't be an issue. The ticket needs a HasExpired method that checks if the elapsed time since issuance exceeds the lifetime. Now I'm setting up a SetupCookie class with a constant name, a 30-minute lifetime, and methods to write and delete the cookie with appropriate options.
+
+Building cookie options with HttpOnly, Secure, SameSite=Lax, and a 30-minute MaxAge...
+
+The smoke test hits the health endpoint directly over HTTP, but that's fine since it doesn't touch the setup endpoint. For the actual setup flow, everything goes through HTTPS via Caddy, so Secure=true is correct and consistent with the auth cookie's policy. When deleting the cookie, I need to match the path to "/" to ensure it's properly cleared. The endpoint will read the setup cookie from the request using TryGetValue...
+
+For the Razor page and endpoint, I'll inject IDataProtectionProvider directly and instantiate SetupTicketProtector where needed — no separate DI registration required. Then I need to register IFirstAdministratorBootstrap in AddRestaurantIdentity...
+
+Registering the bootstrap implementation...
+
+The bootstrap doesn't need ISecurityEventLog since it writes security events directly within its own transaction rather than using the log's separate connection. So its dependencies are just the connection factory, clock, identifier factory, and data protection provider — scoped lifetime works fine here.
+
+The endpoint resolves IFirstAdministratorBootstrap from DI as a scoped service, which aligns with how minimal-API handlers receive their dependencies per request.
+
+Now I'm writing the bootstrap SQL with a transaction lock...
+
+Writing SQL queries... Protecting the TOTP secret, generating a new security stamp, and using the clock for timestamps. For the recovery codes and security events, I'm building parameterized batch inserts — the recovery codes as a list of hashed values, and the security events as separate rows where account_created, passkey_registered, and totp_enrolled have no actor, while role_granted references the person's own ID. Confirming that UserPasskeyInfo.Transports is a nullable string array, so I'll join those values when inserting. The NewAdministrator record in DataAccess holds a UserPasskeyInfo object, and the WebApplication layer reconstructs it from SetupPasskey in the Razor component.
+
+Reconstructing the passkey info... For the passkey name during setup, I'll use a formatted default like "Passkey added [date]" to match the style in Passkeys.razor, though I need to be careful about timezone handling in a container environment where UTC might not reflect the admin's local time.
+
+On the admin existence check, I'm computing _adminExists in OnInitializedAsync as a UX gate that returns 404 if an admin already exists, while the bootstrap layer performs the authoritative check with advisory locking. For the edge case where a person exists but no admin (which shouldn't happen normally), the account step's username duplicate check via UserManager handles that, and the bootstrap's INSERT would catch any constraint violations. throws a 500, which is acceptable given how unlikely that scenario is. The account step's pre-check handles the normal case, so I'll keep the bootstrap simple and not add special handling for username collisions.
+
+For the wizard flow, I'll add a "Start over" option on the passkey, TOTP, and review steps that clears the session cookie and returns to the account step, letting operators restart if they want to change their username.
+
+Show less
+Done
+I now have a complete, precise understanding of the codebase, the §3.6 contract, and every API the wizard must reuse. The next slice is Slice 6 — the /setup first-administrator bootstrap, and it fits cleanly on top of everything that's landed. Let me build it.
+
+
+Architected transactional bootstrap component for DataAccess layer
+Architected transactional bootstrap component for DataAccess layer
+
+Create the working repo tree at the real relative paths
+I'm starting to write the transactional bootstrap component for the DataAccess layer.
+
+Done
+Now the transactional bootstrap — the heart of the slice (§3.6's single locked transaction).
+
+
+New DataAccess bootstrap: the single locked transaction that creates the first administrator
+New DataAccess bootstrap: the single locked transaction that creates the first administrator
+
+New DataAccess bootstrap: the single locked transaction that creates the first administrator
+Now I'm setting up the WebApplication's SetupState.cs file with the ticket, protector, cookie configuration, step enumeration, and passkey data transfer object.
+
+Done
+Now the setup ticket/cookie state (WebApplication) — the protected value that carries the wizard across its steps.
+
+
+New setup ticket, passkey carrier, protector, cookie helpers, and step enum
+New setup ticket, passkey carrier, protector, cookie helpers, and step enum
+
+New setup ticket, passkey carrier, protector, cookie helpers, and step enum
+Now I'm working on the Setup.razor wizard page, which is the most complex file to convert. I need to follow the same static-SSR patterns used in the other pages like EnrollTotp and Passkeys, starting with the page directive, routing exclusion attribute, and cascading HttpContext parameter.
+
+The component will bind three form input models for the account, passkey, and TOTP setup steps, along with fields to track the setup ticket, admin existence, completion status, recovery codes, and any error messages. For the TOTP step specifically, I'll compute the QR code SVG, manual entry key, and provisioning URI from the ticket's TOTP secret.
+
+In OnInitializedAsync, I'm initializing the input models, creating the ticket protector, checking if an admin already exists (returning a 404 if so), and then reading the setup cookie to unprotect and load the ticket data.
+
+Handling cookie validation and expiration... I need to guard each handler against the case where an admin already exists—if _adminExists is true, OnInitializedAsync sets a 404 and returns, but the form handler still runs afterward, so I'll add an early check in each handler to bail out if that flag is set. After any database write, I'll also need to handle the scenario where an admin might have appeared between checks.
+
+For the StartAccount handler, I'm validating the username input, checking if it's already taken via UserManager, and then preparing to hash the password and create the person record.
+
+I'm creating a SetupTicket with the person ID, current timestamp, and the hashed password, then writing it to a cookie and redirecting to the setup page using POST-Redirect-GET. The cookie should survive the 302 redirect since Set-Cookie headers are included in the response.
+
+Now I'm checking the RegisterPasskeyAsync method — it validates that an admin doesn't already exist and that the ticket is in the correct Passkey step before proceeding.
+
+Validating passkey input...
+
+I'm extracting the passkey information from the attestation result and creating a setup object with the credential details, then generating a TOTP secret for the next step and updating the setup ticket with both the passkey and TOTP data before writing it to a cookie.
+
+Now I'm navigating back to the setup page, and I'm thinking through the flow when attestation fails — the page re-renders at the passkey step with the error message, which is correct. There's also a consideration about the attestation challenge cookie: if the user retries after a failure, the element will request new creation options with a fresh challenge, which is fine. Next I need to handle the TOTP confirmation step.
+
+For the TOTP input, I'm using an EditForm with OnValidSubmit and a model that requires the code field. I'll normalize the input in the handler to strip spaces and dashes. Before processing the code, I'm validating that the ticket exists, we're at the TOTP step, and the secret is present — if any of these checks fail, I redirect back to setup. Then I decode the base32 secret to get the raw bytes.
+
+Handling the TOTP validation...
+
+I'm wondering whether OnInitializedAsync runs before the form handler on a POST, since the QR code display gets prepared during initialization when the step is already set to Totp. If it does, then calling PrepareTotpDisplay() again in the error handler would be redundant, though harmless. I should think through the lifecycle to decide whether to keep that redundant call or rely on what's already been set up.
+
+Now I'm moving on to the FinishAsync method for the review step. I'm checking that the admin doesn't already exist and validating the ticket state — ensuring it's at the Review step with both a passkey and TOTP secret present. Then I'm constructing a UserPasskeyInfo object from the ticket data.
+
+Calling the bootstrap service...
+
+I'm checking if an administrator already exists, and if so, setting the response status to 404 and flagging it. Otherwise, I'm retrieving the newly created administrator and signing them in with a persistent session.
+
+Now I'm storing the recovery codes and marking the setup as complete. Both the setup cookie deletion and the sign-in cookie are being set on this same 200 response, so the user will be authenticated when they see the success panel with the recovery codes. They can then navigate to the admin area or home page. I'm realizing there might be a timing issue here — the HttpContext.User is still anonymous during this request even though the sign-in cookie is being written to the response.
+
+For the restart flow, I'm clearing the setup cookie and redirecting back to /setup.
+
+Now I'm building the TOTP display by generating the provisioning URI, rendering it as an SVG QR code, and formatting the secret key into space-separated groups for manual entry — similar to how the enrollment component handles it.
+
+For rendering the SVG, I'll cast it as MarkupString since the server generates it safely with proper HTML escaping. Then I'm defining the input model class...
+
+Defining input model... Defining model classes... I need to add several using statements for the namespaces that aren't already imported: MyRestaurant.Domain.Identifiers for the identifier factory, MyRestaurant.Domain.Time for the clock, MyRestaurant.Domain.Security for the TOTP-related classes, and MyRestaurant.WebApplication.Identity for the QR code component. I'm debating whether to use a literal 404 or the StatusCodes constant for clarity, and checking if HttpContext needs an explicit using directive or if it's already available through the default imports in the Razor component. So the Web SDK's implicit usings automatically include Microsoft.AspNetCore.Http, which means StatusCodes, HttpContext, HttpResponse, and CookieOptions are all available in Razor components without needing explicit imports. That explains why SignIn.razor can reference HttpContext directly. In Setup.razor, I can use these types the same way, so StatusCodes.Status404NotFound and HttpContext work bare, and HttpResponse should be implicitly available too when calling SetupCookie.Write().
+
+For the C# files like SetupState.cs in the WebApplication project, the implicit usings from Directory.Build.props cover the standard namespaces, and since it's also a Web SDK project, Microsoft.AspNetCore.Http types like HttpResponse, CookieOptions, and SameSiteMode are implicitly available there as well.
+
+I added an explicit using Microsoft.AspNetCore.Http; anyway, which is redundant but perfectly legal in C# — a local using statement can coexist with a global implicit using of the same namespace without causing errors. I'll keep the explicit usings in the code files for clarity and to make the dependencies more obvious. explicit using won't cause issues since TreatWarningsAsErrors is false and redundant usings don't trigger warnings anyway. For SetupTicketProtector, I'm checking how JsonSerializerDefaults.Web handles property naming and deserialization — it uses camelCase with case-insensitive matching, which affects how record constructor parameters bind to JSON properties.
+
+The serialization round-trips correctly: enums serialize as integers (since Web defaults don't convert to strings without explicit converters), DateTimeOffset becomes ISO strings, Guid becomes strings, and Byte[] becomes base64. Now I'm moving on to building the Setup.razor component with conditional rendering for each of the four setup steps.
+
+Writing the Setup.razor component... Writing the passkey setup form... The pattern matches how the Passkeys component binds its input, so now I'm ready to write the Setup.razor file.
+
+Show less
+Done
+Now the wizard page itself — Setup.razor.
+
+
+New /setup first-administrator wizard page (static SSR, anonymous, zero-admin gated)
+New /setup first-administrator wizard page (static SSR, anonymous, zero-admin gated)
+
+New /setup first-administrator wizard page (static SSR, anonymous, zero-admin gated)
+I'm thinking through how Blazor's template syntax works with RenderFragment — the @<tag>...</tag> pattern creates a RenderFragment that can be assigned to a method or property, like defining a private method that returns the rendered form markup.
+
+The key concern is whether form handlers and @formname directives work reliably inside these templates when used in static SSR. Since the RenderFragment is invoked as part of the component's render tree (via @RenderStartOver()), the form should register its named handler correctly with the SSR form dispatch system.
+
+However, this is an uncommon pattern and harder to verify without compiling. To play it safe and align with how the rest of the codebase structures forms, I should inline these templates directly in the markup instead of returning them from methods. That means duplicating the "Start over" form and steps list across the different step branches, but it's more reliable and follows the established idiom. For the steps indicator, I can still use a helper method to compute CSS classes since that just returns a string — the risky part is the template itself. I'll inline the <ol> markup too, using a small helper for per-step styling.
+
+Actually, I could restructure the page layout entirely: put the step indicator in a shared area at the top, then have the per-step content below. This would be cleaner and avoid duplication. The tricky part is that the "admin exists" and "completed" states don't have steps at all, so I'd need to conditionally render either the step indicator or just show those completion panels instead.
+
+I'm defining a helper to compute the current step based on the ticket state—if there's no ticket yet, we're on Account; otherwise, map the ticket's step value to the corresponding index. Then I can create a method that returns the CSS classes for each step based on whether it's active, completed, or upcoming.
+
+The "Start over" form will be placed once after the step content, conditionally shown only when we're past the account step. I also need to fix RestartAsync to properly work with the form submission handler.
+
+Rewriting the whole Setup.razor file... ConfirmTotpAsync is marked async but doesn't actually await anything — it just calls synchronous methods like Base32Text.TryDecode and WriteTicketAndReload — which triggers a compiler warning. Since the codebase aims for zero warnings, I should either remove the async keyword and return Task.CompletedTask, or add a legitimate await somewhere. The form binding supports both async Task and non-async Task methods, so either approach works. Returning Task.CompletedTask... WriteTicketAndReload is synchronous and called from async handlers, which is fine. OnInitializedAsync properly awaits AdministratorExistsAsync without triggering CS1998. For the optional label styling, I'll just use plain text "(optional)" in the label rather than adding a new CSS class. The .link-button class should already be defined since it's used in Passkeys, so I'll apply it to the "Start over" button as a subtle text link. Now I'm ready to rewrite the Setup.razor file cleanly.
+
+Show less
+Done
+The method-returning-RenderFragment templates (@<form>…) are a fragile pattern for SSR form dispatch, and ConfirmTotpAsync would trip CS1998. Let me rewrite Setup.razor with a cleaner single-panel structure, fully inline forms, and warning-free handler signatures.
+
+
+Ran a command, created a file
+Ran a command, created a file
+
+Remove the first Setup.razor draft to rewrite it cleanly
+
+Rewrite Setup.razor: single-panel wizard, inline forms, warning-free handlers
+I need to extract the original file contents from the dump using their line ranges, then write them to the actual repository paths so I can make precise edits. I need to figure out the exact boundaries for extracting each file's content from this structured document. The pattern is consistent: each file block has metadata followed by a content section, and files are separated by a line of 80 hashes. So for any file, I extract everything after the --- CONTENT --- marker up to (but not including) the separator line of hashes that precedes the next file header.
+
+I'll write a helper script using awk to handle this extraction per file by computing the start and end line numbers for the content section.
+
+Done
+Now I'll pull the exact current content of each file I need to modify, so I can edit and emit accurate full files. Let me write a small extractor and pull all ten originals.
+
+
+Extract current content of the ten files to be modified into the repo tree
+Extract current content of the ten files to be modified into the repo tree
+
+Extract current content of the ten files to be modified into the repo tree
+The byte counts match up with the metadata, so the extraction is working correctly. Now I'm making the first edit to DapperUserStore.cs—changing the access modifier from private to internal for the TOTP secret protector constant and updating its comment to note that the bootstrap class shares it.
+
+Done
+Extraction byte counts match the metadata sizes. Now the edits. First, expose the TOTP-secret protector purpose so the bootstrap shares it (one-word visibility change + a note).
+
+
+Promote the TOTP secret protector purpose to internal so the bootstrap shares the exact purpose
+Promote the TOTP secret protector purpose to internal so the bootstrap shares the exact purpose
+
+Promote the TOTP secret protector purpose to internal so the bootstrap shares the exact purpose
+DapperUserStore.cs
++8
+-2
+I need to add two new constants to the AccountRoutes class—Setup and SetupPasskeyCreationOptions—placing them after the existing PasskeyRequestOptions constant.
+
+Done
+Now add the two setup route constants to AccountRoutes.
+
+
+Add the /setup route and the setup passkey creation-options route constants
+Add the /setup route and the setup passkey creation-options route constants
+
+Add the /setup route and the setup passkey creation-options route constants
+ObligationsEnforcement.cs
++15
+-3
+I'm adding a new anonymous endpoint to handle passkey creation options in the AccountEndpoints file, which requires importing the data protection and time utilities alongside the existing identity and MVC dependencies. Adding the endpoint handler...
+
+Done
+Now add the anonymous setup passkey-options endpoint to AccountEndpoints.
+
+
+Edited 2 files
+Edited 2 files
+
+Add usings for Data Protection and the clock (needed by the setup endpoint)
+AccountEndpoints.cs
++6
+-4
+
+Add the anonymous, zero-admin-gated setup passkey creation-options endpoint
+AccountEndpoints.cs
++48
+-6
+I need to register IFirstAdministratorBootstrap in the IdentityServiceCollectionExtensions file, placing it after the TotpEnrollment scoped registration and before the return statement, with dependencies on IDatabaseConnectionFactory, IClock, IIdentifierFactory, and IDataProtectionProvider.
+
+Checking the current usings, I see that MyRestaurant.Domain.Identifiers isn't imported yet, which I'll need for IIdentifierFactory. I also need to verify whether IDatabaseConnectionFactory comes from MyRestaurant.DataAccess (the base namespace) rather than the .Identity subnamespace, and add the appropriate using if it's not already there.
+
+Done
+Now register the bootstrap in the identity wiring.
+
+
+Edited 2 files
+Edited 2 files
+
+Add usings for the connection factory and identifier factory the bootstrap needs
+IdentityServiceCollectionExtensions.cs
++5
+-3
+
+Register IFirstAdministratorBootstrap for the /setup wizard
+IdentityServiceCollectionExtensions.cs
++20
+-9
+I'm adding optional CreationOptionsUrl and RequestOptionsUrl parameters to the PasskeySubmit component that get rendered as attributes on the passkey-submit element, only when they're set, so the JavaScript can fall back to defaults when they're not provided.
+
+Done
+Now parameterize PasskeySubmit so the wizard can target the setup ceremony URL (defaults keep the existing pages unchanged).
+
+
+Edited 2 files
+Edited 2 files
+
+Render optional creation/request options URL overrides onto the passkey element
+PasskeySubmit.razor
++9
+-7
+
+Add the optional CreationOptionsUrl/RequestOptionsUrl parameters
+PasskeySubmit.razor
++19
+-3
+I'm updating the passkey component to read optional creation-options-url and request-options-url attributes from the DOM element, falling back to predefined constants if they're not provided. I'll need to capture these URLs in connectedCallback and pass them through to the credential creation and request functions. Refactoring the functions to accept configurable URLs as parameters instead of using hardcoded constants, then updating the call sites to pass the URLs from the element's attributes. I'll also update the header comment to reflect that the endpoints are now configurable.
+
+Done
+Now teach passkey.js to honour the optional per-element endpoint overrides (default behaviour unchanged).
+
+
+Edited 4 files
+Edited 4 files
+
+Document the per-element endpoint override in the header comment
+passkey.js
++5
+-3
+
+Parameterize createCredential/requestCredential with the resolved endpoint URLs
+passkey.js
++18
+-18
+
+Read the optional endpoint-override attributes into attrs
+passkey.js
++9
+-7
+
+Pass the resolved endpoint URLs at the call sites
+passkey.js
++9
+-9
+I'm adding a first-run check to Home.razor that redirects to the setup page when no admins exist, wrapped in error handling so database issues don't crash the landing page. The Home component will render interactively on the server, so OnInitializedAsync runs during prerender and again when the circuit starts—the database call happens twice but it's cheap and wrapped in error handling. I'll add a setup callout banner as the first element in the landing section, styled with a new .setup-callout class in the app CSS to give it a prominent, accent-tinted appearance.
+
+Now I need to build the Home.razor file with the banner that links to /setup and only displays when _needsSetup is true. Since OnInitializedAsync runs before the prerendered HTML is generated, the banner will show correctly in the initial render if setup is needed.
+
+Done
+Now the first-run pointer on the landing page.
+
+
+Created a file, ran a command
+Created a file, ran a command
+
+Home.razor with a first-run pointer to /setup shown while no administrator exists
+I'm planning to overwrite the extracted Home.razor file using a bash heredoc with a quoted delimiter to preserve the special characters like @ and backticks literally, though I need to be careful about the EOF marker placement.
+
+
+Overwrite the extracted Home.razor with the first-run-pointer version
+I need to append the setup-specific styles to app.css, so I'm checking the end of the file to see where to add the new classes for the setup steps, summary, restart button, callout, and optional elements while keeping the styling consistent with the existing palette.
+
+Done
+Now append the small set of setup styles to app.css, in the existing palette. Let me check the tail first.
+
+
+Ran 2 commands
+Ran 2 commands
+
+Inspect the tail of app.css before appending setup styles
+I'm checking that the CSS variables are properly defined in the root scope — I can see --hairline is being used in .passkey-rename, so it's available. Now I'm adding the setup styles using the existing design tokens like --ink, --accent, --surface, and --hairline.
+
+Adding setup component styles...
+
+
+Append the setup wizard and first-run callout styles to app.css
+I need to add a test fact to IdentityWiringTests.cs that verifies IFirstAdministratorBootstrap resolves within a scope, placing it after the existing TotpEnrollment_IsResolvableInAScope fact. The necessary using statement for the Identity namespace is already there since the test already references Person.
+
+The test creates a service provider and scope, then retrieves IFirstAdministratorBootstrap and asserts it resolves to DapperFirstAdministratorBootstrap. Since the constructor only creates a protector from IDataProtectionProvider and doesn't open a database connection, the test will pass even with the UnusedConnectionFactory that throws on connection attempts — it's purely testing that resolution works, not any database interaction.
+
+Done
+Now add a wiring-test fact that the bootstrap resolves.
+
+
+Assert IFirstAdministratorBootstrap is registered and resolvable
+Assert IFirstAdministratorBootstrap is registered and resolvable
+
+Assert IFirstAdministratorBootstrap is registered and resolvable
+IdentityWiringTests.cs
++19
+-4
+I'm outlining two new test files: one for setup ticket validation covering round-trip behavior, tampering, expiry, and state transitions, and another for first administrator bootstrap that tests the locked commit gate. Starting with the setup ticket tests using an ephemeral data protection provider in the WebApplication.Tests project.
+
+Writing test cases... Writing test logic... Writing test helper... So I'll use Assert.SkipWhen for the dynamic skip. For the bootstrap test, I need to wire up the connection factory, FixedClock, UuidV7IdentifierFactory, and EphemeralDataProtectionProvider, then build a DapperUserStore instance and verify the TOTP secret round-trips correctly by calling FindByNameAsync and GetAuthenticatorKeyAsync — making sure both use the same DataProtectionProvider instance.
+
+Then I'll query the database directly to verify the person row has the right fields (username, display name, password hash, flags all set correctly), confirm the TOTP secret round-trips through the store's protector, check the passkey credential row matches what was enrolled, and validate the recovery codes.
+
+For the recovery codes, I'll assert there are exactly 10 unused codes and that redeeming one of the returned codes succeeds (then verify the count drops to 9) to confirm single-use behavior. I'll also verify the person_role row shows administrator granted by themselves, and the security_event table contains exactly four events (account_created, passkey_registered, totp_enrolled, role_granted) with the right subjects and actors. Finally, I'll confirm the response status is Created and the returned recovery codes count is 10.
+
+Now for the second test: I need to verify that AdministratorExistsAsync returns false initially, then true after creating the first administrator. The third test checks that calling CreateFirstAdministratorAsync again with a different pending person fails with AdministratorAlreadyExists status, leaves recovery codes empty, and doesn't create a second admin or additional person record. I'll construct a second NewAdministrator with a fresh person id and distinct username, call the method, and assert the status, empty recovery codes, and unchanged counts.
+
+To build NewAdministrator I need a UserPasskeyInfo and a password hash—I'll use a dummy PHC-formatted string since the column accepts any text. For the TOTP secret I'll encode a fixed 20-byte value using Base32Text. Since DataAccess.Tests references DataAccess which references Domain, I have access to Base32Text and UuidV7IdentifierFactory. Now I need to construct the UserPasskeyInfo itself.
+
+The bootstrap uses its own data protector with an internal purpose constant for the TOTP secret, so I'll need to access that same constant in the test to properly set up the encrypted secret. ose, same provider). ✓. The test never names the internal const. Both the bootstrap and store are in the same DataAccess assembly, so they can both reference the internal constant without issue. Changing from private to internal doesn't break anything since nothing external was depending on it. Now I need to write out the test files, but first I should verify whether the test assembly can actually see the bootstrap and related types like IFirstAdministratorBootstrap, DapperFirstAdministratorBootstrap, NewAdministrator, and FirstAdministratorBootstrapStatus.
+
+They're all public in DataAccess, and DataAccess.Tests references DataAccess, so that's fine. Let me start writing SetupTicketTests.cs.
+
+Show less
+Done
+Now the two new test files. First, the pure setup-ticket tests.
+
+
+Pure tests for the setup ticket protector: round-trip, tamper, expiry, step carry
+Pure tests for the setup ticket protector: round-trip, tamper, expiry, step carry
+
+Pure tests for the setup ticket protector: round-trip, tamper, expiry, step carry
+Done
+Claude reached its max length for this message. Max effort can use excessive tokens resulting in hitting limits. Consider using a lower effort setting.
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+100
+56
