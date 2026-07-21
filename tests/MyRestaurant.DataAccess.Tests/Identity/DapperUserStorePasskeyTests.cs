@@ -223,7 +223,9 @@ public sealed class DapperUserStorePasskeyTests : IClassFixture<PostgreSqlFixtur
     }
 
     // --- helpers -----------------------------------------------------------------------------------
-
+    private void SkipIfNoContainer()
+        => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+        
     private DapperUserStore BuildStore() => new(
         _connectionFactory!,
         _clock,
