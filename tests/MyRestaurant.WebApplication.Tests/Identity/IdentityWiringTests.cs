@@ -208,6 +208,17 @@ public sealed class IdentityWiringTests
         Assert.Equal(new[] { RestaurantRoles.Administrator }, roles.AllowedRoles);
     }
 
+    [Fact]
+    public void PersonDirectory_IsResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        IPersonDirectory directory = scope.ServiceProvider.GetRequiredService<IPersonDirectory>();
+
+        Assert.IsType<DapperPersonDirectory>(directory);
+    }
+
     // --- helpers -----------------------------------------------------------------------------------
 
     private static async Task<AuthorizationPolicy> GetPolicyAsync(string policyName)

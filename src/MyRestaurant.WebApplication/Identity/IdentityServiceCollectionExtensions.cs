@@ -30,7 +30,8 @@ namespace MyRestaurant.WebApplication.Identity;
 ///   <item>the area authorization policies (§3.7), via <see cref="AuthorizationServiceCollectionExtensions"/>;</item>
 ///   <item>the cascading <c>Task&lt;AuthenticationState&gt;</c> the Blazor router and
 ///   <c>AuthorizeView</c> consume;</item>
-///   <item>the append-only <see cref="ISecurityEventLog"/> that sign-in outcomes are recorded to (§3.5).</item>
+///   <item>the append-only <see cref="ISecurityEventLog"/> that sign-in outcomes are recorded to (§3.5);</item>
+///   <item>the read-only <see cref="IPersonDirectory"/> the administration people list reads from (§3.6/§3.7).</item>
 /// </list>
 ///
 /// The obligations pipeline itself is enforced by <see cref="ObligationsMiddleware"/> in the request
@@ -179,6 +180,12 @@ public static class IdentityServiceCollectionExtensions
         // The append-only security-event trail (§3.5, §3.7). Scoped, matching the Identity lifetime;
         // it holds no state and opens a connection per write from the singleton factory.
         services.AddScoped<ISecurityEventLog, DapperSecurityEventLog>();
+
+        // Read-only people directory for the administration area (§3.6/§3.7). Scoped, matching the
+        // Identity lifetime; it holds no state and opens a connection per read from the singleton
+        // factory. Its only dependency is IDatabaseConnectionFactory, so a plain type registration
+        // resolves it.
+        services.AddScoped<IPersonDirectory, DapperPersonDirectory>();
 
         // TOTP enrollment (§3.4) for the voluntary and forced pages. Scoped so it shares the request's
         // UserManager/DapperUserStore instance (it mutates the tracked entity through the store cast);

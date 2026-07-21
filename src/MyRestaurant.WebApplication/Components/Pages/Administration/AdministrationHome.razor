@@ -1,0 +1,205 @@
+@page "/administration"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.Domain.Time
+@inject IPersonDirectory People
+@inject IClock Clock
+
+@* The administration landing (TECHNICAL_SPECIFICATION §3.6/§3.7 — `area.administration`: the
+   administrator role). This first increment is read-only: it lists every account with its roles and
+   status, and is where the /setup success screen's "Go to administration" link lands. Static SSR, like
+   every account/administration surface, so the mutating tools that follow (create staff, reset
+   password/authenticator, grant/revoke roles, deactivate/reactivate) can post full pages and write the
+   authentication/redirect responses a Blazor circuit cannot. Endpoint authorization enforces the policy
+   on the server for this static-SSR page (an anonymous visitor is sent to /sign-in, a signed-in
+   non-administrator to /access-denied). Not exempt from the obligations pipeline: an administrator with
+   an outstanding §3.5 flag is routed to clear it first. *@
+
+<PageTitle>Administration — people</PageTitle>
+
+<section class="panel">
+    <p class="eyebrow">Administration</p>
+    <h1>People</h1>
+
+    <p class="lede">
+        Every account in the system, oldest first. Guests appear here once they register by joining a
+        table; staff are created here (that tool arrives next).
+    </p>
+
+    @if (_people is null)
+    {
+        <p class="lede">Loading…</p>
+    }
+    else if (_people.Count == 0)
+    {
+        <p class="lede">No accounts yet.</p>
+    }
+    else
+    {
+        <div class="admin-people">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">Username</th>
+                        <th scope="col">Roles</th>
+                        <th scope="col">Credentials</th>
+                        <th scope="col">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (PersonSummary person in _people)
+                    {
+                        <tr>
+                            <td>
+                                <span class="person-username">@person.Username</span>
+                                @if (!string.IsNullOrWhiteSpace(person.DisplayName))
+                                {
+                                    <span class="person-display-name">@person.DisplayName</span>
+                                }
+                            </td>
+                            <td>
+                                @if (person.Roles.Count == 0)
+                                {
+                                    <span class="muted">—</span>
+                                }
+                                else
+                                {
+                                    @foreach (string role in person.Roles)
+                                    {
+                                        <span class="chip chip-role">@role</span>
+                                    }
+                                }
+                            </td>
+                            <td>
+                                @if (person.HasPassword)
+                                {
+                                    <span class="chip">Password</span>
+                                }
+                                @if (person.HasAuthenticator)
+                                {
+                                    <span class="chip">Authenticator</span>
+                                }
+                                @if (!person.HasPassword && !person.HasAuthenticator)
+                                {
+                                    <span class="muted">—</span>
+                                }
+                            </td>
+                            <td>
+                                @if (!person.IsActive)
+                                {
+                                    <span class="chip chip-warn">Deactivated</span>
+                                }
+                                else if (IsLockedOut(person))
+                                {
+                                    <span class="chip chip-warn">Locked until @(person.LockoutEndAt!.Value.ToLocalTime().ToString("g"))</span>
+                                }
+                                else
+                                {
+                                    <span class="chip chip-ok">Active</span>
+                                }
+
+                                @if (person.MustChangePassword)
+                                {
+                                    <span class="chip chip-warn">Must change password</span>
+                                }
+                                @if (person.MustEnrollTotp)
+                                {
+                                    <span class="chip chip-warn">Must set up authenticator</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <p class="form-footnote">
+        Creating staff, resetting a password or authenticator, granting or revoking roles, and
+        deactivating or reactivating an account arrive in the next administration slice. Role and
+        credential changes take effect on affected sessions within a few minutes (the security-stamp
+        revalidation window, §3.1).
+    </p>
+
+    <p><a href="/">Back to the home page</a></p>
+</section>
+
+@* A handful of table rules, namespaced under .admin-people. App.razor links the static wwwroot/app.css
+   rather than the component-scoped bundle, so component CSS isolation is not active here; these live
+   inline to avoid editing the shared stylesheet for one screen. *@
+<style>
+    .admin-people {
+        overflow-x: auto;
+    }
+
+    .admin-people table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+    }
+
+    .admin-people th,
+    .admin-people td {
+        text-align: left;
+        padding: 0.6rem 0.75rem;
+        border-bottom: 1px solid var(--rule, #e5e5e5);
+        vertical-align: top;
+    }
+
+    .admin-people thead th {
+        font-weight: 600;
+        color: var(--muted-foreground, #666);
+        border-bottom-width: 2px;
+    }
+
+    .admin-people .person-username {
+        display: block;
+        font-weight: 600;
+    }
+
+    .admin-people .person-display-name {
+        display: block;
+        color: var(--muted-foreground, #666);
+        font-size: 0.85rem;
+    }
+
+    .admin-people .muted {
+        color: var(--muted-foreground, #999);
+    }
+
+    .admin-people .chip {
+        display: inline-block;
+        margin: 0.1rem 0.2rem 0.1rem 0;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        background: var(--chip-background, #f0f0f0);
+        color: var(--chip-foreground, #333);
+        white-space: nowrap;
+    }
+
+    .admin-people .chip-role {
+        text-transform: capitalize;
+    }
+
+    .admin-people .chip-ok {
+        background: #e6f4ea;
+        color: #1e7a37;
+    }
+
+    .admin-people .chip-warn {
+        background: #fdecea;
+        color: #a3261c;
+    }
+</style>
+
+@code {
+    private IReadOnlyList<PersonSummary>? _people;
+
+    protected override async Task OnInitializedAsync()
+        => _people = await People.ListPeopleAsync();
+
+    private bool IsLockedOut(PersonSummary person)
+        => person.LockoutEndAt is { } end && end > Clock.UtcNow;
+}

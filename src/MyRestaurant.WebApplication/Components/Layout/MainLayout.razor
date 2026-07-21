@@ -2,7 +2,10 @@
 
 @* The shared shell. The session header uses a plain HTML form for sign-out — a full-page POST to
    the /sign-out endpoint with the antiforgery token — so it behaves identically whether the hosting
-   page renders as static SSR (the account pages) or over an interactive circuit. *@
+   page renders as static SSR (the account pages) or over an interactive circuit. The Administration
+   link is shown only to the administrator role: <AuthorizeView Roles="administrator"> matches the role
+   claim the RestaurantClaimsPrincipalFactory emits under the configured RoleClaimType, the same claim
+   the area.administration policy checks (§3.7). *@
 <div class="app-shell">
     <header class="app-header">
         <a class="app-brand" href="/">MyRestaurant</a>
@@ -10,6 +13,9 @@
             <AuthorizeView>
                 <Authorized>
                     <span class="session-name">@context.User.Identity?.Name</span>
+                    <AuthorizeView Roles="administrator" Context="administrator">
+                        <a class="session-link" href="/administration">Administration</a>
+                    </AuthorizeView>
                     <a class="session-link" href="@AccountRoutes.TotpEnrollment">Security</a>
                     <a class="session-link" href="@AccountRoutes.Passkeys">Passkeys</a>
                     <form class="sign-out-form" method="post" action="@AccountRoutes.SignOut">
