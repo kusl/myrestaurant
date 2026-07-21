@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using MyRestaurant.DataAccess;
 using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Identifiers;
 using MyRestaurant.Domain.Time;
 using MyRestaurant.WebApplication.Authorization;
 using MyRestaurant.WebApplication.Configuration;
@@ -188,6 +190,17 @@ public static class IdentityServiceCollectionExtensions
             serviceProvider.GetRequiredService<IDataProtectionProvider>(),
             serviceProvider.GetRequiredService<IClock>(),
             options.RestaurantName));
+
+        // First-administrator bootstrap (§3.6). Writes the whole first account — person, passkey, TOTP
+        // secret, recovery codes, and the self-granted administrator role — in one advisory-locked
+        // transaction, and answers the zero-administrator gate the /setup page and endpoint consult.
+        // Scoped so it shares the request's connection-factory and data-protection lifetimes; it holds
+        // no state and opens its own connection/transaction per commit from the singleton factory.
+        services.AddScoped<IFirstAdministratorBootstrap>(serviceProvider => new DapperFirstAdministratorBootstrap(
+            serviceProvider.GetRequiredService<IDatabaseConnectionFactory>(),
+            serviceProvider.GetRequiredService<IClock>(),
+            serviceProvider.GetRequiredService<IIdentifierFactory>(),
+            serviceProvider.GetRequiredService<IDataProtectionProvider>()));
 
         return services;
     }

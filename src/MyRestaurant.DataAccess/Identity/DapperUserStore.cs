@@ -55,8 +55,14 @@ public sealed class DapperUserStore :
     IUserPhoneNumberStore<Person>,
     IUserPasskeyStore<Person>
 {
-    /// <summary>Data-Protection purpose for the at-rest TOTP secret (§3.4). Do not change without a migration plan.</summary>
-    private const string TotpSecretProtectorPurpose = "MyRestaurant.Identity.TotpSecret.v1";
+    /// <summary>
+    /// Data-Protection purpose for the at-rest TOTP secret (§3.4). Do not change without a migration
+    /// plan. <c>internal</c> because <see cref="DapperFirstAdministratorBootstrap"/> protects the first
+    /// administrator's secret with the exact same purpose (it writes the <c>person</c> row directly, in
+    /// one transaction, §3.6), so the secret this store unprotects at sign-in must have been protected
+    /// with an identical purpose.
+    /// </summary>
+    internal const string TotpSecretProtectorPurpose = "MyRestaurant.Identity.TotpSecret.v1";
 
     // Every SELECT aliases snake_case columns to the POCO's PascalCase properties. Postgres folds the
     // unquoted aliases to lower case and Dapper matches case-insensitively, so no global

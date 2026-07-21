@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Time;
 
 namespace MyRestaurant.WebApplication.Identity;
 
@@ -84,6 +86,48 @@ public static class AccountEndpoints
                 ? null
                 : await userManager.FindByNameAsync(username);
             string optionsJson = await signInManager.MakePasskeyRequestOptionsAsync(user);
+
+            return Results.Content(optionsJson, "application/json");
+        });
+
+        // Registration ceremony options for the FIRST-ADMINISTRATOR wizard (§3.6). Anonymous — there is
+        // no session during setup — and gated on the zero-administrator condition, so it is dead the
+        // moment an administrator exists. The pending identity lives in the setup cookie (the wizard
+        // minted the person id at its first step); we use that id as the WebAuthn user handle so it
+        // equals the account the wizard will create, which a later discoverable sign-in relies on. Like
+        // the other options endpoints it is fetched (not form-posted), so the antiforgery token is read
+        // from the request header the passkey element supplies.
+        endpoints.MapPost(AccountRoutes.SetupPasskeyCreationOptions, async (
+            HttpContext context,
+            IFirstAdministratorBootstrap bootstrap,
+            SignInManager<Person> signInManager,
+            IAntiforgery antiforgery,
+            IDataProtectionProvider dataProtectionProvider,
+            IClock clock) =>
+        {
+            await antiforgery.ValidateRequestAsync(context);
+
+            if (await bootstrap.AdministratorExistsAsync(context.RequestAborted))
+            {
+                return Results.NotFound();
+            }
+
+            SetupTicketProtector protector = new(dataProtectionProvider);
+            if (!context.Request.Cookies.TryGetValue(SetupCookie.Name, out string? cookie)
+                || !protector.TryUnprotect(cookie, out SetupTicket? ticket)
+                || ticket is null
+                || ticket.HasExpired(clock.UtcNow, SetupCookie.Lifetime))
+            {
+                // No valid in-flight setup — the wizard must be (re)started before a passkey can be added.
+                return Results.BadRequest();
+            }
+
+            string optionsJson = await signInManager.MakePasskeyCreationOptionsAsync(new PasskeyUserEntity
+            {
+                Id = ticket.PersonIdentifier.ToString(),
+                Name = ticket.Username,
+                DisplayName = string.IsNullOrWhiteSpace(ticket.DisplayName) ? ticket.Username : ticket.DisplayName,
+            });
 
             return Results.Content(optionsJson, "application/json");
         });

@@ -122,6 +122,21 @@ public sealed class IdentityWiringTests
     }
 
     [Fact]
+    public void FirstAdministratorBootstrap_IsResolvableInAScope()
+    {
+        // §3.6: the /setup wizard and its options endpoint resolve IFirstAdministratorBootstrap for the
+        // zero-administrator gate and the single advisory-locked commit. Constructing it opens no
+        // connection (only a Data-Protection protector), so this resolves without a database.
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        IFirstAdministratorBootstrap bootstrap =
+            scope.ServiceProvider.GetRequiredService<IFirstAdministratorBootstrap>();
+
+        Assert.IsType<DapperFirstAdministratorBootstrap>(bootstrap);
+    }
+
+    [Fact]
     public void PasskeyHandler_IsRegistered()
     {
         // AddIdentityCore does not register IPasskeyHandler (only the monolithic AddIdentity does), so

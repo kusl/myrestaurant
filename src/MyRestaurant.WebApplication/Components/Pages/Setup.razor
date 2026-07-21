@@ -1,0 +1,564 @@
+@page "/setup"
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Text
+@using MyRestaurant.Domain.Identifiers
+@using MyRestaurant.Domain.Security
+@using MyRestaurant.Domain.Time
+@using Microsoft.AspNetCore.DataProtection
+@inject IFirstAdministratorBootstrap Bootstrap
+@inject IPasswordHasher<Person> PasswordHasher
+@inject SignInManager<Person> SignInManager
+@inject UserManager<Person> UserManager
+@inject IIdentifierFactory IdentifierFactory
+@inject IClock Clock
+@inject IDataProtectionProvider DataProtection
+@inject RestaurantOptions Options
+@inject NavigationManager Navigation
+
+@* The first-administrator bootstrap wizard (TECHNICAL_SPECIFICATION §3.6). Reachable only while ZERO
+   administrators exist; the moment one does, this page returns 404. Anonymous by design — there is no
+   one to sign in as yet (the chicken-and-egg the whole feature resolves). Static SSR, like every
+   account surface, because it writes cookies on the response (the accumulating setup ticket, and the
+   authentication cookie once the administrator is created).
+
+   The wizard is a single page driven by a Data-Protection-protected cookie (SetupTicket): collect
+   account details → register a passkey → enroll TOTP → review and commit. The passkey and TOTP steps
+   run their real ceremonies and cannot be skipped; nothing touches the database until the final step
+   writes the whole account — person, passkey, TOTP secret, ten recovery codes, and the self-granted
+   administrator role — in one advisory-locked transaction (FirstAdministratorBootstrap). *@
+
+<PageTitle>Set up @Options.RestaurantName</PageTitle>
+
+@if (_adminExists)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Setup</p>
+        <h1>Setup is already complete</h1>
+        <p class="lede">
+            An administrator already exists for @Options.RestaurantName, so first-run setup is closed.
+            If you are staff, sign in as usual.
+        </p>
+        <p><a href="@AccountRoutes.SignIn">Go to sign in</a></p>
+    </section>
+}
+else if (_completed && _recoveryCodes is not null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Setup complete</p>
+        <h1>You are the administrator</h1>
+        <p class="status-success" role="status">
+            The administrator account <strong>@_completedUsername</strong> was created and you are now
+            signed in.
+        </p>
+
+        <p class="totp-secret-label">Save these recovery codes now — this is the only time they are shown.</p>
+        <p class="lede">
+            Each works once, in place of your authenticator code, on the password sign-in. Keep them
+            somewhere safe and offline.
+        </p>
+        <ul class="recovery-codes">
+            @foreach (string code in _recoveryCodes)
+            {
+                <li>@code</li>
+            }
+        </ul>
+
+        <div class="form-actions">
+            <a class="button-primary" href="/administration">Go to administration</a>
+            <a class="button-secondary" href="/">Home</a>
+        </div>
+    </section>
+}
+else
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">First-run setup</p>
+
+        <ol class="setup-steps" aria-label="Setup progress">
+            <li class="@StepClass(0)">Account</li>
+            <li class="@StepClass(1)">Passkey</li>
+            <li class="@StepClass(2)">Authenticator</li>
+            <li class="@StepClass(3)">Finish</li>
+        </ol>
+
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        @if (_ticket is null)
+        {
+            @* Step 1 — account details. *@
+            <h1>Create the first administrator</h1>
+            <p class="lede">
+                No administrator exists yet. Set one up now: choose a username and password, then add a
+                passkey and an authenticator. All three are required — the passkey and the authenticator
+                cannot be skipped.
+            </p>
+
+            <EditForm Model="AccountInput" method="post" OnValidSubmit="StartAsync" FormName="setup-account">
+                <DataAnnotationsValidator />
+
+                <div class="form-field">
+                    <label for="username">Username</label>
+                    <InputText id="username" @bind-Value="AccountInput.Username" autocomplete="username"
+                               autocapitalize="none" spellcheck="false" autofocus />
+                    <ValidationMessage For="@(() => AccountInput.Username)" />
+                </div>
+
+                <div class="form-field">
+                    <label for="display-name">Display name <span class="optional">(optional)</span></label>
+                    <InputText id="display-name" @bind-Value="AccountInput.DisplayName" autocomplete="name" />
+                    <ValidationMessage For="@(() => AccountInput.DisplayName)" />
+                </div>
+
+                <div class="form-field">
+                    <label for="password">Password</label>
+                    <InputText id="password" type="password" @bind-Value="AccountInput.Password"
+                               autocomplete="new-password" />
+                    <ValidationMessage For="@(() => AccountInput.Password)" />
+                </div>
+
+                <div class="form-field">
+                    <label for="confirm-password">Confirm password</label>
+                    <InputText id="confirm-password" type="password" @bind-Value="AccountInput.ConfirmPassword"
+                               autocomplete="new-password" />
+                    <ValidationMessage For="@(() => AccountInput.ConfirmPassword)" />
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="button-primary">Continue to passkey</button>
+                </div>
+            </EditForm>
+
+            <p class="form-footnote">
+                Use at least 12 characters. Your operating system's password manager can generate and
+                store a strong one for you.
+            </p>
+        }
+        else if (_ticket.Step == SetupStep.Passkey)
+        {
+            @* Step 2 — passkey registration (WebAuthn attestation). *@
+            <h1>Add a passkey</h1>
+            <p class="lede">
+                A passkey lets you sign in with your fingerprint, face, or device PIN, and it cannot be
+                phished. Register one now for <strong>@_ticket.Username</strong>. You can add more, and
+                rename this one, later.
+            </p>
+
+            <form class="passkey-add" @formname="setup-passkey" method="post" @onsubmit="RegisterPasskeyAsync">
+                <AntiforgeryToken />
+                <PasskeySubmit Operation="PasskeyOperation.Create" Name="PasskeyInput"
+                               CreationOptionsUrl="@AccountRoutes.SetupPasskeyCreationOptions" class="button-primary">
+                    Register a passkey
+                </PasskeySubmit>
+            </form>
+        }
+        else if (_ticket.Step == SetupStep.Totp)
+        {
+            @* Step 3 — authenticator (TOTP) enrollment. *@
+            <h1>Set up your authenticator</h1>
+            <p class="lede">
+                Scan this QR code with an authenticator app (or type the key), then enter the six-digit
+                code it shows. This is your second factor when you sign in with a password.
+            </p>
+
+            <div class="totp-qr">
+                @((MarkupString)_qrCodeSvg)
+            </div>
+
+            <p class="totp-secret-label">Can't scan? Enter this key manually:</p>
+            <p class="totp-secret">@_manualEntrySecret</p>
+
+            <EditForm Model="TotpInput" method="post" OnValidSubmit="ConfirmTotpAsync" FormName="setup-totp">
+                <DataAnnotationsValidator />
+
+                <div class="form-field">
+                    <label for="code">Six-digit code</label>
+                    <InputText id="code" @bind-Value="TotpInput.Code" autocomplete="one-time-code"
+                               inputmode="numeric" autocapitalize="none" spellcheck="false" autofocus />
+                    <ValidationMessage For="@(() => TotpInput.Code)" />
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="button-primary">Confirm and review</button>
+                </div>
+            </EditForm>
+        }
+        else
+        {
+            @* Step 4 — review and commit. *@
+            <h1>Review and finish</h1>
+            <p class="lede">
+                Everything is ready. Creating the administrator writes the account, your passkey, your
+                authenticator, and your recovery codes together, and grants the administrator role.
+            </p>
+
+            <dl class="setup-summary">
+                <div>
+                    <dt>Username</dt>
+                    <dd>@_ticket.Username</dd>
+                </div>
+                <div>
+                    <dt>Display name</dt>
+                    <dd>@(string.IsNullOrWhiteSpace(_ticket.DisplayName) ? "—" : _ticket.DisplayName)</dd>
+                </div>
+                <div>
+                    <dt>Passkey</dt>
+                    <dd>Registered</dd>
+                </div>
+                <div>
+                    <dt>Authenticator</dt>
+                    <dd>Confirmed</dd>
+                </div>
+            </dl>
+
+            <form @formname="setup-finish" method="post" @onsubmit="FinishAsync">
+                <AntiforgeryToken />
+                <div class="form-actions">
+                    <button type="submit" class="button-primary">Create administrator</button>
+                </div>
+            </form>
+        }
+
+        @if (_ticket is not null)
+        {
+            <form @formname="setup-restart" method="post" @onsubmit="RestartAsync" class="setup-restart">
+                <AntiforgeryToken />
+                <button type="submit" class="link-button">Start over</button>
+            </form>
+        }
+    </section>
+}
+
+@code {
+    private SetupTicketProtector _protector = default!;
+    private SetupTicket? _ticket;
+    private bool _adminExists;
+    private bool _completed;
+    private string? _completedUsername;
+    private IReadOnlyList<string>? _recoveryCodes;
+    private string? _errorMessage;
+
+    // Prepared once for the TOTP step so the same QR survives a mistyped-code re-render.
+    private string _qrCodeSvg = string.Empty;
+    private string _manualEntrySecret = string.Empty;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "setup-account")]
+    private AccountInputModel AccountInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "setup-passkey")]
+    private PasskeyInputModel PasskeyInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "setup-totp")]
+    private TotpInputModel TotpInput { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form POST binds these itself and may assign null, so defaults live here.
+        AccountInput ??= new();
+        PasskeyInput ??= new();
+        TotpInput ??= new();
+        _protector = new SetupTicketProtector(DataProtection);
+
+        // The unlocked gate: if any administrator exists, /setup is gone (§3.6). The authoritative
+        // re-check happens under the advisory lock at commit, so a race here is harmless.
+        _adminExists = await Bootstrap.AdministratorExistsAsync(HttpContext.RequestAborted);
+        if (_adminExists)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        if (HttpContext.Request.Cookies.TryGetValue(SetupCookie.Name, out string? cookie)
+            && _protector.TryUnprotect(cookie, out SetupTicket? ticket)
+            && ticket is not null
+            && !ticket.HasExpired(Clock.UtcNow, SetupCookie.Lifetime))
+        {
+            _ticket = ticket;
+            if (_ticket.Step == SetupStep.Totp && !string.IsNullOrEmpty(_ticket.TotpSecretBase32))
+            {
+                PrepareTotpDisplay(_ticket);
+            }
+        }
+        else if (!string.IsNullOrEmpty(cookie))
+        {
+            // Stale, tampered, or from another key: drop it and start clean.
+            SetupCookie.Delete(HttpContext.Response);
+            _errorMessage = "Your setup session expired. Please start again.";
+        }
+    }
+
+    private async Task StartAsync()
+    {
+        if (_adminExists)
+        {
+            return;
+        }
+
+        string username = AccountInput.Username.Trim();
+        string? displayName = string.IsNullOrWhiteSpace(AccountInput.DisplayName)
+            ? null
+            : AccountInput.DisplayName.Trim();
+
+        // Best-effort duplicate check; the person UNIQUE constraint and the commit are authoritative.
+        if (await UserManager.FindByNameAsync(username) is not null)
+        {
+            _errorMessage = "That username is already taken. Please choose another.";
+            return;
+        }
+
+        Guid personIdentifier = IdentifierFactory.Create();
+
+        // Hash immediately so the plaintext is never carried in the ticket. The hasher ignores the
+        // user argument (no per-user pepper, §3.2); a throwaway carrier is fine.
+        string passwordHash = PasswordHasher.HashPassword(
+            new Person { PersonIdentifier = personIdentifier, Username = username },
+            AccountInput.Password);
+
+        WriteTicketAndReload(new SetupTicket(
+            personIdentifier,
+            Clock.UtcNow,
+            SetupStep.Passkey,
+            username,
+            displayName,
+            passwordHash,
+            Passkey: null,
+            TotpSecretBase32: null));
+    }
+
+    private async Task RegisterPasskeyAsync()
+    {
+        if (_adminExists)
+        {
+            return;
+        }
+
+        if (_ticket is null || _ticket.Step != SetupStep.Passkey)
+        {
+            Navigation.NavigateTo(AccountRoutes.Setup);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(PasskeyInput.Error))
+        {
+            _errorMessage = "That passkey could not be added. Please try again.";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(PasskeyInput.CredentialJson))
+        {
+            _errorMessage = "Your browser did not provide a passkey.";
+            return;
+        }
+
+        PasskeyAttestationResult attestation =
+            await SignInManager.PerformPasskeyAttestationAsync(PasskeyInput.CredentialJson);
+        if (!attestation.Succeeded || attestation.Passkey is null)
+        {
+            _errorMessage = "That passkey could not be registered. Please try again.";
+            return;
+        }
+
+        UserPasskeyInfo info = attestation.Passkey;
+        SetupPasskey passkey = new(
+            info.CredentialId,
+            info.PublicKey,
+            (long)info.SignCount,
+            info.Transports,
+            Name: $"Passkey added {Clock.UtcNow.ToLocalTime():d MMM yyyy}",
+            info.IsUserVerified,
+            info.IsBackupEligible,
+            info.IsBackedUp);
+
+        // Mint the authenticator secret now so the TOTP step's QR is stable across re-renders.
+        string totpSecretBase32 = Base32Text.Encode(Rfc6238Totp.GenerateSecret());
+
+        WriteTicketAndReload(_ticket with
+        {
+            Step = SetupStep.Totp,
+            Passkey = passkey,
+            TotpSecretBase32 = totpSecretBase32,
+        });
+    }
+
+    private Task ConfirmTotpAsync()
+    {
+        if (_adminExists)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (_ticket is null || _ticket.Step != SetupStep.Totp || string.IsNullOrEmpty(_ticket.TotpSecretBase32))
+        {
+            Navigation.NavigateTo(AccountRoutes.Setup);
+            return Task.CompletedTask;
+        }
+
+        if (!Base32Text.TryDecode(_ticket.TotpSecretBase32, out byte[] secret))
+        {
+            SetupCookie.Delete(HttpContext.Response);
+            _ticket = null;
+            _errorMessage = "Something went wrong with the setup code. Please start again.";
+            return Task.CompletedTask;
+        }
+
+        string normalized = (TotpInput.Code ?? string.Empty).Replace(" ", string.Empty).Replace("-", string.Empty);
+        if (!Rfc6238Totp.ValidateCode(secret, normalized, Clock.UtcNow))
+        {
+            // The QR was already prepared in OnInitializedAsync (step is still Totp); it re-renders.
+            _errorMessage = "That code did not match. Check your authenticator and try again.";
+            return Task.CompletedTask;
+        }
+
+        WriteTicketAndReload(_ticket with { Step = SetupStep.Review });
+        return Task.CompletedTask;
+    }
+
+    private async Task FinishAsync()
+    {
+        if (_adminExists)
+        {
+            return;
+        }
+
+        if (_ticket is null
+            || _ticket.Step != SetupStep.Review
+            || _ticket.Passkey is null
+            || string.IsNullOrEmpty(_ticket.TotpSecretBase32))
+        {
+            Navigation.NavigateTo(AccountRoutes.Setup);
+            return;
+        }
+
+        SetupPasskey stored = _ticket.Passkey;
+        UserPasskeyInfo passkey = new(
+            stored.CredentialId,
+            stored.PublicKey,
+            Clock.UtcNow, // placeholder; the bootstrap stamps created_at itself
+            (uint)stored.SignatureCounter,
+            stored.Transports,
+            stored.IsUserVerified,
+            stored.IsBackupEligible,
+            stored.IsBackedUp,
+            attestationObject: [],
+            clientDataJson: [])
+        {
+            Name = stored.Name,
+        };
+
+        FirstAdministratorBootstrapResult result = await Bootstrap.CreateFirstAdministratorAsync(
+            new NewAdministrator(
+                _ticket.PersonIdentifier,
+                _ticket.Username,
+                _ticket.DisplayName,
+                _ticket.PasswordHash,
+                _ticket.TotpSecretBase32,
+                passkey),
+            HttpContext.RequestAborted);
+
+        // Whatever happens next, the wizard is finished with the cookie.
+        SetupCookie.Delete(HttpContext.Response);
+
+        if (result.Status == FirstAdministratorBootstrapStatus.AdministratorAlreadyExists)
+        {
+            // Lost the race (or setup already ran): behave as if /setup is gone.
+            _adminExists = true;
+            _ticket = null;
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        // Created: sign the new administrator in on this response, then show the codes once.
+        Person? administrator = await UserManager.FindByIdAsync(_ticket.PersonIdentifier.ToString());
+        if (administrator is not null)
+        {
+            await SignInManager.SignInAsync(administrator, isPersistent: true);
+        }
+
+        _completedUsername = _ticket.Username;
+        _recoveryCodes = result.RecoveryCodes;
+        _completed = true;
+        _ticket = null;
+    }
+
+    private void RestartAsync()
+    {
+        SetupCookie.Delete(HttpContext.Response);
+        Navigation.NavigateTo(AccountRoutes.Setup);
+    }
+
+    // Writes the protected ticket cookie and follows post/redirect/get so a refresh does not re-post
+    // the step. NavigateTo during static SSR surfaces as an HTTP redirect carrying the fresh cookie.
+    private void WriteTicketAndReload(SetupTicket ticket)
+    {
+        SetupCookie.Write(HttpContext.Response, _protector.Protect(ticket));
+        Navigation.NavigateTo(AccountRoutes.Setup);
+    }
+
+    private void PrepareTotpDisplay(SetupTicket ticket)
+    {
+        string provisioningUri = TotpProvisioningUri.Build(Options.RestaurantName, ticket.Username, ticket.TotpSecretBase32!);
+        _qrCodeSvg = TotpQrCode.RenderSvg(provisioningUri);
+        _manualEntrySecret = GroupForManualEntry(ticket.TotpSecretBase32!);
+    }
+
+    // The active step index (Account=0, Passkey=1, Authenticator=2, Finish=3).
+    private int ActiveStepIndex => _ticket is null
+        ? 0
+        : _ticket.Step switch
+        {
+            SetupStep.Passkey => 1,
+            SetupStep.Totp => 2,
+            _ => 3,
+        };
+
+    private string StepClass(int index)
+        => index == ActiveStepIndex ? "setup-step is-current"
+            : index < ActiveStepIndex ? "setup-step is-done"
+            : "setup-step";
+
+    /// <summary>Groups the Base32 secret into space-separated blocks of four for easier manual entry.</summary>
+    private static string GroupForManualEntry(string base32)
+    {
+        StringBuilder builder = new(base32.Length + (base32.Length / 4));
+        for (int index = 0; index < base32.Length; index++)
+        {
+            if (index > 0 && index % 4 == 0)
+            {
+                builder.Append(' ');
+            }
+
+            builder.Append(base32[index]);
+        }
+
+        return builder.ToString();
+    }
+
+    private sealed class AccountInputModel
+    {
+        [Required(ErrorMessage = "Choose a username.")]
+        [StringLength(64, MinimumLength = 3, ErrorMessage = "The username must be 3–64 characters.")]
+        public string Username { get; set; } = string.Empty;
+
+        [StringLength(120, ErrorMessage = "That display name is too long.")]
+        public string? DisplayName { get; set; }
+
+        [Required(ErrorMessage = "Choose a password.")]
+        [StringLength(256, MinimumLength = 12, ErrorMessage = "Use at least 12 characters.")]
+        public string Password { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Re-enter the password.")]
+        [Compare(nameof(Password), ErrorMessage = "The passwords do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+
+    private sealed class TotpInputModel
+    {
+        [Required(ErrorMessage = "Enter the six-digit code from your authenticator app.")]
+        public string Code { get; set; } = string.Empty;
+    }
+}

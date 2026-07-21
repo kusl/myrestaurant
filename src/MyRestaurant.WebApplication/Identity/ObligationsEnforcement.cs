@@ -41,6 +41,18 @@ public static class AccountRoutes
 
     /// <summary>POST endpoint returning WebAuthn sign-in (assertion) options — anonymous (§3.3).</summary>
     public const string PasskeyRequestOptions = "/account/passkey/request-options";
+
+    /// <summary>The first-administrator bootstrap wizard — reachable only while zero administrators exist (§3.6).</summary>
+    public const string Setup = "/setup";
+
+    /// <summary>
+    /// POST endpoint returning WebAuthn registration (attestation) options for the setup wizard —
+    /// anonymous (there is no session yet) and gated on the zero-administrator condition (§3.6). It
+    /// reads the pending person identifier from the setup cookie so the WebAuthn user handle matches
+    /// the account that will be created, and is distinct from the signed-in
+    /// <see cref="PasskeyCreationOptions"/> endpoint.
+    /// </summary>
+    public const string SetupPasskeyCreationOptions = "/setup/passkey/creation-options";
 }
 
 /// <summary>

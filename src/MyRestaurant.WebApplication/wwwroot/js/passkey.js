@@ -4,8 +4,10 @@
 //   * it is a plain classic script (the account pages are static-SSR and load no JS modules), loaded
 //     once from App.razor, guarded against double-definition; and
 //   * the ceremony endpoints are this app's routes (AccountRoutes.PasskeyCreationOptions /
-//     PasskeyRequestOptions) rather than the template's /Account/* paths — keep these two URLs in
-//     sync with ObligationsEnforcement.AccountRoutes.
+//     PasskeyRequestOptions) rather than the template's /Account/* paths — keep these two default
+//     URLs in sync with ObligationsEnforcement.AccountRoutes. An element may override either with a
+//     `creation-options-url` / `request-options-url` attribute; the first-administrator setup wizard
+//     uses this to point attestation at its anonymous /setup/passkey/creation-options endpoint (§3.6).
 //
 // The <passkey-submit> element is form-associated: it intercepts the __passkeySubmit button, runs the
 // browser ceremony, writes {Name}.CredentialJson (or {Name}.Error) into the form, and submits natively
@@ -39,8 +41,8 @@
         return response;
     }
 
-    async function createCredential(headers, signal) {
-        const optionsResponse = await fetchWithErrorHandling(CREATION_OPTIONS_URL, {
+    async function createCredential(url, headers, signal) {
+        const optionsResponse = await fetchWithErrorHandling(url, {
             method: 'POST',
             headers,
             signal,
@@ -50,9 +52,9 @@
         return await navigator.credentials.create({ publicKey: options, signal });
     }
 
-    async function requestCredential(username, mediation, headers, signal) {
+    async function requestCredential(url, username, mediation, headers, signal) {
         const query = encodeURIComponent(username ?? '');
-        const optionsResponse = await fetchWithErrorHandling(`${REQUEST_OPTIONS_URL}?username=${query}`, {
+        const optionsResponse = await fetchWithErrorHandling(`${url}?username=${query}`, {
             method: 'POST',
             headers,
             signal,
@@ -71,6 +73,8 @@
                 operation: this.getAttribute('operation'),
                 name: this.getAttribute('name'),
                 emailName: this.getAttribute('email-name'),
+                creationOptionsUrl: this.getAttribute('creation-options-url') || CREATION_OPTIONS_URL,
+                requestOptionsUrl: this.getAttribute('request-options-url') || REQUEST_OPTIONS_URL,
                 requestTokenName: this.getAttribute('request-token-name'),
                 requestTokenValue: this.getAttribute('request-token-value'),
             };
@@ -99,13 +103,13 @@
             };
 
             if (this.attrs.operation === 'Create') {
-                return await createCredential(headers, signal);
+                return await createCredential(this.attrs.creationOptionsUrl, headers, signal);
             } else if (this.attrs.operation === 'Request') {
                 const username = this.attrs.emailName
                     ? new FormData(this.internals.form).get(this.attrs.emailName)
                     : '';
                 const mediation = useConditionalMediation ? 'conditional' : undefined;
-                return await requestCredential(username, mediation, headers, signal);
+                return await requestCredential(this.attrs.requestOptionsUrl, username, mediation, headers, signal);
             } else {
                 throw new Error(`Unknown passkey operation '${this.attrs.operation}'.`);
             }

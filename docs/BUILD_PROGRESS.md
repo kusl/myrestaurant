@@ -11,22 +11,23 @@ The scaffold and each subsequent milestone are written in an environment
 **without a .NET SDK** and without NuGet/.NET download hosts. Consequences:
 
 - **The C# for a milestone is written to match the spec and the .NET 10 APIs, then
-  first compiled on your machine.** M1 built green, and so did the first four M2
+  first compiled on your machine.** M1 built green, and so did the first five M2
   slices (identity persistence + Argon2id hasher; sign-in/cookie/authorization wiring;
-  the password sign-in pages + obligations middleware + claims factory; and TOTP
-  enrollment). After enabling the Podman socket, the last full local sweep was
-  **green with zero warnings: 341 tests, 0 failed, 326 passed, 15 skipped** (the 15
-  remaining skips are the M6 Playwright end-to-end matrix), and `run.sh --smoke` passed
-  end to end. The newest slice — **passkeys** (this change) — is, like its predecessors
-  were, unbuilt until your next build/test run; expect to fix the occasional thing a
-  compiler would catch, most likely in the passkey Razor components (`SignIn.razor`,
-  `Passkeys.razor`, `PasskeySubmit.razor`).
+  the password sign-in pages + obligations middleware + claims factory; TOTP
+  enrollment; and passkeys). After enabling the Podman socket, the last full local
+  sweep was **green with zero warnings: 351 tests, 0 failed, 336 passed, 15 skipped**
+  (the 15 remaining skips are the M6 Playwright end-to-end matrix), and `run.sh
+  --smoke` passed end to end. The newest slice — the **first-administrator `/setup`
+  bootstrap** (this change) — is, like its predecessors were, unbuilt until your next
+  build/test run; expect to fix the occasional thing a compiler would catch, most
+  likely in the multi-step wizard component (`Components/Account/Pages/Setup.razor`).
 - **Package versions in `Directory.Packages.props` are best-effort.** They target
   the .NET 10 GA era. Run `dotnet restore`; if a version does not exist, bump it
   there to the nearest available. Nothing else references versions. **This slice adds
-  no packages** — the whole passkey stack (the WebAuthn ceremony handler,
-  `IUserPasskeyStore`, `IdentityPasskeyOptions`) is shared-framework in .NET 10; the
-  only new front-end asset is a small classic script, `wwwroot/js/passkey.js`.
+  no packages** and **no new front-end assets** — the wizard reuses the passkey
+  ceremony from Slice 5, pointing the existing `wwwroot/js/passkey.js` at a new
+  anonymous creation-options endpoint via an optional attribute on `PasskeySubmit`
+  (both changes are backward-compatible; the account passkey pages are untouched).
 - Shell scripts are syntax-checked with `bash -n`; they may need `chmod +x`.
 
 ## Staged plan
@@ -35,7 +36,7 @@ The work is split into six stages aligned to the spec's milestones (§19). Each
 stage is meant to leave the tree buildable and testable.
 
 - [x] **Stage 1 — M1: skeleton + pure Domain** *(built green: 139 passed, 28 skipped)*
-- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, TOTP enrollment, and now passkeys have landed; last verified local run before this slice: 326 passed, 15 skipped, 0 warnings)*
+- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, TOTP enrollment, passkeys, and now the first-administrator `/setup` bootstrap have landed; last verified local run before this slice: 336 passed, 15 skipped, 0 warnings)*
 - [ ] **Stage 3 — M3: tables & joining**
 - [ ] **Stage 4 — M4: ordering**
 - [ ] **Stage 5 — M5: counter & administration**
@@ -496,6 +497,98 @@ handler is registered by hand.
    out, then **Sign in with a passkey** (or let the username field autofill one). An
    enrolled passkey sign-in should land you in **without** a TOTP challenge.
 
+### Slice 6 — `/setup` first-administrator bootstrap (this change)
+
+The one-time bootstrap that turns a freshly migrated, empty database into a running
+system with an administrator (§3.6). `/setup` is reachable **only while zero
+administrators exist**; it collects a username, display name, and password, then makes
+the operator register a passkey and enroll TOTP (neither is skippable), and finally
+grants the `administrator` role — the person recorded as their own grantor — in one
+transaction. Once any administrator exists, `/setup` is gone (404).
+
+The tension §3.6 sets up is that a passkey ceremony and a TOTP enrollment each span
+several requests, yet the account must be written "in one transaction". This slice
+reconciles them by treating everything before the final submit as *verification*, not
+persistence: a Data-Protection-protected cookie carries the assembled state across the
+wizard's steps, and only the last post writes anything.
+
+- **Bootstrap — `FirstAdministratorBootstrap.cs`** (DataAccess). `IFirstAdministratorBootstrap`
+  has the cheap, unlocked `AdministratorExistsAsync` gate and the authoritative
+  `CreateFirstAdministratorAsync`. The latter opens its own transaction, takes
+  `pg_advisory_xact_lock(hashtext('myrestaurant_setup'))`, **re-checks the
+  zero-administrator condition under the lock**, then inserts the person (obligation
+  flags cleared — it enrolled its own TOTP; `is_active=true`; a fresh security stamp),
+  the verified passkey (including the migration-0002 WebAuthn flags and comma-joined
+  transports), ten fresh recovery codes, the self-granted `administrator` row
+  (`granted_by_person_identifier` = the new person), and the four `security_event`
+  rows (`account_created` / `passkey_registered` / `totp_enrolled` with a NULL actor,
+  `role_granted` with the person as their own actor) — all stamped with one clock
+  instant. Recovery codes are generated **inside** the commit and returned once (stored
+  only as SHA-256 hashes, §3.4). The TOTP secret is protected under the *same*
+  Data-Protection purpose the store unprotects with, so the new administrator's
+  authenticator works on their first sign-in. If the under-lock re-check finds an
+  administrator, nothing is written and the result is `AdministratorAlreadyExists`.
+- **Wizard page — `Setup.razor`** (`/setup`, static SSR, `[ExcludeFromInteractiveRouting]`).
+  One page, four steps — account details → register a passkey → enroll TOTP → review &
+  create — with state accumulating in a Data-Protection-protected, 30-minute cookie
+  (`myrestaurant.setup`), never in a circuit (account pages are static SSR by design,
+  and a circuit cannot set cookies). The person's UUIDv7 is minted at step one so it
+  can double as the WebAuthn **user handle** and equal the eventual `person` id. The
+  passkey attestation (`PerformPasskeyAttestationAsync`) and the TOTP code are verified
+  as they arrive but **not** persisted; only **Create administrator** calls the
+  bootstrap. On success the recovery codes render once (no redirect that would lose
+  them) and the operator is signed in as administrator.
+- **Reachability.** The page and the endpoint both check `AdministratorExistsAsync` on
+  every request and return 404 once an administrator exists — which also covers the
+  losing side of a two-browser race (the bootstrap's under-lock result maps to the same
+  404 on the final submit). The obligations middleware already ignores anonymous
+  requests, so `/setup` needs no exemption.
+- **Setup passkey endpoint** (`AccountEndpoints.cs`): a new **anonymous**
+  `POST /setup/passkey/creation-options` that reads the pending person id from the setup
+  cookie and returns creation options for that handle (404 once an administrator exists;
+  400 without a valid cookie). The account creation-options endpoint stays
+  authenticated; this one exists because the wizard has no session yet. Two route
+  constants added to `AccountRoutes` (`/setup`, `/setup/passkey/creation-options`).
+- **Client reuse — no new assets.** `passkey.js` and `PasskeySubmit.razor` gained an
+  *optional* creation-/request-options URL (an attribute on the custom element); when
+  absent the script keeps its Slice-5 defaults, so the account **Passkeys** page is
+  byte-for-byte unaffected. `Setup.razor` simply points `PasskeySubmit` at the new
+  setup endpoint.
+- **Landing page** (`Home.razor`): a one-time **Set up the first administrator** callout
+  linking to `/setup` shows only while no administrator exists, and disappears once one
+  does.
+- **Store visibility** (`DapperUserStore.cs`): the TOTP-secret Data-Protection purpose
+  constant went `private` → `internal` so the bootstrap can protect the secret under the
+  exact same purpose without duplicating the string. Store behaviour is otherwise
+  unchanged.
+- **Wiring** (`IdentityServiceCollectionExtensions.cs`): `IFirstAdministratorBootstrap`
+  registered scoped as `DapperFirstAdministratorBootstrap`; `IdentityWiringTests` gains a
+  fact that it resolves.
+- **Tests.** New `FirstAdministratorBootstrapTests` (Testcontainers): the exists-gate
+  flips; a create on an empty database writes every row (person fields, the passkey with
+  its flags and transports, ten recovery codes, the self-granted role, all four events
+  with the right subject/actor) and the TOTP secret + recovery codes round-trip through
+  the store; a second create once an administrator exists writes nothing. New
+  `SetupTicketTests` (pure): the protected cookie round-trips every field including the
+  verified passkey, and tampered / foreign-key / expired tickets are rejected.
+
+### Build/test checklist for this slice
+
+1. `dotnet restore` — **no new packages** this slice.
+2. `dotnet build` — the multi-step wizard component
+   (`Components/Account/Pages/Setup.razor`) is the most likely home of anything a
+   compiler catches.
+3. `dotnet test` — expect the previous green set plus the new `SetupTicketTests` and the
+   new wiring fact (both pure, so they always run) and the `FirstAdministratorBootstrapTests`
+   suite; that suite skips if no container engine is available, exactly like the other
+   Testcontainers tests.
+4. `./run.sh --smoke` — boots once, verifies `/healthz/ready`, exits.
+5. Manual, on the **stable named-tunnel domain** (the passkey binds to the RP ID, so a
+   quick tunnel won't keep it — ADR-0005): visit `/setup` → username + display name +
+   password → **register a passkey** (platform prompt) → **scan the TOTP QR** and confirm
+   a code → review → **Create administrator**. The recovery codes show **once**, and you
+   land signed in as the administrator. Revisit `/setup`: it now returns **404**.
+
 ## Known caveats and deliberate decisions
 
 - **Warnings are not errors.** `TreatWarningsAsErrors=false` keeps a fresh clone
@@ -520,9 +613,10 @@ handler is registered by hand.
   accessors are inert and sign-in never gates on them.
 - **M2 — role grant/revoke via the store is `NotSupported`.** `person_role` requires
   the granting administrator (self-referencing for the first admin, §3.6), which the
-  parameterless `AddToRoleAsync`/`RemoveFromRoleAsync` contract cannot supply. Grants
-  land in the transactional account-administration service / `/setup` (later slices);
-  the store's role **read** path is complete so claims flow at sign-in.
+  parameterless `AddToRoleAsync`/`RemoveFromRoleAsync` contract cannot supply. The
+  first-admin self-grant now lands in the transactional `/setup` bootstrap (Slice 6);
+  grant/revoke for other people arrives with account administration (next slice). The
+  store's role **read** path is complete so claims flow at sign-in.
 - **M2 — deletion does not exist (F-10b).** `DeleteAsync` throws; accounts are
   deactivated (`is_active=false`) so history keeps its actors — and, as of Slice 3,
   a deactivated account is also refused at the front door (`CanSignInAsync`).
@@ -530,10 +624,11 @@ handler is registered by hand.
   cookies on the response; do not convert them to interactive components — a Blazor
   circuit cannot set cookies. The per-page render mode in `App.razor` is what makes
   the two worlds coexist.
-- **M2 — no registration page exists yet.** Guests register at the moment of joining
-  a table (§4.3, M3) and staff are created by an administrator (later M2 slice), so
-  `/sign-in` is deliberately the only public account surface. Until `/setup` lands
-  there is no in-app way to create the first account.
+- **M2 — no *self*-registration page exists.** Guests register at the moment of joining
+  a table (§4.3, M3) and staff are created by an administrator (next M2 slice). The
+  first account is now created by the `/setup` bootstrap (Slice 6); apart from `/setup`
+  (reachable only until an administrator exists) and that future admin surface,
+  `/sign-in` is the only public account surface.
 - **M2 — obligations block Blazor circuits too.** `/_blazor` is not exempt in the
   middleware: an interactive tab open when a reset lands loses its circuit until the
   pipeline clears. Intended ("nothing else reachable", §3.5); expect the reconnect
@@ -583,6 +678,20 @@ handler is registered by hand.
   page yet (guests join at a table in M3; staff via admin in a later M2 slice), so the
   durable home — the voluntary **Passkeys** management page — is what ships now; the
   post-registration/sign-in nudge lands with those registration surfaces.
+- **M2 — `/setup` verifies across requests but persists in one transaction** (see
+  Slice 6). §3.6 requires the first administrator to be written atomically, yet a passkey
+  ceremony and TOTP enrollment each span several requests. The wizard resolves this by
+  carrying the in-progress state — including the already-verified passkey and the
+  confirmed TOTP secret — in a Data-Protection-protected, 30-minute cookie
+  (`myrestaurant.setup`) and writing **nothing** until the final **Create administrator**
+  post, which commits the whole account in one locked transaction. The person's UUIDv7 is
+  minted at step one so it is stable as the WebAuthn user handle and becomes the `person`
+  id. Because the state is tamper-evident and short-lived and the endpoint re-checks
+  reachability, a stale or forged cookie cannot create an account; `SetupTicketTests`
+  pins the round-trip and the rejections. One consequence: `/setup/passkey/creation-options`
+  is **anonymous** (unlike the account creation-options endpoint), since there is no
+  session yet — it is gated instead by the setup cookie and the zero-administrator
+  condition.
 - **Dev-machine note — inotify watch limit (handled in `run.sh`).** `dotnet watch`
   can exhaust the kernel's inotify **instance** limit on a busy workstation
   (`The configured user limit (128) on the number of inotify instances has been
@@ -594,19 +703,16 @@ handler is registered by hand.
   `/etc/sysctl.d/`) — or force it with `DOTNET_USE_POLLING_FILE_WATCHER=0`. Neither
   the container runtime nor CI is affected.
 
-## Next: remaining M2 slices (in order)
+## Next: remaining M2 slice
 
-1. **`/setup` first-admin bootstrap** under `pg_advisory_xact_lock` with the
-   zero-administrator re-check, self-granting the administrator role in one
-   transaction (§3.6) — the first home for role grants, and the first in-app way to
-   create an account.
-2. **Account administration** (§3.7): create staff, grant/revoke roles (with grantor
-   + `role_granted`/`role_revoked` events), **Reset credentials** (temp password +
-   `must_change_password`; clear TOTP + set `must_enroll_totp` iff enrolled; new
-   stamp; `password_reset_by_administrator` [+ `totp_cleared_by_administrator`]),
-   deactivate/reactivate — the first thing that actually **sets** the obligation flags
-   the pipeline enforces (Slice 3) and the enrollment pages clear (Slice 4). This is
-   also the home for **voluntary TOTP removal**, the §4.2 "an admin cannot remove
-   their own enrollment" rule, and the grant-time passkey mandate for the kitchen and
-   administrator roles (§3.7). Store-level integration tests + middleware tests
-   throughout.
+**Account administration** (§3.7), the last M2 slice: create staff, grant/revoke roles
+(with grantor + `role_granted`/`role_revoked` events), **Reset credentials** (temp
+password + `must_change_password`; clear TOTP + set `must_enroll_totp` iff enrolled; new
+stamp; `password_reset_by_administrator` [+ `totp_cleared_by_administrator`]),
+deactivate/reactivate — the first thing that actually **sets** the obligation flags the
+pipeline enforces (Slice 3) and the enrollment pages clear (Slice 4). It reuses the
+transactional, self-referencing grant machinery `/setup` introduced (Slice 6), now with a
+real grantor. This is also the home for **voluntary TOTP removal**, the §4.2 "an admin
+cannot remove their own enrollment" rule, and the grant-time passkey mandate for the
+kitchen and administrator roles (§3.7). Store-level integration tests + middleware tests
+throughout.

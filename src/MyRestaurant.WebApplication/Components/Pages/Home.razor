@@ -1,18 +1,32 @@
 @page "/"
 @inject RestaurantOptions Options
+@inject IFirstAdministratorBootstrap Bootstrap
 
 <PageTitle>@Options.RestaurantName</PageTitle>
 
 <section class="landing">
+    @if (_needsSetup)
+    {
+        <div class="setup-callout" role="note">
+            <p class="eyebrow">First-run setup</p>
+            <h2>No administrator has been set up yet</h2>
+            <p>
+                Create the first administrator to start using @Options.RestaurantName. You'll choose a
+                username and password, add a passkey, and set up an authenticator.
+            </p>
+            <p><a class="button-primary" href="@AccountRoutes.Setup">Set up the first administrator</a></p>
+        </div>
+    }
+
     <p class="eyebrow">Ordering system</p>
     <h1 class="landing-title">@Options.RestaurantName</h1>
 
     <p class="landing-lede">
         The application shell is running. The Milestone&nbsp;1 skeleton (domain, data access, web
         host, startup migrations) is in place, and Milestone&nbsp;2 is under way: password sign-in
-        with the TOTP/recovery challenge, lockout, and the forced-password-change pipeline work now.
-        Guest ordering, the kitchen and counter boards, and administration arrive in later
-        milestones.
+        with the TOTP/recovery challenge, lockout, the forced-password-change pipeline, TOTP and
+        passkey enrollment, and the first-administrator bootstrap work now. Guest ordering, the
+        kitchen and counter boards, and administration arrive in later milestones.
     </p>
 
     <dl class="facts">
@@ -32,3 +46,22 @@
         <a href="/table">Table area (sign-in required)</a>
     </nav>
 </section>
+
+@code {
+    private bool _needsSetup;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Point a fresh deployment at /setup while no administrator exists (§3.6). Best-effort: the
+        // landing page must still render if the database is briefly unreachable (that is what
+        // /healthz/ready is for), so a failure here simply hides the pointer.
+        try
+        {
+            _needsSetup = !await Bootstrap.AdministratorExistsAsync();
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _needsSetup = false;
+        }
+    }
+}
