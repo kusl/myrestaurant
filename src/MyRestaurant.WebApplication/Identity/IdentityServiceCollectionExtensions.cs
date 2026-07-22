@@ -31,7 +31,9 @@ namespace MyRestaurant.WebApplication.Identity;
 ///   <item>the cascading <c>Task&lt;AuthenticationState&gt;</c> the Blazor router and
 ///   <c>AuthorizeView</c> consume;</item>
 ///   <item>the append-only <see cref="ISecurityEventLog"/> that sign-in outcomes are recorded to (§3.5);</item>
-///   <item>the read-only <see cref="IPersonDirectory"/> the administration people list reads from (§3.6/§3.7).</item>
+///   <item>the read-only <see cref="IPersonDirectory"/> the administration people list reads from (§3.6/§3.7);</item>
+///   <item>the transactional <see cref="IAccountAdministration"/> the administration tools write through
+///   (create staff, grant/revoke roles, reset credentials, deactivate/reactivate — §3.7).</item>
 /// </list>
 ///
 /// The obligations pipeline itself is enforced by <see cref="ObligationsMiddleware"/> in the request
@@ -208,6 +210,17 @@ public static class IdentityServiceCollectionExtensions
             serviceProvider.GetRequiredService<IClock>(),
             serviceProvider.GetRequiredService<IIdentifierFactory>(),
             serviceProvider.GetRequiredService<IDataProtectionProvider>()));
+
+        // Account administration (§3.7): create staff, grant/revoke roles (with the acting administrator
+        // recorded as grantor), reset credentials, and deactivate/reactivate. Each operation is one
+        // transaction that also rotates the subject's security stamp (§3.1) and records the matching
+        // security_event. Scoped like the bootstrap it reuses; it holds no state and opens its own
+        // connection/transaction per operation from the singleton factory. No data-protection dependency
+        // — it only clears TOTP secrets, never writes one.
+        services.AddScoped<IAccountAdministration>(serviceProvider => new DapperAccountAdministration(
+            serviceProvider.GetRequiredService<IDatabaseConnectionFactory>(),
+            serviceProvider.GetRequiredService<IClock>(),
+            serviceProvider.GetRequiredService<IIdentifierFactory>()));
 
         return services;
     }

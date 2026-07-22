@@ -41,9 +41,9 @@ public sealed record PersonSummary(
 
 /// <summary>
 /// Reads people for the administration area (TECHNICAL_SPECIFICATION §3.6/§3.7). This is a read-only
-/// reporting companion to the Identity stores: enumerating every account is an administrative concern,
-/// not part of the sign-in write path, so it lives behind its own interface (substitutable in tests)
-/// rather than being bolted onto <c>UserManager</c>.
+/// reporting companion to the Identity stores: enumerating every account, or reading one for its
+/// management page, is an administrative concern, not part of the sign-in write path, so it lives
+/// behind its own interface (substitutable in tests) rather than being bolted onto <c>UserManager</c>.
 /// </summary>
 public interface IPersonDirectory
 {
@@ -52,6 +52,12 @@ public interface IPersonDirectory
     /// each with the person's granted role names.
     /// </summary>
     Task<IReadOnlyList<PersonSummary>> ListPeopleAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One person by identifier, with their granted role names, or <c>null</c> when no such person
+    /// exists. Backs the administration person-management page (§3.7).
+    /// </summary>
+    Task<PersonSummary?> GetPersonAsync(Guid personIdentifier, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -64,21 +70,32 @@ public interface IPersonDirectory
 /// </summary>
 public sealed class DapperPersonDirectory : IPersonDirectory
 {
-    private const string PeopleSql = """
-        SELECT
-            person_identifier                   AS PersonIdentifier,
-            username                            AS Username,
-            display_name                        AS DisplayName,
-            is_active                           AS IsActive,
-            (password_hash IS NOT NULL)         AS HasPassword,
-            (totp_secret_protected IS NOT NULL) AS HasAuthenticator,
-            must_change_password                AS MustChangePassword,
-            must_enroll_totp                    AS MustEnrollTotp,
-            failed_access_count                 AS FailedAccessCount,
-            lockout_end_at                      AS LockoutEndAt,
-            created_at                          AS CreatedAt
+    private const string PeopleColumns = """
+        person_identifier                   AS PersonIdentifier,
+        username                            AS Username,
+        display_name                        AS DisplayName,
+        is_active                           AS IsActive,
+        (password_hash IS NOT NULL)         AS HasPassword,
+        (totp_secret_protected IS NOT NULL) AS HasAuthenticator,
+        must_change_password                AS MustChangePassword,
+        must_enroll_totp                    AS MustEnrollTotp,
+        failed_access_count                 AS FailedAccessCount,
+        lockout_end_at                      AS LockoutEndAt,
+        created_at                          AS CreatedAt
+        """;
+
+    // Built from PeopleColumns at type-init (static readonly, not const) so the shared column list is
+    // interpolated once without relying on constant-interpolated-string support.
+    private static readonly string PeopleSql = $"""
+        SELECT {PeopleColumns}
         FROM person
         ORDER BY created_at, username;
+        """;
+
+    private static readonly string PersonByIdSql = $"""
+        SELECT {PeopleColumns}
+        FROM person
+        WHERE person_identifier = @PersonIdentifier;
         """;
 
     private const string RolesSql = """
@@ -86,6 +103,14 @@ public sealed class DapperPersonDirectory : IPersonDirectory
             person_identifier AS PersonIdentifier,
             role_name         AS RoleName
         FROM person_role;
+        """;
+
+    private const string RolesByPersonSql = """
+        SELECT
+            person_identifier AS PersonIdentifier,
+            role_name         AS RoleName
+        FROM person_role
+        WHERE person_identifier = @PersonIdentifier;
         """;
 
     private readonly IDatabaseConnectionFactory _connectionFactory;
@@ -114,26 +139,52 @@ public sealed class DapperPersonDirectory : IPersonDirectory
         List<PersonSummary> people = [];
         foreach (PersonRow row in personRows)
         {
-            IReadOnlyList<string> roles = rolesByPerson[row.PersonIdentifier]
-                .OrderBy(RoleSortKey)
-                .ToArray();
-
-            people.Add(new PersonSummary(
-                row.PersonIdentifier,
-                row.Username,
-                row.DisplayName,
-                row.IsActive,
-                row.HasPassword,
-                row.HasAuthenticator,
-                row.MustChangePassword,
-                row.MustEnrollTotp,
-                row.FailedAccessCount,
-                row.LockoutEndAt,
-                row.CreatedAt,
-                roles));
+            people.Add(ToSummary(row, rolesByPerson[row.PersonIdentifier]));
         }
 
         return people;
+    }
+
+    public async Task<PersonSummary?> GetPersonAsync(Guid personIdentifier, CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        PersonRow? row = await connection.QuerySingleOrDefaultAsync<PersonRow>(new CommandDefinition(
+            PersonByIdSql,
+            new { PersonIdentifier = personIdentifier },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        if (row is null)
+        {
+            return null;
+        }
+
+        IEnumerable<RoleRow> roleRows = await connection.QueryAsync<RoleRow>(new CommandDefinition(
+            RolesByPersonSql,
+            new { PersonIdentifier = personIdentifier },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        return ToSummary(row, roleRows.Select(role => role.RoleName));
+    }
+
+    private static PersonSummary ToSummary(PersonRow row, IEnumerable<string> roleNames)
+    {
+        IReadOnlyList<string> roles = roleNames.OrderBy(RoleSortKey).ToArray();
+
+        return new PersonSummary(
+            row.PersonIdentifier,
+            row.Username,
+            row.DisplayName,
+            row.IsActive,
+            row.HasPassword,
+            row.HasAuthenticator,
+            row.MustChangePassword,
+            row.MustEnrollTotp,
+            row.FailedAccessCount,
+            row.LockoutEndAt,
+            row.CreatedAt,
+            roles);
     }
 
     // administrator first, then counter, then kitchen; anything unexpected sorts last.

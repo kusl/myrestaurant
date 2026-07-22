@@ -6,24 +6,29 @@
 @inject IClock Clock
 
 @* The administration landing (TECHNICAL_SPECIFICATION §3.6/§3.7 — `area.administration`: the
-   administrator role). This first increment is read-only: it lists every account with its roles and
-   status, and is where the /setup success screen's "Go to administration" link lands. Static SSR, like
-   every account/administration surface, so the mutating tools that follow (create staff, reset
-   password/authenticator, grant/revoke roles, deactivate/reactivate) can post full pages and write the
-   authentication/redirect responses a Blazor circuit cannot. Endpoint authorization enforces the policy
-   on the server for this static-SSR page (an anonymous visitor is sent to /sign-in, a signed-in
-   non-administrator to /access-denied). Not exempt from the obligations pipeline: an administrator with
-   an outstanding §3.5 flag is routed to clear it first. *@
+   administrator role). It lists every account with its roles and status, links each to its management
+   page, and offers staff creation. Static SSR, like every account/administration surface, so the
+   management pages it links can post full pages and write the redirect/cookie responses a Blazor
+   circuit cannot. Endpoint authorization enforces the policy on the server for this static-SSR page (an
+   anonymous visitor is sent to /sign-in, a signed-in non-administrator to /access-denied). Not exempt
+   from the obligations pipeline: an administrator with an outstanding §3.5 flag is routed to clear it
+   first. *@
 
 <PageTitle>Administration — people</PageTitle>
 
 <section class="panel">
-    <p class="eyebrow">Administration</p>
-    <h1>People</h1>
+    <div class="admin-header">
+        <div>
+            <p class="eyebrow">Administration</p>
+            <h1>People</h1>
+        </div>
+        <a class="button-primary" href="/administration/people/new">Create staff account</a>
+    </div>
 
     <p class="lede">
         Every account in the system, oldest first. Guests appear here once they register by joining a
-        table; staff are created here (that tool arrives next).
+        table; staff are created here. Open a person to grant or revoke roles, reset their credentials,
+        or deactivate the account.
     </p>
 
     @if (_people is null)
@@ -44,6 +49,7 @@
                         <th scope="col">Roles</th>
                         <th scope="col">Credentials</th>
                         <th scope="col">Status</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -107,6 +113,9 @@
                                     <span class="chip chip-warn">Must set up authenticator</span>
                                 }
                             </td>
+                            <td class="admin-row-actions">
+                                <a href="@($"/administration/people/{person.PersonIdentifier}")">Manage</a>
+                            </td>
                         </tr>
                     }
                 </tbody>
@@ -115,10 +124,9 @@
     }
 
     <p class="form-footnote">
-        Creating staff, resetting a password or authenticator, granting or revoking roles, and
-        deactivating or reactivating an account arrive in the next administration slice. Role and
-        credential changes take effect on affected sessions within a few minutes (the security-stamp
-        revalidation window, §3.1).
+        Role and credential changes take effect on affected sessions within a few minutes (the
+        security-stamp revalidation window, §3.1). Accounts are deactivated, never deleted, so security
+        and order history keep their actors (F-10b).
     </p>
 
     <p><a href="/">Back to the home page</a></p>
@@ -128,6 +136,14 @@
    rather than the component-scoped bundle, so component CSS isolation is not active here; these live
    inline to avoid editing the shared stylesheet for one screen. *@
 <style>
+    .admin-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-start;
+        justify-content: space-between;
+    }
+
     .admin-people {
         overflow-x: auto;
     }
@@ -191,6 +207,23 @@
     .admin-people .chip-warn {
         background: #fdecea;
         color: #a3261c;
+    }
+
+    .admin-people .admin-row-actions {
+        white-space: nowrap;
+        text-align: right;
+    }
+
+    .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
     }
 </style>
 

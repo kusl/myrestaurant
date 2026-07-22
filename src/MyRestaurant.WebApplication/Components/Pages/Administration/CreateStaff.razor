@@ -1,0 +1,239 @@
+@page "/administration/people/new"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.Domain.Identifiers
+@using MyRestaurant.Domain.Security
+@inject IAccountAdministration Accounts
+@inject UserManager<Person> UserManager
+@inject IPasswordHasher<Person> PasswordHasher
+@inject IIdentifierFactory IdentifierFactory
+@inject NavigationManager Navigation
+
+@* Create a staff account (TECHNICAL_SPECIFICATION §3.7). Administrator only (endpoint authorization,
+   like every account/administration surface). Static SSR: the whole thing is a full-page form post, and
+   the "temporary password" is written into the response once and never stored in the clear — the
+   account is created with `must_change_password`, so the obligations pipeline forces a real password on
+   the staff member's first sign-in (§3.5). Roles are granted in the same transaction that creates the
+   account, each recording this administrator as grantor. Nothing is written until the form is submitted. *@
+
+<PageTitle>Create staff account</PageTitle>
+
+@if (_created)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Staff account created</p>
+        <h1>@_createdUsername is ready</h1>
+
+        <p class="status-success" role="status">
+            @if (_grantedRolesText is null)
+            {
+                <text>The account <strong>@_createdUsername</strong> was created with no role yet.</text>
+            }
+            else
+            {
+                <text>The account <strong>@_createdUsername</strong> was created with the @_grantedRolesText role.</text>
+            }
+        </p>
+
+        <p class="totp-secret-label">Give this temporary password to the new staff member — it is shown only once.</p>
+        <p class="totp-secret">@_temporaryPassword</p>
+        <p class="lede">
+            They will be asked to choose their own password the first time they sign in. If they hold the
+            kitchen or administrator role, remind them to add a passkey once they are in.
+        </p>
+
+        <div class="form-actions">
+            <a class="button-primary" href="@($"/administration/people/{_createdPersonIdentifier}")">Manage this account</a>
+            <a class="button-secondary" href="/administration">Back to people</a>
+        </div>
+    </section>
+}
+else
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Create a staff account</h1>
+        <p class="lede">
+            Choose a username and the roles this person should hold. A temporary password is generated
+            for you to hand over; they will replace it on first sign-in.
+        </p>
+
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <EditForm Model="Input" method="post" OnValidSubmit="CreateAsync" FormName="create-staff">
+            <DataAnnotationsValidator />
+
+            <div class="form-field">
+                <label for="username">Username</label>
+                <InputText id="username" @bind-Value="Input.Username" autocomplete="off"
+                           autocapitalize="none" spellcheck="false" autofocus />
+                <ValidationMessage For="@(() => Input.Username)" />
+            </div>
+
+            <div class="form-field">
+                <label for="display-name">Display name <span class="optional">(optional)</span></label>
+                <InputText id="display-name" @bind-Value="Input.DisplayName" autocomplete="off" />
+                <ValidationMessage For="@(() => Input.DisplayName)" />
+            </div>
+
+            <fieldset class="form-field roles-fieldset">
+                <legend>Roles</legend>
+                <label class="role-option">
+                    <InputCheckbox @bind-Value="Input.GrantCounter" />
+                    <span><strong>Counter</strong> — close and settle sittings, adjust prices, show a table's join QR</span>
+                </label>
+                <label class="role-option">
+                    <InputCheckbox @bind-Value="Input.GrantKitchen" />
+                    <span><strong>Kitchen</strong> — fulfil lines, edit orders, activate/deactivate menu items</span>
+                </label>
+                <label class="role-option">
+                    <InputCheckbox @bind-Value="Input.GrantAdministrator" />
+                    <span><strong>Administrator</strong> — full access, including this administration area</span>
+                </label>
+            </fieldset>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Create account</button>
+                <a class="button-secondary" href="/administration">Cancel</a>
+            </div>
+        </EditForm>
+
+        <p class="form-footnote">
+            An account with no role behaves like a guest until a role is granted. You can change roles
+            later from the account's management page.
+        </p>
+    </section>
+}
+
+<style>
+    .roles-fieldset {
+        border: 1px solid var(--rule, #e5e5e5);
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+    }
+
+    .roles-fieldset legend {
+        font-weight: 600;
+        padding: 0 0.35rem;
+    }
+
+    .role-option {
+        display: flex;
+        gap: 0.6rem;
+        align-items: flex-start;
+        margin: 0.4rem 0;
+        font-weight: 400;
+    }
+
+    .role-option input {
+        margin-top: 0.2rem;
+    }
+</style>
+
+@code {
+    private bool _created;
+    private string? _createdUsername;
+    private Guid _createdPersonIdentifier;
+    private string? _temporaryPassword;
+    private string? _grantedRolesText;
+    private string? _errorMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "create-staff")]
+    private CreateStaffInputModel Input { get; set; } = default!;
+
+    protected override void OnInitialized()
+        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
+        => Input ??= new();
+
+    private async Task CreateAsync()
+    {
+        Person? actingAdministrator = await UserManager.GetUserAsync(HttpContext.User);
+        if (actingAdministrator is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        string username = Input.Username.Trim();
+        string? displayName = string.IsNullOrWhiteSpace(Input.DisplayName) ? null : Input.DisplayName.Trim();
+
+        // Best-effort duplicate check; the person UNIQUE constraint inside the transaction is authoritative.
+        if (await UserManager.FindByNameAsync(username) is not null)
+        {
+            _errorMessage = "That username is already taken. Please choose another.";
+            return;
+        }
+
+        List<string> roles = [];
+        if (Input.GrantAdministrator)
+        {
+            roles.Add(RestaurantRoles.Administrator);
+        }
+
+        if (Input.GrantCounter)
+        {
+            roles.Add(RestaurantRoles.Counter);
+        }
+
+        if (Input.GrantKitchen)
+        {
+            roles.Add(RestaurantRoles.Kitchen);
+        }
+
+        Guid personIdentifier = IdentifierFactory.Create();
+
+        // A generated temporary password, hashed immediately so the plaintext is only ever held for the
+        // one response that shows it. 12 random bytes render to a 16-character URL-safe string — well
+        // over the 12-character policy floor (§3.2), which the forced change re-checks anyway.
+        string temporaryPassword = SecretGenerator.GenerateBase64UrlSecret(12);
+        string passwordHash = PasswordHasher.HashPassword(
+            new Person { PersonIdentifier = personIdentifier, Username = username },
+            temporaryPassword);
+
+        CreateStaffStatus status = await Accounts.CreateStaffAsync(
+            new NewStaffAccount(personIdentifier, username, displayName, passwordHash, roles),
+            actingAdministrator.PersonIdentifier,
+            HttpContext.RequestAborted);
+
+        if (status == CreateStaffStatus.UsernameTaken)
+        {
+            _errorMessage = "That username was taken while you were filling this in. Please choose another.";
+            return;
+        }
+
+        _createdUsername = username;
+        _createdPersonIdentifier = personIdentifier;
+        _temporaryPassword = temporaryPassword;
+        _grantedRolesText = FormatRoles(roles);
+        _created = true;
+    }
+
+    private static string? FormatRoles(IReadOnlyList<string> roles) => roles.Count switch
+    {
+        0 => null,
+        1 => roles[0],
+        _ => $"{string.Join(", ", roles.Take(roles.Count - 1))} and {roles[^1]}",
+    };
+
+    private sealed class CreateStaffInputModel
+    {
+        [Required(ErrorMessage = "Choose a username.")]
+        [StringLength(64, MinimumLength = 3, ErrorMessage = "The username must be 3–64 characters.")]
+        public string Username { get; set; } = string.Empty;
+
+        [StringLength(120, ErrorMessage = "That display name is too long.")]
+        public string? DisplayName { get; set; }
+
+        public bool GrantAdministrator { get; set; }
+
+        public bool GrantCounter { get; set; }
+
+        public bool GrantKitchen { get; set; }
+    }
+}
