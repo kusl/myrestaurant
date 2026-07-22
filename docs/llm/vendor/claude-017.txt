@@ -1,6 +1,40 @@
 00
 65
 
+A quick status update 
+The home page looks fine 
+https://assist-migration-leslie-variables.trycloudflare.com  
+MyRestaurant
+Sign in
+Ordering system
+
+My Restaurant
+The application shell is running. The Milestone 1 skeleton (domain, data access, web host, startup migrations) is in place, and Milestone 2 is under way: password sign-in with the TOTP/recovery challenge, lockout, and the forced-password-change pipeline work now. Guest ordering, the kitchen and counter boards, and administration arrive in later milestones.
+
+Time zone
+America/New_York
+Currency
+USD
+Liveness
+Readiness
+Table area (sign-in required)
+However, when I manually go to 
+https://assist-migration-leslie-variables.trycloudflare.com/setup
+This assist-migration-leslie-variables.trycloudflare.com page can’t be found
+No webpage was found for the web address: https://assist-migration-leslie-variables.trycloudflare.com/setup
+HTTP ERROR 404
+Pressing reload does not work. 
+
+Please continue with the next step 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete 
+
+I tried again after the latest code and this is still happening 
+in any case, please continue with the next step / milestone 
+
 https://arena-harold-atmosphere-womens.trycloudflare.com/setup
 This arena-harold-atmosphere-womens.trycloudflare.com page can’t be found
 No webpage was found for the web address: https://arena-harold-atmosphere-womens.trycloudflare.com/setup
@@ -21,4 +55,558 @@ USD
 Liveness
 Readiness
 Table area (sign-in required)
+
+
+/
+Claude is responding
+A quick status update 
+The home page looks fine 
+https://assist-migration-leslie-variables.trycloudflare.com  
+MyRestaurant
+Sign in
+Ordering system
+My Restaurant
+The application shell is running. The Milestone 1 skeleton (domain, data access, web host, startup migrations) is in place, and Milestone 2 is under way: password sign-in with the TOTP/recovery challenge, lockout, and the forced-password-change pipeline work now. Guest ordering, the kitchen and counter boards, and administration arrive in later milestones.
+Time zone
+America/New_York
+Currency
+USD
+Liveness
+Readiness
+Table area (sign-in required)
+However, when I manually go to 
+https://assist-migration-leslie-variables.trycloudflare.com/setup
+This assist-migration-leslie-variables.trycloudflare.com page can’t be found
+No webpage was found for the web address: https://assist-migration-leslie-variables.trycloudflare.com/setup
+HTTP ERROR 404
+Pressing reload does not work. 
+Please continue with the next step 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete 
+I tried again after the latest code and this is still happening 
+in any case, please continue with the next step / milestone 
+https://arena-harold-atmosphere-womens.trycloudflare.com/setup
+This arena-harold-atmosphere-womens.trycloudflare.com page can’t be found
+No webpage was found for the web address: https://arena-harold-atmosphere-womens.trycloudflare.com/setup
+HTTP ERROR 404
+https://arena-harold-atmosphere-womens.trycloudflare.com/
+MyRestaurant
+Sign in
+Ordering system
+My Restaurant
+The application shell is running. The Milestone 1 skeleton (domain, data access, web host, startup migrations) is in place, and Milestone 2 is under way: password sign-in with the TOTP/recovery challenge, lockout, and the forced-password-change pipeline work now. Guest ordering, the kitchen and counter boards, and administration arrive in later milestones.
+Time zone
+America/New_York
+Currency
+USD
+Liveness
+Readiness
+Table area (sign-in required)
+
+Show less
+
+Diagnosing stale build, architecting account administration milestone
+Diagnosing stale build, architecting account administration milestone
+I'm looking at the dump.txt file to understand the current state of the restaurant ordering system and see why the /setup route is returning a 404 error. The user has completed milestone 2 with password sign-in, TOTP/recovery challenges, and lockout features, so I need to identify what comes next.
+
+
+Check size and structure of project files
+I'm going to look at the dump.txt file to see what the current source code looks like.
+
+
+Get line count and preview of dump.txt
+I need to get an overview of the project structure first by looking at the file tree to understand what I'm working with.
+
+
+List all files in the dump
+I'm looking at a Blazor application where the /setup route is returning a 404 error even though a Setup.razor page exists. I need to investigate the routing configuration to understand why the page isn't being found, then check the build progress to determine what comes next.
+
+
+Read the build progress doc
+I need to track down why the /setup route is returning a 404 error. Let me examine the Setup.razor page, how the routing is configured in Program.cs, and check the App.razor or Routes.razor files to understand the render mode setup.
+
+
+Read the truncated middle of build progress (Stage 2 slices)
+I'm investigating why the /setup route is returning a 404 error. I need to trace through the routing configuration by examining the Setup.razor component, Program.cs configuration, App.razor routing setup, Routes.razor definitions, SetupState.cs, and the ObligationsEnforcement module to identify where the routing is breaking down.
+
+
+Read Setup.razor page
+I'm looking at the Setup.razor page which has the /setup route defined, and I'm trying to understand why it might be returning a 404 status. The page sets _adminExists during initialization, but somewhere in the logic it's setting the response status code to 404.
+
+The user is seeing a hard 404 from the server rather than the Blazor page rendering "Setup is already complete", which suggests the 404 is being set in OnInitializedAsync itself, not just in FinishAsync. Let me examine that initialization section more closely to see exactly when and why the 404 gets triggered.
+
+
+Read the truncated middle of Setup.razor (code-behind logic)
+I see the issue now—the Setup.razor page returns a 404 status code when an admin already exists, which is why the user is getting that hard 404 error message in Chrome. The page is intentionally setting the response status to 404 in the OnInitializedAsync method when _adminExists is true.
+
+But wait, the user says there's no admin yet since setup hasn't been completed, so _adminExists should be false and the page should render normally. The real problem might be that the deployed version doesn't actually include the Setup.razor page or the latest code slice that added it—the home page's message about "Milestone 2" doesn't mention the /setup bootstrap feature, which suggests the newest changes haven't been deployed yet.
+
+
+Read Home.razor
+I'm seeing a discrepancy between what's in the current source code and what the user is actually seeing deployed. The Home.razor file includes a setup callout for the first administrator and updated landing text mentioning TOTP and passkey enrollment, but the deployed version appears to be showing something different.
+
+The deployed binary is running older code from before the Setup.razor page was added, which explains why the /setup route returns a 404 and the landing text doesn't mention the bootstrap or passkey features. This points to a staleness issue — either the user is running an older build, the dotnet watch didn't pick up the new files, or they haven't rebuilt after pulling the latest code.
+
+But they claim to have the latest code, so the real culprit is likely that adding new .razor files requires a full rebuild and restart, not just hot reload — Blazor's route discovery happens at startup through assembly scanning, so newly added @page components won't be picked up without recompiling. Alternatively, if they're using containers, a cached image could be running the old compiled DLL. The strongest signal is that the home page HTML itself is the old version with the outdated landing text and no setup callout, which means the server is actually serving stale content.
+
+The fix is straightforward: rebuild and restart the app completely, or if using containers, rebuild the image without cache. Let me verify the routing setup by checking how Routes.razor, App.razor, and Program.cs handle component discovery, and whether the obligations middleware or something else might be intercepting the /setup route specifically.
+
+Actually, comparing the deployed home page text to what's in the dump makes this clear — the deployed version shows an older lede about the forced-password-change pipeline and guest ordering, while the dump shows a newer version that also mentions TOTP, passkey enrollment, and first-administrator bootstrap. These are different static strings, so the deployed HTML is literally from an older compile of Home.razor. That's conclusive proof of a stale build.
+
+The 404 on /setup confirms it: the route exists in the source but the running server was built before Setup.razor was added. They need a clean rebuild and restart — if they're using a container, they need to rebuild the image since a cached layer is likely the culprit; if running via dotnet watch, a newly-added routable component with injected services usually isn't hot-reloadable and requires a full restart.
+
+Now I need to address what they're actually asking for: diagnose the 404 (stale build, not a code bug), move to the next milestone, provide full file contents with paths, package everything as a tar.gz they can extract in one go, and note which files to delete if any.
+
+The next milestone slice is account administration — the final M2 piece — which covers staff creation, role management, credential resets, account deactivation/reactivation, voluntary TOTP removal, the rule preventing admins from removing their own enrollment, and enforcing passkey mandates for kitchen and admin roles. This is a substantial slice, so I need to carefully review the technical spec and existing code to implement it faithfully.
+
+The work involves building a new administration service with store methods for transactional role grants, credential resets, and deactivations, plus new Razor pages for the admin UI, security event logging for all operations, and comprehensive tests. It's a lot to deliver as full files plus a tar.gz without a compiler, but the user has explicitly asked for the next milestone, so I need to think through what's realistic and right to do here. First, I should clarify the 404 stale-build issue and then decide how to approach this large slice responsibly.
+
+Before I start writing the administration code, I need to review the existing patterns in the codebase — the technical specification for account administration, how the store methods are structured, the transactional grant machinery, the security event logging, the current admin pages, and the authorization policies — so I can match the existing conventions exactly. The 404 is almost certainly from a stale build, so the user needs to rebuild and restart to get /setup working. That's the immediate blocker I should diagnose clearly with exact commands. Since they're asking for forward progress on the next milestone anyway, I'll move into building the account administration slice — but first I need to review the technical spec and existing code to scope it properly and ensure I'm matching the patterns correctly.
+
+Show less
+Done
+I can already see the likely cause of the 404. Let me confirm it against the routing and DI wiring before I write anything, and read the spec for the next slice.
+
+
+Diagnosing Blazor routing collision with framework's default 404 handler
+Diagnosing Blazor routing collision with framework's default 404 handler
+
+Read Routes.razor and App.razor
+I should check Routes.razor to see how it handles route discovery and unmatched routes, particularly if there's custom NotFound handling that returns a 404 status. Given that the home page appears stale, I'm fairly confident about the issue, but I want to verify this component first.
+
+
+Read Routes.razor
+The router discovers Setup.razor at startup since it's in the same assembly as Program, but the /setup route still returns a hard 404 because unmatched interactive routes in the new Blazor Web App model get handled by the framework's default 404 mechanism through StatusCodePagesWithReExecute.
+
+The stale home page HTML with the old lede text and no setup callout confirms the server was compiled before Setup.razor existed. My diagnosis is solid—the fix is a rebuild and restart, with special attention to container image caching if that's in play.
+
+Now I'm shifting focus to documenting this 404 issue clearly and then moving on to the next milestone: building out account administration. Let me check the technical spec section 3.7 and review the existing code patterns I'll need to follow.
+
+Show less
+Done
+Let me read the spec section for the next slice and the key existing code I'll extend.
+
+
+Fortifying admin guards against system lockout scenarios
+Fortifying admin guards against system lockout scenarios
+
+Read technical specification (identity/admin sections)
+I'm looking at the account administration sections now, specifically §3.6 and §3.7.
+
+
+Read spec sections 3.3-3.7 (passkeys, obligations, account admin)
+I've got the §3.7 spec for account administration, which wraps up the M2 slices. Now I need to review the key implementation files to understand the existing patterns—specifically how DapperUserStore handles data access, how FirstAdministratorBootstrap manages transactional grants, and how the authorization and security event infrastructure is structured across ObligationsEnforcement, AccountRoutes, AuthorizationPolicies, and SecurityEventType.
+
+I also need to examine the UI layer with AdministrationHome.razor, the dependency injection setup in IdentityServiceCollectionExtensions, the domain helpers like SecretGenerator, RecoveryCode, and PairingCode, plus RestaurantSignInManager and PersonDirectory. Since this is a substantial slice, I'm starting with FirstAdministratorBootstrap to understand the transactional machinery that the new admin service will reuse.
+
+Show less
+
+Read FirstAdministratorBootstrap.cs
+I'm looking at the connection open and lock acquisition logic in that truncated section to understand how it fits into the broader implementation.
+
+
+Read FirstAdministratorBootstrap connection/lock section
+I've got a solid grasp on the transactional pattern now, so I'm moving through the remaining domain and infrastructure files to understand the security event vocabulary, logging implementation, existing person directory structure, authorization policies, and the identity service setup patterns.
+
+
+Read SecurityEventType.cs
+I'm going to examine the security event logging interfaces and implementations, along with the person directory, authorization policies, and the administration home component.
+
+
+Read ISecurityEventLog, DapperSecurityEventLog
+I see that IPersonDirectory and DapperPersonDirectory are already in place along with PersonSummary, so I should check how AdministrationHome.razor is currently using these components.
+
+
+Read AdministrationHome.razor
+I see the admin landing is currently just a read-only people list, and the next phase introduces the mutation capabilities. I'm going through the authorization policies, domain security helpers like TOTP provisioning and recovery codes, the TOTP enrollment flow with QR code rendering, and the Dapper user store patterns to understand the method signatures and structure.
+
+I need to prioritize AuthorizationPolicies.cs and ObligationsEnforcement to understand how the access control and forced-change flows work before tackling the rest of the identity setup.
+
+
+Read AuthorizationPolicies.cs
+I need to examine the ChangePasswordRequired component and the ObligationsEnforcement patterns to understand how forced password changes and account routes are structured, then look at the TOTP enrollment mechanics to see how that flow works.
+
+
+Read ObligationsEnforcement.cs (AccountRoutes)
+I need to review a few more key files to solidify my understanding before implementing the slice — specifically the domain security helpers like SecretGenerator, RecoveryCode, and the TOTP-related classes to know what APIs are available, plus TotpEnrollment.cs to understand how the enrollment tickets work and how TotpQrCode rendering integrates with the Setup component.
+
+
+Read RecoveryCode, Rfc6238Totp, SecretGenerator, TotpProvisioningUri domain helpers
+I need to look at the TotpEnrollment.cs file to understand how the TOTP QR code is generated and rendered, which will inform how to properly implement the EnrollTotpRequired.razor page as a real enrollment flow rather than a stub.
+
+
+Read TotpEnrollment.cs (web-layer TOTP enrollment ticket + QR)
+I'm mapping out the account admin slice requirements: resetting credentials with temporary passwords and TOTP state management, handling role grants and revocations, managing account activation, allowing voluntary TOTP removal, and staff creation. The scope is substantial, so I need to decide what to prioritize in implementation.
+
+The cleanest approach is building a new IAccountAdministration service in the DataAccess layer that handles atomic operations—creating staff with initial credentials and role assignments, resetting credentials with conditional TOTP cleanup, granting and revoking roles with proper event logging, and managing account state transitions. Each operation owns its transaction and maintains consistency across the person, credentials, roles, and event tables.
+
+There's a key architectural consideration: these admin operations act on other users and need atomicity across multiple tables, so they must regenerate the security stamp directly in SQL (following the FirstAdministratorBootstrap pattern) rather than relying on the scoped store's mutation model, which is designed for the signed-in principal.
+
+I'll create an AccountAdministration service in DataAccess that mirrors FirstAdministratorBootstrap's transactional Dapper approach for these operations. Now I'm thinking through the grant-time passkey mandate for kitchen and administrator roles — the spec says passkeys are optional for guests but mandatory when granting these specific roles, though I need to clarify whether this means the grantee must already have a passkey or if the system should enforce enrollment at grant time. So the "grant-time passkey mandate" means passkeys are actually required for kitchen and administrator roles, unlike guests where they're optional. But the spec doesn't spell out exactly how to enforce this when admins create staff members who don't have a session to register a passkey yet. This is genuinely ambiguous and risky to implement without clearer guidance, so I need to make a scoping call on what delivers the most value with the least risk.
+
+I'm weighing two paths: building the entire account administration slice with all the features (staff creation, role grants/revokes, credential resets, deactivation, TOTP removal, passkey mandate enforcement), which is large and error-prone across many new files, versus building a solid, well-defined backbone first—the core AccountAdministration service and admin UI for the essential operations like creating staff, managing roles, resetting credentials, and toggling account status—with full tests, then deferring the two genuinely underspecified pieces (voluntary TOTP removal and the grant-time passkey mandate) as follow-up work.
+
+But actually, there's a more pressing issue: the 404 error means they can't even run the current code at all. The deployed app is stale, so before adding a massive new slice, the immediate priority is getting them unstuck with exact rebuild and restart commands so they can actually test the existing /setup work. That said, they explicitly asked me to continue with the next milestone regardless, so I need to do both—diagnose the 404 definitively and deliver the account-administration slice, but I should scope it realistically given the lack of a compiler and the complexity of the codebase. 's administration module slice. They want full files with paths, a tar.gz archive, and a deletion list—so I need to be comprehensive but also make sure the 404 fix lands first to unblock them immediately. Let me prioritize getting that working, then deliver the account administration piece as a complete, buildable unit.
+
+I'm designing the core account administration service with transactional operations for staff creation, role management, credential resets, and account status changes—all mirroring the bootstrap pattern and logging security events through the audit system.
+
+Now I need to wire up the service in dependency injection, add a GetPersonAsync method to the person directory for fetching individual account details, and then build out the admin UI with per-row action buttons.
+
+For the admin pages, I'm creating a staff creation form that generates a temporary password and lets me assign initial roles, plus a detail page for managing individual accounts where I can grant or revoke roles, reset credentials, and toggle account status.
+
+The security event vocabulary is mostly done, just need to finish the account deactivation event.
+
+I'm planning to write integration tests using Testcontainers for the transactional operations, and I should defer the passkey mandate and voluntary TOTP removal since those are underspecified or orthogonal to the admin workflow.
+
+Actually, I'm second-guessing the scope here — I might be taking on too much and end up with a bunch of files that don't compile. Let me step back and think about what's actually the right size for this.
+
+The real win is fixing the 404 first, then focusing on one tight, high-value increment: the AccountAdministration DataAccess service with its DI wiring and tests, plus just enough UI to drive the core operations end-to-end like granting roles, resetting credentials, and toggling account status. But even that UI piece feels like it might be too much to fit cleanly.
+
+Actually, I'm leaning toward splitting this: deliver the DataAccess service and wiring as one complete, testable slice, then handle the UI separately. The service is the hard part and mirrors existing patterns like FirstAdministratorBootstrap, whereas the Razor forms are verbose and risky to write without a compiler. The user wants to see progress in the running app though, so I need to weigh whether a backend-only slice feels like enough momentum or if I should push to include at least the minimal UI to make the feature tangible. I'm running into the complexity of managing multiple forms on a single page with [SupplyParameterFromForm] — each form needs a unique name, and per-row forms in a loop create collisions that are hard to manage. The cleaner approach is to create detail pages for each person at /administration/people/{personId} with their management forms, plus a separate create-staff page. That's the conventional pattern. So I'm committing to: two new Razor pages, the service layer, wiring, tests, and small updates to the existing administration home page with links and styling.
+
+Now I'm building out the account-administration service as a cohesive vertical slice. I need a new transactional service for staff creation, role grants/revokes, credential resets, and deactivation — following the same patterns as the bootstrap code. I'm also adding a method to fetch individual person details by ID, and registering the service in the dependency injection container.
+
+For the UI layer, I'm creating two new Razor pages: one for creating staff with a form, and another for managing existing staff with separate forms for role changes, credential resets, and deactivation. The administration home page gets updated with "Manage" links on each row and a "Create staff" button. I'm keeping styles inline within the new pages rather than editing the shared CSS file. Then I'll add integration tests using Testcontainers for the new service, and optionally update the build progress documentation. I need to pull the full contents of IdentityServiceCollectionExtensions, DapperUserStore, and RestaurantSignInManager to understand the exact SQL patterns and how password reset and TOTP clearing work so I can make the necessary edits faithfully.
+
+I'm also reconsidering whether I need to build the UI this turn — creating two new Razor pages blind is risky. I'll mitigate that by basing them closely on the existing account pages like ChangePasswordRequired.razor and EnrollTotp.razor, which follow a consistent pattern I can read and replicate: static SSR, EditForm, SupplyParameterFromForm and CascadingParameter attributes, and NavigateTo for post-redirect-get. Let me examine those existing pages to nail down the exact patterns. Starting with IdentityServiceCollectionExtensions.cs to understand the service registration and how the identity components wire together.
+
+Show less
+
+Read IdentityServiceCollectionExtensions.cs
+Looking at the dependency injection setup, IAccountAdministration mirrors IFirstAdministratorBootstrap in its requirements — it needs IDatabaseConnectionFactory, IClock, IIdentifierFactory, and IDataProtectionProvider, though the latter is only used for clearing TOTP secrets and deleting recovery codes without needing actual encryption.
+
+For the temporary password flow, the web layer generates a readable random string (at least 12 characters per policy), hashes it using IPasswordHasher<Person>, and passes the hash to the service while displaying the plaintext once to the admin. I can either reuse SecretGenerator.GenerateBase64UrlSecret or create a dedicated helper for generating readable temporary passwords. I'll stick with SecretGenerator.GenerateBase64UrlSecret(12) for the temporary password—it's already tested, avoids adding new Domain code, and works fine for something the user changes immediately. For hashing, I'll follow the same pattern as Setup.razor with PasswordHasher.HashPassword(). On the database side, I need to handle security stamp regeneration by updating it to a fresh Guid, and then set up the role grant table to track who granted each role and when.
+
+For the grant operation, I'm using ON CONFLICT DO NOTHING to make it idempotent, but I need to detect whether the row was actually inserted so I can decide whether to emit the role_granted event and bump the security stamp. I'll query for existence first within the transaction to keep things clear, then insert—that way I know for certain if it's a new grant or already existed.
+
+For revoke, I'm deleting the role and checking rows affected to see if anything changed. But there's a safety concern: I should prevent revoking the last remaining administrator to avoid locking the system out entirely. The spec doesn't explicitly forbid an admin from revoking their own admin role, but preventing removal of the final administrator is a reasonable guard. I'm adding a check that blocks revocation of the administrator role when it's the last one in the system.
+
+I should apply similar logic to deactivation—refusing to deactivate the last active administrator prevents another lockout scenario. As for resetting credentials on yourself, I'm still thinking through whether that should be allowed. The passkey mandate is still deferred since it's not fully specified for staff creation without an active session. For the event trail, I need account_created and role_granted events for each role assigned, but I won't emit a separate password reset event—the account creation event itself covers the initial password setup with the must-change flag.
+
+For other operations, I'm mapping out the events: credential resets trigger password_reset_by_administrator and optionally totp_cleared_by_administrator, role changes use role_granted or role_revoked, and account lifecycle changes use account_deactivated or account_reactivated.
+
+Now I'm checking the actual database schema—specifically the person table columns and the recovery code table name to ensure the DapperUserStore implementation aligns with what's already defined in the bootstrap code. I'm debating whether to clear the lockout state as part of the password reset. It would improve UX since a locked account can't sign in even with a new password, but the spec doesn't explicitly mention it. To stay faithful to the specification and avoid adding undocumented behavior, I'll stick to exactly what §3.7 describes for reset and leave lockout handling separate.
+
+Now I'm realizing the critical security implication: when an admin performs actions like reset, grant, revoke, or deactivate on another user, their active sessions need to be terminated immediately through the security stamp mechanism. The SecurityStampValidator will catch the mismatch within 5 minutes and invalidate their session. If the admin modifies their own credentials or roles, their claims become stale until the next revalidation, which is acceptable behavior and aligns with the existing design — I don't need to manually trigger a sign-in refresh.
+
+Now I'm looking at ChangePasswordRequired.razor and EnrollTotp.razor to understand the exact patterns they use for static-SSR pages, like how they resolve the user, handle post-redirect-get flows, and display success messages.
+
+Show less
+
+Read ChangePasswordRequired.razor
+I've got a solid grasp on the static-SSR page pattern now—cascading parameters for HttpContext, form and query binding attributes, getting the current user through UserManager, using NavigateTo for post-redirect-get flows, EditForm with FormName, and that BL0008 pattern where you initialize Input in OnInitializedAsync. Now I'm checking out the DapperUserStore implementation to see how it fits in.
+
+I'm mainly verifying the exact column names from the person table and how the recovery-code and role tables are structured, plus confirming the UpdateAsync SQL so my raw admin SQL matches. FirstAdministratorBootstrap already gave me most of what I need—it shows exactly which columns get written to person, passkey_credential, totp_recovery_code, person_role, and security_event. The only thing left to confirm is whether TotpSecretProtectorPurpose is accessible (though I won't need it since I'm not protecting secrets in admin operations), and Person.cs already confirmed there are no separate normalized columns. Now I should quickly check Program.cs to make sure the middleware and endpoint mapping don't need any changes—the new routable components should auto-discover, and the new service should already be registered in the extension.
+
+Show less
+
+Read Program.cs
+Looking at Program.cs, I can see that Razor components are auto-discovered through the router configuration, so new pages in the WebApplication project will be picked up automatically on rebuild and restart without needing to modify Program.cs. Services registered in the AddRestaurantIdentity extension also don't require any Program.cs changes. This confirms my suspicion that Setup.razor is a routable component in the same assembly that should be discovered on a fresh build—the 404 error and stale Home.razor text indicate the running server has a stale build without the component compiled in.
+
+Now I need to verify the DapperUserStore implementation to confirm the exact column names for the person table, recovery code operations, and how role reads work. I'll check the recovery code deletion pattern and person update columns to ensure my SQL matches the existing schema.
+
+Show less
+
+Read DapperUserStore.cs beginning (SQL constants, update, connection helper)
+I've got the schema details I need—the person table structure, the person_role relationship, and the recovery code table. The comment confirms that role grants and revokes flow through the transactional account-administration service, which is exactly what I'm building in this increment. Now I'm verifying how the store retrieves roles and checking the recovery code table structure and duplicate-username error handling to make sure everything aligns.
+
+I'm also reviewing how the existing enrollment and password-change pages display recovery codes and temporary credentials to match that pattern for the reset UI. I want to confirm all the CSS classes I'll reuse are already defined across the existing pages—things like panel styling, form fields, buttons, status indicators, and recovery code display classes.
+
+For the ManagePerson page, I need to be careful about when to navigate versus when to show results inline. The reset action should display the temporary password once on the same page without redirecting, similar to how Setup shows recovery codes, so the handler will set a field and re-render rather than navigate away. I'll stick with the Setup pattern for consistency — show the temp password inline after success without navigating, matching how the codebase already handles displaying secrets once. For the other ManagePerson mutations like grant/revoke/deactivate, I'm reconsidering whether they should also use PRG or follow the same inline-result approach. Deactivate and reactivate should also use PRG to update the status chip. Mixing PRG and non-PRG approaches on the same page is fine. For robustness, I'll do PRG after grant/revoke/deactivate to avoid double-submit issues, but keep the reset flow showing the secret inline without navigation, matching the setup pattern. Now thinking through the create-staff page: GET shows the form with username, display name, and role checkboxes; POST on valid input generates and hashes a temp password, creates the staff record transactionally, then displays the created staff with the temporary password shown once and roles granted—no PRG needed since we're showing the secret.
+
+The CreateStaffAsync service method needs to accept personId, username, displayName, passwordHash, mustChangePassword flag, roles list, and grantor, then write the person record, person_role entries, and security events (account_created plus role_granted for each role) in a single transaction, returning either Created or DuplicateUsername status. It'll catch PostgreSQL unique constraint violations on username. The web layer does a pre-check with FindByNameAsync first, similar to the setup flow.
+
+Defining the result types and interface methods... Defining the service methods...
+
+For role validation, I need to check that the roleName is one of the three allowed values and throw an ArgumentException if it's not—the UI constrains the options, but I'll be defensive about it. For the "last administrator" guard on revoke operations, I'm checking if removing the admin role from a person would leave the system with no administrators. I'll query the count of people with the administrator role within the transaction, and if the target currently has admin and that count is one, I'll return a status indicating this would remove the last admin and rollback instead of proceeding.
+
+For the deactivation case, I'm adding a similar guard: if deactivating a person who holds the administrator role and is currently active, and they're the only active administrator, I refuse the operation. I'm querying for the count of active administrators by joining the person and person_role tables and filtering for active status.
+
+For the revoke-admin guard, I'm simplifying the logic: refuse if revoking would leave zero people holding the administrator role at all, regardless of their active status. This keeps the invariant straightforward—there must always be at least one admin grant in the system, even if that admin is deactivated.
+
+For deactivation, the guard is separate: refuse only if it would drop the count of ACTIVE administrators to zero. This way, you can deactivate an admin if another active one exists, but you can't revoke the last admin grant entirely.
+
+Together, these two guards ensure you can never fully lock yourself out—there's always at least one admin account (even if deactivated) and always at least one active admin who can sign in. I won't add a separate rule preventing admins from revoking their own role or deactivating themselves, since the last-admin guards already cover the catastrophic case, and the spec doesn't require it.
+
+For the security stamp regeneration: role changes and credential resets bump the subject's stamp. Deactivation also bumps the stamp to invalidate sessions, but reactivation doesn't need to since there are no active sessions to invalidate anyway. Bumping the reactivated user's stamp is harmless since they have no active sessions anyway, so I'll bump on both deactivate and reactivate for consistency. The spec is clear that security stamps must regenerate on credential or role changes, and role revocations affect live sessions, so grant and revoke operations definitely need to bump. Now I'm mapping out the security events precisely to their types, starting with CreateStaff triggering AccountCreated for the grantor and then RoleGranted.
+
+Writing the implementation code...
+
+Show less
+Done
+I have what I need. Let me set up a workspace and check the toolchain.
+
+
+Architected account administration service with transactional operations
+Architected account administration service with transactional operations
+
+Check whether .NET SDK is available for compiling
+I need to carefully match the existing codebase patterns for the C# and Razor code, so I'm reviewing the DapperUserStore to check the recovery code table structure and role-related SQL queries, particularly the ReplaceCodes deletion pattern and GetRolesAsync implementation.
+
+
+Locate role and recovery-code SQL within DapperUserStore
+I'm checking the UPDATE person block and the roles SQL section to verify the column names match up, and I need to confirm that the totp_recovery_code table has a used_at column before proceeding with the query alignment.
+
+
+Read DapperUserStore UPDATE person and ToParameters
+Now I need to check the DapperSecurityEventLog to understand the insert SQL and validation pattern, so I can write security events directly within my transaction using inline SQL like FirstAdministratorBootstrap does, rather than relying on ISecurityEventLog which would open its own connection.
+
+
+Read DapperSecurityEventLog.cs
+I'm noticing the difference in how nullable actor identifiers are handled across the codebase — the @ActorPersonIdentifier::uuid cast is crucial for nullable values, whereas FirstAdministratorBootstrap's multi-row insert worked fine with a strongly-typed Guid? property in the record without needing an explicit cast, relying on Dapper's type handling instead.
+
+Since FirstAdministratorBootstrap's approach is proven to work in this codebase, I'll follow that same pattern for consistency: use a typed SecurityEventRow record with Guid? ActorPersonIdentifier and skip the cast, keeping the batch insert logic minimal and aligned with what's already working.
+
+Now I'm checking FirstAdministratorBootstrapTests to see how the test structure mirrors the DataAccess tests, particularly around PostgreSqlFixture usage and FixedClock setup.
+
+Show less
+
+Read FirstAdministratorBootstrapTests.cs to mirror the DataAccess test structure
+I'm reviewing the test utilities and fixtures available in the test file—the PostgreSqlFixture, FixedClock, and various helper methods like SkipIfNoContainer, Bytes, UniqueUsername, and BuildBootstrap—so I can reuse them for my tests. Let me check the end of the FirstAd test file to see these implementations.
+
+
+Read FirstAdministratorBootstrapTests helpers (tail)
+I've got the test harness pattern down, so I'm ready to write out the full slice. Let me verify the IDatabaseConnectionFactory interface and how DbTransaction works—I see that FirstAdministratorBootstrap opens a connection with OpenConnectionAsync and then calls BeginTransactionAsync on it, so I'll follow that same approach.
+
+I'm also confirming that the person_role unique constraint can be targeted by column list in the conflict clause rather than needing a named constraint, since the schema defines it inline as UNIQUE (person_identifier, role_name).
+
+Now I'm laying out all the files I need to create and modify: a new AccountAdministration.cs class in DataAccess, updates to PersonDirectory.cs to add a GetPersonAsync method, registration of the service in the WebApplication extensions, UI updates to the administration home page, and additional new files for the web layer.
+
+For the Razor pages, I'm keeping styles inline to minimize file changes and risk. The pages will inject several dependencies: IAccountAdministration, UserManager<Person> to identify the acting admin and locate target persons, IPersonDirectory for rendering details, IPasswordHasher<Person> to hash temporary passwords, IIdentifierFactory to generate new person IDs, plus NavigationManager and RestaurantOptions.
+
+For getting the acting admin's ID, I can use UserManager.GetUserAsync(HttpContext.User) to retrieve the Person object, then access user.PersonIdentifier as the grantor ID. The ManagePerson page will use a route parameter {PersonId:guid} bound to a [Parameter] Guid PersonId property. I'm planning multiple forms on the page—each needs its own unique FormName—starting with a grant role form. role parameter passed to a single handler — that way I can reuse one GrantAsync(string role) and RevokeAsync(string role) pair, with the form's hidden input or query param specifying which role. That's cleaner than 6 separate handlers. — I'll go with EditForm and bind each action to its own model via [SupplyParameterFromForm], so grant and revoke each get their own form with a role selector and submit button that calls the appropriate async handler.
+
+For reset, I'm using a plain form with no inputs, just a submit button. For toggling active status, I'll create a single form that reads the person's current state server-side and flips it when submitted, keeping the logic straightforward.
+
+I need to verify that plain forms with @formname and @onsubmit work reliably in static SSR — and looking at Setup.razor, this pattern is already proven in the codebase, so I'm confident using it here. For grant and revoke, I'll stick with EditForm and bound <InputSelect> elements since those need role selection.
+
+For the temp password display after reset or create, I'll show it inline in a panel right after success, similar to how Setup displays recovery codes — no redirect needed. After grant, revoke, or toggle actions complete with a redirect, the page re-renders with updated state. If an admin resets and sees the temp password, then clicks grant, the grant form will POST and redirect, clearing the password display, which is fine since it was already shown once.
+
+Now I'm thinking through the interaction with [SupplyParameterFromForm] across multiple EditForms...
+
+Each form needs its own distinct FormName, and the corresponding model properties must match that name. I'll set this on both the EditForm and the parameter attribute to keep them in sync.
+
+For loading the person on the ManagePerson page, I'll call IPersonDirectory.GetPersonAsync(PersonId) to display roles and status without needing UserManager for read-only rendering. I'll still use UserManager.GetUserAsync to identify the acting admin. If GetPersonAsync returns null, I'll show a "not found" panel.
+
+The transactional service operates by personId (Guid) rather than loading a Person entity, so the page passes PersonId and the grantor id to it. The service then verifies the person exists internally.
+
+For the mutating methods, I'll check person existence at the start and return PersonNotFound status where the result type supports it—this keeps the code safe and avoids FK exceptions.
+
+Now I'm defining the result enums more carefully: CreateStaffStatus for staff creation, RoleGrantOutcome for role changes, CredentialResetOutcome for password resets, and AccountActivationOutcome for activation state, each with appropriate status values including PersonNotFound where needed and guards against removing the last administrator. I'm going to stick with the .NET 10 idioms throughout—collection expressions, raw strings, sealed classes, file-scoped namespaces, and the rest. Now I'll start implementing AccountAdministration.cs, beginning with CreateStaffAsync which needs to handle a transaction that inserts a new person record with initial password, security stamp, and activation flags set appropriately.
+
+For CreateStaffAsync, I need to insert the person, then add role assignments for each role granted, log security events for account creation and each role grant, and handle the UniqueViolation exception if the username already exists. The advisory lock isn't needed here since the UNIQUE constraint on username handles concurrent inserts. Then GrantRoleAsync will verify the person exists first, and if not found, throw PersonNotFound. Finishing the role revocation by deleting the person_role record, updating the security stamp, and logging the event before committing. Then for credential resets, I'm checking if the person exists and whether they had TOTP enrolled, clearing out any recovery codes and TOTP secrets if needed, and updating their password hash along with flags to force a password change and re-enrollment. So I'll split this into two UPDATE statements within the transaction: one that always resets the password hash, forces a password change, and updates the security stamp, then a second one that clears TOTP data only if the user had it enrolled. I'll also delete any recovery codes and log both a password reset event and a TOTP cleared event if applicable.
+
+For the SetAccountActiveAsync method, I'm checking if the person exists and retrieving their current active status plus whether they hold an administrator role. If there's no change needed I'll return early, but if deactivating, I need to guard against removing the last active administrator by querying the count of active admins with the administrator role.
+
+Then I'm updating the person record with the new active status and a fresh security stamp, inserting a corresponding security event to log the account state change, and committing the transaction with a Changed result.
+
+For the attribute reads, I'm using targeted SELECT queries to check specific conditions—like querying whether the TOTP secret exists for the credential reset operation. Dapper will correctly map the Postgres boolean expression to bool?, so if the column returns false it stays false (non-null), and no rows gives null. For SetActive I need both the current is_active status and whether the person is an administrator, so I'll query both columns and map them to a small DTO.
+
+For grant/revoke operations I need to check if a person exists and whether they hold a specific role — I could do two separate scalar queries or combine them into one DTO query for a single round trip. Clarity matters more than micro-optimization here since the row counts are tiny, so I'll keep them as separate scalars to match the existing style. For role validation, I'm defining a static set of grantable roles (administrator, kitchen, counter) and validating the incoming role name against it, throwing an exception if it's invalid — I'll normalize by trimming whitespace and require an exact match to the set, which stores everything in lowercase.
+
+Since the database CHECK constraint requires lowercase values and the stored procedure uses lower(@RoleName), I need to normalize the role name with ToLowerInvariant() before validating and inserting it. I'm setting up the interface as IAccountAdministration in the MyRestaurant.DataAccess.Identity namespace with a DapperAccountAdministration implementation. The temporary password generation and hashing happen in the web layer, so the new staff account and password reset operations receive pre-hashed PHC strings.
+
+Now I'm ready to write the implementation files. Writing AccountAdministration.cs...
+
+Show less
+Done
+I have a complete picture now. Let me confirm my read of the 404 (stale build), then write the slice. First, the staging tree:
+
+
+Commenced drafting core account administration class implementation
+Commenced drafting core account administration class implementation
+
+Create staging directory tree mirroring the repo
+I'm starting to write out the core AccountAdministration class file.
+
+Done
+Now the core transactional service, modeled on DapperFirstAdministratorBootstrap:
+
+
+Architected method addition for fetching individual person records with roles
+Architected method addition for fetching individual person records with roles
+
+New transactional account-administration service (create staff, grant/revoke roles, reset credentials, deactivate/reactivate)
+Adding the GetPersonAsync method to the interface and implementing it in DapperPersonDirectory to fetch a single person by ID along with their associated roles, reusing the existing row-mapping logic.
+
+Done
+Now the PersonDirectory.cs edit — full file with a new single-person lookup added:
+
+
+Reorganized dependency injection registration for account administration service
+Reorganized dependency injection registration for account administration service
+
+PersonDirectory.cs — full file, adds GetPersonAsync single-person lookup for the manage-person page
+I'm updating the DI registration in IdentityServiceCollectionExtensions.cs to add the IAccountAdministration service right after IFirstAdministratorBootstrap, since they're both transactional Dapper services with similar dependencies. I'll also update the class-level documentation to mention this new registration.
+
+Done
+Now the DI wiring — full IdentityServiceCollectionExtensions.cs with the new service registered:
+
+
+Refactored administration component with staff management features
+Refactored administration component with staff management features
+
+IdentityServiceCollectionExtensions.cs — full file, registers IAccountAdministration alongside the bootstrap
+I'm updating the AdministrationHome.razor component to add a "Create staff" button at the top and an "Actions" column with a "Manage" link for each person that routes to their detail page. I'll also update the footnote since the necessary tools are now available.
+
+Adding component styles...
+
+Done
+Now AdministrationHome.razor — full file, adding a "Create staff" action and a per-row "Manage" link:
+
+
+Architected staff creation form with role checkboxes and temporary password generation
+Architected staff creation form with role checkboxes and temporary password generation
+
+AdministrationHome.razor — full file, adds Create-staff action and per-person Manage links
+Working on the CreateStaff.razor page for the administration section—it's a static SSR form at /administration/people/new where I can create new staff members by entering a username, optional display name, and selecting roles like administrator, counter, or kitchen. When submitted, the system generates a temporary password, hashes it, creates the staff record transactionally, and displays the temp password and assigned roles once. I need to inject several services including UserManager to resolve the current admin's identity, along with account administration, password hashing, identifier generation, and navigation utilities.
+
+For the role selection, I'm using checkboxes bound to boolean fields on the input model—three separate bool properties for each role type. The temporary password gets generated using a Base64Url-safe secret (12 bytes yields about 16 characters), which satisfies the minimum length requirement and provides a usable credential for initial sign-in. The transactional service handles storing the password hash directly without enforcing the policy, so the user can then set their own compliant password after logging in.
+
+For the PasswordHasher, I just need to pass a minimal Person object with the identifier and username—the Argon2 implementation doesn't use per-user peppers anyway. Username validation is 3-64 characters, display name is optional up to 120, and I'm allowing accounts with zero roles assigned. In the initialization flow, I'll set up the input model and confirm the acting user exists as a defensive check.
+
+For the submit handler, I'll resolve the authenticated admin from the HttpContext, normalize the username and display name, collect the selected roles from checkboxes, do a duplicate check via UserManager, generate a new person ID, create the temp password and hash it, then call CreateStaffAsync with all the details—handling the UsernameTaken error if it comes back.
+
+On success, I'll store the created username, temporary password, and granted roles in state variables and flip the created flag so the page shows the success panel with the temp password instead of the form. For styling, I'm using the account-panel classes to get the form field and action button styling that matches the other account pages.
+
+Let me verify that the form styles like form-field and form-actions aren't scoped only within account-panel in the CSS.
+
+Show less
+Done
+The new pages use shared form styles. Let me verify those CSS classes aren't scoped only to .account-panel:
+
+
+Inventoried CSS class reusability and styling scope constraints
+Inventoried CSS class reusability and styling scope constraints
+
+Check CSS selector scoping for the classes the new pages will reuse
+Most of these CSS classes are defined globally rather than nested under .account-panel, which means I can reuse them across the new pages I'm building within that panel structure.
+
+Now I'm checking that .panel and .account-panel both exist in the stylesheet, and they do. I also notice that .chip and related chip styling classes are scoped locally to the AdministrationHome component, so I'll need to define my own inline styles for chips in ManagePerson if I need them, or use simpler markup instead. For the temp password display in CreateStaff, I'll apply the same .totp-secret styling that Setup uses for the manual TOTP key — it gives me that monospace block presentation I need.
+
+Done
+Both files can reuse the global form/panel classes. Now the create-staff page:
+
+
+Refactored markup to eliminate awkward string interpolation formatting
+Refactored markup to eliminate awkward string interpolation formatting
+
+New CreateStaff.razor — static SSR admin page to create a staff account with a temporary password
+I'm noticing a formatting issue in the success panel where the string interpolation has an awkward space before the period, and the ternary operator inside the Razor expression could be cleaner. Let me refactor this to handle the conditional role text more smoothly.
+
+I'll split this into two distinct text blocks using Razor's <text> pseudo-element — one for when no role is granted and another for when roles are assigned. This avoids the messy interpolation and makes the markup more readable. Then I'll update the string replacement to apply this cleaner version.
+
+Done
+Let me clean up that awkward interpolation in the success panel:
+
+
+Architected multi-form admin interface for user management operations
+Architected multi-form admin interface for user management operations
+
+Replace awkward inline ternary interpolation with clean @if/@else text blocks
+CreateStaff.razor
++10
+-3
+Now I'm building the ManagePerson.razor page at /administration/people/{PersonId:guid}. This is the main admin interface for managing individual users, with options to grant or revoke roles from the available set (admin, counter, kitchen), reset their credentials to show a temporary password, and toggle their active status. I'll structure it as a static SSR page with multiple forms.
+
+I'm setting up four separate forms: two EditForms for granting and revoking roles using InputSelect components bound to the respective input models, and two plain forms for resetting credentials and toggling activation status. I need to inject the UserManager to get the current admin's ID, the IPersonDirectory to load the target person, and IClock for displaying lockout information. For the role selects, I'll compute the grantable roles as the difference between all three staff roles and what the person currently holds, while the revokable set is just their current staff roles. After any grant, revoke, or activation change, I'll navigate back to the same person's page to trigger a fresh load. For credential resets, I'll display the temporary password inline without a page reload.
+
+The rendering logic will branch on state: if the person isn't found, show a not-found panel; if a reset just completed, show a success panel with the temporary password and let the admin click back to reload; otherwise show the normal management view with status, roles, and all four forms. For grant/revoke/toggle outcomes after the page reload, I'll pass the result via query string and render a flash message. Writing the handler logic... Adding more case handlers... I need to think through the Blazor lifecycle more carefully. In static SSR, OnInitializedAsync runs before the form handler executes, so _person will be loaded and available when the toggle handler runs. If the person isn't found during initialization, I render a not-found page, so the handler won't even execute. In the handler itself, I should still check if _person is null as a safety measure, and either redirect or show an error if something went wrong.
+
+For the acting admin resolution, I'm handling that consistently across both OnInitializedAsync and the handler. For the "done" flash message, I'm using a query parameter with [SupplyParameterFromQuery] to pass status codes, then mapping those to user-friendly messages during initialization and rendering them as a success notification. This approach works fine on static SSR pages since the query parameter binding happens before rendering.
+
+For the role grant and revoke forms, I'm using InputSelect to render a dropdown with available roles, but I need to conditionally show each form based on what the user can actually do — hide the grant form if they already hold all grantable roles, and only show revoke if they hold at least one staff role. The revoke operation will naturally fail if they're the last administrator, which is the right safeguard.
+
+I'm also loading the acting administrator's ID so I can show a subtle note when someone is managing their own account, which adds helpful context without being intrusive.
+
+Now I'm writing out the ManagePerson.razor component—it's a substantial piece. For the reset button, I'll add a warning message next to it instead of relying on JavaScript confirm dialogs since we're in static SSR. I'm also planning to use scoped chip styles for status indicators, keeping the styling approach consistent with the rest of the admin interface.
+
+Writing the Razor component... Writing ManagePerson.razor...
+
+Show less
+Done
+Now the manage-person page — the largest piece. It drives grant/revoke, reset, and deactivate/reactivate:
+
+
+Architected comprehensive integration tests for account administration module
+Architected comprehensive integration tests for account administration module
+
+New ManagePerson.razor — static SSR admin page: grant/revoke roles, reset credentials, deactivate/reactivate one account
+I'm setting up integration tests for DapperAccountAdministration following the same pattern as the bootstrap tests—using the PostgreSQL fixture, async lifecycle management, and table truncation. I need to seed test accounts, either through the DapperUserStore or the bootstrap helper, to have data to work with.
+
+The tricky part is that CreateStaffAsync requires a grantor ID (which references an existing person), so I can't just create the first admin directly—I need to bootstrap an initial administrator first, then use that admin's ID as the grantor for subsequent staff creation calls. I'll structure the tests with helpers to seed an administrator, then test the grant/revoke/reset/deactivate operations against that seeded data. I'll write small Dapper helpers to insert seed data directly into the test, keeping it focused and avoiding coupling to the bootstrap logic. Then I'll outline the test cases, starting with verifying that CreateStaffAsync writes the account with the must-change-password flag, grants the appropriate roles, and logs the audit event. Then I'm checking that when a username is already taken, the creation fails with UsernameTaken status and no database changes occur. Next, I'm testing GrantRoleAsync to verify it grants a role, rotates the security stamp, and creates an audit event—and that calling it again on an already-held role returns AlreadyHeld without modifying the stamp or adding duplicate events. Then I'm moving into RevokeRoleAsync tests. esChange_NoTotpClearverifies that resetting credentials without TOTP clears the password and forces a change, but doesn't touch the authenticator. ThenResetCredentialsAsync_WithTotp_ClearsAuthenticator_AndRecoveryCodes_AndAuditsBoth` tests that when TOTP is present, resetting credentials also wipes the secret and recovery codes while auditing both events.
+
+I'm also checking ResetCredentialsAsync_UnknownPerson_ReturnsPersonNotFound to ensure it handles missing users, and SetAccountActiveAsync_DeactivateThenReactivate_RotatesStamp_AndAudits which verifies deactivation and reactivation toggle the active flag, rotate the stamp, and generate the appropriate audit events.
+
+For the last administrator scenario, I need to prevent deactivating the only active admin—attempting that should return WouldDeactivateLastAdministrator and leave the account unchanged, but once a second admin exists, the first can be deactivated.
+
+I'm planning to write 8-10 tests total to keep the file focused but comprehensive. I'll need a helper to insert test data directly into the database, accepting parameters like id, username, active status, password presence, and optional TOTP protection.
+
+I also need helpers to grant roles directly, insert recovery codes, and read back person records with their fields for assertions, plus count roles, events, and recovery codes by id. I'll use a mutable POCO for reading person data, and create a SeedAdministratorAsync helper that inserts a person and grants them the administrator role, returning the new id.
+
+For the test file itself, I need to import the data access and domain namespaces for identity, authentication events, identifier generation, and the test utilities like FixedClock.
+
+Now I'm pulling in the PostgreSQL fixture, connection factory, and schema migration runner, then setting up a sample password hash constant to reuse across tests. For the person records, I'll set password_hash to either a PHC string or NULL depending on whether the test needs a password, and for TOTP I'll use a non-null protected secret string when testing the reset flow since I'm just checking that it gets nulled out.
+
+Writing the SQL helper... I need to import the hashing utility and then construct the recovery code insertion by hashing each code value. Now I'm looking at the SELECT statement to retrieve user credentials along with their TOTP configuration.
+
+I'm also setting up several COUNT queries to check for security events filtered by subject and type, with an optional actor parameter, plus queries to verify role assignments and count available recovery codes.
+
+Now I'm ready to write out the test file. Actually, let me think through the approach for handling boolean columns with Dapper — using QuerySingleOrDefaultAsync<bool?> to map a computed boolean expression from Postgres. Since Npgsql maps the database boolean type directly to C# bool, querying for a nullable bool will give me null when there are no rows and the actual boolean value when a row exists.
+
+I'm also reconsidering how to map multiple columns into a positional record like ActivationRow with properties for IsActive and IsAdministrator. Dapper should match the SQL column aliases to the record constructor parameters by name.
+
+Now I'll write the test class, calling it AccountAdministrationTests, and I'll use the same SkipIfNoContainer() pattern that the repo uses with xUnit's Assert.SkipUnless to handle cases where there's no database connection.
+
+Writing the test suite...
+
+Show less
+Done
+Now the DataAccess integration tests, mirroring the bootstrap test harness:
+
+
+Resolved project dependency conflicts by replacing enum references with string constants
+Resolved project dependency conflicts by replacing enum references with string constants
+
+New integration tests for DapperAccountAdministration against real PostgreSQL
+I'm realizing there's a dependency issue here—the test project references DataAccess and Domain, but not WebApplication, so it can't access RestaurantRoles which lives in the WebApplication.Authorization namespace. I was using RestaurantRoles.Administrator and similar values in the tests, but that won't compile given the current project structure.
+
+The cleanest fix is to define local string constants in the test class matching the database CHECK constraint values ("administrator", "counter", "kitchen") rather than trying to reference the WebApplication enum. I'll update the test file with these constants.
+
+Now for the Razor pages — CreateStaff and ManagePerson both have access to RestaurantRoles and AuthorizationPolicies through the _Imports file, and I've added the necessary @using directives for SecretGenerator and other Domain types. CreateStaff needs IIdentifierFactory to generate new person IDs, but ManagePerson doesn't since it's working with existing PersonIds — it just needs the injected services for account administration, person lookup, password hashing, and time operations.
+
+Now I need to update the test file to remove the WebApplication dependency by replacing all the RestaurantRoles references with local string constants.
+
+Show less
+Done
+I need to fix a project-reference issue in the test: RestaurantRoles lives in the WebApplication project, which the DataAccess test project doesn't reference. Let me switch those to local string constants:
+
+
+Verified test project dependencies and infrastructure accessibility
+Verified test project dependencies and infrastructure accessibility
+
+Replace RestaurantRoles references with local constants in the test file
+Now I'm running through some sanity checks on the test project setup—making sure all the necessary references are in place like Dapper, Xunit, and the DataAccess project itself, and verifying that the test fixtures and utilities like PostgreSqlFixture, FixedClock, and the other infrastructure classes are accessible from the csproj configuration.
+
+Done
+Let me verify the connection factory and test fixtures expose the members I'm calling:
+
+
+Scrutinized code architecture, validated Dapper patterns, reconciled nullable references
+Scrutinized code architecture, validated Dapper patterns, reconciled nullable references
+Claude reached its max length for this message. Max effort can use excessive tokens resulting in hitting limits. Consider using a lower effort setting.
+
+Want to be notified when Claude responds?
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
 
