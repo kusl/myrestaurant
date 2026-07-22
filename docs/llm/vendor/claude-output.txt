@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-22T09:02:21-04:00
+  Generated at   : 2026-07-22T09:52:29-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,17 +17,18 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : b78e894b21eec4e0bf73be96d0ee0cafe5230906
-  Commit (short) : b78e894
-  Commit date    : 2026-07-21 09:16:29 -0400
-  Commit message : run scripts
+  Commit (full)  : 2477e4695e8aa795b267eac0a25b016b43446dfd
+  Commit (short) : 2477e46
+  Commit date    : 2026-07-22 09:51:13 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 146
+  Files included : 151
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
 GIT WORKING TREE STATUS (first 20 lines)
 ═════════════════════════════════════════════════════════════════════════════════
+ D MANIFEST.txt
  M docs/llm/vendor/claude-output.txt
 
 ################################################################################
@@ -533,7 +534,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (146 included files)
+# FILE TREE  (151 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -545,6 +546,7 @@ cat "$OUTPUT_FILE"
 ├── Directory.Build.props
 ├── Directory.Packages.props
 ├── LICENSE
+├── MANIFEST.txt
 ├── MyRestaurant.slnx
 ├── README.md
 ├── compose.yaml
@@ -577,6 +579,7 @@ cat "$OUTPUT_FILE"
 │   ├── MyRestaurant.DataAccess
 │   │   ├── IDatabaseConnectionFactory.cs
 │   │   ├── Identity
+│   │   │   ├── AccountAdministration.cs
 │   │   │   ├── Argon2idPasswordHasher.cs
 │   │   │   ├── DapperSecurityEventLog.cs
 │   │   │   ├── DapperUserStore.cs
@@ -641,7 +644,9 @@ cat "$OUTPUT_FILE"
 │       │   │   └── MainLayout.razor
 │       │   ├── Pages
 │       │   │   ├── Administration
-│       │   │   │   └── AdministrationHome.razor
+│       │   │   │   ├── AdministrationHome.razor
+│       │   │   │   ├── CreateStaff.razor
+│       │   │   │   └── ManagePerson.razor
 │       │   │   ├── Home.razor
 │       │   │   ├── Setup.razor
 │       │   │   └── Table
@@ -679,6 +684,7 @@ cat "$OUTPUT_FILE"
     ├── MyRestaurant.DataAccess.Tests
     │   ├── ContainerEngineDiscovery.cs
     │   ├── Identity
+    │   │   ├── AccountAdministrationTests.cs
     │   │   ├── Argon2idPasswordHasherTests.cs
     │   │   ├── DapperSecurityEventLogTests.cs
     │   │   ├── DapperUserStorePasskeyTests.cs
@@ -5574,6 +5580,749 @@ public interface IDatabaseConnectionFactory
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.DataAccess/Identity/AccountAdministration.cs
+################################################################################
+
+--- METADATA ---
+  File name:             AccountAdministration.cs
+  Relative path:         src/MyRestaurant.DataAccess/Identity/AccountAdministration.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Identity/AccountAdministration.cs
+  Size:                  32.1 KiB (32885 bytes)
+  Last modified:         2026-07-22 09:35:52.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 23579611
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               3f63d3c38ba65e643f82b8296bb0eefaea9273dfb7174ad40f68139f59f73602
+  Last git commit:       2477e46 2026-07-22 09:51:13 -0400 add claude response
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using MyRestaurant.Domain.Authentication;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.Time;
+using Npgsql;
+
+namespace MyRestaurant.DataAccess.Identity;
+
+/// <summary>
+/// The details for a new staff account created by an administrator (TECHNICAL_SPECIFICATION §3.7). The
+/// password is already Argon2id-hashed by the caller (§3.2) — this service never sees the plaintext —
+/// and the account is created with <c>must_change_password</c> set, so the temporary password the
+/// administrator hands out is replaced through the obligations pipeline (§3.5) on the first sign-in.
+/// </summary>
+/// <param name="PersonIdentifier">
+/// The person's UUIDv7, minted by the caller (ADR-0011) so it is stable if the caller needs to
+/// reference the account immediately after creation; it becomes the <c>person</c> row's id.
+/// </param>
+/// <param name="Username">The unique <c>citext</c> username, 3–64 characters (§3.1).</param>
+/// <param name="DisplayName">Optional display name shown on rosters and the kitchen queue.</param>
+/// <param name="PasswordHash">The Argon2id PHC string (§3.2); the caller hashed the temporary password already.</param>
+/// <param name="Roles">
+/// The staff roles to grant at creation — any of <c>administrator</c>, <c>counter</c>, <c>kitchen</c>
+/// (§3.7). May be empty (an account with no role behaves like a guest until one is granted).
+/// </param>
+public sealed record NewStaffAccount(
+    Guid PersonIdentifier,
+    string Username,
+    string? DisplayName,
+    string PasswordHash,
+    IReadOnlyList<string> Roles);
+
+/// <summary>The outcome of <see cref="IAccountAdministration.CreateStaffAsync"/>.</summary>
+public enum CreateStaffStatus
+{
+    /// <summary>The account and its role grants were written in one transaction.</summary>
+    Created,
+
+    /// <summary>The username was already taken (the <c>person.username</c> UNIQUE constraint tripped); nothing was written.</summary>
+    UsernameTaken,
+}
+
+/// <summary>The outcome of <see cref="IAccountAdministration.GrantRoleAsync"/>.</summary>
+public enum RoleGrantOutcome
+{
+    /// <summary>The role was granted; the subject's security stamp was rotated and a <c>role_granted</c> event recorded.</summary>
+    Granted,
+
+    /// <summary>The subject already held the role; nothing changed.</summary>
+    AlreadyHeld,
+
+    /// <summary>No person exists with the given identifier.</summary>
+    PersonNotFound,
+}
+
+/// <summary>The outcome of <see cref="IAccountAdministration.RevokeRoleAsync"/>.</summary>
+public enum RoleRevokeOutcome
+{
+    /// <summary>The role was revoked; the subject's security stamp was rotated and a <c>role_revoked</c> event recorded.</summary>
+    Revoked,
+
+    /// <summary>The subject did not hold the role; nothing changed.</summary>
+    NotHeld,
+
+    /// <summary>No person exists with the given identifier.</summary>
+    PersonNotFound,
+
+    /// <summary>
+    /// The subject was the only holder of the <c>administrator</c> role, so the revoke was refused to
+    /// keep the system from ending up with no administrator at all (the state <c>/setup</c> opens in);
+    /// nothing changed.
+    /// </summary>
+    WouldRemoveLastAdministrator,
+}
+
+/// <summary>The outcome of <see cref="IAccountAdministration.ResetCredentialsAsync"/>.</summary>
+public enum CredentialResetOutcome
+{
+    /// <summary>The credentials were reset in one transaction (see <see cref="CredentialResetResult"/> for detail).</summary>
+    Reset,
+
+    /// <summary>No person exists with the given identifier; nothing changed.</summary>
+    PersonNotFound,
+}
+
+/// <summary>
+/// The result of an administrative credential reset (§3.7). <see cref="ClearedAuthenticator"/> is true
+/// when the account had TOTP enrolled and it was cleared (secret + recovery codes removed and
+/// <c>must_enroll_totp</c> set), which is exactly when a <c>totp_cleared_by_administrator</c> event was
+/// also recorded alongside the always-present <c>password_reset_by_administrator</c> event.
+/// </summary>
+public sealed record CredentialResetResult(CredentialResetOutcome Outcome, bool ClearedAuthenticator);
+
+/// <summary>The outcome of <see cref="IAccountAdministration.SetAccountActiveAsync"/>.</summary>
+public enum AccountActivationOutcome
+{
+    /// <summary>The account's active state changed; the security stamp was rotated and the matching event recorded.</summary>
+    Changed,
+
+    /// <summary>The account was already in the requested state; nothing changed.</summary>
+    NoChange,
+
+    /// <summary>No person exists with the given identifier; nothing changed.</summary>
+    PersonNotFound,
+
+    /// <summary>
+    /// Deactivating this account would have left no <em>active</em> administrator, so it was refused to
+    /// keep at least one administrator able to sign in; nothing changed.
+    /// </summary>
+    WouldDeactivateLastAdministrator,
+}
+
+/// <summary>
+/// Administrative account management (TECHNICAL_SPECIFICATION §3.7): create staff, grant and revoke
+/// roles, reset credentials, and deactivate/reactivate accounts. Every mutation that changes a
+/// credential or a role also rotates the subject's <c>security_stamp</c> (§3.1) so the change bites the
+/// subject's live sessions within the revalidation window, and every mutation records the matching
+/// append-only <c>security_event</c> row (§3.7) — with the acting administrator as the actor — in the
+/// <em>same</em> transaction as the change.
+///
+/// <para>This is the transactional companion the read-only <see cref="IPersonDirectory"/> pairs with:
+/// grant/revoke need the granting administrator, which the parameterless Identity
+/// <c>AddToRoleAsync</c>/<c>RemoveFromRoleAsync</c> store contract cannot supply
+/// (<c>person_role.granted_by_person_identifier</c> is NOT NULL), so those — and the multi-table reset
+/// and creation flows — live here rather than on <c>UserManager</c>. It reuses the self-contained
+/// connection/transaction pattern <see cref="IFirstAdministratorBootstrap"/> established (§3.6).</para>
+/// </summary>
+public interface IAccountAdministration
+{
+    /// <summary>
+    /// Creates a staff account with <c>must_change_password</c> set and grants the requested roles, all
+    /// in one transaction (§3.7). Records <c>account_created</c> plus a <c>role_granted</c> per role,
+    /// with the acting administrator as the actor.
+    /// </summary>
+    Task<CreateStaffStatus> CreateStaffAsync(
+        NewStaffAccount account,
+        Guid grantedByPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Grants <paramref name="roleName"/> to the subject if not already held, rotating the subject's
+    /// security stamp and recording <c>role_granted</c> (§3.7). Idempotent: an already-held role is a
+    /// no-op (<see cref="RoleGrantOutcome.AlreadyHeld"/>).
+    /// </summary>
+    Task<RoleGrantOutcome> GrantRoleAsync(
+        Guid personIdentifier,
+        string roleName,
+        Guid grantedByPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Revokes <paramref name="roleName"/> from the subject if held, rotating the subject's security
+    /// stamp and recording <c>role_revoked</c> (§3.7). Refuses to remove the last <c>administrator</c>
+    /// (<see cref="RoleRevokeOutcome.WouldRemoveLastAdministrator"/>).
+    /// </summary>
+    Task<RoleRevokeOutcome> RevokeRoleAsync(
+        Guid personIdentifier,
+        string roleName,
+        Guid revokedByPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resets an account's credentials (§3.7): stores the supplied temporary password hash and sets
+    /// <c>must_change_password</c>; if TOTP was enrolled, clears the secret and recovery codes and sets
+    /// <c>must_enroll_totp</c>; rotates the security stamp; and records
+    /// <c>password_reset_by_administrator</c> (plus <c>totp_cleared_by_administrator</c> when the
+    /// authenticator was cleared). All in one transaction.
+    /// </summary>
+    Task<CredentialResetResult> ResetCredentialsAsync(
+        Guid personIdentifier,
+        string temporaryPasswordHash,
+        Guid resetByPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets the account's active state (§3.7, F-10b — accounts are deactivated, never deleted). A change
+    /// rotates the security stamp (so a deactivation invalidates live sessions) and records
+    /// <c>account_deactivated</c> or <c>account_reactivated</c>. Refuses to deactivate the last active
+    /// administrator (<see cref="AccountActivationOutcome.WouldDeactivateLastAdministrator"/>).
+    /// </summary>
+    Task<AccountActivationOutcome> SetAccountActiveAsync(
+        Guid personIdentifier,
+        bool isActive,
+        Guid changedByPersonIdentifier,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// The Dapper implementation of <see cref="IAccountAdministration"/>. Like
+/// <see cref="DapperFirstAdministratorBootstrap"/> it owns its own connection and transaction per
+/// operation (so the row change and its audit event commit atomically), stamps every row with one
+/// <see cref="IClock.UtcNow"/> instant, and mints all surrogate identifiers with the application
+/// <see cref="IIdentifierFactory"/> (UUIDv7, ADR-0011). A fresh <see cref="Guid"/> is written to
+/// <c>person.security_stamp</c> on every credential/role/active change (§3.1); it holds no TOTP
+/// plaintext, so it needs no data-protection dependency (the reset path only clears the secret).
+/// </summary>
+public sealed class DapperAccountAdministration : IAccountAdministration
+{
+    /// <summary>The stored role vocabulary (matches the <c>person_role.role_name</c> CHECK, §3.7), lower case.</summary>
+    private const string AdministratorRole = "administrator";
+
+    private static readonly IReadOnlySet<string> GrantableRoles =
+        new HashSet<string>(StringComparer.Ordinal) { AdministratorRole, "counter", "kitchen" };
+
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+    private readonly IClock _clock;
+    private readonly IIdentifierFactory _identifierFactory;
+
+    public DapperAccountAdministration(
+        IDatabaseConnectionFactory connectionFactory,
+        IClock clock,
+        IIdentifierFactory identifierFactory)
+    {
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+        ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(identifierFactory);
+
+        _connectionFactory = connectionFactory;
+        _clock = clock;
+        _identifierFactory = identifierFactory;
+    }
+
+    public async Task<CreateStaffStatus> CreateStaffAsync(
+        NewStaffAccount account,
+        Guid grantedByPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        ArgumentException.ThrowIfNullOrEmpty(account.Username);
+        ArgumentException.ThrowIfNullOrEmpty(account.PasswordHash);
+
+        IReadOnlyList<string> roles = NormalizeRoles(account.Roles);
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        // (1) The person row. Created with must_change_password set so the temporary password is
+        // replaced through the obligations pipeline on first sign-in (§3.5); no TOTP, no contact
+        // details, active, a fresh security stamp minted. A duplicate username is the losing side of a
+        // race or a taken name — surface it cleanly rather than as a raw PostgreSQL error.
+        try
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO person (
+                    person_identifier, username, display_name, email_address, phone_number,
+                    password_hash, totp_secret_protected, must_change_password, must_enroll_totp,
+                    security_stamp, failed_access_count, lockout_end_at, is_active, created_at)
+                VALUES (
+                    @PersonIdentifier, @Username, @DisplayName, NULL, NULL,
+                    @PasswordHash, NULL, true, false,
+                    @SecurityStamp, 0, NULL, true, @CreatedAt);
+                """,
+                new
+                {
+                    account.PersonIdentifier,
+                    account.Username,
+                    account.DisplayName,
+                    account.PasswordHash,
+                    SecurityStamp = Guid.NewGuid(),
+                    CreatedAt = now,
+                },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+        }
+        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return CreateStaffStatus.UsernameTaken;
+        }
+
+        // (2) The role grants, each recording the acting administrator as grantor (§3.7).
+        foreach (string role in roles)
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO person_role (
+                    person_role_identifier, person_identifier, role_name, granted_by_person_identifier, granted_at)
+                VALUES (
+                    @PersonRoleIdentifier, @PersonIdentifier, @RoleName, @GrantedBy, @GrantedAt);
+                """,
+                new
+                {
+                    PersonRoleIdentifier = _identifierFactory.Create(),
+                    account.PersonIdentifier,
+                    RoleName = role,
+                    GrantedBy = grantedByPersonIdentifier,
+                    GrantedAt = now,
+                },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+        }
+
+        // (3) The audit trail (§3.7): account_created, then one role_granted per role, all actored by
+        // the administrator who created the account.
+        List<SecurityEventRow> events =
+        [
+            NewSecurityEvent(account.PersonIdentifier, grantedByPersonIdentifier, SecurityEventType.AccountCreated, now),
+        ];
+        events.AddRange(roles.Select(_ =>
+            NewSecurityEvent(account.PersonIdentifier, grantedByPersonIdentifier, SecurityEventType.RoleGranted, now)));
+
+        await InsertSecurityEventsAsync(connection, transaction, events, cancellationToken).ConfigureAwait(false);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return CreateStaffStatus.Created;
+    }
+
+    public async Task<RoleGrantOutcome> GrantRoleAsync(
+        Guid personIdentifier,
+        string roleName,
+        Guid grantedByPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        string role = NormalizeRole(roleName);
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!await PersonExistsAsync(connection, transaction, personIdentifier, cancellationToken).ConfigureAwait(false))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return RoleGrantOutcome.PersonNotFound;
+        }
+
+        if (await HoldsRoleAsync(connection, transaction, personIdentifier, role, cancellationToken).ConfigureAwait(false))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return RoleGrantOutcome.AlreadyHeld;
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO person_role (
+                person_role_identifier, person_identifier, role_name, granted_by_person_identifier, granted_at)
+            VALUES (
+                @PersonRoleIdentifier, @PersonIdentifier, @RoleName, @GrantedBy, @GrantedAt);
+            """,
+            new
+            {
+                PersonRoleIdentifier = _identifierFactory.Create(),
+                PersonIdentifier = personIdentifier,
+                RoleName = role,
+                GrantedBy = grantedByPersonIdentifier,
+                GrantedAt = now,
+            },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        // A role change rotates the stamp so the new claim reaches the subject's sessions (§3.1).
+        await RotateSecurityStampAsync(connection, transaction, personIdentifier, cancellationToken).ConfigureAwait(false);
+
+        await InsertSecurityEventsAsync(
+            connection,
+            transaction,
+            [NewSecurityEvent(personIdentifier, grantedByPersonIdentifier, SecurityEventType.RoleGranted, now)],
+            cancellationToken).ConfigureAwait(false);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return RoleGrantOutcome.Granted;
+    }
+
+    public async Task<RoleRevokeOutcome> RevokeRoleAsync(
+        Guid personIdentifier,
+        string roleName,
+        Guid revokedByPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        string role = NormalizeRole(roleName);
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!await PersonExistsAsync(connection, transaction, personIdentifier, cancellationToken).ConfigureAwait(false))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return RoleRevokeOutcome.PersonNotFound;
+        }
+
+        if (!await HoldsRoleAsync(connection, transaction, personIdentifier, role, cancellationToken).ConfigureAwait(false))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return RoleRevokeOutcome.NotHeld;
+        }
+
+        // Never remove the last administrator: that would leave the system with no administrator at all
+        // — the very condition /setup reopens in (§3.6) — so refuse it under the lock of this transaction.
+        if (role == AdministratorRole)
+        {
+            int administrators = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT count(*)::int FROM person_role WHERE role_name = @Role;",
+                new { Role = AdministratorRole },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            if (administrators <= 1)
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return RoleRevokeOutcome.WouldRemoveLastAdministrator;
+            }
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM person_role WHERE person_identifier = @PersonIdentifier AND role_name = @RoleName;",
+            new { PersonIdentifier = personIdentifier, RoleName = role },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        await RotateSecurityStampAsync(connection, transaction, personIdentifier, cancellationToken).ConfigureAwait(false);
+
+        await InsertSecurityEventsAsync(
+            connection,
+            transaction,
+            [NewSecurityEvent(personIdentifier, revokedByPersonIdentifier, SecurityEventType.RoleRevoked, now)],
+            cancellationToken).ConfigureAwait(false);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return RoleRevokeOutcome.Revoked;
+    }
+
+    public async Task<CredentialResetResult> ResetCredentialsAsync(
+        Guid personIdentifier,
+        string temporaryPasswordHash,
+        Guid resetByPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(temporaryPasswordHash);
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        // Existence + current TOTP-enrollment state in one read; a null row means no such person.
+        ResetProbeRow? probe = await connection.QuerySingleOrDefaultAsync<ResetProbeRow>(new CommandDefinition(
+            "SELECT (totp_secret_protected IS NOT NULL) AS HasAuthenticator FROM person WHERE person_identifier = @Id;",
+            new { Id = personIdentifier },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        if (probe is null)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new CredentialResetResult(CredentialResetOutcome.PersonNotFound, ClearedAuthenticator: false);
+        }
+
+        bool clearedAuthenticator = probe.HasAuthenticator;
+
+        // Always: temporary password, forced change, fresh stamp (§3.7, §3.1).
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE person SET
+                password_hash        = @PasswordHash,
+                must_change_password = true,
+                security_stamp       = @SecurityStamp
+            WHERE person_identifier  = @Id;
+            """,
+            new
+            {
+                PasswordHash = temporaryPasswordHash,
+                SecurityStamp = Guid.NewGuid(),
+                Id = personIdentifier,
+            },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        // Conditionally: clear an enrolled authenticator and force re-enrollment (§3.7). Enrollment is
+        // derived from totp_secret_protected (§3.4), so nulling it disables two-factor; the recovery
+        // codes are removed with it.
+        if (clearedAuthenticator)
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                """
+                UPDATE person SET
+                    totp_secret_protected = NULL,
+                    must_enroll_totp      = true
+                WHERE person_identifier   = @Id;
+                """,
+                new { Id = personIdentifier },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            await connection.ExecuteAsync(new CommandDefinition(
+                "DELETE FROM totp_recovery_code WHERE person_identifier = @Id;",
+                new { Id = personIdentifier },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+        }
+
+        // The audit trail (§3.7): the password reset always, the TOTP clearing only when it happened.
+        List<SecurityEventRow> events =
+        [
+            NewSecurityEvent(personIdentifier, resetByPersonIdentifier, SecurityEventType.PasswordResetByAdministrator, now),
+        ];
+        if (clearedAuthenticator)
+        {
+            events.Add(NewSecurityEvent(personIdentifier, resetByPersonIdentifier, SecurityEventType.TotpClearedByAdministrator, now));
+        }
+
+        await InsertSecurityEventsAsync(connection, transaction, events, cancellationToken).ConfigureAwait(false);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new CredentialResetResult(CredentialResetOutcome.Reset, clearedAuthenticator);
+    }
+
+    public async Task<AccountActivationOutcome> SetAccountActiveAsync(
+        Guid personIdentifier,
+        bool isActive,
+        Guid changedByPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        ActivationRow? current = await connection.QuerySingleOrDefaultAsync<ActivationRow>(new CommandDefinition(
+            """
+            SELECT
+                p.is_active AS IsActive,
+                EXISTS (
+                    SELECT 1 FROM person_role r
+                    WHERE r.person_identifier = p.person_identifier AND r.role_name = @Role
+                ) AS IsAdministrator
+            FROM person p
+            WHERE p.person_identifier = @Id;
+            """,
+            new { Id = personIdentifier, Role = AdministratorRole },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        if (current is null)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return AccountActivationOutcome.PersonNotFound;
+        }
+
+        if (current.IsActive == isActive)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return AccountActivationOutcome.NoChange;
+        }
+
+        // Never deactivate the last active administrator: at least one administrator must remain able to
+        // sign in (§3.7). The subject is currently active here (we are deactivating it), so if it is an
+        // administrator and it is the only active one, refuse.
+        if (!isActive && current.IsAdministrator)
+        {
+            int activeAdministrators = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+                """
+                SELECT count(*)::int
+                FROM person p
+                JOIN person_role r ON r.person_identifier = p.person_identifier
+                WHERE r.role_name = @Role AND p.is_active = true;
+                """,
+                new { Role = AdministratorRole },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            if (activeAdministrators <= 1)
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return AccountActivationOutcome.WouldDeactivateLastAdministrator;
+            }
+        }
+
+        // A deactivation must invalidate live sessions, so rotate the stamp on the state change (§3.1, §3.7).
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE person SET
+                is_active      = @IsActive,
+                security_stamp = @SecurityStamp
+            WHERE person_identifier = @Id;
+            """,
+            new
+            {
+                IsActive = isActive,
+                SecurityStamp = Guid.NewGuid(),
+                Id = personIdentifier,
+            },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        string eventType = isActive ? SecurityEventType.AccountReactivated : SecurityEventType.AccountDeactivated;
+        await InsertSecurityEventsAsync(
+            connection,
+            transaction,
+            [NewSecurityEvent(personIdentifier, changedByPersonIdentifier, eventType, now)],
+            cancellationToken).ConfigureAwait(false);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return AccountActivationOutcome.Changed;
+    }
+
+    // --- shared SQL helpers (all scoped to the caller's transaction) --------------------------------
+
+    private static async Task<bool> PersonExistsAsync(
+        DbConnection connection, DbTransaction transaction, Guid personIdentifier, CancellationToken cancellationToken)
+        => await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "SELECT EXISTS (SELECT 1 FROM person WHERE person_identifier = @Id);",
+            new { Id = personIdentifier },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+    private static async Task<bool> HoldsRoleAsync(
+        DbConnection connection, DbTransaction transaction, Guid personIdentifier, string roleName, CancellationToken cancellationToken)
+        => await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "SELECT EXISTS (SELECT 1 FROM person_role WHERE person_identifier = @Id AND role_name = @Role);",
+            new { Id = personIdentifier, Role = roleName },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+    private static async Task RotateSecurityStampAsync(
+        DbConnection connection, DbTransaction transaction, Guid personIdentifier, CancellationToken cancellationToken)
+        => await connection.ExecuteAsync(new CommandDefinition(
+            "UPDATE person SET security_stamp = @SecurityStamp WHERE person_identifier = @Id;",
+            new { SecurityStamp = Guid.NewGuid(), Id = personIdentifier },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+    private static async Task InsertSecurityEventsAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        IReadOnlyList<SecurityEventRow> events,
+        CancellationToken cancellationToken)
+    {
+        if (events.Count == 0)
+        {
+            return;
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO security_event (
+                security_event_identifier, subject_person_identifier, actor_person_identifier, event_type, occurred_at)
+            VALUES (
+                @SecurityEventIdentifier, @SubjectPersonIdentifier, @ActorPersonIdentifier, @EventType, @OccurredAt);
+            """,
+            events,
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+    }
+
+    private SecurityEventRow NewSecurityEvent(Guid subject, Guid? actor, string eventType, DateTimeOffset occurredAt)
+        => new(_identifierFactory.Create(), subject, actor, eventType, occurredAt);
+
+    private static string NormalizeRole(string roleName)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(roleName);
+        string role = roleName.Trim().ToLowerInvariant();
+        if (!GrantableRoles.Contains(role))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(roleName),
+                roleName,
+                "Role must be one of 'administrator', 'counter', or 'kitchen' (§3.7).");
+        }
+
+        return role;
+    }
+
+    private static IReadOnlyList<string> NormalizeRoles(IReadOnlyList<string>? roles)
+    {
+        if (roles is null || roles.Count == 0)
+        {
+            return [];
+        }
+
+        // De-duplicate (a repeated role would trip the person_role UNIQUE constraint) while validating.
+        LinkedHashSet ordered = new();
+        foreach (string role in roles)
+        {
+            ordered.Add(NormalizeRole(role));
+        }
+
+        return ordered.ToList();
+    }
+
+    // Dapper maps this positional record by parameter name against the INSERT's @-parameters; the
+    // nullable actor is a Guid? so Npgsql resolves the parameter type for both a value and NULL
+    // (mirroring DapperFirstAdministratorBootstrap's batch insert).
+    private sealed record SecurityEventRow(
+        Guid SecurityEventIdentifier,
+        Guid SubjectPersonIdentifier,
+        Guid? ActorPersonIdentifier,
+        string EventType,
+        DateTimeOffset OccurredAt);
+
+    private sealed record ActivationRow(bool IsActive, bool IsAdministrator);
+
+    private sealed record ResetProbeRow(bool HasAuthenticator);
+
+    // A tiny insertion-order-preserving set so the granted roles keep the order the caller listed them
+    // (the audit events then read naturally) without pulling in a dependency.
+    private sealed class LinkedHashSet
+    {
+        private readonly HashSet<string> _seen = new(StringComparer.Ordinal);
+        private readonly List<string> _order = [];
+
+        public void Add(string value)
+        {
+            if (_seen.Add(value))
+            {
+                _order.Add(value);
+            }
+        }
+
+        public List<string> ToList() => [.. _order];
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.DataAccess/Identity/Argon2idPasswordHasher.cs
 ################################################################################
 
@@ -7202,15 +7951,15 @@ public sealed class Person
   File name:             PersonDirectory.cs
   Relative path:         src/MyRestaurant.DataAccess/Identity/PersonDirectory.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Identity/PersonDirectory.cs
-  Size:                  7.3 KiB (7427 bytes)
-  Last modified:         2026-07-21 08:57:22.000000000 -0400
+  Size:                  9.2 KiB (9445 bytes)
+  Last modified:         2026-07-22 09:35:37.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 22486178
+  Inode:                 23579612
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               92bf1c7abe2b05627fd0f7e85acd2df13beef8003b623ad4fb9c08c5c5197099
-  Last git commit:       d8de5c8 2026-07-21 09:07:53 -0400 add claude response
+  SHA-256:               1dee98570217b91ff7ae1affaf4b54ad1a64397420d956bc1ef95b04d246b37b
+  Last git commit:       2477e46 2026-07-22 09:51:13 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -7256,9 +8005,9 @@ public sealed record PersonSummary(
 
 /// <summary>
 /// Reads people for the administration area (TECHNICAL_SPECIFICATION §3.6/§3.7). This is a read-only
-/// reporting companion to the Identity stores: enumerating every account is an administrative concern,
-/// not part of the sign-in write path, so it lives behind its own interface (substitutable in tests)
-/// rather than being bolted onto <c>UserManager</c>.
+/// reporting companion to the Identity stores: enumerating every account, or reading one for its
+/// management page, is an administrative concern, not part of the sign-in write path, so it lives
+/// behind its own interface (substitutable in tests) rather than being bolted onto <c>UserManager</c>.
 /// </summary>
 public interface IPersonDirectory
 {
@@ -7267,6 +8016,12 @@ public interface IPersonDirectory
     /// each with the person's granted role names.
     /// </summary>
     Task<IReadOnlyList<PersonSummary>> ListPeopleAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One person by identifier, with their granted role names, or <c>null</c> when no such person
+    /// exists. Backs the administration person-management page (§3.7).
+    /// </summary>
+    Task<PersonSummary?> GetPersonAsync(Guid personIdentifier, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -7279,21 +8034,32 @@ public interface IPersonDirectory
 /// </summary>
 public sealed class DapperPersonDirectory : IPersonDirectory
 {
-    private const string PeopleSql = """
-        SELECT
-            person_identifier                   AS PersonIdentifier,
-            username                            AS Username,
-            display_name                        AS DisplayName,
-            is_active                           AS IsActive,
-            (password_hash IS NOT NULL)         AS HasPassword,
-            (totp_secret_protected IS NOT NULL) AS HasAuthenticator,
-            must_change_password                AS MustChangePassword,
-            must_enroll_totp                    AS MustEnrollTotp,
-            failed_access_count                 AS FailedAccessCount,
-            lockout_end_at                      AS LockoutEndAt,
-            created_at                          AS CreatedAt
+    private const string PeopleColumns = """
+        person_identifier                   AS PersonIdentifier,
+        username                            AS Username,
+        display_name                        AS DisplayName,
+        is_active                           AS IsActive,
+        (password_hash IS NOT NULL)         AS HasPassword,
+        (totp_secret_protected IS NOT NULL) AS HasAuthenticator,
+        must_change_password                AS MustChangePassword,
+        must_enroll_totp                    AS MustEnrollTotp,
+        failed_access_count                 AS FailedAccessCount,
+        lockout_end_at                      AS LockoutEndAt,
+        created_at                          AS CreatedAt
+        """;
+
+    // Built from PeopleColumns at type-init (static readonly, not const) so the shared column list is
+    // interpolated once without relying on constant-interpolated-string support.
+    private static readonly string PeopleSql = $"""
+        SELECT {PeopleColumns}
         FROM person
         ORDER BY created_at, username;
+        """;
+
+    private static readonly string PersonByIdSql = $"""
+        SELECT {PeopleColumns}
+        FROM person
+        WHERE person_identifier = @PersonIdentifier;
         """;
 
     private const string RolesSql = """
@@ -7301,6 +8067,14 @@ public sealed class DapperPersonDirectory : IPersonDirectory
             person_identifier AS PersonIdentifier,
             role_name         AS RoleName
         FROM person_role;
+        """;
+
+    private const string RolesByPersonSql = """
+        SELECT
+            person_identifier AS PersonIdentifier,
+            role_name         AS RoleName
+        FROM person_role
+        WHERE person_identifier = @PersonIdentifier;
         """;
 
     private readonly IDatabaseConnectionFactory _connectionFactory;
@@ -7329,26 +8103,52 @@ public sealed class DapperPersonDirectory : IPersonDirectory
         List<PersonSummary> people = [];
         foreach (PersonRow row in personRows)
         {
-            IReadOnlyList<string> roles = rolesByPerson[row.PersonIdentifier]
-                .OrderBy(RoleSortKey)
-                .ToArray();
-
-            people.Add(new PersonSummary(
-                row.PersonIdentifier,
-                row.Username,
-                row.DisplayName,
-                row.IsActive,
-                row.HasPassword,
-                row.HasAuthenticator,
-                row.MustChangePassword,
-                row.MustEnrollTotp,
-                row.FailedAccessCount,
-                row.LockoutEndAt,
-                row.CreatedAt,
-                roles));
+            people.Add(ToSummary(row, rolesByPerson[row.PersonIdentifier]));
         }
 
         return people;
+    }
+
+    public async Task<PersonSummary?> GetPersonAsync(Guid personIdentifier, CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        PersonRow? row = await connection.QuerySingleOrDefaultAsync<PersonRow>(new CommandDefinition(
+            PersonByIdSql,
+            new { PersonIdentifier = personIdentifier },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        if (row is null)
+        {
+            return null;
+        }
+
+        IEnumerable<RoleRow> roleRows = await connection.QueryAsync<RoleRow>(new CommandDefinition(
+            RolesByPersonSql,
+            new { PersonIdentifier = personIdentifier },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        return ToSummary(row, roleRows.Select(role => role.RoleName));
+    }
+
+    private static PersonSummary ToSummary(PersonRow row, IEnumerable<string> roleNames)
+    {
+        IReadOnlyList<string> roles = roleNames.OrderBy(RoleSortKey).ToArray();
+
+        return new PersonSummary(
+            row.PersonIdentifier,
+            row.Username,
+            row.DisplayName,
+            row.IsActive,
+            row.HasPassword,
+            row.HasAuthenticator,
+            row.MustChangePassword,
+            row.MustEnrollTotp,
+            row.FailedAccessCount,
+            row.LockoutEndAt,
+            row.CreatedAt,
+            roles);
     }
 
     // administrator first, then counter, then kitchen; anything unexpected sorts last.
@@ -11889,15 +12689,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             AdministrationHome.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor
-  Size:                  7.4 KiB (7551 bytes)
-  Last modified:         2026-07-21 09:01:42.000000000 -0400
+  Size:                  8.2 KiB (8386 bytes)
+  Last modified:         2026-07-22 09:26:22.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 22486187
+  Inode:                 23579606
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               ae1661aae25b4a4e4c0b2593665ae3a9360b31308d60bb0d19bc84149cce9597
-  Last git commit:       d8de5c8 2026-07-21 09:07:53 -0400 add claude response
+  SHA-256:               c186e16afdd7ad32b8707de59f998a416455425b0d5fe2216add395dee81a7b1
+  Last git commit:       2477e46 2026-07-22 09:51:13 -0400 add claude response
 
 --- CONTENT ---
 @page "/administration"
@@ -11908,24 +12708,29 @@ public static class AuthorizationServiceCollectionExtensions
 @inject IClock Clock
 
 @* The administration landing (TECHNICAL_SPECIFICATION §3.6/§3.7 — `area.administration`: the
-   administrator role). This first increment is read-only: it lists every account with its roles and
-   status, and is where the /setup success screen's "Go to administration" link lands. Static SSR, like
-   every account/administration surface, so the mutating tools that follow (create staff, reset
-   password/authenticator, grant/revoke roles, deactivate/reactivate) can post full pages and write the
-   authentication/redirect responses a Blazor circuit cannot. Endpoint authorization enforces the policy
-   on the server for this static-SSR page (an anonymous visitor is sent to /sign-in, a signed-in
-   non-administrator to /access-denied). Not exempt from the obligations pipeline: an administrator with
-   an outstanding §3.5 flag is routed to clear it first. *@
+   administrator role). It lists every account with its roles and status, links each to its management
+   page, and offers staff creation. Static SSR, like every account/administration surface, so the
+   management pages it links can post full pages and write the redirect/cookie responses a Blazor
+   circuit cannot. Endpoint authorization enforces the policy on the server for this static-SSR page (an
+   anonymous visitor is sent to /sign-in, a signed-in non-administrator to /access-denied). Not exempt
+   from the obligations pipeline: an administrator with an outstanding §3.5 flag is routed to clear it
+   first. *@
 
 <PageTitle>Administration — people</PageTitle>
 
 <section class="panel">
-    <p class="eyebrow">Administration</p>
-    <h1>People</h1>
+    <div class="admin-header">
+        <div>
+            <p class="eyebrow">Administration</p>
+            <h1>People</h1>
+        </div>
+        <a class="button-primary" href="/administration/people/new">Create staff account</a>
+    </div>
 
     <p class="lede">
         Every account in the system, oldest first. Guests appear here once they register by joining a
-        table; staff are created here (that tool arrives next).
+        table; staff are created here. Open a person to grant or revoke roles, reset their credentials,
+        or deactivate the account.
     </p>
 
     @if (_people is null)
@@ -11946,6 +12751,7 @@ public static class AuthorizationServiceCollectionExtensions
                         <th scope="col">Roles</th>
                         <th scope="col">Credentials</th>
                         <th scope="col">Status</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -12009,6 +12815,9 @@ public static class AuthorizationServiceCollectionExtensions
                                     <span class="chip chip-warn">Must set up authenticator</span>
                                 }
                             </td>
+                            <td class="admin-row-actions">
+                                <a href="@($"/administration/people/{person.PersonIdentifier}")">Manage</a>
+                            </td>
                         </tr>
                     }
                 </tbody>
@@ -12017,10 +12826,9 @@ public static class AuthorizationServiceCollectionExtensions
     }
 
     <p class="form-footnote">
-        Creating staff, resetting a password or authenticator, granting or revoking roles, and
-        deactivating or reactivating an account arrive in the next administration slice. Role and
-        credential changes take effect on affected sessions within a few minutes (the security-stamp
-        revalidation window, §3.1).
+        Role and credential changes take effect on affected sessions within a few minutes (the
+        security-stamp revalidation window, §3.1). Accounts are deactivated, never deleted, so security
+        and order history keep their actors (F-10b).
     </p>
 
     <p><a href="/">Back to the home page</a></p>
@@ -12030,6 +12838,14 @@ public static class AuthorizationServiceCollectionExtensions
    rather than the component-scoped bundle, so component CSS isolation is not active here; these live
    inline to avoid editing the shared stylesheet for one screen. *@
 <style>
+    .admin-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-start;
+        justify-content: space-between;
+    }
+
     .admin-people {
         overflow-x: auto;
     }
@@ -12094,6 +12910,23 @@ public static class AuthorizationServiceCollectionExtensions
         background: #fdecea;
         color: #a3261c;
     }
+
+    .admin-people .admin-row-actions {
+        white-space: nowrap;
+        text-align: right;
+    }
+
+    .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
 </style>
 
 @code {
@@ -12104,6 +12937,825 @@ public static class AuthorizationServiceCollectionExtensions
 
     private bool IsLockedOut(PersonSummary person)
         => person.LockoutEndAt is { } end && end > Clock.UtcNow;
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Pages/Administration/CreateStaff.razor
+################################################################################
+
+--- METADATA ---
+  File name:             CreateStaff.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/CreateStaff.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/CreateStaff.razor
+  Size:                  9.1 KiB (9280 bytes)
+  Last modified:         2026-07-22 09:27:45.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 23579607
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               b26670c34b1eb5326344d899e8233db4d74d4199f8fac4bd0bdb95b9c58e701e
+  Last git commit:       2477e46 2026-07-22 09:51:13 -0400 add claude response
+
+--- CONTENT ---
+@page "/administration/people/new"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.Domain.Identifiers
+@using MyRestaurant.Domain.Security
+@inject IAccountAdministration Accounts
+@inject UserManager<Person> UserManager
+@inject IPasswordHasher<Person> PasswordHasher
+@inject IIdentifierFactory IdentifierFactory
+@inject NavigationManager Navigation
+
+@* Create a staff account (TECHNICAL_SPECIFICATION §3.7). Administrator only (endpoint authorization,
+   like every account/administration surface). Static SSR: the whole thing is a full-page form post, and
+   the "temporary password" is written into the response once and never stored in the clear — the
+   account is created with `must_change_password`, so the obligations pipeline forces a real password on
+   the staff member's first sign-in (§3.5). Roles are granted in the same transaction that creates the
+   account, each recording this administrator as grantor. Nothing is written until the form is submitted. *@
+
+<PageTitle>Create staff account</PageTitle>
+
+@if (_created)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Staff account created</p>
+        <h1>@_createdUsername is ready</h1>
+
+        <p class="status-success" role="status">
+            @if (_grantedRolesText is null)
+            {
+                <text>The account <strong>@_createdUsername</strong> was created with no role yet.</text>
+            }
+            else
+            {
+                <text>The account <strong>@_createdUsername</strong> was created with the @_grantedRolesText role.</text>
+            }
+        </p>
+
+        <p class="totp-secret-label">Give this temporary password to the new staff member — it is shown only once.</p>
+        <p class="totp-secret">@_temporaryPassword</p>
+        <p class="lede">
+            They will be asked to choose their own password the first time they sign in. If they hold the
+            kitchen or administrator role, remind them to add a passkey once they are in.
+        </p>
+
+        <div class="form-actions">
+            <a class="button-primary" href="@($"/administration/people/{_createdPersonIdentifier}")">Manage this account</a>
+            <a class="button-secondary" href="/administration">Back to people</a>
+        </div>
+    </section>
+}
+else
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Create a staff account</h1>
+        <p class="lede">
+            Choose a username and the roles this person should hold. A temporary password is generated
+            for you to hand over; they will replace it on first sign-in.
+        </p>
+
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <EditForm Model="Input" method="post" OnValidSubmit="CreateAsync" FormName="create-staff">
+            <DataAnnotationsValidator />
+
+            <div class="form-field">
+                <label for="username">Username</label>
+                <InputText id="username" @bind-Value="Input.Username" autocomplete="off"
+                           autocapitalize="none" spellcheck="false" autofocus />
+                <ValidationMessage For="@(() => Input.Username)" />
+            </div>
+
+            <div class="form-field">
+                <label for="display-name">Display name <span class="optional">(optional)</span></label>
+                <InputText id="display-name" @bind-Value="Input.DisplayName" autocomplete="off" />
+                <ValidationMessage For="@(() => Input.DisplayName)" />
+            </div>
+
+            <fieldset class="form-field roles-fieldset">
+                <legend>Roles</legend>
+                <label class="role-option">
+                    <InputCheckbox @bind-Value="Input.GrantCounter" />
+                    <span><strong>Counter</strong> — close and settle sittings, adjust prices, show a table's join QR</span>
+                </label>
+                <label class="role-option">
+                    <InputCheckbox @bind-Value="Input.GrantKitchen" />
+                    <span><strong>Kitchen</strong> — fulfil lines, edit orders, activate/deactivate menu items</span>
+                </label>
+                <label class="role-option">
+                    <InputCheckbox @bind-Value="Input.GrantAdministrator" />
+                    <span><strong>Administrator</strong> — full access, including this administration area</span>
+                </label>
+            </fieldset>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Create account</button>
+                <a class="button-secondary" href="/administration">Cancel</a>
+            </div>
+        </EditForm>
+
+        <p class="form-footnote">
+            An account with no role behaves like a guest until a role is granted. You can change roles
+            later from the account's management page.
+        </p>
+    </section>
+}
+
+<style>
+    .roles-fieldset {
+        border: 1px solid var(--rule, #e5e5e5);
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+    }
+
+    .roles-fieldset legend {
+        font-weight: 600;
+        padding: 0 0.35rem;
+    }
+
+    .role-option {
+        display: flex;
+        gap: 0.6rem;
+        align-items: flex-start;
+        margin: 0.4rem 0;
+        font-weight: 400;
+    }
+
+    .role-option input {
+        margin-top: 0.2rem;
+    }
+</style>
+
+@code {
+    private bool _created;
+    private string? _createdUsername;
+    private Guid _createdPersonIdentifier;
+    private string? _temporaryPassword;
+    private string? _grantedRolesText;
+    private string? _errorMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "create-staff")]
+    private CreateStaffInputModel Input { get; set; } = default!;
+
+    protected override void OnInitialized()
+        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
+        => Input ??= new();
+
+    private async Task CreateAsync()
+    {
+        Person? actingAdministrator = await UserManager.GetUserAsync(HttpContext.User);
+        if (actingAdministrator is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        string username = Input.Username.Trim();
+        string? displayName = string.IsNullOrWhiteSpace(Input.DisplayName) ? null : Input.DisplayName.Trim();
+
+        // Best-effort duplicate check; the person UNIQUE constraint inside the transaction is authoritative.
+        if (await UserManager.FindByNameAsync(username) is not null)
+        {
+            _errorMessage = "That username is already taken. Please choose another.";
+            return;
+        }
+
+        List<string> roles = [];
+        if (Input.GrantAdministrator)
+        {
+            roles.Add(RestaurantRoles.Administrator);
+        }
+
+        if (Input.GrantCounter)
+        {
+            roles.Add(RestaurantRoles.Counter);
+        }
+
+        if (Input.GrantKitchen)
+        {
+            roles.Add(RestaurantRoles.Kitchen);
+        }
+
+        Guid personIdentifier = IdentifierFactory.Create();
+
+        // A generated temporary password, hashed immediately so the plaintext is only ever held for the
+        // one response that shows it. 12 random bytes render to a 16-character URL-safe string — well
+        // over the 12-character policy floor (§3.2), which the forced change re-checks anyway.
+        string temporaryPassword = SecretGenerator.GenerateBase64UrlSecret(12);
+        string passwordHash = PasswordHasher.HashPassword(
+            new Person { PersonIdentifier = personIdentifier, Username = username },
+            temporaryPassword);
+
+        CreateStaffStatus status = await Accounts.CreateStaffAsync(
+            new NewStaffAccount(personIdentifier, username, displayName, passwordHash, roles),
+            actingAdministrator.PersonIdentifier,
+            HttpContext.RequestAborted);
+
+        if (status == CreateStaffStatus.UsernameTaken)
+        {
+            _errorMessage = "That username was taken while you were filling this in. Please choose another.";
+            return;
+        }
+
+        _createdUsername = username;
+        _createdPersonIdentifier = personIdentifier;
+        _temporaryPassword = temporaryPassword;
+        _grantedRolesText = FormatRoles(roles);
+        _created = true;
+    }
+
+    private static string? FormatRoles(IReadOnlyList<string> roles) => roles.Count switch
+    {
+        0 => null,
+        1 => roles[0],
+        _ => $"{string.Join(", ", roles.Take(roles.Count - 1))} and {roles[^1]}",
+    };
+
+    private sealed class CreateStaffInputModel
+    {
+        [Required(ErrorMessage = "Choose a username.")]
+        [StringLength(64, MinimumLength = 3, ErrorMessage = "The username must be 3–64 characters.")]
+        public string Username { get; set; } = string.Empty;
+
+        [StringLength(120, ErrorMessage = "That display name is too long.")]
+        public string? DisplayName { get; set; }
+
+        public bool GrantAdministrator { get; set; }
+
+        public bool GrantCounter { get; set; }
+
+        public bool GrantKitchen { get; set; }
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Pages/Administration/ManagePerson.razor
+################################################################################
+
+--- METADATA ---
+  File name:             ManagePerson.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/ManagePerson.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/ManagePerson.razor
+  Size:                  18.4 KiB (18822 bytes)
+  Last modified:         2026-07-22 09:29:44.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 23579608
+  Hard links:            1
+  MIME type:             text/html
+  SHA-256:               e72215d3d01baadd01c25d31dc29de9c139733697c2ea4bd291dd9c15185ce9b
+  Last git commit:       2477e46 2026-07-22 09:51:13 -0400 add claude response
+
+--- CONTENT ---
+@page "/administration/people/{PersonId:guid}"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.Domain.Security
+@using MyRestaurant.Domain.Time
+@inject IAccountAdministration Accounts
+@inject IPersonDirectory People
+@inject UserManager<Person> UserManager
+@inject IPasswordHasher<Person> PasswordHasher
+@inject IClock Clock
+@inject NavigationManager Navigation
+
+@* Manage one account (TECHNICAL_SPECIFICATION §3.7). Administrator only (endpoint authorization).
+   Static SSR: grant/revoke, reset, and deactivate/reactivate are full-page form posts, and the reset's
+   temporary password is written into the response once and never stored in the clear. Each action runs
+   through the transactional IAccountAdministration, which rotates the subject's security stamp so the
+   change bites their live sessions within the revalidation window (§3.1). Successful changes redirect
+   back here (post/redirect/get) carrying a one-word outcome so a refresh does not re-post; refusals
+   (last administrator) are shown in place. *@
+
+<PageTitle>@(_person is null ? "Manage account" : $"Manage {_person.Username}")</PageTitle>
+
+@if (_person is null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Account not found</h1>
+        <p class="lede">No account exists with that identifier. It may have never existed, or the link is stale.</p>
+        <p><a href="/administration">Back to people</a></p>
+    </section>
+}
+else if (_resetResult is not null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Credentials reset</p>
+        <h1>@_person.Username can sign in again</h1>
+
+        <p class="status-success" role="status">
+            @if (_resetResult.ClearedAuthenticator)
+            {
+                <text>The password was reset and the authenticator was cleared. They must set a new password and enrol a new authenticator on their next sign-in.</text>
+            }
+            else
+            {
+                <text>The password was reset. They must set a new password on their next sign-in.</text>
+            }
+        </p>
+
+        <p class="totp-secret-label">Give this temporary password to @_person.Username — it is shown only once.</p>
+        <p class="totp-secret">@_temporaryPassword</p>
+
+        <div class="form-actions">
+            <a class="button-primary" href="@ManagePath">Back to this account</a>
+            <a class="button-secondary" href="/administration">All people</a>
+        </div>
+    </section>
+}
+else
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>@_person.Username</h1>
+        @if (!string.IsNullOrWhiteSpace(_person.DisplayName))
+        {
+            <p class="lede">@_person.DisplayName</p>
+        }
+        @if (_isSelf)
+        {
+            <p class="form-footnote">This is your own account.</p>
+        }
+
+        @if (_flashMessage is not null)
+        {
+            <p class="status-success" role="status">@_flashMessage</p>
+        }
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <div class="manage-facts">
+            <div>
+                <span class="manage-label">Status</span>
+                @if (!_person.IsActive)
+                {
+                    <span class="chip chip-warn">Deactivated</span>
+                }
+                else if (IsLockedOut(_person))
+                {
+                    <span class="chip chip-warn">Locked until @(_person.LockoutEndAt!.Value.ToLocalTime().ToString("g"))</span>
+                }
+                else
+                {
+                    <span class="chip chip-ok">Active</span>
+                }
+                @if (_person.MustChangePassword)
+                {
+                    <span class="chip chip-warn">Must change password</span>
+                }
+                @if (_person.MustEnrollTotp)
+                {
+                    <span class="chip chip-warn">Must set up authenticator</span>
+                }
+            </div>
+            <div>
+                <span class="manage-label">Roles</span>
+                @if (_person.Roles.Count == 0)
+                {
+                    <span class="muted">None (guest)</span>
+                }
+                else
+                {
+                    @foreach (string role in _person.Roles)
+                    {
+                        <span class="chip chip-role">@role</span>
+                    }
+                }
+            </div>
+            <div>
+                <span class="manage-label">Credentials</span>
+                @if (_person.HasPassword)
+                {
+                    <span class="chip">Password</span>
+                }
+                @if (_person.HasAuthenticator)
+                {
+                    <span class="chip">Authenticator</span>
+                }
+                @if (!_person.HasPassword && !_person.HasAuthenticator)
+                {
+                    <span class="muted">None</span>
+                }
+            </div>
+        </div>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Roles</h2>
+        @if (_grantableRoles.Count > 0)
+        {
+            <EditForm Model="GrantInput" method="post" OnValidSubmit="GrantRoleAsync" FormName="manage-grant-role" class="manage-inline-form">
+                <AntiforgeryToken />
+                <label class="visually-hidden" for="grant-role">Role to grant</label>
+                <InputSelect id="grant-role" @bind-Value="GrantInput.RoleName">
+                    <option value="">Choose a role…</option>
+                    @foreach (string role in _grantableRoles)
+                    {
+                        <option value="@role">@Capitalize(role)</option>
+                    }
+                </InputSelect>
+                <button type="submit" class="button-primary">Grant role</button>
+            </EditForm>
+        }
+        else
+        {
+            <p class="form-footnote">This account already holds every role.</p>
+        }
+
+        @if (_person.Roles.Count > 0)
+        {
+            <EditForm Model="RevokeInput" method="post" OnValidSubmit="RevokeRoleAsync" FormName="manage-revoke-role" class="manage-inline-form">
+                <AntiforgeryToken />
+                <label class="visually-hidden" for="revoke-role">Role to revoke</label>
+                <InputSelect id="revoke-role" @bind-Value="RevokeInput.RoleName">
+                    <option value="">Choose a role…</option>
+                    @foreach (string role in _person.Roles)
+                    {
+                        <option value="@role">@Capitalize(role)</option>
+                    }
+                </InputSelect>
+                <button type="submit" class="link-button danger">Revoke role</button>
+            </EditForm>
+        }
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Credentials</h2>
+        <p class="lede">
+            Reset generates a temporary password (shown once) and forces a password change on next
+            sign-in. If an authenticator is enrolled it is cleared too, forcing re-enrolment.
+        </p>
+        <form method="post" @formname="manage-reset-credentials" @onsubmit="ResetCredentialsAsync">
+            <AntiforgeryToken />
+            <div class="form-actions">
+                <button type="submit" class="button-secondary">Reset credentials</button>
+            </div>
+        </form>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Account</h2>
+        @if (_person.IsActive)
+        {
+            <p class="lede">
+                Deactivating blocks sign-in and ends the account's live sessions. Nothing is deleted, so
+                security and order history keep their actor (F-10b); you can reactivate at any time.
+            </p>
+            <form method="post" @formname="manage-set-active" @onsubmit="ToggleActivationAsync">
+                <AntiforgeryToken />
+                <div class="form-actions">
+                    <button type="submit" class="link-button danger">Deactivate account</button>
+                </div>
+            </form>
+        }
+        else
+        {
+            <p class="lede">This account is deactivated and cannot sign in. Reactivate it to restore access.</p>
+            <form method="post" @formname="manage-set-active" @onsubmit="ToggleActivationAsync">
+                <AntiforgeryToken />
+                <div class="form-actions">
+                    <button type="submit" class="button-primary">Reactivate account</button>
+                </div>
+            </form>
+        }
+
+        <p class="manage-back"><a href="/administration">Back to people</a></p>
+    </section>
+}
+
+<style>
+    .manage-facts {
+        display: grid;
+        gap: 0.75rem;
+        margin: 1rem 0;
+    }
+
+    .manage-label {
+        display: block;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted-foreground, #666);
+        margin-bottom: 0.25rem;
+    }
+
+    .manage-heading {
+        font-size: 1.05rem;
+        margin: 0 0 0.35rem;
+    }
+
+    .manage-rule {
+        border: 0;
+        border-top: 1px solid var(--rule, #e5e5e5);
+        margin: 1.5rem 0;
+    }
+
+    .manage-inline-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        align-items: center;
+        margin: 0.5rem 0;
+    }
+
+    .manage-inline-form select {
+        padding: 0.45rem 0.6rem;
+        border: 1px solid var(--rule, #ccc);
+        border-radius: 0.4rem;
+        min-width: 12rem;
+    }
+
+    .manage-back {
+        margin-top: 1.5rem;
+    }
+
+    .muted {
+        color: var(--muted-foreground, #999);
+    }
+
+    .chip {
+        display: inline-block;
+        margin: 0.1rem 0.2rem 0.1rem 0;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        background: var(--chip-background, #f0f0f0);
+        color: var(--chip-foreground, #333);
+        white-space: nowrap;
+    }
+
+    .chip-role {
+        text-transform: capitalize;
+    }
+
+    .chip-ok {
+        background: #e6f4ea;
+        color: #1e7a37;
+    }
+
+    .chip-warn {
+        background: #fdecea;
+        color: #a3261c;
+    }
+
+    .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+</style>
+
+@code {
+    private static readonly string[] AllStaffRoles =
+        [RestaurantRoles.Administrator, RestaurantRoles.Counter, RestaurantRoles.Kitchen];
+
+    private PersonSummary? _person;
+    private IReadOnlyList<string> _grantableRoles = [];
+    private bool _isSelf;
+    private string? _flashMessage;
+    private string? _errorMessage;
+
+    private CredentialResetResult? _resetResult;
+    private string? _temporaryPassword;
+
+    [Parameter]
+    public Guid PersonId { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "manage-grant-role")]
+    private RoleSelectionModel GrantInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "manage-revoke-role")]
+    private RoleSelectionModel RevokeInput { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? Done { get; set; }
+
+    private string ManagePath => $"/administration/people/{PersonId}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: form POSTs bind these themselves and may assign null, so defaults live here.
+        GrantInput ??= new();
+        RevokeInput ??= new();
+
+        _person = await People.GetPersonAsync(PersonId, HttpContext.RequestAborted);
+        if (_person is null)
+        {
+            return;
+        }
+
+        _grantableRoles = AllStaffRoles.Where(role => !_person.Roles.Contains(role)).ToArray();
+
+        Person? actingAdministrator = await UserManager.GetUserAsync(HttpContext.User);
+        _isSelf = actingAdministrator is not null && actingAdministrator.PersonIdentifier == _person.PersonIdentifier;
+
+        // Render the flash for a completed action after the post/redirect/get, on GET only.
+        if (HttpContext.Request.Method == HttpMethods.Get)
+        {
+            _flashMessage = FlashFor(Done);
+        }
+    }
+
+    private async Task GrantRoleAsync()
+    {
+        if (_person is null)
+        {
+            Navigation.NavigateTo("/administration");
+            return;
+        }
+
+        Person? admin = await UserManager.GetUserAsync(HttpContext.User);
+        if (admin is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(GrantInput.RoleName))
+        {
+            _errorMessage = "Choose a role to grant.";
+            return;
+        }
+
+        RoleGrantOutcome outcome = await Accounts.GrantRoleAsync(
+            _person.PersonIdentifier, GrantInput.RoleName, admin.PersonIdentifier, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case RoleGrantOutcome.Granted:
+                RedirectWithOutcome("role-granted");
+                break;
+            case RoleGrantOutcome.AlreadyHeld:
+                RedirectWithOutcome("role-already-held");
+                break;
+            case RoleGrantOutcome.PersonNotFound:
+                Navigation.NavigateTo(ManagePath);
+                break;
+        }
+    }
+
+    private async Task RevokeRoleAsync()
+    {
+        if (_person is null)
+        {
+            Navigation.NavigateTo("/administration");
+            return;
+        }
+
+        Person? admin = await UserManager.GetUserAsync(HttpContext.User);
+        if (admin is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(RevokeInput.RoleName))
+        {
+            _errorMessage = "Choose a role to revoke.";
+            return;
+        }
+
+        RoleRevokeOutcome outcome = await Accounts.RevokeRoleAsync(
+            _person.PersonIdentifier, RevokeInput.RoleName, admin.PersonIdentifier, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case RoleRevokeOutcome.Revoked:
+                RedirectWithOutcome("role-revoked");
+                break;
+            case RoleRevokeOutcome.NotHeld:
+                RedirectWithOutcome("role-not-held");
+                break;
+            case RoleRevokeOutcome.WouldRemoveLastAdministrator:
+                _errorMessage = "This is the only administrator, so the administrator role cannot be removed. "
+                    + "Grant administrator to someone else first.";
+                break;
+            case RoleRevokeOutcome.PersonNotFound:
+                Navigation.NavigateTo(ManagePath);
+                break;
+        }
+    }
+
+    private async Task ResetCredentialsAsync()
+    {
+        if (_person is null)
+        {
+            Navigation.NavigateTo("/administration");
+            return;
+        }
+
+        Person? admin = await UserManager.GetUserAsync(HttpContext.User);
+        if (admin is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // Generate + hash the temporary password here so the plaintext is only ever held for the one
+        // response that shows it (§3.2). 12 random bytes → a 16-character URL-safe string.
+        string temporaryPassword = SecretGenerator.GenerateBase64UrlSecret(12);
+        string passwordHash = PasswordHasher.HashPassword(
+            new Person { PersonIdentifier = _person.PersonIdentifier, Username = _person.Username },
+            temporaryPassword);
+
+        CredentialResetResult result = await Accounts.ResetCredentialsAsync(
+            _person.PersonIdentifier, passwordHash, admin.PersonIdentifier, HttpContext.RequestAborted);
+
+        if (result.Outcome == CredentialResetOutcome.PersonNotFound)
+        {
+            Navigation.NavigateTo(ManagePath);
+            return;
+        }
+
+        // Show the temporary password once, in this response (no redirect).
+        _temporaryPassword = temporaryPassword;
+        _resetResult = result;
+    }
+
+    private async Task ToggleActivationAsync()
+    {
+        if (_person is null)
+        {
+            Navigation.NavigateTo("/administration");
+            return;
+        }
+
+        Person? admin = await UserManager.GetUserAsync(HttpContext.User);
+        if (admin is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        bool target = !_person.IsActive;
+        AccountActivationOutcome outcome = await Accounts.SetAccountActiveAsync(
+            _person.PersonIdentifier, target, admin.PersonIdentifier, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case AccountActivationOutcome.Changed:
+                RedirectWithOutcome(target ? "account-reactivated" : "account-deactivated");
+                break;
+            case AccountActivationOutcome.NoChange:
+                Navigation.NavigateTo(ManagePath);
+                break;
+            case AccountActivationOutcome.WouldDeactivateLastAdministrator:
+                _errorMessage = "This is the only administrator that can sign in, so it cannot be deactivated. "
+                    + "Make sure another administrator is active first.";
+                break;
+            case AccountActivationOutcome.PersonNotFound:
+                Navigation.NavigateTo(ManagePath);
+                break;
+        }
+    }
+
+    private void RedirectWithOutcome(string outcome)
+        => Navigation.NavigateTo($"{ManagePath}?done={outcome}");
+
+    private static string? FlashFor(string? outcome) => outcome switch
+    {
+        "role-granted" => "Role granted. It takes effect on their sessions within a few minutes.",
+        "role-already-held" => "That role was already held — nothing changed.",
+        "role-revoked" => "Role revoked. It takes effect on their sessions within a few minutes.",
+        "role-not-held" => "That role was not held — nothing changed.",
+        "account-deactivated" => "Account deactivated. Its sessions end within a few minutes.",
+        "account-reactivated" => "Account reactivated.",
+        _ => null,
+    };
+
+    private bool IsLockedOut(PersonSummary person)
+        => person.LockoutEndAt is { } end && end > Clock.UtcNow;
+
+    private static string Capitalize(string role)
+        => string.IsNullOrEmpty(role) ? role : char.ToUpperInvariant(role[0]) + role[1..];
+
+    private sealed class RoleSelectionModel
+    {
+        public string RoleName { get; set; } = string.Empty;
+    }
 }
 
 ################################################################################
@@ -13274,15 +14926,15 @@ public static class AccountEndpoints
   File name:             IdentityServiceCollectionExtensions.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
-  Size:                  12.8 KiB (13141 bytes)
-  Last modified:         2026-07-21 09:00:04.000000000 -0400
+  Size:                  13.9 KiB (14239 bytes)
+  Last modified:         2026-07-22 09:24:13.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 22486181
+  Inode:                 23579602
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               7667dd113b023720df309c234cc82d2cc9adf0287e2de00b910dd8ef921edfcb
-  Last git commit:       d8de5c8 2026-07-21 09:07:53 -0400 add claude response
+  SHA-256:               0d7f8f691e65b0cdd4ff090cd62c2082382da885fe34e05c8e9e21107d57e7d6
+  Last git commit:       2477e46 2026-07-22 09:51:13 -0400 add claude response
 
 --- CONTENT ---
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -13318,7 +14970,9 @@ namespace MyRestaurant.WebApplication.Identity;
 ///   <item>the cascading <c>Task&lt;AuthenticationState&gt;</c> the Blazor router and
 ///   <c>AuthorizeView</c> consume;</item>
 ///   <item>the append-only <see cref="ISecurityEventLog"/> that sign-in outcomes are recorded to (§3.5);</item>
-///   <item>the read-only <see cref="IPersonDirectory"/> the administration people list reads from (§3.6/§3.7).</item>
+///   <item>the read-only <see cref="IPersonDirectory"/> the administration people list reads from (§3.6/§3.7);</item>
+///   <item>the transactional <see cref="IAccountAdministration"/> the administration tools write through
+///   (create staff, grant/revoke roles, reset credentials, deactivate/reactivate — §3.7).</item>
 /// </list>
 ///
 /// The obligations pipeline itself is enforced by <see cref="ObligationsMiddleware"/> in the request
@@ -13495,6 +15149,17 @@ public static class IdentityServiceCollectionExtensions
             serviceProvider.GetRequiredService<IClock>(),
             serviceProvider.GetRequiredService<IIdentifierFactory>(),
             serviceProvider.GetRequiredService<IDataProtectionProvider>()));
+
+        // Account administration (§3.7): create staff, grant/revoke roles (with the acting administrator
+        // recorded as grantor), reset credentials, and deactivate/reactivate. Each operation is one
+        // transaction that also rotates the subject's security stamp (§3.1) and records the matching
+        // security_event. Scoped like the bootstrap it reuses; it holds no state and opens its own
+        // connection/transaction per operation from the singleton factory. No data-protection dependency
+        // — it only clears TOTP secrets, never writes one.
+        services.AddScoped<IAccountAdministration>(serviceProvider => new DapperAccountAdministration(
+            serviceProvider.GetRequiredService<IDatabaseConnectionFactory>(),
+            serviceProvider.GetRequiredService<IClock>(),
+            serviceProvider.GetRequiredService<IIdentifierFactory>()));
 
         return services;
     }
@@ -16337,6 +18002,519 @@ internal static class ContainerEngineDiscovery
         {
             Environment.SetEnvironmentVariable("TESTCONTAINERS_RYUK_DISABLED", "true");
         }
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.DataAccess.Tests/Identity/AccountAdministrationTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             AccountAdministrationTests.cs
+  Relative path:         tests/MyRestaurant.DataAccess.Tests/Identity/AccountAdministrationTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/Identity/AccountAdministrationTests.cs
+  Size:                  23.8 KiB (24410 bytes)
+  Last modified:         2026-07-22 09:32:44.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 23579616
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               e5fb44e859d8afd9ea85f5dce76a2382799392a70a7c0b96b82b74c49208dbaf
+  Last git commit:       2477e46 2026-07-22 09:51:13 -0400 add claude response
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using MyRestaurant.DataAccess.Identity;
+using MyRestaurant.Domain.Authentication;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.Security;
+using Xunit;
+
+namespace MyRestaurant.DataAccess.Tests.Identity;
+
+/// <summary>
+/// Integration tests for <see cref="DapperAccountAdministration"/> (account administration,
+/// TECHNICAL_SPECIFICATION §3.7) against a real PostgreSQL 17 container. They pin the behaviours that
+/// make the slice correct: staff creation writes an account with <c>must_change_password</c> plus its
+/// role grants and audit rows in one go; grant/revoke are idempotent, rotate the subject's security
+/// stamp (§3.1), and audit; the last administrator can be neither un-roled nor deactivated; and a
+/// credential reset stores the temporary password, forces a change, and — only when TOTP was enrolled —
+/// clears the authenticator and recovery codes, forcing re-enrolment, auditing both actions.
+///
+/// <para>Every operation is global to the auth tables (role counts, uniqueness), so — like the
+/// bootstrap tests — the tables are truncated before each test. xUnit builds a fresh instance per test
+/// method and runs them sequentially, so <see cref="InitializeAsync"/> gives each a clean database.
+/// Own <c>IClassFixture</c> (own container); if no container engine is available, every test skips.</para>
+/// </summary>
+public sealed class AccountAdministrationTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
+{
+    // A plausibly-shaped Argon2id PHC string. The service stores the caller-supplied hash verbatim
+    // (§3.2/§3.7), so the exact bytes never matter — only that they round-trip.
+    private const string SamplePasswordHash =
+        "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0c2FsdA$b3JpZ2luYWxvcmlnaW5hbG9yaWdpbg";
+
+    private const string ResetPasswordHash =
+        "$argon2id$v=19$m=19456,t=2,p=1$cmVzZXRyZXNldHJlc2V0cg$cmVzZXR0YWdyZXNldHRhZ3Jlc2V0dA";
+
+    // The stored role names (the person_role.role_name CHECK values, §3.7). Spelled here as literals
+    // because the RestaurantRoles constants live in the web layer, which this data-layer test project
+    // does not (and must not) reference.
+    private const string Administrator = "administrator";
+    private const string Counter = "counter";
+    private const string Kitchen = "kitchen";
+
+    private readonly PostgreSqlFixture _fixture;
+    private readonly FixedClock _clock = new(new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero));
+    private readonly UuidV7IdentifierFactory _identifiers = new();
+    private NpgsqlDatabaseConnectionFactory? _connectionFactory;
+
+    public AccountAdministrationTests(PostgreSqlFixture fixture) => _fixture = fixture;
+
+    public async ValueTask InitializeAsync()
+    {
+        if (_fixture.ConnectionString is null)
+        {
+            return;
+        }
+
+        new SchemaMigrationRunner(_fixture.ConnectionString)
+        {
+            MaximumAttempts = 3,
+            DelayBetweenAttempts = TimeSpan.FromMilliseconds(200),
+        }.Run();
+
+        _connectionFactory = new NpgsqlDatabaseConnectionFactory(_fixture.ConnectionString);
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(TestContext.Current.CancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            "TRUNCATE TABLE person, person_role, passkey_credential, totp_recovery_code, security_event CASCADE;",
+            cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connectionFactory is not null)
+        {
+            await _connectionFactory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task CreateStaffAsync_WritesAccountForcingPasswordChange_GrantsRoles_AndAuditsAll()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperAccountAdministration administration = Build();
+
+        Guid adminId = await SeedAdministratorAsync("owner", cancellationToken);
+        Guid staffId = _identifiers.Create();
+
+        CreateStaffStatus status = await administration.CreateStaffAsync(
+            new NewStaffAccount(staffId, "cook", "The Cook", SamplePasswordHash, [Kitchen]),
+            adminId,
+            cancellationToken);
+
+        Assert.Equal(CreateStaffStatus.Created, status);
+
+        PersonRow staff = await ReadPersonAsync(staffId, cancellationToken);
+        Assert.Equal("cook", staff.Username);
+        Assert.Equal(SamplePasswordHash, staff.PasswordHash);
+        Assert.True(staff.MustChangePassword);
+        Assert.False(staff.MustEnrollTotp);
+        Assert.Null(staff.TotpSecretProtected);
+        Assert.True(staff.IsActive);
+        Assert.NotEqual(Guid.Empty, staff.SecurityStamp);
+
+        Assert.Equal(1, await CountRoleAsync(staffId, Kitchen, cancellationToken));
+        Assert.Equal(1, await CountEventAsync(staffId, SecurityEventType.AccountCreated, adminId, cancellationToken));
+        Assert.Equal(1, await CountEventAsync(staffId, SecurityEventType.RoleGranted, adminId, cancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateStaffAsync_WhenUsernameTaken_ReturnsUsernameTaken_AndWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperAccountAdministration administration = Build();
+
+        Guid adminId = await SeedAdministratorAsync("owner", cancellationToken);
+        int peopleBefore = await CountPeopleAsync(cancellationToken);
+
+        // "owner" already exists (the seeded administrator).
+        CreateStaffStatus status = await administration.CreateStaffAsync(
+            new NewStaffAccount(_identifiers.Create(), "owner", null, SamplePasswordHash, [Counter]),
+            adminId,
+            cancellationToken);
+
+        Assert.Equal(CreateStaffStatus.UsernameTaken, status);
+        Assert.Equal(peopleBefore, await CountPeopleAsync(cancellationToken));
+        Assert.Equal(0, await CountEventAsync(adminId, SecurityEventType.RoleGranted, adminId, cancellationToken));
+    }
+
+    [Fact]
+    public async Task GrantRoleAsync_GrantsRotatesStampAndAudits_ThenAlreadyHeldIsANoOp()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperAccountAdministration administration = Build();
+
+        Guid adminId = await SeedAdministratorAsync("owner", cancellationToken);
+        Guid staffId = await SeedPersonAsync("server", cancellationToken);
+        Guid stampBefore = await ReadStampAsync(staffId, cancellationToken);
+
+        RoleGrantOutcome first = await administration.GrantRoleAsync(
+            staffId, Counter, adminId, cancellationToken);
+
+        Assert.Equal(RoleGrantOutcome.Granted, first);
+        Assert.Equal(1, await CountRoleAsync(staffId, Counter, cancellationToken));
+        Guid stampAfterGrant = await ReadStampAsync(staffId, cancellationToken);
+        Assert.NotEqual(stampBefore, stampAfterGrant);
+        Assert.Equal(1, await CountEventAsync(staffId, SecurityEventType.RoleGranted, adminId, cancellationToken));
+
+        RoleGrantOutcome second = await administration.GrantRoleAsync(
+            staffId, Counter, adminId, cancellationToken);
+
+        Assert.Equal(RoleGrantOutcome.AlreadyHeld, second);
+        Assert.Equal(1, await CountRoleAsync(staffId, Counter, cancellationToken));
+        Assert.Equal(stampAfterGrant, await ReadStampAsync(staffId, cancellationToken)); // unchanged
+        Assert.Equal(1, await CountEventAsync(staffId, SecurityEventType.RoleGranted, adminId, cancellationToken));
+    }
+
+    [Fact]
+    public async Task RevokeRoleAsync_RevokesRotatesStampAndAudits_ThenNotHeldIsANoOp()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperAccountAdministration administration = Build();
+
+        Guid adminId = await SeedAdministratorAsync("owner", cancellationToken);
+        Guid staffId = await SeedPersonAsync("server", cancellationToken);
+        await GrantRoleDirectAsync(staffId, Counter, adminId, cancellationToken);
+        Guid stampBefore = await ReadStampAsync(staffId, cancellationToken);
+
+        RoleRevokeOutcome first = await administration.RevokeRoleAsync(
+            staffId, Counter, adminId, cancellationToken);
+
+        Assert.Equal(RoleRevokeOutcome.Revoked, first);
+        Assert.Equal(0, await CountRoleAsync(staffId, Counter, cancellationToken));
+        Assert.NotEqual(stampBefore, await ReadStampAsync(staffId, cancellationToken));
+        Assert.Equal(1, await CountEventAsync(staffId, SecurityEventType.RoleRevoked, adminId, cancellationToken));
+
+        RoleRevokeOutcome second = await administration.RevokeRoleAsync(
+            staffId, Counter, adminId, cancellationToken);
+
+        Assert.Equal(RoleRevokeOutcome.NotHeld, second);
+    }
+
+    [Fact]
+    public async Task RevokeRoleAsync_LastAdministrator_IsRefused_ThenAllowedOnceAnotherExists()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperAccountAdministration administration = Build();
+
+        Guid firstAdmin = await SeedAdministratorAsync("owner", cancellationToken);
+
+        RoleRevokeOutcome refused = await administration.RevokeRoleAsync(
+            firstAdmin, Administrator, firstAdmin, cancellationToken);
+
+        Assert.Equal(RoleRevokeOutcome.WouldRemoveLastAdministrator, refused);
+        Assert.Equal(1, await CountRoleAsync(firstAdmin, Administrator, cancellationToken));
+
+        // A second administrator now exists, so removing the first is allowed.
+        Guid secondAdmin = await SeedAdministratorAsync("deputy", cancellationToken);
+
+        RoleRevokeOutcome allowed = await administration.RevokeRoleAsync(
+            firstAdmin, Administrator, secondAdmin, cancellationToken);
+
+        Assert.Equal(RoleRevokeOutcome.Revoked, allowed);
+        Assert.Equal(0, await CountRoleAsync(firstAdmin, Administrator, cancellationToken));
+    }
+
+    [Fact]
+    public async Task ResetCredentialsAsync_WithoutAuthenticator_SetsTemporaryPassword_AndForcesChangeOnly()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperAccountAdministration administration = Build();
+
+        Guid adminId = await SeedAdministratorAsync("owner", cancellationToken);
+        Guid staffId = await SeedPersonAsync("server", cancellationToken);
+        Guid stampBefore = await ReadStampAsync(staffId, cancellationToken);
+
+        CredentialResetResult result = await administration.ResetCredentialsAsync(
+            staffId, ResetPasswordHash, adminId, cancellationToken);
+
+        Assert.Equal(CredentialResetOutcome.Reset, result.Outcome);
+        Assert.False(result.ClearedAuthenticator);
+
+        PersonRow staff = await ReadPersonAsync(staffId, cancellationToken);
+        Assert.Equal(ResetPasswordHash, staff.PasswordHash);
+        Assert.True(staff.MustChangePassword);
+        Assert.False(staff.MustEnrollTotp);
+        Assert.Null(staff.TotpSecretProtected);
+        Assert.NotEqual(stampBefore, staff.SecurityStamp);
+
+        Assert.Equal(1, await CountEventAsync(staffId, SecurityEventType.PasswordResetByAdministrator, adminId, cancellationToken));
+        Assert.Equal(0, await CountEventAsync(staffId, SecurityEventType.TotpClearedByAdministrator, adminId, cancellationToken));
+    }
+
+    [Fact]
+    public async Task ResetCredentialsAsync_WithAuthenticator_ClearsSecretAndRecoveryCodes_AndAuditsBoth()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperAccountAdministration administration = Build();
+
+        Guid adminId = await SeedAdministratorAsync("owner", cancellationToken);
+        Guid staffId = await SeedPersonAsync("server", cancellationToken, totpSecretProtected: "protected-secret-blob");
+        await SeedRecoveryCodesAsync(staffId, 10, cancellationToken);
+
+        Assert.Equal(10, await CountRecoveryCodesAsync(staffId, cancellationToken));
+
+        CredentialResetResult result = await administration.ResetCredentialsAsync(
+            staffId, ResetPasswordHash, adminId, cancellationToken);
+
+        Assert.Equal(CredentialResetOutcome.Reset, result.Outcome);
+        Assert.True(result.ClearedAuthenticator);
+
+        PersonRow staff = await ReadPersonAsync(staffId, cancellationToken);
+        Assert.Equal(ResetPasswordHash, staff.PasswordHash);
+        Assert.True(staff.MustChangePassword);
+        Assert.True(staff.MustEnrollTotp);
+        Assert.Null(staff.TotpSecretProtected);
+        Assert.Equal(0, await CountRecoveryCodesAsync(staffId, cancellationToken));
+
+        Assert.Equal(1, await CountEventAsync(staffId, SecurityEventType.PasswordResetByAdministrator, adminId, cancellationToken));
+        Assert.Equal(1, await CountEventAsync(staffId, SecurityEventType.TotpClearedByAdministrator, adminId, cancellationToken));
+    }
+
+    [Fact]
+    public async Task ResetCredentialsAsync_UnknownPerson_ReturnsPersonNotFound()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperAccountAdministration administration = Build();
+
+        Guid adminId = await SeedAdministratorAsync("owner", cancellationToken);
+
+        CredentialResetResult result = await administration.ResetCredentialsAsync(
+            _identifiers.Create(), ResetPasswordHash, adminId, cancellationToken);
+
+        Assert.Equal(CredentialResetOutcome.PersonNotFound, result.Outcome);
+        Assert.False(result.ClearedAuthenticator);
+    }
+
+    [Fact]
+    public async Task SetAccountActiveAsync_DeactivateThenReactivate_RotatesStamp_AndAudits()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperAccountAdministration administration = Build();
+
+        Guid adminId = await SeedAdministratorAsync("owner", cancellationToken);
+        Guid staffId = await SeedPersonAsync("server", cancellationToken);
+        Guid stampBefore = await ReadStampAsync(staffId, cancellationToken);
+
+        AccountActivationOutcome deactivated = await administration.SetAccountActiveAsync(
+            staffId, isActive: false, adminId, cancellationToken);
+
+        Assert.Equal(AccountActivationOutcome.Changed, deactivated);
+        Assert.False((await ReadPersonAsync(staffId, cancellationToken)).IsActive);
+        Assert.NotEqual(stampBefore, await ReadStampAsync(staffId, cancellationToken));
+        Assert.Equal(1, await CountEventAsync(staffId, SecurityEventType.AccountDeactivated, adminId, cancellationToken));
+
+        AccountActivationOutcome again = await administration.SetAccountActiveAsync(
+            staffId, isActive: false, adminId, cancellationToken);
+        Assert.Equal(AccountActivationOutcome.NoChange, again);
+
+        AccountActivationOutcome reactivated = await administration.SetAccountActiveAsync(
+            staffId, isActive: true, adminId, cancellationToken);
+
+        Assert.Equal(AccountActivationOutcome.Changed, reactivated);
+        Assert.True((await ReadPersonAsync(staffId, cancellationToken)).IsActive);
+        Assert.Equal(1, await CountEventAsync(staffId, SecurityEventType.AccountReactivated, adminId, cancellationToken));
+    }
+
+    [Fact]
+    public async Task SetAccountActiveAsync_LastActiveAdministrator_CannotBeDeactivated()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperAccountAdministration administration = Build();
+
+        Guid firstAdmin = await SeedAdministratorAsync("owner", cancellationToken);
+
+        AccountActivationOutcome refused = await administration.SetAccountActiveAsync(
+            firstAdmin, isActive: false, firstAdmin, cancellationToken);
+
+        Assert.Equal(AccountActivationOutcome.WouldDeactivateLastAdministrator, refused);
+        Assert.True((await ReadPersonAsync(firstAdmin, cancellationToken)).IsActive);
+
+        // With a second active administrator, deactivating the first is allowed.
+        Guid secondAdmin = await SeedAdministratorAsync("deputy", cancellationToken);
+
+        AccountActivationOutcome allowed = await administration.SetAccountActiveAsync(
+            firstAdmin, isActive: false, secondAdmin, cancellationToken);
+
+        Assert.Equal(AccountActivationOutcome.Changed, allowed);
+        Assert.False((await ReadPersonAsync(firstAdmin, cancellationToken)).IsActive);
+    }
+
+    // --- helpers -----------------------------------------------------------------------------------
+
+    private void SkipIfNoContainer()
+        => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+
+    private DapperAccountAdministration Build() => new(_connectionFactory!, _clock, _identifiers);
+
+    /// <summary>Seeds an active administrator (person + self-granted administrator role) and returns its id.</summary>
+    private async Task<Guid> SeedAdministratorAsync(string username, CancellationToken cancellationToken)
+    {
+        Guid id = await SeedPersonAsync(username, cancellationToken);
+        await GrantRoleDirectAsync(id, Administrator, id, cancellationToken);
+        return id;
+    }
+
+    /// <summary>Seeds a bare active person (a password, no roles, no obligations) and returns its id.</summary>
+    private async Task<Guid> SeedPersonAsync(string username, CancellationToken cancellationToken, string? totpSecretProtected = null)
+    {
+        Guid id = _identifiers.Create();
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO person (
+                person_identifier, username, display_name, email_address, phone_number,
+                password_hash, totp_secret_protected, must_change_password, must_enroll_totp,
+                security_stamp, failed_access_count, lockout_end_at, is_active, created_at)
+            VALUES (
+                @Id, @Username, NULL, NULL, NULL,
+                @PasswordHash, @TotpSecretProtected, false, false,
+                @Stamp, 0, NULL, true, @CreatedAt);
+            """,
+            new
+            {
+                Id = id,
+                Username = username,
+                PasswordHash = SamplePasswordHash,
+                TotpSecretProtected = totpSecretProtected,
+                Stamp = Guid.NewGuid(),
+                CreatedAt = _clock.UtcNow,
+            },
+            cancellationToken: cancellationToken));
+        return id;
+    }
+
+    private async Task GrantRoleDirectAsync(Guid personId, string role, Guid grantedBy, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO person_role (
+                person_role_identifier, person_identifier, role_name, granted_by_person_identifier, granted_at)
+            VALUES (@RoleId, @PersonId, @Role, @GrantedBy, @GrantedAt);
+            """,
+            new
+            {
+                RoleId = _identifiers.Create(),
+                PersonId = personId,
+                Role = role,
+                GrantedBy = grantedBy,
+                GrantedAt = _clock.UtcNow,
+            },
+            cancellationToken: cancellationToken));
+    }
+
+    private async Task SeedRecoveryCodesAsync(Guid personId, int count, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        for (int index = 0; index < count; index++)
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO totp_recovery_code (totp_recovery_code_identifier, person_identifier, code_hash, created_at)
+                VALUES (@Id, @PersonId, @Hash, @CreatedAt);
+                """,
+                new
+                {
+                    Id = _identifiers.Create(),
+                    PersonId = personId,
+                    Hash = Sha256Hashing.Hash($"recovery-code-{index}"),
+                    CreatedAt = _clock.UtcNow,
+                },
+                cancellationToken: cancellationToken));
+        }
+    }
+
+    private async Task<PersonRow> ReadPersonAsync(Guid personId, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        return await connection.QuerySingleAsync<PersonRow>(new CommandDefinition(
+            """
+            SELECT username AS Username, password_hash AS PasswordHash, totp_secret_protected AS TotpSecretProtected,
+                   must_change_password AS MustChangePassword, must_enroll_totp AS MustEnrollTotp,
+                   is_active AS IsActive, security_stamp AS SecurityStamp
+            FROM person WHERE person_identifier = @Id;
+            """,
+            new { Id = personId }, cancellationToken: cancellationToken));
+    }
+
+    private async Task<Guid> ReadStampAsync(Guid personId, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        return await connection.ExecuteScalarAsync<Guid>(new CommandDefinition(
+            "SELECT security_stamp FROM person WHERE person_identifier = @Id;",
+            new { Id = personId }, cancellationToken: cancellationToken));
+    }
+
+    private async Task<int> CountRoleAsync(Guid personId, string role, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        return await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT count(*)::int FROM person_role WHERE person_identifier = @Id AND role_name = @Role;",
+            new { Id = personId, Role = role }, cancellationToken: cancellationToken));
+    }
+
+    private async Task<int> CountEventAsync(Guid subject, string eventType, Guid actor, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        return await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            """
+            SELECT count(*)::int FROM security_event
+            WHERE subject_person_identifier = @Subject AND event_type = @Type AND actor_person_identifier = @Actor;
+            """,
+            new { Subject = subject, Type = eventType, Actor = actor }, cancellationToken: cancellationToken));
+    }
+
+    private async Task<int> CountRecoveryCodesAsync(Guid personId, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        return await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT count(*)::int FROM totp_recovery_code WHERE person_identifier = @Id;",
+            new { Id = personId }, cancellationToken: cancellationToken));
+    }
+
+    private async Task<int> CountPeopleAsync(CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        return await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT count(*)::int FROM person;", cancellationToken: cancellationToken));
+    }
+
+    // Plain mutable POCO so Dapper's default property mapping applies; every SELECT aliases its
+    // snake_case columns to these PascalCase names.
+    private sealed class PersonRow
+    {
+        public string Username { get; set; } = string.Empty;
+        public string? PasswordHash { get; set; }
+        public string? TotpSecretProtected { get; set; }
+        public bool MustChangePassword { get; set; }
+        public bool MustEnrollTotp { get; set; }
+        public bool IsActive { get; set; }
+        public Guid SecurityStamp { get; set; }
     }
 }
 
@@ -21697,10 +23875,10 @@ public sealed class RestaurantOptionsTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 146
-  Total size     : 866.0 KiB (886765 bytes)
+  Files dumped   : 151
+  Total size     : 953.2 KiB (976113 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-22T09:02:25-04:00
+  Completed at   : 2026-07-22T09:52:33-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
