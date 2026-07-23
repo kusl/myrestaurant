@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-23T01:34:05-04:00
+  Generated at   : 2026-07-23T02:23:17-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,9 +17,9 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : da0615246c91f64d8948cd8dcf13f2ec966f1604
-  Commit (short) : da06152
-  Commit date    : 2026-07-23 01:33:53 -0400
+  Commit (full)  : ca8a720ff7bc57e2373a9b3aa7a15ee17812f378
+  Commit (short) : ca8a720
+  Commit date    : 2026-07-23 02:23:00 -0400
   Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
   Files included : 162
@@ -8256,15 +8256,15 @@ public sealed class Person
   File name:             PersonDirectory.cs
   Relative path:         src/MyRestaurant.DataAccess/Identity/PersonDirectory.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Identity/PersonDirectory.cs
-  Size:                  9.2 KiB (9445 bytes)
-  Last modified:         2026-07-22 09:35:37.000000000 -0400
+  Size:                  9.7 KiB (9943 bytes)
+  Last modified:         2026-07-23 02:10:42.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 23579612
+  Inode:                 25148849
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               1dee98570217b91ff7ae1affaf4b54ad1a64397420d956bc1ef95b04d246b37b
-  Last git commit:       2477e46 2026-07-22 09:51:13 -0400 add claude response
+  SHA-256:               8429df081214c66396e4182a9eb8340fab6628922aacb8703bdd5e006019c75e
+  Last git commit:       ca8a720 2026-07-23 02:23:00 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -8451,8 +8451,10 @@ public sealed class DapperPersonDirectory : IPersonDirectory
             row.MustChangePassword,
             row.MustEnrollTotp,
             row.FailedAccessCount,
-            row.LockoutEndAt,
-            row.CreatedAt,
+            row.LockoutEndAt is { } lockoutEnd
+                ? new DateTimeOffset(DateTime.SpecifyKind(lockoutEnd, DateTimeKind.Utc))
+                : null,
+            new DateTimeOffset(DateTime.SpecifyKind(row.CreatedAt, DateTimeKind.Utc)),
             roles);
     }
 
@@ -8465,8 +8467,11 @@ public sealed class DapperPersonDirectory : IPersonDirectory
         _ => 3,
     };
 
-    // Dapper maps these positional records by constructor-parameter name (case-insensitive) against
-    // the aliased columns above.
+    // Dapper maps these positional records by constructor-parameter name (case-insensitive) against the
+    // aliased columns above. The two timestamps are `DateTime` (not `DateTimeOffset`) because Npgsql
+    // materialises a `timestamptz` as a UTC `DateTime`, and Dapper's constructor binding will not feed a
+    // `DateTime` into a `DateTimeOffset` parameter; `ToSummary` converts them to the UTC `DateTimeOffset`
+    // the public summary exposes.
     private sealed record PersonRow(
         Guid PersonIdentifier,
         string Username,
@@ -8477,8 +8482,8 @@ public sealed class DapperPersonDirectory : IPersonDirectory
         bool MustChangePassword,
         bool MustEnrollTotp,
         int FailedAccessCount,
-        DateTimeOffset? LockoutEndAt,
-        DateTimeOffset CreatedAt);
+        DateTime? LockoutEndAt,
+        DateTime CreatedAt);
 
     private sealed record RoleRow(Guid PersonIdentifier, string RoleName);
 }
@@ -9561,15 +9566,15 @@ public sealed class DapperTableAdministration : ITableAdministration
   File name:             TableDirectory.cs
   Relative path:         src/MyRestaurant.DataAccess/Tables/TableDirectory.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Tables/TableDirectory.cs
-  Size:                  4.6 KiB (4673 bytes)
-  Last modified:         2026-07-22 20:26:05.000000000 -0400
+  Size:                  5.8 KiB (5938 bytes)
+  Last modified:         2026-07-23 02:10:28.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 23931062
+  Inode:                 25148847
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               62d1270b4485d95fe0cb3e6db3773564154826ccf652ef306418143946fa3cac
-  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+  SHA-256:               fe9d0288fc793aa7cb6e086589939db6586104101bcce97616d9d0448227e5f9
+  Last git commit:       ca8a720 2026-07-23 02:23:00 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -9653,10 +9658,10 @@ public sealed class DapperTableDirectory : ITableDirectory
         await using DbConnection connection = await _connectionFactory
             .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
-        IEnumerable<RestaurantTableSummary> tables = await connection.QueryAsync<RestaurantTableSummary>(
+        IEnumerable<RestaurantTableRow> rows = await connection.QueryAsync<RestaurantTableRow>(
             new CommandDefinition(ListSql, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
-        return tables.ToArray();
+        return rows.Select(ToSummary).ToArray();
     }
 
     public async Task<RestaurantTableSummary?> GetTableAsync(Guid tableIdentifier, CancellationToken cancellationToken = default)
@@ -9664,11 +9669,35 @@ public sealed class DapperTableDirectory : ITableDirectory
         await using DbConnection connection = await _connectionFactory
             .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
-        return await connection.QuerySingleOrDefaultAsync<RestaurantTableSummary>(new CommandDefinition(
+        RestaurantTableRow? row = await connection.QuerySingleOrDefaultAsync<RestaurantTableRow>(new CommandDefinition(
             ByIdSql,
             new { TableIdentifier = tableIdentifier },
             cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        return row is null ? null : ToSummary(row);
     }
+
+    // Npgsql materialises a `timestamptz` column as a UTC `DateTime`, and Dapper's constructor binding
+    // will not feed a `DateTime` into a `DateTimeOffset` parameter — so the row is read with `DateTime`
+    // members that match the reader exactly, then projected to the public `DateTimeOffset` summary. The
+    // stored instants are UTC, so the offset is zero (SpecifyKind guards against a non-UTC Kind).
+    private static RestaurantTableSummary ToSummary(RestaurantTableRow row) => new(
+        row.TableIdentifier,
+        row.Label,
+        row.IsActive,
+        row.JoinSecretRotatedAt is { } rotatedAt
+            ? new DateTimeOffset(DateTime.SpecifyKind(rotatedAt, DateTimeKind.Utc))
+            : null,
+        new DateTimeOffset(DateTime.SpecifyKind(row.CreatedAt, DateTimeKind.Utc)));
+
+    // Dapper maps this positional record by constructor-parameter name (case-insensitive) against the
+    // aliased columns above; its members mirror what Npgsql returns for each column type.
+    private sealed record RestaurantTableRow(
+        Guid TableIdentifier,
+        string Label,
+        bool IsActive,
+        DateTime? JoinSecretRotatedAt,
+        DateTime CreatedAt);
 }
 
 ################################################################################
@@ -18187,15 +18216,15 @@ public static class TotpQrCode
   File name:             WebAuthnOriginPolicy.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/WebAuthnOriginPolicy.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/WebAuthnOriginPolicy.cs
-  Size:                  9.7 KiB (9883 bytes)
-  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Size:                  10.8 KiB (11051 bytes)
+  Last modified:         2026-07-23 02:10:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25103614
+  Inode:                 25148844
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               6fa02bc0790e7d9806d52152903af521bb034543b8c716297e8533c3ff0c938a
-  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+  SHA-256:               a860a8c280cb45db298d1e7002837745283606ae65cc9e0c45b1a8051652d60b
+  Last git commit:       ca8a720 2026-07-23 02:23:00 -0400 add claude response
 
 --- CONTENT ---
 using Microsoft.AspNetCore.Http;
@@ -18252,7 +18281,7 @@ public sealed class WebAuthnOriginPolicy
 
         Uri origin = new(publicOrigin, UriKind.Absolute);
         PublicHost = origin.IsDefaultPort ? new HostString(origin.Host) : new HostString(origin.Host, origin.Port);
-        _publicOriginHostPort = PublicHost.Value.ToLowerInvariant();
+        _publicOriginHostPort = PublicHost.Value?.ToLowerInvariant() ?? string.Empty;
         _publicOriginIsLoopback = IsLoopbackHost(origin.Host);
 
         List<(string, string)> parsed = [];
@@ -18417,7 +18446,30 @@ public sealed class WebAuthnOriginPolicy
             return false;
         }
 
+        // An explicit default port is equivalent to none (":443" for https, ":80" for http), so drop it
+        // before any comparison — otherwise "https://orders.example.com:443" would fail to match the
+        // configured "orders.example.com", whose port the Uri parser has already dropped as default.
+        host = StripDefaultPort(scheme, host);
         return true;
+    }
+
+    /// <summary>
+    /// Drops a trailing port when it is the scheme's default (443 for https, 80 for http). A colon at or
+    /// before a closing <c>]</c> is part of an IPv6 literal (<c>[::1]</c>), not a port separator, so it is
+    /// ignored — the same bracket-aware rule <see cref="HostOnly"/> uses.
+    /// </summary>
+    private static string StripDefaultPort(string scheme, string hostPort)
+    {
+        int close = hostPort.LastIndexOf(']');
+        int colon = hostPort.LastIndexOf(':');
+        if (colon <= close)
+        {
+            return hostPort;
+        }
+
+        string port = hostPort[(colon + 1)..];
+        bool isDefault = (scheme == "https" && port == "443") || (scheme == "http" && port == "80");
+        return isDefault ? hostPort[..colon] : hostPort;
     }
 
     private static string HostOnly(string hostPort)
@@ -19098,15 +19150,15 @@ public static class TablesServiceCollectionExtensions
   File name:             app.css
   Relative path:         src/MyRestaurant.WebApplication/wwwroot/app.css
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/wwwroot/app.css
-  Size:                  12.9 KiB (13227 bytes)
-  Last modified:         2026-07-21 12:14:18.000000000 -0400
-  Permissions:           -rw-------
+  Size:                  13.0 KiB (13276 bytes)
+  Last modified:         2026-07-23 02:10:54.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 22331459
+  Inode:                 25148851
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               0cbb5b3d420d3009226b1cc9981602ee8042976d35bf3c472b2adb4c36f6b534
-  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
+  SHA-256:               567a589cbd1c6804ad47bb6cf6a6f7c8c753d44798f80f68ca6f4770766abd02
+  Last git commit:       ca8a720 2026-07-23 02:23:00 -0400 add claude response
 
 --- CONTENT ---
 /*
@@ -19165,7 +19217,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
     padding: 0.65rem clamp(1rem, 3vw, 2rem);
     background-color: var(--surface-raised);
     border-bottom: 1px solid var(--hairline);
@@ -19181,6 +19234,7 @@ body {
 .app-session {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.75rem;
     font-size: 0.95rem;
 }
@@ -26452,9 +26506,9 @@ public sealed class TablesWiringTests
 # DUMP SUMMARY
 ################################################################################
   Files dumped   : 162
-  Total size     : 1.0 MiB (1084054 bytes)
+  Total size     : 1.0 MiB (1087034 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-23T01:34:10-04:00
+  Completed at   : 2026-07-23T02:23:22-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
