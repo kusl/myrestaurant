@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-23T09:32:14-04:00
+  Generated at   : 2026-07-23T10:24:12-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : d72bb9ddaf8e6aa023aaac8417884beaab75d4ef
-  Commit (short) : d72bb9d
-  Commit date    : 2026-07-23 09:31:55 -0400
+  Commit (full)  : e0e95f9b46043fb3594c009dd183efd52bc1930a
+  Commit (short) : e0e95f9
+  Commit date    : 2026-07-23 10:23:48 -0400
   Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 162
+  Files included : 167
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (162 included files)
+# FILE TREE  (167 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -594,7 +594,8 @@ cat "$OUTPUT_FILE"
 │   │   ├── SchemaMigrationRunner.cs
 │   │   └── Tables
 │   │       ├── TableAdministration.cs
-│   │       └── TableDirectory.cs
+│   │       ├── TableDirectory.cs
+│   │       └── TableJoinSecretReader.cs
 │   ├── MyRestaurant.Domain
 │   │   ├── Authentication
 │   │   │   ├── ObligationsPipeline.cs
@@ -651,7 +652,8 @@ cat "$OUTPUT_FILE"
 │       │   │   │   ├── CreateStaff.razor
 │       │   │   │   ├── CreateTable.razor
 │       │   │   │   ├── ManagePerson.razor
-│       │   │   │   └── ManageTable.razor
+│       │   │   │   ├── ManageTable.razor
+│       │   │   │   └── TableJoinCode.razor
 │       │   │   ├── Home.razor
 │       │   │   ├── Setup.razor
 │       │   │   └── Table
@@ -682,6 +684,7 @@ cat "$OUTPUT_FILE"
 │       ├── Properties
 │       │   └── launchSettings.json
 │       ├── Tables
+│       │   ├── TableJoinTokens.cs
 │       │   └── TablesServiceCollectionExtensions.cs
 │       ├── appsettings.Development.json
 │       ├── appsettings.json
@@ -704,7 +707,8 @@ cat "$OUTPUT_FILE"
     │   ├── PostgreSqlFixture.cs
     │   ├── SchemaMigrationRunnerTests.cs
     │   └── Tables
-    │       └── TableAdministrationTests.cs
+    │       ├── TableAdministrationTests.cs
+    │       └── TableJoinSecretReaderTests.cs
     ├── MyRestaurant.Domain.Tests
     │   ├── Argon2PhcStringTests.cs
     │   ├── Base32TextTests.cs
@@ -738,6 +742,7 @@ cat "$OUTPUT_FILE"
         ├── MyRestaurant.WebApplication.Tests.csproj
         ├── RestaurantOptionsTests.cs
         └── Tables
+            ├── TableJoinTokensTests.cs
             └── TablesWiringTests.cs
 
 
@@ -2345,15 +2350,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  59.9 KiB (61343 bytes)
-  Last modified:         2026-07-23 09:29:31.618954271 -0400
+  Size:                  62.2 KiB (63717 bytes)
+  Last modified:         2026-07-23 10:22:57.739529251 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 25103633
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               2ccfe408e088db1fa3788e400cd298555ab088665d4475593b895977558c214d
-  Last git commit:       d72bb9d 2026-07-23 09:31:55 -0400 add claude response
+  SHA-256:               97e027d64d75cd3d3b44331f573c5c4a265d59864a8b5537a4c1cc038af20bc0
+  Last git commit:       e0e95f9 2026-07-23 10:23:48 -0400 add claude response
 
 --- CONTENT ---
 # Build progress
@@ -3202,6 +3207,36 @@ aborting the static-SSR response. (`Passkeys.razor` escaped it — `_passkeys is
 doesn't match null.) Fix: bare `else` → `else if (_start is not null)`, drop the `!` on the three
 `_start` reads, both pages. Final render unchanged; transient render now emits only the panel eyebrow.
 No schema/DI/behaviour change; no deletions.
+
+### M3 Slice 2 — table join tokens: generation, validation, metric + admin QR fallback (landed)
+
+The rotating join-token machinery (ADR-0009, §4.3–§4.5) is now wired end-to-end on the
+server side. New server-only `ITableJoinSecretReader`/`DapperTableJoinSecretReader`
+(DataAccess/Tables) reads a table's `join_secret` for token work — the deliberate narrow
+counterpart to `ITableDirectory`, which never selects it — gated on `is_active = true`, so
+§4.1's "deactivating stops validation and rendering" is one SQL predicate both paths share.
+New `ITableJoinTokens`/`TableJoinTokens` (WebApplication/Tables) wraps the vector-tested
+domain `JoinTokenService`: `DescribeCurrentAsync` builds the current QR (token, scan URL,
+server-side inline SVG, next-rotation instant) for the counter/admin fallback and the future
+display; `ValidateAsync` maps a presented token to the domain result and records
+`table_join_tokens_validated_total{result}` (§12) on every attempt — a missing/inactive table
+or malformed/old token is counted `invalid`, keeping the label set to §4.3's
+{valid|expired|invalid}. One static-SSR admin page `/administration/tables/{id}/join-code`
+renders the fallback QR on demand (§4.5/§11.4), reached from a new "Join code" section on
+ManageTable; a deactivated/unknown table renders no code. Both services registered by
+`AddRestaurantTables()` (scoped, alongside the management services). No migration
+(restaurant_table ships in 0001), no packages (Dapper + Net.Codecrete.QrCodeGenerator + the
+framework meter, all present), no spec edit (this realizes already-specified behaviour; the
+metric and TABLE_JOIN_* config were scaffolded in M1). Tests: `TableJoinSecretReaderTests`
+(Testcontainers, 4 facts — exact stored bytes, unknown→null, deactivated→null, rotation
+tracked so the old token dies) and `TableJoinTokensTests` (in-memory, 6 facts — current QR
+shape, no-secret→null, current/previous window valid, garbage/no-secret invalid), plus two
+resolvability facts added to `TablesWiringTests`.
+
+Deferred to the next M3 slice: the join **grant** cookie, `/table/{id}` GET routing
+(member / anonymous / valid-token), sitting open + membership, and the `SittingMemberJoined`
+broadcast (§4.4/§5.1) — `TableJoinTokens.ValidateAsync` is the hook they consume — followed by
+display pairing + device auth + `/display` (§4.2/§11.5).
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -9713,6 +9748,94 @@ public sealed class DapperTableDirectory : ITableDirectory
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.DataAccess/Tables/TableJoinSecretReader.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TableJoinSecretReader.cs
+  Relative path:         src/MyRestaurant.DataAccess/Tables/TableJoinSecretReader.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Tables/TableJoinSecretReader.cs
+  Size:                  3.4 KiB (3481 bytes)
+  Last modified:         2026-07-23 09:56:06.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25243977
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               943afd3931d0520b65fd6f215aaf283abb5913637802a20609c7ba0485c7b229
+  Last git commit:       e0e95f9 2026-07-23 10:23:48 -0400 add claude response
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+
+namespace MyRestaurant.DataAccess.Tables;
+
+/// <summary>
+/// Reads a table's <c>join_secret</c> for server-side join-token work (TECHNICAL_SPECIFICATION §4.1,
+/// §4.3). This is the deliberate, narrow counterpart to <see cref="ITableDirectory"/>, which never
+/// selects the secret: the secret signs the rotating QR tokens guests scan and <b>must never leave the
+/// server</b> (§4.1/§4.2), so the only thing allowed to read it is the token service that computes and
+/// validates tokens from it — never a page, a view model, or any other caller. Keeping it behind its own
+/// single-purpose interface makes that boundary explicit and substitutable in tests.
+///
+/// <para>The read is gated on <c>is_active = true</c>: §4.1 says deactivating a table stops its token
+/// validation and display rendering, so an inactive (or non-existent) table simply has no readable
+/// secret — the reader returns <c>null</c>, and the token service turns that into "cannot render" and
+/// "invalid". Centralising the active-gate in this one predicate keeps the §4.1 rule in a single place
+/// that both the render path and the validate path flow through.</para>
+/// </summary>
+public interface ITableJoinSecretReader
+{
+    /// <summary>
+    /// The 32-byte join secret for the <b>active</b> table with the given identifier, or <c>null</c>
+    /// when no such table exists or it has been deactivated (§4.1). The bytes are the live signing
+    /// material; the caller must not retain or expose them beyond computing/validating a token.
+    /// </summary>
+    Task<byte[]?> ReadActiveJoinSecretAsync(Guid tableIdentifier, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// The Dapper implementation of <see cref="ITableJoinSecretReader"/>. One connection per call from the
+/// singleton <see cref="IDatabaseConnectionFactory"/>, matching the rest of the data layer; a single
+/// scalar <c>SELECT</c> of the <c>bytea</c> column (which Npgsql materialises as a <c>byte[]</c>). No
+/// transaction is needed — this is a lone read — and the secret column is selected nowhere else in a
+/// reporting path (§4.1).
+/// </summary>
+public sealed class DapperTableJoinSecretReader : ITableJoinSecretReader
+{
+    // Only ever the secret, only ever for an active table (§4.1). ExecuteScalar returns null for a
+    // missing/inactive row, which the caller reads as "no secret".
+    private const string ReadActiveSecretSql = """
+        SELECT join_secret
+        FROM restaurant_table
+        WHERE restaurant_table_identifier = @TableIdentifier
+          AND is_active = true;
+        """;
+
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+
+    public DapperTableJoinSecretReader(IDatabaseConnectionFactory connectionFactory)
+    {
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+        _connectionFactory = connectionFactory;
+    }
+
+    public async Task<byte[]?> ReadActiveJoinSecretAsync(Guid tableIdentifier, CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        byte[]? secret = await connection.ExecuteScalarAsync<byte[]>(new CommandDefinition(
+            ReadActiveSecretSql,
+            new { TableIdentifier = tableIdentifier },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        return secret;
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.Domain/Authentication/ObligationsPipeline.cs
 ################################################################################
 
@@ -14942,15 +15065,15 @@ else
   File name:             ManageTable.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageTable.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageTable.razor
-  Size:                  11.3 KiB (11521 bytes)
-  Last modified:         2026-07-22 20:29:45.000000000 -0400
+  Size:                  12.1 KiB (12414 bytes)
+  Last modified:         2026-07-23 09:58:27.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 23931059
+  Inode:                 25243974
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               962972017282006d807724816033139dd739fd49c1d2ea2df147d868f44d7047
-  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+  SHA-256:               b4cf5901231ca3bc89109a31779090bb9f02a690c14e9bf2038034895a1f9b89
+  Last git commit:       e0e95f9 2026-07-23 10:23:48 -0400 add claude response
 
 --- CONTENT ---
 @page "/administration/tables/{TableId:guid}"
@@ -14965,7 +15088,8 @@ else
    Static SSR: rename, rotate-secret, and deactivate/reactivate are full-page form posts. Successful
    changes redirect back here (post/redirect/get) carrying a one-word outcome so a refresh does not
    re-post; a taken label is shown in place. The join secret is never read or shown — rotation replaces
-   it server-side (§4.1). *@
+   it server-side (§4.1). A link to the join-code fallback (§4.5) sits alongside, for when a table's
+   display is down. *@
 
 <PageTitle>@(_table is null ? "Manage table" : $"Manage {_table.Label}")</PageTitle>
 
@@ -15032,6 +15156,27 @@ else
             <button type="submit" class="button-primary">Rename</button>
             <ValidationMessage For="@(() => RenameInput.Label)" />
         </EditForm>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Join code</h2>
+        @if (_table.IsActive)
+        {
+            <p class="lede">
+                Guests join by scanning this table's rotating QR code. Its own display shows it; if that
+                display is down, show the same code here and let the guest scan your screen.
+            </p>
+            <div class="form-actions">
+                <a class="button-secondary" href="@($"/administration/tables/{TableId}/join-code")">Show join code</a>
+            </div>
+        }
+        else
+        {
+            <p class="lede">
+                This table is deactivated, so it renders no join code and its tokens do not validate.
+                Reactivate it below to show a code again.
+            </p>
+        }
 
         <hr class="manage-rule" />
 
@@ -15301,6 +15446,186 @@ else
         [Required(ErrorMessage = "Enter a label.")]
         [StringLength(64, MinimumLength = 1, ErrorMessage = "The label must be 1–64 characters.")]
         public string Label { get; set; } = string.Empty;
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Pages/Administration/TableJoinCode.razor
+################################################################################
+
+--- METADATA ---
+  File name:             TableJoinCode.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/TableJoinCode.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/TableJoinCode.razor
+  Size:                  5.9 KiB (6075 bytes)
+  Last modified:         2026-07-23 09:57:25.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25243973
+  Hard links:            1
+  MIME type:             text/html
+  SHA-256:               70b220584c8e3c5067e69cfa81bfc0a9a7b8edfe7b3e38a176eea1a18329b0de
+  Last git commit:       e0e95f9 2026-07-23 10:23:48 -0400 add claude response
+
+--- CONTENT ---
+@page "/administration/tables/{TableId:guid}/join-code"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.DataAccess.Tables
+@using MyRestaurant.WebApplication.Tables
+@inject ITableDirectory TableDirectory
+@inject ITableJoinTokens JoinTokens
+@inject RestaurantOptions Options
+
+@* The administrator/counter join-code fallback (TECHNICAL_SPECIFICATION §4.5, §11.4). When a table's
+   display device is dead, staff can render the *same* rotating QR here on demand; the guest scans this
+   screen. The join secret never leaves the server — this page shows only the server-rendered QR and the
+   scan URL it encodes (§4.1/§4.5).
+
+   Static SSR, like every administration surface: it sets no cookie and simply reads and renders. It is
+   therefore a snapshot of the current window — a scanned code keeps working for the current *and*
+   previous window (worst case ~2× the rotation, §4.3), so it will not die mid-scan, and a "Show a fresh
+   code" link re-renders the next window on demand. The window-aligned auto-refresh belongs to the paired
+   display surface (§11.5) and lands with it; here a manual refresh is the operational fallback. A
+   deactivated or unknown table renders no code (§4.1). *@
+
+<PageTitle>@(_table is null ? "Join code" : $"Join code — {_table.Label}")</PageTitle>
+
+@if (_table is null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Table not found</h1>
+        <p class="lede">No table exists with that identifier. It may have never existed, or the link is stale.</p>
+        <p><a href="/administration/tables">Back to tables</a></p>
+    </section>
+}
+else if (!_table.IsActive)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>@_table.Label</h1>
+        <p class="lede">
+            This table is deactivated, so its join code does not render and its tokens do not validate
+            (§4.1). Reactivate the table to show a code again.
+        </p>
+        <p class="join-code-back"><a href="@ManagePath">Back to @_table.Label</a></p>
+    </section>
+}
+else if (_qr is null)
+{
+    @* Active table but no code came back — treat as a transient condition rather than dereference null. *@
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>@_table.Label</h1>
+        <p class="status-error" role="alert">The join code could not be generated just now. Try again.</p>
+        <p class="join-code-back"><a href="@ManagePath">Back to @_table.Label</a></p>
+    </section>
+}
+else
+{
+    <section class="panel account-panel join-code-panel">
+        <p class="eyebrow">Administration — join code</p>
+        <h1>@_table.Label</h1>
+        <p class="lede">
+            A guest scans this code to join @_table.Label. Use this when the table's own display is down —
+            it is the same rotating code the display shows (§4.5). The private join secret never leaves the
+            server.
+        </p>
+
+        <div class="join-qr">
+            @((MarkupString)_qr.QrCodeSvg)
+        </div>
+
+        <p class="join-code-url-label">The code links to:</p>
+        <p class="join-code-url">@_qr.JoinUrl</p>
+
+        <p class="join-code-rotation">
+            Rotates every @Options.TableJoinTokenRotationSeconds seconds — next at
+            <strong>@_qr.NextRotationAt.ToLocalTime().ToString("T")</strong>
+            (about @SecondsUntilRotation second@(SecondsUntilRotation == 1 ? "" : "s") from now). A code
+            that has just been scanned keeps working for up to about @(Options.TableJoinTokenRotationSeconds * 2)
+            seconds, so it will not stop working in a guest's hand.
+        </p>
+
+        <div class="form-actions">
+            <a class="button-primary" href="@JoinCodePath">Show a fresh code</a>
+            <a class="button-secondary" href="@ManagePath">Back to @_table.Label</a>
+        </div>
+    </section>
+}
+
+@* Namespaced under .join-code-* and inline for the same reason the other administration pages keep
+   their CSS inline: App.razor links the static stylesheet, so component CSS isolation is not active. *@
+<style>
+    .join-code-panel .join-qr {
+        display: flex;
+        justify-content: center;
+        margin: 1.25rem 0;
+    }
+
+    .join-code-panel .join-qr-svg {
+        width: 100%;
+        max-width: 20rem;
+        height: auto;
+        border-radius: 0.5rem;
+        border: 1px solid var(--rule, #e5e5e5);
+    }
+
+    .join-code-url-label {
+        margin: 0.75rem 0 0.25rem;
+        font-size: 0.85rem;
+        color: var(--muted-foreground, #666);
+    }
+
+    .join-code-url {
+        margin: 0 0 1rem;
+        padding: 0.5rem 0.65rem;
+        border-radius: 0.4rem;
+        background: var(--surface-sunken, #f4f4f5);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.85rem;
+        word-break: break-all;
+    }
+
+    .join-code-rotation {
+        color: var(--muted-foreground, #555);
+        font-size: 0.9rem;
+        margin: 0 0 1.25rem;
+    }
+
+    .join-code-back {
+        margin-top: 1.5rem;
+    }
+</style>
+
+@code {
+    private RestaurantTableSummary? _table;
+    private TableJoinQrCode? _qr;
+
+    [Parameter]
+    public Guid TableId { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private string ManagePath => $"/administration/tables/{TableId}";
+
+    private string JoinCodePath => $"/administration/tables/{TableId}/join-code";
+
+    private int SecondsUntilRotation => _qr is null
+        ? 0
+        : Math.Max(0, (int)Math.Ceiling((_qr.NextRotationAt - _qr.GeneratedAt).TotalSeconds));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _table = await TableDirectory.GetTableAsync(TableId, HttpContext.RequestAborted);
+        if (_table is null || !_table.IsActive)
+        {
+            return;
+        }
+
+        _qr = await JoinTokens.DescribeCurrentAsync(TableId, HttpContext.RequestAborted);
     }
 }
 
@@ -19061,6 +19386,214 @@ return 0;
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.WebApplication/Tables/TableJoinTokens.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TableJoinTokens.cs
+  Relative path:         src/MyRestaurant.WebApplication/Tables/TableJoinTokens.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Tables/TableJoinTokens.cs
+  Size:                  9.2 KiB (9443 bytes)
+  Last modified:         2026-07-23 09:56:53.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25243969
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               26e34c4001bc8fabd440a505140c70246bb38d631ba7497fc721254011861f70
+  Last git commit:       e0e95f9 2026-07-23 10:23:48 -0400 add claude response
+
+--- CONTENT ---
+using System.Text.Encodings.Web;
+using MyRestaurant.DataAccess.Tables;
+using MyRestaurant.Domain.Security;
+using MyRestaurant.Domain.Time;
+using MyRestaurant.WebApplication.Configuration;
+using MyRestaurant.WebApplication.Observability;
+using Net.Codecrete.QrCodeGenerator;
+
+namespace MyRestaurant.WebApplication.Tables;
+
+/// <summary>
+/// Everything a surface needs to render a table's current rotating join code (TECHNICAL_SPECIFICATION
+/// §4.3, §4.5, §11.5): the token itself, the scan URL it is embedded in, a ready-to-inline SVG QR, the
+/// instant the code was generated, and the instant it next rotates (so a display — or a person — knows
+/// when to refresh). The join secret is not here and never is (§4.1); this record carries only the
+/// public, scannable artefacts derived from it.
+/// </summary>
+/// <param name="TableIdentifier">The table the code is for (§4.1).</param>
+/// <param name="Token">The Base64Url HMAC token for the current window (§4.3).</param>
+/// <param name="JoinUrl">The scan URL <c>{public-origin}/table/{table}?token={token}</c> (§4.3).</param>
+/// <param name="QrCodeSvg">A self-contained inline SVG of <see cref="JoinUrl"/>, rendered server-side (§4.3).</param>
+/// <param name="GeneratedAt">The UTC instant the token was computed (the current window's clock read).</param>
+/// <param name="NextRotationAt">The UTC instant the token rotates — <c>(window_index+1) × rotation</c> (§4.3).</param>
+public sealed record TableJoinQrCode(
+    Guid TableIdentifier,
+    string Token,
+    string JoinUrl,
+    string QrCodeSvg,
+    DateTimeOffset GeneratedAt,
+    DateTimeOffset NextRotationAt);
+
+/// <summary>
+/// The application-layer table join-token service (TECHNICAL_SPECIFICATION §4.3–§4.5). It is the one
+/// place that reaches the server-only join secret (through <see cref="ITableJoinSecretReader"/>) and
+/// turns it into the two things the rest of the app needs:
+/// <list type="bullet">
+///   <item><description><see cref="DescribeCurrentAsync"/> — the current QR for rendering: the counter/admin
+///   fallback (§4.5) and, later, the paired display (§11.5).</description></item>
+///   <item><description><see cref="ValidateAsync"/> — validation of a presented token for the join flow
+///   (§4.4), recording the <c>table_join_tokens_validated_total{result}</c> metric (§12) on every attempt.</description></item>
+/// </list>
+///
+/// <para>The token construction and validation themselves are the pure, vector-tested
+/// <see cref="JoinTokenService"/> in the domain; this type only supplies the moving parts a static
+/// function cannot: the per-table secret, the configured rotation window and public origin, the clock,
+/// the metric, and the server-side QR rendering. Deactivating or removing a table removes its readable
+/// secret (§4.1), so <see cref="DescribeCurrentAsync"/> returns <c>null</c> and <see cref="ValidateAsync"/>
+/// returns <see cref="JoinTokenValidationResult.Invalid"/> for it — the token cannot be honoured, which
+/// is exactly the <c>invalid</c> metric bucket.</para>
+///
+/// <para>Scoped, like the other table services: it holds no state and depends on
+/// <see cref="ITableJoinSecretReader"/> (scoped) plus the singleton options, metrics, and clock.</para>
+/// </summary>
+public interface ITableJoinTokens
+{
+    /// <summary>
+    /// The current join code for an active table, ready to render (§4.5, §11.5), or <c>null</c> when no
+    /// active table has that identifier (§4.1). Reads the secret, computes the current-window token, and
+    /// renders the QR — persists nothing.
+    /// </summary>
+    Task<TableJoinQrCode?> DescribeCurrentAsync(Guid tableIdentifier, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Validates a presented token against a table's current and previous windows (§4.3, §4.4) and records
+    /// the outcome in <c>table_join_tokens_validated_total{result}</c> (§12). A missing/inactive table, a
+    /// malformed token, or a token older than the bounded lookback all yield
+    /// <see cref="JoinTokenValidationResult.Invalid"/>; a match to a recent-but-older window yields
+    /// <see cref="JoinTokenValidationResult.Expired"/> (for the metric label); the current or previous
+    /// window yields <see cref="JoinTokenValidationResult.Valid"/>.
+    /// </summary>
+    Task<JoinTokenValidationResult> ValidateAsync(
+        Guid tableIdentifier,
+        string presentedToken,
+        CancellationToken cancellationToken = default);
+}
+
+/// <inheritdoc cref="ITableJoinTokens" />
+public sealed class TableJoinTokens : ITableJoinTokens
+{
+    // Metric label values for table_join_tokens_validated_total{result} (§4.3/§12). Declared once so the
+    // spelling the OTLP pipeline sees is fixed in a single place.
+    private const string ResultValid = "valid";
+    private const string ResultExpired = "expired";
+    private const string ResultInvalid = "invalid";
+
+    private readonly ITableJoinSecretReader _joinSecrets;
+    private readonly RestaurantMetrics _metrics;
+    private readonly IClock _clock;
+    private readonly int _rotationSeconds;
+    private readonly string _publicOrigin;
+
+    public TableJoinTokens(
+        ITableJoinSecretReader joinSecrets,
+        RestaurantMetrics metrics,
+        IClock clock,
+        RestaurantOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(joinSecrets);
+        ArgumentNullException.ThrowIfNull(metrics);
+        ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(options);
+
+        _joinSecrets = joinSecrets;
+        _metrics = metrics;
+        _clock = clock;
+        _rotationSeconds = options.TableJoinTokenRotationSeconds;
+        _publicOrigin = options.PublicOrigin;
+    }
+
+    public async Task<TableJoinQrCode?> DescribeCurrentAsync(Guid tableIdentifier, CancellationToken cancellationToken = default)
+    {
+        byte[]? joinSecret = await _joinSecrets
+            .ReadActiveJoinSecretAsync(tableIdentifier, cancellationToken).ConfigureAwait(false);
+        if (joinSecret is null)
+        {
+            return null;
+        }
+
+        DateTimeOffset now = _clock.UtcNow;
+        string token = JoinTokenService.ComputeCurrentToken(joinSecret, tableIdentifier, now, _rotationSeconds);
+        string joinUrl = JoinTokenService.BuildJoinUrl(_publicOrigin, tableIdentifier, token);
+
+        return new TableJoinQrCode(
+            TableIdentifier: tableIdentifier,
+            Token: token,
+            JoinUrl: joinUrl,
+            QrCodeSvg: RenderJoinQrSvg(joinUrl),
+            GeneratedAt: now,
+            NextRotationAt: JoinTokenService.NextRotationInstant(now, _rotationSeconds));
+    }
+
+    public async Task<JoinTokenValidationResult> ValidateAsync(
+        Guid tableIdentifier,
+        string presentedToken,
+        CancellationToken cancellationToken = default)
+    {
+        byte[]? joinSecret = await _joinSecrets
+            .ReadActiveJoinSecretAsync(tableIdentifier, cancellationToken).ConfigureAwait(false);
+
+        // No active table → no secret to check against → the token cannot be honoured (§4.1). Counted as
+        // an invalid validation attempt, keeping the metric's label set to the §4.3 {valid|expired|invalid}.
+        JoinTokenValidationResult result = joinSecret is null
+            ? JoinTokenValidationResult.Invalid
+            : JoinTokenService.Validate(
+                joinSecret,
+                tableIdentifier,
+                presentedToken ?? string.Empty,
+                _clock.UtcNow,
+                _rotationSeconds);
+
+        _metrics.RecordTableJoinTokenValidated(MetricLabelFor(result));
+        return result;
+    }
+
+    private static string MetricLabelFor(JoinTokenValidationResult result) => result switch
+    {
+        JoinTokenValidationResult.Valid => ResultValid,
+        JoinTokenValidationResult.Expired => ResultExpired,
+        _ => ResultInvalid,
+    };
+
+    /// <summary>
+    /// Renders a join URL to a self-contained, inline SVG QR (TECHNICAL_SPECIFICATION §4.3: server-side,
+    /// no client calls) — the same approach as the authenticator QR (<c>TotpQrCode</c>): the modules come
+    /// from <c>Net.Codecrete.QrCodeGenerator</c> and the element is composed by hand rather than via the
+    /// library's <c>ToSvgString</c>, which emits an XML prolog/DOCTYPE unsuitable for inlining. A white
+    /// background keeps it scannable, a four-module quiet zone is baked into the path and the viewBox, and
+    /// the <c>aria-label</c> is fixed text so the URL cannot inject markup.
+    /// </summary>
+    private static string RenderJoinQrSvg(string joinUrl)
+    {
+        const int quietZoneModules = 4;
+        const string darkColor = "#16202b";  // --ink
+        const string lightColor = "#ffffff"; // --surface-raised
+
+        QrCode qr = QrCode.EncodeText(joinUrl, QrCode.Ecc.Medium);
+        int dimension = qr.Size + (quietZoneModules * 2);
+        string path = qr.ToGraphicsPath(quietZoneModules);
+        string label = HtmlEncoder.Default.Encode("Table join QR code");
+
+        return
+            $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {dimension} {dimension}\" "
+            + $"role=\"img\" aria-label=\"{label}\" class=\"join-qr-svg\" shape-rendering=\"crispEdges\">"
+            + $"<rect width=\"{dimension}\" height=\"{dimension}\" fill=\"{lightColor}\"/>"
+            + $"<path d=\"{path}\" fill=\"{darkColor}\"/>"
+            + "</svg>";
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.WebApplication/Tables/TablesServiceCollectionExtensions.cs
 ################################################################################
 
@@ -19068,15 +19601,15 @@ return 0;
   File name:             TablesServiceCollectionExtensions.cs
   Relative path:         src/MyRestaurant.WebApplication/Tables/TablesServiceCollectionExtensions.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Tables/TablesServiceCollectionExtensions.cs
-  Size:                  1.3 KiB (1331 bytes)
-  Last modified:         2026-07-22 20:26:16.000000000 -0400
+  Size:                  2.1 KiB (2159 bytes)
+  Last modified:         2026-07-23 09:57:42.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 23930679
+  Inode:                 25243968
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               79ff4943c9acac74dd10299e2d43575656ae4d2c585435998ab709623951eaf8
-  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+  SHA-256:               6c2ee9974e99e1ab3dc24781063de71d61f02fd6de64eef030deb33b3eea409d
+  Last git commit:       e0e95f9 2026-07-23 10:23:48 -0400 add claude response
 
 --- CONTENT ---
 using MyRestaurant.DataAccess.Tables;
@@ -19084,16 +19617,20 @@ using MyRestaurant.DataAccess.Tables;
 namespace MyRestaurant.WebApplication.Tables;
 
 /// <summary>
-/// Wires the table-management services (TECHNICAL_SPECIFICATION §4.1): the read-only
+/// Wires the table services (TECHNICAL_SPECIFICATION §4). The management surface (§4.1): the read-only
 /// <see cref="ITableDirectory"/> the administration tables list/detail pages read from, and the
 /// transactional <see cref="ITableAdministration"/> those pages write through (create, rename, rotate
-/// the join secret, deactivate/reactivate).
+/// the join secret, deactivate/reactivate). The join-token surface (§4.3–§4.5): the server-only
+/// <see cref="ITableJoinSecretReader"/> and the <see cref="ITableJoinTokens"/> service that reads the
+/// secret through it to render a table's current rotating QR (the counter/admin fallback, §4.5) and to
+/// validate a presented token, recording <c>table_join_tokens_validated_total{result}</c> (§12).
 ///
 /// <para>Kept separate from <c>AddRestaurantIdentity</c> because tables are a §4 concern, not identity;
 /// both are registered from <c>Program.cs</c>. Scoped, matching the identity services' lifetime — they
 /// hold no state and open their own connection per call from the singleton
-/// <see cref="MyRestaurant.DataAccess.IDatabaseConnectionFactory"/>; their only other dependencies
-/// (<see cref="MyRestaurant.Domain.Time.IClock"/>) are singletons registered before this call.</para>
+/// <see cref="MyRestaurant.DataAccess.IDatabaseConnectionFactory"/>; their other dependencies
+/// (<see cref="MyRestaurant.Domain.Time.IClock"/>, the options, and the metrics) are singletons
+/// registered before this call.</para>
 /// </summary>
 public static class TablesServiceCollectionExtensions
 {
@@ -19101,8 +19638,15 @@ public static class TablesServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        // Management (§4.1).
         services.AddScoped<ITableDirectory, DapperTableDirectory>();
         services.AddScoped<ITableAdministration, DapperTableAdministration>();
+
+        // Join tokens (§4.3–§4.5). The secret reader is the only path to the server-only join secret;
+        // the token service is its sole consumer, turning the secret into the rotating QR and the
+        // validation outcome.
+        services.AddScoped<ITableJoinSecretReader, DapperTableJoinSecretReader>();
+        services.AddScoped<ITableJoinTokens, TableJoinTokens>();
 
         return services;
     }
@@ -22575,6 +23119,184 @@ public sealed class TableAdministrationTests : IClassFixture<PostgreSqlFixture>,
         public bool IsActive { get; set; }
         public byte[] JoinSecret { get; set; } = [];
         public DateTimeOffset? JoinSecretRotatedAt { get; set; }
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.DataAccess.Tests/Tables/TableJoinSecretReaderTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TableJoinSecretReaderTests.cs
+  Relative path:         tests/MyRestaurant.DataAccess.Tests/Tables/TableJoinSecretReaderTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/Tables/TableJoinSecretReaderTests.cs
+  Size:                  6.9 KiB (7110 bytes)
+  Last modified:         2026-07-23 09:59:04.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25243985
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               5e9630e53567cb16fd072729802b0598894fd75229aea976c2f74340a9f4fc3a
+  Last git commit:       e0e95f9 2026-07-23 10:23:48 -0400 add claude response
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using MyRestaurant.DataAccess.Tables;
+using MyRestaurant.DataAccess.Tests.Identity;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.Security;
+using Xunit;
+
+namespace MyRestaurant.DataAccess.Tests.Tables;
+
+/// <summary>
+/// Integration tests for <see cref="DapperTableJoinSecretReader"/> (the server-only join-secret read,
+/// TECHNICAL_SPECIFICATION §4.1/§4.3) against a real PostgreSQL 17 container. They pin the properties the
+/// join-token service relies on: the reader returns the exact 32 bytes stored for an active table (real
+/// signing material — a token computed from them validates); it returns <c>null</c> for an unknown table
+/// and for a deactivated one (the §4.1 active-gate); and after a rotation it returns the new bytes, so a
+/// token minted from the old secret no longer validates.
+///
+/// <para>Data is arranged through the real <see cref="DapperTableAdministration"/> (create / rotate /
+/// deactivate) so the reader is tested against rows written exactly the way the app writes them. Each
+/// test truncates <c>restaurant_table CASCADE</c> first (xUnit builds a fresh instance per test and runs
+/// them sequentially). Own <see cref="PostgreSqlFixture"/>; if no container engine is available, every
+/// test skips — mirroring <see cref="TableAdministrationTests"/>.</para>
+/// </summary>
+public sealed class TableJoinSecretReaderTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
+{
+    private const int RotationSeconds = 60;
+
+    private readonly PostgreSqlFixture _fixture;
+    private readonly FixedClock _clock = new(new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero));
+    private readonly UuidV7IdentifierFactory _identifiers = new();
+    private NpgsqlDatabaseConnectionFactory? _connectionFactory;
+
+    public TableJoinSecretReaderTests(PostgreSqlFixture fixture) => _fixture = fixture;
+
+    public async ValueTask InitializeAsync()
+    {
+        if (_fixture.ConnectionString is null)
+        {
+            return;
+        }
+
+        new SchemaMigrationRunner(_fixture.ConnectionString)
+        {
+            MaximumAttempts = 3,
+            DelayBetweenAttempts = TimeSpan.FromMilliseconds(200),
+        }.Run();
+
+        _connectionFactory = new NpgsqlDatabaseConnectionFactory(_fixture.ConnectionString);
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(TestContext.Current.CancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            "TRUNCATE TABLE restaurant_table CASCADE;",
+            cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connectionFactory is not null)
+        {
+            await _connectionFactory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task ReadActiveJoinSecretAsync_ReturnsTheStoredSecret_ThatSignsAValidToken()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid tableId = _identifiers.Create();
+        Assert.Equal(CreateTableOutcome.Created, await Administration().CreateTableAsync(tableId, "Table 5", cancellationToken));
+
+        byte[] stored = await ReadRawSecretAsync(tableId, cancellationToken);
+        byte[]? read = await Reader().ReadActiveJoinSecretAsync(tableId, cancellationToken);
+
+        Assert.NotNull(read);
+        Assert.Equal(SecretGenerator.JoinSecretByteCount, read!.Length);
+        Assert.Equal(stored, read); // exact bytes, compared element-wise
+
+        // The returned bytes are the live signing material: a token computed from them validates.
+        string token = JoinTokenService.ComputeCurrentToken(read, tableId, _clock.UtcNow, RotationSeconds);
+        Assert.Equal(
+            JoinTokenValidationResult.Valid,
+            JoinTokenService.Validate(read, tableId, token, _clock.UtcNow, RotationSeconds));
+    }
+
+    [Fact]
+    public async Task ReadActiveJoinSecretAsync_ReturnsNull_ForUnknownTable()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        byte[]? read = await Reader().ReadActiveJoinSecretAsync(_identifiers.Create(), cancellationToken);
+
+        Assert.Null(read);
+    }
+
+    [Fact]
+    public async Task ReadActiveJoinSecretAsync_ReturnsNull_ForDeactivatedTable()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid tableId = _identifiers.Create();
+        Assert.Equal(CreateTableOutcome.Created, await Administration().CreateTableAsync(tableId, "Patio", cancellationToken));
+        Assert.Equal(
+            TableActivationOutcome.Changed,
+            await Administration().SetTableActiveAsync(tableId, isActive: false, cancellationToken));
+
+        byte[]? read = await Reader().ReadActiveJoinSecretAsync(tableId, cancellationToken);
+
+        Assert.Null(read); // §4.1: a deactivated table has no readable secret
+    }
+
+    [Fact]
+    public async Task ReadActiveJoinSecretAsync_ReflectsRotation_OldTokenNoLongerValidates()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid tableId = _identifiers.Create();
+        Assert.Equal(CreateTableOutcome.Created, await Administration().CreateTableAsync(tableId, "Bar 1", cancellationToken));
+
+        byte[] before = (await Reader().ReadActiveJoinSecretAsync(tableId, cancellationToken))!;
+        string tokenFromOldSecret = JoinTokenService.ComputeCurrentToken(before, tableId, _clock.UtcNow, RotationSeconds);
+
+        Assert.Equal(
+            RotateJoinSecretOutcome.Rotated,
+            await Administration().RotateJoinSecretAsync(tableId, cancellationToken));
+
+        byte[] after = (await Reader().ReadActiveJoinSecretAsync(tableId, cancellationToken))!;
+
+        Assert.NotEqual(before, after); // the reader tracks the rotated bytes
+        Assert.Equal(
+            JoinTokenValidationResult.Invalid,
+            JoinTokenService.Validate(after, tableId, tokenFromOldSecret, _clock.UtcNow, RotationSeconds));
+    }
+
+    // --- helpers -----------------------------------------------------------------------------------
+
+    private void SkipIfNoContainer()
+        => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+
+    private DapperTableAdministration Administration() => new(_connectionFactory!, _clock);
+
+    private DapperTableJoinSecretReader Reader() => new(_connectionFactory!);
+
+    private async Task<byte[]> ReadRawSecretAsync(Guid tableId, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        return (await connection.ExecuteScalarAsync<byte[]>(new CommandDefinition(
+            "SELECT join_secret FROM restaurant_table WHERE restaurant_table_identifier = @Id;",
+            new { Id = tableId },
+            cancellationToken: cancellationToken)))!;
     }
 }
 
@@ -26445,6 +27167,189 @@ public sealed class RestaurantOptionsTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Tables/TableJoinTokensTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TableJoinTokensTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Tables/TableJoinTokensTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Tables/TableJoinTokensTests.cs
+  Size:                  6.8 KiB (6933 bytes)
+  Last modified:         2026-07-23 10:03:07.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25243981
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               e46532a08350aa015246651ed334920ab7846f7c3c7499431e935c0dcd8d05e4
+  Last git commit:       e0e95f9 2026-07-23 10:23:48 -0400 add claude response
+
+--- CONTENT ---
+using System.Diagnostics.Metrics;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using MyRestaurant.DataAccess.Tables;
+using MyRestaurant.Domain.Security;
+using MyRestaurant.Domain.Time;
+using MyRestaurant.WebApplication.Configuration;
+using MyRestaurant.WebApplication.Observability;
+using MyRestaurant.WebApplication.Tables;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests;
+
+/// <summary>
+/// Unit tests for <see cref="TableJoinTokens"/> — the application-layer wrapper over the vector-tested
+/// domain <see cref="JoinTokenService"/> (TECHNICAL_SPECIFICATION §4.3–§4.5). No database: the secret
+/// read is faked by a stub <see cref="ITableJoinSecretReader"/>, so these pin the wrapper's own logic —
+/// building the current QR (token, scan URL, inline SVG, next-rotation instant) for an active table,
+/// returning nothing for a table with no secret, and mapping a presented token to the domain validation
+/// result (current, previous, or neither) including the missing-table → invalid case. Options come from
+/// an empty configuration (all §13 defaults: rotation 60 s, origin <c>https://localhost:8443</c>); the
+/// real <see cref="RestaurantMetrics"/> is constructed so the emission call path runs, though the counter
+/// value is not asserted here (integration/wiring cover the plumbing).
+/// </summary>
+public sealed class TableJoinTokensTests : IDisposable
+{
+    private const int RotationSeconds = 60;
+
+    private static readonly Guid KnownTable = Guid.Parse("0192f000-0000-7000-8000-000000000abc");
+    private static readonly byte[] KnownSecret = CreateSecret();
+
+    private readonly DateTimeOffset _now = new(2026, 7, 17, 12, 0, 30, TimeSpan.Zero);
+    private readonly ServiceProvider _metricsProvider;
+    private readonly RestaurantMetrics _metrics;
+    private readonly RestaurantOptions _options;
+
+    public TableJoinTokensTests()
+    {
+        _metricsProvider = new ServiceCollection().AddMetrics().BuildServiceProvider();
+        _metrics = new RestaurantMetrics(_metricsProvider.GetRequiredService<IMeterFactory>());
+        _options = RestaurantOptions.FromConfiguration(new ConfigurationBuilder().Build());
+    }
+
+    public void Dispose()
+    {
+        _metrics.Dispose();
+        _metricsProvider.Dispose();
+    }
+
+    [Fact]
+    public async Task DescribeCurrentAsync_ForActiveTable_ProducesTheCurrentTokenUrlSvgAndNextRotation()
+    {
+        TableJoinTokens tokens = Build(secretForKnownTable: true);
+
+        TableJoinQrCode? qr = await tokens.DescribeCurrentAsync(KnownTable, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(qr);
+        Assert.Equal(KnownTable, qr!.TableIdentifier);
+
+        string expectedToken = JoinTokenService.ComputeCurrentToken(KnownSecret, KnownTable, _now, RotationSeconds);
+        Assert.Equal(expectedToken, qr.Token);
+        Assert.Equal(JoinTokenService.BuildJoinUrl(_options.PublicOrigin, KnownTable, expectedToken), qr.JoinUrl);
+        Assert.Equal(JoinTokenService.NextRotationInstant(_now, RotationSeconds), qr.NextRotationAt);
+        Assert.Equal(_now, qr.GeneratedAt);
+
+        // Rendered server-side as a self-contained inline SVG (§4.3), not a client call.
+        Assert.StartsWith("<svg", qr.QrCodeSvg, StringComparison.Ordinal);
+        Assert.Contains("viewBox", qr.QrCodeSvg, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DescribeCurrentAsync_ForTableWithNoSecret_ReturnsNull()
+    {
+        TableJoinTokens tokens = Build(secretForKnownTable: false);
+
+        TableJoinQrCode? qr = await tokens.DescribeCurrentAsync(KnownTable, TestContext.Current.CancellationToken);
+
+        Assert.Null(qr);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ForCurrentWindowToken_IsValid()
+    {
+        TableJoinTokens tokens = Build(secretForKnownTable: true);
+        string token = JoinTokenService.ComputeCurrentToken(KnownSecret, KnownTable, _now, RotationSeconds);
+
+        JoinTokenValidationResult result = await tokens.ValidateAsync(KnownTable, token, TestContext.Current.CancellationToken);
+
+        Assert.Equal(JoinTokenValidationResult.Valid, result);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ForPreviousWindowToken_IsValid()
+    {
+        TableJoinTokens tokens = Build(secretForKnownTable: true);
+        long previousWindow = JoinTokenService.CurrentWindowIndex(_now, RotationSeconds) - 1;
+        string token = JoinTokenService.ComputeToken(KnownSecret, KnownTable, previousWindow);
+
+        JoinTokenValidationResult result = await tokens.ValidateAsync(KnownTable, token, TestContext.Current.CancellationToken);
+
+        Assert.Equal(JoinTokenValidationResult.Valid, result);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ForGarbageToken_IsInvalid()
+    {
+        TableJoinTokens tokens = Build(secretForKnownTable: true);
+
+        JoinTokenValidationResult result = await tokens.ValidateAsync(KnownTable, "not-a-real-token", TestContext.Current.CancellationToken);
+
+        Assert.Equal(JoinTokenValidationResult.Invalid, result);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenTableHasNoSecret_IsInvalid()
+    {
+        TableJoinTokens tokens = Build(secretForKnownTable: false);
+
+        // Even a token that *would* be correct against the secret is invalid when the table has none (§4.1).
+        string token = JoinTokenService.ComputeCurrentToken(KnownSecret, KnownTable, _now, RotationSeconds);
+        JoinTokenValidationResult result = await tokens.ValidateAsync(KnownTable, token, TestContext.Current.CancellationToken);
+
+        Assert.Equal(JoinTokenValidationResult.Invalid, result);
+    }
+
+    // --- helpers -----------------------------------------------------------------------------------
+
+    private TableJoinTokens Build(bool secretForKnownTable)
+        => new(
+            new StubSecretReader(secretForKnownTable ? KnownSecret : null),
+            _metrics,
+            new FixedClock(_now),
+            _options);
+
+    private static byte[] CreateSecret()
+    {
+        byte[] secret = new byte[SecretGenerator.JoinSecretByteCount];
+        for (int index = 0; index < secret.Length; index++)
+        {
+            secret[index] = (byte)index;
+        }
+
+        return secret;
+    }
+
+    /// <summary>Returns the configured secret only for <see cref="KnownTable"/>; every other table has none.</summary>
+    private sealed class StubSecretReader : ITableJoinSecretReader
+    {
+        private readonly byte[]? _secret;
+
+        public StubSecretReader(byte[]? secret) => _secret = secret;
+
+        public Task<byte[]?> ReadActiveJoinSecretAsync(Guid tableIdentifier, CancellationToken cancellationToken = default)
+            => Task.FromResult(tableIdentifier == KnownTable ? _secret : null);
+    }
+
+    private sealed class FixedClock : IClock
+    {
+        public FixedClock(DateTimeOffset utcNow) => UtcNow = utcNow;
+
+        public DateTimeOffset UtcNow { get; }
+    }
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.WebApplication.Tests/Tables/TablesWiringTests.cs
 ################################################################################
 
@@ -26452,34 +27357,39 @@ public sealed class RestaurantOptionsTests
   File name:             TablesWiringTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Tables/TablesWiringTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Tables/TablesWiringTests.cs
-  Size:                  2.5 KiB (2538 bytes)
-  Last modified:         2026-07-22 20:32:47.000000000 -0400
+  Size:                  3.8 KiB (3889 bytes)
+  Last modified:         2026-07-23 10:01:32.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 23931066
+  Inode:                 25243982
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               221c616630a1e91fc36171f7aea3fa3f5066b58b5b77735fa11a441284339ce5
-  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+  SHA-256:               58024c74943a995c82cfccb452ba94092a641f7d01c7ccae71bde507d3d33b0e
+  Last git commit:       e0e95f9 2026-07-23 10:23:48 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MyRestaurant.DataAccess;
 using MyRestaurant.DataAccess.Tables;
 using MyRestaurant.Domain.Time;
+using MyRestaurant.WebApplication.Configuration;
+using MyRestaurant.WebApplication.Observability;
 using MyRestaurant.WebApplication.Tables;
 using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests;
 
 /// <summary>
-/// Verifies the table-management wiring composed by
-/// <see cref="TablesServiceCollectionExtensions.AddRestaurantTables"/> (TECHNICAL_SPECIFICATION §4.1):
-/// the read-only <see cref="ITableDirectory"/> and the transactional <see cref="ITableAdministration"/>
-/// resolve to their Dapper implementations. Constructing them opens no connection (they only capture
-/// the connection factory and clock), so this resolves without a database — mirroring the
-/// resolvability facts in <see cref="IdentityWiringTests"/>.
+/// Verifies the table wiring composed by
+/// <see cref="TablesServiceCollectionExtensions.AddRestaurantTables"/> (TECHNICAL_SPECIFICATION §4): the
+/// read-only <see cref="ITableDirectory"/> and transactional <see cref="ITableAdministration"/>
+/// management services (§4.1), plus the join-token services (§4.3–§4.5) — the server-only
+/// <see cref="ITableJoinSecretReader"/> and the <see cref="ITableJoinTokens"/> that depends on it — all
+/// resolve to their concrete implementations. Constructing them opens no connection (they only capture
+/// the connection factory, clock, options, and metrics), so this resolves without a database — mirroring
+/// the resolvability facts in <see cref="IdentityWiringTests"/>.
 /// </summary>
 public sealed class TablesWiringTests
 {
@@ -26505,14 +27415,40 @@ public sealed class TablesWiringTests
         Assert.IsType<DapperTableAdministration>(administration);
     }
 
+    [Fact]
+    public void TableJoinSecretReader_IsResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        ITableJoinSecretReader reader = scope.ServiceProvider.GetRequiredService<ITableJoinSecretReader>();
+
+        Assert.IsType<DapperTableJoinSecretReader>(reader);
+    }
+
+    [Fact]
+    public void TableJoinTokens_IsResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        ITableJoinTokens tokens = scope.ServiceProvider.GetRequiredService<ITableJoinTokens>();
+
+        Assert.IsType<TableJoinTokens>(tokens);
+    }
+
     private static ServiceProvider BuildProvider()
     {
         ServiceCollection services = new();
 
-        // The prerequisites Program.cs registers before AddRestaurantTables (a clock and a connection
-        // factory). The factory is never used here — resolution constructs, it does not connect.
+        // The prerequisites Program.cs registers before AddRestaurantTables: a clock, a connection
+        // factory, the bound options, and the metrics (which need an IMeterFactory via AddMetrics). The
+        // connection factory is never used here — resolution constructs, it does not connect.
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IDatabaseConnectionFactory, UnusedConnectionFactory>();
+        services.AddSingleton(RestaurantOptions.FromConfiguration(new ConfigurationBuilder().Build()));
+        services.AddMetrics();
+        services.AddSingleton<RestaurantMetrics>();
 
         services.AddRestaurantTables();
 
@@ -26530,10 +27466,10 @@ public sealed class TablesWiringTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 162
-  Total size     : 1.0 MiB (1089158 bytes)
+  Files dumped   : 167
+  Total size     : 1.1 MiB (1127646 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-23T09:32:20-04:00
+  Completed at   : 2026-07-23T10:24:18-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
