@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-22T19:53:19-04:00
+  Generated at   : 2026-07-22T21:00:38-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 6ebb66bf451e7a41a5aa829e481bce83b2d291a7
-  Commit (short) : 6ebb66b
-  Commit date    : 2026-07-22 09:54:25 -0400
-  Commit message : remove manifest and run scripts
+  Commit (full)  : 5a0f5c52287205e066eb99d4e8aeb1448dcca8eb
+  Commit (short) : 5a0f5c5
+  Commit date    : 2026-07-22 21:00:20 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 150
+  Files included : 158
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (150 included files)
+# FILE TREE  (158 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -590,7 +590,10 @@ cat "$OUTPUT_FILE"
 │   │   │   └── 0002_passkey_credential_webauthn_state.sql
 │   │   ├── MyRestaurant.DataAccess.csproj
 │   │   ├── NpgsqlDatabaseConnectionFactory.cs
-│   │   └── SchemaMigrationRunner.cs
+│   │   ├── SchemaMigrationRunner.cs
+│   │   └── Tables
+│   │       ├── TableAdministration.cs
+│   │       └── TableDirectory.cs
 │   ├── MyRestaurant.Domain
 │   │   ├── Authentication
 │   │   │   ├── ObligationsPipeline.cs
@@ -643,8 +646,11 @@ cat "$OUTPUT_FILE"
 │       │   ├── Pages
 │       │   │   ├── Administration
 │       │   │   │   ├── AdministrationHome.razor
+│       │   │   │   ├── AdministrationTables.razor
 │       │   │   │   ├── CreateStaff.razor
-│       │   │   │   └── ManagePerson.razor
+│       │   │   │   ├── CreateTable.razor
+│       │   │   │   ├── ManagePerson.razor
+│       │   │   │   └── ManageTable.razor
 │       │   │   ├── Home.razor
 │       │   │   ├── Setup.razor
 │       │   │   └── Table
@@ -672,6 +678,8 @@ cat "$OUTPUT_FILE"
 │       ├── Program.cs
 │       ├── Properties
 │       │   └── launchSettings.json
+│       ├── Tables
+│       │   └── TablesServiceCollectionExtensions.cs
 │       ├── appsettings.Development.json
 │       ├── appsettings.json
 │       └── wwwroot
@@ -691,7 +699,9 @@ cat "$OUTPUT_FILE"
     │   │   └── FixedClock.cs
     │   ├── MyRestaurant.DataAccess.Tests.csproj
     │   ├── PostgreSqlFixture.cs
-    │   └── SchemaMigrationRunnerTests.cs
+    │   ├── SchemaMigrationRunnerTests.cs
+    │   └── Tables
+    │       └── TableAdministrationTests.cs
     ├── MyRestaurant.Domain.Tests
     │   ├── Argon2PhcStringTests.cs
     │   ├── Base32TextTests.cs
@@ -722,7 +732,9 @@ cat "$OUTPUT_FILE"
         │   ├── SetupTicketTests.cs
         │   └── TotpEnrollmentTicketTests.cs
         ├── MyRestaurant.WebApplication.Tests.csproj
-        └── RestaurantOptionsTests.cs
+        ├── RestaurantOptionsTests.cs
+        └── Tables
+            └── TablesWiringTests.cs
 
 
 ################################################################################
@@ -2236,15 +2248,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  50.6 KiB (51864 bytes)
-  Last modified:         2026-07-21 12:14:18.000000000 -0400
+  Size:                  52.0 KiB (53296 bytes)
+  Last modified:         2026-07-22 20:57:12.457812890 -0400
   Permissions:           -rw-------
   Owner:                 kushal:kushal
   Inode:                 22331463
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               e84fd18db4226344ccb8f592e02e08b4fba488a1d4e94fca8cd6bc0916a70d21
-  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
+  SHA-256:               0e58f01570350a1c927dd21b8b97f7b79fe08b4b4499a369f1f7f0cdf3508956
+  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
 
 --- CONTENT ---
 # Build progress
@@ -2965,6 +2977,25 @@ real grantor. This is also the home for **voluntary TOTP removal**, the §4.2 "a
 cannot remove their own enrollment" rule, and the grant-time passkey mandate for the
 kitchen and administrator roles (§3.7). Store-level integration tests + middleware tests
 throughout.
+
+### M3 Slice 1 — table management: CRUD + join-secret rotation (landed)
+
+The administration area can now manage tables (§4.1). New `ITableAdministration`/
+`DapperTableAdministration` (DataAccess/Tables) creates a table with a CSPRNG 32-byte
+join secret, renames it (no-change and label-collision detected), rotates the secret
+(new 32 bytes + `join_secret_rotated_at` stamped — every outstanding token dies, §4.3),
+and deactivates/reactivates — one connection+transaction per op, one IClock instant,
+mirroring DapperAccountAdministration. The join secret is never read into a summary or
+returned to any caller (§4.1). Read-only `ITableDirectory`/`DapperTableDirectory` lists
+tables oldest-first and reads one by id, secret column never selected. Registered by a
+new `AddRestaurantTables()` (WebApplication/Tables), wired in Program.cs after
+`AddRestaurantIdentity`. Three static-SSR admin pages: `/administration/tables` (list),
+`/administration/tables/new` (create), `/administration/tables/{id}` (rename, rotate,
+deactivate/reactivate — post/redirect/get). AdministrationHome gained a Tables header
+link. Table changes are not in the `security_event` vocabulary, so none are audited.
+No packages, no migration (restaurant_table ships in 0001). Tests:
+`TableAdministrationTests` (Testcontainers, 11 facts) and `TablesWiringTests`
+(resolvability, no container). Next M3 slice: display pairing + device auth + `/display`.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -8907,6 +8938,464 @@ public sealed class SchemaMigrationException : Exception
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.DataAccess/Tables/TableAdministration.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TableAdministration.cs
+  Relative path:         src/MyRestaurant.DataAccess/Tables/TableAdministration.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Tables/TableAdministration.cs
+  Size:                  13.6 KiB (13947 bytes)
+  Last modified:         2026-07-22 20:25:44.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 23931063
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               d79df712793942ae6e0ff20043a0a35ca1a5aed24cd2bc2d8aa3561a780435ab
+  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using MyRestaurant.Domain.Security;
+using MyRestaurant.Domain.Time;
+using Npgsql;
+
+namespace MyRestaurant.DataAccess.Tables;
+
+/// <summary>The outcome of <see cref="ITableAdministration.CreateTableAsync"/>.</summary>
+public enum CreateTableOutcome
+{
+    /// <summary>The table row was written with a freshly generated 32-byte join secret (§4.1).</summary>
+    Created,
+
+    /// <summary>The label was already taken (the <c>restaurant_table.label</c> UNIQUE constraint tripped); nothing was written.</summary>
+    LabelTaken,
+}
+
+/// <summary>The outcome of <see cref="ITableAdministration.RenameTableAsync"/>.</summary>
+public enum RenameTableOutcome
+{
+    /// <summary>The label was changed.</summary>
+    Renamed,
+
+    /// <summary>The new label equalled the current one; nothing changed.</summary>
+    NoChange,
+
+    /// <summary>Another table already uses the requested label (the UNIQUE constraint tripped); nothing changed.</summary>
+    LabelTaken,
+
+    /// <summary>No table exists with the given identifier; nothing changed.</summary>
+    TableNotFound,
+}
+
+/// <summary>The outcome of <see cref="ITableAdministration.RotateJoinSecretAsync"/>.</summary>
+public enum RotateJoinSecretOutcome
+{
+    /// <summary>
+    /// A new 32-byte join secret was generated and <c>join_secret_rotated_at</c> was stamped, so every
+    /// outstanding token for the table dies instantly (§4.1/§4.3).
+    /// </summary>
+    Rotated,
+
+    /// <summary>No table exists with the given identifier; nothing changed.</summary>
+    TableNotFound,
+}
+
+/// <summary>The outcome of <see cref="ITableAdministration.SetTableActiveAsync"/>.</summary>
+public enum TableActivationOutcome
+{
+    /// <summary>The table's active state changed (deactivating stops token validation and display rendering, §4.1).</summary>
+    Changed,
+
+    /// <summary>The table was already in the requested state; nothing changed.</summary>
+    NoChange,
+
+    /// <summary>No table exists with the given identifier; nothing changed.</summary>
+    TableNotFound,
+}
+
+/// <summary>
+/// Administrative management of restaurant tables and their per-table join secret
+/// (TECHNICAL_SPECIFICATION §4.1). Create a table (with a CSPRNG join secret), rename it, rotate the
+/// join secret (killing every outstanding join token for it), and deactivate/reactivate it. The join
+/// secret is generated and held entirely server-side — it is <b>never</b> returned to any caller or
+/// client (displays receive only a rendered QR; §4.1/§4.2) — so, unlike account administration (§3.7),
+/// there is nothing here for the web layer to hash or hand out.
+///
+/// <para>This is the write companion to the read-only <see cref="ITableDirectory"/>. It follows the
+/// self-contained connection/transaction pattern the identity services established
+/// (<c>DapperAccountAdministration</c>, §3.7): one connection and one transaction per operation, a
+/// single <see cref="IClock.UtcNow"/> instant per operation, and application-generated UUIDv7
+/// identifiers (ADR-0011). Table changes are not part of the <c>security_event</c> vocabulary (which is
+/// person-scoped, §8.2), so no audit row is written.</para>
+/// </summary>
+public interface ITableAdministration
+{
+    /// <summary>
+    /// Creates a table with the given label and a freshly generated 32-byte join secret (§4.1). The
+    /// identifier is minted by the caller (ADR-0011) so it can link to the new table immediately; it
+    /// becomes the <c>restaurant_table</c> row's id. A duplicate label yields
+    /// <see cref="CreateTableOutcome.LabelTaken"/> and writes nothing.
+    /// </summary>
+    Task<CreateTableOutcome> CreateTableAsync(
+        Guid tableIdentifier,
+        string label,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Changes a table's label. Returns <see cref="RenameTableOutcome.NoChange"/> when the new label
+    /// equals the current one, <see cref="RenameTableOutcome.LabelTaken"/> when another table already
+    /// uses it, and <see cref="RenameTableOutcome.TableNotFound"/> when no such table exists.
+    /// </summary>
+    Task<RenameTableOutcome> RenameTableAsync(
+        Guid tableIdentifier,
+        string label,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Rotates the table's join secret to fresh 32 bytes and stamps <c>join_secret_rotated_at</c>, which
+    /// invalidates every outstanding token for the table immediately (§4.1/§4.3). Returns
+    /// <see cref="RotateJoinSecretOutcome.TableNotFound"/> when no such table exists.
+    /// </summary>
+    Task<RotateJoinSecretOutcome> RotateJoinSecretAsync(
+        Guid tableIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets a table's active state (§4.1 — deactivating stops token validation and display rendering).
+    /// Returns <see cref="TableActivationOutcome.NoChange"/> when it is already in the requested state
+    /// and <see cref="TableActivationOutcome.TableNotFound"/> when no such table exists.
+    /// </summary>
+    Task<TableActivationOutcome> SetTableActiveAsync(
+        Guid tableIdentifier,
+        bool isActive,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// The Dapper implementation of <see cref="ITableAdministration"/>. Like
+/// <c>DapperAccountAdministration</c> it owns its own connection and transaction per operation, stamps
+/// timestamps with one <see cref="IClock.UtcNow"/> instant, and holds no state. The join secret is
+/// produced with <see cref="SecretGenerator.GenerateJoinSecret"/> (a CSPRNG, 32 bytes, §4.1).
+/// </summary>
+public sealed class DapperTableAdministration : ITableAdministration
+{
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+    private readonly IClock _clock;
+
+    public DapperTableAdministration(IDatabaseConnectionFactory connectionFactory, IClock clock)
+    {
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+        ArgumentNullException.ThrowIfNull(clock);
+
+        _connectionFactory = connectionFactory;
+        _clock = clock;
+    }
+
+    public async Task<CreateTableOutcome> CreateTableAsync(
+        Guid tableIdentifier,
+        string label,
+        CancellationToken cancellationToken = default)
+    {
+        string normalizedLabel = NormalizeLabel(label);
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        // A fresh 32-byte join secret, generated server-side and never returned to any caller (§4.1).
+        // join_secret_rotated_at is left NULL: rotation stamps it, so NULL reads as "never rotated".
+        try
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO restaurant_table (
+                    restaurant_table_identifier, label, join_secret, join_secret_rotated_at, is_active, created_at)
+                VALUES (
+                    @Id, @Label, @JoinSecret, NULL, true, @CreatedAt);
+                """,
+                new
+                {
+                    Id = tableIdentifier,
+                    Label = normalizedLabel,
+                    JoinSecret = SecretGenerator.GenerateJoinSecret(),
+                    CreatedAt = now,
+                },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+        }
+        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return CreateTableOutcome.LabelTaken;
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return CreateTableOutcome.Created;
+    }
+
+    public async Task<RenameTableOutcome> RenameTableAsync(
+        Guid tableIdentifier,
+        string label,
+        CancellationToken cancellationToken = default)
+    {
+        string normalizedLabel = NormalizeLabel(label);
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        TableStateRow? current = await ReadStateAsync(connection, transaction, tableIdentifier, cancellationToken)
+            .ConfigureAwait(false);
+        if (current is null)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return RenameTableOutcome.TableNotFound;
+        }
+
+        // label is a case-sensitive `text UNIQUE` (not citext), so compare ordinally.
+        if (string.Equals(current.Label, normalizedLabel, StringComparison.Ordinal))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return RenameTableOutcome.NoChange;
+        }
+
+        try
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                "UPDATE restaurant_table SET label = @Label WHERE restaurant_table_identifier = @Id;",
+                new { Label = normalizedLabel, Id = tableIdentifier },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+        }
+        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return RenameTableOutcome.LabelTaken;
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return RenameTableOutcome.Renamed;
+    }
+
+    public async Task<RotateJoinSecretOutcome> RotateJoinSecretAsync(
+        Guid tableIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        // A single conditional UPDATE: the affected-row count distinguishes a real rotation from a
+        // missing table without a separate existence read.
+        int affected = await connection.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE restaurant_table
+            SET join_secret = @JoinSecret, join_secret_rotated_at = @Now
+            WHERE restaurant_table_identifier = @Id;
+            """,
+            new
+            {
+                JoinSecret = SecretGenerator.GenerateJoinSecret(),
+                Now = now,
+                Id = tableIdentifier,
+            },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        if (affected == 0)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return RotateJoinSecretOutcome.TableNotFound;
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return RotateJoinSecretOutcome.Rotated;
+    }
+
+    public async Task<TableActivationOutcome> SetTableActiveAsync(
+        Guid tableIdentifier,
+        bool isActive,
+        CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        TableStateRow? current = await ReadStateAsync(connection, transaction, tableIdentifier, cancellationToken)
+            .ConfigureAwait(false);
+        if (current is null)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return TableActivationOutcome.TableNotFound;
+        }
+
+        if (current.IsActive == isActive)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return TableActivationOutcome.NoChange;
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            "UPDATE restaurant_table SET is_active = @IsActive WHERE restaurant_table_identifier = @Id;",
+            new { IsActive = isActive, Id = tableIdentifier },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return TableActivationOutcome.Changed;
+    }
+
+    private static async Task<TableStateRow?> ReadStateAsync(
+        DbConnection connection, DbTransaction transaction, Guid tableIdentifier, CancellationToken cancellationToken)
+        => await connection.QuerySingleOrDefaultAsync<TableStateRow>(new CommandDefinition(
+            """
+            SELECT label AS Label, is_active AS IsActive
+            FROM restaurant_table
+            WHERE restaurant_table_identifier = @Id;
+            """,
+            new { Id = tableIdentifier },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+    private static string NormalizeLabel(string label)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        return label.Trim();
+    }
+
+    // Dapper maps this positional record by constructor-parameter name against the aliased columns above.
+    private sealed record TableStateRow(string Label, bool IsActive);
+}
+
+################################################################################
+# FILE: src/MyRestaurant.DataAccess/Tables/TableDirectory.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TableDirectory.cs
+  Relative path:         src/MyRestaurant.DataAccess/Tables/TableDirectory.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Tables/TableDirectory.cs
+  Size:                  4.6 KiB (4673 bytes)
+  Last modified:         2026-07-22 20:26:05.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 23931062
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               62d1270b4485d95fe0cb3e6db3773564154826ccf652ef306418143946fa3cac
+  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+
+namespace MyRestaurant.DataAccess.Tables;
+
+/// <summary>
+/// A read-only projection of a <c>restaurant_table</c> row for the administration tables area
+/// (TECHNICAL_SPECIFICATION §4.1, §11.4). It deliberately omits the <c>join_secret</c> — that value is
+/// server-only and is never sent to any client (§4.1) — and carries <see cref="JoinSecretRotatedAt"/>
+/// (null when the secret has never been rotated) so the admin can see when tokens were last cut.
+/// </summary>
+/// <param name="TableIdentifier">The table's UUIDv7 primary key (ADR-0011).</param>
+/// <param name="Label">The unique, human label (e.g. "Table 5", §4.1).</param>
+/// <param name="IsActive">False once deactivated — token validation and display rendering stop (§4.1).</param>
+/// <param name="JoinSecretRotatedAt">When the join secret was last rotated, or <c>null</c> if never (§4.1).</param>
+/// <param name="CreatedAt">Row creation timestamp (UTC).</param>
+public sealed record RestaurantTableSummary(
+    Guid TableIdentifier,
+    string Label,
+    bool IsActive,
+    DateTimeOffset? JoinSecretRotatedAt,
+    DateTimeOffset CreatedAt);
+
+/// <summary>
+/// Reads tables for the administration area (TECHNICAL_SPECIFICATION §4.1, §11.4). This is the
+/// read-only reporting companion to <see cref="ITableAdministration"/>: enumerating tables, or reading
+/// one for its management page, is a reporting concern, so it lives behind its own interface
+/// (substitutable in tests) rather than on the write service.
+/// </summary>
+public interface ITableDirectory
+{
+    /// <summary>Every table, oldest first then by label, without the join secret.</summary>
+    Task<IReadOnlyList<RestaurantTableSummary>> ListTablesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>One table by identifier, or <c>null</c> when no such table exists.</summary>
+    Task<RestaurantTableSummary?> GetTableAsync(Guid tableIdentifier, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// The Dapper implementation of <see cref="ITableDirectory"/>. One connection per call; columns are
+/// aliased to the record's member names so Dapper maps them without <c>MatchNamesWithUnderscores</c>.
+/// The <c>join_secret</c> column is never selected. The connection comes from the singleton
+/// <see cref="IDatabaseConnectionFactory"/>, matching the rest of the data layer.
+/// </summary>
+public sealed class DapperTableDirectory : ITableDirectory
+{
+    private const string TableColumns = """
+        restaurant_table_identifier AS TableIdentifier,
+        label                       AS Label,
+        is_active                   AS IsActive,
+        join_secret_rotated_at      AS JoinSecretRotatedAt,
+        created_at                  AS CreatedAt
+        """;
+
+    // Built from TableColumns at type-init (static readonly, not const) so the shared column list is
+    // interpolated once without relying on constant-interpolated-string support.
+    private static readonly string ListSql = $"""
+        SELECT {TableColumns}
+        FROM restaurant_table
+        ORDER BY created_at, label;
+        """;
+
+    private static readonly string ByIdSql = $"""
+        SELECT {TableColumns}
+        FROM restaurant_table
+        WHERE restaurant_table_identifier = @TableIdentifier;
+        """;
+
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+
+    public DapperTableDirectory(IDatabaseConnectionFactory connectionFactory)
+    {
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+        _connectionFactory = connectionFactory;
+    }
+
+    public async Task<IReadOnlyList<RestaurantTableSummary>> ListTablesAsync(CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        IEnumerable<RestaurantTableSummary> tables = await connection.QueryAsync<RestaurantTableSummary>(
+            new CommandDefinition(ListSql, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        return tables.ToArray();
+    }
+
+    public async Task<RestaurantTableSummary?> GetTableAsync(Guid tableIdentifier, CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        return await connection.QuerySingleOrDefaultAsync<RestaurantTableSummary>(new CommandDefinition(
+            ByIdSql,
+            new { TableIdentifier = tableIdentifier },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.Domain/Authentication/ObligationsPipeline.cs
 ################################################################################
 
@@ -12687,15 +13176,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             AdministrationHome.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor
-  Size:                  8.2 KiB (8386 bytes)
-  Last modified:         2026-07-22 09:26:22.000000000 -0400
+  Size:                  8.4 KiB (8633 bytes)
+  Last modified:         2026-07-22 20:31:04.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 23579606
+  Inode:                 23931057
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               c186e16afdd7ad32b8707de59f998a416455425b0d5fe2216add395dee81a7b1
-  Last git commit:       2477e46 2026-07-22 09:51:13 -0400 add claude response
+  SHA-256:               48c009f8bfbad6006a884273ec537365d150bfab255c68ac6a1aee68328715cd
+  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
 
 --- CONTENT ---
 @page "/administration"
@@ -12722,7 +13211,10 @@ public static class AuthorizationServiceCollectionExtensions
             <p class="eyebrow">Administration</p>
             <h1>People</h1>
         </div>
-        <a class="button-primary" href="/administration/people/new">Create staff account</a>
+        <div class="admin-header-actions">
+            <a class="button-secondary" href="/administration/tables">Tables</a>
+            <a class="button-primary" href="/administration/people/new">Create staff account</a>
+        </div>
     </div>
 
     <p class="lede">
@@ -12844,6 +13336,12 @@ public static class AuthorizationServiceCollectionExtensions
         justify-content: space-between;
     }
 
+    .admin-header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
     .admin-people {
         overflow-x: auto;
     }
@@ -12935,6 +13433,221 @@ public static class AuthorizationServiceCollectionExtensions
 
     private bool IsLockedOut(PersonSummary person)
         => person.LockoutEndAt is { } end && end > Clock.UtcNow;
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationTables.razor
+################################################################################
+
+--- METADATA ---
+  File name:             AdministrationTables.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationTables.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationTables.razor
+  Size:                  6.2 KiB (6362 bytes)
+  Last modified:         2026-07-22 20:26:52.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 23931058
+  Hard links:            1
+  MIME type:             text/html
+  SHA-256:               7cba3a627bd3e462952ceb9c6a3d7b5d94f28ce6b9df6fafd1c61e51fd3c24e5
+  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+
+--- CONTENT ---
+@page "/administration/tables"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.DataAccess.Tables
+@inject ITableDirectory Tables
+
+@* The administration tables list (TECHNICAL_SPECIFICATION §4.1, §11.4 — `area.administration`). It
+   lists every table with its status and when its join secret was last rotated, links each to its
+   management page, and offers table creation. Static SSR, like every administration surface, so the
+   management pages it links can post full pages. Endpoint authorization enforces the policy on the
+   server (anonymous → /sign-in, signed-in non-administrator → /access-denied). Not exempt from the
+   obligations pipeline. Join secrets are never read or shown here (§4.1). *@
+
+<PageTitle>Administration — tables</PageTitle>
+
+<section class="panel">
+    <div class="admin-header">
+        <div>
+            <p class="eyebrow">Administration</p>
+            <h1>Tables</h1>
+        </div>
+        <div class="admin-header-actions">
+            <a class="button-secondary" href="/administration">People</a>
+            <a class="button-primary" href="/administration/tables/new">Create table</a>
+        </div>
+    </div>
+
+    <p class="lede">
+        Every table, oldest first. Each has a private join secret used to sign the rotating QR codes
+        guests scan; the secret is never shown. Open a table to rename it, rotate its secret, or
+        deactivate it.
+    </p>
+
+    @if (_tables is null)
+    {
+        <p class="lede">Loading…</p>
+    }
+    else if (_tables.Count == 0)
+    {
+        <p class="lede">No tables yet. Create the first one to start pairing displays and taking orders.</p>
+    }
+    else
+    {
+        <div class="admin-tables">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">Label</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Join secret rotated</th>
+                        <th scope="col">Created</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (RestaurantTableSummary table in _tables)
+                    {
+                        <tr>
+                            <td><span class="table-label">@table.Label</span></td>
+                            <td>
+                                @if (table.IsActive)
+                                {
+                                    <span class="chip chip-ok">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="chip chip-warn">Deactivated</span>
+                                }
+                            </td>
+                            <td>
+                                @if (table.JoinSecretRotatedAt is { } rotatedAt)
+                                {
+                                    <span>@rotatedAt.ToLocalTime().ToString("g")</span>
+                                }
+                                else
+                                {
+                                    <span class="muted">Never</span>
+                                }
+                            </td>
+                            <td>@table.CreatedAt.ToLocalTime().ToString("g")</td>
+                            <td class="admin-row-actions">
+                                <a href="@($"/administration/tables/{table.TableIdentifier}")">Manage</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <p class="form-footnote">
+        Deactivating a table stops its join tokens validating and its display rendering; nothing is
+        deleted, so past sittings and orders keep their table. Rotating a join secret invalidates every
+        outstanding QR for that table immediately.
+    </p>
+
+    <p><a href="/administration">Back to administration</a></p>
+</section>
+
+@* Table rules namespaced under .admin-tables, inline for the same reason AdministrationHome keeps
+   its own: App.razor links the static stylesheet, so component CSS isolation is not active here. *@
+<style>
+    .admin-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-start;
+        justify-content: space-between;
+    }
+
+    .admin-header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .admin-tables {
+        overflow-x: auto;
+    }
+
+    .admin-tables table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+    }
+
+    .admin-tables th,
+    .admin-tables td {
+        text-align: left;
+        padding: 0.6rem 0.75rem;
+        border-bottom: 1px solid var(--rule, #e5e5e5);
+        vertical-align: top;
+    }
+
+    .admin-tables thead th {
+        font-weight: 600;
+        color: var(--muted-foreground, #666);
+        border-bottom-width: 2px;
+    }
+
+    .admin-tables .table-label {
+        display: block;
+        font-weight: 600;
+    }
+
+    .admin-tables .muted {
+        color: var(--muted-foreground, #999);
+    }
+
+    .admin-tables .chip {
+        display: inline-block;
+        margin: 0.1rem 0.2rem 0.1rem 0;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        background: var(--chip-background, #f0f0f0);
+        color: var(--chip-foreground, #333);
+        white-space: nowrap;
+    }
+
+    .admin-tables .chip-ok {
+        background: #e6f4ea;
+        color: #1e7a37;
+    }
+
+    .admin-tables .chip-warn {
+        background: #fdecea;
+        color: #a3261c;
+    }
+
+    .admin-tables .admin-row-actions {
+        white-space: nowrap;
+        text-align: right;
+    }
+
+    .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+</style>
+
+@code {
+    private IReadOnlyList<RestaurantTableSummary>? _tables;
+
+    protected override async Task OnInitializedAsync()
+        => _tables = await Tables.ListTablesAsync();
 }
 
 ################################################################################
@@ -13193,6 +13906,141 @@ else
         public bool GrantCounter { get; set; }
 
         public bool GrantKitchen { get; set; }
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Pages/Administration/CreateTable.razor
+################################################################################
+
+--- METADATA ---
+  File name:             CreateTable.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/CreateTable.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/CreateTable.razor
+  Size:                  4.3 KiB (4358 bytes)
+  Last modified:         2026-07-22 20:28:47.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 23931060
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               cdcf25a771a6734c898ba993a80b71b0129d5ece242c3efa6c59130843b85650
+  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+
+--- CONTENT ---
+@page "/administration/tables/new"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.DataAccess.Tables
+@using MyRestaurant.Domain.Identifiers
+@inject ITableAdministration Tables
+@inject IIdentifierFactory IdentifierFactory
+@inject NavigationManager Navigation
+
+@* Create a table (TECHNICAL_SPECIFICATION §4.1). Administrator only (endpoint authorization, like
+   every administration surface). Static SSR: a full-page form post. The table is created with a
+   freshly generated 32-byte join secret, held entirely server-side and never shown (§4.1). Nothing is
+   written until the form is submitted; the identifier is minted here so the success screen can link
+   straight to the new table's management page. *@
+
+<PageTitle>Create table</PageTitle>
+
+@if (_created)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Table created</p>
+        <h1>@_createdLabel is ready</h1>
+
+        <p class="status-success" role="status">
+            The table <strong>@_createdLabel</strong> was created with a private join secret. Pair a
+            display to it, or show its rotating QR from the counter, to let guests join.
+        </p>
+
+        <div class="form-actions">
+            <a class="button-primary" href="@($"/administration/tables/{_createdTableIdentifier}")">Manage this table</a>
+            <a class="button-secondary" href="/administration/tables">Back to tables</a>
+        </div>
+    </section>
+}
+else
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Create a table</h1>
+        <p class="lede">
+            Give the table a short, unique label — this is what staff see on rosters and the kitchen
+            queue. A private join secret is generated for it automatically.
+        </p>
+
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <EditForm Model="Input" method="post" OnValidSubmit="CreateAsync" FormName="create-table">
+            <DataAnnotationsValidator />
+
+            <div class="form-field">
+                <label for="label">Label</label>
+                <InputText id="label" @bind-Value="Input.Label" autocomplete="off" autofocus />
+                <ValidationMessage For="@(() => Input.Label)" />
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Create table</button>
+                <a class="button-secondary" href="/administration/tables">Cancel</a>
+            </div>
+        </EditForm>
+
+        <p class="form-footnote">
+            Labels must be unique. You can rename a table later, or deactivate it, from its management
+            page.
+        </p>
+    </section>
+}
+
+@code {
+    private bool _created;
+    private string? _createdLabel;
+    private Guid _createdTableIdentifier;
+    private string? _errorMessage;
+
+    [SupplyParameterFromForm(FormName = "create-table")]
+    private CreateTableInputModel Input { get; set; } = default!;
+
+    protected override void OnInitialized()
+        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
+        => Input ??= new();
+
+    private async Task CreateAsync()
+    {
+        string label = Input.Label.Trim();
+        Guid tableIdentifier = IdentifierFactory.Create();
+
+        CreateTableOutcome outcome = await Tables.CreateTableAsync(
+            tableIdentifier, label, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case CreateTableOutcome.Created:
+                _createdLabel = label;
+                _createdTableIdentifier = tableIdentifier;
+                _created = true;
+                break;
+            case CreateTableOutcome.LabelTaken:
+                _errorMessage = "That label is already used by another table. Please choose a different one.";
+                break;
+        }
+    }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private sealed class CreateTableInputModel
+    {
+        [Required(ErrorMessage = "Choose a label for the table.")]
+        [StringLength(64, MinimumLength = 1, ErrorMessage = "The label must be 1–64 characters.")]
+        public string Label { get; set; } = string.Empty;
     }
 }
 
@@ -13753,6 +14601,376 @@ else
     private sealed class RoleSelectionModel
     {
         public string RoleName { get; set; } = string.Empty;
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageTable.razor
+################################################################################
+
+--- METADATA ---
+  File name:             ManageTable.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageTable.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageTable.razor
+  Size:                  11.3 KiB (11521 bytes)
+  Last modified:         2026-07-22 20:29:45.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 23931059
+  Hard links:            1
+  MIME type:             text/html
+  SHA-256:               962972017282006d807724816033139dd739fd49c1d2ea2df147d868f44d7047
+  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+
+--- CONTENT ---
+@page "/administration/tables/{TableId:guid}"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.DataAccess.Tables
+@inject ITableDirectory TableDirectory
+@inject ITableAdministration Tables
+@inject NavigationManager Navigation
+
+@* Manage one table (TECHNICAL_SPECIFICATION §4.1). Administrator only (endpoint authorization).
+   Static SSR: rename, rotate-secret, and deactivate/reactivate are full-page form posts. Successful
+   changes redirect back here (post/redirect/get) carrying a one-word outcome so a refresh does not
+   re-post; a taken label is shown in place. The join secret is never read or shown — rotation replaces
+   it server-side (§4.1). *@
+
+<PageTitle>@(_table is null ? "Manage table" : $"Manage {_table.Label}")</PageTitle>
+
+@if (_table is null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Table not found</h1>
+        <p class="lede">No table exists with that identifier. It may have never existed, or the link is stale.</p>
+        <p><a href="/administration/tables">Back to tables</a></p>
+    </section>
+}
+else
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>@_table.Label</h1>
+
+        @if (_flashMessage is not null)
+        {
+            <p class="status-success" role="status">@_flashMessage</p>
+        }
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <div class="manage-facts">
+            <div>
+                <span class="manage-label">Status</span>
+                @if (_table.IsActive)
+                {
+                    <span class="chip chip-ok">Active</span>
+                }
+                else
+                {
+                    <span class="chip chip-warn">Deactivated</span>
+                }
+            </div>
+            <div>
+                <span class="manage-label">Join secret rotated</span>
+                @if (_table.JoinSecretRotatedAt is { } rotatedAt)
+                {
+                    <span>@rotatedAt.ToLocalTime().ToString("g")</span>
+                }
+                else
+                {
+                    <span class="muted">Never</span>
+                }
+            </div>
+            <div>
+                <span class="manage-label">Created</span>
+                <span>@_table.CreatedAt.ToLocalTime().ToString("g")</span>
+            </div>
+        </div>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Label</h2>
+        <EditForm Model="RenameInput" method="post" OnValidSubmit="RenameAsync" FormName="manage-rename" class="manage-inline-form">
+            <DataAnnotationsValidator />
+            <label class="visually-hidden" for="rename-label">New label</label>
+            <InputText id="rename-label" @bind-Value="RenameInput.Label" autocomplete="off" />
+            <button type="submit" class="button-primary">Rename</button>
+            <ValidationMessage For="@(() => RenameInput.Label)" />
+        </EditForm>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Join secret</h2>
+        <p class="lede">
+            The join secret signs the rotating QR codes guests scan. Rotating it generates a new secret
+            and <strong>immediately invalidates every outstanding QR</strong> for this table; paired
+            displays re-render with the new one on their own. Do this if a code may have leaked.
+        </p>
+        <form method="post" @formname="manage-rotate-secret" @onsubmit="RotateSecretAsync">
+            <AntiforgeryToken />
+            <div class="form-actions">
+                <button type="submit" class="button-secondary">Rotate join secret</button>
+            </div>
+        </form>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Table</h2>
+        @if (_table.IsActive)
+        {
+            <p class="lede">
+                Deactivating stops this table's join tokens validating and its display rendering.
+                Nothing is deleted, so past sittings and orders keep their table; you can reactivate at
+                any time.
+            </p>
+            <form method="post" @formname="manage-set-active" @onsubmit="ToggleActivationAsync">
+                <AntiforgeryToken />
+                <div class="form-actions">
+                    <button type="submit" class="link-button danger">Deactivate table</button>
+                </div>
+            </form>
+        }
+        else
+        {
+            <p class="lede">This table is deactivated. Reactivate it to let its tokens validate and its display render again.</p>
+            <form method="post" @formname="manage-set-active" @onsubmit="ToggleActivationAsync">
+                <AntiforgeryToken />
+                <div class="form-actions">
+                    <button type="submit" class="button-primary">Reactivate table</button>
+                </div>
+            </form>
+        }
+
+        <p class="manage-back"><a href="/administration/tables">Back to tables</a></p>
+    </section>
+}
+
+<style>
+    .manage-facts {
+        display: grid;
+        gap: 0.75rem;
+        margin: 1rem 0;
+    }
+
+    .manage-label {
+        display: block;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted-foreground, #666);
+        margin-bottom: 0.25rem;
+    }
+
+    .manage-heading {
+        font-size: 1.05rem;
+        margin: 0 0 0.35rem;
+    }
+
+    .manage-rule {
+        border: 0;
+        border-top: 1px solid var(--rule, #e5e5e5);
+        margin: 1.5rem 0;
+    }
+
+    .manage-inline-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        align-items: center;
+        margin: 0.5rem 0;
+    }
+
+    .manage-inline-form input {
+        padding: 0.45rem 0.6rem;
+        border: 1px solid var(--rule, #ccc);
+        border-radius: 0.4rem;
+        min-width: 12rem;
+    }
+
+    .manage-back {
+        margin-top: 1.5rem;
+    }
+
+    .muted {
+        color: var(--muted-foreground, #999);
+    }
+
+    .chip {
+        display: inline-block;
+        margin: 0.1rem 0.2rem 0.1rem 0;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        background: var(--chip-background, #f0f0f0);
+        color: var(--chip-foreground, #333);
+        white-space: nowrap;
+    }
+
+    .chip-ok {
+        background: #e6f4ea;
+        color: #1e7a37;
+    }
+
+    .chip-warn {
+        background: #fdecea;
+        color: #a3261c;
+    }
+
+    .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+</style>
+
+@code {
+    private RestaurantTableSummary? _table;
+    private string? _flashMessage;
+    private string? _errorMessage;
+
+    [Parameter]
+    public Guid TableId { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "manage-rename")]
+    private RenameInputModel RenameInput { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? Done { get; set; }
+
+    private string ManagePath => $"/administration/tables/{TableId}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form POST binds RenameInput itself and may assign null, so the default lives here.
+        RenameInput ??= new();
+
+        _table = await TableDirectory.GetTableAsync(TableId, HttpContext.RequestAborted);
+        if (_table is null)
+        {
+            return;
+        }
+
+        // On GET, pre-fill the rename box with the current label and render any post/redirect flash.
+        // On POST the submitted value is already bound, so it must not be overwritten.
+        if (HttpContext.Request.Method == HttpMethods.Get)
+        {
+            if (string.IsNullOrEmpty(RenameInput.Label))
+            {
+                RenameInput.Label = _table.Label;
+            }
+
+            _flashMessage = FlashFor(Done);
+        }
+    }
+
+    private async Task RenameAsync()
+    {
+        if (_table is null)
+        {
+            Navigation.NavigateTo("/administration/tables");
+            return;
+        }
+
+        RenameTableOutcome outcome = await Tables.RenameTableAsync(
+            TableId, RenameInput.Label.Trim(), HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case RenameTableOutcome.Renamed:
+                RedirectWithOutcome("renamed");
+                break;
+            case RenameTableOutcome.NoChange:
+                RedirectWithOutcome("rename-no-change");
+                break;
+            case RenameTableOutcome.LabelTaken:
+                _errorMessage = "Another table already uses that label. Please choose a different one.";
+                break;
+            case RenameTableOutcome.TableNotFound:
+                Navigation.NavigateTo("/administration/tables");
+                break;
+        }
+    }
+
+    private async Task RotateSecretAsync()
+    {
+        if (_table is null)
+        {
+            Navigation.NavigateTo("/administration/tables");
+            return;
+        }
+
+        RotateJoinSecretOutcome outcome = await Tables.RotateJoinSecretAsync(TableId, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case RotateJoinSecretOutcome.Rotated:
+                RedirectWithOutcome("secret-rotated");
+                break;
+            case RotateJoinSecretOutcome.TableNotFound:
+                Navigation.NavigateTo("/administration/tables");
+                break;
+        }
+    }
+
+    private async Task ToggleActivationAsync()
+    {
+        if (_table is null)
+        {
+            Navigation.NavigateTo("/administration/tables");
+            return;
+        }
+
+        bool target = !_table.IsActive;
+        TableActivationOutcome outcome = await Tables.SetTableActiveAsync(TableId, target, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case TableActivationOutcome.Changed:
+                RedirectWithOutcome(target ? "reactivated" : "deactivated");
+                break;
+            case TableActivationOutcome.NoChange:
+                Navigation.NavigateTo(ManagePath);
+                break;
+            case TableActivationOutcome.TableNotFound:
+                Navigation.NavigateTo("/administration/tables");
+                break;
+        }
+    }
+
+    private void RedirectWithOutcome(string outcome)
+        => Navigation.NavigateTo($"{ManagePath}?done={outcome}");
+
+    private static string? FlashFor(string? outcome) => outcome switch
+    {
+        "renamed" => "Table renamed.",
+        "rename-no-change" => "That was already the label — nothing changed.",
+        "secret-rotated" => "Join secret rotated. Every outstanding QR for this table has stopped working; "
+            + "paired displays pick up the new one automatically.",
+        "deactivated" => "Table deactivated. Its join tokens no longer validate and its display stops rendering.",
+        "reactivated" => "Table reactivated.",
+        _ => null,
+    };
+
+    private sealed class RenameInputModel
+    {
+        [Required(ErrorMessage = "Enter a label.")]
+        [StringLength(64, MinimumLength = 1, ErrorMessage = "The label must be 1–64 characters.")]
+        public string Label { get; set; } = string.Empty;
     }
 }
 
@@ -16796,15 +18014,15 @@ public sealed class RestaurantMetrics : IDisposable
   File name:             Program.cs
   Relative path:         src/MyRestaurant.WebApplication/Program.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Program.cs
-  Size:                  7.6 KiB (7794 bytes)
-  Last modified:         2026-07-19 08:45:50.000000000 -0400
+  Size:                  8.1 KiB (8270 bytes)
+  Last modified:         2026-07-22 20:30:29.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654776
+  Inode:                 23931056
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               135c2c624ddcb7c50d3694010bd9ff6d32b0a85231a27a5cce05563c18f51d4e
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               9d6ca56b3abc7ba6da13bdf75ff1d4bc9414cc5b49e793193bf6ab31aaeb58fe
+  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -16819,6 +18037,7 @@ using MyRestaurant.WebApplication.Configuration;
 using MyRestaurant.WebApplication.Identity;
 using MyRestaurant.WebApplication.LiveUpdates;
 using MyRestaurant.WebApplication.Observability;
+using MyRestaurant.WebApplication.Tables;
 using Npgsql;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -16915,6 +18134,12 @@ builder.Services.AddDataProtection()
 // store encrypts the TOTP secret and the auth cookie is protected with it, and after RestaurantMetrics
 // because the hasher and sign-in manager report there.
 builder.Services.AddRestaurantIdentity(options);
+
+// Table management services (§4.1): the read-only ITableDirectory the administration tables pages read
+// from and the transactional ITableAdministration they write through (create, rename, rotate the join
+// secret, deactivate/reactivate). A §4 concern, kept separate from AddRestaurantIdentity; both resolve
+// the same connection factory, clock, and identifier factory registered above.
+builder.Services.AddRestaurantTables();
 
 // The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
 // so honour its X-Forwarded-* headers. KnownIPNetworks/KnownProxies are cleared deliberately — safe
@@ -17026,6 +18251,54 @@ return 0;
       }
     }
   }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Tables/TablesServiceCollectionExtensions.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TablesServiceCollectionExtensions.cs
+  Relative path:         src/MyRestaurant.WebApplication/Tables/TablesServiceCollectionExtensions.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Tables/TablesServiceCollectionExtensions.cs
+  Size:                  1.3 KiB (1331 bytes)
+  Last modified:         2026-07-22 20:26:16.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 23930679
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               79ff4943c9acac74dd10299e2d43575656ae4d2c585435998ab709623951eaf8
+  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+
+--- CONTENT ---
+using MyRestaurant.DataAccess.Tables;
+
+namespace MyRestaurant.WebApplication.Tables;
+
+/// <summary>
+/// Wires the table-management services (TECHNICAL_SPECIFICATION §4.1): the read-only
+/// <see cref="ITableDirectory"/> the administration tables list/detail pages read from, and the
+/// transactional <see cref="ITableAdministration"/> those pages write through (create, rename, rotate
+/// the join secret, deactivate/reactivate).
+///
+/// <para>Kept separate from <c>AddRestaurantIdentity</c> because tables are a §4 concern, not identity;
+/// both are registered from <c>Program.cs</c>. Scoped, matching the identity services' lifetime — they
+/// hold no state and open their own connection per call from the singleton
+/// <see cref="MyRestaurant.DataAccess.IDatabaseConnectionFactory"/>; their only other dependencies
+/// (<see cref="MyRestaurant.Domain.Time.IClock"/>) are singletons registered before this call.</para>
+/// </summary>
+public static class TablesServiceCollectionExtensions
+{
+    public static IServiceCollection AddRestaurantTables(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddScoped<ITableDirectory, DapperTableDirectory>();
+        services.AddScoped<ITableAdministration, DapperTableAdministration>();
+
+        return services;
+    }
 }
 
 ################################################################################
@@ -20189,6 +21462,311 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
             MaximumAttempts = 3,
             DelayBetweenAttempts = TimeSpan.FromMilliseconds(200),
         };
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.DataAccess.Tests/Tables/TableAdministrationTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TableAdministrationTests.cs
+  Relative path:         tests/MyRestaurant.DataAccess.Tests/Tables/TableAdministrationTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/Tables/TableAdministrationTests.cs
+  Size:                  12.2 KiB (12515 bytes)
+  Last modified:         2026-07-22 20:34:04.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 23931068
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               9069e6eb078731822093474aabe1e8a69dffbcf08fea4f23274ad0eeffa7f6a8
+  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using MyRestaurant.DataAccess.Tables;
+using MyRestaurant.DataAccess.Tests.Identity;
+using MyRestaurant.Domain.Identifiers;
+using Xunit;
+
+namespace MyRestaurant.DataAccess.Tests.Tables;
+
+/// <summary>
+/// Integration tests for <see cref="DapperTableAdministration"/> and <see cref="DapperTableDirectory"/>
+/// (table management, TECHNICAL_SPECIFICATION §4.1) against a real PostgreSQL 17 container. They pin the
+/// behaviours that make the slice correct: creating a table writes a row with a 32-byte join secret and
+/// an unset <c>join_secret_rotated_at</c>; labels are unique; rename detects no-change and collisions;
+/// rotating the secret changes the stored bytes and stamps <c>join_secret_rotated_at</c>;
+/// deactivate/reactivate flips <c>is_active</c>; and the directory reads tables back oldest-first
+/// without ever exposing the secret.
+///
+/// <para>Each test truncates <c>restaurant_table CASCADE</c> first (xUnit builds a fresh instance per
+/// test and runs them sequentially). Own <c>IClassFixture</c> (own container); if no container engine
+/// is available, every test skips — mirroring <see cref="AccountAdministrationTests"/>.</para>
+/// </summary>
+public sealed class TableAdministrationTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
+{
+    private readonly PostgreSqlFixture _fixture;
+    private readonly FixedClock _clock = new(new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero));
+    private readonly UuidV7IdentifierFactory _identifiers = new();
+    private NpgsqlDatabaseConnectionFactory? _connectionFactory;
+
+    public TableAdministrationTests(PostgreSqlFixture fixture) => _fixture = fixture;
+
+    public async ValueTask InitializeAsync()
+    {
+        if (_fixture.ConnectionString is null)
+        {
+            return;
+        }
+
+        new SchemaMigrationRunner(_fixture.ConnectionString)
+        {
+            MaximumAttempts = 3,
+            DelayBetweenAttempts = TimeSpan.FromMilliseconds(200),
+        }.Run();
+
+        _connectionFactory = new NpgsqlDatabaseConnectionFactory(_fixture.ConnectionString);
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(TestContext.Current.CancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            "TRUNCATE TABLE restaurant_table CASCADE;",
+            cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connectionFactory is not null)
+        {
+            await _connectionFactory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task CreateTableAsync_WritesTableWithJoinSecret_AndDirectoryReadsItBack()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperTableAdministration administration = Build();
+
+        Guid tableId = _identifiers.Create();
+        CreateTableOutcome outcome = await administration.CreateTableAsync(tableId, "  Table 5  ", cancellationToken);
+
+        Assert.Equal(CreateTableOutcome.Created, outcome);
+
+        TableProbeRow row = await ReadTableAsync(tableId, cancellationToken);
+        Assert.Equal("Table 5", row.Label); // trimmed
+        Assert.True(row.IsActive);
+        Assert.Equal(32, row.JoinSecret.Length);
+        Assert.Null(row.JoinSecretRotatedAt);
+
+        RestaurantTableSummary? summary = await Directory().GetTableAsync(tableId, cancellationToken);
+        Assert.NotNull(summary);
+        Assert.Equal("Table 5", summary!.Label);
+        Assert.True(summary.IsActive);
+        Assert.Null(summary.JoinSecretRotatedAt);
+        Assert.Equal(tableId, summary.TableIdentifier);
+    }
+
+    [Fact]
+    public async Task CreateTableAsync_DuplicateLabel_ReturnsLabelTaken_AndWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperTableAdministration administration = Build();
+
+        Assert.Equal(
+            CreateTableOutcome.Created,
+            await administration.CreateTableAsync(_identifiers.Create(), "Table 1", cancellationToken));
+
+        CreateTableOutcome duplicate =
+            await administration.CreateTableAsync(_identifiers.Create(), "Table 1", cancellationToken);
+
+        Assert.Equal(CreateTableOutcome.LabelTaken, duplicate);
+        Assert.Equal(1, await CountTablesAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task RenameTableAsync_Renames_ThenSameLabelIsNoChange_ThenCollisionIsLabelTaken()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperTableAdministration administration = Build();
+
+        Guid first = _identifiers.Create();
+        await administration.CreateTableAsync(first, "Table 1", cancellationToken);
+        await administration.CreateTableAsync(_identifiers.Create(), "Table 2", cancellationToken);
+
+        Assert.Equal(
+            RenameTableOutcome.Renamed,
+            await administration.RenameTableAsync(first, "Patio", cancellationToken));
+        Assert.Equal("Patio", (await ReadTableAsync(first, cancellationToken)).Label);
+
+        Assert.Equal(
+            RenameTableOutcome.NoChange,
+            await administration.RenameTableAsync(first, "Patio", cancellationToken));
+
+        Assert.Equal(
+            RenameTableOutcome.LabelTaken,
+            await administration.RenameTableAsync(first, "Table 2", cancellationToken));
+
+        // The failed collision left the label untouched.
+        Assert.Equal("Patio", (await ReadTableAsync(first, cancellationToken)).Label);
+    }
+
+    [Fact]
+    public async Task RenameTableAsync_UnknownTable_ReturnsTableNotFound()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Assert.Equal(
+            RenameTableOutcome.TableNotFound,
+            await Build().RenameTableAsync(_identifiers.Create(), "Ghost", cancellationToken));
+    }
+
+    [Fact]
+    public async Task RotateJoinSecretAsync_ChangesSecretAndStampsRotatedAt()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperTableAdministration administration = Build();
+
+        Guid tableId = _identifiers.Create();
+        await administration.CreateTableAsync(tableId, "Bar 1", cancellationToken);
+        byte[] original = (await ReadTableAsync(tableId, cancellationToken)).JoinSecret;
+
+        Assert.Equal(
+            RotateJoinSecretOutcome.Rotated,
+            await administration.RotateJoinSecretAsync(tableId, cancellationToken));
+
+        TableProbeRow afterFirst = await ReadTableAsync(tableId, cancellationToken);
+        Assert.Equal(32, afterFirst.JoinSecret.Length);
+        Assert.NotEqual(original, afterFirst.JoinSecret); // secret changed (element-wise byte comparison)
+        Assert.NotNull(afterFirst.JoinSecretRotatedAt);
+        Assert.Equal(_clock.UtcNow, afterFirst.JoinSecretRotatedAt.Value); // stamped at the operation instant
+
+        // A second rotation changes it again.
+        await administration.RotateJoinSecretAsync(tableId, cancellationToken);
+        byte[] afterSecond = (await ReadTableAsync(tableId, cancellationToken)).JoinSecret;
+        Assert.NotEqual(afterFirst.JoinSecret, afterSecond);
+    }
+
+    [Fact]
+    public async Task RotateJoinSecretAsync_UnknownTable_ReturnsTableNotFound()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Assert.Equal(
+            RotateJoinSecretOutcome.TableNotFound,
+            await Build().RotateJoinSecretAsync(_identifiers.Create(), cancellationToken));
+    }
+
+    [Fact]
+    public async Task SetTableActiveAsync_Deactivates_ThenReactivates_AndNoChangeWhenAlready()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperTableAdministration administration = Build();
+
+        Guid tableId = _identifiers.Create();
+        await administration.CreateTableAsync(tableId, "Table 9", cancellationToken);
+
+        Assert.Equal(
+            TableActivationOutcome.Changed,
+            await administration.SetTableActiveAsync(tableId, false, cancellationToken));
+        Assert.False((await ReadTableAsync(tableId, cancellationToken)).IsActive);
+
+        Assert.Equal(
+            TableActivationOutcome.NoChange,
+            await administration.SetTableActiveAsync(tableId, false, cancellationToken));
+
+        Assert.Equal(
+            TableActivationOutcome.Changed,
+            await administration.SetTableActiveAsync(tableId, true, cancellationToken));
+        Assert.True((await ReadTableAsync(tableId, cancellationToken)).IsActive);
+    }
+
+    [Fact]
+    public async Task SetTableActiveAsync_UnknownTable_ReturnsTableNotFound()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Assert.Equal(
+            TableActivationOutcome.TableNotFound,
+            await Build().SetTableActiveAsync(_identifiers.Create(), false, cancellationToken));
+    }
+
+    [Fact]
+    public async Task ListTablesAsync_ReturnsEveryTableOldestFirst()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        DapperTableAdministration administration = Build();
+
+        // Advance the clock between creations so created_at differs and the oldest-first ordering is
+        // exercised independently of the label. Labels are deliberately out of alphabetical order.
+        await administration.CreateTableAsync(_identifiers.Create(), "Zeta", cancellationToken);
+        _clock.UtcNow = _clock.UtcNow.AddMinutes(1);
+        await administration.CreateTableAsync(_identifiers.Create(), "Alpha", cancellationToken);
+        _clock.UtcNow = _clock.UtcNow.AddMinutes(1);
+        await administration.CreateTableAsync(_identifiers.Create(), "Mu", cancellationToken);
+
+        IReadOnlyList<RestaurantTableSummary> tables = await Directory().ListTablesAsync(cancellationToken);
+
+        Assert.Equal(new[] { "Zeta", "Alpha", "Mu" }, tables.Select(table => table.Label).ToArray());
+    }
+
+    [Fact]
+    public async Task GetTableAsync_UnknownTable_ReturnsNull()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Assert.Null(await Directory().GetTableAsync(_identifiers.Create(), cancellationToken));
+    }
+
+    // --- helpers -----------------------------------------------------------------------------------
+
+    private void SkipIfNoContainer()
+        => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+
+    private DapperTableAdministration Build() => new(_connectionFactory!, _clock);
+
+    private DapperTableDirectory Directory() => new(_connectionFactory!);
+
+    private async Task<TableProbeRow> ReadTableAsync(Guid tableId, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        return await connection.QuerySingleAsync<TableProbeRow>(new CommandDefinition(
+            """
+            SELECT label AS Label, is_active AS IsActive, join_secret AS JoinSecret,
+                   join_secret_rotated_at AS JoinSecretRotatedAt
+            FROM restaurant_table WHERE restaurant_table_identifier = @Id;
+            """,
+            new { Id = tableId }, cancellationToken: cancellationToken));
+    }
+
+    private async Task<int> CountTablesAsync(CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        return await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT count(*)::int FROM restaurant_table;", cancellationToken: cancellationToken));
+    }
+
+    // Plain mutable POCO so Dapper's default property mapping applies; the SELECT aliases its
+    // snake_case columns to these PascalCase names. join_secret (bytea) maps to byte[].
+    private sealed class TableProbeRow
+    {
+        public string Label { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+        public byte[] JoinSecret { get; set; } = [];
+        public DateTimeOffset? JoinSecretRotatedAt { get; set; }
+    }
 }
 
 ################################################################################
@@ -23871,12 +25449,95 @@ public sealed class RestaurantOptionsTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Tables/TablesWiringTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TablesWiringTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Tables/TablesWiringTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Tables/TablesWiringTests.cs
+  Size:                  2.5 KiB (2538 bytes)
+  Last modified:         2026-07-22 20:32:47.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 23931066
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               221c616630a1e91fc36171f7aea3fa3f5066b58b5b77735fa11a441284339ce5
+  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+
+--- CONTENT ---
+using System.Data.Common;
+using Microsoft.Extensions.DependencyInjection;
+using MyRestaurant.DataAccess;
+using MyRestaurant.DataAccess.Tables;
+using MyRestaurant.Domain.Time;
+using MyRestaurant.WebApplication.Tables;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests;
+
+/// <summary>
+/// Verifies the table-management wiring composed by
+/// <see cref="TablesServiceCollectionExtensions.AddRestaurantTables"/> (TECHNICAL_SPECIFICATION §4.1):
+/// the read-only <see cref="ITableDirectory"/> and the transactional <see cref="ITableAdministration"/>
+/// resolve to their Dapper implementations. Constructing them opens no connection (they only capture
+/// the connection factory and clock), so this resolves without a database — mirroring the
+/// resolvability facts in <see cref="IdentityWiringTests"/>.
+/// </summary>
+public sealed class TablesWiringTests
+{
+    [Fact]
+    public void TableDirectory_IsResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        ITableDirectory directory = scope.ServiceProvider.GetRequiredService<ITableDirectory>();
+
+        Assert.IsType<DapperTableDirectory>(directory);
+    }
+
+    [Fact]
+    public void TableAdministration_IsResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        ITableAdministration administration = scope.ServiceProvider.GetRequiredService<ITableAdministration>();
+
+        Assert.IsType<DapperTableAdministration>(administration);
+    }
+
+    private static ServiceProvider BuildProvider()
+    {
+        ServiceCollection services = new();
+
+        // The prerequisites Program.cs registers before AddRestaurantTables (a clock and a connection
+        // factory). The factory is never used here — resolution constructs, it does not connect.
+        services.AddSingleton<IClock, SystemClock>();
+        services.AddSingleton<IDatabaseConnectionFactory, UnusedConnectionFactory>();
+
+        services.AddRestaurantTables();
+
+        return services.BuildServiceProvider();
+    }
+
+    /// <summary>The wiring tests never open a connection; this makes that explicit.</summary>
+    private sealed class UnusedConnectionFactory : IDatabaseConnectionFactory
+    {
+        public ValueTask<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Wiring tests must not open a database connection.");
+    }
+}
+
+################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 150
-  Total size     : 953.2 KiB (976113 bytes)
+  Files dumped   : 158
+  Total size     : 1011.2 KiB (1035513 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-22T19:53:23-04:00
+  Completed at   : 2026-07-22T21:00:44-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
