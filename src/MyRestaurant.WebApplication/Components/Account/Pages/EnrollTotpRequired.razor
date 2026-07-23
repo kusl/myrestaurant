@@ -48,7 +48,13 @@
             <a class="button-primary" href="@_destination">Continue</a>
         </div>
     }
-    else
+    @* Guard on _start rather than a bare `else`: ComponentBase fires an intermediate render via
+       StateHasChanged the instant the async GetUserAsync in OnInitializedAsync suspends, while
+       _recoveryCodes and _start are both still null. A bare `else` would fall in here and
+       dereference a null _start, and that NRE aborts the whole static-SSR response. Rendering
+       nothing on that transient pass is fine — static SSR flushes only the final, quiescent HTML,
+       by which point _start is set, or the recovery codes are shown, or we have navigated away. *@
+    else if (_start is not null)
     {
         <h1>Re-enroll your authenticator</h1>
         <p class="lede">
@@ -63,16 +69,16 @@
         }
 
         <div class="totp-qr">
-            @((MarkupString)_start!.QrCodeSvg)
+            @((MarkupString)_start.QrCodeSvg)
         </div>
 
         <p class="totp-secret-label">Can't scan? Enter this key manually:</p>
-        <p class="totp-secret">@_start!.ManualEntrySecret</p>
+        <p class="totp-secret">@_start.ManualEntrySecret</p>
 
         <EditForm Model="Input" method="post" OnValidSubmit="ConfirmAsync" FormName="enroll-totp-required">
             <DataAnnotationsValidator />
 
-            <input type="hidden" name="Input.ProtectedTicket" value="@_start!.ProtectedTicket" />
+            <input type="hidden" name="Input.ProtectedTicket" value="@_start.ProtectedTicket" />
 
             <div class="form-field">
                 <label for="totp-code">Six-digit code</label>

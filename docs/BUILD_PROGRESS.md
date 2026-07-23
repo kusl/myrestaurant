@@ -832,3 +832,15 @@ link. Table changes are not in the `security_event` vocabulary, so none are audi
 No packages, no migration (restaurant_table ships in 0001). Tests:
 `TableAdministrationTests` (Testcontainers, 11 facts) and `TablesWiringTests`
 (resolvability, no container). Next M3 slice: display pairing + device auth + `/display`.
+
+### Fix — TOTP enrollment pages 500 (static-SSR intermediate render deref)
+
+`/account/enroll-totp` (and its obligation sibling `/account/enroll-totp-required`) threw
+`NullReferenceException` in `BuildRenderTree` → bare 500. `ComponentBase` issues an intermediate
+render via `StateHasChanged` the moment the `await UserManager.GetUserAsync(...)` in
+`OnInitializedAsync` suspends, before the async body sets `_enrolled`/`_recoveryCodes`/`_start`.
+With all three at defaults the render fell into the setup `else` and dereferenced a null `_start!`,
+aborting the static-SSR response. (`Passkeys.razor` escaped it — `_passkeys is { Count: > 0 }`
+doesn't match null.) Fix: bare `else` → `else if (_start is not null)`, drop the `!` on the three
+`_start` reads, both pages. Final render unchanged; transient render now emits only the panel eyebrow.
+No schema/DI/behaviour change; no deletions.
