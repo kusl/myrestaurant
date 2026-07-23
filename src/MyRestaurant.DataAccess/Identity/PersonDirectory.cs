@@ -182,8 +182,10 @@ public sealed class DapperPersonDirectory : IPersonDirectory
             row.MustChangePassword,
             row.MustEnrollTotp,
             row.FailedAccessCount,
-            row.LockoutEndAt,
-            row.CreatedAt,
+            row.LockoutEndAt is { } lockoutEnd
+                ? new DateTimeOffset(DateTime.SpecifyKind(lockoutEnd, DateTimeKind.Utc))
+                : null,
+            new DateTimeOffset(DateTime.SpecifyKind(row.CreatedAt, DateTimeKind.Utc)),
             roles);
     }
 
@@ -196,8 +198,11 @@ public sealed class DapperPersonDirectory : IPersonDirectory
         _ => 3,
     };
 
-    // Dapper maps these positional records by constructor-parameter name (case-insensitive) against
-    // the aliased columns above.
+    // Dapper maps these positional records by constructor-parameter name (case-insensitive) against the
+    // aliased columns above. The two timestamps are `DateTime` (not `DateTimeOffset`) because Npgsql
+    // materialises a `timestamptz` as a UTC `DateTime`, and Dapper's constructor binding will not feed a
+    // `DateTime` into a `DateTimeOffset` parameter; `ToSummary` converts them to the UTC `DateTimeOffset`
+    // the public summary exposes.
     private sealed record PersonRow(
         Guid PersonIdentifier,
         string Username,
@@ -208,8 +213,8 @@ public sealed class DapperPersonDirectory : IPersonDirectory
         bool MustChangePassword,
         bool MustEnrollTotp,
         int FailedAccessCount,
-        DateTimeOffset? LockoutEndAt,
-        DateTimeOffset CreatedAt);
+        DateTime? LockoutEndAt,
+        DateTime CreatedAt);
 
     private sealed record RoleRow(Guid PersonIdentifier, string RoleName);
 }

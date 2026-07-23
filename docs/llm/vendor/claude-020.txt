@@ -37,3 +37,510 @@ It removes the guess work of which file goes where
 if I can paste the whole folder together in one go 
 please do that if possible 
 remember to tell me which files if any I would need to delete 
+
+
+/
+Claude finished the response
+before we continue, an update 
+I was able to register the passkeys
+SETUP COMPLETE
+You are the administrator
+The administrator account kushalhada was created and you are now signed in.
+Save these recovery codes now — this is the only time they are shown.
+Each works once, in place of your authenticator code, on the password sign-in. Keep them somewhere safe and offline.
+EBC77-6DY7Z
+W3J6U-WVB7M
+ZNBM3-EN9QP
+R5VJF-DM5TF
+7EUGZ-RK3MH
+BQ9UW-D63Q4
+Q8UST-R8RRY
+X7BKR-7929Y
+JFR8Q-A4S96
+3BBC5-6PYWA
+However, I got a 500 error after that 
+when I refreshed, I was able to get to the home page 
+on the top navigation bar, I saw MyRestaurant {{username here}} Administration Security Passkeys Sign Out 
+Sign Out was underlined 
+also the line was strangely longer than the rest of the body on my iPhone SE 2020 
+like the rest of the page was nice and responsive for the tiny iPhone screen but not the header 
+which had its own mind about how far to the right it is allowed to go 
+also if you see the claude-terminal.txt` file, there are some test failures 
+maybe these need attention now I don't know but please review to make sure 
+if these fixes are small enough 
+continue with the next step and incorporate the fixes with the output 
+but if the fixes require substantial work 
+I would say lets fix only the current stuff so we leave the day with mostly working code 
+as opposed to adding even more crap 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+
+Show less
+
+Thinking about reviewing test failures, assessing fix complexity, and structuring code delivery for a restaurant admin application
+Thinking about reviewing test failures, assessing fix complexity, and structuring code delivery for a restaurant admin application
+Thinking about reviewing test failures, assessing fix complexity, and structuring code delivery for a restaurant admin application.
+
+
+Reading the current source code dump
+
+Reading the terminal output with test failures
+Done
+The middle section of the terminal output with the actual test results is truncated. Let me see it.
+
+
+Diagnosed test failures and navigation layout issues comprehensively
+Diagnosed test failures and navigation layout issues comprehensively
+
+Reading the truncated test results section
+Diagnosing origin validation failures and null reference issues.
+
+Diagnosed test failures and navigation layout issues comprehensively.
+
+Done
+I can see the test failures clearly now. There are three:
+
+WebAuthnOriginPolicyTests.IsTrustedOrigin_Prod — "https://orders.example.com:443" should be trusted but returns False (plus a CS8602 null-deref warning at WebAuthnOriginPolicy.cs:55).
+TableAdministrationTests.ListTablesAsync_ReturnsEveryTableOldestFirst — Dapper can't materialize RestaurantTableSummary.
+TableAdministrationTests.CreateTableAsync_... — same Dapper materialization issue.
+Let me pull the relevant source files out of the dump so I can see exactly what's going on.
+
+
+Identified relevant source files for examination
+Identified relevant source files for examination
+
+Listing all files in the dump to understand structure
+Identified relevant source files for examination.
+
+Done
+Now let me look at the specific files involved in the failures. First, the WebAuthn origin policy and its test:
+
+
+Reading WebAuthnOriginPolicy.cs source
+Reading WebAuthnOriginPolicy.cs source
+
+Reading WebAuthnOriginPolicy.cs source
+Done
+Now the test file for WebAuthn origin policy:
+
+
+Architected port normalization logic to resolve URI comparison mismatches
+Architected port normalization logic to resolve URI comparison mismatches
+
+Reading WebAuthnOriginPolicyTests.cs
+Diagnosing port-stripping behavior in URI parsing logic.
+
+Resolving null reference warnings in port normalization logic.
+
+Architected port normalization logic to resolve URI comparison mismatches.
+
+Done
+I now understand the WebAuthn failure. The test IsTrustedOrigin("https://orders.example.com:443") expects true (explicit default port :443 is equivalent to no port), but TrySplitOrigin keeps the :443 literally, so "orders.example.com:443" != "orders.example.com" and it falls through to false.
+
+Let me confirm the exact line numbering for the CS8602 warning, then look at the Dapper failure.
+
+
+Debugged null-safety issues and verified port normalization logic thoroughly
+Debugged null-safety issues and verified port normalization logic thoroughly
+
+Locating the CS8602 warning line in WebAuthnOriginPolicy.cs
+Deriving lowercased host:port string from origin Uri directly.
+
+Validating port-stripping logic across diverse test scenarios.
+
+Debugged null-safety issues and verified port normalization logic thoroughly.
+
+Done
+Confirmed: line 55 is _publicOriginHostPort = PublicHost.Value.ToLowerInvariant(); — HostString.Value is nullable in this framework version, so .ToLowerInvariant() triggers CS8602.
+
+Now the Dapper failure. Let me look at TableDirectory.cs and find where RestaurantTableSummary is defined:
+
+
+Diagnosed Dapper constructor mismatch and weighed three resolution strategies
+Diagnosed Dapper constructor mismatch and weighed three resolution strategies
+
+Reading TableDirectory.cs source (contains RestaurantTableSummary)
+Diagnosing Dapper constructor mismatch in RestaurantTableSummary class.
+
+Diagnosed Dapper constructor mismatch and weighed three resolution strategies.
+
+Done
+The Dapper error is revealing: it wants a constructor with System.DateTime joinsecretrotatedat, System.DateTime createdat — i.e. DateTime, but the record declares DateTimeOffset? / DateTimeOffset. Npgsql is returning DateTime for those columns, and Dapper's constructor matcher can't reconcile the types.
+
+Let me check the migration column types and how other working records in the codebase handle timestamps, so I match the established convention rather than guessing.
+
+
+Investigated timestamp column mapping across data-access layers
+Investigated timestamp column mapping across data-access layers
+
+Finding restaurant_table column types in the initial migration
+Investigating timestamp column mapping in data-access code.
+
+Investigated timestamp column mapping across data-access layers.
+
+Done
+Both join_secret_rotated_at and created_at are timestamptz. Now let me see how the rest of the working data layer reads timestamptz columns — DateTime or DateTimeOffset:
+
+
+Diagnosed Dapper type conversion discrepancies between class and record patterns
+Diagnosed Dapper type conversion discrepancies between class and record patterns
+
+Surveying DateTime vs DateTimeOffset usage across the data access layer
+Refactoring approach to eliminate problematic variable persistence.
+
+Diagnosed Dapper type conversion discrepancies between class and record patterns.
+
+Done
+My awk leaked the filename across sections, so that survey is unreliable. The key insight from the error, though: RestaurantTableSummary is a positional record (constructor-only), and Dapper's constructor binding is stricter than its property-setter binding — it won't bind a DateTime reader value (what Npgsql returns for timestamptz) to a DateTimeOffset constructor parameter.
+
+Let me verify how PersonDirectory (which reads timestamptz into DateTimeOffset and whose tests pass) does it, so I follow the exact same pattern:
+
+
+Investigated DateTimeOffset type mismatch causing Dapper binding failures
+Investigated DateTimeOffset type mismatch causing Dapper binding failures
+
+Reading PersonDirectory.cs to see how it maps timestamptz to DateTimeOffset
+Reconciling database mapping patterns across record types.
+
+Investigated DateTimeOffset type mismatch causing Dapper binding failures.
+
+Done
+Interesting — PersonRow is also a positional record with DateTimeOffset? LockoutEndAt and DateTimeOffset CreatedAt, read directly via QueryAsync<PersonRow>. So either that path has the same latent bug (untested), or there's global Dapper/Npgsql config making DateTimeOffset work. Let me check both: whether DapperPersonDirectory is exercised by any test, and whether there's any global Npgsql/Dapper type configuration.
+
+
+Diagnosed Dapper type mismatches and weighed fix scope strategically
+Diagnosed Dapper type mismatches and weighed fix scope strategically
+
+Checking for PersonDirectory tests and any global Dapper/Npgsql type configuration
+Reconciling latent bugs across multiple classes systematically.
+
+Unraveling Dapper's constructor matching logic and type resolution.
+
+Weighing TypeHandler registration versus data conversion approach.
+
+Pivoting focus toward the iPhone header layout bug.
+
+Diagnosed Dapper type mismatches and weighed fix scope strategically.
+
+Done
+Two important findings:
+
+DapperPersonDirectory has the identical latent bug — it's a positional record (PersonRow) with DateTimeOffset fields read from timestamptz, but no test exercises it, so it silently passes CI and will throw the same InvalidOperationException the instant the admin People page loads at runtime.
+No global Dapper/Npgsql type config exists — nothing makes DateTimeOffset↔timestamptz work. So the fix has to be at the mapping site.
+Let me look at the header/layout (the iPhone SE overflow bug) and the build roadmap so I can judge what "the next step" is and how big it'd be.
+
+
+Examined header styling for responsive layout issues
+Examined header styling for responsive layout issues
+
+Reading MainLayout.razor for the header markup
+Examined header styling for responsive layout issues.
+
+Done
+Now the CSS for the header and its responsive behavior:
+
+
+Investigated header overflow issue and examined CSS responsiveness constraints
+Investigated header overflow issue and examined CSS responsiveness constraints
+
+Finding header + responsive CSS rules in app.css
+Investigated header overflow issue and examined CSS responsiveness constraints.
+
+Done
+There's only one @media query in the whole stylesheet (prefers-reduced-motion) — no width breakpoints at all. Let me read the exact header rules and the :root/base rules to see the overflow cause:
+
+
+Diagnosed header overflow and 500 error root causes comprehensively
+Diagnosed header overflow and 500 error root causes comprehensively
+
+Reading the top of app.css: root vars, base, and header rules
+Diagnosing header overflow caused by flexbox gap spacing.
+
+Architecting flex-wrap solution for responsive header overflow.
+
+Diagnosed header overflow and 500 error root causes comprehensively.
+
+Done
+Now I fully understand the header bug: .app-header and .app-session are display: flex with no flex-wrap, so on a 375px iPhone SE the brand + name + three links + sign-out button can't shrink or wrap — they force the header wider than the viewport and push off to the right. The body wraps and stays within the viewport, so only the header overflows. There are no width breakpoints anywhere, so nothing rescues it on small screens.
+
+Let me understand the roadmap so I can judge "the next step." Let me read the build progress doc:
+
+
+Weighed conservative fix-first approach against adding next feature work
+Weighed conservative fix-first approach against adding next feature work
+
+Reading BUILD_PROGRESS.md to understand milestones and the next step
+Assessing passkey registration success and triaging responsive design issues.
+
+Weighed conservative fix-first approach against adding next feature work.
+
+Done
+We're mid Stage 2 (M2 — identity & accounts). The two most recent slices — the /setup bootstrap and the F-06a quick-tunnel passkey correction (WebAuthnOriginPolicy.cs, PublicOriginMiddleware.cs) — were written "unbuilt until your next build/test run." Your run is that first build, and it surfaced exactly the F-06a bug (the :443 case + the CS8602 warning). The Tables failures are in M3 groundwork that's already in the tree.
+
+Let me quickly confirm what "the next step" refers to from our prior sessions, and verify whether DapperPersonDirectory is actually wired and consumed (which determines whether its latent bug is a real runtime 500):
+
+
+Deliberated between global type handler versus localized DateTime fixes
+Deliberated between global type handler versus localized DateTime fixes
+
+Relevant chats
+Reconciling M3 table components with deployment issues and test failures.
+
+Resolving DateTime-to-DateTimeOffset conversion through property binding.
+
+Reconciling DateTimeOffset handler registration across tests and production.
+
+Weighing architectural approaches for DateTimeOffset type handler registration.
+
+Deliberated between global type handler versus localized DateTime fixes.
+
+Done
+This is the decisive context. From our prior sessions:
+
+"The next step" = continuing M3 (tables & joining). The table-CRUD + join-secret slice (the TableDirectory.cs / TableAdministration.cs / ManageTable.razor code now in the dump) was the previous session's M3 slice, written unbuilt. Your build is verifying it — and it surfaced the Dapper failure.
+The /administration People page (AdministrationHome.razor) calls IPersonDirectory.ListPeopleAsync(), and the setup success screen links there. PersonSummary/PersonRow has the exact same DateTimeOffset-from-timestamptz defect. That is almost certainly the 500 you hit right after setup — you then manually went to Home (which doesn't touch the directory), and it worked.
+Let me confirm AdministrationHome consumes the directory, and check how the table pages consume the timestamp fields (so my fix doesn't disturb them):
+
+
+Diagnosed DateTimeOffset materialization bugs and scoped targeted fixes
+Diagnosed DateTimeOffset materialization bugs and scoped targeted fixes
+
+Confirming AdministrationHome uses PersonDirectory and how table pages consume the timestamp fields
+Pinpointing the DateTimeOffset comparison bug triggering errors.
+
+Auditing codebase for additional broken Dapper positional record patterns.
+
+Orchestrating targeted fixes while packaging deliverables for seamless deployment.
+
+Extracting files and orchestrating targeted fixes into archive.
+
+Diagnosed DateTimeOffset materialization bugs and scoped targeted fixes.
+
+Done
+Both hypotheses confirmed:
+
+AdministrationHome.razor injects IPersonDirectory and calls await People.ListPeopleAsync() on load → the People page 500s on the PersonSummary materialization bug. That's the post-setup 500 you saw (Home doesn't touch the directory, which is why the refresh "worked").
+The table pages consume RestaurantTableSummary.CreatedAt/.JoinSecretRotatedAt as DateTimeOffset, so my fix must keep the public records as DateTimeOffset — only the internal Dapper read type changes.
+Let me check whether a .NET SDK is available here (to decide build-verify vs write-to-spec), then extract the exact current files to edit faithfully.
+
+
+Devised extraction method for retrieving stylesheet content from dump file
+Devised extraction method for retrieving stylesheet content from dump file
+
+Checking for dotnet SDK and app.css length
+Devised extraction method for retrieving stylesheet content from dump file.
+
+Done
+No SDK here (the established constraint — you build). Let me extract the exact current files faithfully from the dump, then apply surgical edits so the outputs are byte-faithful to your tree plus exactly my changes.
+
+
+Extracting the 4 target files faithfully from the dump into a working repo
+Extracting the 4 target files faithfully from the dump into a working repo
+
+Extracting the 4 target files faithfully from the dump into a working repo
+Done
+Let me verify the extractions are clean (no metadata/separator leakage) before editing:
+
+
+Orchestrated null-handling fixes, CSS responsive adjustments, and repository refactoring
+Orchestrated null-handling fixes, CSS responsive adjustments, and repository refactoring
+
+Sanity-checking head/tail of each extracted file
+Scrutinizing nullable reference handling in ASP.NET Core.
+
+Orchestrated null-handling fixes, CSS responsive adjustments, and repository refactoring.
+
+Done
+Clean. Now applying the surgical edits. First, WebAuthnOriginPolicy.cs — the :443 normalization and the CS8602 warning fix:
+
+
+Pivoted to applying identical modifications across additional file components
+Pivoted to applying identical modifications across additional file components
+
+Fix CS8602: HostString.Value is nullable; coalesce before ToLowerInvariant
+WebAuthnOriginPolicy.cs
++1
+-1
+
+Normalize an explicit default port in TrySplitOrigin so :443/:80 match the port-less configured origin
+WebAuthnOriginPolicy.cs
++34
+-11
+Pivoted to applying identical modifications across additional file components.
+
+Done
+TableDirectory.cs — read into a DateTime-typed row that Dapper can bind, then project to the DateTimeOffset public summary:
+
+
+Refactored code methods and enhanced documentation clarity
+Refactored code methods and enhanced documentation clarity
+
+Query into RestaurantTableRow (DateTime members) and project to the DateTimeOffset summary; add the row type and projection
+TableDirectory.cs
++41
+-17
+Refactored code methods and enhanced documentation clarity.
+
+Done
+PersonDirectory.cs — same fix (this is the one causing the post-setup 500). Convert in ToSummary and retype the row's two timestamps:
+
+
+Identified header responsiveness issue requiring CSS adjustment
+Identified header responsiveness issue requiring CSS adjustment
+
+Convert the row's DateTime timestamps to UTC DateTimeOffset when projecting to PersonSummary
+PersonDirectory.cs
++7
+-5
+
+Retype PersonRow timestamps to DateTime (matching what Npgsql returns) and explain why
+PersonDirectory.cs
++17
+-14
+Identified header responsiveness issue requiring CSS adjustment.
+
+Done
+app.css — make the header wrap instead of overflowing on narrow screens (the iPhone SE bug):
+
+
+Verified code compilation and traced test case behavior through port normalization logic
+Verified code compilation and traced test case behavior through port normalization logic
+
+Allow the header row to wrap so it never overflows the viewport on small screens
+app.css
++10
+-9
+
+Let the session links themselves wrap on very narrow screens
+app.css
++7
+-6
+Thinking about reviewing test failures, assessing fix complexity, and structuring deliverables for a restaurant admin application.
+
+Verifying compiled code and tracing WebAuthn test case execution.
+
+Verified code compilation and traced test case behavior through port normalization logic.
+
+Done
+Let me review the final edited regions to confirm correctness before packaging:
+
+
+Validated code consistency and verified type-matching across database materialization paths
+Validated code consistency and verified type-matching across database materialization paths
+
+Verifying all edits are in place and coherent
+Verifying code consistency and conducting final compile checks.
+
+Verifying UTC conversion logic matches test expectations.
+
+Validated code consistency and verified type-matching across database materialization paths.
+
+Done
+All edits are coherent (note app.css already used flex-wrap: wrap elsewhere, so mine match house style). Let me verify the failing TableAdministrationTests assertions so my UTC conversion round-trips to exactly what they expect:
+
+
+Investigated timestamp assertions and null-handling logic across failing tests
+Investigated timestamp assertions and null-handling logic across failing tests
+
+Checking TableAdministrationTests assertions on the timestamp fields
+Scrutinizing timestamp validation for secret rotation operations.
+
+Investigated timestamp assertions and null-handling logic across failing tests.
+
+Done
+Line 167 asserts on a raw DB row (it has .JoinSecret, which the summary omits), so that's a test-owned helper type, not mine. The two failing tests are CreateTableAsync_...ReadsItBack and ListTablesAsync_...OldestFirst. Let me read their exact bodies to be sure my conversion satisfies every assertion (not just that materialization stops throwing):
+
+
+Diagnosed Dapper constructor mismatch; retyping fields resolves materialization issue
+Diagnosed Dapper constructor mismatch; retyping fields resolves materialization issue
+
+Reading the two failing test bodies in full
+Investigating Dapper's constructor selection mechanism.
+
+Diagnosing constructor binding mismatches and validating the fix.
+
+Diagnosed Dapper constructor mismatch; retyping fields resolves materialization issue.
+
+Done
+My fix satisfies both failing tests exactly:
+
+CreateTableAsync_...ReadsItBack: asserts summary.Label, .IsActive, Assert.Null(summary.JoinSecretRotatedAt) (my null branch handles the never-rotated NULL), .TableIdentifier — and does not assert a CreatedAt value. Materialization now succeeds. ✓
+ListTablesAsync_...OldestFirst: asserts only label ordering (SQL ORDER BY created_at, untouched). ✓
+The stack trace confirms the model precisely: GetTableAsync failed on a freshly-created table where join_secret_rotated_at was NULL — so the trigger is the reader's field type (DateTime for the non-null created_at timestamptz), not the value. Retyping both row members to DateTime lets Dapper's constructor binding match. Let me do one final confirmation that the test's own TableProbeRow isn't a positional DateTimeOffset record (which would corroborate the theory):
+
+
+Diagnosed binding mechanism discrepancy and packaged corrective files
+Diagnosed binding mechanism discrepancy and packaged corrective files
+
+Confirming the test's TableProbeRow shape
+Diagnosing property binding versus constructor binding discrepancies.
+
+Diagnosed binding mechanism discrepancy and packaged corrective files.
+
+Done
+Line 281 confirms it: TableProbeRow is a class (property binding, which tolerates DateTime→DateTimeOffset), whereas the broken types are positional records (constructor binding, which does not). Model confirmed; the fix is correct.
+
+Now packaging the tar.gz with repo-relative paths so it extracts cleanly at your repo root:
+
+
+Weighing verbosity against comprehensiveness for code delivery
+Weighing verbosity against comprehensiveness for code delivery
+
+Building the tar.gz with the 4 changed files at repo-relative paths
+Weighing verbosity against comprehensiveness for code delivery.
+
+
+Presented file
+Done
+Congratulations on getting the passkeys registered and becoming the administrator — that's the whole /setup bootstrap working end to end.
+
+Recommendation: fix the current stuff, don't start the next M3 slice
+Every fix below is small individually, but together they get you from red to green with zero warnings and kill two visible bugs you actually hit. Starting the next M3 slice tonight would pile more unbuilt code on top — exactly the "more crap" you want to avoid at end of day. So I stopped at a clean, working tree. The next step (M3 slice 2: join-secret rotation + token generate/validate + metrics) is best started fresh tomorrow on green.
+
+The archive above extracts at your repo root and drops all four files into place. No files to delete. No new packages. No new files — all four are edits to existing files.
+
+What was broken and what I changed
+1. WebAuthnOriginPolicy.cs — the failing WebAuthn test + the CS8602 warning (this is the F-06a slice you just built for the first time)
+
+The test IsTrustedOrigin("https://orders.example.com:443") expected true ("explicit default port is equivalent"), but TrySplitOrigin kept the :443 literally, so "orders.example.com:443" != "orders.example.com" and it fell through to false. I added a StripDefaultPort helper that drops :443 for https and :80 for http (IPv6-bracket-aware) before comparison. A non-default port like :8443 is left intact, so the "ported tunnel host doesn't match" cases still return false.
+The warning at line 55: HostString.Value is nullable in this framework, so .ToLowerInvariant() tripped CS8602. Changed to PublicHost.Value?.ToLowerInvariant() ?? string.Empty.
+2 & 3. TableDirectory.cs and PersonDirectory.cs — the Dapper materialization failures (and the post-setup 500)
+
+Root cause: Npgsql returns a timestamptz column as a UTC DateTime, and Dapper's constructor binding (used for positional records) refuses to feed a DateTime into a DateTimeOffset parameter — so RestaurantTableSummary and PersonSummary/PersonRow can't be built. The stack trace proved it's the field type, not the value: GetTableAsync failed on a freshly-created table whose join_secret_rotated_at was NULL — it was created_at (non-null timestamptz) that broke the match. (The test's own TableProbeRow is a class, so property binding tolerates the conversion — which is why it materialized fine and the failure landed later, in the record.)
+
+The important knock-on: AdministrationHome.razor calls IPersonDirectory.ListPeopleAsync() on load, and the setup success screen links to /administration. So PersonSummary has the identical defect — that is almost certainly your 500 right after setup. You then went to Home (which never touches the directory), so the refresh "worked." PersonDirectory has no test, so CI never caught it; only the Tables path is tested.
+
+The fix keeps the public records (RestaurantTableSummary, PersonSummary) as DateTimeOffset so every Razor consumer (.CreatedAt.ToLocalTime(), the lockout comparisons, etc.) is untouched. I read into an internal row whose two timestamps are DateTime/DateTime? (matching the reader exactly), then project to the public record via new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc)). PersonDirectory already had a PersonRow → ToSummary split, so it was a two-line retype plus the conversion; TableDirectory gained a small RestaurantTableRow + projection mirroring it.
+
+I chose this localized approach over a global Dapper DateTimeOffset type handler on purpose: it touches only the two broken directories and changes nothing about how the (currently green) identity write/read paths behave — lowest blast radius for an end-of-day change. Worth noting for tomorrow: every future M3/M4 positional record that reads a timestamptz into a DateTimeOffset will hit this same wall (sittings, tokens, display devices, orders). If that boilerplate gets tiresome, a single registered type handler is the DRY alternative — but that's a deliberate, test-it-first decision, not an end-of-day one.
+
+4. app.css — the header overflowing to the right on your iPhone SE
+
+.app-header and .app-session were display: flex with no flex-wrap, and there are no width breakpoints anywhere in the stylesheet. On a 375px screen the brand + name + three links + Sign out couldn't shrink or wrap, so they forced the header wider than the viewport while the body wrapped and stayed put — exactly the "header has its own mind about how far right it goes" you described. I added flex-wrap: wrap to both (and a small row-gap on the header) so the session controls drop onto a second line and everything stays within the screen. It's fluid, not a magic breakpoint, which matches how the rest of this stylesheet is built.
+
+After you extract and build
+dotnet test should be green (0 failed) with 0 warnings, and the /administration People list should load instead of 500-ing. If the header still looks off after deploying, it's worth a hard-refresh — app.css gets cached, and the container serves a fresh copy on rebuild.
+
+One caveat on the 500: I'm confident about the PersonSummary defect because the People page provably calls it, but I can't prove it was your specific 500 without the server log. If you still see a 500 anywhere after this build, grab the container log around that request (podman logs myrestaurant_web_1) and I'll trace it.
+
+
+Myrestaurant fixes.tar
+GZ 
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+86
+91

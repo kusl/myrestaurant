@@ -79,10 +79,10 @@ public sealed class DapperTableDirectory : ITableDirectory
         await using DbConnection connection = await _connectionFactory
             .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
-        IEnumerable<RestaurantTableSummary> tables = await connection.QueryAsync<RestaurantTableSummary>(
+        IEnumerable<RestaurantTableRow> rows = await connection.QueryAsync<RestaurantTableRow>(
             new CommandDefinition(ListSql, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
-        return tables.ToArray();
+        return rows.Select(ToSummary).ToArray();
     }
 
     public async Task<RestaurantTableSummary?> GetTableAsync(Guid tableIdentifier, CancellationToken cancellationToken = default)
@@ -90,9 +90,33 @@ public sealed class DapperTableDirectory : ITableDirectory
         await using DbConnection connection = await _connectionFactory
             .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
-        return await connection.QuerySingleOrDefaultAsync<RestaurantTableSummary>(new CommandDefinition(
+        RestaurantTableRow? row = await connection.QuerySingleOrDefaultAsync<RestaurantTableRow>(new CommandDefinition(
             ByIdSql,
             new { TableIdentifier = tableIdentifier },
             cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        return row is null ? null : ToSummary(row);
     }
+
+    // Npgsql materialises a `timestamptz` column as a UTC `DateTime`, and Dapper's constructor binding
+    // will not feed a `DateTime` into a `DateTimeOffset` parameter — so the row is read with `DateTime`
+    // members that match the reader exactly, then projected to the public `DateTimeOffset` summary. The
+    // stored instants are UTC, so the offset is zero (SpecifyKind guards against a non-UTC Kind).
+    private static RestaurantTableSummary ToSummary(RestaurantTableRow row) => new(
+        row.TableIdentifier,
+        row.Label,
+        row.IsActive,
+        row.JoinSecretRotatedAt is { } rotatedAt
+            ? new DateTimeOffset(DateTime.SpecifyKind(rotatedAt, DateTimeKind.Utc))
+            : null,
+        new DateTimeOffset(DateTime.SpecifyKind(row.CreatedAt, DateTimeKind.Utc)));
+
+    // Dapper maps this positional record by constructor-parameter name (case-insensitive) against the
+    // aliased columns above; its members mirror what Npgsql returns for each column type.
+    private sealed record RestaurantTableRow(
+        Guid TableIdentifier,
+        string Label,
+        bool IsActive,
+        DateTime? JoinSecretRotatedAt,
+        DateTime CreatedAt);
 }

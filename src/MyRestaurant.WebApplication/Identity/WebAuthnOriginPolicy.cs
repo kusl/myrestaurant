@@ -52,7 +52,7 @@ public sealed class WebAuthnOriginPolicy
 
         Uri origin = new(publicOrigin, UriKind.Absolute);
         PublicHost = origin.IsDefaultPort ? new HostString(origin.Host) : new HostString(origin.Host, origin.Port);
-        _publicOriginHostPort = PublicHost.Value.ToLowerInvariant();
+        _publicOriginHostPort = PublicHost.Value?.ToLowerInvariant() ?? string.Empty;
         _publicOriginIsLoopback = IsLoopbackHost(origin.Host);
 
         List<(string, string)> parsed = [];
@@ -217,7 +217,30 @@ public sealed class WebAuthnOriginPolicy
             return false;
         }
 
+        // An explicit default port is equivalent to none (":443" for https, ":80" for http), so drop it
+        // before any comparison — otherwise "https://orders.example.com:443" would fail to match the
+        // configured "orders.example.com", whose port the Uri parser has already dropped as default.
+        host = StripDefaultPort(scheme, host);
         return true;
+    }
+
+    /// <summary>
+    /// Drops a trailing port when it is the scheme's default (443 for https, 80 for http). A colon at or
+    /// before a closing <c>]</c> is part of an IPv6 literal (<c>[::1]</c>), not a port separator, so it is
+    /// ignored — the same bracket-aware rule <see cref="HostOnly"/> uses.
+    /// </summary>
+    private static string StripDefaultPort(string scheme, string hostPort)
+    {
+        int close = hostPort.LastIndexOf(']');
+        int colon = hostPort.LastIndexOf(':');
+        if (colon <= close)
+        {
+            return hostPort;
+        }
+
+        string port = hostPort[(colon + 1)..];
+        bool isDefault = (scheme == "https" && port == "443") || (scheme == "http" && port == "80");
+        return isDefault ? hostPort[..colon] : hostPort;
     }
 
     private static string HostOnly(string hostPort)
