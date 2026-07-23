@@ -10,6 +10,7 @@ using MyRestaurant.WebApplication.Configuration;
 using MyRestaurant.WebApplication.Identity;
 using MyRestaurant.WebApplication.LiveUpdates;
 using MyRestaurant.WebApplication.Observability;
+using MyRestaurant.WebApplication.Tables;
 using Npgsql;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -106,6 +107,12 @@ builder.Services.AddDataProtection()
 // store encrypts the TOTP secret and the auth cookie is protected with it, and after RestaurantMetrics
 // because the hasher and sign-in manager report there.
 builder.Services.AddRestaurantIdentity(options);
+
+// Table management services (§4.1): the read-only ITableDirectory the administration tables pages read
+// from and the transactional ITableAdministration they write through (create, rename, rotate the join
+// secret, deactivate/reactivate). A §4 concern, kept separate from AddRestaurantIdentity; both resolve
+// the same connection factory, clock, and identifier factory registered above.
+builder.Services.AddRestaurantTables();
 
 // The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
 // so honour its X-Forwarded-* headers. KnownIPNetworks/KnownProxies are cleared deliberately — safe

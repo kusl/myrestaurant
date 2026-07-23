@@ -1,0 +1,115 @@
+@page "/administration/tables/new"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.DataAccess.Tables
+@using MyRestaurant.Domain.Identifiers
+@inject ITableAdministration Tables
+@inject IIdentifierFactory IdentifierFactory
+@inject NavigationManager Navigation
+
+@* Create a table (TECHNICAL_SPECIFICATION §4.1). Administrator only (endpoint authorization, like
+   every administration surface). Static SSR: a full-page form post. The table is created with a
+   freshly generated 32-byte join secret, held entirely server-side and never shown (§4.1). Nothing is
+   written until the form is submitted; the identifier is minted here so the success screen can link
+   straight to the new table's management page. *@
+
+<PageTitle>Create table</PageTitle>
+
+@if (_created)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Table created</p>
+        <h1>@_createdLabel is ready</h1>
+
+        <p class="status-success" role="status">
+            The table <strong>@_createdLabel</strong> was created with a private join secret. Pair a
+            display to it, or show its rotating QR from the counter, to let guests join.
+        </p>
+
+        <div class="form-actions">
+            <a class="button-primary" href="@($"/administration/tables/{_createdTableIdentifier}")">Manage this table</a>
+            <a class="button-secondary" href="/administration/tables">Back to tables</a>
+        </div>
+    </section>
+}
+else
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Create a table</h1>
+        <p class="lede">
+            Give the table a short, unique label — this is what staff see on rosters and the kitchen
+            queue. A private join secret is generated for it automatically.
+        </p>
+
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <EditForm Model="Input" method="post" OnValidSubmit="CreateAsync" FormName="create-table">
+            <DataAnnotationsValidator />
+
+            <div class="form-field">
+                <label for="label">Label</label>
+                <InputText id="label" @bind-Value="Input.Label" autocomplete="off" autofocus />
+                <ValidationMessage For="@(() => Input.Label)" />
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Create table</button>
+                <a class="button-secondary" href="/administration/tables">Cancel</a>
+            </div>
+        </EditForm>
+
+        <p class="form-footnote">
+            Labels must be unique. You can rename a table later, or deactivate it, from its management
+            page.
+        </p>
+    </section>
+}
+
+@code {
+    private bool _created;
+    private string? _createdLabel;
+    private Guid _createdTableIdentifier;
+    private string? _errorMessage;
+
+    [SupplyParameterFromForm(FormName = "create-table")]
+    private CreateTableInputModel Input { get; set; } = default!;
+
+    protected override void OnInitialized()
+        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
+        => Input ??= new();
+
+    private async Task CreateAsync()
+    {
+        string label = Input.Label.Trim();
+        Guid tableIdentifier = IdentifierFactory.Create();
+
+        CreateTableOutcome outcome = await Tables.CreateTableAsync(
+            tableIdentifier, label, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case CreateTableOutcome.Created:
+                _createdLabel = label;
+                _createdTableIdentifier = tableIdentifier;
+                _created = true;
+                break;
+            case CreateTableOutcome.LabelTaken:
+                _errorMessage = "That label is already used by another table. Please choose a different one.";
+                break;
+        }
+    }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private sealed class CreateTableInputModel
+    {
+        [Required(ErrorMessage = "Choose a label for the table.")]
+        [StringLength(64, MinimumLength = 1, ErrorMessage = "The label must be 1–64 characters.")]
+        public string Label { get; set; } = string.Empty;
+    }
+}

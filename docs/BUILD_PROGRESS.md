@@ -716,3 +716,22 @@ real grantor. This is also the home for **voluntary TOTP removal**, the §4.2 "a
 cannot remove their own enrollment" rule, and the grant-time passkey mandate for the
 kitchen and administrator roles (§3.7). Store-level integration tests + middleware tests
 throughout.
+
+### M3 Slice 1 — table management: CRUD + join-secret rotation (landed)
+
+The administration area can now manage tables (§4.1). New `ITableAdministration`/
+`DapperTableAdministration` (DataAccess/Tables) creates a table with a CSPRNG 32-byte
+join secret, renames it (no-change and label-collision detected), rotates the secret
+(new 32 bytes + `join_secret_rotated_at` stamped — every outstanding token dies, §4.3),
+and deactivates/reactivates — one connection+transaction per op, one IClock instant,
+mirroring DapperAccountAdministration. The join secret is never read into a summary or
+returned to any caller (§4.1). Read-only `ITableDirectory`/`DapperTableDirectory` lists
+tables oldest-first and reads one by id, secret column never selected. Registered by a
+new `AddRestaurantTables()` (WebApplication/Tables), wired in Program.cs after
+`AddRestaurantIdentity`. Three static-SSR admin pages: `/administration/tables` (list),
+`/administration/tables/new` (create), `/administration/tables/{id}` (rename, rotate,
+deactivate/reactivate — post/redirect/get). AdministrationHome gained a Tables header
+link. Table changes are not in the `security_event` vocabulary, so none are audited.
+No packages, no migration (restaurant_table ships in 0001). Tests:
+`TableAdministrationTests` (Testcontainers, 11 facts) and `TablesWiringTests`
+(resolvability, no container). Next M3 slice: display pairing + device auth + `/display`.
