@@ -1,35 +1,61 @@
 #!/usr/bin/env bash
 #
-# Quick tunnel helper (TECHNICAL_SPECIFICATION §14.3) — DEMOS ONLY.
+# Quick tunnel demo (TECHNICAL_SPECIFICATION §14.3, ADR-0005) — one command.
 #
-# A *.trycloudflare.com hostname is on the Public Suffix List and is random per run. A passkey's
-# relying-party ID binds to that subdomain, so passkeys registered during a quick-tunnel demo die
-# when the tunnel stops. Demos must therefore authenticate with password + TOTP, not passkeys.
+# Brings the stack up, opens a Cloudflare Quick Tunnel to it, discovers the assigned
+# *.trycloudflare.com URL, sets RESTAURANT_PUBLIC_ORIGIN to that URL so QR join links resolve, and
+# holds the tunnel in the foreground. Ctrl+C closes the tunnel (the stack keeps running).
 #
-# The tunnel only exists while this process runs — there is deliberately no "print a URL and exit"
-# mode, because exiting kills the URL. Bring the stack up FIRST (e.g. `./run.sh --containers-only`),
-# then run this script and leave it in the foreground; Ctrl+C closes the tunnel. Override the target
-# with TUNNEL_TARGET if needed.
+# PASSKEYS WORK ON A QUICK TUNNEL. The WebAuthn relying-party ID is derived per request from the
+# origin host and RESTAURANT_TRUSTED_ORIGIN_PATTERNS trusts https://*.trycloudflare.com by default
+# (ADR-0005), so you can register and sign in with a passkey — including a passkey-only account —
+# during the demo. The ONE caveat: a *.trycloudflare.com hostname is random per run, so a NEW run
+# gets a NEW URL and passkeys registered on a previous URL will not carry over (re-register them).
+# For anything that must persist across runs, use the production named tunnel (CLOUDFLARE_TUNNEL_TOKEN).
+#
+# Usage:
+#   scripts/quick_tunnel.sh
+#
+# Environment:
+#   TUNNEL_TARGET         what cloudflared points at (default http://localhost:8080)
+#   TUNNEL_URL_WAIT       seconds to wait for the tunnel URL to appear (default 90)
 
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
 TARGET="${TUNNEL_TARGET:-http://localhost:8080}"
+URL_WAIT="${TUNNEL_URL_WAIT:-90}"
 
-cat >&2 <<'WARNING'
-────────────────────────────────────────────────────────────────────────────
-  QUICK TUNNEL — DEMO ONLY
-  • The *.trycloudflare.com domain is random per run and on the Public Suffix List.
-  • Passkeys registered here will STOP WORKING when the tunnel closes.
-  • Sign in with password + TOTP for the demo.
-  • For anything persistent, use the production named tunnel (CLOUDFLARE_TUNNEL_TOKEN).
-────────────────────────────────────────────────────────────────────────────
-WARNING
+log()  { printf '[quick-tunnel] %s\n' "$*" >&2; }
+die()  { printf '[quick-tunnel] error: %s\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------------------------------
-# Pre-flight: refuse to open a tunnel onto nothing. A quick tunnel to a dead port "works" from
-# cloudflared's point of view and then 502s in front of the audience — fail here instead, with the
-# command that fixes it.
+# Compose engine detection (mirrors scripts/restore.sh).
 # ---------------------------------------------------------------------------------------------------
+if command -v podman-compose >/dev/null 2>&1; then
+    COMPOSE=(podman-compose)
+elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
+    COMPOSE=(podman compose)
+elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+else
+    die "need podman-compose, 'podman compose', or 'docker compose' on PATH."
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# cloudflared runner: prefer a host binary; fall back to a container on the host network so
+# localhost:8080 (the loopback-published web port) is reachable.
+# ---------------------------------------------------------------------------------------------------
+if command -v cloudflared >/dev/null 2>&1; then
+    TUNNEL_RUNNER=(cloudflared)
+elif command -v podman >/dev/null 2>&1; then
+    TUNNEL_RUNNER=(podman run --rm --network host docker.io/cloudflare/cloudflared)
+elif command -v docker >/dev/null 2>&1; then
+    TUNNEL_RUNNER=(docker run --rm --network host docker.io/cloudflare/cloudflared)
+else
+    die "need cloudflared, podman, or docker on PATH."
+fi
+
 http_ok() {
     local url="$1"
     if command -v curl >/dev/null 2>&1; then
@@ -41,54 +67,105 @@ http_ok() {
     fi
 }
 
-probe_rc=0
-http_ok "${TARGET%/}/healthz/ready" || probe_rc=$?
-if (( probe_rc == 3 )); then
-    echo "warning: neither curl nor wget is installed; skipping the readiness pre-check." >&2
-elif (( probe_rc != 0 )); then
-    # /healthz/ready may 503 while migrations settle; accept any answer at the root as "alive".
-    if ! http_ok "$TARGET"; then
-        echo "error: nothing is answering at $TARGET — there is no point opening a tunnel to it." >&2
-        echo "hint : bring the stack up first, then re-run this script:" >&2
-        echo "           ./run.sh --containers-only" >&2
-        echo "       (or point TUNNEL_TARGET at wherever the app is listening)" >&2
-        exit 1
-    fi
-    echo "warning: $TARGET answers, but /healthz/ready is not 200 yet — the demo may need a moment." >&2
-fi
-
-# ---------------------------------------------------------------------------------------------------
-# Locate a cloudflared (binary first, then a containerized fallback on the host network).
-# ---------------------------------------------------------------------------------------------------
-if command -v cloudflared >/dev/null 2>&1; then
-    RUNNER=(cloudflared)
-elif command -v podman >/dev/null 2>&1; then
-    RUNNER=(podman run --rm --network host docker.io/cloudflare/cloudflared)
-elif command -v docker >/dev/null 2>&1; then
-    RUNNER=(docker run --rm --network host docker.io/cloudflare/cloudflared)
-else
-    echo "error: need cloudflared, podman, or docker on PATH." >&2
-    exit 1
-fi
-
-echo "info: opening a quick tunnel to $TARGET (foreground — Ctrl+C closes the tunnel and kills the URL) ..." >&2
-
-# ---------------------------------------------------------------------------------------------------
-# Run cloudflared in the foreground, passing its log through unchanged, and surface the assigned
-# *.trycloudflare.com URL prominently the moment it appears (it is otherwise buried in log noise).
-# The pipeline keeps cloudflared as the long-lived process; its exit status is the script's.
-# ---------------------------------------------------------------------------------------------------
-"${RUNNER[@]}" tunnel --url "$TARGET" 2>&1 | {
-    url_announced=0
-    while IFS= read -r line; do
-        printf '%s\n' "$line"
-        if (( url_announced == 0 )) && [[ "$line" =~ (https://[A-Za-z0-9.-]+\.trycloudflare\.com) ]]; then
-            url_announced=1
-            printf '\n────────────────────────────────────────────────────────────────────────────\n' >&2
-            printf '  PUBLIC DEMO URL:  %s\n' "${BASH_REMATCH[1]}" >&2
-            printf '  Password + TOTP only — passkeys registered here die with this tunnel.\n' >&2
-            printf '  The URL lives exactly as long as this process. Ctrl+C ends the demo.\n' >&2
-            printf '────────────────────────────────────────────────────────────────────────────\n\n' >&2
+wait_ready() {
+    # Poll /healthz/ready (accept any answer at the root as "alive" while migrations settle).
+    local deadline=$(( $(date +%s) + 60 ))
+    while (( $(date +%s) < deadline )); do
+        if http_ok "${TARGET%/}/healthz/ready" || http_ok "$TARGET"; then
+            return 0
         fi
+        sleep 2
     done
+    return 1
 }
+
+# ---------------------------------------------------------------------------------------------------
+# 1) Database first, then the web app. Compose reads RESTAURANT_PUBLIC_ORIGIN from the environment
+#    (see compose.yaml's ${RESTAURANT_PUBLIC_ORIGIN:-...}); we discover and export the real value in
+#    step 3, then (re)create web with it so the QR join URLs point at the tunnel. Passkeys do not
+#    depend on this — they self-heal from the request origin (ADR-0005) — but join links do.
+# ---------------------------------------------------------------------------------------------------
+log "starting the database…"
+"${COMPOSE[@]}" up -d postgres
+
+# ---------------------------------------------------------------------------------------------------
+# 2) Open the quick tunnel in the background and capture its log. cloudflared will log connection
+#    errors to the target until web is up (step 4); that is expected and self-corrects.
+# ---------------------------------------------------------------------------------------------------
+TUNNEL_LOG="$(mktemp -t myrestaurant-quicktunnel.XXXXXX.log)"
+log "opening a quick tunnel to $TARGET …"
+"${TUNNEL_RUNNER[@]}" tunnel --no-autoupdate --url "$TARGET" >"$TUNNEL_LOG" 2>&1 &
+TUNNEL_PID=$!
+
+cleanup() {
+    log "closing the tunnel (the stack keeps running; stop it with '${COMPOSE[*]} down')."
+    kill "$TUNNEL_PID" 2>/dev/null || true
+    wait "$TUNNEL_PID" 2>/dev/null || true
+    rm -f "$TUNNEL_LOG" 2>/dev/null || true
+}
+trap cleanup INT TERM EXIT
+
+# ---------------------------------------------------------------------------------------------------
+# 3) Discover the assigned *.trycloudflare.com URL from the tunnel log.
+# ---------------------------------------------------------------------------------------------------
+log "waiting for the quick tunnel URL (up to ${URL_WAIT}s)…"
+PUBLIC_URL=""
+deadline=$(( $(date +%s) + URL_WAIT ))
+while (( $(date +%s) < deadline )); do
+    if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
+        cat "$TUNNEL_LOG" >&2 || true
+        die "cloudflared exited before announcing a URL (see log above)."
+    fi
+    PUBLIC_URL="$(grep -oE 'https://[A-Za-z0-9.-]+\.trycloudflare\.com' "$TUNNEL_LOG" | head -n1 || true)"
+    [[ -n "$PUBLIC_URL" ]] && break
+    sleep 1
+done
+[[ -n "$PUBLIC_URL" ]] || die "timed out waiting for the tunnel URL (see $TUNNEL_LOG)."
+
+export RESTAURANT_PUBLIC_ORIGIN="$PUBLIC_URL"
+log "public origin: $RESTAURANT_PUBLIC_ORIGIN"
+
+# ---------------------------------------------------------------------------------------------------
+# 4) (Re)create web with the discovered origin so join links resolve, then wait until it is ready.
+#    Force-recreate so an already-running web (e.g. from ./run.sh --containers-only) picks up the new
+#    origin; fall back to a plain up if the engine does not accept the flag.
+# ---------------------------------------------------------------------------------------------------
+log "starting the web app with the tunnel origin…"
+"${COMPOSE[@]}" up -d --force-recreate web 2>/dev/null \
+    || { "${COMPOSE[@]}" rm -sf web >/dev/null 2>&1 || true; "${COMPOSE[@]}" up -d web; }
+
+if wait_ready; then
+    log "web app is ready."
+else
+    log "warning: /healthz/ready did not turn green yet — the tunnel may need a moment."
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# 5) Banner + hold the tunnel in the foreground.
+# ---------------------------------------------------------------------------------------------------
+cat >&2 <<BANNER
+
+────────────────────────────────────────────────────────────────────────────
+  QUICK TUNNEL — DEMO
+
+  PUBLIC URL:  $PUBLIC_URL
+
+  • Passkeys WORK here: register and sign in with a passkey, or run a
+    passkey-only account (username + passkey, no password).
+  • A new run gets a NEW random URL — passkeys registered on a previous URL
+    will not carry over. Re-register them, or use the production named tunnel
+    (CLOUDFLARE_TUNNEL_TOKEN) for anything that must persist.
+  • Do NOT bootstrap a real, long-lived instance through a quick tunnel.
+
+  The URL lives exactly as long as this process. Ctrl+C closes the tunnel.
+────────────────────────────────────────────────────────────────────────────
+
+BANNER
+
+log "streaming cloudflared log (Ctrl+C to stop):"
+tail -n +1 -f "$TUNNEL_LOG" &
+TAIL_PID=$!
+trap 'kill "$TAIL_PID" 2>/dev/null || true; cleanup' INT TERM EXIT
+
+# Block on the tunnel; when it exits (or Ctrl+C), the traps clean up.
+wait "$TUNNEL_PID"

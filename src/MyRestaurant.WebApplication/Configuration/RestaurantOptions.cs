@@ -20,8 +20,26 @@ public sealed class RestaurantOptions
     public const int MinimumTableJoinGrantMinutes = 1;
     public const int MinimumTableDisplayPairingCodeMinutes = 1;
 
+    /// <summary>
+    /// The default trusted WebAuthn origin patterns (TECHNICAL_SPECIFICATION §3.3, ADR-0005). Cloudflare
+    /// Quick Tunnels hand out a random <c>*.trycloudflare.com</c> hostname per run, so trusting that
+    /// wildcard lets passkeys work in a quick-tunnel demo without knowing the URL at startup. This gates
+    /// only WebAuthn relying-party derivation; it is deliberately not a general CORS allowance.
+    /// </summary>
+    public static readonly IReadOnlyList<string> DefaultTrustedOriginPatterns = ["https://*.trycloudflare.com"];
+
     public required string RestaurantName { get; init; }
     public required string PublicOrigin { get; init; }
+
+    /// <summary>
+    /// Additional browser origins that may act as the WebAuthn relying party, as wildcard patterns
+    /// (<c>RESTAURANT_TRUSTED_ORIGIN_PATTERNS</c>; §3.3, ADR-0005). The configured <see cref="PublicOrigin"/>
+    /// and loopback (in development) are always trusted; these extend that set so a Cloudflare quick
+    /// tunnel's per-run <c>*.trycloudflare.com</c> host works without being known at startup. Defaults to
+    /// <see cref="DefaultTrustedOriginPatterns"/>; not required so existing constructions keep the default.
+    /// </summary>
+    public IReadOnlyList<string> TrustedOriginPatterns { get; init; } = DefaultTrustedOriginPatterns;
+
     public required string TimeZoneId { get; init; }
     public required string CurrencyCode { get; init; }
     public required string DatabaseConnectionString { get; init; }
@@ -43,6 +61,7 @@ public sealed class RestaurantOptions
         {
             RestaurantName = ReadString(configuration, "RESTAURANT_NAME", "My Restaurant"),
             PublicOrigin = ReadString(configuration, "RESTAURANT_PUBLIC_ORIGIN", "https://localhost:8443"),
+            TrustedOriginPatterns = ReadOriginPatterns(configuration, "RESTAURANT_TRUSTED_ORIGIN_PATTERNS", DefaultTrustedOriginPatterns),
             TimeZoneId = ReadString(configuration, "RESTAURANT_TIME_ZONE", "America/New_York"),
             CurrencyCode = ReadString(configuration, "RESTAURANT_CURRENCY_CODE", "USD"),
             DatabaseConnectionString = ReadString(
@@ -127,10 +146,23 @@ public sealed class RestaurantOptions
             errors.Add($"KITCHEN_SUBMISSION_REMINDER_SECONDS must be at least 1 (was {KitchenSubmissionReminderSeconds}).");
         }
 
+        foreach (string pattern in TrustedOriginPatterns)
+        {
+            if (!IsValidOriginPattern(pattern))
+            {
+                errors.Add($"RESTAURANT_TRUSTED_ORIGIN_PATTERNS entry '{pattern}' must be an https origin like 'https://*.trycloudflare.com' (scheme://host, optional leading '*.' wildcard label, no path or port).");
+            }
+        }
+
         return errors;
     }
 
-    /// <summary>The WebAuthn relying-party identifier: the full host of the public origin (§3.3).</summary>
+    /// <summary>
+    /// The host of the configured public origin (§3.3). As of ADR-0005 the WebAuthn relying-party ID
+    /// is derived <em>per request</em> from the request host (so a quick tunnel's per-run hostname
+    /// works), not pinned to this value; this remains the canonical configured host — used for QR join
+    /// URLs (ADR-0009) and as the fallback host presented by <see cref="Identity.PublicOriginMiddleware"/>.
+    /// </summary>
     public string ResolveWebAuthnRelyingPartyId() => new Uri(PublicOrigin).Host;
 
     /// <summary>The configured display time zone (validated at startup).</summary>
@@ -159,4 +191,53 @@ public sealed class RestaurantOptions
         => int.TryParse(configuration[key], NumberStyles.Integer, CultureInfo.InvariantCulture, out int value)
             ? value
             : fallback;
+
+    /// <summary>
+    /// Reads a comma/space/newline-separated list of origin patterns, trimming empties; returns the
+    /// supplied default when the variable is unset or contains no non-empty entries.
+    /// </summary>
+    private static IReadOnlyList<string> ReadOriginPatterns(
+        IConfiguration configuration,
+        string key,
+        IReadOnlyList<string> fallback)
+    {
+        string? raw = configuration[key];
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return fallback;
+        }
+
+        char[] separators = new[] { ',', ' ', '\t', '\n', '\r' };
+        string[] parts = raw.Split(separators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length == 0 ? fallback : parts;
+    }
+
+    /// <summary>
+    /// A trusted-origin pattern is <c>scheme://host</c> with an https scheme, a non-empty host that
+    /// may begin with a single <c>*.</c> wildcard label, and no path, query, fragment, userinfo, or
+    /// port. This matches the runtime matcher in <see cref="Identity.WebAuthnOriginPolicy"/>.
+    /// </summary>
+    private static bool IsValidOriginPattern(string pattern)
+    {
+        if (string.IsNullOrWhiteSpace(pattern))
+        {
+            return false;
+        }
+
+        string value = pattern.Trim().ToLowerInvariant();
+        const string prefix = "https://";
+        if (!value.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string host = value[prefix.Length..];
+        if (host.Length == 0 || host.AsSpan().ContainsAny("/?#@ :"))
+        {
+            return false;
+        }
+
+        string bare = host.StartsWith("*.", StringComparison.Ordinal) ? host[2..] : host;
+        return bare.Length > 0 && !bare.Contains('*') && bare.Contains('.');
+    }
 }

@@ -86,7 +86,7 @@ Production normally runs **without** Caddy: guests and staff alike reach the ins
 2. Install the certificate on **staff devices only** (kitchen kiosk, counter machine). Guests never touch this origin.
 3. Staff bookmark `https://restaurant.lan/kitchen` and `/counter` as the emergency door.
 
-Hard limits, by design: **passkeys do not work on this origin** (they are bound to the public domain), so staff sign in with password + TOTP — which means every staff member you expect to use the fallback must actually have a password set and TOTP enrolled *before* the outage. Guest ordering from phones is still down (§11). This fallback keeps the kitchen queue and the ability to close bills alive; it is not a second front door.
+Hard limits, by design: **passkeys do not work on this origin** — `restaurant.lan` is not the public origin and is not in `RESTAURANT_TRUSTED_ORIGIN_PATTERNS`, so the RP-ID derivation (ADR-0005) won't trust it, and a credential registered on the public domain won't match it anyway — so staff sign in with password + TOTP — which means every staff member you expect to use the fallback must actually have a password set and TOTP enrolled *before* the outage. Guest ordering from phones is still down (§11). This fallback keeps the kitchen queue and the ability to close bills alive; it is not a second front door.
 
 ## 8. Data Protection keys
 
@@ -97,7 +97,7 @@ The ASP.NET Data Protection key ring lives in the `DATA_PROTECTION_KEYS_DIRECTOR
 
 ## 9. Changing the public origin (domain move)
 
-Passkeys bind to the RP ID — the host of `RESTAURANT_PUBLIC_ORIGIN`. Moving domains **orphans every passkey on the instance**. This is WebAuthn, not a bug; plan accordingly.
+A passkey binds to the RP ID — the host it was registered on. In production every browser is on the named-tunnel domain, so that is the host of `RESTAURANT_PUBLIC_ORIGIN` (the RP ID is derived per request, ADR-0005, but in production there is only the one public host). Moving domains therefore **orphans every passkey on the instance**. This is WebAuthn, not a bug; plan accordingly.
 
 1. **Before the move**, confirm every administrator can complete a **password + TOTP** sign-in on the current origin. An administrator who is passkey-only with no password set will be locked out of administration by the move — have them set a password first. Encourage staff to do the same.
 2. Create/repoint the named tunnel's public hostname to the new domain; update `RESTAURANT_PUBLIC_ORIGIN`; restart the stack.
@@ -106,16 +106,15 @@ Passkeys bind to the RP ID — the host of `RESTAURANT_PUBLIC_ORIGIN`. Moving do
 
 ## 10. Quick-tunnel demo runbook
 
-Show-and-tell over the public internet is a **two-command** flow, by design (spec §14.3/§14.4, ADR-0005 — quick tunnels are demo-only and are not part of `run.sh`):
+Show-and-tell over the public internet is a **one-command** flow (spec §14.3/§14.4, ADR-0005 — the quick tunnel is a separate helper, not part of `run.sh`):
 
 ```bash
-./run.sh --containers-only     # terminal 1 — build, migrate, start the stack, return
-scripts/quick_tunnel.sh        # terminal 2 — expose it, stays in the foreground
+scripts/quick_tunnel.sh        # brings the stack up, exposes it, stays in the foreground
 ```
 
-The script refuses to start if the stack isn't up and ready (it probes `http://localhost:8080/healthz/ready` first and tells you exactly which command to run if the probe fails), so running it against nothing fails in one second with instructions rather than a hung tunnel. Once `cloudflared` hands back the random `https://<something>.trycloudflare.com` hostname, the script prints it in an unmissable banner and then **stays in the foreground streaming tunnel logs** — the URL lives exactly as long as the process. `Ctrl+C` ends the demo; there is no detached mode and no "print the URL and exit," because the tunnel dies with the process that owns it.
+The script stages the bring-up in the GoTunnels spirit: it detects your compose engine and a `cloudflared` runner (host binary or a container on the host network), starts PostgreSQL, opens the quick tunnel, and **polls the tunnel log for the assigned `https://<something>.trycloudflare.com` hostname**. Once it has the URL it exports it as `RESTAURANT_PUBLIC_ORIGIN` (so QR join links and the form-post host fallback resolve to the tunnel, not an internal address), force-recreates the `web` service against that origin, and waits for `/healthz/ready`. It then prints the URL in an unmissable banner and **stays in the foreground streaming tunnel logs** — the URL lives exactly as long as the process. `Ctrl+C` ends the demo; there is no detached mode and no "print the URL and exit," because the tunnel dies with the process that owns it. The script does not touch your `.env`; it passes the origin through the shell environment for this run only.
 
-Every run gets a random subdomain, and `trycloudflare.com` is on the Public Suffix List, so **any passkey registered through a quick tunnel binds to that one run and dies with it** — the script prints exactly this warning, loudly. Demo with password + TOTP accounts; never bootstrap a real instance (§3) through a quick tunnel; never point a real instance's `RESTAURANT_PUBLIC_ORIGIN` at one.
+**Passkeys work on the quick tunnel**, including a passkey-only account — the RP ID is derived per request and `https://*.trycloudflare.com` is trusted by default (ADR-0005, §3.3), so you can register a passkey, sign out, and sign in with it, all within the demo. The one caveat, which the script prints loudly: every run gets a fresh random subdomain (`trycloudflare.com` is on the Public Suffix List), so **a passkey registered on one run will not match the next run's URL** and must be re-registered — quick-tunnel passkeys are not durable. Password + TOTP is the durable baseline. **Never bootstrap a real instance (§3) through a quick tunnel** — the first administrator's passkey would not survive the next run — and never point a real instance's `RESTAURANT_PUBLIC_ORIGIN` at one; use the stable named tunnel for anything that must persist.
 
 ## 11. WAN outage behavior
 

@@ -22,7 +22,8 @@ using OpenTelemetry.Trace;
 //   2. wire OpenTelemetry (exporters only when an OTLP endpoint is configured);
 //   3. register services;
 //   4. apply database migrations BEFORE binding HTTP (never serve on a half-applied schema, §17);
-//   5. forwarded headers → auth → obligations pipeline → health endpoints → Blazor components.
+//   5. forwarded headers → public-origin host normalization → auth → obligations pipeline → health
+//      endpoints → Blazor components.
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
@@ -143,6 +144,12 @@ using (IServiceScope migrationScope = app.Services.CreateScope())
 // the pipeline pages unreachable while a §3.5 flag is set. Static files sit before authentication so
 // css/assets are never blocked; antiforgery sits after auth, before endpoints.
 app.UseForwardedHeaders();
+// Normalize Request.Host to the effective public origin host BEFORE anything derives from it, so the
+// .NET 10 passkey handler (RP ID = ServerDomain ?? Request.Host.Host, and ServerDomain is null by
+// design) sees the host the browser is actually on — including a Cloudflare quick tunnel's per-run
+// *.trycloudflare.com hostname. Sits right after forwarded headers so it can see X-Forwarded-Host and
+// before auth/endpoints so the ceremony sees the corrected host (§3.3, ADR-0005).
+app.UseMiddleware<PublicOriginMiddleware>();
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();

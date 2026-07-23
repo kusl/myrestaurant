@@ -120,18 +120,24 @@ podman-compose --profile production up -d
 and link URLs are derived. In-house guests hairpin through the tunnel, so LAN ordering depends on WAN
 health — an accepted tradeoff for this design.
 
-For a throwaway demo, bring the stack up and then open a quick tunnel — two commands, in order:
+For a throwaway demo over the public internet, one command does it all:
 
 ```bash
-./run.sh --containers-only
 scripts/quick_tunnel.sh
 ```
 
-The script verifies the app is answering, opens a `*.trycloudflare.com` tunnel, and prints the
-assigned URL in a banner the moment it exists. The URL lives exactly as long as the script runs
-(Ctrl+C ends the demo) — a quick tunnel cannot "print a URL and exit", because exiting kills the
-URL. That domain is random per run and on the Public Suffix List, so passkeys will not persist
-across runs; demos sign in with password + TOTP.
+The script brings PostgreSQL up, opens a `*.trycloudflare.com` tunnel, discovers the assigned URL,
+sets `RESTAURANT_PUBLIC_ORIGIN` to it (so QR join links resolve), (re)starts the web app against
+that URL, waits for it to answer, prints the URL in a banner, and then holds the tunnel in the
+foreground. The URL lives exactly as long as the script runs (Ctrl+C ends the demo) — a quick
+tunnel cannot "print a URL and exit", because exiting kills the URL.
+
+**Passkeys work on the quick tunnel**, including a passkey-only account: the WebAuthn relying-party
+ID is derived per request from the host the browser is on (ADR-0005), and `https://*.trycloudflare.com`
+is trusted by default (`RESTAURANT_TRUSTED_ORIGIN_PATTERNS`). The one caveat, which the script prints
+loudly: that hostname is random per run and on the Public Suffix List, so passkeys (and bookmarks) do
+not carry across runs — register again on the next run. Use the stable named tunnel for anything that
+must persist, and never bootstrap a real instance through a quick tunnel.
 
 ## Backups
 

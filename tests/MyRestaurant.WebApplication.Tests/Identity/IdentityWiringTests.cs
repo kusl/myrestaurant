@@ -163,17 +163,49 @@ public sealed class IdentityWiringTests
     }
 
     [Fact]
-    public void PasskeyOptions_UseTheConfiguredRelyingPartyAndPreferredVerification()
+    public void PasskeyOptions_DeriveRelyingPartyPerRequestAndPreferVerification()
     {
-        // §3.3: RP ID is the host of RESTAURANT_PUBLIC_ORIGIN (localhost for the test options), and
-        // residentKey + userVerification are both "preferred".
+        // §3.3 / ADR-0005: ServerDomain is left null so the .NET 10 handler derives the RP ID from the
+        // (normalized) request host per request — this is what makes quick-tunnel passkeys work. An
+        // origin validator is installed; residentKey + userVerification are both "preferred".
         using ServiceProvider provider = BuildProvider();
 
         IdentityPasskeyOptions options = provider.GetRequiredService<IOptions<IdentityPasskeyOptions>>().Value;
 
-        Assert.Equal("localhost", options.ServerDomain);
+        Assert.Null(options.ServerDomain);
         Assert.Equal("preferred", options.UserVerificationRequirement);
         Assert.Equal("preferred", options.ResidentKeyRequirement);
+        Assert.NotNull(options.ValidateOrigin);
+    }
+
+    [Theory]
+    [InlineData("https://localhost:8443", false, true)]                                  // the configured origin
+    [InlineData("https://marie-editing-committed-preferred.trycloudflare.com", false, true)] // a quick-tunnel origin (default pattern)
+    [InlineData("https://evil.example.com", false, false)]                               // an untrusted origin
+    [InlineData("https://marie-editing-committed-preferred.trycloudflare.com", true, false)] // trusted host but cross-origin iframe
+    public async Task PasskeyOriginValidation_TrustsConfiguredAndTunnelOrigins(string origin, bool crossOrigin, bool expected)
+    {
+        using ServiceProvider provider = BuildProvider();
+        IdentityPasskeyOptions options = provider.GetRequiredService<IOptions<IdentityPasskeyOptions>>().Value;
+
+        bool actual = await options.ValidateOrigin!(new PasskeyOriginValidationContext
+        {
+            HttpContext = new DefaultHttpContext(),
+            Origin = origin,
+            CrossOrigin = crossOrigin,
+        });
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void WebAuthnOriginPolicy_IsRegistered()
+    {
+        using ServiceProvider provider = BuildProvider();
+
+        WebAuthnOriginPolicy policy = provider.GetRequiredService<WebAuthnOriginPolicy>();
+
+        Assert.NotNull(policy);
     }
 
     [Fact]

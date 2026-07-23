@@ -17,17 +17,22 @@ The scaffold and each subsequent milestone are written in an environment
   enrollment; and passkeys). After enabling the Podman socket, the last full local
   sweep was **green with zero warnings: 351 tests, 0 failed, 336 passed, 15 skipped**
   (the 15 remaining skips are the M6 Playwright end-to-end matrix), and `run.sh
-  --smoke` passed end to end. The newest slice — the **first-administrator `/setup`
-  bootstrap** (this change) — is, like its predecessors were, unbuilt until your next
-  build/test run; expect to fix the occasional thing a compiler would catch, most
-  likely in the multi-step wizard component (`Components/Account/Pages/Setup.razor`).
+  --smoke` passed end to end. Two slices sit on top of that sweep, each — like its
+  predecessors were — unbuilt until your next build/test run: the **first-administrator
+  `/setup` bootstrap**, whose likely compiler-catch home is the multi-step wizard
+  component (`Components/Account/Pages/Setup.razor`); and, newest, the **F-06a
+  quick-tunnel passkey correction** (see the slice at the end of this file), whose
+  likely home is the two new Identity classes (`Identity/WebAuthnOriginPolicy.cs`,
+  `Identity/PublicOriginMiddleware.cs`) and their wiring.
 - **Package versions in `Directory.Packages.props` are best-effort.** They target
   the .NET 10 GA era. Run `dotnet restore`; if a version does not exist, bump it
-  there to the nearest available. Nothing else references versions. **This slice adds
-  no packages** and **no new front-end assets** — the wizard reuses the passkey
-  ceremony from Slice 5, pointing the existing `wwwroot/js/passkey.js` at a new
+  there to the nearest available. Nothing else references versions. **The `/setup`
+  slice adds no packages** and **no new front-end assets** — the wizard reuses the
+  passkey ceremony from Slice 5, pointing the existing `wwwroot/js/passkey.js` at a new
   anonymous creation-options endpoint via an optional attribute on `PasskeySubmit`
-  (both changes are backward-compatible; the account passkey pages are untouched).
+  (both changes are backward-compatible; the account passkey pages are untouched). The
+  **F-06a** slice likewise adds no packages and **no client change** — `passkey.js` is
+  already server-driven; it is server wiring, a script rewrite, and docs.
 - Shell scripts are syntax-checked with `bash -n`; they may need `chmod +x`.
 
 ## Staged plan
@@ -36,27 +41,37 @@ The work is split into six stages aligned to the spec's milestones (§19). Each
 stage is meant to leave the tree buildable and testable.
 
 - [x] **Stage 1 — M1: skeleton + pure Domain** *(built green: 139 passed, 28 skipped)*
-- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, TOTP enrollment, passkeys, and now the first-administrator `/setup` bootstrap have landed; last verified local run before this slice: 336 passed, 15 skipped, 0 warnings)*
+- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, TOTP enrollment, passkeys, the first-administrator `/setup` bootstrap, and now the F-06a quick-tunnel passkey correction have landed; last verified local sweep: 336 passed, 15 skipped, 0 warnings — the F-06a slice adds pure unit tests only)*
 - [ ] **Stage 3 — M3: tables & joining**
 - [ ] **Stage 4 — M4: ordering**
 - [ ] **Stage 5 — M5: counter & administration**
 - [ ] **Stage 6 — M6: hardening**
 
-### A note on `run.sh` and quick-tunnel URLs (recurring question, settled)
+### A note on `run.sh` and quick-tunnel URLs (updated by F-06a)
 
-There is **no milestone anywhere in the plan for `run.sh` to print a
-`*.trycloudflare.com` URL and exit** — a previous session said so, and it was right.
-The specification splits the concerns deliberately: §14.4 defines `run.sh` as the dev
-entry (compose + watch, plus `--smoke` and `--containers-only`, both of which verify
-`/healthz/ready` and exit), while §14.3 makes quick tunnels a **demo-only** concern
-delivered by a separate helper — `scripts/quick_tunnel.sh` — whose milestone home is
-**M6** ("quick-tunnel demo script with warning"), already landed early. Note also
-that "deliver a URL **and exit**" is impossible for a quick tunnel: the URL lives
-exactly as long as the `cloudflared` process, so the correct shape is what the helper
-does — bring the URL up prominently and hold the tunnel open in the foreground. The
-demo flow is two commands: `./run.sh --containers-only`, then
-`scripts/quick_tunnel.sh`. If the owner ever wants a one-command demo mode, that is a
-spec ruling (§14.3/§14.4 + ADR-0005 edits) before it is a script change.
+There is still **no milestone for `run.sh` itself to print a `*.trycloudflare.com`
+URL and exit**, and that remains correct: §14.4 keeps `run.sh` as the dev entry
+(compose + watch, plus `--smoke` and `--containers-only`, which verify
+`/healthz/ready` and exit), and "deliver a URL **and exit**" is impossible for a quick
+tunnel — the URL lives exactly as long as the `cloudflared` process. Quick tunnels
+stay in the **separate** helper, `scripts/quick_tunnel.sh` (M6, landed early).
+
+What the F-06a change settled — and it *was* the spec ruling this note previously said
+was a prerequisite — is the **shape and scope** of that helper:
+
+- The one-command demo mode is now the shape. `scripts/quick_tunnel.sh` brings
+  postgres up, opens the tunnel, discovers the assigned URL, exports it as
+  `RESTAURANT_PUBLIC_ORIGIN`, recreates `web`, waits for `/healthz/ready`, and holds
+  the tunnel in the foreground. You no longer run `./run.sh --containers-only` first
+  (the helper does the bring-up itself); one command is enough.
+- Quick tunnels are **not** password+TOTP-only. With per-request RP derivation
+  (ADR-0005) and `https://*.trycloudflare.com` trusted by default, **passkeys work on
+  a quick tunnel within a run** — including a passkey-only account. The one caveat the
+  helper prints loudly: a new run gets a new random URL, so passkeys and bookmarks do
+  not carry across runs and must be re-registered; the named tunnel is for durability.
+
+The ADR-0005 / §14.3 edits that make the above true are part of the F-06a slice at the
+end of this file.
 
 ## Stage 1 — done (compiles green)
 
@@ -491,8 +506,9 @@ handler is registered by hand.
    tests skip too if no container engine is available.
 4. `./run.sh --smoke` — boots once (which applies migration 0002), verifies
    `/healthz/ready`, exits.
-5. Manual, on the **stable named-tunnel domain** (passkeys bind to the RP ID, so quick
-   tunnels won't keep them — ADR-0005): sign in → **Passkeys** in the header → **Add a
+5. Manual, on any origin the RP trusts — dev `https://localhost:8443`, or a quick
+   tunnel via `scripts/quick_tunnel.sh` (passkeys work there per F-06a/ADR-0005; a new
+   run just means re-registering): sign in → **Passkeys** in the header → **Add a
    passkey** → complete the platform prompt → the credential appears in the list. Sign
    out, then **Sign in with a passkey** (or let the username field autofill one). An
    enrolled passkey sign-in should land you in **without** a TOTP challenge.
@@ -583,11 +599,92 @@ wizard's steps, and only the last post writes anything.
    suite; that suite skips if no container engine is available, exactly like the other
    Testcontainers tests.
 4. `./run.sh --smoke` — boots once, verifies `/healthz/ready`, exits.
-5. Manual, on the **stable named-tunnel domain** (the passkey binds to the RP ID, so a
-   quick tunnel won't keep it — ADR-0005): visit `/setup` → username + display name +
-   password → **register a passkey** (platform prompt) → **scan the TOTP QR** and confirm
-   a code → review → **Create administrator**. The recovery codes show **once**, and you
-   land signed in as the administrator. Revisit `/setup`: it now returns **404**.
+5. Manual, on the **stable named-tunnel domain** — bootstrap is the one flow you should
+   *not* run through a quick tunnel: the passkey works there, but a quick tunnel's URL
+   changes every run, so the first administrator's credential would not survive the
+   next run (F-06a/ADR-0005). Visit `/setup` → username + display name + password →
+   **register a passkey** (platform prompt) → **scan the TOTP QR** and confirm a code →
+   review → **Create administrator**. The recovery codes show **once**, and you land
+   signed in as the administrator. Revisit `/setup`: it now returns **404**.
+
+### Slice 7 — F-06a: passkeys on quick tunnels (this change)
+
+The **course correction** to F-06's original ruling. The spec, ADR-0005, and the wiring
+had all assumed a passkey's relying-party ID must be **pinned at boot** to the host of
+`RESTAURANT_PUBLIC_ORIGIN`, which made passkeys impossible on a Cloudflare quick tunnel
+(its `*.trycloudflare.com` host is random per run and unknowable at startup) and led the
+docs to declare quick tunnels "demo-only, password+TOTP." The owner's GoTunnels project
+disproves that: it runs a full **passkey-only** flow over a quick tunnel by deriving the
+relying party **per request** from the browser's origin when it matches a trusted
+`https://*.trycloudflare.com` pattern. This slice brings the same approach to the .NET 10
+Identity passkey API and corrects every document that claimed otherwise.
+
+The mechanism rests on one decisive fact confirmed against the ASP.NET Core `release/10.0`
+source: `PasskeyHandler` computes the RP ID as `options.ServerDomain ?? Request.Host.Host`,
+re-derived on **both** options-generation and verification. So leaving `ServerDomain` null
+makes the RP ID follow the request host, and a small middleware guarantees that host is the
+browser's real public host.
+
+- **New `Identity/WebAuthnOriginPolicy.cs`** — a pure, HTTP-free policy (unit-testable in
+  isolation) that answers "may this origin act as the relying party?" and "what host should
+  we present?" from configuration: the configured `RESTAURANT_PUBLIC_ORIGIN`, any
+  `RESTAURANT_TRUSTED_ORIGIN_PATTERNS` entry (default `https://*.trycloudflare.com`), and
+  loopback in dev. The wildcard matcher mirrors GoTunnels' `MatchOriginPattern` exactly — a
+  leading `*.` matches exactly one non-empty DNS label, never a deeper label and never a
+  ported host.
+- **New `Identity/PublicOriginMiddleware.cs`** — runs immediately after
+  `UseForwardedHeaders` and normalizes `Request.Host`: a trusted, unforgeable `Origin`
+  header wins (this is what makes the RP ID self-healing across tunnel URL rotations); else
+  an already-trusted host is kept; else it falls back to the configured public-origin host
+  (covering form POSTs that omit `Origin` behind a proxy that rewrote the host to the
+  internal service address). Every branch only ever sets a host the policy already trusts.
+- **`Identity/IdentityServiceCollectionExtensions.cs`** — registers the policy as a
+  singleton, sets `IdentityPasskeyOptions.ServerDomain = null`, keeps
+  `userVerification`/`residentKey` at `preferred`, and sets `ValidateOrigin` to accept only
+  a non-cross-origin request whose signed origin the policy trusts. This replaces the old
+  `passkey.ServerDomain = options.ResolveWebAuthnRelyingPartyId()` pin — the exact line that
+  broke quick tunnels.
+- **`Configuration/RestaurantOptions.cs`** — adds a non-required `TrustedOriginPatterns`
+  (env `RESTAURANT_TRUSTED_ORIGIN_PATTERNS`, default `https://*.trycloudflare.com`), reads
+  and validates it, and updates the `ResolveWebAuthnRelyingPartyId` doc to say it is now the
+  QR-URL/fallback host, not the pinned RP ID.
+- **`Program.cs`** — inserts `app.UseMiddleware<PublicOriginMiddleware>()` right after
+  `UseForwardedHeaders`, before static files / auth / endpoints.
+- **`scripts/quick_tunnel.sh`** — rewritten into a one-command orchestrator in the
+  GoTunnels "staged startup" spirit: detect the compose engine and a cloudflared runner,
+  start postgres, open the tunnel, poll for the assigned `*.trycloudflare.com` URL, export
+  it as `RESTAURANT_PUBLIC_ORIGIN`, force-recreate `web`, wait for `/healthz/ready`, print
+  the URL in a banner with the corrected caveat (passkeys work this run; a new run = a new
+  URL = re-register; never bootstrap a real instance here), and hold the tunnel in the
+  foreground with a cleanup trap. It does not mutate the user's `.env`.
+- **Docs / ADR.** `docs/adr/0005-...md` rewritten (F-06a revision + history entry);
+  `TECHNICAL_SPECIFICATION.md` §3.3, §13 config table, §14.3, accepted-risks, and the
+  traceability matrix corrected; `README.md` and `docs/OPERATIONS.md` §10 corrected;
+  `.env.example` and `compose.yaml` gain the new variable. ADR-0010 (passkey-only admin
+  already permitted) and `wwwroot/js/passkey.js` (already server-driven) needed no change.
+- **Tests.** New `Identity/WebAuthnOriginPolicyTests.cs` (dev/prod/no-pattern policies:
+  `PublicHost`, `IsTrustedOrigin`, `IsTrustedHost`, `TryResolveTrustedHost`, empty-pattern
+  behaviour). `Identity/IdentityWiringTests.cs` swaps its pinned-`ServerDomain` fact for one
+  asserting per-request derivation (`ServerDomain` null, `ValidateOrigin` set) plus a theory
+  exercising `ValidateOrigin` (localhost + `*.trycloudflare.com` accepted, an evil host and
+  any cross-origin request rejected) and a "policy is registered" fact.
+  `RestaurantOptionsTests.cs` gains default-pattern binding, list-split binding, and a
+  bad-pattern rejection theory. All pure — they run without a container engine.
+
+### Build/test checklist for this slice
+
+1. `dotnet restore` — **no new packages** this slice.
+2. `dotnet build` — the two new Identity classes are the most likely home of anything a
+   compiler catches (span `ContainsAny` overloads, `HostString` construction).
+3. `dotnet test` — expect the previous green set plus `WebAuthnOriginPolicyTests`, the
+   revised `IdentityWiringTests` facts, and the new `RestaurantOptionsTests` cases; all pure,
+   so they always run.
+4. `./run.sh --smoke` — unchanged; boots once, verifies `/healthz/ready`, exits. Confirm the
+   dev RP ID is still `localhost` (Caddy forwards `X-Forwarded-Host: localhost:8443`).
+5. Manual quick-tunnel proof (the point of this slice): `scripts/quick_tunnel.sh` → open the
+   printed `*.trycloudflare.com` URL → register a passkey → sign out → sign in with the
+   passkey. It should work. Re-run the script → new URL → the old passkey no longer matches
+   (expected) → register again.
 
 ## Known caveats and deliberate decisions
 

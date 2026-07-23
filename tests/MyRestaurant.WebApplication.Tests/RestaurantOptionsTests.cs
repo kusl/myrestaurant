@@ -119,6 +119,38 @@ public sealed class RestaurantOptionsTests
             Build(publicOrigin: "https://order.example.com:8443").ResolveWebAuthnRelyingPartyId());
 
     [Fact]
+    public void FromConfiguration_TrustedOriginPatterns_DefaultsToTheQuickTunnelWildcard()
+    {
+        RestaurantOptions options = RestaurantOptions.FromConfiguration(EmptyConfiguration());
+
+        Assert.Equal(new[] { "https://*.trycloudflare.com" }, options.TrustedOriginPatterns);
+        Assert.Empty(options.Validate());
+    }
+
+    [Fact]
+    public void FromConfiguration_TrustedOriginPatterns_ReadsAndSplitsAList()
+    {
+        RestaurantOptions options = RestaurantOptions.FromConfiguration(ConfigurationWith(new()
+        {
+            ["RESTAURANT_TRUSTED_ORIGIN_PATTERNS"] = "https://*.trycloudflare.com, https://demo.example.com",
+        }));
+
+        Assert.Equal(
+            new[] { "https://*.trycloudflare.com", "https://demo.example.com" },
+            options.TrustedOriginPatterns);
+        Assert.Empty(options.Validate());
+    }
+
+    [Theory]
+    [InlineData("http://*.trycloudflare.com")]   // must be https
+    [InlineData("https://")]                      // no host
+    [InlineData("*.trycloudflare.com")]           // no scheme
+    [InlineData("https://foo.*.com")]             // wildcard not the leading label
+    [InlineData("https://foo.trycloudflare.com:8443")] // no port allowed in a pattern
+    public void Validate_BadTrustedOriginPattern_IsRejected(string pattern)
+        => Assert.NotEmpty(Build(trustedOriginPatterns: [pattern]).Validate());
+
+    [Fact]
     public void ResolveTimeZone_ReturnsTheConfiguredZone()
     {
         TimeZoneInfo zone = Build(timeZoneId: "America/New_York").ResolveTimeZone();
@@ -142,11 +174,13 @@ public sealed class RestaurantOptionsTests
         int argon2Memory = 65536,
         int argon2Iterations = 3,
         int argon2Parallelism = 1,
-        int argon2MaxConcurrent = 4)
+        int argon2MaxConcurrent = 4,
+        IReadOnlyList<string>? trustedOriginPatterns = null)
         => new()
         {
             RestaurantName = "Test Bistro",
             PublicOrigin = publicOrigin,
+            TrustedOriginPatterns = trustedOriginPatterns ?? RestaurantOptions.DefaultTrustedOriginPatterns,
             TimeZoneId = timeZoneId,
             CurrencyCode = currencyCode,
             DatabaseConnectionString = databaseConnectionString,

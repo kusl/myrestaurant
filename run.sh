@@ -21,9 +21,10 @@
 # topology end to end.
 #
 # This script never opens a Cloudflare quick tunnel and never prints a *.trycloudflare.com URL. That is a
-# separate, demo-only concern (TECHNICAL_SPECIFICATION §14.3): run `scripts/quick_tunnel.sh` AFTER the
-# stack is up (e.g. `./run.sh --containers-only`). Quick-tunnel hostnames are random per run and on the
-# Public Suffix List, so passkeys registered through them die with the tunnel — demos use password+TOTP.
+# separate concern handled by `scripts/quick_tunnel.sh` (TECHNICAL_SPECIFICATION §14.3), which is now a
+# one-command helper: it brings the stack up itself, opens the tunnel, and holds it in the foreground.
+# Passkeys DO work over a quick tunnel (per-request RP-ID derivation, ADR-0005); the only caveat is that
+# each run gets a fresh random *.trycloudflare.com hostname, so passkeys must be re-registered per run.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -291,8 +292,8 @@ cat <<'BANNER'
     • Want a run that boots, verifies /healthz/ready, and EXITS instead?
         ./run.sh --smoke             (host, fast)
         ./run.sh --containers-only   (full container stack)
-    • Need a public demo URL? That is a separate, demo-only step:
-        scripts/quick_tunnel.sh      (*.trycloudflare.com — password+TOTP only)
+    • Need a public demo URL? One separate command brings it all up and exposes it:
+        scripts/quick_tunnel.sh      (*.trycloudflare.com — passkeys work; re-register each run)
 ────────────────────────────────────────────────────────────────────────────
 BANNER
 

@@ -127,17 +127,30 @@ public static class IdentityServiceCollectionExtensions
         // IPasskeyHandler service". It reads the options configured just below.
         services.TryAddScoped<IPasskeyHandler<Person>, PasskeyHandler<Person>>();
 
-        // Relying-party options for every passkey ceremony (§3.3). The RP ID is the FULL host of
-        // RESTAURANT_PUBLIC_ORIGIN — the single origin truth of §14.2 — set explicitly so it never
-        // silently falls back to the request host behind the tunnel or a hairpin. residentKey and
+        // The WebAuthn origin-trust policy (§3.3, ADR-0005): which browser origins may act as the
+        // relying party (the configured origin + trusted wildcard patterns + loopback in dev) and what
+        // host the app presents so the RP ID derives correctly. Shared by ValidateOrigin below and by
+        // PublicOriginMiddleware. Singleton — it is immutable configuration.
+        WebAuthnOriginPolicy originPolicy = new(options.PublicOrigin, options.TrustedOriginPatterns);
+        services.AddSingleton(originPolicy);
+
+        // Relying-party options for every passkey ceremony (§3.3). ServerDomain is left NULL on
+        // purpose (ADR-0005 course correction): the .NET 10 handler then derives the RP ID from the
+        // request host (options.ServerDomain ?? Request.Host.Host), which PublicOriginMiddleware has
+        // normalized to the browser's real origin host. Pinning it to a boot-time value is exactly what
+        // made passkeys impossible behind a Cloudflare quick tunnel (its *.trycloudflare.com hostname
+        // is random per run and unknown at startup); deriving per request makes them self-healing. This
+        // is safe because credentials are RP-ID-scoped by the authenticator, and ValidateOrigin gates
+        // the browser's signed origin against the trusted set as defence in depth. residentKey and
         // userVerification are "preferred" (discoverable + username-first both work; verification is
-        // encouraged, not demanded); attestation is left at the browser default of "none", so no
-        // attestation statement is requested or verified.
+        // encouraged, not demanded); attestation is left at the browser default of "none".
         services.Configure<IdentityPasskeyOptions>(passkey =>
         {
-            passkey.ServerDomain = options.ResolveWebAuthnRelyingPartyId();
+            passkey.ServerDomain = null;
             passkey.UserVerificationRequirement = "preferred";
             passkey.ResidentKeyRequirement = "preferred";
+            passkey.ValidateOrigin = context =>
+                ValueTask.FromResult(!context.CrossOrigin && originPolicy.IsTrustedOrigin(context.Origin));
         });
 
         // Harden the application cookie (§3.1). Secure + HttpOnly + SameSite=Lax; 24-hour sliding
