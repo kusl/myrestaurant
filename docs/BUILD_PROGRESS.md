@@ -844,3 +844,33 @@ aborting the static-SSR response. (`Passkeys.razor` escaped it — `_passkeys is
 doesn't match null.) Fix: bare `else` → `else if (_start is not null)`, drop the `!` on the three
 `_start` reads, both pages. Final render unchanged; transient render now emits only the panel eyebrow.
 No schema/DI/behaviour change; no deletions.
+
+### M3 Slice 2 — table join tokens: generation, validation, metric + admin QR fallback (landed)
+
+The rotating join-token machinery (ADR-0009, §4.3–§4.5) is now wired end-to-end on the
+server side. New server-only `ITableJoinSecretReader`/`DapperTableJoinSecretReader`
+(DataAccess/Tables) reads a table's `join_secret` for token work — the deliberate narrow
+counterpart to `ITableDirectory`, which never selects it — gated on `is_active = true`, so
+§4.1's "deactivating stops validation and rendering" is one SQL predicate both paths share.
+New `ITableJoinTokens`/`TableJoinTokens` (WebApplication/Tables) wraps the vector-tested
+domain `JoinTokenService`: `DescribeCurrentAsync` builds the current QR (token, scan URL,
+server-side inline SVG, next-rotation instant) for the counter/admin fallback and the future
+display; `ValidateAsync` maps a presented token to the domain result and records
+`table_join_tokens_validated_total{result}` (§12) on every attempt — a missing/inactive table
+or malformed/old token is counted `invalid`, keeping the label set to §4.3's
+{valid|expired|invalid}. One static-SSR admin page `/administration/tables/{id}/join-code`
+renders the fallback QR on demand (§4.5/§11.4), reached from a new "Join code" section on
+ManageTable; a deactivated/unknown table renders no code. Both services registered by
+`AddRestaurantTables()` (scoped, alongside the management services). No migration
+(restaurant_table ships in 0001), no packages (Dapper + Net.Codecrete.QrCodeGenerator + the
+framework meter, all present), no spec edit (this realizes already-specified behaviour; the
+metric and TABLE_JOIN_* config were scaffolded in M1). Tests: `TableJoinSecretReaderTests`
+(Testcontainers, 4 facts — exact stored bytes, unknown→null, deactivated→null, rotation
+tracked so the old token dies) and `TableJoinTokensTests` (in-memory, 6 facts — current QR
+shape, no-secret→null, current/previous window valid, garbage/no-secret invalid), plus two
+resolvability facts added to `TablesWiringTests`.
+
+Deferred to the next M3 slice: the join **grant** cookie, `/table/{id}` GET routing
+(member / anonymous / valid-token), sitting open + membership, and the `SittingMemberJoined`
+broadcast (§4.4/§5.1) — `TableJoinTokens.ValidateAsync` is the hook they consume — followed by
+display pairing + device auth + `/display` (§4.2/§11.5).

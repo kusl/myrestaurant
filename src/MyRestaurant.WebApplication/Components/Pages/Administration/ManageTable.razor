@@ -10,7 +10,8 @@
    Static SSR: rename, rotate-secret, and deactivate/reactivate are full-page form posts. Successful
    changes redirect back here (post/redirect/get) carrying a one-word outcome so a refresh does not
    re-post; a taken label is shown in place. The join secret is never read or shown — rotation replaces
-   it server-side (§4.1). *@
+   it server-side (§4.1). A link to the join-code fallback (§4.5) sits alongside, for when a table's
+   display is down. *@
 
 <PageTitle>@(_table is null ? "Manage table" : $"Manage {_table.Label}")</PageTitle>
 
@@ -77,6 +78,27 @@ else
             <button type="submit" class="button-primary">Rename</button>
             <ValidationMessage For="@(() => RenameInput.Label)" />
         </EditForm>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Join code</h2>
+        @if (_table.IsActive)
+        {
+            <p class="lede">
+                Guests join by scanning this table's rotating QR code. Its own display shows it; if that
+                display is down, show the same code here and let the guest scan your screen.
+            </p>
+            <div class="form-actions">
+                <a class="button-secondary" href="@($"/administration/tables/{TableId}/join-code")">Show join code</a>
+            </div>
+        }
+        else
+        {
+            <p class="lede">
+                This table is deactivated, so it renders no join code and its tokens do not validate.
+                Reactivate it below to show a code again.
+            </p>
+        }
 
         <hr class="manage-rule" />
 

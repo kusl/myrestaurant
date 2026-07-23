@@ -1,0 +1,160 @@
+@page "/administration/tables/{TableId:guid}/join-code"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.DataAccess.Tables
+@using MyRestaurant.WebApplication.Tables
+@inject ITableDirectory TableDirectory
+@inject ITableJoinTokens JoinTokens
+@inject RestaurantOptions Options
+
+@* The administrator/counter join-code fallback (TECHNICAL_SPECIFICATION §4.5, §11.4). When a table's
+   display device is dead, staff can render the *same* rotating QR here on demand; the guest scans this
+   screen. The join secret never leaves the server — this page shows only the server-rendered QR and the
+   scan URL it encodes (§4.1/§4.5).
+
+   Static SSR, like every administration surface: it sets no cookie and simply reads and renders. It is
+   therefore a snapshot of the current window — a scanned code keeps working for the current *and*
+   previous window (worst case ~2× the rotation, §4.3), so it will not die mid-scan, and a "Show a fresh
+   code" link re-renders the next window on demand. The window-aligned auto-refresh belongs to the paired
+   display surface (§11.5) and lands with it; here a manual refresh is the operational fallback. A
+   deactivated or unknown table renders no code (§4.1). *@
+
+<PageTitle>@(_table is null ? "Join code" : $"Join code — {_table.Label}")</PageTitle>
+
+@if (_table is null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Table not found</h1>
+        <p class="lede">No table exists with that identifier. It may have never existed, or the link is stale.</p>
+        <p><a href="/administration/tables">Back to tables</a></p>
+    </section>
+}
+else if (!_table.IsActive)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>@_table.Label</h1>
+        <p class="lede">
+            This table is deactivated, so its join code does not render and its tokens do not validate
+            (§4.1). Reactivate the table to show a code again.
+        </p>
+        <p class="join-code-back"><a href="@ManagePath">Back to @_table.Label</a></p>
+    </section>
+}
+else if (_qr is null)
+{
+    @* Active table but no code came back — treat as a transient condition rather than dereference null. *@
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>@_table.Label</h1>
+        <p class="status-error" role="alert">The join code could not be generated just now. Try again.</p>
+        <p class="join-code-back"><a href="@ManagePath">Back to @_table.Label</a></p>
+    </section>
+}
+else
+{
+    <section class="panel account-panel join-code-panel">
+        <p class="eyebrow">Administration — join code</p>
+        <h1>@_table.Label</h1>
+        <p class="lede">
+            A guest scans this code to join @_table.Label. Use this when the table's own display is down —
+            it is the same rotating code the display shows (§4.5). The private join secret never leaves the
+            server.
+        </p>
+
+        <div class="join-qr">
+            @((MarkupString)_qr.QrCodeSvg)
+        </div>
+
+        <p class="join-code-url-label">The code links to:</p>
+        <p class="join-code-url">@_qr.JoinUrl</p>
+
+        <p class="join-code-rotation">
+            Rotates every @Options.TableJoinTokenRotationSeconds seconds — next at
+            <strong>@_qr.NextRotationAt.ToLocalTime().ToString("T")</strong>
+            (about @SecondsUntilRotation second@(SecondsUntilRotation == 1 ? "" : "s") from now). A code
+            that has just been scanned keeps working for up to about @(Options.TableJoinTokenRotationSeconds * 2)
+            seconds, so it will not stop working in a guest's hand.
+        </p>
+
+        <div class="form-actions">
+            <a class="button-primary" href="@JoinCodePath">Show a fresh code</a>
+            <a class="button-secondary" href="@ManagePath">Back to @_table.Label</a>
+        </div>
+    </section>
+}
+
+@* Namespaced under .join-code-* and inline for the same reason the other administration pages keep
+   their CSS inline: App.razor links the static stylesheet, so component CSS isolation is not active. *@
+<style>
+    .join-code-panel .join-qr {
+        display: flex;
+        justify-content: center;
+        margin: 1.25rem 0;
+    }
+
+    .join-code-panel .join-qr-svg {
+        width: 100%;
+        max-width: 20rem;
+        height: auto;
+        border-radius: 0.5rem;
+        border: 1px solid var(--rule, #e5e5e5);
+    }
+
+    .join-code-url-label {
+        margin: 0.75rem 0 0.25rem;
+        font-size: 0.85rem;
+        color: var(--muted-foreground, #666);
+    }
+
+    .join-code-url {
+        margin: 0 0 1rem;
+        padding: 0.5rem 0.65rem;
+        border-radius: 0.4rem;
+        background: var(--surface-sunken, #f4f4f5);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.85rem;
+        word-break: break-all;
+    }
+
+    .join-code-rotation {
+        color: var(--muted-foreground, #555);
+        font-size: 0.9rem;
+        margin: 0 0 1.25rem;
+    }
+
+    .join-code-back {
+        margin-top: 1.5rem;
+    }
+</style>
+
+@code {
+    private RestaurantTableSummary? _table;
+    private TableJoinQrCode? _qr;
+
+    [Parameter]
+    public Guid TableId { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private string ManagePath => $"/administration/tables/{TableId}";
+
+    private string JoinCodePath => $"/administration/tables/{TableId}/join-code";
+
+    private int SecondsUntilRotation => _qr is null
+        ? 0
+        : Math.Max(0, (int)Math.Ceiling((_qr.NextRotationAt - _qr.GeneratedAt).TotalSeconds));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _table = await TableDirectory.GetTableAsync(TableId, HttpContext.RequestAborted);
+        if (_table is null || !_table.IsActive)
+        {
+            return;
+        }
+
+        _qr = await JoinTokens.DescribeCurrentAsync(TableId, HttpContext.RequestAborted);
+    }
+}
