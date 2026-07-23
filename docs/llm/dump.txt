@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-23T03:11:19-04:00
+  Generated at   : 2026-07-23T09:32:14-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,9 +17,9 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 975ef96e4fc74fda077a1faa62e7179a05b6b8e0
-  Commit (short) : 975ef96
-  Commit date    : 2026-07-23 03:11:00 -0400
+  Commit (full)  : d72bb9ddaf8e6aa023aaac8417884beaab75d4ef
+  Commit (short) : d72bb9d
+  Commit date    : 2026-07-23 09:31:55 -0400
   Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
   Files included : 162
@@ -2345,15 +2345,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  59.0 KiB (60448 bytes)
-  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Size:                  59.9 KiB (61343 bytes)
+  Last modified:         2026-07-23 09:29:31.618954271 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 25103633
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               3dcab889227831a4667d3ffefd9bfc1788827f164d6ac4b18987266632a13c4a
-  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+  SHA-256:               2ccfe408e088db1fa3788e400cd298555ab088665d4475593b895977558c214d
+  Last git commit:       d72bb9d 2026-07-23 09:31:55 -0400 add claude response
 
 --- CONTENT ---
 # Build progress
@@ -3190,6 +3190,18 @@ link. Table changes are not in the `security_event` vocabulary, so none are audi
 No packages, no migration (restaurant_table ships in 0001). Tests:
 `TableAdministrationTests` (Testcontainers, 11 facts) and `TablesWiringTests`
 (resolvability, no container). Next M3 slice: display pairing + device auth + `/display`.
+
+### Fix — TOTP enrollment pages 500 (static-SSR intermediate render deref)
+
+`/account/enroll-totp` (and its obligation sibling `/account/enroll-totp-required`) threw
+`NullReferenceException` in `BuildRenderTree` → bare 500. `ComponentBase` issues an intermediate
+render via `StateHasChanged` the moment the `await UserManager.GetUserAsync(...)` in
+`OnInitializedAsync` suspends, before the async body sets `_enrolled`/`_recoveryCodes`/`_start`.
+With all three at defaults the render fell into the setup `else` and dereferenced a null `_start!`,
+aborting the static-SSR response. (`Passkeys.razor` escaped it — `_passkeys is { Count: > 0 }`
+doesn't match null.) Fix: bare `else` → `else if (_start is not null)`, drop the `!` on the three
+`_start` reads, both pages. Final render unchanged; transient render now emits only the panel eyebrow.
+No schema/DI/behaviour change; no deletions.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -12057,15 +12069,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             EnrollTotp.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotp.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotp.razor
-  Size:                  9.3 KiB (9533 bytes)
-  Last modified:         2026-07-20 08:12:22.000000000 -0400
+  Size:                  9.9 KiB (10161 bytes)
+  Last modified:         2026-07-23 09:16:29.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21843825
+  Inode:                 25209487
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               f7ccca0ed47e041941cddd2924d6c6dc6cb7dd5496ed6580cb5f3833d439d2f6
-  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+  SHA-256:               d68d7f12bd5c4765875a57f8a6d09961a84140004234c77bf0ad4c64c7655e49
+  Last git commit:       d72bb9d 2026-07-23 09:31:55 -0400 add claude response
 
 --- CONTENT ---
 @page "/account/enroll-totp"
@@ -12132,7 +12144,14 @@ public static class AuthorizationServiceCollectionExtensions
             </div>
         </EditForm>
     }
-    else
+    @* Guard on _start rather than a bare `else`: ComponentBase fires an intermediate render
+       via StateHasChanged the instant the async GetUserAsync in OnInitializedAsync suspends,
+       while _recoveryCodes / _enrolled / _start are all still at their defaults. A bare `else`
+       would fall in here and dereference a null _start, and that NRE aborts the whole static-SSR
+       response. Rendering nothing on that transient pass is fine — static SSR flushes only the
+       final, quiescent HTML, by which point _start is set (or _enrolled is true, or we have
+       already navigated away). *@
+    else if (_start is not null)
     {
         <h1>Set up an authenticator</h1>
         <p class="lede">
@@ -12147,16 +12166,16 @@ public static class AuthorizationServiceCollectionExtensions
         }
 
         <div class="totp-qr">
-            @((MarkupString)_start!.QrCodeSvg)
+            @((MarkupString)_start.QrCodeSvg)
         </div>
 
         <p class="totp-secret-label">Can't scan? Enter this key manually:</p>
-        <p class="totp-secret">@_start!.ManualEntrySecret</p>
+        <p class="totp-secret">@_start.ManualEntrySecret</p>
 
         <EditForm Model="ConfirmInput" method="post" OnValidSubmit="ConfirmAsync" FormName="enroll-totp-confirm">
             <DataAnnotationsValidator />
 
-            <input type="hidden" name="ConfirmInput.ProtectedTicket" value="@_start!.ProtectedTicket" />
+            <input type="hidden" name="ConfirmInput.ProtectedTicket" value="@_start.ProtectedTicket" />
 
             <div class="form-field">
                 <label for="totp-code">Six-digit code</label>
@@ -12313,15 +12332,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             EnrollTotpRequired.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotpRequired.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/EnrollTotpRequired.razor
-  Size:                  7.9 KiB (8068 bytes)
-  Last modified:         2026-07-20 08:12:36.000000000 -0400
+  Size:                  8.5 KiB (8669 bytes)
+  Last modified:         2026-07-23 09:16:57.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21843826
+  Inode:                 25209488
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               bb60f54c2feb258df2907267caf4ff1811eed49df28319c67a719dfa655ba028
-  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+  SHA-256:               f3641980b78caea49944772fac5e895e46eee2d3f6fb3d79787707fe795baaac
+  Last git commit:       d72bb9d 2026-07-23 09:31:55 -0400 add claude response
 
 --- CONTENT ---
 @page "/account/enroll-totp-required"
@@ -12374,7 +12393,13 @@ public static class AuthorizationServiceCollectionExtensions
             <a class="button-primary" href="@_destination">Continue</a>
         </div>
     }
-    else
+    @* Guard on _start rather than a bare `else`: ComponentBase fires an intermediate render via
+       StateHasChanged the instant the async GetUserAsync in OnInitializedAsync suspends, while
+       _recoveryCodes and _start are both still null. A bare `else` would fall in here and
+       dereference a null _start, and that NRE aborts the whole static-SSR response. Rendering
+       nothing on that transient pass is fine — static SSR flushes only the final, quiescent HTML,
+       by which point _start is set, or the recovery codes are shown, or we have navigated away. *@
+    else if (_start is not null)
     {
         <h1>Re-enroll your authenticator</h1>
         <p class="lede">
@@ -12389,16 +12414,16 @@ public static class AuthorizationServiceCollectionExtensions
         }
 
         <div class="totp-qr">
-            @((MarkupString)_start!.QrCodeSvg)
+            @((MarkupString)_start.QrCodeSvg)
         </div>
 
         <p class="totp-secret-label">Can't scan? Enter this key manually:</p>
-        <p class="totp-secret">@_start!.ManualEntrySecret</p>
+        <p class="totp-secret">@_start.ManualEntrySecret</p>
 
         <EditForm Model="Input" method="post" OnValidSubmit="ConfirmAsync" FormName="enroll-totp-required">
             <DataAnnotationsValidator />
 
-            <input type="hidden" name="Input.ProtectedTicket" value="@_start!.ProtectedTicket" />
+            <input type="hidden" name="Input.ProtectedTicket" value="@_start.ProtectedTicket" />
 
             <div class="form-field">
                 <label for="totp-code">Six-digit code</label>
@@ -26506,9 +26531,9 @@ public sealed class TablesWiringTests
 # DUMP SUMMARY
 ################################################################################
   Files dumped   : 162
-  Total size     : 1.0 MiB (1087034 bytes)
+  Total size     : 1.0 MiB (1089158 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-23T03:11:24-04:00
+  Completed at   : 2026-07-23T09:32:20-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
