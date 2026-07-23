@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-22T21:00:38-04:00
+  Generated at   : 2026-07-23T01:34:05-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 5a0f5c52287205e066eb99d4e8aeb1448dcca8eb
-  Commit (short) : 5a0f5c5
-  Commit date    : 2026-07-22 21:00:20 -0400
+  Commit (full)  : da0615246c91f64d8948cd8dcf13f2ec966f1604
+  Commit (short) : da06152
+  Commit date    : 2026-07-23 01:33:53 -0400
   Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 158
+  Files included : 162
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (158 included files)
+# FILE TREE  (162 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -547,6 +547,7 @@ cat "$OUTPUT_FILE"
 ├── LICENSE
 ├── MyRestaurant.slnx
 ├── README.md
+├── _CHANGES.md
 ├── compose.yaml
 ├── docs
 │   ├── BUILD_PROGRESS.md
@@ -665,11 +666,13 @@ cat "$OUTPUT_FILE"
 │       │   ├── ObligationsEnforcement.cs
 │       │   ├── ObligationsMiddleware.cs
 │       │   ├── PasskeyContracts.cs
+│       │   ├── PublicOriginMiddleware.cs
 │       │   ├── RestaurantAuthenticatorTokenProvider.cs
 │       │   ├── RestaurantClaimsPrincipalFactory.cs
 │       │   ├── RestaurantSignInManager.cs
 │       │   ├── SetupState.cs
-│       │   └── TotpEnrollment.cs
+│       │   ├── TotpEnrollment.cs
+│       │   └── WebAuthnOriginPolicy.cs
 │       ├── LiveUpdates
 │       │   └── InProcessDomainEventBroadcaster.cs
 │       ├── MyRestaurant.WebApplication.csproj
@@ -730,7 +733,8 @@ cat "$OUTPUT_FILE"
         │   ├── RestaurantAuthenticatorTokenProviderTests.cs
         │   ├── RestaurantClaimsPrincipalFactoryTests.cs
         │   ├── SetupTicketTests.cs
-        │   └── TotpEnrollmentTicketTests.cs
+        │   ├── TotpEnrollmentTicketTests.cs
+        │   └── WebAuthnOriginPolicyTests.cs
         ├── MyRestaurant.WebApplication.Tests.csproj
         ├── RestaurantOptionsTests.cs
         └── Tables
@@ -797,15 +801,15 @@ indent_size = 2
   File name:             .env.example
   Relative path:         .env.example
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/.env.example
-  Size:                  3.0 KiB (3078 bytes)
-  Last modified:         2026-07-17 21:35:37.000000000 -0400
+  Size:                  3.8 KiB (3870 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258272
+  Inode:                 25103631
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               9a171cf1bc80c9881267104fbba8163ed27f292c54b7566f1c95f578f68702f5
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               d3105ad0cfa212801dc88299fd75a62fe13501b3c6237713a598885e03aae4f1
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
 # Copy to `.env` and adjust. `.env` is git-ignored; never commit a populated one.
@@ -814,9 +818,18 @@ indent_size = 2
 
 # --- Identity & origin ---------------------------------------------------------------------------
 RESTAURANT_NAME=My Restaurant
-# The single source of truth for the WebAuthn RP ID and all QR/link URLs. Dev uses Caddy on 8443;
-# production is your Cloudflare named-tunnel hostname. PRODUCTION: change (must be an https URL).
+# The canonical origin for QR/link URLs and the fallback for the WebAuthn RP ID. Dev uses Caddy on
+# 8443; production is your Cloudflare named-tunnel hostname (a stable domain so passkeys persist).
+# PRODUCTION: change (must be an https URL). The RP ID is derived per request from the host the
+# browser is on (ADR-0005), so a quick tunnel's per-run *.trycloudflare.com host works too — this
+# value is the fallback when a request carries no trusted Origin header.
 RESTAURANT_PUBLIC_ORIGIN=https://localhost:8443
+# Wildcard origins (besides RESTAURANT_PUBLIC_ORIGIN and loopback) allowed to act as the WebAuthn
+# relying party (ADR-0005, §3.3). Comma/space/newline separated; each is scheme://host with an
+# optional single leading "*." label, https, no path or port. The default trusts Cloudflare quick
+# tunnels so `scripts/quick_tunnel.sh` demos work with passkeys out of the box; clear it (set to a
+# single space) to lock passkeys to RESTAURANT_PUBLIC_ORIGIN only.
+RESTAURANT_TRUSTED_ORIGIN_PATTERNS=https://*.trycloudflare.com
 RESTAURANT_TIME_ZONE=America/New_York
 RESTAURANT_CURRENCY_CODE=USD
 
@@ -1918,15 +1931,15 @@ For more information on this, and how to apply and follow the GNU AGPL, see
   File name:             README.md
   Relative path:         README.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/README.md
-  Size:                  9.7 KiB (9969 bytes)
-  Last modified:         2026-07-19 08:54:03.000000000 -0400
+  Size:                  10.3 KiB (10525 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654805
+  Inode:                 25103620
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               3941a33aba16c419dafd6c743c7c78d3e4b15d9ec0965a1817691dccadbf7745
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               763b5d7e220cfb37fa5b3632b8b745f899647eacb7f956de47fa087e2cd5c245
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
 # MyRestaurant
@@ -2051,18 +2064,24 @@ podman-compose --profile production up -d
 and link URLs are derived. In-house guests hairpin through the tunnel, so LAN ordering depends on WAN
 health — an accepted tradeoff for this design.
 
-For a throwaway demo, bring the stack up and then open a quick tunnel — two commands, in order:
+For a throwaway demo over the public internet, one command does it all:
 
 ```bash
-./run.sh --containers-only
 scripts/quick_tunnel.sh
 ```
 
-The script verifies the app is answering, opens a `*.trycloudflare.com` tunnel, and prints the
-assigned URL in a banner the moment it exists. The URL lives exactly as long as the script runs
-(Ctrl+C ends the demo) — a quick tunnel cannot "print a URL and exit", because exiting kills the
-URL. That domain is random per run and on the Public Suffix List, so passkeys will not persist
-across runs; demos sign in with password + TOTP.
+The script brings PostgreSQL up, opens a `*.trycloudflare.com` tunnel, discovers the assigned URL,
+sets `RESTAURANT_PUBLIC_ORIGIN` to it (so QR join links resolve), (re)starts the web app against
+that URL, waits for it to answer, prints the URL in a banner, and then holds the tunnel in the
+foreground. The URL lives exactly as long as the script runs (Ctrl+C ends the demo) — a quick
+tunnel cannot "print a URL and exit", because exiting kills the URL.
+
+**Passkeys work on the quick tunnel**, including a passkey-only account: the WebAuthn relying-party
+ID is derived per request from the host the browser is on (ADR-0005), and `https://*.trycloudflare.com`
+is trusted by default (`RESTAURANT_TRUSTED_ORIGIN_PATTERNS`). The one caveat, which the script prints
+loudly: that hostname is random per run and on the Public Suffix List, so passkeys (and bookmarks) do
+not carry across runs — register again on the next run. Use the stable named tunnel for anything that
+must persist, and never bootstrap a real instance through a quick tunnel.
 
 ## Backups
 
@@ -2117,6 +2136,80 @@ environment (no toolchain or package feed there). On a networked machine:
 - **M6** — the Playwright end-to-end matrix and CI publishing.
 
 ################################################################################
+# FILE: _CHANGES.md
+################################################################################
+
+--- METADATA ---
+  File name:             _CHANGES.md
+  Relative path:         _CHANGES.md
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
+  Size:                  2.7 KiB (2732 bytes)
+  Last modified:         2026-07-23 01:23:43.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25103630
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               a9d10e6aa7357f9e751a66594c596cb2f2f6c5778dde9f43d70990b8f46734f2
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+
+--- CONTENT ---
+# F-06a — passkeys work on Cloudflare quick tunnels (course correction)
+
+Every file below is a **full file** at its **repo-relative path**. Drop this folder's
+contents over your working tree (same paths) and rebuild. `git status` will show exactly
+these 17 files as modified/added.
+
+## Files to DELETE
+
+**None.** Every change is an in-place edit or a new file. Nothing is removed or renamed.
+`ResolveWebAuthnRelyingPartyId()` is kept (it now supplies the QR-URL / fallback host,
+not a pinned RP ID), and its existing test is kept. `wwwroot/js/passkey.js` and ADR-0010
+needed no change, so they are not in this bundle.
+
+## New files (2)
+
+- `src/MyRestaurant.WebApplication/Identity/WebAuthnOriginPolicy.cs`
+- `src/MyRestaurant.WebApplication/Identity/PublicOriginMiddleware.cs`
+
+## Edited — code (3)
+
+- `src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs`
+- `src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs`
+- `src/MyRestaurant.WebApplication/Program.cs`
+
+## Edited / new — tests (3)
+
+- `tests/MyRestaurant.WebApplication.Tests/Identity/WebAuthnOriginPolicyTests.cs`  (new)
+- `tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs`        (edited)
+- `tests/MyRestaurant.WebApplication.Tests/RestaurantOptionsTests.cs`             (edited)
+
+## Edited — scripts & config (4)
+
+- `scripts/quick_tunnel.sh`  (rewritten: one-command orchestrator; `chmod +x`)
+- `run.sh`                   (comment/banner text only — the quick-tunnel note was wrong)
+- `compose.yaml`             (passes `RESTAURANT_TRUSTED_ORIGIN_PATTERNS` to `web`)
+- `.env.example`             (documents `RESTAURANT_TRUSTED_ORIGIN_PATTERNS`)
+
+## Edited — docs (5)
+
+- `docs/adr/0005-origins-and-tls-cloudflare-named-tunnel.md`  (rewritten ruling + F-06a revision)
+- `docs/TECHNICAL_SPECIFICATION.md`  (§3.3, §13 table, §14.3, accepted-risks, traceability)
+- `docs/BUILD_PROGRESS.md`           (settled-note, both manual-test items, new Slice 7)
+- `docs/OPERATIONS.md`               (§7 reasoning, §9 precision, §10 runbook)
+- `README.md`                        (one-command demo + corrected passkey framing)
+
+## The one-line why
+
+`IdentityPasskeyOptions.ServerDomain` was pinned to the boot-time origin host, so the RP ID
+could never match a quick tunnel's per-run `*.trycloudflare.com` hostname. It is now left
+**null**, so the .NET 10 handler derives the RP ID from `Request.Host` per request
+(normalized by `PublicOriginMiddleware`, gated by `ValidateOrigin`) — the same per-request
+approach your GoTunnels project uses. Safe because credentials are RP-ID-scoped by the
+authenticator. The named tunnel remains the production origin for *persistence*, not as a
+passkey prerequisite.
+
+################################################################################
 # FILE: compose.yaml
 ################################################################################
 
@@ -2124,15 +2217,15 @@ environment (no toolchain or package feed there). On a networked machine:
   File name:             compose.yaml
   Relative path:         compose.yaml
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/compose.yaml
-  Size:                  4.3 KiB (4440 bytes)
-  Last modified:         2026-07-18 01:54:45.515230983 -0400
+  Size:                  4.7 KiB (4852 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258240
+  Inode:                 25103621
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               fcf3593c8de465c76d7afa573482537bb510be47c2bdc86bbadfd4a9a4904c8c
-  Last git commit:       8944d54 2026-07-18 01:56:08 -0400 add claude response
+  SHA-256:               4e380c34a8bcfab6aea265577bfdfb0647155956d7c751db006cbe9ec1078306
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
 # Canonical stack (TECHNICAL_SPECIFICATION §14.1), rootless Podman-first.
@@ -2175,6 +2268,10 @@ services:
     environment:
       RESTAURANT_NAME: ${RESTAURANT_NAME:-My Restaurant}
       RESTAURANT_PUBLIC_ORIGIN: ${RESTAURANT_PUBLIC_ORIGIN:-https://localhost:8443}
+      # Wildcard origins allowed to act as the WebAuthn relying party besides the origin above and
+      # loopback (ADR-0005, §3.3). Default trusts Cloudflare quick tunnels so scripts/quick_tunnel.sh
+      # works with passkeys; scripts/quick_tunnel.sh also exports RESTAURANT_PUBLIC_ORIGIN per run.
+      RESTAURANT_TRUSTED_ORIGIN_PATTERNS: ${RESTAURANT_TRUSTED_ORIGIN_PATTERNS:-https://*.trycloudflare.com}
       RESTAURANT_TIME_ZONE: ${RESTAURANT_TIME_ZONE:-America/New_York}
       RESTAURANT_CURRENCY_CODE: ${RESTAURANT_CURRENCY_CODE:-USD}
       RESTAURANT_DATABASE_CONNECTION_STRING: >-
@@ -2248,15 +2345,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  52.0 KiB (53296 bytes)
-  Last modified:         2026-07-22 20:57:12.457812890 -0400
-  Permissions:           -rw-------
+  Size:                  59.0 KiB (60448 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 22331463
+  Inode:                 25103633
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               0e58f01570350a1c927dd21b8b97f7b79fe08b4b4499a369f1f7f0cdf3508956
-  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+  SHA-256:               3dcab889227831a4667d3ffefd9bfc1788827f164d6ac4b18987266632a13c4a
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
 # Build progress
@@ -2278,17 +2375,22 @@ The scaffold and each subsequent milestone are written in an environment
   enrollment; and passkeys). After enabling the Podman socket, the last full local
   sweep was **green with zero warnings: 351 tests, 0 failed, 336 passed, 15 skipped**
   (the 15 remaining skips are the M6 Playwright end-to-end matrix), and `run.sh
-  --smoke` passed end to end. The newest slice — the **first-administrator `/setup`
-  bootstrap** (this change) — is, like its predecessors were, unbuilt until your next
-  build/test run; expect to fix the occasional thing a compiler would catch, most
-  likely in the multi-step wizard component (`Components/Account/Pages/Setup.razor`).
+  --smoke` passed end to end. Two slices sit on top of that sweep, each — like its
+  predecessors were — unbuilt until your next build/test run: the **first-administrator
+  `/setup` bootstrap**, whose likely compiler-catch home is the multi-step wizard
+  component (`Components/Account/Pages/Setup.razor`); and, newest, the **F-06a
+  quick-tunnel passkey correction** (see the slice at the end of this file), whose
+  likely home is the two new Identity classes (`Identity/WebAuthnOriginPolicy.cs`,
+  `Identity/PublicOriginMiddleware.cs`) and their wiring.
 - **Package versions in `Directory.Packages.props` are best-effort.** They target
   the .NET 10 GA era. Run `dotnet restore`; if a version does not exist, bump it
-  there to the nearest available. Nothing else references versions. **This slice adds
-  no packages** and **no new front-end assets** — the wizard reuses the passkey
-  ceremony from Slice 5, pointing the existing `wwwroot/js/passkey.js` at a new
+  there to the nearest available. Nothing else references versions. **The `/setup`
+  slice adds no packages** and **no new front-end assets** — the wizard reuses the
+  passkey ceremony from Slice 5, pointing the existing `wwwroot/js/passkey.js` at a new
   anonymous creation-options endpoint via an optional attribute on `PasskeySubmit`
-  (both changes are backward-compatible; the account passkey pages are untouched).
+  (both changes are backward-compatible; the account passkey pages are untouched). The
+  **F-06a** slice likewise adds no packages and **no client change** — `passkey.js` is
+  already server-driven; it is server wiring, a script rewrite, and docs.
 - Shell scripts are syntax-checked with `bash -n`; they may need `chmod +x`.
 
 ## Staged plan
@@ -2297,27 +2399,37 @@ The work is split into six stages aligned to the spec's milestones (§19). Each
 stage is meant to leave the tree buildable and testable.
 
 - [x] **Stage 1 — M1: skeleton + pure Domain** *(built green: 139 passed, 28 skipped)*
-- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, TOTP enrollment, passkeys, and now the first-administrator `/setup` bootstrap have landed; last verified local run before this slice: 336 passed, 15 skipped, 0 warnings)*
+- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, TOTP enrollment, passkeys, the first-administrator `/setup` bootstrap, and now the F-06a quick-tunnel passkey correction have landed; last verified local sweep: 336 passed, 15 skipped, 0 warnings — the F-06a slice adds pure unit tests only)*
 - [ ] **Stage 3 — M3: tables & joining**
 - [ ] **Stage 4 — M4: ordering**
 - [ ] **Stage 5 — M5: counter & administration**
 - [ ] **Stage 6 — M6: hardening**
 
-### A note on `run.sh` and quick-tunnel URLs (recurring question, settled)
+### A note on `run.sh` and quick-tunnel URLs (updated by F-06a)
 
-There is **no milestone anywhere in the plan for `run.sh` to print a
-`*.trycloudflare.com` URL and exit** — a previous session said so, and it was right.
-The specification splits the concerns deliberately: §14.4 defines `run.sh` as the dev
-entry (compose + watch, plus `--smoke` and `--containers-only`, both of which verify
-`/healthz/ready` and exit), while §14.3 makes quick tunnels a **demo-only** concern
-delivered by a separate helper — `scripts/quick_tunnel.sh` — whose milestone home is
-**M6** ("quick-tunnel demo script with warning"), already landed early. Note also
-that "deliver a URL **and exit**" is impossible for a quick tunnel: the URL lives
-exactly as long as the `cloudflared` process, so the correct shape is what the helper
-does — bring the URL up prominently and hold the tunnel open in the foreground. The
-demo flow is two commands: `./run.sh --containers-only`, then
-`scripts/quick_tunnel.sh`. If the owner ever wants a one-command demo mode, that is a
-spec ruling (§14.3/§14.4 + ADR-0005 edits) before it is a script change.
+There is still **no milestone for `run.sh` itself to print a `*.trycloudflare.com`
+URL and exit**, and that remains correct: §14.4 keeps `run.sh` as the dev entry
+(compose + watch, plus `--smoke` and `--containers-only`, which verify
+`/healthz/ready` and exit), and "deliver a URL **and exit**" is impossible for a quick
+tunnel — the URL lives exactly as long as the `cloudflared` process. Quick tunnels
+stay in the **separate** helper, `scripts/quick_tunnel.sh` (M6, landed early).
+
+What the F-06a change settled — and it *was* the spec ruling this note previously said
+was a prerequisite — is the **shape and scope** of that helper:
+
+- The one-command demo mode is now the shape. `scripts/quick_tunnel.sh` brings
+  postgres up, opens the tunnel, discovers the assigned URL, exports it as
+  `RESTAURANT_PUBLIC_ORIGIN`, recreates `web`, waits for `/healthz/ready`, and holds
+  the tunnel in the foreground. You no longer run `./run.sh --containers-only` first
+  (the helper does the bring-up itself); one command is enough.
+- Quick tunnels are **not** password+TOTP-only. With per-request RP derivation
+  (ADR-0005) and `https://*.trycloudflare.com` trusted by default, **passkeys work on
+  a quick tunnel within a run** — including a passkey-only account. The one caveat the
+  helper prints loudly: a new run gets a new random URL, so passkeys and bookmarks do
+  not carry across runs and must be re-registered; the named tunnel is for durability.
+
+The ADR-0005 / §14.3 edits that make the above true are part of the F-06a slice at the
+end of this file.
 
 ## Stage 1 — done (compiles green)
 
@@ -2752,8 +2864,9 @@ handler is registered by hand.
    tests skip too if no container engine is available.
 4. `./run.sh --smoke` — boots once (which applies migration 0002), verifies
    `/healthz/ready`, exits.
-5. Manual, on the **stable named-tunnel domain** (passkeys bind to the RP ID, so quick
-   tunnels won't keep them — ADR-0005): sign in → **Passkeys** in the header → **Add a
+5. Manual, on any origin the RP trusts — dev `https://localhost:8443`, or a quick
+   tunnel via `scripts/quick_tunnel.sh` (passkeys work there per F-06a/ADR-0005; a new
+   run just means re-registering): sign in → **Passkeys** in the header → **Add a
    passkey** → complete the platform prompt → the credential appears in the list. Sign
    out, then **Sign in with a passkey** (or let the username field autofill one). An
    enrolled passkey sign-in should land you in **without** a TOTP challenge.
@@ -2844,11 +2957,92 @@ wizard's steps, and only the last post writes anything.
    suite; that suite skips if no container engine is available, exactly like the other
    Testcontainers tests.
 4. `./run.sh --smoke` — boots once, verifies `/healthz/ready`, exits.
-5. Manual, on the **stable named-tunnel domain** (the passkey binds to the RP ID, so a
-   quick tunnel won't keep it — ADR-0005): visit `/setup` → username + display name +
-   password → **register a passkey** (platform prompt) → **scan the TOTP QR** and confirm
-   a code → review → **Create administrator**. The recovery codes show **once**, and you
-   land signed in as the administrator. Revisit `/setup`: it now returns **404**.
+5. Manual, on the **stable named-tunnel domain** — bootstrap is the one flow you should
+   *not* run through a quick tunnel: the passkey works there, but a quick tunnel's URL
+   changes every run, so the first administrator's credential would not survive the
+   next run (F-06a/ADR-0005). Visit `/setup` → username + display name + password →
+   **register a passkey** (platform prompt) → **scan the TOTP QR** and confirm a code →
+   review → **Create administrator**. The recovery codes show **once**, and you land
+   signed in as the administrator. Revisit `/setup`: it now returns **404**.
+
+### Slice 7 — F-06a: passkeys on quick tunnels (this change)
+
+The **course correction** to F-06's original ruling. The spec, ADR-0005, and the wiring
+had all assumed a passkey's relying-party ID must be **pinned at boot** to the host of
+`RESTAURANT_PUBLIC_ORIGIN`, which made passkeys impossible on a Cloudflare quick tunnel
+(its `*.trycloudflare.com` host is random per run and unknowable at startup) and led the
+docs to declare quick tunnels "demo-only, password+TOTP." The owner's GoTunnels project
+disproves that: it runs a full **passkey-only** flow over a quick tunnel by deriving the
+relying party **per request** from the browser's origin when it matches a trusted
+`https://*.trycloudflare.com` pattern. This slice brings the same approach to the .NET 10
+Identity passkey API and corrects every document that claimed otherwise.
+
+The mechanism rests on one decisive fact confirmed against the ASP.NET Core `release/10.0`
+source: `PasskeyHandler` computes the RP ID as `options.ServerDomain ?? Request.Host.Host`,
+re-derived on **both** options-generation and verification. So leaving `ServerDomain` null
+makes the RP ID follow the request host, and a small middleware guarantees that host is the
+browser's real public host.
+
+- **New `Identity/WebAuthnOriginPolicy.cs`** — a pure, HTTP-free policy (unit-testable in
+  isolation) that answers "may this origin act as the relying party?" and "what host should
+  we present?" from configuration: the configured `RESTAURANT_PUBLIC_ORIGIN`, any
+  `RESTAURANT_TRUSTED_ORIGIN_PATTERNS` entry (default `https://*.trycloudflare.com`), and
+  loopback in dev. The wildcard matcher mirrors GoTunnels' `MatchOriginPattern` exactly — a
+  leading `*.` matches exactly one non-empty DNS label, never a deeper label and never a
+  ported host.
+- **New `Identity/PublicOriginMiddleware.cs`** — runs immediately after
+  `UseForwardedHeaders` and normalizes `Request.Host`: a trusted, unforgeable `Origin`
+  header wins (this is what makes the RP ID self-healing across tunnel URL rotations); else
+  an already-trusted host is kept; else it falls back to the configured public-origin host
+  (covering form POSTs that omit `Origin` behind a proxy that rewrote the host to the
+  internal service address). Every branch only ever sets a host the policy already trusts.
+- **`Identity/IdentityServiceCollectionExtensions.cs`** — registers the policy as a
+  singleton, sets `IdentityPasskeyOptions.ServerDomain = null`, keeps
+  `userVerification`/`residentKey` at `preferred`, and sets `ValidateOrigin` to accept only
+  a non-cross-origin request whose signed origin the policy trusts. This replaces the old
+  `passkey.ServerDomain = options.ResolveWebAuthnRelyingPartyId()` pin — the exact line that
+  broke quick tunnels.
+- **`Configuration/RestaurantOptions.cs`** — adds a non-required `TrustedOriginPatterns`
+  (env `RESTAURANT_TRUSTED_ORIGIN_PATTERNS`, default `https://*.trycloudflare.com`), reads
+  and validates it, and updates the `ResolveWebAuthnRelyingPartyId` doc to say it is now the
+  QR-URL/fallback host, not the pinned RP ID.
+- **`Program.cs`** — inserts `app.UseMiddleware<PublicOriginMiddleware>()` right after
+  `UseForwardedHeaders`, before static files / auth / endpoints.
+- **`scripts/quick_tunnel.sh`** — rewritten into a one-command orchestrator in the
+  GoTunnels "staged startup" spirit: detect the compose engine and a cloudflared runner,
+  start postgres, open the tunnel, poll for the assigned `*.trycloudflare.com` URL, export
+  it as `RESTAURANT_PUBLIC_ORIGIN`, force-recreate `web`, wait for `/healthz/ready`, print
+  the URL in a banner with the corrected caveat (passkeys work this run; a new run = a new
+  URL = re-register; never bootstrap a real instance here), and hold the tunnel in the
+  foreground with a cleanup trap. It does not mutate the user's `.env`.
+- **Docs / ADR.** `docs/adr/0005-...md` rewritten (F-06a revision + history entry);
+  `TECHNICAL_SPECIFICATION.md` §3.3, §13 config table, §14.3, accepted-risks, and the
+  traceability matrix corrected; `README.md` and `docs/OPERATIONS.md` §10 corrected;
+  `.env.example` and `compose.yaml` gain the new variable. ADR-0010 (passkey-only admin
+  already permitted) and `wwwroot/js/passkey.js` (already server-driven) needed no change.
+- **Tests.** New `Identity/WebAuthnOriginPolicyTests.cs` (dev/prod/no-pattern policies:
+  `PublicHost`, `IsTrustedOrigin`, `IsTrustedHost`, `TryResolveTrustedHost`, empty-pattern
+  behaviour). `Identity/IdentityWiringTests.cs` swaps its pinned-`ServerDomain` fact for one
+  asserting per-request derivation (`ServerDomain` null, `ValidateOrigin` set) plus a theory
+  exercising `ValidateOrigin` (localhost + `*.trycloudflare.com` accepted, an evil host and
+  any cross-origin request rejected) and a "policy is registered" fact.
+  `RestaurantOptionsTests.cs` gains default-pattern binding, list-split binding, and a
+  bad-pattern rejection theory. All pure — they run without a container engine.
+
+### Build/test checklist for this slice
+
+1. `dotnet restore` — **no new packages** this slice.
+2. `dotnet build` — the two new Identity classes are the most likely home of anything a
+   compiler catches (span `ContainsAny` overloads, `HostString` construction).
+3. `dotnet test` — expect the previous green set plus `WebAuthnOriginPolicyTests`, the
+   revised `IdentityWiringTests` facts, and the new `RestaurantOptionsTests` cases; all pure,
+   so they always run.
+4. `./run.sh --smoke` — unchanged; boots once, verifies `/healthz/ready`, exits. Confirm the
+   dev RP ID is still `localhost` (Caddy forwards `X-Forwarded-Host: localhost:8443`).
+5. Manual quick-tunnel proof (the point of this slice): `scripts/quick_tunnel.sh` → open the
+   printed `*.trycloudflare.com` URL → register a passkey → sign out → sign in with the
+   passkey. It should work. Re-run the script → new URL → the old passkey no longer matches
+   (expected) → register again.
 
 ## Known caveats and deliberate decisions
 
@@ -3104,15 +3298,15 @@ No findings remain open. New issues enter this ledger as fresh `F-nn` rows — f
   File name:             OPERATIONS.md
   Relative path:         docs/OPERATIONS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/OPERATIONS.md
-  Size:                  14.7 KiB (15014 bytes)
-  Last modified:         2026-07-19 15:38:02.000000000 -0400
+  Size:                  15.7 KiB (16076 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654832
+  Inode:                 25103635
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               7d1364ff027165731704cf5037767fa0e506f7f4f4f7342a2bcf3a6b13254c07
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               51dcdb75206e716c4df53d52a5b4e7c12c37721c7aa259b333e8bda5bd349792
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Operations
@@ -3203,7 +3397,7 @@ Production normally runs **without** Caddy: guests and staff alike reach the ins
 2. Install the certificate on **staff devices only** (kitchen kiosk, counter machine). Guests never touch this origin.
 3. Staff bookmark `https://restaurant.lan/kitchen` and `/counter` as the emergency door.
 
-Hard limits, by design: **passkeys do not work on this origin** (they are bound to the public domain), so staff sign in with password + TOTP — which means every staff member you expect to use the fallback must actually have a password set and TOTP enrolled *before* the outage. Guest ordering from phones is still down (§11). This fallback keeps the kitchen queue and the ability to close bills alive; it is not a second front door.
+Hard limits, by design: **passkeys do not work on this origin** — `restaurant.lan` is not the public origin and is not in `RESTAURANT_TRUSTED_ORIGIN_PATTERNS`, so the RP-ID derivation (ADR-0005) won't trust it, and a credential registered on the public domain won't match it anyway — so staff sign in with password + TOTP — which means every staff member you expect to use the fallback must actually have a password set and TOTP enrolled *before* the outage. Guest ordering from phones is still down (§11). This fallback keeps the kitchen queue and the ability to close bills alive; it is not a second front door.
 
 ## 8. Data Protection keys
 
@@ -3214,7 +3408,7 @@ The ASP.NET Data Protection key ring lives in the `DATA_PROTECTION_KEYS_DIRECTOR
 
 ## 9. Changing the public origin (domain move)
 
-Passkeys bind to the RP ID — the host of `RESTAURANT_PUBLIC_ORIGIN`. Moving domains **orphans every passkey on the instance**. This is WebAuthn, not a bug; plan accordingly.
+A passkey binds to the RP ID — the host it was registered on. In production every browser is on the named-tunnel domain, so that is the host of `RESTAURANT_PUBLIC_ORIGIN` (the RP ID is derived per request, ADR-0005, but in production there is only the one public host). Moving domains therefore **orphans every passkey on the instance**. This is WebAuthn, not a bug; plan accordingly.
 
 1. **Before the move**, confirm every administrator can complete a **password + TOTP** sign-in on the current origin. An administrator who is passkey-only with no password set will be locked out of administration by the move — have them set a password first. Encourage staff to do the same.
 2. Create/repoint the named tunnel's public hostname to the new domain; update `RESTAURANT_PUBLIC_ORIGIN`; restart the stack.
@@ -3223,16 +3417,15 @@ Passkeys bind to the RP ID — the host of `RESTAURANT_PUBLIC_ORIGIN`. Moving do
 
 ## 10. Quick-tunnel demo runbook
 
-Show-and-tell over the public internet is a **two-command** flow, by design (spec §14.3/§14.4, ADR-0005 — quick tunnels are demo-only and are not part of `run.sh`):
+Show-and-tell over the public internet is a **one-command** flow (spec §14.3/§14.4, ADR-0005 — the quick tunnel is a separate helper, not part of `run.sh`):
 
 ```bash
-./run.sh --containers-only     # terminal 1 — build, migrate, start the stack, return
-scripts/quick_tunnel.sh        # terminal 2 — expose it, stays in the foreground
+scripts/quick_tunnel.sh        # brings the stack up, exposes it, stays in the foreground
 ```
 
-The script refuses to start if the stack isn't up and ready (it probes `http://localhost:8080/healthz/ready` first and tells you exactly which command to run if the probe fails), so running it against nothing fails in one second with instructions rather than a hung tunnel. Once `cloudflared` hands back the random `https://<something>.trycloudflare.com` hostname, the script prints it in an unmissable banner and then **stays in the foreground streaming tunnel logs** — the URL lives exactly as long as the process. `Ctrl+C` ends the demo; there is no detached mode and no "print the URL and exit," because the tunnel dies with the process that owns it.
+The script stages the bring-up in the GoTunnels spirit: it detects your compose engine and a `cloudflared` runner (host binary or a container on the host network), starts PostgreSQL, opens the quick tunnel, and **polls the tunnel log for the assigned `https://<something>.trycloudflare.com` hostname**. Once it has the URL it exports it as `RESTAURANT_PUBLIC_ORIGIN` (so QR join links and the form-post host fallback resolve to the tunnel, not an internal address), force-recreates the `web` service against that origin, and waits for `/healthz/ready`. It then prints the URL in an unmissable banner and **stays in the foreground streaming tunnel logs** — the URL lives exactly as long as the process. `Ctrl+C` ends the demo; there is no detached mode and no "print the URL and exit," because the tunnel dies with the process that owns it. The script does not touch your `.env`; it passes the origin through the shell environment for this run only.
 
-Every run gets a random subdomain, and `trycloudflare.com` is on the Public Suffix List, so **any passkey registered through a quick tunnel binds to that one run and dies with it** — the script prints exactly this warning, loudly. Demo with password + TOTP accounts; never bootstrap a real instance (§3) through a quick tunnel; never point a real instance's `RESTAURANT_PUBLIC_ORIGIN` at one.
+**Passkeys work on the quick tunnel**, including a passkey-only account — the RP ID is derived per request and `https://*.trycloudflare.com` is trusted by default (ADR-0005, §3.3), so you can register a passkey, sign out, and sign in with it, all within the demo. The one caveat, which the script prints loudly: every run gets a fresh random subdomain (`trycloudflare.com` is on the Public Suffix List), so **a passkey registered on one run will not match the next run's URL** and must be re-registered — quick-tunnel passkeys are not durable. Password + TOTP is the durable baseline. **Never bootstrap a real instance (§3) through a quick tunnel** — the first administrator's passkey would not survive the next run — and never point a real instance's `RESTAURANT_PUBLIC_ORIGIN` at one; use the stable named tunnel for anything that must persist.
 
 ## 11. WAN outage behavior
 
@@ -3483,15 +3676,15 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
   File name:             TECHNICAL_SPECIFICATION.md
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/TECHNICAL_SPECIFICATION.md
-  Size:                  68.2 KiB (69850 bytes)
-  Last modified:         2026-07-20 17:41:33.000000000 -0400
+  Size:                  70.4 KiB (72075 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21956020
+  Inode:                 25103634
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               c44ec471141df5446f14d93ce695c1fade511f9889ce877e6cbbbb4bfa85a198
-  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+  SHA-256:               52384914cb16cec445614e2327affcf7de0198677ca9086b750375c44d208430
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
@@ -3564,7 +3757,7 @@ Verification parses the **stored** parameters, recomputes, compares with `Crypto
 
 ### 3.3 Passkeys
 
-.NET 10 Identity WebAuthn. RP ID = host of `RESTAURANT_PUBLIC_ORIGIN` (full host, not registrable domain). Registration options: `residentKey=preferred`, `userVerification=preferred`, `attestation=none`. Sign-in supports username-first and username-less (discoverable credential) flows. Store per §8 `passkey_credential` (credential id unique, public key, sign counter, optional transports and label). Fallback library if a framework gap is found: fido2-net-lib (record the fallback by editing ADR-0003). Registration and change-password forms follow platform conventions — `autocomplete="username"` / `autocomplete="new-password"` — so operating-system password managers generate and offer strong passwords automatically. Passkey enrollment is offered to guests after registration and after sign-in as a **dismissible nudge**: always offered, never required, never a gate for guests (the grant-time passkey mandate applies only to the kitchen and administrator roles, §3.7). **Consequence of RP ID binding (ADR-0005):** passkeys are only durable on the stable named-tunnel domain; on quick tunnels (`*.trycloudflare.com`, a Public Suffix List entry) they bind to the per-run subdomain and die with it — quick tunnels are demo-only with password+TOTP.
+.NET 10 Identity WebAuthn. RP ID = the host the browser is actually on, derived **per request** from `Request.Host` (`IdentityPasskeyOptions.ServerDomain` is left **null**; ADR-0005), full host and not the registrable domain. `PublicOriginMiddleware` normalizes `Request.Host` to the real public host (the unforgeable `Origin` header when it is trusted, else the configured `RESTAURANT_PUBLIC_ORIGIN` host), and `IdentityPasskeyOptions.ValidateOrigin` gates the browser's signed origin against the trust set — `RESTAURANT_PUBLIC_ORIGIN`, any `RESTAURANT_TRUSTED_ORIGIN_PATTERNS` entry (default `https://*.trycloudflare.com`), and loopback in dev. Registration options: `residentKey=preferred`, `userVerification=preferred`, `attestation=none`. Sign-in supports username-first and username-less (discoverable credential) flows. Store per §8 `passkey_credential` (credential id unique, public key, sign counter, optional transports and label). Fallback library if a framework gap is found: fido2-net-lib (record the fallback by editing ADR-0003). Registration and change-password forms follow platform conventions — `autocomplete="username"` / `autocomplete="new-password"` — so operating-system password managers generate and offer strong passwords automatically. Passkey enrollment is offered to guests after registration and after sign-in as a **dismissible nudge**: always offered, never required, never a gate for guests (the grant-time passkey mandate applies only to the kitchen and administrator roles, §3.7). **Consequence of per-request RP derivation (ADR-0005):** passkeys work on whatever origin the browser is on, including a Cloudflare quick tunnel (`*.trycloudflare.com`). The only quick-tunnel caveat is *persistence*: `*.trycloudflare.com` is a Public Suffix List entry and each run gets a fresh random subdomain, so a passkey registered on one run's URL binds to that URL and must be re-registered on the next run. The named tunnel is the durable production origin (a stable domain so passkeys persist across runs), not a prerequisite for passkeys to function; password + TOTP is the durable baseline for accounts that must survive a URL change.
 
 ### 3.4 TOTP and recovery codes
 
@@ -4222,7 +4415,8 @@ OpenTelemetry traces (ASP.NET Core + Npgsql instrumentation), logs, and metrics 
 | Key | Default | Meaning |
 |---|---|---|
 | `RESTAURANT_NAME` | `My Restaurant` | display + TOTP issuer |
-| `RESTAURANT_PUBLIC_ORIGIN` | `https://localhost:8443` (dev) | **the** origin: RP ID host, QR URLs; production = named-tunnel domain |
+| `RESTAURANT_PUBLIC_ORIGIN` | `https://localhost:8443` (dev) | canonical origin: QR URLs, RP-ID fallback; production = stable named-tunnel domain (so passkeys persist) |
+| `RESTAURANT_TRUSTED_ORIGIN_PATTERNS` | `https://*.trycloudflare.com` | extra wildcard origins allowed as the WebAuthn RP besides the origin above + loopback (§3.3, ADR-0005); comma/space/newline separated, each `scheme://host`, https, optional single leading `*.`, no path/port |
 | `RESTAURANT_TIME_ZONE` | `America/New_York` | rendering only |
 | `RESTAURANT_CURRENCY_CODE` | `USD` | display only |
 | `RESTAURANT_DATABASE_CONNECTION_STRING` | compose-internal default | Npgsql string |
@@ -4245,7 +4439,7 @@ Fail-fast validation at startup: origin parses as absolute https URL; Argon2 flo
 
 **14.2 Origin truth** — one `RESTAURANT_PUBLIC_ORIGIN`. Everything (WebAuthn RP ID, QR URLs, links) derives from it. In-house guests hairpin through Cloudflare; **LAN ordering therefore depends on WAN health — accepted risk** per the F-06 ruling.
 
-**14.3 Quick tunnels** — demo-only. `*.trycloudflare.com` is on the Public Suffix List: a passkey's RP ID binds to the random per-run subdomain and dies with the tunnel. The quick-tunnel helper script must print this warning. Demos authenticate with password+TOTP.
+**14.3 Quick tunnels** — for demos. `scripts/quick_tunnel.sh` brings the stack up, opens a quick tunnel, discovers the assigned `*.trycloudflare.com` URL, exports it as `RESTAURANT_PUBLIC_ORIGIN` (so QR join URLs and the form-post host fallback are correct), recreates `web`, waits for `/healthz/ready`, and holds the tunnel in the foreground. Because the RP ID is derived per request (§3.3, ADR-0005) and `https://*.trycloudflare.com` is trusted by default, **passkeys work within a run** — including a passkey-only account. `*.trycloudflare.com` is on the Public Suffix List and every run gets a fresh random subdomain, so passkeys (and bookmarks) do **not** carry across runs and must be re-registered; the helper prints this caveat prominently. A quick tunnel must never carry the *bootstrap* of a real instance (§3.6) — bootstrap on the stable named-tunnel domain so the first administrator's credentials persist.
 
 **14.4 `run.sh`** — dev entry: checks prerequisites, starts compose (postgres [+caddy]), exports dev defaults (translating `UPTRACE_DSN` → `OTEL_*` if set), `dotnet watch` the web app. Idempotent; `run.sh --containers-only` starts the stack without watch.
 
@@ -4284,7 +4478,7 @@ Fail-fast validation at startup: origin parses as absolute https URL; Argon2 flo
 
 Threats mitigated: static-QR capability theft (rotating tokens, ≤120 s life, per-table secret rotation); Argon2 memory DoS (semaphore + rate limit + lockout); display theft (revocation; device holds no secret worth extracting; join secret never leaves the server); credential stuffing (Argon2id, lockout, passkeys-first); stale sessions after admin action (5-minute stamp revalidation); half-applied schema (fail-fast migrations); pairing brute force (hashed single-use codes, TTL, 5/min/IP).
 
-Accepted, by ruling or by design: token replay within ≤120 s (bounded by membership/visibility rules); WAN dependence of in-house ordering (hairpin — F-06); quick-tunnel passkey loss (PSL — demos only); counter role may operate password-only (no passkey mandate); guest sees table-mates' display names and orders (that's the product); no rate limit on authenticated order sends beyond all-or-nothing validation (single-restaurant trust model).
+Accepted, by ruling or by design: token replay within ≤120 s (bounded by membership/visibility rules); WAN dependence of in-house ordering (hairpin — F-06); quick-tunnel passkeys work per run but the per-run URL is not persistent (PSL — re-register each demo; named tunnel for durability); counter role may operate password-only (no passkey mandate); guest sees table-mates' display names and orders (that's the product); no rate limit on authenticated order sends beyond all-or-nothing validation (single-restaurant trust model).
 
 ## 18. Governance
 
@@ -4305,7 +4499,8 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 
 | Ruling / finding | Decision | Embodied in |
 |---|---|---|
-| F-06 | Named Cloudflare tunnel = production origin; quick tunnels demo-only (PSL passkey caveat); Argon2id "robust" params; hairpin risk accepted; GoTunnels reference-only, bearer sessions rejected | §3.2, §3.3, §14, §17 · ADR-0005, ADR-0008 |
+| F-06 | Named Cloudflare tunnel = production origin (persistence, not a passkey prerequisite); Argon2id "robust" params; hairpin risk accepted; GoTunnels reference-only, bearer sessions rejected | §3.2, §3.3, §14, §17 · ADR-0005, ADR-0008 |
+| F-06a | Quick tunnels support passkeys via per-request RP derivation (`ServerDomain=null` + `PublicOriginMiddleware` + `ValidateOrigin` against `RESTAURANT_TRUSTED_ORIGIN_PATTERNS`); only the per-run URL is non-persistent | §3.3, §14.3 · ADR-0005 |
 | F-07 / Q1 | Living order per guest per sitting; client staging; batch sends; one alert per send; pending → fulfilled lifecycle; guests remove own pending only; reversal event | §6, §10, §11.1 · ADR-0007, ADR-0002 |
 | F-08 / Q2 / Q3 (supersedes F-09 draft) | TOTP on password path only; no per-user toggle; reset wipes password+TOTP (if enrolled) and forces change + re-enrollment via obligations pipeline on any sign-in path | §3.4, §3.5, §3.7 · ADR-0010 |
 | F-12 / Q4 / Q5 | Rotating HMAC join tokens; `table_display` device principal; pairing codes; join grants; counter fallback QR; printed QR removed | §4, §11.5 · ADR-0009 |
@@ -4540,52 +4735,55 @@ An Aspire AppHost project **may** exist as an optional developer convenience (da
   File name:             0005-origins-and-tls-cloudflare-named-tunnel.md
   Relative path:         docs/adr/0005-origins-and-tls-cloudflare-named-tunnel.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/adr/0005-origins-and-tls-cloudflare-named-tunnel.md
-  Size:                  4.4 KiB (4554 bytes)
-  Last modified:         2026-07-17 06:27:06.000000000 -0400
+  Size:                  8.0 KiB (8215 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21195469
+  Inode:                 25103637
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               5c6468bd9a77c6fe5029d0ca0421923987c011e67e84ee2271cde0332d51aa41
-  Last git commit:       f4b25f9 2026-07-17 09:22:33 -0400 update documentation
+  SHA-256:               1324ff8d2ba9ae0bbc2ac4e2024b6ab2bdbaf53be20abe19c342257f307e85ce
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
-# ADR-0005 — Origins and TLS: named Cloudflare Tunnel is the production origin
+# ADR-0005 — Origins and TLS: named Cloudflare Tunnel is the production origin; quick tunnels support passkeys
 
-**Status:** Accepted (2026-07-17) — F-06 ruling
-**Finding trail:** F-06
+**Status:** Accepted (2026-07-17) — F-06 ruling · **Revised 2026-07-22** — F-06a (quick-tunnel passkeys)
+**Finding trail:** F-06, F-06a
 **Requirements:** `REQUIREMENTS.md` §2 (tunneling rows), §5.1
 
 ## Context
 
-WebAuthn passkeys, the Screen Wake Lock API (kitchen display and table displays), and dependable audio autoplay all require a secure context (HTTPS). Passkeys additionally bind to a **relying-party identifier derived from the origin's host**, so the origin must be stable wherever passkeys are used. The original requirements were silent on certificates and leaned on Cloudflare quick tunnels for demos.
+WebAuthn passkeys, the Screen Wake Lock API (kitchen display and table displays), and dependable audio autoplay all require a secure context (HTTPS). Passkeys additionally bind to a **relying-party identifier (RP ID) derived from the origin's host**, so the origin must be stable **for the lifetime of a given passkey** — i.e. between the run on which it is registered and the runs on which it is used. The original requirements were silent on certificates and leaned on Cloudflare quick tunnels for demos.
 
-Two facts settled the design:
+Two facts shape the design:
 
-1. **`trycloudflare.com` is on the Public Suffix List.** Each quick tunnel gets a random subdomain, and because the parent is a public suffix, that random subdomain **is** the registrable domain. A passkey registered through a quick tunnel binds to that one-run hostname and dies with it. There is no way to make quick-tunnel passkeys durable.
+1. **`trycloudflare.com` is on the Public Suffix List.** Each quick tunnel gets a random subdomain, and because the parent is a public suffix, that random subdomain **is** the registrable domain. A passkey registered through a quick tunnel binds to that one-run hostname; it works perfectly **for the life of that tunnel** and stops working when a *new* run hands out a *different* random subdomain. There is no way to make a quick-tunnel passkey survive a URL change — but that is a *re-registration on the next demo*, not a reason passkeys cannot be exercised on a quick tunnel at all.
 2. Installing a private certificate authority root on **guests' phones** is not a real option, so any "internal CA on the LAN" origin can only ever serve staff-owned devices, never the guest ordering flow.
 
-The owner's GoTunnels project served as the working reference for tunnel lifecycle, TLS posture, and observability wiring. Its session model — a never-expiring bearer token in `localStorage` — was examined and **explicitly rejected**: it does not fit Blazor Server's cookie-plus-circuit authentication model and would undermine the security-stamp revalidation this system relies on.
+The owner's GoTunnels project served as the working reference for tunnel lifecycle, TLS posture, observability wiring, **and — decisively for F-06a — for running a full passkey (indeed passkey-only) flow over a `try.cloudflare.com` quick tunnel.** GoTunnels does this by deriving the WebAuthn relying party **per request** from the browser's origin when it matches a trusted `https://*.trycloudflare.com` pattern, rather than pinning it at boot. Its session model — a never-expiring bearer token in `localStorage` — was examined and **explicitly rejected**: it does not fit Blazor Server's cookie-plus-circuit authentication model and would undermine the security-stamp revalidation this system relies on.
 
 ## Decision
 
-1. **Production origin = a persistent, named Cloudflare Tunnel on the operator's stable domain.** `RESTAURANT_PUBLIC_ORIGIN` is that `https://` origin; it drives QR join URLs and the WebAuthn relying-party identifier. Guests, staff devices, and table displays all use this origin — including devices physically inside the restaurant.
-2. **Topology:** `cloudflared` (compose `production` profile) connects outbound to Cloudflare and forwards to `web` over the private compose network. TLS terminates at the Cloudflare edge; the tunnel leg is encrypted by `cloudflared`. Caddy is not in the production request path.
-3. **Development origin:** Caddy terminates TLS for `https://localhost:8443` with its internal CA (compose default profile), giving developers a secure context with zero ceremony.
-4. **Optional staff LAN fallback (documented, off by default):** Caddy may additionally serve a LAN hostname with its internal CA, roots installed on **staff-owned** devices only. During a WAN outage this keeps kitchen/counter/administration reachable by password + TOTP (passkeys registered on the public origin will not work on the fallback origin). Guest ordering and table displays are down during a WAN outage regardless.
-5. **Quick tunnels (`try.cloudflare.com`) are demo-only.** The tunnel scripts print, prominently: passkeys registered through a quick tunnel are unusable on any later run (Public Suffix List behavior above); accounts must be reachable by password + TOTP. **A quick tunnel must never carry the bootstrap of a real instance.** Quick-tunnel scripts keep per-name state directories (`.tunnels/<name>/` — PID file, captured URL, log; git-ignored) so multiple concurrent tunnels never share environment or trample each other.
+1. **Production origin = a persistent, named Cloudflare Tunnel on the operator's stable domain.** This is a **persistence and operability** choice — a stable public URL for QR join codes, bookmarks, and passkeys that must outlive individual runs — **not** a precondition for passkeys to function. `RESTAURANT_PUBLIC_ORIGIN` is that `https://` origin; it drives QR join URLs (ADR-0009) and is the canonical/primary trusted WebAuthn origin. Guests, staff devices, and table displays all use this origin — including devices physically inside the restaurant.
+2. **The WebAuthn RP ID is derived per request, not pinned at boot (F-06a).** `IdentityPasskeyOptions.ServerDomain` is left **null**, so the .NET 10 passkey handler uses `Request.Host.Host` for the RP ID on each ceremony. `PublicOriginMiddleware` normalizes `Request.Host` to the browser's real origin host (from the unforgeable `Origin` header when trusted, else the configured public origin), and `IdentityPasskeyOptions.ValidateOrigin` gates the browser's cryptographically-signed origin against a trust set: the configured `RESTAURANT_PUBLIC_ORIGIN`, any `RESTAURANT_TRUSTED_ORIGIN_PATTERNS` entry (default `https://*.trycloudflare.com`), and loopback in development. This makes passkeys **self-healing** across tunnel URL changes and — the point of F-06a — makes them work on a quick tunnel without the random URL being known at startup. It is safe because credentials are RP-ID-scoped by the authenticator itself (a page on `attacker.trycloudflare.com` can only exercise credentials created for `attacker.trycloudflare.com`); the origin trust set is defence in depth. The patterns gate **only** WebAuthn relying-party derivation — the app is single-origin and adds no cross-origin CORS allowance, so the CORS-with-credentials hazard that would make this unsafe does not arise.
+3. **Topology:** `cloudflared` (compose `production` profile) connects outbound to Cloudflare and forwards to `web` over the private compose network. TLS terminates at the Cloudflare edge; the tunnel leg is encrypted by `cloudflared`. Caddy is not in the production request path.
+4. **Development origin:** Caddy terminates TLS for `https://localhost:8443` with its internal CA (compose default profile), giving developers a secure context with zero ceremony.
+5. **Optional staff LAN fallback (documented, off by default):** Caddy may additionally serve a LAN hostname with its internal CA, roots installed on **staff-owned** devices only. During a WAN outage this keeps kitchen/counter/administration reachable — by password + TOTP, or by a passkey previously registered on that same LAN origin (a passkey registered on the public origin is bound to that host and will not assert on the LAN origin). Guest ordering and table displays are down during a WAN outage regardless.
+6. **Quick tunnels (`try.cloudflare.com`) are for demos, and passkeys work on them (revised).** `scripts/quick_tunnel.sh` brings the stack up, opens the tunnel, discovers the `*.trycloudflare.com` URL, sets `RESTAURANT_PUBLIC_ORIGIN` to it so QR join URLs and the form-post fallback are correct, and holds the tunnel in the foreground. Within a run you can register and sign in with a passkey — including a passkey-only account (ADR-0010 already permits one with no password). The script prints, prominently, the one caveat that remains: a **new run gets a new random URL**, so passkeys (and any bookmarks) from a previous run will not carry over and must be re-registered. Password + TOTP remains the durable baseline for accounts that must survive URL changes. **A quick tunnel must still never carry the *bootstrap* of a real, long-lived instance** — bootstrap on the stable named-tunnel domain so the first administrator's credentials persist.
 
 ## Consequences
 
-- **Accepted risk (owner-acknowledged): in-house ordering hairpins through Cloudflare.** A guest sitting in the restaurant reaches the server in the same building via the Cloudflare edge; LAN ordering therefore depends on WAN health. This is the price of durable passkeys on one stable origin without touching guest devices.
+- **Accepted risk (owner-acknowledged): in-house ordering hairpins through Cloudflare.** A guest sitting in the restaurant reaches the server in the same building via the Cloudflare edge; LAN ordering therefore depends on WAN health. This is the price of one stable public origin without touching guest devices.
+- **Passkeys are no longer coupled to a named tunnel.** The old ruling ("passkeys require the stable named-tunnel domain; quick tunnels are password+TOTP-only") is **superseded** by decision 2. Demos can showcase the passwordless flow; the only quick-tunnel limitation is non-persistence of the URL across runs.
 - Rootless Podman cannot bind ports 80/443 by default; the stack publishes 8080/8443, and the operations guide offers the `net.ipv4.ip_unprivileged_port_start=80` sysctl for installations that want standard ports for the LAN fallback. The tunnel path does not need inbound ports at all.
-- Rotating join tokens (ADR-0009) embed `RESTAURANT_PUBLIC_ORIGIN`; changing the domain invalidates printed materials (there are none — displays re-render) but does invalidate registered passkeys. Domain changes are a documented, disruptive operation (operations guide §9).
+- Rotating join tokens (ADR-0009) embed `RESTAURANT_PUBLIC_ORIGIN`; changing the domain invalidates any passkeys registered on the old host (WebAuthn, not a bug) and re-points join URLs. Domain changes are a documented, disruptive operation for a persistent instance (operations guide §9); on a quick tunnel it simply happens every run, which is why quick tunnels are for demos.
 
 ## History
 
 - 2026-07-16 — drafted as "Caddy internal CA on LAN + named tunnel for remote".
 - 2026-07-17 — reworked to tunnel-as-primary-origin after the F-06 ruling and Public Suffix List verification; GoTunnels adopted as reference, its bearer-token session model rejected.
+- 2026-07-22 — **F-06a revision.** Corrected the claim that passkeys require the named-tunnel domain. Per-request RP derivation (`ServerDomain=null`) + `PublicOriginMiddleware` + `ValidateOrigin` against `RESTAURANT_TRUSTED_ORIGIN_PATTERNS` (default `https://*.trycloudflare.com`) make passkeys work on quick tunnels, matching the GoTunnels reference. The named tunnel remains the production origin for persistence, not as a passkey prerequisite.
 
 ################################################################################
 # FILE: docs/adr/0006-no-redis-in-version-one.md
@@ -5006,15 +5204,15 @@ Use **DbUp** (MIT) with plain `.sql` scripts:
   File name:             run.sh
   Relative path:         run.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/run.sh
-  Size:                  15.3 KiB (15709 bytes)
-  Last modified:         2026-07-18 18:41:13.073021309 -0400
-  Permissions:           -rw-r--r--
+  Size:                  15.5 KiB (15846 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Permissions:           -rwxr-xr-x
   Owner:                 kushal:kushal
-  Inode:                 21454296
+  Inode:                 25103619
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               0bac7b84f274729a60e2b56b4606d65a2da7b99e7dc9de850d0d424cb942723d
-  Last git commit:       2339f51 2026-07-18 18:42:29 -0400 add claude response
+  SHA-256:               91286c1579d52dec053aa9cfad127bd11e4cf2910fb2fc92c3f27701ea899d3e
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
 #!/usr/bin/env bash
@@ -5040,9 +5238,10 @@ Use **DbUp** (MIT) with plain `.sql` scripts:
 # topology end to end.
 #
 # This script never opens a Cloudflare quick tunnel and never prints a *.trycloudflare.com URL. That is a
-# separate, demo-only concern (TECHNICAL_SPECIFICATION §14.3): run `scripts/quick_tunnel.sh` AFTER the
-# stack is up (e.g. `./run.sh --containers-only`). Quick-tunnel hostnames are random per run and on the
-# Public Suffix List, so passkeys registered through them die with the tunnel — demos use password+TOTP.
+# separate concern handled by `scripts/quick_tunnel.sh` (TECHNICAL_SPECIFICATION §14.3), which is now a
+# one-command helper: it brings the stack up itself, opens the tunnel, and holds it in the foreground.
+# Passkeys DO work over a quick tunnel (per-request RP-ID derivation, ADR-0005); the only caveat is that
+# each run gets a fresh random *.trycloudflare.com hostname, so passkeys must be re-registered per run.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -5310,8 +5509,8 @@ cat <<'BANNER'
     • Want a run that boots, verifies /healthz/ready, and EXITS instead?
         ./run.sh --smoke             (host, fast)
         ./run.sh --containers-only   (full container stack)
-    • Need a public demo URL? That is a separate, demo-only step:
-        scripts/quick_tunnel.sh      (*.trycloudflare.com — password+TOTP only)
+    • Need a public demo URL? One separate command brings it all up and exposes it:
+        scripts/quick_tunnel.sh      (*.trycloudflare.com — passkeys work; re-register each run)
 ────────────────────────────────────────────────────────────────────────────
 BANNER
 
@@ -5395,49 +5594,75 @@ echo "info: backup complete. Remember to back up the Data Protection keys volume
   File name:             quick_tunnel.sh
   Relative path:         scripts/quick_tunnel.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/quick_tunnel.sh
-  Size:                  5.4 KiB (5493 bytes)
-  Last modified:         2026-07-19 08:41:06.000000000 -0400
+  Size:                  8.1 KiB (8332 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
   Permissions:           -rwxr-xr-x
   Owner:                 kushal:kushal
-  Inode:                 21654807
+  Inode:                 25103623
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               11d20e972d0e85972d0d1219a833318e5e49fe465b07d249f6d4428472c08a5a
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               af8e04c4608820593c329322ea8f05c5406a5c4d6f6432c0f6ba824c4b0ef8bf
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
 #!/usr/bin/env bash
 #
-# Quick tunnel helper (TECHNICAL_SPECIFICATION §14.3) — DEMOS ONLY.
+# Quick tunnel demo (TECHNICAL_SPECIFICATION §14.3, ADR-0005) — one command.
 #
-# A *.trycloudflare.com hostname is on the Public Suffix List and is random per run. A passkey's
-# relying-party ID binds to that subdomain, so passkeys registered during a quick-tunnel demo die
-# when the tunnel stops. Demos must therefore authenticate with password + TOTP, not passkeys.
+# Brings the stack up, opens a Cloudflare Quick Tunnel to it, discovers the assigned
+# *.trycloudflare.com URL, sets RESTAURANT_PUBLIC_ORIGIN to that URL so QR join links resolve, and
+# holds the tunnel in the foreground. Ctrl+C closes the tunnel (the stack keeps running).
 #
-# The tunnel only exists while this process runs — there is deliberately no "print a URL and exit"
-# mode, because exiting kills the URL. Bring the stack up FIRST (e.g. `./run.sh --containers-only`),
-# then run this script and leave it in the foreground; Ctrl+C closes the tunnel. Override the target
-# with TUNNEL_TARGET if needed.
+# PASSKEYS WORK ON A QUICK TUNNEL. The WebAuthn relying-party ID is derived per request from the
+# origin host and RESTAURANT_TRUSTED_ORIGIN_PATTERNS trusts https://*.trycloudflare.com by default
+# (ADR-0005), so you can register and sign in with a passkey — including a passkey-only account —
+# during the demo. The ONE caveat: a *.trycloudflare.com hostname is random per run, so a NEW run
+# gets a NEW URL and passkeys registered on a previous URL will not carry over (re-register them).
+# For anything that must persist across runs, use the production named tunnel (CLOUDFLARE_TUNNEL_TOKEN).
+#
+# Usage:
+#   scripts/quick_tunnel.sh
+#
+# Environment:
+#   TUNNEL_TARGET         what cloudflared points at (default http://localhost:8080)
+#   TUNNEL_URL_WAIT       seconds to wait for the tunnel URL to appear (default 90)
 
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
 TARGET="${TUNNEL_TARGET:-http://localhost:8080}"
+URL_WAIT="${TUNNEL_URL_WAIT:-90}"
 
-cat >&2 <<'WARNING'
-────────────────────────────────────────────────────────────────────────────
-  QUICK TUNNEL — DEMO ONLY
-  • The *.trycloudflare.com domain is random per run and on the Public Suffix List.
-  • Passkeys registered here will STOP WORKING when the tunnel closes.
-  • Sign in with password + TOTP for the demo.
-  • For anything persistent, use the production named tunnel (CLOUDFLARE_TUNNEL_TOKEN).
-────────────────────────────────────────────────────────────────────────────
-WARNING
+log()  { printf '[quick-tunnel] %s\n' "$*" >&2; }
+die()  { printf '[quick-tunnel] error: %s\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------------------------------
-# Pre-flight: refuse to open a tunnel onto nothing. A quick tunnel to a dead port "works" from
-# cloudflared's point of view and then 502s in front of the audience — fail here instead, with the
-# command that fixes it.
+# Compose engine detection (mirrors scripts/restore.sh).
 # ---------------------------------------------------------------------------------------------------
+if command -v podman-compose >/dev/null 2>&1; then
+    COMPOSE=(podman-compose)
+elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
+    COMPOSE=(podman compose)
+elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+else
+    die "need podman-compose, 'podman compose', or 'docker compose' on PATH."
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# cloudflared runner: prefer a host binary; fall back to a container on the host network so
+# localhost:8080 (the loopback-published web port) is reachable.
+# ---------------------------------------------------------------------------------------------------
+if command -v cloudflared >/dev/null 2>&1; then
+    TUNNEL_RUNNER=(cloudflared)
+elif command -v podman >/dev/null 2>&1; then
+    TUNNEL_RUNNER=(podman run --rm --network host docker.io/cloudflare/cloudflared)
+elif command -v docker >/dev/null 2>&1; then
+    TUNNEL_RUNNER=(docker run --rm --network host docker.io/cloudflare/cloudflared)
+else
+    die "need cloudflared, podman, or docker on PATH."
+fi
+
 http_ok() {
     local url="$1"
     if command -v curl >/dev/null 2>&1; then
@@ -5449,57 +5674,108 @@ http_ok() {
     fi
 }
 
-probe_rc=0
-http_ok "${TARGET%/}/healthz/ready" || probe_rc=$?
-if (( probe_rc == 3 )); then
-    echo "warning: neither curl nor wget is installed; skipping the readiness pre-check." >&2
-elif (( probe_rc != 0 )); then
-    # /healthz/ready may 503 while migrations settle; accept any answer at the root as "alive".
-    if ! http_ok "$TARGET"; then
-        echo "error: nothing is answering at $TARGET — there is no point opening a tunnel to it." >&2
-        echo "hint : bring the stack up first, then re-run this script:" >&2
-        echo "           ./run.sh --containers-only" >&2
-        echo "       (or point TUNNEL_TARGET at wherever the app is listening)" >&2
-        exit 1
-    fi
-    echo "warning: $TARGET answers, but /healthz/ready is not 200 yet — the demo may need a moment." >&2
-fi
-
-# ---------------------------------------------------------------------------------------------------
-# Locate a cloudflared (binary first, then a containerized fallback on the host network).
-# ---------------------------------------------------------------------------------------------------
-if command -v cloudflared >/dev/null 2>&1; then
-    RUNNER=(cloudflared)
-elif command -v podman >/dev/null 2>&1; then
-    RUNNER=(podman run --rm --network host docker.io/cloudflare/cloudflared)
-elif command -v docker >/dev/null 2>&1; then
-    RUNNER=(docker run --rm --network host docker.io/cloudflare/cloudflared)
-else
-    echo "error: need cloudflared, podman, or docker on PATH." >&2
-    exit 1
-fi
-
-echo "info: opening a quick tunnel to $TARGET (foreground — Ctrl+C closes the tunnel and kills the URL) ..." >&2
-
-# ---------------------------------------------------------------------------------------------------
-# Run cloudflared in the foreground, passing its log through unchanged, and surface the assigned
-# *.trycloudflare.com URL prominently the moment it appears (it is otherwise buried in log noise).
-# The pipeline keeps cloudflared as the long-lived process; its exit status is the script's.
-# ---------------------------------------------------------------------------------------------------
-"${RUNNER[@]}" tunnel --url "$TARGET" 2>&1 | {
-    url_announced=0
-    while IFS= read -r line; do
-        printf '%s\n' "$line"
-        if (( url_announced == 0 )) && [[ "$line" =~ (https://[A-Za-z0-9.-]+\.trycloudflare\.com) ]]; then
-            url_announced=1
-            printf '\n────────────────────────────────────────────────────────────────────────────\n' >&2
-            printf '  PUBLIC DEMO URL:  %s\n' "${BASH_REMATCH[1]}" >&2
-            printf '  Password + TOTP only — passkeys registered here die with this tunnel.\n' >&2
-            printf '  The URL lives exactly as long as this process. Ctrl+C ends the demo.\n' >&2
-            printf '────────────────────────────────────────────────────────────────────────────\n\n' >&2
+wait_ready() {
+    # Poll /healthz/ready (accept any answer at the root as "alive" while migrations settle).
+    local deadline=$(( $(date +%s) + 60 ))
+    while (( $(date +%s) < deadline )); do
+        if http_ok "${TARGET%/}/healthz/ready" || http_ok "$TARGET"; then
+            return 0
         fi
+        sleep 2
     done
+    return 1
 }
+
+# ---------------------------------------------------------------------------------------------------
+# 1) Database first, then the web app. Compose reads RESTAURANT_PUBLIC_ORIGIN from the environment
+#    (see compose.yaml's ${RESTAURANT_PUBLIC_ORIGIN:-...}); we discover and export the real value in
+#    step 3, then (re)create web with it so the QR join URLs point at the tunnel. Passkeys do not
+#    depend on this — they self-heal from the request origin (ADR-0005) — but join links do.
+# ---------------------------------------------------------------------------------------------------
+log "starting the database…"
+"${COMPOSE[@]}" up -d postgres
+
+# ---------------------------------------------------------------------------------------------------
+# 2) Open the quick tunnel in the background and capture its log. cloudflared will log connection
+#    errors to the target until web is up (step 4); that is expected and self-corrects.
+# ---------------------------------------------------------------------------------------------------
+TUNNEL_LOG="$(mktemp -t myrestaurant-quicktunnel.XXXXXX.log)"
+log "opening a quick tunnel to $TARGET …"
+"${TUNNEL_RUNNER[@]}" tunnel --no-autoupdate --url "$TARGET" >"$TUNNEL_LOG" 2>&1 &
+TUNNEL_PID=$!
+
+cleanup() {
+    log "closing the tunnel (the stack keeps running; stop it with '${COMPOSE[*]} down')."
+    kill "$TUNNEL_PID" 2>/dev/null || true
+    wait "$TUNNEL_PID" 2>/dev/null || true
+    rm -f "$TUNNEL_LOG" 2>/dev/null || true
+}
+trap cleanup INT TERM EXIT
+
+# ---------------------------------------------------------------------------------------------------
+# 3) Discover the assigned *.trycloudflare.com URL from the tunnel log.
+# ---------------------------------------------------------------------------------------------------
+log "waiting for the quick tunnel URL (up to ${URL_WAIT}s)…"
+PUBLIC_URL=""
+deadline=$(( $(date +%s) + URL_WAIT ))
+while (( $(date +%s) < deadline )); do
+    if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
+        cat "$TUNNEL_LOG" >&2 || true
+        die "cloudflared exited before announcing a URL (see log above)."
+    fi
+    PUBLIC_URL="$(grep -oE 'https://[A-Za-z0-9.-]+\.trycloudflare\.com' "$TUNNEL_LOG" | head -n1 || true)"
+    [[ -n "$PUBLIC_URL" ]] && break
+    sleep 1
+done
+[[ -n "$PUBLIC_URL" ]] || die "timed out waiting for the tunnel URL (see $TUNNEL_LOG)."
+
+export RESTAURANT_PUBLIC_ORIGIN="$PUBLIC_URL"
+log "public origin: $RESTAURANT_PUBLIC_ORIGIN"
+
+# ---------------------------------------------------------------------------------------------------
+# 4) (Re)create web with the discovered origin so join links resolve, then wait until it is ready.
+#    Force-recreate so an already-running web (e.g. from ./run.sh --containers-only) picks up the new
+#    origin; fall back to a plain up if the engine does not accept the flag.
+# ---------------------------------------------------------------------------------------------------
+log "starting the web app with the tunnel origin…"
+"${COMPOSE[@]}" up -d --force-recreate web 2>/dev/null \
+    || { "${COMPOSE[@]}" rm -sf web >/dev/null 2>&1 || true; "${COMPOSE[@]}" up -d web; }
+
+if wait_ready; then
+    log "web app is ready."
+else
+    log "warning: /healthz/ready did not turn green yet — the tunnel may need a moment."
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# 5) Banner + hold the tunnel in the foreground.
+# ---------------------------------------------------------------------------------------------------
+cat >&2 <<BANNER
+
+────────────────────────────────────────────────────────────────────────────
+  QUICK TUNNEL — DEMO
+
+  PUBLIC URL:  $PUBLIC_URL
+
+  • Passkeys WORK here: register and sign in with a passkey, or run a
+    passkey-only account (username + passkey, no password).
+  • A new run gets a NEW random URL — passkeys registered on a previous URL
+    will not carry over. Re-register them, or use the production named tunnel
+    (CLOUDFLARE_TUNNEL_TOKEN) for anything that must persist.
+  • Do NOT bootstrap a real, long-lived instance through a quick tunnel.
+
+  The URL lives exactly as long as this process. Ctrl+C closes the tunnel.
+────────────────────────────────────────────────────────────────────────────
+
+BANNER
+
+log "streaming cloudflared log (Ctrl+C to stop):"
+tail -n +1 -f "$TUNNEL_LOG" &
+TAIL_PID=$!
+trap 'kill "$TAIL_PID" 2>/dev/null || true; cleanup' INT TERM EXIT
+
+# Block on the tunnel; when it exits (or Ctrl+C), the traps clean up.
+wait "$TUNNEL_PID"
 
 ################################################################################
 # FILE: scripts/restore.sh
@@ -15803,15 +16079,15 @@ else
   File name:             RestaurantOptions.cs
   Relative path:         src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs
-  Size:                  7.5 KiB (7703 bytes)
-  Last modified:         2026-07-17 20:12:37.000000000 -0400
+  Size:                  11.3 KiB (11607 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258197
+  Inode:                 25103618
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               66a7b3b943e87edd34b6e4b3f64789783b2756579a3ae18283f3f4669112c20e
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               e2a64616111da273fb67a2156ee64f53e1440d0b5217919184e486d2d3afc30e
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
 using System.Globalization;
@@ -15836,8 +16112,26 @@ public sealed class RestaurantOptions
     public const int MinimumTableJoinGrantMinutes = 1;
     public const int MinimumTableDisplayPairingCodeMinutes = 1;
 
+    /// <summary>
+    /// The default trusted WebAuthn origin patterns (TECHNICAL_SPECIFICATION §3.3, ADR-0005). Cloudflare
+    /// Quick Tunnels hand out a random <c>*.trycloudflare.com</c> hostname per run, so trusting that
+    /// wildcard lets passkeys work in a quick-tunnel demo without knowing the URL at startup. This gates
+    /// only WebAuthn relying-party derivation; it is deliberately not a general CORS allowance.
+    /// </summary>
+    public static readonly IReadOnlyList<string> DefaultTrustedOriginPatterns = ["https://*.trycloudflare.com"];
+
     public required string RestaurantName { get; init; }
     public required string PublicOrigin { get; init; }
+
+    /// <summary>
+    /// Additional browser origins that may act as the WebAuthn relying party, as wildcard patterns
+    /// (<c>RESTAURANT_TRUSTED_ORIGIN_PATTERNS</c>; §3.3, ADR-0005). The configured <see cref="PublicOrigin"/>
+    /// and loopback (in development) are always trusted; these extend that set so a Cloudflare quick
+    /// tunnel's per-run <c>*.trycloudflare.com</c> host works without being known at startup. Defaults to
+    /// <see cref="DefaultTrustedOriginPatterns"/>; not required so existing constructions keep the default.
+    /// </summary>
+    public IReadOnlyList<string> TrustedOriginPatterns { get; init; } = DefaultTrustedOriginPatterns;
+
     public required string TimeZoneId { get; init; }
     public required string CurrencyCode { get; init; }
     public required string DatabaseConnectionString { get; init; }
@@ -15859,6 +16153,7 @@ public sealed class RestaurantOptions
         {
             RestaurantName = ReadString(configuration, "RESTAURANT_NAME", "My Restaurant"),
             PublicOrigin = ReadString(configuration, "RESTAURANT_PUBLIC_ORIGIN", "https://localhost:8443"),
+            TrustedOriginPatterns = ReadOriginPatterns(configuration, "RESTAURANT_TRUSTED_ORIGIN_PATTERNS", DefaultTrustedOriginPatterns),
             TimeZoneId = ReadString(configuration, "RESTAURANT_TIME_ZONE", "America/New_York"),
             CurrencyCode = ReadString(configuration, "RESTAURANT_CURRENCY_CODE", "USD"),
             DatabaseConnectionString = ReadString(
@@ -15943,10 +16238,23 @@ public sealed class RestaurantOptions
             errors.Add($"KITCHEN_SUBMISSION_REMINDER_SECONDS must be at least 1 (was {KitchenSubmissionReminderSeconds}).");
         }
 
+        foreach (string pattern in TrustedOriginPatterns)
+        {
+            if (!IsValidOriginPattern(pattern))
+            {
+                errors.Add($"RESTAURANT_TRUSTED_ORIGIN_PATTERNS entry '{pattern}' must be an https origin like 'https://*.trycloudflare.com' (scheme://host, optional leading '*.' wildcard label, no path or port).");
+            }
+        }
+
         return errors;
     }
 
-    /// <summary>The WebAuthn relying-party identifier: the full host of the public origin (§3.3).</summary>
+    /// <summary>
+    /// The host of the configured public origin (§3.3). As of ADR-0005 the WebAuthn relying-party ID
+    /// is derived <em>per request</em> from the request host (so a quick tunnel's per-run hostname
+    /// works), not pinned to this value; this remains the canonical configured host — used for QR join
+    /// URLs (ADR-0009) and as the fallback host presented by <see cref="Identity.PublicOriginMiddleware"/>.
+    /// </summary>
     public string ResolveWebAuthnRelyingPartyId() => new Uri(PublicOrigin).Host;
 
     /// <summary>The configured display time zone (validated at startup).</summary>
@@ -15975,6 +16283,55 @@ public sealed class RestaurantOptions
         => int.TryParse(configuration[key], NumberStyles.Integer, CultureInfo.InvariantCulture, out int value)
             ? value
             : fallback;
+
+    /// <summary>
+    /// Reads a comma/space/newline-separated list of origin patterns, trimming empties; returns the
+    /// supplied default when the variable is unset or contains no non-empty entries.
+    /// </summary>
+    private static IReadOnlyList<string> ReadOriginPatterns(
+        IConfiguration configuration,
+        string key,
+        IReadOnlyList<string> fallback)
+    {
+        string? raw = configuration[key];
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return fallback;
+        }
+
+        char[] separators = new[] { ',', ' ', '\t', '\n', '\r' };
+        string[] parts = raw.Split(separators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length == 0 ? fallback : parts;
+    }
+
+    /// <summary>
+    /// A trusted-origin pattern is <c>scheme://host</c> with an https scheme, a non-empty host that
+    /// may begin with a single <c>*.</c> wildcard label, and no path, query, fragment, userinfo, or
+    /// port. This matches the runtime matcher in <see cref="Identity.WebAuthnOriginPolicy"/>.
+    /// </summary>
+    private static bool IsValidOriginPattern(string pattern)
+    {
+        if (string.IsNullOrWhiteSpace(pattern))
+        {
+            return false;
+        }
+
+        string value = pattern.Trim().ToLowerInvariant();
+        const string prefix = "https://";
+        if (!value.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string host = value[prefix.Length..];
+        if (host.Length == 0 || host.AsSpan().ContainsAny("/?#@ :"))
+        {
+            return false;
+        }
+
+        string bare = host.StartsWith("*.", StringComparison.Ordinal) ? host[2..] : host;
+        return bare.Length > 0 && !bare.Contains('*') && bare.Contains('.');
+    }
 }
 
 ################################################################################
@@ -16142,15 +16499,15 @@ public static class AccountEndpoints
   File name:             IdentityServiceCollectionExtensions.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs
-  Size:                  13.9 KiB (14239 bytes)
-  Last modified:         2026-07-22 09:24:13.000000000 -0400
+  Size:                  15.0 KiB (15344 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 23579602
+  Inode:                 25103615
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               0d7f8f691e65b0cdd4ff090cd62c2082382da885fe34e05c8e9e21107d57e7d6
-  Last git commit:       2477e46 2026-07-22 09:51:13 -0400 add claude response
+  SHA-256:               32a1132c99b5da8569848ff29b971bbb1b9d482b14846c76d7a06748634facf9
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -16282,17 +16639,30 @@ public static class IdentityServiceCollectionExtensions
         // IPasskeyHandler service". It reads the options configured just below.
         services.TryAddScoped<IPasskeyHandler<Person>, PasskeyHandler<Person>>();
 
-        // Relying-party options for every passkey ceremony (§3.3). The RP ID is the FULL host of
-        // RESTAURANT_PUBLIC_ORIGIN — the single origin truth of §14.2 — set explicitly so it never
-        // silently falls back to the request host behind the tunnel or a hairpin. residentKey and
+        // The WebAuthn origin-trust policy (§3.3, ADR-0005): which browser origins may act as the
+        // relying party (the configured origin + trusted wildcard patterns + loopback in dev) and what
+        // host the app presents so the RP ID derives correctly. Shared by ValidateOrigin below and by
+        // PublicOriginMiddleware. Singleton — it is immutable configuration.
+        WebAuthnOriginPolicy originPolicy = new(options.PublicOrigin, options.TrustedOriginPatterns);
+        services.AddSingleton(originPolicy);
+
+        // Relying-party options for every passkey ceremony (§3.3). ServerDomain is left NULL on
+        // purpose (ADR-0005 course correction): the .NET 10 handler then derives the RP ID from the
+        // request host (options.ServerDomain ?? Request.Host.Host), which PublicOriginMiddleware has
+        // normalized to the browser's real origin host. Pinning it to a boot-time value is exactly what
+        // made passkeys impossible behind a Cloudflare quick tunnel (its *.trycloudflare.com hostname
+        // is random per run and unknown at startup); deriving per request makes them self-healing. This
+        // is safe because credentials are RP-ID-scoped by the authenticator, and ValidateOrigin gates
+        // the browser's signed origin against the trusted set as defence in depth. residentKey and
         // userVerification are "preferred" (discoverable + username-first both work; verification is
-        // encouraged, not demanded); attestation is left at the browser default of "none", so no
-        // attestation statement is requested or verified.
+        // encouraged, not demanded); attestation is left at the browser default of "none".
         services.Configure<IdentityPasskeyOptions>(passkey =>
         {
-            passkey.ServerDomain = options.ResolveWebAuthnRelyingPartyId();
+            passkey.ServerDomain = null;
             passkey.UserVerificationRequirement = "preferred";
             passkey.ResidentKeyRequirement = "preferred";
+            passkey.ValidateOrigin = context =>
+                ValueTask.FromResult(!context.CrossOrigin && originPolicy.IsTrustedOrigin(context.Origin));
         });
 
         // Harden the application cookie (§3.1). Secure + HttpOnly + SameSite=Lax; 24-hour sliding
@@ -16666,6 +17036,96 @@ public sealed class PasskeyInputModel
 
     /// <summary>Set instead of <see cref="CredentialJson"/> when the browser ceremony failed.</summary>
     public string? Error { get; set; }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Identity/PublicOriginMiddleware.cs
+################################################################################
+
+--- METADATA ---
+  File name:             PublicOriginMiddleware.cs
+  Relative path:         src/MyRestaurant.WebApplication/Identity/PublicOriginMiddleware.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/PublicOriginMiddleware.cs
+  Size:                  3.4 KiB (3516 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25103616
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               f34ac5da80ddbc7968041d8fc8c8b7e55b73e7f7dd5d26b9cf5fccca8b97cfcd
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+
+--- CONTENT ---
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
+using Microsoft.Net.Http.Headers;
+
+namespace MyRestaurant.WebApplication.Identity;
+
+/// <summary>
+/// Normalizes <see cref="HttpRequest.Host"/> to the effective <b>public</b> host so the .NET 10
+/// passkey handler — which derives the WebAuthn relying-party ID as
+/// <c>IdentityPasskeyOptions.ServerDomain ?? Request.Host.Host</c> — always sees the host the browser
+/// is actually on (TECHNICAL_SPECIFICATION §3.3, ADR-0005). This is what makes passkeys work behind a
+/// Cloudflare <em>Quick Tunnel</em> whose <c>*.trycloudflare.com</c> hostname is random per run and
+/// unknowable at startup, without pinning a boot-time origin.
+///
+/// <para>Runs immediately after <c>UseForwardedHeaders</c> (so it sees any proxy-supplied
+/// <c>X-Forwarded-Host</c>) and before authentication and the ceremony endpoints. Resolution order:</para>
+/// <list type="number">
+///   <item>if the browser sent a single trusted <c>Origin</c> header, adopt its host — the
+///   <c>Origin</c> header is set by the browser and cannot be forged by page script, so it is the
+///   most reliable signal, and it makes the RP ID <em>self-healing</em> when a Quick Tunnel URL
+///   rotates;</item>
+///   <item>otherwise, if the incoming host is already a trusted public host (a real domain forwarded
+///   via <c>X-Forwarded-Host</c>, or loopback in pure local development), keep it;</item>
+///   <item>otherwise, fall back to the configured <c>RESTAURANT_PUBLIC_ORIGIN</c> host — this covers
+///   requests that legitimately omit <c>Origin</c> (e.g. a top-level form POST on some browsers)
+///   behind a tunnel that rewrote the host to the internal service address.</item>
+/// </list>
+///
+/// <para>Every branch only ever sets the host to a value the <see cref="WebAuthnOriginPolicy"/>
+/// already trusts, so this never widens what the app will answer for; it only corrects a host the
+/// proxy layer left pointing at the internal service. See <see cref="WebAuthnOriginPolicy"/> for why
+/// deriving the RP ID from the request is safe.</para>
+/// </summary>
+public sealed class PublicOriginMiddleware
+{
+    private readonly RequestDelegate _next;
+    private readonly WebAuthnOriginPolicy _policy;
+
+    public PublicOriginMiddleware(RequestDelegate next, WebAuthnOriginPolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(next);
+        ArgumentNullException.ThrowIfNull(policy);
+        _next = next;
+        _policy = policy;
+    }
+
+    public Task InvokeAsync(HttpContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        HttpRequest request = context.Request;
+
+        if (request.Headers.TryGetValue(HeaderNames.Origin, out StringValues originValues)
+            && originValues.Count == 1
+            && _policy.TryResolveTrustedHost(originValues.ToString(), out HostString originHost))
+        {
+            // The browser told us its real origin, and we trust it — this wins over whatever the
+            // proxy left in the Host header (which behind a Quick Tunnel is often the internal address).
+            request.Host = originHost;
+        }
+        else if (!_policy.IsTrustedHost(request.Host.Value))
+        {
+            // No trusted Origin to go on, and the current host is not a public host we recognise, so
+            // present the configured public origin's host instead of an internal/proxy value.
+            request.Host = _policy.PublicHost;
+        }
+
+        return _next(context);
+    }
 }
 
 ################################################################################
@@ -17720,6 +18180,269 @@ public static class TotpQrCode
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.WebApplication/Identity/WebAuthnOriginPolicy.cs
+################################################################################
+
+--- METADATA ---
+  File name:             WebAuthnOriginPolicy.cs
+  Relative path:         src/MyRestaurant.WebApplication/Identity/WebAuthnOriginPolicy.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/WebAuthnOriginPolicy.cs
+  Size:                  9.7 KiB (9883 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25103614
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               6fa02bc0790e7d9806d52152903af521bb034543b8c716297e8533c3ff0c938a
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+
+--- CONTENT ---
+using Microsoft.AspNetCore.Http;
+
+namespace MyRestaurant.WebApplication.Identity;
+
+/// <summary>
+/// The origin-trust policy for WebAuthn (TECHNICAL_SPECIFICATION §3.3, ADR-0005). It answers two
+/// questions the passkey ceremony depends on, purely from configuration (no HTTP, no framework
+/// types beyond <see cref="HostString"/>), so it is unit-testable in isolation:
+/// <list type="number">
+///   <item><b>Which browser origins may act as the relying party?</b> — the configured
+///   <c>RESTAURANT_PUBLIC_ORIGIN</c>, any origin matching a trusted wildcard pattern
+///   (<c>RESTAURANT_TRUSTED_ORIGIN_PATTERNS</c>, default <c>https://*.trycloudflare.com</c>), and
+///   loopback in development. This is what <see cref="Microsoft.AspNetCore.Identity.IdentityPasskeyOptions.ValidateOrigin"/>
+///   consults against the browser's cryptographically-signed <c>clientDataJSON.origin</c>.</item>
+///   <item><b>What host should the app present as <see cref="HttpRequest.Host"/></b> so the .NET 10
+///   passkey handler — which derives the RP ID as <c>options.ServerDomain ?? Request.Host.Host</c> —
+///   produces the origin's own host? <see cref="PublicHost"/> is the configured fallback and
+///   <see cref="TryResolveTrustedHost"/> turns a trusted origin into its host. <see cref="PublicOriginMiddleware"/>
+///   uses both.</item>
+/// </list>
+///
+/// <para><b>Why this is safe (the ADR-0005 course correction).</b> Deriving the RP ID from the
+/// request rather than pinning it to a boot-time origin is what lets passkeys work behind a
+/// Cloudflare <em>Quick Tunnel</em>, whose <c>*.trycloudflare.com</c> hostname is random per run and
+/// unknowable at startup. It cannot be abused to steal credentials: WebAuthn credentials are scoped
+/// to the RP ID by the authenticator itself, so a page on <c>attacker.trycloudflare.com</c> can only
+/// ever exercise credentials created for <c>attacker.trycloudflare.com</c> — never one registered for
+/// your instance. The trusted-origin gate here is defence in depth, not the primary control. (The
+/// same is deliberately <em>not</em> true of CORS-with-credentials — but this app is single-origin
+/// and sets no cross-origin CORS allowance, so that risk does not arise. See ADR-0005.)</para>
+///
+/// <para>Pattern semantics mirror the reference GoTunnels implementation exactly: a pattern is
+/// <c>scheme://host</c> with no path/query/port; a leading <c>*.</c> in the host matches exactly one
+/// non-empty DNS label (so <c>https://*.trycloudflare.com</c> matches
+/// <c>https://marie-editing-committed-preferred.trycloudflare.com</c> but not a deeper
+/// <c>https://a.b.trycloudflare.com</c>, and never a ported host).</para>
+/// </summary>
+public sealed class WebAuthnOriginPolicy
+{
+    private readonly string _publicOriginHostPort; // lowercased "host[:port]" of the configured origin
+    private readonly bool _publicOriginIsLoopback;
+    private readonly IReadOnlyList<(string Scheme, string Host)> _patterns;
+
+    /// <summary>
+    /// Builds the policy from the configured public origin (already validated as an absolute https
+    /// URL by <see cref="Configuration.RestaurantOptions.Validate"/>) and the trusted origin patterns.
+    /// </summary>
+    public WebAuthnOriginPolicy(string publicOrigin, IEnumerable<string> trustedOriginPatterns)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(publicOrigin);
+        ArgumentNullException.ThrowIfNull(trustedOriginPatterns);
+
+        Uri origin = new(publicOrigin, UriKind.Absolute);
+        PublicHost = origin.IsDefaultPort ? new HostString(origin.Host) : new HostString(origin.Host, origin.Port);
+        _publicOriginHostPort = PublicHost.Value.ToLowerInvariant();
+        _publicOriginIsLoopback = IsLoopbackHost(origin.Host);
+
+        List<(string, string)> parsed = [];
+        foreach (string pattern in trustedOriginPatterns)
+        {
+            if (TrySplitOrigin(pattern, out string scheme, out string host))
+            {
+                parsed.Add((scheme, host));
+            }
+        }
+
+        _patterns = parsed;
+    }
+
+    /// <summary>
+    /// The host (with a non-default port only) of the configured <c>RESTAURANT_PUBLIC_ORIGIN</c>.
+    /// <see cref="PublicOriginMiddleware"/> falls back to this when the incoming request carries no
+    /// trusted <c>Origin</c> header and its host is not already a trusted public host.
+    /// </summary>
+    public HostString PublicHost { get; }
+
+    /// <summary>
+    /// Whether <paramref name="origin"/> (a full <c>scheme://host</c>, e.g. the signed
+    /// <c>clientDataJSON.origin</c>) is trusted to act as the WebAuthn relying party.
+    /// </summary>
+    public bool IsTrustedOrigin(string? origin)
+    {
+        if (!TrySplitOrigin(origin, out string scheme, out string host))
+        {
+            return false;
+        }
+
+        // Loopback is a secure context in every browser regardless of scheme, so allow it for local
+        // development (a bare `dotnet run` serves http://localhost:8080 as well as https://localhost:8443).
+        if (IsLoopbackHost(HostOnly(host)))
+        {
+            return scheme is "https" or "http";
+        }
+
+        // Everything non-loopback must be https (WebAuthn requires a secure context).
+        if (scheme != "https")
+        {
+            return false;
+        }
+
+        if (host == _publicOriginHostPort)
+        {
+            return true;
+        }
+
+        foreach ((string patternScheme, string patternHost) in _patterns)
+        {
+            if (scheme == patternScheme && HostMatches(patternHost, host))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether a bare request host (<see cref="HttpRequest.Host"/>'s <c>host[:port]</c> value, which
+    /// has no scheme) is already a trusted public host and can be kept as-is. Loopback counts only
+    /// when the configured public origin is itself loopback — behind a tunnel a loopback request host
+    /// is an artifact of the proxy, not the real public host, and must be replaced (see the middleware).
+    /// </summary>
+    public bool IsTrustedHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return false;
+        }
+
+        string value = host.Trim().ToLowerInvariant();
+        if (value == _publicOriginHostPort)
+        {
+            return true;
+        }
+
+        if (_publicOriginIsLoopback && IsLoopbackHost(HostOnly(value)))
+        {
+            return true;
+        }
+
+        foreach ((_, string patternHost) in _patterns)
+        {
+            if (HostMatches(patternHost, value))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// If <paramref name="origin"/> is a trusted origin, produces the <see cref="HostString"/> the app
+    /// should present as <see cref="HttpRequest.Host"/> (its host, plus a non-default port only).
+    /// </summary>
+    public bool TryResolveTrustedHost(string? origin, out HostString host)
+    {
+        host = default;
+        if (!IsTrustedOrigin(origin) || !Uri.TryCreate(origin, UriKind.Absolute, out Uri? uri))
+        {
+            return false;
+        }
+
+        host = uri.IsDefaultPort ? new HostString(uri.Host) : new HostString(uri.Host, uri.Port);
+        return true;
+    }
+
+    // --- pattern / origin helpers (mirroring GoTunnels internal/httpx MatchOriginPattern) -----------
+
+    /// <summary>
+    /// Matches a candidate <c>host[:port]</c> against a pattern host. A leading <c>*.</c> matches
+    /// exactly one non-empty label containing none of <c>. : /</c>; otherwise the match is exact.
+    /// </summary>
+    private static bool HostMatches(string patternHost, string candidateHost)
+    {
+        if (!patternHost.StartsWith("*.", StringComparison.Ordinal))
+        {
+            return patternHost == candidateHost;
+        }
+
+        string suffix = patternHost[1..]; // ".trycloudflare.com"
+        if (!candidateHost.EndsWith(suffix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string label = candidateHost[..^suffix.Length];
+        return label.Length > 0 && !label.AsSpan().ContainsAny('.', ':', '/');
+    }
+
+    /// <summary>
+    /// Lowercases and splits <c>scheme://host</c>. The host keeps any port verbatim. Anything with a
+    /// path, query, fragment, userinfo, or whitespace is rejected — Origin values never carry those.
+    /// </summary>
+    private static bool TrySplitOrigin(string? origin, out string scheme, out string host)
+    {
+        scheme = string.Empty;
+        host = string.Empty;
+        if (string.IsNullOrWhiteSpace(origin))
+        {
+            return false;
+        }
+
+        string value = origin.Trim().ToLowerInvariant();
+        int marker = value.IndexOf("://", StringComparison.Ordinal);
+        if (marker <= 0)
+        {
+            return false;
+        }
+
+        scheme = value[..marker];
+        host = value[(marker + 3)..];
+        if (host.Length == 0 || host.AsSpan().ContainsAny("/?#@ "))
+        {
+            scheme = string.Empty;
+            host = string.Empty;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string HostOnly(string hostPort)
+    {
+        // Strip a trailing :port. IPv6 literals are bracketed ("[::1]"), so only cut a colon that is
+        // after the closing bracket (or when there is no bracket at all).
+        int close = hostPort.LastIndexOf(']');
+        int colon = hostPort.LastIndexOf(':');
+        if (colon > close)
+        {
+            return hostPort[..colon];
+        }
+
+        return hostPort;
+    }
+
+    private static bool IsLoopbackHost(string host)
+    {
+        string bare = host.Trim('[', ']');
+        return bare is "localhost" or "127.0.0.1" or "::1"
+            || bare.EndsWith(".localhost", StringComparison.Ordinal);
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.WebApplication/LiveUpdates/InProcessDomainEventBroadcaster.cs
 ################################################################################
 
@@ -18014,15 +18737,15 @@ public sealed class RestaurantMetrics : IDisposable
   File name:             Program.cs
   Relative path:         src/MyRestaurant.WebApplication/Program.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Program.cs
-  Size:                  8.1 KiB (8270 bytes)
-  Last modified:         2026-07-22 20:30:29.000000000 -0400
+  Size:                  8.6 KiB (8850 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 23931056
+  Inode:                 25103612
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               9d6ca56b3abc7ba6da13bdf75ff1d4bc9414cc5b49e793193bf6ab31aaeb58fe
-  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+  SHA-256:               50cfd12bd6462726e064887b28e19bf3e565800201302b714d252b059f13c1f4
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -18049,7 +18772,8 @@ using OpenTelemetry.Trace;
 //   2. wire OpenTelemetry (exporters only when an OTLP endpoint is configured);
 //   3. register services;
 //   4. apply database migrations BEFORE binding HTTP (never serve on a half-applied schema, §17);
-//   5. forwarded headers → auth → obligations pipeline → health endpoints → Blazor components.
+//   5. forwarded headers → public-origin host normalization → auth → obligations pipeline → health
+//      endpoints → Blazor components.
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
@@ -18170,6 +18894,12 @@ using (IServiceScope migrationScope = app.Services.CreateScope())
 // the pipeline pages unreachable while a §3.5 flag is set. Static files sit before authentication so
 // css/assets are never blocked; antiforgery sits after auth, before endpoints.
 app.UseForwardedHeaders();
+// Normalize Request.Host to the effective public origin host BEFORE anything derives from it, so the
+// .NET 10 passkey handler (RP ID = ServerDomain ?? Request.Host.Host, and ServerDomain is null by
+// design) sees the host the browser is actually on — including a Cloudflare quick tunnel's per-run
+// *.trycloudflare.com hostname. Sits right after forwarded headers so it can see X-Forwarded-Host and
+// before auth/endpoints so the ceremony sees the corrected host (§3.3, ADR-0005).
+app.UseMiddleware<PublicOriginMiddleware>();
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -23956,15 +24686,15 @@ public sealed class EndToEndScenarios
   File name:             IdentityWiringTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs
-  Size:                  11.4 KiB (11660 bytes)
-  Last modified:         2026-07-21 09:07:21.268003966 -0400
-  Permissions:           -rw-------
+  Size:                  12.9 KiB (13176 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 22331462
+  Inode:                 25103628
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               9200f2ff224e0a57d47ea38189cf45268a966a9c3336ebd55c05a58fc6391197
-  Last git commit:       d8de5c8 2026-07-21 09:07:53 -0400 add claude response
+  SHA-256:               56408a1649680d36977e02f102c7ac8c8d61d58e0752d50ebb4052e28249fa73
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -24132,17 +24862,49 @@ public sealed class IdentityWiringTests
     }
 
     [Fact]
-    public void PasskeyOptions_UseTheConfiguredRelyingPartyAndPreferredVerification()
+    public void PasskeyOptions_DeriveRelyingPartyPerRequestAndPreferVerification()
     {
-        // §3.3: RP ID is the host of RESTAURANT_PUBLIC_ORIGIN (localhost for the test options), and
-        // residentKey + userVerification are both "preferred".
+        // §3.3 / ADR-0005: ServerDomain is left null so the .NET 10 handler derives the RP ID from the
+        // (normalized) request host per request — this is what makes quick-tunnel passkeys work. An
+        // origin validator is installed; residentKey + userVerification are both "preferred".
         using ServiceProvider provider = BuildProvider();
 
         IdentityPasskeyOptions options = provider.GetRequiredService<IOptions<IdentityPasskeyOptions>>().Value;
 
-        Assert.Equal("localhost", options.ServerDomain);
+        Assert.Null(options.ServerDomain);
         Assert.Equal("preferred", options.UserVerificationRequirement);
         Assert.Equal("preferred", options.ResidentKeyRequirement);
+        Assert.NotNull(options.ValidateOrigin);
+    }
+
+    [Theory]
+    [InlineData("https://localhost:8443", false, true)]                                  // the configured origin
+    [InlineData("https://marie-editing-committed-preferred.trycloudflare.com", false, true)] // a quick-tunnel origin (default pattern)
+    [InlineData("https://evil.example.com", false, false)]                               // an untrusted origin
+    [InlineData("https://marie-editing-committed-preferred.trycloudflare.com", true, false)] // trusted host but cross-origin iframe
+    public async Task PasskeyOriginValidation_TrustsConfiguredAndTunnelOrigins(string origin, bool crossOrigin, bool expected)
+    {
+        using ServiceProvider provider = BuildProvider();
+        IdentityPasskeyOptions options = provider.GetRequiredService<IOptions<IdentityPasskeyOptions>>().Value;
+
+        bool actual = await options.ValidateOrigin!(new PasskeyOriginValidationContext
+        {
+            HttpContext = new DefaultHttpContext(),
+            Origin = origin,
+            CrossOrigin = crossOrigin,
+        });
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void WebAuthnOriginPolicy_IsRegistered()
+    {
+        using ServiceProvider provider = BuildProvider();
+
+        WebAuthnOriginPolicy policy = provider.GetRequiredService<WebAuthnOriginPolicy>();
+
+        Assert.NotNull(policy);
     }
 
     [Fact]
@@ -25201,6 +25963,127 @@ public sealed class TotpQrCodeTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Identity/WebAuthnOriginPolicyTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             WebAuthnOriginPolicyTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/WebAuthnOriginPolicyTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/WebAuthnOriginPolicyTests.cs
+  Size:                  4.8 KiB (4900 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25103627
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               0e98554b3e9169e3453f439e0fa5fd2a3cb02b0aa5157a53d7c403dd41fd0848
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+
+--- CONTENT ---
+using Microsoft.AspNetCore.Http;
+using MyRestaurant.WebApplication.Identity;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests;
+
+/// <summary>
+/// Verifies the WebAuthn origin-trust policy (TECHNICAL_SPECIFICATION §3.3, ADR-0005): which browser
+/// origins may act as the relying party, and what host the app should present so the .NET 10 handler
+/// derives the right RP ID. Pattern semantics mirror the reference GoTunnels matcher.
+/// </summary>
+public sealed class WebAuthnOriginPolicyTests
+{
+    private static WebAuthnOriginPolicy Dev()
+        => new("https://localhost:8443", RestaurantOptionsDefaults());
+
+    private static WebAuthnOriginPolicy Prod()
+        => new("https://orders.example.com", RestaurantOptionsDefaults());
+
+    private static string[] RestaurantOptionsDefaults() => ["https://*.trycloudflare.com"];
+
+    [Fact]
+    public void PublicHost_KeepsNonDefaultPortAndDropsDefault()
+    {
+        Assert.Equal("localhost:8443", Dev().PublicHost.Value);
+        Assert.Equal("orders.example.com", Prod().PublicHost.Value);
+    }
+
+    [Theory]
+    // The configured origin is always trusted (port must match when non-default).
+    [InlineData("https://localhost:8443", true)]
+    [InlineData("https://localhost:9999", true)]   // loopback, any port, is a secure context
+    [InlineData("http://localhost:8080", true)]    // loopback over http is still a secure context
+    [InlineData("http://127.0.0.1:5000", true)]
+    // A quick-tunnel origin matches the default wildcard pattern.
+    [InlineData("https://marie-editing-committed-preferred.trycloudflare.com", true)]
+    [InlineData("https://bare-ministers-proceeds-prayer.trycloudflare.com", true)]
+    // A deeper subdomain is NOT a single-label match, and a ported tunnel host does not match.
+    [InlineData("https://a.b.trycloudflare.com", false)]
+    [InlineData("https://foo.trycloudflare.com:8443", false)]
+    // Untrusted or insecure origins are rejected.
+    [InlineData("https://evil.example.com", false)]
+    [InlineData("http://orders.example.com", false)] // non-loopback must be https
+    [InlineData("https://trycloudflare.com", false)] // the bare apex is not a "*." label match
+    [InlineData("", false)]
+    [InlineData("not-an-origin", false)]
+    [InlineData("https://foo.trycloudflare.com/evil", false)] // Origin values never carry a path
+    public void IsTrustedOrigin_Dev(string origin, bool expected)
+        => Assert.Equal(expected, Dev().IsTrustedOrigin(origin));
+
+    [Theory]
+    [InlineData("https://orders.example.com", true)]
+    [InlineData("https://orders.example.com:443", true)] // explicit default port is equivalent
+    [InlineData("https://marie-editing-committed-preferred.trycloudflare.com", true)] // pattern still applies
+    [InlineData("https://evil.example.com", false)]
+    public void IsTrustedOrigin_Prod(string origin, bool expected)
+        => Assert.Equal(expected, Prod().IsTrustedOrigin(origin));
+
+    [Theory]
+    [InlineData("localhost:8443", true)]   // == configured public host
+    [InlineData("localhost:8080", true)]   // dev: loopback trusted because the configured origin is loopback
+    [InlineData("marie-editing-committed-preferred.trycloudflare.com", true)] // pattern host
+    [InlineData("web:8080", false)]        // an internal service host is not public
+    public void IsTrustedHost_Dev(string host, bool expected)
+        => Assert.Equal(expected, Dev().IsTrustedHost(host));
+
+    [Theory]
+    [InlineData("orders.example.com", true)]
+    [InlineData("foo.trycloudflare.com", true)]
+    [InlineData("localhost:8080", false)]  // prod: a loopback request host is a proxy artifact, not public
+    [InlineData("web:8080", false)]
+    public void IsTrustedHost_Prod(string host, bool expected)
+        => Assert.Equal(expected, Prod().IsTrustedHost(host));
+
+    [Fact]
+    public void TryResolveTrustedHost_ReturnsHostForTrustedOrigin_AndDropsDefaultPort()
+    {
+        Assert.True(Dev().TryResolveTrustedHost("https://foo.trycloudflare.com", out HostString host));
+        Assert.Equal("foo.trycloudflare.com", host.Value);
+
+        Assert.True(Dev().TryResolveTrustedHost("https://localhost:8443", out HostString ported));
+        Assert.Equal("localhost:8443", ported.Value);
+    }
+
+    [Fact]
+    public void TryResolveTrustedHost_RejectsUntrustedOrigin()
+    {
+        Assert.False(Dev().TryResolveTrustedHost("https://evil.example.com", out HostString host));
+        Assert.False(host.HasValue);
+    }
+
+    [Fact]
+    public void EmptyPatternList_StillTrustsConfiguredOriginAndLoopback_ButNotTunnels()
+    {
+        WebAuthnOriginPolicy noPatterns = new("https://orders.example.com", []);
+
+        Assert.True(noPatterns.IsTrustedOrigin("https://orders.example.com"));
+        Assert.True(noPatterns.IsTrustedOrigin("http://localhost:8080"));
+        Assert.False(noPatterns.IsTrustedOrigin("https://foo.trycloudflare.com"));
+    }
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.WebApplication.Tests/MyRestaurant.WebApplication.Tests.csproj
 ################################################################################
 
@@ -25273,15 +26156,15 @@ public sealed class TotpQrCodeTests
   File name:             RestaurantOptionsTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/RestaurantOptionsTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/RestaurantOptionsTests.cs
-  Size:                  6.2 KiB (6346 bytes)
-  Last modified:         2026-07-17 21:29:17.000000000 -0400
+  Size:                  7.7 KiB (7915 bytes)
+  Last modified:         2026-07-23 01:23:14.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258250
+  Inode:                 25103629
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               edb4eb85f3f7a1974aaf5e2aecd3f79843e174e0b784f35d147d43fcd9f7c183
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               40d9af6a7de4a9e76c46ef21f172bf1e6a5bd2b8d27ca2f16b880840917bbd1b
+  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
 
 --- CONTENT ---
 using Microsoft.Extensions.Configuration;
@@ -25405,6 +26288,38 @@ public sealed class RestaurantOptionsTests
             Build(publicOrigin: "https://order.example.com:8443").ResolveWebAuthnRelyingPartyId());
 
     [Fact]
+    public void FromConfiguration_TrustedOriginPatterns_DefaultsToTheQuickTunnelWildcard()
+    {
+        RestaurantOptions options = RestaurantOptions.FromConfiguration(EmptyConfiguration());
+
+        Assert.Equal(new[] { "https://*.trycloudflare.com" }, options.TrustedOriginPatterns);
+        Assert.Empty(options.Validate());
+    }
+
+    [Fact]
+    public void FromConfiguration_TrustedOriginPatterns_ReadsAndSplitsAList()
+    {
+        RestaurantOptions options = RestaurantOptions.FromConfiguration(ConfigurationWith(new()
+        {
+            ["RESTAURANT_TRUSTED_ORIGIN_PATTERNS"] = "https://*.trycloudflare.com, https://demo.example.com",
+        }));
+
+        Assert.Equal(
+            new[] { "https://*.trycloudflare.com", "https://demo.example.com" },
+            options.TrustedOriginPatterns);
+        Assert.Empty(options.Validate());
+    }
+
+    [Theory]
+    [InlineData("http://*.trycloudflare.com")]   // must be https
+    [InlineData("https://")]                      // no host
+    [InlineData("*.trycloudflare.com")]           // no scheme
+    [InlineData("https://foo.*.com")]             // wildcard not the leading label
+    [InlineData("https://foo.trycloudflare.com:8443")] // no port allowed in a pattern
+    public void Validate_BadTrustedOriginPattern_IsRejected(string pattern)
+        => Assert.NotEmpty(Build(trustedOriginPatterns: [pattern]).Validate());
+
+    [Fact]
     public void ResolveTimeZone_ReturnsTheConfiguredZone()
     {
         TimeZoneInfo zone = Build(timeZoneId: "America/New_York").ResolveTimeZone();
@@ -25428,11 +26343,13 @@ public sealed class RestaurantOptionsTests
         int argon2Memory = 65536,
         int argon2Iterations = 3,
         int argon2Parallelism = 1,
-        int argon2MaxConcurrent = 4)
+        int argon2MaxConcurrent = 4,
+        IReadOnlyList<string>? trustedOriginPatterns = null)
         => new()
         {
             RestaurantName = "Test Bistro",
             PublicOrigin = publicOrigin,
+            TrustedOriginPatterns = trustedOriginPatterns ?? RestaurantOptions.DefaultTrustedOriginPatterns,
             TimeZoneId = timeZoneId,
             CurrencyCode = currencyCode,
             DatabaseConnectionString = databaseConnectionString,
@@ -25534,10 +26451,10 @@ public sealed class TablesWiringTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 158
-  Total size     : 1011.2 KiB (1035513 bytes)
+  Files dumped   : 162
+  Total size     : 1.0 MiB (1084054 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-22T21:00:44-04:00
+  Completed at   : 2026-07-23T01:34:10-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
