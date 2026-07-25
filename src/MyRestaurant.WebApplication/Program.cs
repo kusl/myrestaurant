@@ -109,10 +109,13 @@ builder.Services.AddDataProtection()
 // because the hasher and sign-in manager report there.
 builder.Services.AddRestaurantIdentity(options);
 
-// Table management services (§4.1): the read-only ITableDirectory the administration tables pages read
-// from and the transactional ITableAdministration they write through (create, rename, rotate the join
-// secret, deactivate/reactivate). A §4 concern, kept separate from AddRestaurantIdentity; both resolve
-// the same connection factory, clock, and identifier factory registered above.
+// Table and sitting services (§4, §5): the read-only ITableDirectory the administration tables pages
+// read from and the transactional ITableAdministration they write through; the server-only join-secret
+// reader and the ITableJoinTokens service that renders and validates the rotating QR (§4.3–§4.5); the
+// ISittingDirectory/ISittingMembership pair behind the §4.4 join flow and §5.1 sitting open; and the
+// JoinGrantProtector for the short-lived join-grant cookie. A §4/§5 concern, kept separate from
+// AddRestaurantIdentity; all of it resolves the same connection factory, clock, identifier factory,
+// metrics, and Data Protection provider registered above — hence the position after them.
 builder.Services.AddRestaurantTables();
 
 // The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
@@ -189,3 +192,4 @@ app.MapRazorComponents<App>()
 app.Run();
 
 return 0;
+

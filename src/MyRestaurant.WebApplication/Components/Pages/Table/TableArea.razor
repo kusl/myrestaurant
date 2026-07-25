@@ -1,40 +1,122 @@
 @page "/table"
 @attribute [Authorize(Policy = AuthorizationPolicies.Table)]
+@using MyRestaurant.DataAccess.Sittings
+@inject ISittingDirectory Sittings
 
-@* The first [Authorize]-gated area (TECHNICAL_SPECIFICATION §3.7 — `area.table`: any authenticated
-   person). This interactive placeholder exists to prove the whole chain live — cookie → claims →
-   policy → AuthorizeRouteView → circuit — before the real guest experience (joining, staging,
-   sending; M3/M4) replaces its body. Anonymous visitors are redirected to /sign-in with this page
-   as the return URL. *@
+@* The table index (TECHNICAL_SPECIFICATION §5.1, §11.1). A person may hold memberships in several
+   open sittings at once — §5.1 says so explicitly, and "the UI scopes to the sitting behind the
+   current /table/{id} route" — so this page's whole job is to let someone pick which of their tables
+   they mean, and to say plainly how to get a new one (scan the code on the table).
 
-<PageTitle>Your table</PageTitle>
+   Interactive server, unlike /table/{id}: this page sets no cookie and issues no redirect, so it can
+   stay on the circuit, and it remains the standing proof that the whole chain — cookie → claims →
+   area policy → AuthorizeRouteView → circuit — is live. Anonymous visitors are sent to /sign-in with
+   this page as the return URL. *@
+
+<PageTitle>Your tables</PageTitle>
 
 <section class="panel">
-    <p class="eyebrow">Table area</p>
-    <h1>Signed in and gated</h1>
+    <p class="eyebrow">Your tables</p>
+    <h1>Where you are seated</h1>
 
-    <AuthorizeView>
-        <Authorized>
-            <p class="lede">
-                You are signed in as <strong>@context.User.Identity?.Name</strong>@DisplayNameSuffix(context.User),
-                and the <code>area.table</code> policy admitted you — the authentication cookie, the
-                claims principal, and the area authorization are all live.
-            </p>
-        </Authorized>
-    </AuthorizeView>
+    @if (!_loaded)
+    {
+        <p class="lede">Looking up your tables…</p>
+    }
+    else if (_sittings.Count == 0)
+    {
+        <p class="lede">
+            You are not seated at a table right now. Scan the code on a table's display to join it —
+            or ask any member of staff to show you one from the counter.
+        </p>
+    }
+    else
+    {
+        <p class="lede">
+            You are part of @_sittings.Count open
+            @(_sittings.Count == 1 ? "sitting" : "sittings"). Pick the table you are at.
+        </p>
+
+        <ul class="sitting-list">
+            @foreach (TableSittingSummary sitting in _sittings)
+            {
+                <li>
+                    <a class="sitting-link" href="@($"/table/{sitting.TableIdentifier}")">
+                        <span class="sitting-label">@sitting.TableLabel</span>
+                        <span class="sitting-meta">
+                            open since @sitting.OpenedAt.ToLocalTime().ToString("t") ·
+                            @sitting.MemberCount @(sitting.MemberCount == 1 ? "person" : "people")
+                        </span>
+                    </a>
+                </li>
+            }
+        </ul>
+    }
 
     <p class="lede">
-        Joining a table by scanning its rotating code, and building and sending orders, arrive with
-        Milestones&nbsp;3 and&nbsp;4.
+        Choosing from the menu, staging items, and sending them to the kitchen arrive with
+        Milestone&nbsp;4.
     </p>
 
     <p><a href="/">Back to the home page</a></p>
 </section>
 
+<style>
+    .sitting-list {
+        list-style: none;
+        margin: 1rem 0;
+        padding: 0;
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .sitting-link {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        padding: 0.7rem 0.85rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.5rem;
+        background: var(--surface-raised, #ffffff);
+        text-decoration: none;
+        color: inherit;
+    }
+
+    .sitting-link:hover {
+        border-color: var(--accent, #0f766e);
+    }
+
+    .sitting-label {
+        font-weight: 600;
+    }
+
+    .sitting-meta {
+        font-size: 0.85rem;
+        color: var(--ink-soft, #55636f);
+    }
+</style>
+
 @code {
-    private static string DisplayNameSuffix(System.Security.Claims.ClaimsPrincipal user)
+    private IReadOnlyList<TableSittingSummary> _sittings = [];
+    private bool _loaded;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
     {
-        string? displayName = user.FindFirst(RestaurantClaimTypes.DisplayName)?.Value;
-        return string.IsNullOrWhiteSpace(displayName) ? string.Empty : $" ({displayName})";
+        // The cascading authentication state is the circuit-safe way to read the principal: there is
+        // no HttpContext once the component is interactive, and this works identically during the
+        // static prerender pass (AddCascadingAuthenticationState is wired in AddRestaurantIdentity).
+        if (AuthenticationStateTask is not null)
+        {
+            AuthenticationState state = await AuthenticationStateTask;
+            if (PersonPrincipal.IdentifierFor(state.User) is { } person)
+            {
+                _sittings = await Sittings.ListOpenSittingsForPersonAsync(person);
+            }
+        }
+
+        _loaded = true;
     }
 }

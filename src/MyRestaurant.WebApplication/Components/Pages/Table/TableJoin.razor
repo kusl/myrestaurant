@@ -1,0 +1,372 @@
+@page "/table/{TableId:guid}"
+@attribute [ExcludeFromInteractiveRouting]
+@using MyRestaurant.DataAccess.Sittings
+@using MyRestaurant.DataAccess.Tables
+@using MyRestaurant.Domain.LiveUpdates
+@using MyRestaurant.Domain.Security
+@using MyRestaurant.Domain.Time
+@using MyRestaurant.WebApplication.Tables
+@inject ITableDirectory TableDirectory
+@inject ITableJoinTokens JoinTokens
+@inject ISittingDirectory Sittings
+@inject ISittingMembership Membership
+@inject JoinGrantProtector Grants
+@inject IDomainEventBroadcaster Broadcaster
+@inject IClock Clock
+@inject RestaurantOptions Options
+@inject NavigationManager Navigation
+
+@* The table join flow and the member's table surface (TECHNICAL_SPECIFICATION §4.4, §5.1, §11.1).
+
+   Deliberately ANONYMOUS and static SSR. Anonymous because a guest scanning a table's QR for the
+   first time has no account yet, and §4.4 requires the grant to be issued *before* the detour through
+   sign-in — the whole point of the grant is that it survives that detour. Static SSR because the flow
+   writes and clears a cookie and issues redirects, none of which a Blazor circuit can do.
+
+   The four states this page resolves to, in the order §4.4 decides them:
+
+     1. Member  — an authenticated member of this table's open sitting. Members bypass tokens
+                  entirely: no query string is consulted, and a deactivated table does not evict
+                  anyone (§4.1 stops *new* tokens and display rendering, not a sitting in progress).
+     2. Confirm — a non-member holding a live grant, signed in. One button turns the grant into
+                  membership.
+     3. (redirect) — a non-member holding a live grant, anonymous: off to sign-in with this page as
+                  the return URL. The grant cookie is already written, so the trip back needs no token.
+     4. Expired — everything else, rendered as a friendly re-scan page at HTTP 200 with no detail
+                  about *which* thing failed (§4.4: "no oracle detail"). An unknown table, a
+                  deactivated table, a stale token, and a forged grant are indistinguishable here.
+
+   The join itself is a post/redirect/get: the POST consumes the grant, opens or joins the sitting in
+   one transaction (§5.1), broadcasts SittingMemberJoined only when a membership row was actually
+   inserted (§9), and redirects back here so a refresh cannot re-post. Building and sending orders on
+   this surface arrives with Milestone 4. *@
+
+<PageTitle>@PageTitleText</PageTitle>
+
+@if (_stage == JoinStage.Member && _table is not null && _sitting is not null)
+{
+    <section class="panel table-panel">
+        <p class="eyebrow">Your table</p>
+        <h1>@_table.Label</h1>
+
+        @if (_justJoined)
+        {
+            <p class="status-success" role="status">You have joined @(_table.Label).</p>
+        }
+
+        @if (!_table.IsActive)
+        {
+            <p class="status-error" role="alert">
+                This table has been taken out of service. Your sitting is still open and your order is
+                intact — nobody new can join by scanning, though. Please speak to the counter.
+            </p>
+        }
+
+        <p class="lede">
+            Open since @_sitting.OpenedAt.ToLocalTime().ToString("t") —
+            @_roster.Count @(_roster.Count == 1 ? "person" : "people") at the table.
+        </p>
+
+        <h2 class="table-heading">Who is here</h2>
+        <ul class="table-roster">
+            @foreach (SittingMemberSummary member in _roster)
+            {
+                <li>
+                    <span class="table-roster-name">@member.RosterName</span>
+                    <span class="table-roster-joined">joined @member.JoinedAt.ToLocalTime().ToString("t")</span>
+                </li>
+            }
+        </ul>
+
+        <hr class="table-rule" />
+
+        <h2 class="table-heading">Your order</h2>
+        <p class="lede">
+            Choosing from the menu, staging items, and sending them to the kitchen arrive with
+            Milestone&nbsp;4. Your seat at this table is held until the counter closes and settles the
+            sitting.
+        </p>
+
+        <p class="table-back"><a href="/table">All your tables</a></p>
+    </section>
+}
+else if (_stage == JoinStage.Confirm && _table is not null)
+{
+    <section class="panel table-panel">
+        <p class="eyebrow">Join a table</p>
+        <h1>@_table.Label</h1>
+
+        <p class="lede">
+            You scanned the code for <strong>@_table.Label</strong>. Joining puts you on this table's
+            party, so everyone here can see what has been ordered and the running total.
+        </p>
+
+        @if (_openSittingMemberCount > 0)
+        {
+            <p class="lede">
+                @_openSittingMemberCount @(_openSittingMemberCount == 1 ? "person is" : "people are")
+                already seated here.
+            </p>
+        }
+        else
+        {
+            <p class="lede">You would be the first to sit down at this table.</p>
+        }
+
+        <form method="post" @formname="table-join" @onsubmit="JoinAsync">
+            <AntiforgeryToken />
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Join @_table.Label</button>
+                <a class="button-secondary" href="/">Not now</a>
+            </div>
+        </form>
+
+        <p class="form-footnote">
+            This invitation stays good for @Options.TableJoinGrantMinutes
+            minute@(Options.TableJoinGrantMinutes == 1 ? "" : "s") from the moment you scanned.
+        </p>
+    </section>
+}
+else
+{
+    @* §4.4's friendly page. One wording for every failure so it tells a prober nothing. *@
+    <section class="panel table-panel">
+        <p class="eyebrow">Join a table</p>
+        <h1>That code has expired</h1>
+        <p class="lede">
+            Table codes change every @Options.TableJoinTokenRotationSeconds seconds, so the one you
+            used is no longer good. Please scan the code on the table's display again.
+        </p>
+        <p class="lede">
+            If the display is dark or the code will not work, any member of staff can show you a fresh
+            one from the counter.
+        </p>
+        <p class="table-back"><a href="/">Back to the home page</a></p>
+    </section>
+}
+
+@* Namespaced under .table-* and inline, for the same reason the administration pages keep their CSS
+   inline: App.razor links the static stylesheet, so component CSS isolation is not active. *@
+<style>
+    .table-heading {
+        font-size: 1.05rem;
+        margin: 1.25rem 0 0.35rem;
+    }
+
+    .table-rule {
+        border: 0;
+        border-top: 1px solid var(--hairline, #e2e6ec);
+        margin: 1.5rem 0;
+    }
+
+    .table-roster {
+        list-style: none;
+        margin: 0.5rem 0 0;
+        padding: 0;
+        display: grid;
+        gap: 0.4rem;
+    }
+
+    .table-roster li {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: baseline;
+        padding: 0.45rem 0.6rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.4rem;
+        background: var(--surface-raised, #ffffff);
+    }
+
+    .table-roster-name {
+        font-weight: 600;
+    }
+
+    .table-roster-joined {
+        font-size: 0.85rem;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .table-back {
+        margin-top: 1.5rem;
+    }
+</style>
+
+@code {
+    /// <summary>Which of the §4.4 outcomes this request resolved to. A redirect never reaches a stage.</summary>
+    private enum JoinStage
+    {
+        /// <summary>Friendly re-scan page (§4.4) — the catch-all, and the default before anything is decided.</summary>
+        Expired,
+
+        /// <summary>Signed in, holding a live grant, not yet a member: offer the join button.</summary>
+        Confirm,
+
+        /// <summary>A member of this table's open sitting: the table surface itself.</summary>
+        Member,
+    }
+
+    private JoinStage _stage = JoinStage.Expired;
+    private RestaurantTableSummary? _table;
+    private TableSittingSummary? _sitting;
+    private IReadOnlyList<SittingMemberSummary> _roster = [];
+    private int _openSittingMemberCount;
+    private bool _justJoined;
+
+    [Parameter]
+    public Guid TableId { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery(Name = "token")]
+    private string? Token { get; set; }
+
+    [SupplyParameterFromQuery(Name = "joined")]
+    private string? Joined { get; set; }
+
+    private TimeSpan GrantLifetime => TimeSpan.FromMinutes(Options.TableJoinGrantMinutes);
+
+    private string TablePath => $"/table/{TableId}";
+
+    private string PageTitleText => _stage switch
+    {
+        JoinStage.Member when _table is not null => _table.Label,
+        JoinStage.Confirm when _table is not null => $"Join {_table.Label}",
+        _ => "Join a table",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        CancellationToken cancellationToken = HttpContext.RequestAborted;
+        bool isGet = HttpMethods.IsGet(HttpContext.Request.Method);
+
+        _table = await TableDirectory.GetTableAsync(TableId, cancellationToken);
+        if (_table is null)
+        {
+            // No oracle: an unknown table reads exactly like a stale code (§4.4).
+            _stage = JoinStage.Expired;
+            return;
+        }
+
+        Guid? personIdentifier = PersonPrincipal.IdentifierFor(HttpContext.User);
+
+        // (1) Members bypass tokens entirely (§4.4) — and a deactivated table does not evict them.
+        if (personIdentifier is { } member)
+        {
+            _sitting = await Sittings.GetOpenSittingForMemberAsync(TableId, member, cancellationToken);
+            if (_sitting is not null)
+            {
+                _roster = await Sittings.ListMembersAsync(_sitting.SittingIdentifier, cancellationToken);
+                _stage = JoinStage.Member;
+                _justJoined = isGet && string.Equals(Joined, "yes", StringComparison.Ordinal);
+                return;
+            }
+        }
+
+        // (2) A non-member cannot join a table that is out of service (§4.1).
+        if (!_table.IsActive)
+        {
+            _stage = JoinStage.Expired;
+            return;
+        }
+
+        // (3) A presented token is always validated on a GET, so the §4.3 metric counts every scan —
+        // even when a grant is already held. A valid one (re)issues the grant and restarts its clock.
+        // The join POST re-posts to this same URL, query string and all; re-validating there would
+        // double-count one scan, so the metric stays on the navigation that actually is a scan.
+        bool holdsGrant = false;
+        if (isGet && !string.IsNullOrEmpty(Token))
+        {
+            JoinTokenValidationResult validation = await JoinTokens.ValidateAsync(TableId, Token, cancellationToken);
+            if (validation == JoinTokenValidationResult.Valid)
+            {
+                JoinGrantCookie.Write(
+                    HttpContext.Response,
+                    Grants.Protect(new JoinGrant(TableId, Clock.UtcNow)),
+                    GrantLifetime);
+                holdsGrant = true;
+            }
+        }
+
+        // (4) No usable token is not the end: an unconsumed grant from an earlier scan still counts.
+        // That is what carries the flow back from sign-in, where the return URL has no token (§4.4).
+        holdsGrant = holdsGrant || TryReadUsableGrant();
+
+        if (!holdsGrant)
+        {
+            _stage = JoinStage.Expired;
+            return;
+        }
+
+        if (personIdentifier is null)
+        {
+            // Anonymous with a live grant → sign in (or register) and come straight back here (§4.4).
+            Navigation.NavigateTo($"{AccountRoutes.SignIn}?ReturnUrl={Uri.EscapeDataString(TablePath)}");
+            return;
+        }
+
+        // Purely for the confirmation copy — how full the table already is. Skipped on the join POST,
+        // which either redirects or falls to the expired page and never renders that sentence.
+        if (isGet)
+        {
+            TableSittingSummary? openSitting = await Sittings.GetOpenSittingAsync(TableId, cancellationToken);
+            _openSittingMemberCount = openSitting?.MemberCount ?? 0;
+        }
+
+        _stage = JoinStage.Confirm;
+    }
+
+    /// <summary>
+    /// Turns the held grant into membership (§4.4, §5.1). Every precondition is re-checked here rather
+    /// than trusted from the render that drew the button: a POST is a separate request, and the grant
+    /// may have expired, been spent, or never have matched this table at all.
+    /// </summary>
+    private async Task JoinAsync()
+    {
+        CancellationToken cancellationToken = HttpContext.RequestAborted;
+
+        if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } person)
+        {
+            Navigation.NavigateTo($"{AccountRoutes.SignIn}?ReturnUrl={Uri.EscapeDataString(TablePath)}");
+            return;
+        }
+
+        if (!TryReadUsableGrant())
+        {
+            JoinGrantCookie.Delete(HttpContext.Response);
+            _stage = JoinStage.Expired;
+            return;
+        }
+
+        JoinTableResult result = await Membership.JoinTableAsync(TableId, person, cancellationToken);
+
+        // Single-use, whatever the outcome: a spent or refused grant must never be replayable (§4.4).
+        JoinGrantCookie.Delete(HttpContext.Response);
+
+        if (result.Outcome == JoinTableOutcome.TableUnavailable)
+        {
+            _stage = JoinStage.Expired;
+            return;
+        }
+
+        // After commit, and only when a membership row was really inserted (§9: "fired on: membership
+        // insert"). An idempotent re-join writes nothing and so announces nothing.
+        if (result.MembershipInserted && result.SittingIdentifier is { } sittingIdentifier)
+        {
+            Broadcaster.Publish(new SittingMemberJoined(sittingIdentifier));
+        }
+
+        Navigation.NavigateTo($"{TablePath}?joined=yes");
+    }
+
+    /// <summary>
+    /// True when the request carries a grant that is ours, intact, names <b>this</b> table, and has not
+    /// aged past <c>TABLE_JOIN_GRANT_MINUTES</c>. The lifetime is judged against the protected
+    /// <c>issued_at</c>, not the cookie's own expiry, because only the former is beyond the guest's reach.
+    /// </summary>
+    private bool TryReadUsableGrant()
+        => Grants.TryUnprotect(JoinGrantCookie.Read(HttpContext.Request), out JoinGrant? grant)
+            && grant is not null
+            && grant.IsUsableFor(TableId, Clock.UtcNow, GrantLifetime);
+}

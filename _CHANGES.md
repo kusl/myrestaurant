@@ -1,54 +1,69 @@
-# F-06a — passkeys work on Cloudflare quick tunnels (course correction)
+# M3 Slice 3 — join grant, `/table/{id}` routing, sitting open + membership
 
-Every file below is a **full file** at its **repo-relative path**. Drop this folder's
-contents over your working tree (same paths) and rebuild. `git status` will show exactly
-these 17 files as modified/added.
+Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo
+root and the contents drop straight over your working tree. `git status` will show exactly these
+12 files as modified/added (13 counting this one).
 
 ## Files to DELETE
 
 **None.** Every change is an in-place edit or a new file. Nothing is removed or renamed.
-`ResolveWebAuthnRelyingPartyId()` is kept (it now supplies the QR-URL / fallback host,
-not a pinned RP ID), and its existing test is kept. `wwwroot/js/passkey.js` and ADR-0010
-needed no change, so they are not in this bundle.
 
-## New files (2)
+The one file that does not belong in the tree afterwards is `docs/BUILD_PROGRESS.append.md`, which
+exists only to be appended and then removed — see the last section.
 
-- `src/MyRestaurant.WebApplication/Identity/WebAuthnOriginPolicy.cs`
-- `src/MyRestaurant.WebApplication/Identity/PublicOriginMiddleware.cs`
+## New files (7)
+
+### Code (5)
+
+- `src/MyRestaurant.DataAccess/Sittings/SittingDirectory.cs`
+  `TableSittingSummary`, `SittingMemberSummary`, `ISittingDirectory`/`DapperSittingDirectory` (§5.1, §5.2).
+- `src/MyRestaurant.DataAccess/Sittings/SittingMembership.cs`
+  `JoinTableOutcome`, `JoinTableResult`, `ISittingMembership`/`DapperSittingMembership` (§4.4, §5.1).
+- `src/MyRestaurant.WebApplication/Tables/JoinGrant.cs`
+  `JoinGrant`, `JoinGrantProtector`, `JoinGrantCookie` (§4.4).
+- `src/MyRestaurant.WebApplication/Identity/PersonPrincipal.cs`
+  Reads the person identifier off a `ClaimsPrincipal` (§3.1).
+- `src/MyRestaurant.WebApplication/Components/Pages/Table/TableJoin.razor`
+  `/table/{TableId:guid}` — anonymous, static SSR, the whole §4.4 flow plus the member surface.
+
+### Tests (2)
+
+- `tests/MyRestaurant.DataAccess.Tests/Sittings/SittingMembershipTests.cs`  (Testcontainers, 9 facts)
+- `tests/MyRestaurant.WebApplication.Tests/Tables/JoinGrantTests.cs`        (8 facts, no container)
+- `tests/MyRestaurant.WebApplication.Tests/Identity/PersonPrincipalTests.cs` (6 facts, no container)
 
 ## Edited — code (3)
 
-- `src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs`
-- `src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs`
+- `src/MyRestaurant.WebApplication/Tables/TablesServiceCollectionExtensions.cs`
+  Registers `ISittingDirectory`, `ISittingMembership` (scoped) and `JoinGrantProtector` (singleton).
+- `src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor`
+  `/table` becomes the "your open sittings" index; still interactive-server.
 - `src/MyRestaurant.WebApplication/Program.cs`
+  **Comment only.** The `AddRestaurantTables()` note now covers sittings and the grant protector.
 
-## Edited / new — tests (3)
+## Edited — tests (1)
 
-- `tests/MyRestaurant.WebApplication.Tests/Identity/WebAuthnOriginPolicyTests.cs`  (new)
-- `tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs`        (edited)
-- `tests/MyRestaurant.WebApplication.Tests/RestaurantOptionsTests.cs`             (edited)
+- `tests/MyRestaurant.WebApplication.Tests/Tables/TablesWiringTests.cs`
+  Adds an identifier factory and an ephemeral Data-Protection provider to the test container, plus
+  three resolvability facts (`ISittingDirectory`, `ISittingMembership`, `JoinGrantProtector`).
 
-## Edited — scripts & config (4)
+## Docs (1, append-then-delete)
 
-- `scripts/quick_tunnel.sh`  (rewritten: one-command orchestrator; `chmod +x`)
-- `run.sh`                   (comment/banner text only — the quick-tunnel note was wrong)
-- `compose.yaml`             (passes `RESTAURANT_TRUSTED_ORIGIN_PATTERNS` to `web`)
-- `.env.example`             (documents `RESTAURANT_TRUSTED_ORIGIN_PATTERNS`)
+`docs/BUILD_PROGRESS.md` is ~65 KB, so it is not regenerated here. The new section ships separately:
 
-## Edited — docs (5)
+```bash
+cat docs/BUILD_PROGRESS.append.md >> docs/BUILD_PROGRESS.md && rm docs/BUILD_PROGRESS.append.md
+```
 
-- `docs/adr/0005-origins-and-tls-cloudflare-named-tunnel.md`  (rewritten ruling + F-06a revision)
-- `docs/TECHNICAL_SPECIFICATION.md`  (§3.3, §13 table, §14.3, accepted-risks, traceability)
-- `docs/BUILD_PROGRESS.md`           (settled-note, both manual-test items, new Slice 7)
-- `docs/OPERATIONS.md`               (§7 reasoning, §9 precision, §10 runbook)
-- `README.md`                        (one-command demo + corrected passkey framing)
+No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, or ADR edit: this slice realizes
+behaviour §4.4, §5.1, and §9 already specify. No migration (`table_sitting` and `table_sitting_member`
+ship in `0001_initial_schema.sql`). No new packages.
 
 ## The one-line why
 
-`IdentityPasskeyOptions.ServerDomain` was pinned to the boot-time origin host, so the RP ID
-could never match a quick tunnel's per-run `*.trycloudflare.com` hostname. It is now left
-**null**, so the .NET 10 handler derives the RP ID from `Request.Host` per request
-(normalized by `PublicOriginMiddleware`, gated by `ValidateOrigin`) — the same per-request
-approach your GoTunnels project uses. Safe because credentials are RP-ID-scoped by the
-authenticator. The named tunnel remains the production origin for *persistence*, not as a
-passkey prerequisite.
+Scanning a table's QR and joining its party are separated by a sign-in the guest usually has not done
+yet, and by the time they come back the rotating token has rotated away. The join grant is the
+short-lived, encrypted, table-scoped, single-use proof-of-scan that survives that detour — and
+consuming it opens the sitting and inserts the membership in one locked transaction, so two guests
+scanning the same display in the same second end up at the same table rather than racing the
+one-open-sitting-per-table index.
