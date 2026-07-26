@@ -1,0 +1,245 @@
+using System.Data.Common;
+using Dapper;
+using MyRestaurant.DataAccess.Tests.Identity;
+using MyRestaurant.Domain.Identifiers;
+
+namespace MyRestaurant.DataAccess.Tests.Orders;
+
+/// <summary>
+/// Seeds the world an order needs to exist in — people, a table, an open sitting, membership, and a
+/// menu — and hands back the identifiers, so each test file says what it is testing instead of
+/// re-deriving a restaurant from scratch.
+///
+/// <para>The rows are written with plain SQL rather than through <c>DapperTableAdministration</c> and
+/// friends on purpose, unlike <see cref="Displays.DisplayDevicePairingTests"/>: the pairing tests are
+/// about a service that reads rows the app wrote, so arranging through the app is the point there,
+/// whereas these tests are about the order transaction and the projection views, and routing the
+/// arrangement through three other services would make a failure in any of them look like a failure
+/// here. Menu items in particular have no write service at all yet — menu administration is M5 (§19) —
+/// so there is nothing to arrange through.</para>
+/// </summary>
+internal sealed class OrderTestWorld
+{
+    /// <summary>A syntactically valid Argon2id PHC string (§3.2). Nothing here ever verifies it.</summary>
+    private const string SamplePasswordHash =
+        "$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHRzYWx0c2E$dGFndGFndGFndGFndGFndGFndGFndGFndGE";
+
+    /// <summary>
+    /// Everything downstream of these three hangs off them by foreign key, so CASCADE clears the whole
+    /// order graph — guest orders, events, all five operation tables, kitchen notifications, and
+    /// visibility events — without this list having to be kept in step with the schema.
+    /// </summary>
+    private const string TruncateSql = """
+        TRUNCATE TABLE person, restaurant_table, menu_item CASCADE;
+        """;
+
+    private const string InsertPersonSql = """
+        INSERT INTO person (
+            person_identifier, username, display_name, email_address, phone_number,
+            password_hash, totp_secret_protected, must_change_password, must_enroll_totp,
+            security_stamp, failed_access_count, lockout_end_at, is_active, created_at)
+        VALUES (
+            @PersonIdentifier, @Username, @DisplayName, NULL, NULL,
+            @PasswordHash, NULL, false, false,
+            @SecurityStamp, 0, NULL, true, @CreatedAt);
+        """;
+
+    private const string InsertTableSql = """
+        INSERT INTO restaurant_table (
+            restaurant_table_identifier, label, join_secret, join_secret_rotated_at, is_active, created_at)
+        VALUES (@TableIdentifier, @Label, @JoinSecret, NULL, @IsActive, @CreatedAt);
+        """;
+
+    private const string InsertSittingSql = """
+        INSERT INTO table_sitting (
+            table_sitting_identifier, restaurant_table_identifier, opened_at,
+            closed_at, closed_by_person_identifier, settled_total_amount)
+        VALUES (@SittingIdentifier, @TableIdentifier, @OpenedAt, NULL, NULL, NULL);
+        """;
+
+    private const string CloseSittingSql = """
+        UPDATE table_sitting
+        SET closed_at = @ClosedAt,
+            closed_by_person_identifier = @ClosedByPersonIdentifier,
+            settled_total_amount = @SettledTotalAmount
+        WHERE table_sitting_identifier = @SittingIdentifier;
+        """;
+
+    private const string InsertMemberSql = """
+        INSERT INTO table_sitting_member (
+            table_sitting_member_identifier, table_sitting_identifier, person_identifier, joined_at)
+        VALUES (@MemberIdentifier, @SittingIdentifier, @PersonIdentifier, @JoinedAt);
+        """;
+
+    private const string InsertMenuItemSql = """
+        INSERT INTO menu_item (menu_item_identifier, name, price_amount, is_active, created_at)
+        VALUES (@MenuItemIdentifier, @Name, @PriceAmount, @IsActive, @CreatedAt);
+        """;
+
+    private const string UpdateMenuItemSql = """
+        UPDATE menu_item
+        SET price_amount = @PriceAmount,
+            is_active = @IsActive
+        WHERE menu_item_identifier = @MenuItemIdentifier;
+        """;
+
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+    private readonly FixedClock _clock;
+    private readonly IIdentifierFactory _identifierFactory;
+
+    public OrderTestWorld(
+        IDatabaseConnectionFactory connectionFactory,
+        FixedClock clock,
+        IIdentifierFactory identifierFactory)
+    {
+        _connectionFactory = connectionFactory;
+        _clock = clock;
+        _identifierFactory = identifierFactory;
+    }
+
+    public async Task TruncateAsync(CancellationToken cancellationToken)
+        => await ExecuteAsync(TruncateSql, null, cancellationToken);
+
+    public async Task<Guid> AddPersonAsync(
+        string username,
+        string? displayName,
+        CancellationToken cancellationToken)
+    {
+        Guid personIdentifier = _identifierFactory.Create();
+        await ExecuteAsync(
+            InsertPersonSql,
+            new
+            {
+                PersonIdentifier = personIdentifier,
+                Username = username,
+                DisplayName = displayName,
+                PasswordHash = SamplePasswordHash,
+                SecurityStamp = Guid.NewGuid(),
+                CreatedAt = _clock.UtcNow,
+            },
+            cancellationToken);
+
+        return personIdentifier;
+    }
+
+    public async Task<Guid> AddTableAsync(string label, CancellationToken cancellationToken, bool isActive = true)
+    {
+        Guid tableIdentifier = _identifierFactory.Create();
+        await ExecuteAsync(
+            InsertTableSql,
+            new
+            {
+                TableIdentifier = tableIdentifier,
+                Label = label,
+                // The CHECK is octet_length(join_secret) = 32; nothing here derives a token from it.
+                JoinSecret = new byte[32],
+                IsActive = isActive,
+                CreatedAt = _clock.UtcNow,
+            },
+            cancellationToken);
+
+        return tableIdentifier;
+    }
+
+    public async Task<Guid> OpenSittingAsync(Guid tableIdentifier, CancellationToken cancellationToken)
+    {
+        Guid sittingIdentifier = _identifierFactory.Create();
+        await ExecuteAsync(
+            InsertSittingSql,
+            new
+            {
+                SittingIdentifier = sittingIdentifier,
+                TableIdentifier = tableIdentifier,
+                OpenedAt = _clock.UtcNow,
+            },
+            cancellationToken);
+
+        return sittingIdentifier;
+    }
+
+    /// <summary>
+    /// Closes a sitting the way §5.3 will: a closing instant, the person who closed it, and a stamped
+    /// settled total, all three of which the schema's paired CHECKs require together.
+    /// </summary>
+    public async Task CloseSittingAsync(
+        Guid sittingIdentifier,
+        Guid closedByPersonIdentifier,
+        decimal settledTotalAmount,
+        CancellationToken cancellationToken)
+        => await ExecuteAsync(
+            CloseSittingSql,
+            new
+            {
+                SittingIdentifier = sittingIdentifier,
+                ClosedAt = _clock.UtcNow,
+                ClosedByPersonIdentifier = closedByPersonIdentifier,
+                SettledTotalAmount = settledTotalAmount,
+            },
+            cancellationToken);
+
+    public async Task JoinAsync(Guid sittingIdentifier, Guid personIdentifier, CancellationToken cancellationToken)
+        => await ExecuteAsync(
+            InsertMemberSql,
+            new
+            {
+                MemberIdentifier = _identifierFactory.Create(),
+                SittingIdentifier = sittingIdentifier,
+                PersonIdentifier = personIdentifier,
+                JoinedAt = _clock.UtcNow,
+            },
+            cancellationToken);
+
+    public async Task<Guid> AddMenuItemAsync(
+        string name,
+        decimal priceAmount,
+        CancellationToken cancellationToken,
+        bool isActive = true)
+    {
+        Guid menuItemIdentifier = _identifierFactory.Create();
+        await ExecuteAsync(
+            InsertMenuItemSql,
+            new
+            {
+                MenuItemIdentifier = menuItemIdentifier,
+                Name = name,
+                PriceAmount = priceAmount,
+                IsActive = isActive,
+                CreatedAt = _clock.UtcNow,
+            },
+            cancellationToken);
+
+        return menuItemIdentifier;
+    }
+
+    public async Task SetMenuItemAsync(
+        Guid menuItemIdentifier,
+        decimal priceAmount,
+        bool isActive,
+        CancellationToken cancellationToken)
+        => await ExecuteAsync(
+            UpdateMenuItemSql,
+            new { MenuItemIdentifier = menuItemIdentifier, PriceAmount = priceAmount, IsActive = isActive },
+            cancellationToken);
+
+    /// <summary>A raw count, for the "nothing was written" assertions §6.5.9 lives on.</summary>
+    public async Task<int> CountAsync(string sql, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
+        return await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            sql, cancellationToken: cancellationToken));
+    }
+
+    /// <summary>A raw scalar, for reading a stored column back without going through a service.</summary>
+    public async Task<T?> ScalarAsync<T>(string sql, object? parameters, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
+        return await connection.ExecuteScalarAsync<T>(new CommandDefinition(
+            sql, parameters, cancellationToken: cancellationToken));
+    }
+
+    private async Task ExecuteAsync(string sql, object? parameters, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(sql, parameters, cancellationToken: cancellationToken));
+    }
+}

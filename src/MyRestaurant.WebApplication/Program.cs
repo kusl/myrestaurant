@@ -11,6 +11,7 @@ using MyRestaurant.WebApplication.Displays;
 using MyRestaurant.WebApplication.Identity;
 using MyRestaurant.WebApplication.LiveUpdates;
 using MyRestaurant.WebApplication.Observability;
+using MyRestaurant.WebApplication.Orders;
 using MyRestaurant.WebApplication.Tables;
 using Npgsql;
 using OpenTelemetry.Logs;
@@ -126,6 +127,14 @@ builder.Services.AddRestaurantTables();
 // a person, so it is wired apart from AddRestaurantIdentity — but it renders the rotating QR through
 // AddRestaurantTables' ITableJoinTokens, hence the position after it.
 builder.Services.AddRestaurantDisplays();
+
+// Menu (read side) and orders (§6, §7, §8.3, §9, §12): the IMenuDirectory the staging area and the "86"
+// panel read; IOrderMutations, the single transaction implementing the §6.6 locking protocol;
+// IOrderReadModel over the §8.3 projection views and IOrderEventLog over the raw event log; and
+// IOrderWorkflow, the post-commit shell that records the §12 counters and publishes the §9 notifications
+// — surfaces call that, never IOrderMutations directly, or a send would never reach the kitchen. Last of
+// the four groups because an order hangs off a sitting, which AddRestaurantTables registered above.
+builder.Services.AddRestaurantOrders();
 
 // The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
 // so honour its X-Forwarded-* headers. KnownIPNetworks/KnownProxies are cleared deliberately — safe
