@@ -141,7 +141,7 @@ public sealed class DisplayDevicePairingTests : IClassFixture<PostgreSqlFixture>
 
         // 32 CSPRNG bytes as unpadded Base64Url is 43 characters (§4.2).
         Assert.Equal(43, result.DeviceSecret!.Length);
-        Assert.DoesNotContain(':', result.DeviceSecret, StringComparison.Ordinal);
+        Assert.DoesNotContain(":", result.DeviceSecret, StringComparison.Ordinal);
 
         DisplayDeviceProbeRow device = await ReadOnlyDeviceAsync(cancellationToken);
         Assert.Equal(result.DeviceIdentifier, device.TableDisplayDeviceIdentifier);
