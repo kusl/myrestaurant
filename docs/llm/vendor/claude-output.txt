@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-26T15:15:25-04:00
+  Generated at   : 2026-07-26T19:26:07-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 22b6592ec30d222bd29e9663fd4ec745a618d626
-  Commit (short) : 22b6592
-  Commit date    : 2026-07-26 15:15:23 -0400
+  Commit (full)  : adcc681e118b8bb55e7eaa9eeee498922118b38d
+  Commit (short) : adcc681
+  Commit date    : 2026-07-26 19:26:02 -0400
   Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 210
+  Files included : 218
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (210 included files)
+# FILE TREE  (218 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -555,6 +555,8 @@ cat "$OUTPUT_FILE"
 │   ├── OPERATIONS.md
 │   ├── REQUIREMENTS.md
 │   ├── TECHNICAL_SPECIFICATION.md
+│   ├── _append
+│   │   └── BUILD_PROGRESS-m4-slice-2.md
 │   └── adr
 │       ├── 0001-single-application-with-areas.md
 │       ├── 0002-relational-append-only-event-logs.md
@@ -625,6 +627,7 @@ cat "$OUTPUT_FILE"
 │   │   ├── Orders
 │   │   │   ├── OrderEvents.cs
 │   │   │   ├── OrderMutationValidator.cs
+│   │   │   ├── OrderNarrative.cs
 │   │   │   └── OrderProjection.cs
 │   │   ├── Security
 │   │   │   ├── Argon2PhcString.cs
@@ -679,7 +682,8 @@ cat "$OUTPUT_FILE"
 │       │   │   ├── Setup.razor
 │       │   │   └── Table
 │       │   │       ├── TableArea.razor
-│       │   │       └── TableJoin.razor
+│       │   │       ├── TableJoin.razor
+│       │   │       └── TableOrderSurface.razor
 │       │   ├── Routes.razor
 │       │   └── _Imports.razor
 │       ├── Configuration
@@ -711,6 +715,8 @@ cat "$OUTPUT_FILE"
 │       ├── Observability
 │       │   └── RestaurantMetrics.cs
 │       ├── Orders
+│       │   ├── MoneyText.cs
+│       │   ├── OrderStaging.cs
 │       │   ├── OrderWorkflow.cs
 │       │   └── OrdersServiceCollectionExtensions.cs
 │       ├── Program.cs
@@ -763,6 +769,7 @@ cat "$OUTPUT_FILE"
     │   ├── MyRestaurant.Domain.Tests.csproj
     │   ├── ObligationsPipelineTests.cs
     │   ├── OrderMutationValidatorTests.cs
+    │   ├── OrderNarrativeTests.cs
     │   ├── OrderProjectionTests.cs
     │   ├── OrderTestBuilders.cs
     │   ├── PairingAndRecoveryCodeTests.cs
@@ -793,6 +800,8 @@ cat "$OUTPUT_FILE"
         │   └── WebAuthnOriginPolicyTests.cs
         ├── MyRestaurant.WebApplication.Tests.csproj
         ├── Orders
+        │   ├── MoneyTextTests.cs
+        │   ├── OrderStagingTests.cs
         │   ├── OrderWorkflowTests.cs
         │   └── OrdersWiringTests.cs
         ├── RestaurantOptionsTests.cs
@@ -3885,20 +3894,20 @@ item on the menu except an `INSERT`.
   File name:             DOCUMENTATION_REVIEW.md
   Relative path:         docs/DOCUMENTATION_REVIEW.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/DOCUMENTATION_REVIEW.md
-  Size:                  14.6 KiB (14944 bytes)
-  Last modified:         2026-07-26 08:54:36.000000000 -0400
+  Size:                  16.6 KiB (17022 bytes)
+  Last modified:         2026-07-26 19:13:15.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25661730
+  Inode:                 25836163
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               fd9f6b6c79b0b1408f8204873d223b1ef22145041f3841ff61f0378e0efe9de6
-  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
+  SHA-256:               cafb33f25a0c7f443fc8fe81231ae89cb799c1e8c297d91aa6a3a758d615ff0c
+  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
 
-**Status:** Resolved — nothing open.
+**Status:** One finding open — **F-36** (timestamps ignore `RESTAURANT_TIME_ZONE`), recorded with its ruling and scheduled before M5. Everything else is resolved.
 **Scope of the original review (2026-07-16):** `REQUIREMENTS.md` rev 1 (commit `af51017`) and the `dump.txt` produced by `export.sh`.
 **Rulings:** the owner ruled on every finding on 2026-07-17 — F-01–05, F-09–11, F-13–19, F-21–24 accepted as raised; F-06, F-07 (Q1), F-08 (Q2/Q3), and F-12 (Q4/Q5) resolved with the defaults proposed in the ruling exchange ("all of this is fine").
 
@@ -3970,12 +3979,15 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 |---|---|---|---|
 | F-34 | §8.2's `passkey_credential` was specified before ASP.NET Core Identity's .NET 10 passkey API was verified against source. That API's `UserPasskeyInfo` credential record carries WebAuthn state the table did not model (user-verified, backup-eligible, backed-up), and assertion **reads** the stored backup-eligible bit and fails the ceremony on a mismatch — so it cannot be dropped and reconstructed. | Additive migration `0002_passkey_credential_webauthn_state.sql` adds `is_user_verified` / `is_backup_eligible` / `is_backed_up` (all `NOT NULL DEFAULT false`); `0001` is left untouched (DbUp journals per script). The raw attestation object and client-data JSON `UserPasskeyInfo` also exposes are deliberately not stored (attestation is `none`, §3.3; nothing re-reads them) and are reconstructed as empty on read. This is the framework gap §3.3 anticipated — no fallback library was needed, only the columns. | S§8.2 (schema-evolution note), S§3.3 · `0002_*.sql`, `DapperUserStore` passkey region · BUILD_PROGRESS Slice 5 |
 | F-35 | The profile page is specified twice — R§4.6 ("every person has a profile page") and S§11.1 (in the `/table` surface list) — but §19's build order never named it, so no milestone claimed it. M2 shipped the individual credential pages (`/account/enroll-totp`, `/account/passkeys`) with no hub and no way to edit the three self-owned fields, and the gap was only noticed in use, after M3: two freshly created staff accounts could not set their own display names. Compounding it, §11.2 groups the kitchen queue by *person display name*, so M4 would have inherited tickets reading `betty`. | The profile page ships as an M2 close-out slice before M4 opens: `/account` (display name, email, phone, plus the credential status hub) and `/account/change-password` (voluntary change, and add-a-password for a passkey-only account). R§4.6 now states display-name editing and username immutability explicitly; S§11.1 points at a new S§11.6 that specifies the surface; S§19's M2 line names it and records that it landed late. Addresses stay unsurfaced, with the reason recorded in S§11.6. | R§4.6 · S§11.1, S§11.6, S§19 · `ProfileDetails.cs`, `Profile.razor`, `ChangePassword.razor` · BUILD_PROGRESS M2 close-out |
+| F-36 | Every surface renders instants with `DateTimeOffset.ToLocalTime()`, which is the **server process's** zone — not `RESTAURANT_TIME_ZONE`. S§8.1 says instants are "stored `timestamptz` UTC; rendered in `RESTAURANT_TIME_ZONE`", and S§13 lists the variable as "rendering only", but nothing reads it: `RestaurantOptions.ResolveTimeZone()` exists and has no caller. The runtime container sets no `TZ`, so a deployed instance renders UTC. Harmless while the only timestamps were on administration pages read by staff who could infer it; not harmless from M4 Slice 2 onward, where a guest sees "sent 19:04" for an order placed at 3:04 PM. A second, unspecified question is entangled with it: S§13 has no locale setting, so nothing decides 12- versus 24-hour or the separator, and `ToString("t")` currently takes those from the container's culture too. | Recorded, not fixed in the slice that found it — deliberately. The fix is a rendering helper bound to `RESTAURANT_TIME_ZONE` plus a decision on the locale question, applied to **every** surface in one slice; doing it piecemeal would leave two time conventions inside a single page (the static `/table/{id}` header and its interactive island are one screen) and make the inconsistency harder to see, not easier. M4 Slice 2 therefore matches the existing `ToLocalTime()` convention everywhere and changes nothing. Scheduled ahead of M5, whose counter surface stamps settled totals — a wrong time on a bill is a different order of problem from a wrong time on a roster. | S§8.1, S§13 (both already correct — the code is what deviates) · `RestaurantOptions.ResolveTimeZone` (currently uncalled) · every `.ToLocalTime()` call site |
 
 ---
 
 ## Going forward
 
-No findings remain open. New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodiment — landed in the **same commit** as the change they describe, together with the matching `REQUIREMENTS.md`, specification, and ADR edits (atomic documentation, R§10 · S§18).
+**F-36 is open** — recorded with its ruling and its schedule (before M5), which is the ledger working as
+intended: a finding is entered the moment it is understood, not the moment it is fixed, and the row carries
+the reason the fix was not folded into the slice that found it. New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodiment — landed in the **same commit** as the change they describe, together with the matching `REQUIREMENTS.md`, specification, and ADR edits (atomic documentation, R§10 · S§18).
 
 ################################################################################
 # FILE: docs/OPERATIONS.md
@@ -5211,6 +5223,200 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP re-enrollment only if enrolled pre-reset; obligations pipeline runs on passkey path too; counter fallback = same rotating QR (no short-code) | §10.1–10.2, §3.5, §3.7, §4.5 · ledger notes |
+
+################################################################################
+# FILE: docs/_append/BUILD_PROGRESS-m4-slice-2.md
+################################################################################
+
+--- METADATA ---
+  File name:             BUILD_PROGRESS-m4-slice-2.md
+  Relative path:         docs/_append/BUILD_PROGRESS-m4-slice-2.md
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/_append/BUILD_PROGRESS-m4-slice-2.md
+  Size:                  13.5 KiB (13870 bytes)
+  Last modified:         2026-07-26 19:14:21.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25836165
+  Hard links:            1
+  MIME type:             text/html
+  SHA-256:               26911c7a19a110c1d41ef747cd9138364dffb2625579c8621124c6fb9bc0cf3f
+  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
+
+--- CONTENT ---
+### M4 Slice 2 — the guest ordering surface: menu, staging, batch send, and the living order (landed)
+
+M4 Slice 1 landed an order engine with no user interface at all. This slice is the first consumer: the
+member view of `/table/{id}` grows a menu picker, a staging area, a Send that reports per-operation
+reasons, the committed living order with its removals and price adjustments intact, the rest of the
+party's orders read-only, running personal and table totals, and the §11.1 flip to a settled bill when
+the counter closes the sitting. No data-access code changed and no SQL was written — every query this
+surface makes already existed and, until now, had no caller.
+
+**The structural decision: an interactive island inside a static page.** `/table/{id}` is
+`[ExcludeFromInteractiveRouting]` because the join flow writes the grant cookie and issues redirects,
+and a Blazor circuit can do neither. But everything §11.1 asks for below the join is live — a basket
+that survives a mis-tap, lines that re-badge when the kitchen fulfills them, a party total that moves
+when someone else orders, the flip on `SittingClosed`. Rather than compromise one for the other,
+`TableJoin.razor` keeps the cookie work and renders the new `TableOrderSurface` with
+`@rendermode="InteractiveServer"`. The parameters that cross the boundary are two `Guid`s, which the
+framework protects with the data-protection key ring like any other server component marker; the person
+is **not** among them, and is read from the cascading authentication state inside the island so the
+component is correct on its own terms rather than merely correct because its caller was careful. The
+roster moved into the island for the same reason: §9 sends `SittingMemberJoined` to table members, and a
+statically rendered list cannot hear it. `TableJoin.razor`'s inline `<style>` block is gone; the
+`.table-*` vocabulary moved to `app.css`, because an inline style in one component silently styling
+another component's markup is a dependency nobody can see.
+
+**Scoping every read by the sitting, not the table.** The island is handed the sitting the parent
+resolved and re-derives everything else, and every query is keyed by that identifier. The one query
+keyed by the table — `GetOpenSittingForMemberAsync`, which answers "am I still a member of something
+open here?" — has its answer **discarded unless it names this sitting**. That is not defensive
+programming; it is the difference between two behaviours. A sitting that is closed and followed by a new
+one on the same table would otherwise silently swap the order under the reader's feet mid-session,
+showing a guest somebody else's table as though it were theirs. Comparing the identifier makes the same
+event do what §11.1 asks instead: flip to the read-only settled bill.
+
+**Two new pure types, because a Razor component is not testable here.** `OrderNarrative` (Domain) folds
+an order's event log into a per-line story that **keeps removed lines** — the opposite of
+`order_current_line`, and deliberately so: §11.1 wants "removed lines struck-through with actor +
+reason, price adjustments shown old → new with reason", and an append-only log exists so history
+survives state (ADR-0002). The "old" side of that arrow is stored nowhere, which is precisely why it
+cannot come from a view: it is the price the fold was holding when the adjustment arrived.
+`OrderNarrative` also states §6.5.3's guest-removal rule once, as `GuestMayRemove`, so the surface can
+grey out what the transaction would refuse rather than offering a control that always fails.
+`OrderStaging` (WebApplication) is the basket: stage, unstage, change a quantity, tick a committed line
+for removal, and `Build` into the operations of one `guest_submission` with a parallel description per
+operation so a rejection's `OperationIndex` becomes "2 × Soup — the menu item is currently unavailable"
+rather than "operation 3 failed". Both live outside the component for the reason `ProfileDetails`,
+`ObligationsEnforcement`, and `PairingCode.Normalize` do (§16.1 — no bUnit).
+
+**There are now two folds over the same log, and that is a risk with a test against it.**
+`OrderProjection` answers the bill's question and §8.5 pins it against the SQL views;
+`OrderNarrative` answers the guest's. Nothing structural stops them drifting, and the first person to
+notice would be a customer being charged something the app never showed them. So
+`OrderNarrativeTests.NonRemovedLines_AgreeWithOrderProjectionOnARandomisedSequence` closes the triangle:
+on a seeded 120-event sequence — sends, removals, fulfillments, reversals, price adjustments, and one
+operation aimed at a line that does not exist — the narrative's non-removed lines equal the projection's
+lines field for field, in the same order, and the totals match. The sequence opens with a fixed prologue
+that guarantees a removed line, a fulfilled line, and an adjusted line, so the coverage assertions hold
+by construction rather than by the seed happening to be kind.
+
+**Three behaviours worth naming.**
+
+*Staged lines carry no price.* §6.5.4 prices every added line server-side from the menu read inside the
+send transaction, so a price captured at staging time would be a second, older authority — and the one
+moment it disagreed with the charge is the moment a guest would notice. The surface renders the current
+menu price beside each staged line instead, which is correct by construction and re-reads itself on
+`MenuChanged`. For the same reason `Build` proposes every added line at **zero**: the transaction
+overwrites it, and sending zero rather than a plausible-looking number means a regression in that
+overwrite shows up as a free lunch on the first order instead of as a stale price nobody spots.
+
+*Stale removal ticks are pruned on every re-read.* A guest ticks a pending line; the kitchen fulfills it
+before they press Send. §6.5.9 refuses the **whole** event on one bad operation, so that one leftover
+tick would make the Send button permanently useless with no explanation. `PruneRemovals` drops marks for
+lines that are no longer the guest's to remove and the surface says so in a sentence. The transaction
+re-decides all of it under the lock regardless; this only moves the answer to the moment of the tap.
+
+*Notes are not validated, at any length.* §7 is explicit that customization notes are free text and are
+"never validated against any rules engine", so `OrderStaging` trims and collapses a blank to `null` —
+exactly what the transaction does — and refuses nothing. The input carries `maxlength="200"` as a
+courtesy against a pasted novel, and the circuit's own message-size limit is the real backstop.
+
+**Live updates.** The island subscribes on `OnAfterRender(firstRender)` — never during prerendering, so
+no subscription is created for a render about to be thrown away — and handles the four §9 notifications
+that can change what is on the screen, filtered on the sitting identifier: `OrderLinesChanged`,
+`LineFulfillmentChanged`, `SittingMemberJoined`, `SittingClosed`, plus `MenuChanged`, which additionally
+re-reads the menu so a staged item picks up its "currently unavailable" mark (§7). One re-read per
+notification, unconditionally: the queries are small, scoped to one sitting, and a restaurant table is
+not a hot path. Nothing publishes `MenuChanged` yet — menu administration is M5 — and the handler is
+wired now because writing it later means remembering to.
+
+**`MoneyText`.** New, and the reason it is not `amount.ToString("C")` is that the framework's currency
+formatting reads the *server's* culture and ignores `RESTAURANT_CURRENCY_CODE` entirely, printing
+dollars for a restaurant configured in euros and doing it silently. A short ISO 4217 → symbol table with
+the code itself as the fallback (`ISK 1200.00`), and the digits always invariant with two decimals,
+because prices are `numeric(10,2)` and a guest checking a bill against a menu board wants them to line
+up.
+
+No migration, no packages, no DI change (every service the island resolves was registered by
+`AddRestaurantOrders()` in Slice 1), and no specification edit — this realizes behaviour §6, §7, §9,
+and §11.1 already specify. Tests: `OrderNarrativeTests` (16 facts including the drift guard, no
+container), `OrderStagingTests` (22 facts and theories, no container), `MoneyTextTests` (10 facts and
+theories, no container).
+
+**Known consequence — a basket dies with the circuit.** Staging is circuit state and is not persisted, so
+a refresh, a phone locking for long enough to drop the WebSocket, or a tab restore empties it. That is
+deliberate: §6 gives an order exactly one persistence mechanism, the append-only event log, and a
+half-composed basket is not an order event. Persisting drafts would mean a second write path, a second
+projection, and a new question — "whose draft is on this table?" — that §11.1 never asks. If it proves
+annoying in real use, the cheap fix is `sessionStorage` on the client, not a table.
+
+**Known consequence — prerendering reads the order twice.** The island prerenders inside the static page
+and then loads again when the circuit starts, so the first paint costs two rounds of the same six
+queries. `TableDisplay` has carried the same cost since M3. Disabling prerender would trade it for a
+visibly empty panel on a phone over a tunnel, which is the worse deal.
+
+**Known consequence — times render in the server's zone, not `RESTAURANT_TIME_ZONE`.** Found while
+building this surface and recorded as **F-36**, not fixed here. Every surface in the tree uses
+`ToLocalTime()`, `RestaurantOptions.ResolveTimeZone()` has no caller, and the runtime container sets no
+`TZ`, so a deployed instance shows a guest UTC. This slice matches the existing convention rather than
+introducing a second one inside a single screen — the static header and the interactive island are one
+page — and the fix, together with the locale question §13 never settles (12- versus 24-hour), lands as
+its own slice before M5.
+
+**Deferred, and why.** §11.1's per-order **Hide** control and the guest's own **history** of past orders
+need `order_visibility_event` writes and a closed-sitting query that reads across sittings; both are
+§6.8 work and belong with the §11.4 hidden-records view that is their only unhide path (M5). The
+committed order renders removals and price adjustments the guest can actually cause today; the surfaces
+that *produce* staff removals and price adjustments — the counter (§11.3) — arrive in M5, so those
+branches are written and tested but cannot yet be exercised through the interface. Guest
+self-registration on the join path (§11.1) is still outstanding from M2: an anonymous scanner is sent to
+`/sign-in` and needs an account already.
+
+### Build/test checklist for this slice
+
+1. `dotnet restore` — **no new packages**, no migration, no schema change, no DI change.
+2. `dotnet build` — `TableOrderSurface.razor` is where a compiler catch would live: it is the first
+   interactive island in the tree (as opposed to a whole interactive page), and the first component with
+   a `<select>`, lambda-bound `@onchange` handlers inside a `@foreach`, and a nested `record` in its
+   `@code` block. `TableJoin.razor` is the second-likeliest, having lost its `<style>` block and gained
+   a child component with `@rendermode`.
+3. `dotnet test` — the previous green set plus three pure suites; none needs a container engine, so
+   none skips.
+4. `./run.sh --smoke` — boots once, verifies `/healthz/ready`, exits.
+5. Manual verification **needs a menu**, and there is still no surface for one until M5. Two rows is
+   enough, and add an inactive one to see §7's rule work:
+
+   ```sql
+   INSERT INTO menu_item (menu_item_identifier, name, price_amount, is_active, created_at)
+   VALUES (gen_random_uuid(), 'Soup',   4.50, true,  now()),
+          (gen_random_uuid(), 'Salad',  6.00, true,  now()),
+          (gen_random_uuid(), 'Salmon', 18.00, false, now());
+   ```
+
+6. Manual, the happy path, on a quick tunnel (`bash scripts/quick_tunnel.sh`) with a phone:
+   - Scan a table's display, sign in, join. The table page now shows **Who is here**, a picker, and an
+     empty basket.
+   - **Salmon** appears in the picker greyed out and reading *(currently unavailable)*, and cannot be
+     selected — §7's "the guest sees that the salmon exists and is out".
+   - Add two Soups with a note and one Salad. The basket shows both with the running amount; **Send**
+     is enabled and names the count.
+   - Send. The status line says what went; the basket empties; the lines appear below badged **With the
+     kitchen**, with the note under each.
+   - Tick **Take this off my order on the next send** on one line, then Send again. It renders
+     struck-through and badged **Removed**, with "Taken off by you".
+7. Manual, live updates — open the same table as a **second** guest in another browser profile:
+   - The first guest's roster gains the second person **without a refresh** (`SittingMemberJoined`).
+   - The second guest orders; the first guest's **the rest of the table** panel and the **table total**
+     move without a refresh (`OrderLinesChanged`).
+8. Manual, refusals and edges:
+   - Set a quantity to `0` or `101` in the basket → refused in place, the row keeps its old quantity.
+   - Deactivate an item in SQL (`UPDATE menu_item SET is_active = false WHERE name = 'Soup';`) **after**
+     staging it, refresh, and Send → the whole batch is refused, the panel names the offending line by
+     description, and **the basket is untouched** (§6.5.9 all-or-nothing).
+   - `UPDATE table_sitting SET closed_at = now() WHERE closed_at IS NULL;` then refresh the table page →
+     the surface flips to **This sitting has been settled**, the picker and Send are gone, and the bill
+     renders read-only.
 
 ################################################################################
 # FILE: docs/adr/0001-single-application-with-areas.md
@@ -14591,6 +14797,240 @@ public static class OrderMutationValidator
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.Domain/Orders/OrderNarrative.cs
+################################################################################
+
+--- METADATA ---
+  File name:             OrderNarrative.cs
+  Relative path:         src/MyRestaurant.Domain/Orders/OrderNarrative.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.Domain/Orders/OrderNarrative.cs
+  Size:                  10.7 KiB (10961 bytes)
+  Last modified:         2026-07-26 19:16:02.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25836154
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               c2af81a967f0a22ef3c3ff709445e22041d2349f9e00413e54531abcd4465fcf
+  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
+
+--- CONTENT ---
+namespace MyRestaurant.Domain.Orders;
+
+/// <summary>
+/// One price adjustment as a reader sees it (TECHNICAL_SPECIFICATION §6.3, §11.1 — "price adjustments
+/// shown old → new with reason").
+///
+/// <para><see cref="PreviousUnitPriceAmount"/> is not stored anywhere: the operation table records only
+/// the new price, so "old" is whatever the line's price was at the moment this adjustment was folded in.
+/// That is exactly why this lives in the fold rather than in a view — the SQL projections answer "what
+/// is the price now", and the arrow needs the step before it.</para>
+/// </summary>
+/// <param name="PreviousUnitPriceAmount">The unit price this adjustment replaced.</param>
+/// <param name="NewUnitPriceAmount">The unit price it set.</param>
+/// <param name="Reason">The required, non-empty reason (§6.5.7).</param>
+/// <param name="ActorRole">Counter or administrator (§6.2 binds the type to those two roles).</param>
+/// <param name="OccurredAt">When the adjusting event was stamped.</param>
+public sealed record NarratedPriceAdjustment(
+    decimal PreviousUnitPriceAmount,
+    decimal NewUnitPriceAmount,
+    string Reason,
+    OrderActorRole ActorRole,
+    DateTimeOffset OccurredAt);
+
+/// <summary>
+/// One line's whole story, folded from the order's event log (TECHNICAL_SPECIFICATION §6.4, §11.1).
+///
+/// <para>This is deliberately <em>not</em> the same thing as <see cref="ProjectedOrderLine"/> or the
+/// <c>order_current_line</c> view. Those answer "what is on the table right now" and drop removed lines
+/// on the floor, which is the correct answer for a bill and the wrong one for a guest: §11.1 asks for
+/// "removed lines struck-through with actor + reason, price adjustments shown old → new with reason".
+/// An append-only log exists so history survives state (ADR-0002), and this record is where that
+/// history reaches a screen.</para>
+///
+/// <para>The two are held in step by construction: <see cref="OrderNarrative.FromEvents"/> folds the
+/// same events in the same order with the same "latest by sequence number wins" rule, and a domain test
+/// asserts that its non-removed lines equal <see cref="OrderProjection.FromEvents"/>'s lines on
+/// randomised sequences — the §8.5 equivalence argument extended one link further.</para>
+/// </summary>
+public sealed record NarratedOrderLine(
+    Guid GuestOrderIdentifier,
+    Guid OrderLineIdentifier,
+    Guid MenuItemIdentifier,
+    int Quantity,
+    decimal OriginalUnitPriceAmount,
+    decimal CurrentUnitPriceAmount,
+    string? CustomizationNote,
+    bool IsFulfilled,
+    DateTimeOffset AddedAt,
+    Guid AddedByOrderEventIdentifier,
+    OrderEventType AddedByEventType,
+    Guid AddedByActorPersonIdentifier,
+    OrderActorRole AddedByActorRole,
+    bool IsRemoved,
+    Guid? RemovedByActorPersonIdentifier,
+    OrderActorRole? RemovedByActorRole,
+    string? RemovalReason,
+    DateTimeOffset? RemovedAt,
+    IReadOnlyList<NarratedPriceAdjustment> PriceAdjustments)
+{
+    /// <summary>Extended line price at the current unit price. Zero once removed — a removed line bills nothing.</summary>
+    public decimal LineTotalAmount => IsRemoved ? 0m : Quantity * CurrentUnitPriceAmount;
+
+    /// <summary>True when at least one <c>price_adjustment</c> has touched this line (§6.3).</summary>
+    public bool IsPriceAdjusted => PriceAdjustments.Count > 0;
+
+    /// <summary>True while the line is on the table and waiting: not removed, not yet fulfilled (§6.4).</summary>
+    public bool IsPending => !IsRemoved && !IsFulfilled;
+
+    /// <summary>
+    /// Whether <paramref name="personIdentifier"/> may mark this line for removal in a
+    /// <c>guest_submission</c> — §6.5.3's rule stated once, on the read side, so the surface can grey
+    /// out what the transaction would refuse instead of offering a control that always fails. The
+    /// transaction re-decides it under the lock regardless; this is courtesy, not enforcement.
+    /// </summary>
+    public bool GuestMayRemove(Guid personIdentifier)
+        => IsPending
+        && AddedByEventType == OrderEventType.GuestSubmission
+        && AddedByActorPersonIdentifier == personIdentifier;
+}
+
+/// <summary>
+/// The pure fold from an order's event log to the per-line narrative §11.1 renders
+/// (TECHNICAL_SPECIFICATION §6.4, §8.5, §11.1). A sibling of <see cref="OrderProjection"/>, not a
+/// replacement: that one answers the question the bill asks, this one answers the question the guest
+/// asks. Neither is the source of truth — the event tables are (ADR-0002).
+/// </summary>
+public static class OrderNarrative
+{
+    /// <summary>
+    /// Every line the order has ever had, removed ones included, ordered the way
+    /// <see cref="OrderProjection.FromEvents"/> orders its lines: by the moment the line was added, then
+    /// by line identifier. Events are folded in ascending <c>sequence_number</c>, so "latest by sequence
+    /// wins" for prices and fulfillment flips, matching the LATERAL sub-selects of
+    /// <c>order_current_line</c> (§8.3).
+    /// </summary>
+    public static IReadOnlyList<NarratedOrderLine> FromEvents(IReadOnlyList<OrderEvent> events)
+    {
+        ArgumentNullException.ThrowIfNull(events);
+
+        Dictionary<Guid, Accumulator> lines = new();
+
+        foreach (OrderEvent orderEvent in events.OrderBy(orderEvent => orderEvent.SequenceNumber))
+        {
+            foreach (OrderOperation operation in orderEvent.Operations)
+            {
+                switch (operation)
+                {
+                    // A repeat add for a line identifier already known is ignored rather than
+                    // overwriting: the identifier IS the line's identity and the schema's UNIQUE
+                    // constraint makes it impossible, but a fold must not depend on that to be total.
+                    case LineAddedOperation added when !lines.ContainsKey(added.OrderLineIdentifier):
+                        lines[added.OrderLineIdentifier] = new Accumulator
+                        {
+                            GuestOrderIdentifier = orderEvent.GuestOrderIdentifier,
+                            OrderLineIdentifier = added.OrderLineIdentifier,
+                            MenuItemIdentifier = added.MenuItemIdentifier,
+                            Quantity = added.Quantity,
+                            OriginalUnitPriceAmount = added.UnitPriceAmount,
+                            CurrentUnitPriceAmount = added.UnitPriceAmount,
+                            CustomizationNote = added.CustomizationNote,
+                            AddedAt = orderEvent.OccurredAt,
+                            AddedByOrderEventIdentifier = orderEvent.OrderEventIdentifier,
+                            AddedByEventType = orderEvent.EventType,
+                            AddedByActorPersonIdentifier = orderEvent.ActorPersonIdentifier,
+                            AddedByActorRole = orderEvent.ActorRole,
+                        };
+                        break;
+
+                    case LineRemovedOperation removed
+                        when lines.TryGetValue(removed.OrderLineIdentifier, out Accumulator? removedLine):
+                        removedLine.IsRemoved = true;
+                        removedLine.RemovedByActorPersonIdentifier = orderEvent.ActorPersonIdentifier;
+                        removedLine.RemovedByActorRole = orderEvent.ActorRole;
+                        removedLine.RemovalReason = removed.Reason;
+                        removedLine.RemovedAt = orderEvent.OccurredAt;
+                        break;
+
+                    case LinePriceAdjustedOperation adjusted
+                        when lines.TryGetValue(adjusted.OrderLineIdentifier, out Accumulator? adjustedLine):
+                        adjustedLine.PriceAdjustments.Add(new NarratedPriceAdjustment(
+                            adjustedLine.CurrentUnitPriceAmount,
+                            adjusted.NewUnitPriceAmount,
+                            adjusted.Reason,
+                            orderEvent.ActorRole,
+                            orderEvent.OccurredAt));
+                        adjustedLine.CurrentUnitPriceAmount = adjusted.NewUnitPriceAmount;
+                        break;
+
+                    case LineFulfilledOperation fulfilled
+                        when lines.TryGetValue(fulfilled.OrderLineIdentifier, out Accumulator? fulfilledLine):
+                        fulfilledLine.IsFulfilled = true;
+                        break;
+
+                    case LineFulfillmentRevertedOperation reverted
+                        when lines.TryGetValue(reverted.OrderLineIdentifier, out Accumulator? revertedLine):
+                        revertedLine.IsFulfilled = false;
+                        break;
+                }
+            }
+        }
+
+        return lines.Values
+            .Select(line => line.ToNarratedLine())
+            .OrderBy(line => line.AddedAt)
+            .ThenBy(line => line.OrderLineIdentifier)
+            .ToArray();
+    }
+
+    /// <summary>Mutable per-line accumulator used only inside the fold.</summary>
+    private sealed class Accumulator
+    {
+        public required Guid GuestOrderIdentifier { get; init; }
+        public required Guid OrderLineIdentifier { get; init; }
+        public required Guid MenuItemIdentifier { get; init; }
+        public required int Quantity { get; init; }
+        public required decimal OriginalUnitPriceAmount { get; init; }
+        public required string? CustomizationNote { get; init; }
+        public required DateTimeOffset AddedAt { get; init; }
+        public required Guid AddedByOrderEventIdentifier { get; init; }
+        public required OrderEventType AddedByEventType { get; init; }
+        public required Guid AddedByActorPersonIdentifier { get; init; }
+        public required OrderActorRole AddedByActorRole { get; init; }
+
+        public required decimal CurrentUnitPriceAmount { get; set; }
+        public bool IsFulfilled { get; set; }
+        public bool IsRemoved { get; set; }
+        public Guid? RemovedByActorPersonIdentifier { get; set; }
+        public OrderActorRole? RemovedByActorRole { get; set; }
+        public string? RemovalReason { get; set; }
+        public DateTimeOffset? RemovedAt { get; set; }
+        public List<NarratedPriceAdjustment> PriceAdjustments { get; } = [];
+
+        public NarratedOrderLine ToNarratedLine() => new(
+            GuestOrderIdentifier,
+            OrderLineIdentifier,
+            MenuItemIdentifier,
+            Quantity,
+            OriginalUnitPriceAmount,
+            CurrentUnitPriceAmount,
+            CustomizationNote,
+            IsFulfilled,
+            AddedAt,
+            AddedByOrderEventIdentifier,
+            AddedByEventType,
+            AddedByActorPersonIdentifier,
+            AddedByActorRole,
+            IsRemoved,
+            RemovedByActorPersonIdentifier,
+            RemovedByActorRole,
+            RemovalReason,
+            RemovedAt,
+            PriceAdjustments.ToArray());
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.Domain/Orders/OrderProjection.cs
 ################################################################################
 
@@ -22001,15 +22441,15 @@ else
   File name:             TableArea.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor
-  Size:                  4.0 KiB (4067 bytes)
-  Last modified:         2026-07-25 19:45:18.000000000 -0400
+  Size:                  4.1 KiB (4188 bytes)
+  Last modified:         2026-07-26 19:09:06.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25362680
+  Inode:                 25836150
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               6fddb91175d16048aafba92290518b35ec0acbbdce8e51301d4bd05709b6af98
-  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
+  SHA-256:               716ebd2ed4fd634397f25a9c66c642ef155b4218295c674a954c0ee86ec72ad0
+  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
 
 --- CONTENT ---
 @page "/table"
@@ -22025,7 +22465,10 @@ else
    Interactive server, unlike /table/{id}: this page sets no cookie and issues no redirect, so it can
    stay on the circuit, and it remains the standing proof that the whole chain — cookie → claims →
    area policy → AuthorizeRouteView → circuit — is live. Anonymous visitors are sent to /sign-in with
-   this page as the return URL. *@
+   this page as the return URL.
+
+   It is deliberately an index and nothing more. Ordering lives one route deeper, on the sitting, and
+   duplicating any of it here would mean a second surface to keep in step with §6. *@
 
 <PageTitle>Your tables</PageTitle>
 
@@ -22048,7 +22491,8 @@ else
     {
         <p class="lede">
             You are part of @_sittings.Count open
-            @(_sittings.Count == 1 ? "sitting" : "sittings"). Pick the table you are at.
+            @(_sittings.Count == 1 ? "sitting" : "sittings"). Pick the table you are at to see the menu,
+            build an order, and watch it come out of the kitchen.
         </p>
 
         <ul class="sitting-list">
@@ -22066,11 +22510,6 @@ else
             }
         </ul>
     }
-
-    <p class="lede">
-        Choosing from the menu, staging items, and sending them to the kitchen arrive with
-        Milestone&nbsp;4.
-    </p>
 
     <p><a href="/">Back to the home page</a></p>
 </section>
@@ -22143,15 +22582,15 @@ else
   File name:             TableJoin.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Table/TableJoin.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Table/TableJoin.razor
-  Size:                  14.2 KiB (14573 bytes)
-  Last modified:         2026-07-25 19:53:44.000000000 -0400
+  Size:                  13.0 KiB (13359 bytes)
+  Last modified:         2026-07-26 19:16:02.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25362679
+  Inode:                 25836149
   Hard links:            1
-  MIME type:             text/plain
-  SHA-256:               d5f0a5a00b8947753a5eeb5db125148a198a88d8da62b3c46d20a501c4df9e6e
-  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
+  MIME type:             text/html
+  SHA-256:               8ba2f35175eddc825d5112718e58f6b0e83bf342d8821bd62ae17b88dba471de
+  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
 
 --- CONTENT ---
 @page "/table/{TableId:guid}"
@@ -22194,8 +22633,15 @@ else
 
    The join itself is a post/redirect/get: the POST consumes the grant, opens or joins the sitting in
    one transaction (§5.1), broadcasts SittingMemberJoined only when a membership row was actually
-   inserted (§9), and redirects back here so a refresh cannot re-post. Building and sending orders on
-   this surface arrives with Milestone 4. *@
+   inserted (§9), and redirects back here so a refresh cannot re-post.
+
+   The MEMBER stage hosts <TableOrderSurface> as an interactive-server island. Everything §11.1 asks
+   for below the join — a basket, a Send that reports per-operation reasons, lines that re-badge when
+   the kitchen fulfills them, a party total that moves when someone else orders, the flip to a settled
+   bill on SittingClosed — is live, and none of it can happen on a statically rendered page. Splitting
+   it this way keeps the cookie work where an HTTP response exists and the live work on a circuit,
+   rather than compromising one for the other. The roster moved into the island for the same reason:
+   §9 sends SittingMemberJoined to table members, and a statically rendered list cannot hear it. *@
 
 <PageTitle>@PageTitleText</PageTitle>
 
@@ -22218,30 +22664,9 @@ else
             </p>
         }
 
-        <p class="lede">
-            Open since @_sitting.OpenedAt.ToLocalTime().ToString("t") —
-            @_roster.Count @(_roster.Count == 1 ? "person" : "people") at the table.
-        </p>
-
-        <h2 class="table-heading">Who is here</h2>
-        <ul class="table-roster">
-            @foreach (SittingMemberSummary member in _roster)
-            {
-                <li>
-                    <span class="table-roster-name">@member.RosterName</span>
-                    <span class="table-roster-joined">joined @member.JoinedAt.ToLocalTime().ToString("t")</span>
-                </li>
-            }
-        </ul>
-
-        <hr class="table-rule" />
-
-        <h2 class="table-heading">Your order</h2>
-        <p class="lede">
-            Choosing from the menu, staging items, and sending them to the kitchen arrive with
-            Milestone&nbsp;4. Your seat at this table is held until the counter closes and settles the
-            sitting.
-        </p>
+        <TableOrderSurface @rendermode="InteractiveServer"
+                           TableId="@TableId"
+                           SittingId="@_sitting.SittingIdentifier" />
 
         <p class="table-back"><a href="/table">All your tables</a></p>
     </section>
@@ -22301,53 +22726,6 @@ else
     </section>
 }
 
-@* Namespaced under .table-* and inline, for the same reason the administration pages keep their CSS
-   inline: App.razor links the static stylesheet, so component CSS isolation is not active. *@
-<style>
-    .table-heading {
-        font-size: 1.05rem;
-        margin: 1.25rem 0 0.35rem;
-    }
-
-    .table-rule {
-        border: 0;
-        border-top: 1px solid var(--hairline, #e2e6ec);
-        margin: 1.5rem 0;
-    }
-
-    .table-roster {
-        list-style: none;
-        margin: 0.5rem 0 0;
-        padding: 0;
-        display: grid;
-        gap: 0.4rem;
-    }
-
-    .table-roster li {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        align-items: baseline;
-        padding: 0.45rem 0.6rem;
-        border: 1px solid var(--hairline, #e2e6ec);
-        border-radius: 0.4rem;
-        background: var(--surface-raised, #ffffff);
-    }
-
-    .table-roster-name {
-        font-weight: 600;
-    }
-
-    .table-roster-joined {
-        font-size: 0.85rem;
-        color: var(--ink-soft, #55636f);
-    }
-
-    .table-back {
-        margin-top: 1.5rem;
-    }
-</style>
-
 @code {
     /// <summary>Which of the §4.4 outcomes this request resolved to. A redirect never reaches a stage.</summary>
     private enum JoinStage
@@ -22365,7 +22743,6 @@ else
     private JoinStage _stage = JoinStage.Expired;
     private RestaurantTableSummary? _table;
     private TableSittingSummary? _sitting;
-    private IReadOnlyList<SittingMemberSummary> _roster = [];
     private int _openSittingMemberCount;
     private bool _justJoined;
 
@@ -22413,7 +22790,8 @@ else
             _sitting = await Sittings.GetOpenSittingForMemberAsync(TableId, member, cancellationToken);
             if (_sitting is not null)
             {
-                _roster = await Sittings.ListMembersAsync(_sitting.SittingIdentifier, cancellationToken);
+                // The roster, the order, and the totals are the island's job from here — this page
+                // stops at "you are a member of this sitting, here is the identifier".
                 _stage = JoinStage.Member;
                 _justJoined = isGet && string.Equals(Joined, "yes", StringComparison.Ordinal);
                 return;
@@ -22525,6 +22903,820 @@ else
         => Grants.TryUnprotect(JoinGrantCookie.Read(HttpContext.Request), out JoinGrant? grant)
             && grant is not null
             && grant.IsUsableFor(TableId, Clock.UtcNow, GrantLifetime);
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
+################################################################################
+
+--- METADATA ---
+  File name:             TableOrderSurface.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
+  Size:                  31.2 KiB (31932 bytes)
+  Last modified:         2026-07-26 19:16:49.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25836151
+  Hard links:            1
+  MIME type:             text/html
+  SHA-256:               714d4d2e31c4917ff93f2af20ecb7713bf7c27fdb56572ba7ad3e66373e14a00
+  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
+
+--- CONTENT ---
+@using System.Globalization
+@using MyRestaurant.DataAccess.Menu
+@using MyRestaurant.DataAccess.Orders
+@using MyRestaurant.DataAccess.Sittings
+@using MyRestaurant.Domain.Identifiers
+@using MyRestaurant.Domain.LiveUpdates
+@using MyRestaurant.Domain.Orders
+@using MyRestaurant.WebApplication.Orders
+@implements IDisposable
+@inject IMenuDirectory MenuDirectory
+@inject IOrderReadModel OrderReads
+@inject IOrderEventLog EventLog
+@inject IOrderWorkflow Workflow
+@inject ISittingDirectory Sittings
+@inject IDomainEventBroadcaster Broadcaster
+@inject IIdentifierFactory Identifiers
+@inject RestaurantOptions Options
+
+@* The guest ordering surface (TECHNICAL_SPECIFICATION §6, §7, §9, §11.1).
+
+   An INTERACTIVE ISLAND inside a static-SSR page, which is the one structural decision in this file
+   worth reading twice. /table/{id} is [ExcludeFromInteractiveRouting] because the join flow writes the
+   grant cookie and issues redirects, and a Blazor circuit can do neither. But everything §11.1 asks for
+   below the join — a basket that survives a mis-tap, a Send that reports per-operation reasons, lines
+   that re-badge when the kitchen fulfills them, a party total that moves when someone else orders — is
+   live. So the page stays static and hosts this component with @@rendermode="InteractiveServer". The
+   parent keeps the cookie work; this keeps the circuit.
+
+   It is deliberately given only the two identifiers it needs and re-derives everything else. The person
+   comes from the cascading authentication state rather than from a parameter, so the component is
+   correct on its own terms and not merely correct because its caller was careful; membership and
+   openness are re-read on every pass, which is what makes the §11.1 flip to a settled view happen
+   without anyone telling this component that the counter closed the sitting.
+
+   Nothing here enforces §6.5. The transaction does, under the lock, against a menu it re-reads there
+   (§6.6). What this surface refuses — an unavailable item, a quantity outside 1–100, a tick on a line
+   that is no longer the guest's to remove — it refuses only so the answer arrives at the moment of the
+   tap instead of after a round trip. *@
+
+@if (!_loaded)
+{
+    <p class="lede">Loading your table…</p>
+}
+else if (_person is null)
+{
+    @* Only reachable if the cookie expired between the page render and the circuit starting. *@
+    <p class="status-error" role="alert">
+        Your session has ended. Please <a href="@AccountRoutes.SignIn">sign in</a> again to see your order.
+    </p>
+}
+else
+{
+    <h2 class="table-heading">Who is here</h2>
+
+    @if (_sitting is not null)
+    {
+        <p class="lede">
+            Open since @_sitting.OpenedAt.ToLocalTime().ToString("t") —
+            @_roster.Count @(_roster.Count == 1 ? "person" : "people") at the table.
+        </p>
+    }
+
+    <ul class="table-roster">
+        @foreach (SittingMemberSummary member in _roster)
+        {
+            <li @key="member.PersonIdentifier">
+                <span class="table-roster-name">@member.RosterName</span>
+                @if (member.PersonIdentifier == Person)
+                {
+                    <span class="chip">you</span>
+                }
+                <span class="table-roster-joined">joined @member.JoinedAt.ToLocalTime().ToString("t")</span>
+            </li>
+        }
+    </ul>
+
+    <hr class="table-rule" />
+
+    @if (_sitting is null)
+    {
+        @* §11.1: "On SittingClosed, the surface flips to a read-only settled-bill view." *@
+        <h2 class="table-heading">This sitting has been settled</h2>
+        <p class="lede">
+            The counter has closed and settled this table, so nothing more can be ordered against it.
+            What was ordered is below, and stays on your history.
+        </p>
+    }
+    else
+    {
+        <h2 class="table-heading">Your order</h2>
+
+        @if (_sendStatus is { } sendStatus)
+        {
+            <p class="status-success" role="status">@sendStatus</p>
+        }
+
+        @if (_rejection is { Count: > 0 })
+        {
+            @* §6.5.9 is all-or-nothing at the granularity of the event, so the honest headline is that
+               nothing at all was written — not that "some items failed". *@
+            <div class="status-error" role="alert">
+                <p class="order-reject-lede">
+                    <strong>Nothing was sent.</strong> A send is accepted or refused as a whole, so your
+                    basket is exactly as you left it. Fix these and send again.
+                </p>
+                <ul class="order-reject-list">
+                    @foreach (RejectedOperation problem in _rejection)
+                    {
+                        <li><strong>@problem.What</strong> — @problem.Reason</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (_pruneNotice is { } pruneNotice)
+        {
+            <p class="status-error" role="status">@pruneNotice</p>
+        }
+
+        @* ---- staging area (§11.1) ------------------------------------------------------------ *@
+        <div class="order-picker">
+            <div class="form-field">
+                <label for="order-picker-item">Item</label>
+                <select id="order-picker-item" @bind="_pickedMenuItemId">
+                    <option value="">Choose something…</option>
+                    @foreach (MenuItemSummary item in _menu)
+                    {
+                        @* §7: a deactivated item stays on the menu, marked, and cannot be picked —
+                           "the guest sees that the salmon exists and is out". *@
+                        <option value="@item.MenuItemIdentifier" disabled="@(!item.IsActive)">
+                            @item.Name — @Money(item.PriceAmount)@(item.IsActive ? string.Empty : " (currently unavailable)")
+                        </option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-field order-picker-quantity">
+                <label for="order-picker-quantity">Quantity</label>
+                <input id="order-picker-quantity" type="number" inputmode="numeric"
+                       min="@OrderStaging.MinimumQuantity" max="@OrderStaging.MaximumQuantity" step="1"
+                       @bind="_pickedQuantity" />
+            </div>
+
+            <div class="form-field">
+                <label for="order-picker-note">Anything to note? <span class="optional">(optional)</span></label>
+                <input id="order-picker-note" type="text" maxlength="200" autocomplete="off"
+                       placeholder="No onions, extra hot…" @bind="_pickedNote" />
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="button-secondary" @onclick="StageItem">Add to basket</button>
+            </div>
+
+            @if (_stagingNotice is { } stagingNotice)
+            {
+                <p class="status-error" role="alert">@stagingNotice</p>
+            }
+        </div>
+
+        @if (_menu.Count == 0)
+        {
+            <p class="muted">
+                There is nothing on the menu yet. Please ask a member of staff.
+            </p>
+        }
+
+        @if (_staging.IsEmpty)
+        {
+            <p class="muted order-basket-empty">
+                Your basket is empty. Pick something above — nothing reaches the kitchen until you press
+                <strong>Send</strong>.
+            </p>
+        }
+        else
+        {
+            <ul class="order-basket">
+                @foreach (StagedOrderLine staged in _staging.Lines)
+                {
+                    MenuItemSummary? item = MenuItem(staged.MenuItemIdentifier);
+
+                    <li class="order-basket-line" @key="staged.StagingIdentifier">
+                        <div class="order-line-main">
+                            <span class="order-line-name">@(item?.Name ?? staged.MenuItemName)</span>
+                            <span class="order-line-price">@Money(StagedLineTotal(staged))</span>
+                        </div>
+
+                        @if (staged.CustomizationNote is { } note)
+                        {
+                            <p class="order-line-note">“@note”</p>
+                        }
+
+                        @if (item is null || !item.IsActive)
+                        {
+                            @* §7: "guest staging areas mark newly-inactive staged items and the send
+                               re-validates server-side regardless". Marked, not silently dropped. *@
+                            <p class="order-line-warning">
+                                This became unavailable while it was in your basket. Take it out, or the
+                                whole send will be refused.
+                            </p>
+                        }
+
+                        <div class="order-basket-controls">
+                            <label class="order-basket-quantity">
+                                <span>Quantity</span>
+                                <input type="number" inputmode="numeric"
+                                       min="@OrderStaging.MinimumQuantity" max="@OrderStaging.MaximumQuantity" step="1"
+                                       value="@staged.Quantity"
+                                       @onchange="args => ChangeStagedQuantity(staged.StagingIdentifier, args)" />
+                            </label>
+                            <button type="button" class="link-button danger"
+                                    @onclick="() => Unstage(staged.StagingIdentifier)">
+                                Take out
+                            </button>
+                        </div>
+                    </li>
+                }
+
+                @foreach (StagedRemoval removal in _staging.Removals)
+                {
+                    <li class="order-basket-line is-removal" @key="removal.OrderLineIdentifier">
+                        <div class="order-line-main">
+                            <span class="order-line-name">Remove @removal.Description</span>
+                        </div>
+                        <div class="order-basket-controls">
+                            <button type="button" class="link-button"
+                                    @onclick="() => _staging.SetMarkedForRemoval(removal.OrderLineIdentifier, removal.Description, false)">
+                                Keep it after all
+                            </button>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+
+        <div class="form-actions order-send">
+            <button type="button" class="button-primary" disabled="@(_staging.IsEmpty || _sending)"
+                    @onclick="SendAsync">
+                @(_sending ? "Sending…" : SendLabel)
+            </button>
+            @if (!_staging.IsEmpty && StagedTotal > 0m)
+            {
+                <span class="order-send-total">@Money(StagedTotal) to add</span>
+            }
+        </div>
+    }
+
+    @* ---- the committed living order (§11.1) ---------------------------------------------------- *@
+    <h3 class="order-subheading">@(_sitting is null ? "What you ordered" : "Sent to the kitchen")</h3>
+
+    @if (_myLines.Count == 0)
+    {
+        <p class="muted">You have not sent anything yet.</p>
+    }
+    else
+    {
+        <ul class="order-lines">
+            @foreach (NarratedOrderLine line in _myLines)
+            {
+                <li class="order-line @(line.IsRemoved ? "is-removed" : string.Empty)" @key="line.OrderLineIdentifier">
+                    <div class="order-line-main">
+                        <span class="order-line-name">@line.Quantity × @MenuItemName(line.MenuItemIdentifier)</span>
+                        <span class="order-line-price">@Money(line.Quantity * line.CurrentUnitPriceAmount)</span>
+                    </div>
+
+                    @if (line.CustomizationNote is { } note)
+                    {
+                        <p class="order-line-note">“@note”</p>
+                    }
+
+                    <p class="order-line-badges">
+                        @if (line.IsRemoved)
+                        {
+                            <span class="chip chip-warn">Removed</span>
+                        }
+                        else if (line.IsFulfilled)
+                        {
+                            <span class="chip chip-ok">At your table</span>
+                        }
+                        else
+                        {
+                            <span class="chip">With the kitchen</span>
+                        }
+                        <span class="order-line-when">sent @line.AddedAt.ToLocalTime().ToString("t")</span>
+                    </p>
+
+                    @if (line.IsRemoved)
+                    {
+                        @* §11.1: "removed lines struck-through with actor + reason". *@
+                        <p class="order-line-detail">
+                            Taken off by @ActorText(line.RemovedByActorRole, line.RemovedByActorPersonIdentifier, Person)@(line.RemovalReason is { } removalReason ? $" — {removalReason}" : string.Empty).
+                        </p>
+                    }
+
+                    @foreach (NarratedPriceAdjustment adjustment in line.PriceAdjustments)
+                    {
+                        @* §11.1: "price adjustments shown old → new with reason". *@
+                        <p class="order-line-detail">
+                            Price changed from <s>@Money(adjustment.PreviousUnitPriceAmount)</s>
+                            to <strong>@Money(adjustment.NewUnitPriceAmount)</strong>
+                            by @DescribeRole(adjustment.ActorRole) — @adjustment.Reason.
+                        </p>
+                    }
+
+                    @if (_sitting is not null && line.GuestMayRemove(Person))
+                    {
+                        <label class="order-line-remove">
+                            <input type="checkbox"
+                                   checked="@_staging.IsMarkedForRemoval(line.OrderLineIdentifier)"
+                                   @onchange="args => ToggleRemoval(line, args)" />
+                            <span>Take this off my order on the next send</span>
+                        </label>
+                    }
+                </li>
+            }
+        </ul>
+    }
+
+    @* ---- totals and the rest of the party (§11.1) ---------------------------------------------- *@
+    @* A <dl> with <div> groupings — dt/dd outside a definition list is invalid HTML5, and the div
+       wrappers are what .order-totals lays out. The same shape .account-facts already uses. *@
+    <dl class="order-totals">
+        <div>
+            <dt>Your total</dt>
+            <dd>@Money(MyTotal)</dd>
+        </div>
+        <div>
+            <dt>Table total</dt>
+            <dd>@Money(TableTotal)</dd>
+        </div>
+    </dl>
+
+    <h3 class="order-subheading">@(_sitting is null ? "The settled bill" : "The rest of the table")</h3>
+
+    @if (OtherPeople.Count == 0)
+    {
+        <p class="muted">Nobody else at this table has ordered yet.</p>
+    }
+    else
+    {
+        <ul class="order-party">
+            @foreach (SittingBillEntry entry in OtherPeople)
+            {
+                <li class="order-party-order" @key="entry.GuestOrderIdentifier">
+                    <div class="order-line-main">
+                        <span class="order-line-name">@entry.BillName</span>
+                        <span class="order-line-price">@Money(entry.PersonTotalAmount)</span>
+                    </div>
+
+                    @{
+                        IReadOnlyList<OrderLineView> theirLines = LinesFor(entry.GuestOrderIdentifier);
+                    }
+
+                    @if (theirLines.Count == 0)
+                    {
+                        <p class="muted">Nothing on their order right now.</p>
+                    }
+                    else
+                    {
+                        <ul class="order-party-lines">
+                            @foreach (OrderLineView theirLine in theirLines)
+                            {
+                                <li @key="theirLine.OrderLineIdentifier">
+                                    <span>@theirLine.Quantity × @theirLine.MenuItemName</span>
+                                    @if (theirLine.IsFulfilled)
+                                    {
+                                        <span class="chip chip-ok">At the table</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="chip">With the kitchen</span>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                </li>
+            }
+        </ul>
+    }
+}
+
+@code {
+    /// <summary>One refused operation, already turned into two readable halves for the panel (§6.5.9).</summary>
+    private sealed record RejectedOperation(string What, string Reason);
+
+    private readonly OrderStaging _staging = new();
+
+    // Captured once, so nothing ever touches _lifetime.Token after Dispose has run — the same shape
+    // TableDisplay uses for its refresh loop.
+    private readonly CancellationTokenSource _lifetime = new();
+    private CancellationToken _stopping;
+    private IDisposable? _subscription;
+    private bool _disposed;
+
+    private Guid? _person;
+    private bool _loaded;
+
+    private IReadOnlyList<MenuItemSummary> _menu = [];
+    private Dictionary<Guid, MenuItemSummary> _menuById = new();
+    private IReadOnlyList<SittingMemberSummary> _roster = [];
+    private TableSittingSummary? _sitting;
+    private Guid? _myOrderIdentifier;
+    private IReadOnlyList<NarratedOrderLine> _myLines = [];
+    private IReadOnlyList<SittingBillEntry> _bill = [];
+    private IReadOnlyList<OrderLineView> _partyLines = [];
+
+    private string _pickedMenuItemId = string.Empty;
+    private int _pickedQuantity = OrderStaging.MinimumQuantity;
+    private string _pickedNote = string.Empty;
+
+    private string? _stagingNotice;
+    private string? _sendStatus;
+    private string? _pruneNotice;
+    private IReadOnlyList<RejectedOperation>? _rejection;
+    private bool _sending;
+
+    /// <summary>The table this surface belongs to — used to re-check membership, never trusted for scoping a read.</summary>
+    [Parameter]
+    [EditorRequired]
+    public Guid TableId { get; set; }
+
+    /// <summary>
+    /// The sitting the parent resolved. Every query is scoped by this rather than by the table, so a
+    /// sitting that closes and is followed by a new one on the same table does not silently swap the
+    /// order under the reader's feet — it flips to the settled view, which is what §11.1 asks for.
+    /// </summary>
+    [Parameter]
+    [EditorRequired]
+    public Guid SittingId { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    /// <summary>
+    /// The signed-in person, for the render tree. Every branch that reads it sits behind an
+    /// <c>_person is null</c> guard; the fallback exists so the property is total rather than relying on
+    /// a pattern variable's definite assignment surviving Razor's generated control flow.
+    /// </summary>
+    private Guid Person => _person ?? Guid.Empty;
+
+    private IReadOnlyList<SittingBillEntry> OtherPeople
+        => _bill.Where(entry => entry.PersonIdentifier != _person).ToArray();
+
+    private decimal MyTotal
+        => _bill.FirstOrDefault(entry => entry.PersonIdentifier == _person)?.PersonTotalAmount ?? 0m;
+
+    private decimal TableTotal => _bill.Sum(entry => entry.PersonTotalAmount);
+
+    private decimal StagedTotal => _staging.Lines.Sum(StagedLineTotal);
+
+    private string SendLabel
+    {
+        get
+        {
+            int count = _staging.OperationCount;
+            return count == 0 ? "Send to the kitchen" : $"Send {count} change{(count == 1 ? string.Empty : "s")}";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _stopping = _lifetime.Token;
+
+        if (AuthenticationStateTask is not null)
+        {
+            AuthenticationState state = await AuthenticationStateTask;
+            _person = PersonPrincipal.IdentifierFor(state.User);
+        }
+
+        if (_person is null)
+        {
+            _loaded = true;
+            return;
+        }
+
+        await LoadMenuAsync();
+        await LoadAsync();
+        _loaded = true;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender || _person is null)
+        {
+            return;
+        }
+
+        // Only on the circuit: OnAfterRender does not run during prerendering, so the subscription is
+        // never created for a render that is about to be thrown away.
+        _subscription = Broadcaster.Subscribe(OnDomainNotification);
+    }
+
+    /// <summary>
+    /// Everything the surface shows, re-read in one pass. Scoped by <see cref="SittingId"/> throughout;
+    /// the only query keyed by the table is the membership/openness check, and its answer is discarded
+    /// unless it names <em>this</em> sitting.
+    /// </summary>
+    private async Task LoadAsync()
+    {
+        if (_person is not { } person)
+        {
+            return;
+        }
+
+        TableSittingSummary? openSitting = await Sittings
+            .GetOpenSittingForMemberAsync(TableId, person, _stopping);
+
+        _sitting = openSitting is not null && openSitting.SittingIdentifier == SittingId ? openSitting : null;
+
+        _roster = await Sittings.ListMembersAsync(SittingId, _stopping);
+
+        _myOrderIdentifier = await OrderReads.FindLivingOrderAsync(SittingId, person, _stopping);
+        _myLines = _myOrderIdentifier is { } orderIdentifier
+            ? OrderNarrative.FromEvents(await EventLog.ReadEventsAsync(orderIdentifier, _stopping))
+            : [];
+
+        _bill = await OrderReads.ListSittingBillAsync(SittingId, _stopping);
+        _partyLines = await OrderReads.ListLinesForSittingAsync(SittingId, _stopping);
+
+        // A tick that has gone stale — the kitchen fulfilled the line, or staff took it off — would
+        // sink every subsequent send, because §6.5.9 refuses the whole event on one bad operation.
+        // Drop those marks and say so, rather than letting the guest press Send into a wall.
+        _pruneNotice = null;
+        int dropped = _staging.PruneRemovals(_myLines
+            .Where(line => line.GuestMayRemove(person))
+            .Select(line => line.OrderLineIdentifier));
+
+        if (dropped > 0)
+        {
+            _pruneNotice = dropped == 1
+                ? "One line you had marked to remove is no longer yours to remove — it has been unticked."
+                : $"{dropped} lines you had marked to remove are no longer yours to remove — they have been unticked.";
+        }
+    }
+
+    private async Task LoadMenuAsync()
+    {
+        _menu = await MenuDirectory.ListAsync(_stopping);
+        _menuById = _menu.ToDictionary(item => item.MenuItemIdentifier);
+    }
+
+    private void StageItem()
+    {
+        _stagingNotice = null;
+
+        if (!Guid.TryParse(_pickedMenuItemId, out Guid menuItemIdentifier)
+            || MenuItem(menuItemIdentifier) is not { } menuItem)
+        {
+            _stagingNotice = "Choose something from the menu first.";
+            return;
+        }
+
+        StagingResult result = _staging.Stage(menuItem, _pickedQuantity, _pickedNote);
+        if (!result.Accepted)
+        {
+            _stagingNotice = result.Reason;
+            return;
+        }
+
+        // A cleared picker is the signal that the tap landed; the basket below is the receipt.
+        _pickedMenuItemId = string.Empty;
+        _pickedQuantity = OrderStaging.MinimumQuantity;
+        _pickedNote = string.Empty;
+        _sendStatus = null;
+        _rejection = null;
+    }
+
+    private void Unstage(Guid stagingIdentifier)
+    {
+        _staging.Unstage(stagingIdentifier);
+        _stagingNotice = null;
+    }
+
+    private void ChangeStagedQuantity(Guid stagingIdentifier, ChangeEventArgs args)
+    {
+        if (!int.TryParse(
+                args.Value?.ToString(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out int quantity))
+        {
+            _stagingNotice = $"Choose a quantity between {OrderStaging.MinimumQuantity} and {OrderStaging.MaximumQuantity}.";
+            return;
+        }
+
+        StagingResult result = _staging.SetQuantity(stagingIdentifier, quantity);
+        _stagingNotice = result.Accepted ? null : result.Reason;
+    }
+
+    private void ToggleRemoval(NarratedOrderLine line, ChangeEventArgs args)
+    {
+        bool marked = args.Value is bool value && value;
+
+        _staging.SetMarkedForRemoval(
+            line.OrderLineIdentifier,
+            $"{line.Quantity} × {MenuItemName(line.MenuItemIdentifier)}",
+            marked);
+
+        _sendStatus = null;
+        _rejection = null;
+    }
+
+    /// <summary>
+    /// §11.1's Send: one <c>guest_submission</c> owning every staged add and every ticked removal,
+    /// through <see cref="IOrderWorkflow"/> so the commit is both counted (§12) and broadcast (§9). The
+    /// basket is cleared only on an accepted event — a refusal leaves it exactly as it was, because
+    /// §6.5.9 wrote nothing and the guest is being asked to restage, not to retype.
+    /// </summary>
+    private async Task SendAsync()
+    {
+        if (_person is not { } person || _staging.IsEmpty || _sending)
+        {
+            return;
+        }
+
+        _sending = true;
+        _sendStatus = null;
+        _rejection = null;
+        _stagingNotice = null;
+
+        try
+        {
+            StagedBatch batch = _staging.Build(Identifiers);
+
+            AppendOrderEventResult result = await Workflow
+                .SubmitGuestBatchAsync(SittingId, person, batch.Operations, _stopping);
+
+            if (result.IsAppended)
+            {
+                _sendStatus = DescribeAcceptedSend(result.LinesAdded, result.LinesRemoved);
+                _staging.Clear();
+            }
+            else
+            {
+                _rejection = DescribeRejection(result, batch);
+            }
+
+            await LoadAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // The circuit went away mid-send. The transaction either committed or did not; either way
+            // there is no longer anyone to tell.
+        }
+        finally
+        {
+            _sending = false;
+        }
+    }
+
+    private static string DescribeAcceptedSend(int added, int removed)
+    {
+        if (added > 0 && removed > 0)
+        {
+            return $"Sent — {added} item{Plural(added)} added and {removed} taken off. The kitchen has been told.";
+        }
+
+        if (added > 0)
+        {
+            return $"Sent — {added} item{Plural(added)} on the way. The kitchen has been told.";
+        }
+
+        return $"Sent — {removed} item{Plural(removed)} taken off. The kitchen has been told.";
+    }
+
+    private static string Plural(int count) => count == 1 ? string.Empty : "s";
+
+    /// <summary>
+    /// Turns a refusal into sentences a guest can act on. <see cref="OrderMutationError.OperationIndex"/>
+    /// indexes the operation list that was sent, and <see cref="StagedBatch.Descriptions"/> was built in
+    /// exactly that order — which is why the batch is kept rather than rebuilt.
+    /// </summary>
+    private static IReadOnlyList<RejectedOperation> DescribeRejection(
+        AppendOrderEventResult result,
+        StagedBatch batch)
+    {
+        if (result.Outcome is AppendOrderEventOutcome.SittingNotFound or AppendOrderEventOutcome.OrderNotFound)
+        {
+            return [new RejectedOperation("This table", "It is no longer taking orders. Please speak to the counter.")];
+        }
+
+        List<RejectedOperation> problems = [];
+
+        foreach (OrderMutationError error in result.Errors)
+        {
+            string what = error.OperationIndex >= 0 && error.OperationIndex < batch.Descriptions.Count
+                ? batch.Descriptions[error.OperationIndex]
+                : "This send";
+
+            problems.Add(new RejectedOperation(what, error.Reason));
+        }
+
+        if (problems.Count == 0)
+        {
+            problems.Add(new RejectedOperation("This send", "It was refused. Please try again."));
+        }
+
+        return problems;
+    }
+
+    /// <summary>
+    /// §9 says which notifications a table member re-queries on. All four that can change what is on
+    /// this screen are handled with one re-read: the queries are small, scoped to one sitting, and a
+    /// restaurant table is not a hot path. <c>MenuChanged</c> additionally re-reads the menu, which is
+    /// how a staged item picks up its "currently unavailable" mark (§7).
+    /// </summary>
+    private void OnDomainNotification(DomainNotification notification)
+    {
+        bool concernsThisTable = notification switch
+        {
+            OrderLinesChanged changed => changed.SittingIdentifier == SittingId,
+            LineFulfillmentChanged changed => changed.SittingIdentifier == SittingId,
+            SittingMemberJoined joined => joined.SittingIdentifier == SittingId,
+            SittingClosed closed => closed.SittingIdentifier == SittingId,
+            MenuChanged => true,
+            _ => false,
+        };
+
+        if (!concernsThisTable)
+        {
+            return;
+        }
+
+        bool menuChanged = notification is MenuChanged;
+
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                if (menuChanged)
+                {
+                    await LoadMenuAsync();
+                }
+
+                await LoadAsync();
+                StateHasChanged();
+            }
+            catch (OperationCanceledException)
+            {
+                // Disposed between the broadcast and the query; nothing to update.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Same, one layer down.
+            }
+        });
+    }
+
+    private MenuItemSummary? MenuItem(Guid menuItemIdentifier)
+        => _menuById.TryGetValue(menuItemIdentifier, out MenuItemSummary? item) ? item : null;
+
+    /// <summary>
+    /// The item's <em>current</em> name, which is what <c>order_current_line</c> joins too (§8.3), so a
+    /// rename reads the same here as on the counter's bill.
+    /// </summary>
+    private string MenuItemName(Guid menuItemIdentifier) => MenuItem(menuItemIdentifier)?.Name ?? "Item";
+
+    /// <summary>
+    /// A staged line's extended price at the price the menu holds <em>now</em> — never a price captured
+    /// when it was staged. §6.5.4 prices the line inside the send transaction, so this is the only
+    /// figure that can honestly be shown before it.
+    /// </summary>
+    private decimal StagedLineTotal(StagedOrderLine staged)
+        => (MenuItem(staged.MenuItemIdentifier)?.PriceAmount ?? 0m) * staged.Quantity;
+
+    private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
+
+    private static string DescribeRole(OrderActorRole role) => role switch
+    {
+        OrderActorRole.Guest => "a guest",
+        OrderActorRole.Kitchen => "the kitchen",
+        OrderActorRole.Counter => "the counter",
+        OrderActorRole.Administrator => "an administrator",
+        _ => "staff",
+    };
+
+    private static string ActorText(OrderActorRole? role, Guid? actor, Guid person)
+        => actor is { } actorIdentifier && actorIdentifier == person
+            ? "you"
+            : DescribeRole(role ?? OrderActorRole.Counter);
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _subscription?.Dispose();
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
 }
 
 ################################################################################
@@ -26164,6 +27356,355 @@ public sealed class RestaurantMetrics : IDisposable
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.WebApplication/Orders/MoneyText.cs
+################################################################################
+
+--- METADATA ---
+  File name:             MoneyText.cs
+  Relative path:         src/MyRestaurant.WebApplication/Orders/MoneyText.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Orders/MoneyText.cs
+  Size:                  2.9 KiB (2963 bytes)
+  Last modified:         2026-07-26 19:16:02.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25836144
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               329fe834df413897e7fcaa3153ea6cf66d05c3fdffa54e1d0305f2edd801ecf7
+  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
+
+--- CONTENT ---
+using System.Globalization;
+
+namespace MyRestaurant.WebApplication.Orders;
+
+/// <summary>
+/// Renders a <c>numeric(10,2)</c> money amount for a screen (TECHNICAL_SPECIFICATION §8.1, §13:
+/// "a single restaurant-wide currency code (<c>RESTAURANT_CURRENCY_CODE</c>, default <c>USD</c>) used
+/// for display only").
+///
+/// <para><b>Why not <see cref="CultureInfo"/>'s currency formatting.</b> The obvious
+/// <c>amount.ToString("C")</c> takes its symbol, its decimal separator, and its symbol placement from
+/// the <em>server's</em> culture, which in this deployment is whatever locale the container image
+/// happens to carry — and it would silently ignore <c>RESTAURANT_CURRENCY_CODE</c> entirely, printing
+/// dollars for a restaurant configured in euros. Building a matching <see cref="RegionInfo"/> from an
+/// ISO 4217 code is not possible in either direction without a lookup table, so the lookup table is
+/// here, small and explicit.</para>
+///
+/// <para>The amount itself is always formatted invariantly with two decimals: prices are stored as
+/// <c>numeric(10,2)</c> and a guest checking a bill against a menu board wants the digits to line up,
+/// not to be grouped or re-separated by a locale nobody chose. An unknown code falls back to the code
+/// and a space — <c>ISK 1200.00</c> — which is unambiguous, and adding a symbol is a one-line change
+/// below.</para>
+/// </summary>
+public static class MoneyText
+{
+    /// <summary>
+    /// ISO 4217 → the symbol to prefix. Deliberately short: the currencies a self-hosted single
+    /// restaurant is most likely to be configured in. This is a display convenience, not a claim to
+    /// completeness, and a missing entry degrades to the code rather than to a wrong symbol.
+    /// </summary>
+    private static readonly Dictionary<string, string> SymbolsByCode = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["AUD"] = "$",
+        ["CAD"] = "$",
+        ["CNY"] = "¥",
+        ["EUR"] = "€",
+        ["GBP"] = "£",
+        ["INR"] = "₹",
+        ["JPY"] = "¥",
+        ["KRW"] = "₩",
+        ["MXN"] = "$",
+        ["NPR"] = "रू",
+        ["NZD"] = "$",
+        ["PHP"] = "₱",
+        ["SGD"] = "$",
+        ["USD"] = "$",
+        ["ZAR"] = "R",
+    };
+
+    /// <summary>
+    /// The amount with its currency marker, e.g. <c>$12.50</c> or <c>ISK 1200.00</c>. A negative amount
+    /// keeps its sign in front of the marker (<c>-$2.00</c>), which is how a correction reads.
+    /// </summary>
+    public static string Format(decimal amount, string? currencyCode)
+    {
+        string marker = SymbolsByCode.TryGetValue(currencyCode ?? string.Empty, out string? symbol)
+            ? symbol
+            : $"{(currencyCode ?? string.Empty).ToUpperInvariant()} ";
+
+        string sign = amount < 0m ? "-" : string.Empty;
+        string digits = Math.Abs(amount).ToString("0.00", CultureInfo.InvariantCulture);
+
+        return string.Concat(sign, marker, digits);
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Orders/OrderStaging.cs
+################################################################################
+
+--- METADATA ---
+  File name:             OrderStaging.cs
+  Relative path:         src/MyRestaurant.WebApplication/Orders/OrderStaging.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Orders/OrderStaging.cs
+  Size:                  11.8 KiB (12059 bytes)
+  Last modified:         2026-07-26 19:16:02.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25836145
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               2502f41395aa47c6475faaae569f87990e757310446dc8fa97b7269ec1046784
+  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
+
+--- CONTENT ---
+using MyRestaurant.DataAccess.Menu;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.Orders;
+
+namespace MyRestaurant.WebApplication.Orders;
+
+/// <summary>
+/// One item a guest has put in the staging area but not yet sent (TECHNICAL_SPECIFICATION §11.1).
+///
+/// <para>It carries <b>no price</b> on purpose. §6.5.4 prices every added line server-side from the menu
+/// read inside the send transaction, so a price captured at staging time would be a second, older
+/// authority — and the one moment it disagreed with the charge would be the moment a guest noticed. The
+/// surface renders the current menu price beside the staged line instead, which is correct by
+/// construction and updates itself when <c>MenuChanged</c> arrives (§7, §9).</para>
+///
+/// <para><see cref="MenuItemName"/> <em>is</em> captured, and only for the rejection panel: those
+/// sentences describe the batch that was actually sent, and after a rename the name at send time is the
+/// truthful label for it.</para>
+/// </summary>
+/// <param name="StagingIdentifier">A client-side key for this row. Not the order line identifier — that is minted at send time.</param>
+/// <param name="MenuItemIdentifier">The chosen item (§7).</param>
+/// <param name="MenuItemName">The item's name when it was staged; a label, never an authority.</param>
+/// <param name="Quantity">1–100 (§6.5.4).</param>
+/// <param name="CustomizationNote">Free text, trimmed, blank collapsed to <c>null</c> (§7).</param>
+public sealed record StagedOrderLine(
+    Guid StagingIdentifier,
+    Guid MenuItemIdentifier,
+    string MenuItemName,
+    int Quantity,
+    string? CustomizationNote);
+
+/// <summary>
+/// One committed line the guest has ticked for removal in the next send (§11.1's
+/// "mark-my-pending-line-for-removal"). The description is captured so the rejection panel can name the
+/// line even if the surface has re-read the order since.
+/// </summary>
+public sealed record StagedRemoval(Guid OrderLineIdentifier, string Description);
+
+/// <summary>Whether a staging request was taken, and if not, the one sentence to show the guest.</summary>
+public sealed record StagingResult(bool Accepted, string? Reason)
+{
+    public static StagingResult Accept { get; } = new(true, null);
+
+    public static StagingResult Refuse(string reason) => new(false, reason);
+}
+
+/// <summary>
+/// The operations of one send, plus a human description per operation in the same order — so a
+/// rejection's <see cref="OrderMutationError.OperationIndex"/> can be turned into "2 × Soup: the menu
+/// item is currently unavailable" instead of "operation 3 failed" (§6.5.9, §11.1).
+/// </summary>
+public sealed record StagedBatch(IReadOnlyList<OrderOperation> Operations, IReadOnlyList<string> Descriptions);
+
+/// <summary>
+/// The guest staging area (TECHNICAL_SPECIFICATION §11.1): what has been picked but not yet sent, and
+/// which committed lines are ticked for removal in the same batch.
+///
+/// <para>It lives outside the Razor component for the reason <c>ProfileDetails</c>,
+/// <c>ObligationsEnforcement</c>, and <c>PairingCode.Normalize</c> do — a Razor component is not
+/// unit-testable in this repository (no bUnit, §16.1), so the parts with decisions in them move out.
+/// The decisions here are small but load-bearing: what may be staged, how a batch becomes an
+/// all-or-nothing list of operations, and which marks must be dropped when the world moves underneath
+/// them.</para>
+///
+/// <para><b>This is circuit state, not stored state.</b> A staged basket lives in the component that
+/// owns this object and dies with the circuit — a refresh empties it. That is deliberate: §6 gives an
+/// order exactly one persistence mechanism, the append-only event log, and a half-composed basket is
+/// not an order event. Persisting drafts would mean a second write path, a second projection, and a new
+/// question ("whose draft is on this table?") that §11.1 never asks.</para>
+///
+/// <para>Nothing here validates: §6.5 is enforced inside the transaction, under the lock, against a
+/// menu re-read there (§6.6). What this class refuses — an inactive item, a quantity outside 1–100 — it
+/// refuses only so the guest is told at the moment they tap rather than after a round trip. The
+/// transaction decides again regardless, and its answer is the one that counts.</para>
+/// </summary>
+public sealed class OrderStaging
+{
+    /// <summary>Mirrors §6.5.4's floor, taken from the validator so the two can never drift.</summary>
+    public const int MinimumQuantity = OrderMutationValidator.MinimumQuantity;
+
+    /// <summary>Mirrors §6.5.4's ceiling, taken from the validator so the two can never drift.</summary>
+    public const int MaximumQuantity = OrderMutationValidator.MaximumQuantity;
+
+    private readonly List<StagedOrderLine> _lines = [];
+    private readonly List<StagedRemoval> _removals = [];
+
+    /// <summary>Items picked but not yet sent, in the order they were picked.</summary>
+    public IReadOnlyList<StagedOrderLine> Lines => _lines;
+
+    /// <summary>Committed lines ticked for removal in the next send, in the order they were ticked.</summary>
+    public IReadOnlyList<StagedRemoval> Removals => _removals;
+
+    /// <summary>True when there is nothing to send — §11.1's "a Send button that is disabled while empty".</summary>
+    public bool IsEmpty => _lines.Count == 0 && _removals.Count == 0;
+
+    /// <summary>How many operations the next send would carry.</summary>
+    public int OperationCount => _lines.Count + _removals.Count;
+
+    /// <summary>
+    /// Puts an item in the staging area. Refuses an inactive item (§7 — visible, unorderable) and a
+    /// quantity outside 1–100 (§6.5.4). The note is trimmed and a blank one collapses to <c>null</c>,
+    /// which is exactly what the transaction would have done to it, so the staged row and the stored row
+    /// read the same. Length is <em>not</em> checked: §7 says a customization note is free text and is
+    /// "never validated against any rules engine", and an unwelcome one is handled by a human walking to
+    /// the table.
+    /// </summary>
+    public StagingResult Stage(MenuItemSummary menuItem, int quantity, string? customizationNote)
+    {
+        ArgumentNullException.ThrowIfNull(menuItem);
+
+        if (!menuItem.IsActive)
+        {
+            return StagingResult.Refuse($"{menuItem.Name} is currently unavailable.");
+        }
+
+        if (quantity is < MinimumQuantity or > MaximumQuantity)
+        {
+            return StagingResult.Refuse($"Choose a quantity between {MinimumQuantity} and {MaximumQuantity}.");
+        }
+
+        _lines.Add(new StagedOrderLine(
+            Guid.NewGuid(),
+            menuItem.MenuItemIdentifier,
+            menuItem.Name,
+            quantity,
+            NormalizeNote(customizationNote)));
+
+        return StagingResult.Accept;
+    }
+
+    /// <summary>Takes a staged item back out. Returns false when the key is unknown (a double tap).</summary>
+    public bool Unstage(Guid stagingIdentifier)
+        => _lines.RemoveAll(line => line.StagingIdentifier == stagingIdentifier) > 0;
+
+    /// <summary>
+    /// Changes a staged item's quantity in place, keeping its position in the basket. Refuses the same
+    /// range <see cref="Stage"/> does.
+    /// </summary>
+    public StagingResult SetQuantity(Guid stagingIdentifier, int quantity)
+    {
+        if (quantity is < MinimumQuantity or > MaximumQuantity)
+        {
+            return StagingResult.Refuse($"Choose a quantity between {MinimumQuantity} and {MaximumQuantity}.");
+        }
+
+        int index = _lines.FindIndex(line => line.StagingIdentifier == stagingIdentifier);
+        if (index < 0)
+        {
+            return StagingResult.Refuse("That item is no longer in your basket.");
+        }
+
+        _lines[index] = _lines[index] with { Quantity = quantity };
+        return StagingResult.Accept;
+    }
+
+    /// <summary>True when this committed line is ticked for removal in the next send.</summary>
+    public bool IsMarkedForRemoval(Guid orderLineIdentifier)
+        => _removals.Any(removal => removal.OrderLineIdentifier == orderLineIdentifier);
+
+    /// <summary>Ticks (or unticks) a committed line for removal. Ticking twice is a no-op, not a duplicate.</summary>
+    public void SetMarkedForRemoval(Guid orderLineIdentifier, string description, bool marked)
+    {
+        if (!marked)
+        {
+            _removals.RemoveAll(removal => removal.OrderLineIdentifier == orderLineIdentifier);
+            return;
+        }
+
+        if (!IsMarkedForRemoval(orderLineIdentifier))
+        {
+            _removals.Add(new StagedRemoval(orderLineIdentifier, description));
+        }
+    }
+
+    /// <summary>
+    /// Drops marks for lines that are no longer the guest's to remove — the kitchen fulfilled one while
+    /// the tick sat there, or staff removed it outright. Without this, one stale tick would sink an
+    /// otherwise-good batch every time, because §6.5.9 rejects the whole event on any failed operation.
+    /// Called by the surface after every re-read; returns how many marks were dropped so it can say so.
+    /// </summary>
+    public int PruneRemovals(IEnumerable<Guid> stillRemovableLineIdentifiers)
+    {
+        ArgumentNullException.ThrowIfNull(stillRemovableLineIdentifiers);
+
+        HashSet<Guid> keep = new(stillRemovableLineIdentifiers);
+        return _removals.RemoveAll(removal => !keep.Contains(removal.OrderLineIdentifier));
+    }
+
+    /// <summary>Empties the staging area — what a committed send leaves behind.</summary>
+    public void Clear()
+    {
+        _lines.Clear();
+        _removals.Clear();
+    }
+
+    /// <summary>
+    /// Turns the staging area into the operations of one <c>guest_submission</c> (§6.3: "one
+    /// guest_submission event owning N added + M removed rows"), adds first then removals, with a
+    /// parallel description per operation for the rejection panel.
+    ///
+    /// <para>Order line identifiers are minted <em>here</em>, at send time, rather than when the item was
+    /// staged: the identifier is the line's identity in the log (§6.4), and a basket that has not been
+    /// sent has no lines yet. A rejected send writes nothing, so a retry mints fresh ones and nothing is
+    /// left dangling.</para>
+    ///
+    /// <para>Every added line is proposed at a price of zero. §6.5.4 says client-sent prices are ignored
+    /// and the transaction overwrites this from the menu it reads under the lock; sending zero rather
+    /// than a plausible-looking number means that if the overwrite ever stopped happening, the bug would
+    /// show up as a free lunch on the first order rather than as a stale price nobody noticed.</para>
+    /// </summary>
+    public StagedBatch Build(IIdentifierFactory identifiers)
+    {
+        ArgumentNullException.ThrowIfNull(identifiers);
+
+        List<OrderOperation> operations = new(OperationCount);
+        List<string> descriptions = new(OperationCount);
+
+        foreach (StagedOrderLine line in _lines)
+        {
+            operations.Add(new LineAddedOperation(
+                identifiers.Create(),
+                line.MenuItemIdentifier,
+                line.Quantity,
+                0m,
+                line.CustomizationNote));
+
+            descriptions.Add($"{line.Quantity} × {line.MenuItemName}");
+        }
+
+        foreach (StagedRemoval removal in _removals)
+        {
+            // §6.3 allows a reason on a removal and §11.1 does not ask the guest for one — a guest
+            // un-ordering their own pending line is self-explanatory, and a required box would be a
+            // question with no reader. Staff removals (§11.3) carry one.
+            operations.Add(new LineRemovedOperation(removal.OrderLineIdentifier, null));
+            descriptions.Add($"Remove {removal.Description}");
+        }
+
+        return new StagedBatch(operations, descriptions);
+    }
+
+    private static string? NormalizeNote(string? note)
+        => string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+}
+
+################################################################################
 # FILE: src/MyRestaurant.WebApplication/Orders/OrderWorkflow.cs
 ################################################################################
 
@@ -27246,15 +28787,15 @@ public static class TablesServiceCollectionExtensions
   File name:             app.css
   Relative path:         src/MyRestaurant.WebApplication/wwwroot/app.css
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/wwwroot/app.css
-  Size:                  18.1 KiB (18570 bytes)
-  Last modified:         2026-07-26 08:53:58.000000000 -0400
+  Size:                  23.8 KiB (24409 bytes)
+  Last modified:         2026-07-26 19:09:33.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25661712
+  Inode:                 25836142
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               5149b0dae6a096078fb763a3516eee7a85826f6893bd41d1e97a888cf8b697f8
-  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
+  SHA-256:               d193e7c5c3c23b13e269a2db2d4c429946e7c19dc9ae1cd92a7eba41b1aaec0e
+  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
 
 --- CONTENT ---
 /*
@@ -28092,6 +29633,279 @@ a:focus-visible,
 
 .account-security-name {
     font-weight: 600;
+}
+
+/* -----------------------------------------------------------------------------
+ * The table surface: roster, staging area, living order, party orders (§11.1).
+ *
+ * These live here rather than inline in the component for one concrete reason:
+ * /table/{id} is a static-SSR page hosting an interactive island, so the markup
+ * is split across two components and an inline <style> in one of them styling
+ * the other's markup would be a dependency nobody could see. The .order-* half
+ * is also what §11.3's counter drill-in and §11.2's kitchen tickets will reuse —
+ * a line badged "with the kitchen" should look the same wherever it is read.
+ * ---------------------------------------------------------------------------*/
+
+.table-heading {
+    font-size: 1.05rem;
+    margin: 1.25rem 0 0.35rem;
+}
+
+.order-subheading {
+    font-size: 0.95rem;
+    margin: 1.5rem 0 0.5rem;
+    letter-spacing: 0.02em;
+}
+
+.table-rule {
+    border: 0;
+    border-top: 1px solid var(--hairline);
+    margin: 1.5rem 0;
+}
+
+.table-roster {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.4rem;
+}
+
+.table-roster li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: baseline;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--hairline);
+    border-radius: 0.4rem;
+    background: var(--surface-raised);
+}
+
+.table-roster-name {
+    font-weight: 600;
+}
+
+.table-roster-joined {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+.table-back {
+    margin-top: 1.5rem;
+}
+
+/* --- the picker and the basket ------------------------------------------------------------------ */
+
+.order-picker {
+    margin: 0.75rem 0 1rem;
+    padding: 0.9rem 1rem 0.4rem;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    background-color: var(--surface-raised);
+}
+
+/* A quantity box wants to be a box, not a full-width text field. */
+.order-picker-quantity input,
+.order-basket-quantity input {
+    width: 6rem;
+}
+
+.order-basket-empty {
+    margin: 0.5rem 0 1rem;
+}
+
+.order-basket,
+.order-lines,
+.order-party {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+}
+
+.order-basket-line,
+.order-line,
+.order-party-order {
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--hairline);
+    border-radius: 0.5rem;
+    background: var(--surface-raised);
+}
+
+/* The basket is a proposal, not a record — dashed, so it never reads as something already sent. */
+.order-basket-line {
+    border-style: dashed;
+}
+
+.order-basket-line.is-removal {
+    background-color: var(--danger-surface);
+    border-color: var(--danger-hairline);
+    color: var(--danger-ink);
+}
+
+.order-basket-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 0.75rem;
+    margin-top: 0.4rem;
+}
+
+.order-basket-quantity {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+.order-send {
+    margin-top: 1rem;
+    align-items: center;
+}
+
+.order-send-total {
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+
+/* --- one committed line -------------------------------------------------------------------------- */
+
+.order-line-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.4rem 0.75rem;
+}
+
+.order-line-name {
+    font-weight: 600;
+}
+
+.order-line-price {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.order-line-note {
+    margin: 0.2rem 0 0;
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+}
+
+.order-line-warning {
+    margin: 0.3rem 0 0;
+    font-size: 0.85rem;
+    color: var(--danger-ink);
+}
+
+.order-line-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.35rem 0 0;
+}
+
+.order-line-when,
+.order-line-detail {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+.order-line-detail {
+    margin: 0.25rem 0 0;
+}
+
+/* §11.1: "removed lines struck-through". The line stays visible — that is the whole point of an
+ * append-only log — but it must never be mistaken for something still on its way. */
+.order-line.is-removed .order-line-name,
+.order-line.is-removed .order-line-price,
+.order-line.is-removed .order-line-note {
+    text-decoration: line-through;
+    color: var(--ink-soft);
+}
+
+.order-line.is-removed {
+    background-color: var(--surface);
+}
+
+.order-line-remove {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.order-line-remove input[type="checkbox"] {
+    width: auto;
+    margin-top: 0.2rem;
+}
+
+/* --- totals and the rest of the party ------------------------------------------------------------- */
+
+.order-totals {
+    display: grid;
+    gap: 0.5rem;
+    margin: 1.25rem 0 0;
+    padding: 0.85rem 0;
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+}
+
+.order-totals > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+}
+
+.order-totals dt {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+
+.order-totals dd {
+    margin: 0;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.order-party-lines {
+    list-style: none;
+    margin: 0.4rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+}
+
+.order-party-lines li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* --- the all-or-nothing rejection panel (§6.5.9) --------------------------------------------------- */
+
+.order-reject-lede {
+    margin: 0 0 0.4rem;
+}
+
+.order-reject-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    display: grid;
+    gap: 0.2rem;
 }
 
 ################################################################################
@@ -35184,6 +36998,428 @@ public sealed class OrderMutationValidatorTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.Domain.Tests/OrderNarrativeTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             OrderNarrativeTests.cs
+  Relative path:         tests/MyRestaurant.Domain.Tests/OrderNarrativeTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.Domain.Tests/OrderNarrativeTests.cs
+  Size:                  17.5 KiB (17934 bytes)
+  Last modified:         2026-07-26 19:11:37.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25836161
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               8f258a391200a24f3e800185f1f47f61afa4ee4758432752e1ccc0ebf2ecc459
+  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
+
+--- CONTENT ---
+using MyRestaurant.Domain.Orders;
+using Xunit;
+using static MyRestaurant.Domain.Tests.OrderTestBuilders;
+
+namespace MyRestaurant.Domain.Tests;
+
+/// <summary>
+/// Tests for <see cref="OrderNarrative"/> — the fold that turns an order's event log into the per-line
+/// story §11.1 renders (TECHNICAL_SPECIFICATION §6.4, §8.5, §11.1).
+///
+/// <para>The load-bearing one is <see cref="NonRemovedLines_AgreeWithOrderProjectionOnARandomisedSequence"/>.
+/// There are now two folds over the same events — this one and <see cref="OrderProjection"/> — and
+/// §8.5's equivalence test only pins <em>that</em> one against the SQL views. Without this test the
+/// guest's screen and the counter's bill could drift apart silently, and the first person to notice
+/// would be a customer being charged something the app had never shown them.</para>
+/// </summary>
+public sealed class OrderNarrativeTests
+{
+    private static readonly Guid Order = Guid.Parse("0192f100-0000-7000-8000-0000000000a1");
+    private static readonly Guid Guest = Guid.Parse("0192f100-0000-7000-8000-0000000000a2");
+    private static readonly Guid OtherGuest = Guid.Parse("0192f100-0000-7000-8000-0000000000a3");
+    private static readonly Guid Staff = Guid.Parse("0192f100-0000-7000-8000-0000000000a4");
+    private static readonly Guid Soup = Guid.Parse("0192f100-0000-7000-8000-0000000000b1");
+    private static readonly Guid Salad = Guid.Parse("0192f100-0000-7000-8000-0000000000b2");
+    private static readonly Guid LineOne = Guid.Parse("0192f100-0000-7000-8000-0000000000c1");
+    private static readonly Guid LineTwo = Guid.Parse("0192f100-0000-7000-8000-0000000000c2");
+
+    [Fact]
+    public void AnEmptyLog_YieldsNoLines()
+        => Assert.Empty(OrderNarrative.FromEvents([]));
+
+    [Fact]
+    public void AGuestSubmission_YieldsAPendingLineCarryingItsCapturedPriceAndNote()
+    {
+        IReadOnlyList<NarratedOrderLine> lines = OrderNarrative.FromEvents([
+            GuestSubmission(Order, 1, Guest, At(0), Add(LineOne, Soup, 2, 4.50m, "extra hot")),
+        ]);
+
+        NarratedOrderLine line = Assert.Single(lines);
+        Assert.Equal(LineOne, line.OrderLineIdentifier);
+        Assert.Equal(Soup, line.MenuItemIdentifier);
+        Assert.Equal(2, line.Quantity);
+        Assert.Equal(4.50m, line.OriginalUnitPriceAmount);
+        Assert.Equal(4.50m, line.CurrentUnitPriceAmount);
+        Assert.Equal("extra hot", line.CustomizationNote);
+        Assert.Equal(9.00m, line.LineTotalAmount);
+
+        Assert.True(line.IsPending);
+        Assert.False(line.IsFulfilled);
+        Assert.False(line.IsRemoved);
+        Assert.False(line.IsPriceAdjusted);
+
+        Assert.Equal(OrderEventType.GuestSubmission, line.AddedByEventType);
+        Assert.Equal(Guest, line.AddedByActorPersonIdentifier);
+        Assert.Equal(OrderActorRole.Guest, line.AddedByActorRole);
+        Assert.Equal(At(0), line.AddedAt);
+    }
+
+    [Fact]
+    public void ARemovedLine_StaysInTheNarrativeWithItsActorAndReason_AndBillsNothing()
+    {
+        // §11.1 wants removed lines struck through with actor and reason — which means the fold must
+        // keep them, unlike order_current_line, which is where the two views deliberately differ.
+        IReadOnlyList<NarratedOrderLine> lines = OrderNarrative.FromEvents([
+            GuestSubmission(Order, 1, Guest, At(0), Add(LineOne, Soup, 1, 4.50m)),
+            StaffEdit(Order, 2, Staff, OrderActorRole.Counter, At(60), Remove(LineOne, "comped — long wait")),
+        ]);
+
+        NarratedOrderLine line = Assert.Single(lines);
+        Assert.True(line.IsRemoved);
+        Assert.False(line.IsPending);
+        Assert.Equal(Staff, line.RemovedByActorPersonIdentifier);
+        Assert.Equal(OrderActorRole.Counter, line.RemovedByActorRole);
+        Assert.Equal("comped — long wait", line.RemovalReason);
+        Assert.Equal(At(60), line.RemovedAt);
+
+        // A removed line contributes nothing to a total, which is what sitting_bill also says (§8.3).
+        Assert.Equal(0m, line.LineTotalAmount);
+    }
+
+    [Fact]
+    public void ARemovalWithoutAReason_LeavesTheReasonNullRatherThanInventingOne()
+    {
+        IReadOnlyList<NarratedOrderLine> lines = OrderNarrative.FromEvents([
+            GuestSubmission(Order, 1, Guest, At(0), Add(LineOne, Soup, 1, 4.50m)),
+            GuestSubmission(Order, 2, Guest, At(30), Remove(LineOne)),
+        ]);
+
+        NarratedOrderLine line = Assert.Single(lines);
+        Assert.True(line.IsRemoved);
+        Assert.Null(line.RemovalReason);
+        Assert.Equal(OrderActorRole.Guest, line.RemovedByActorRole);
+    }
+
+    [Fact]
+    public void PriceAdjustments_RecordOldToNewWithReason_InTheOrderTheyHappened()
+    {
+        IReadOnlyList<NarratedOrderLine> lines = OrderNarrative.FromEvents([
+            GuestSubmission(Order, 1, Guest, At(0), Add(LineOne, Soup, 1, 4.50m)),
+            PriceAdjustment(Order, 2, Staff, OrderActorRole.Counter, At(60), AdjustPrice(LineOne, 3.00m, "half portion")),
+            PriceAdjustment(Order, 3, Staff, OrderActorRole.Administrator, At(120), AdjustPrice(LineOne, 0m, "comped")),
+        ]);
+
+        NarratedOrderLine line = Assert.Single(lines);
+        Assert.True(line.IsPriceAdjusted);
+        Assert.Equal(2, line.PriceAdjustments.Count);
+
+        // The "old" side of the arrow is not stored anywhere — it is the price the fold was holding
+        // when the adjustment arrived, which is exactly why this cannot be answered by a view.
+        Assert.Equal(4.50m, line.PriceAdjustments[0].PreviousUnitPriceAmount);
+        Assert.Equal(3.00m, line.PriceAdjustments[0].NewUnitPriceAmount);
+        Assert.Equal("half portion", line.PriceAdjustments[0].Reason);
+        Assert.Equal(OrderActorRole.Counter, line.PriceAdjustments[0].ActorRole);
+
+        Assert.Equal(3.00m, line.PriceAdjustments[1].PreviousUnitPriceAmount);
+        Assert.Equal(0m, line.PriceAdjustments[1].NewUnitPriceAmount);
+        Assert.Equal(OrderActorRole.Administrator, line.PriceAdjustments[1].ActorRole);
+
+        // The original is kept alongside the current one, so "was 4.50" survives two adjustments.
+        Assert.Equal(4.50m, line.OriginalUnitPriceAmount);
+        Assert.Equal(0m, line.CurrentUnitPriceAmount);
+    }
+
+    [Fact]
+    public void FulfillmentAndReversal_Alternate_AndTheLatestBySequenceWins()
+    {
+        IReadOnlyList<NarratedOrderLine> lines = OrderNarrative.FromEvents([
+            GuestSubmission(Order, 1, Guest, At(0), Add(LineOne, Soup, 1, 4.50m)),
+            Fulfillment(Order, 2, Staff, OrderActorRole.Kitchen, At(60), Fulfill(LineOne)),
+            FulfillmentReversal(Order, 3, Staff, OrderActorRole.Kitchen, At(90), Revert(LineOne)),
+            Fulfillment(Order, 4, Staff, OrderActorRole.Kitchen, At(120), Fulfill(LineOne)),
+        ]);
+
+        NarratedOrderLine line = Assert.Single(lines);
+        Assert.True(line.IsFulfilled);
+        Assert.False(line.IsPending);
+    }
+
+    [Fact]
+    public void EventsAreFoldedBySequenceNumber_NotByTheOrderTheyArriveIn()
+    {
+        // §6.4: "the latest by parent sequence_number". A reader that trusted list order would report a
+        // pending line here, and the guest would be told their food had not arrived when it had.
+        IReadOnlyList<NarratedOrderLine> lines = OrderNarrative.FromEvents([
+            Fulfillment(Order, 3, Staff, OrderActorRole.Kitchen, At(120), Fulfill(LineOne)),
+            GuestSubmission(Order, 1, Guest, At(0), Add(LineOne, Soup, 1, 4.50m)),
+            FulfillmentReversal(Order, 2, Staff, OrderActorRole.Kitchen, At(60), Revert(LineOne)),
+        ]);
+
+        NarratedOrderLine line = Assert.Single(lines);
+        Assert.True(line.IsFulfilled);
+    }
+
+    [Fact]
+    public void OperationsTargetingAnUnknownLine_AreIgnoredRatherThanInventingALine()
+    {
+        Guid stranger = Guid.Parse("0192f100-0000-7000-8000-0000000000ff");
+
+        IReadOnlyList<NarratedOrderLine> lines = OrderNarrative.FromEvents([
+            GuestSubmission(Order, 1, Guest, At(0), Add(LineOne, Soup, 1, 4.50m)),
+            Fulfillment(Order, 2, Staff, OrderActorRole.Kitchen, At(60), Fulfill(stranger)),
+        ]);
+
+        NarratedOrderLine line = Assert.Single(lines);
+        Assert.Equal(LineOne, line.OrderLineIdentifier);
+        Assert.False(line.IsFulfilled);
+    }
+
+    [Fact]
+    public void LinesAreOrderedByWhenTheyWereAdded_ThenByIdentifier()
+    {
+        IReadOnlyList<NarratedOrderLine> lines = OrderNarrative.FromEvents([
+            GuestSubmission(Order, 1, Guest, At(60), Add(LineTwo, Salad, 1, 6.00m)),
+            GuestSubmission(Order, 2, Guest, At(0), Add(LineOne, Soup, 1, 4.50m)),
+        ]);
+
+        Assert.Equal(
+            new[] { LineOne, LineTwo },
+            lines.Select(line => line.OrderLineIdentifier).ToArray());
+    }
+
+    // --- §6.5.3, restated on the read side so a surface can grey out what the transaction would refuse.
+
+    [Fact]
+    public void GuestMayRemove_TheirOwnPendingGuestSubmittedLine()
+    {
+        NarratedOrderLine line = Single(
+            GuestSubmission(Order, 1, Guest, At(0), Add(LineOne, Soup, 1, 4.50m)));
+
+        Assert.True(line.GuestMayRemove(Guest));
+    }
+
+    [Fact]
+    public void GuestMayNotRemove_ALineSomebodyElseAdded()
+    {
+        NarratedOrderLine line = Single(
+            GuestSubmission(Order, 1, OtherGuest, At(0), Add(LineOne, Soup, 1, 4.50m)));
+
+        Assert.False(line.GuestMayRemove(Guest));
+    }
+
+    [Fact]
+    public void GuestMayNotRemove_ALineStaffAddedForThem()
+    {
+        // The actor happens to be the guest's own identifier here, and it still must not qualify: §6.5.3
+        // keys on the adding event being the guest's own guest_submission, not merely on who typed it.
+        NarratedOrderLine line = Single(
+            StaffEdit(Order, 1, Guest, OrderActorRole.Counter, At(0), Add(LineOne, Soup, 1, 4.50m)));
+
+        Assert.False(line.GuestMayRemove(Guest));
+    }
+
+    [Fact]
+    public void GuestMayNotRemove_AFulfilledLine()
+    {
+        NarratedOrderLine line = Single(
+            GuestSubmission(Order, 1, Guest, At(0), Add(LineOne, Soup, 1, 4.50m)),
+            Fulfillment(Order, 2, Staff, OrderActorRole.Kitchen, At(60), Fulfill(LineOne)));
+
+        Assert.False(line.GuestMayRemove(Guest));
+    }
+
+    [Fact]
+    public void GuestMayNotRemove_AnAlreadyRemovedLine()
+    {
+        NarratedOrderLine line = Single(
+            GuestSubmission(Order, 1, Guest, At(0), Add(LineOne, Soup, 1, 4.50m)),
+            GuestSubmission(Order, 2, Guest, At(30), Remove(LineOne)));
+
+        Assert.False(line.GuestMayRemove(Guest));
+    }
+
+    /// <summary>
+    /// The drift guard. Two folds now read the same log — this one for the guest, and
+    /// <see cref="OrderProjection"/> for the bill, whose agreement with the SQL views §8.5 pins. This
+    /// asserts the third edge of that triangle: on a seeded random sequence, the narrative's
+    /// non-removed lines are the projection's lines, field for field and in the same order. Seeded, not
+    /// random, for the reason the §8.5 test is: a projection bug that only reproduces on Tuesdays is
+    /// worse than no test.
+    /// </summary>
+    [Fact]
+    public void NonRemovedLines_AgreeWithOrderProjectionOnARandomisedSequence()
+    {
+        IReadOnlyList<OrderEvent> events = GenerateSequence(seed: 20260726, eventCount: 120);
+
+        IReadOnlyList<NarratedOrderLine> narrated = OrderNarrative.FromEvents(events);
+        ProjectedOrder projected = OrderProjection.FromEvents(events);
+
+        List<NarratedOrderLine> live = narrated.Where(line => !line.IsRemoved).ToList();
+
+        Assert.Equal(projected.Lines.Count, live.Count);
+        Assert.NotEmpty(live);
+
+        for (int index = 0; index < live.Count; index++)
+        {
+            NarratedOrderLine mine = live[index];
+            ProjectedOrderLine theirs = projected.Lines[index];
+
+            Assert.Equal(theirs.OrderLineIdentifier, mine.OrderLineIdentifier);
+            Assert.Equal(theirs.MenuItemIdentifier, mine.MenuItemIdentifier);
+            Assert.Equal(theirs.Quantity, mine.Quantity);
+            Assert.Equal(theirs.CurrentUnitPriceAmount, mine.CurrentUnitPriceAmount);
+            Assert.Equal(theirs.CustomizationNote, mine.CustomizationNote);
+            Assert.Equal(theirs.IsFulfilled, mine.IsFulfilled);
+            Assert.Equal(theirs.AddedAt, mine.AddedAt);
+            Assert.Equal(theirs.AddedByOrderEventIdentifier, mine.AddedByOrderEventIdentifier);
+            Assert.Equal(theirs.LineTotalAmount, mine.LineTotalAmount);
+        }
+
+        // And the totals a guest reads must be the total the bill reads.
+        Assert.Equal(projected.CurrentTotalAmount, live.Sum(line => line.LineTotalAmount));
+
+        // The sequence is only worth anything if it actually exercised every branch.
+        Assert.Contains(narrated, line => line.IsRemoved);
+        Assert.Contains(narrated, line => line.IsFulfilled);
+        Assert.Contains(narrated, line => line.IsPriceAdjusted);
+    }
+
+    private static NarratedOrderLine Single(params OrderEvent[] events)
+        => Assert.Single(OrderNarrative.FromEvents(events));
+
+    /// <summary>
+    /// A deterministic pseudo-random event log. Operations are kept well-formed against the fold's own
+    /// notion of state — a fulfillment targets something pending, a reversal something fulfilled — so
+    /// the sequence looks like a real service rather than noise, and both folds are handed identical
+    /// input either way.
+    /// </summary>
+    private static IReadOnlyList<OrderEvent> GenerateSequence(int seed, int eventCount)
+    {
+        Random random = new(seed);
+        Guid[] menuItems = [Soup, Salad, Guid.Parse("0192f100-0000-7000-8000-0000000000b3")];
+
+        List<OrderEvent> events = [];
+        List<Guid> pending = [];
+        List<Guid> fulfilled = [];
+        List<Guid> live = [];
+
+        // A fixed prologue, so the three coverage assertions above are guaranteed by construction
+        // rather than by the seed happening to be kind. A test whose coverage depends on which
+        // pseudo-random numbers came out is a test that can quietly stop checking anything.
+        Guid prologueRemoved = Guid.NewGuid();
+        Guid prologueFulfilled = Guid.NewGuid();
+        Guid prologueAdjusted = Guid.NewGuid();
+
+        events.Add(GuestSubmission(
+            Order,
+            1,
+            Guest,
+            At(1),
+            Add(prologueRemoved, Soup, 1, 4.50m),
+            Add(prologueFulfilled, Salad, 2, 6.00m, "no dressing"),
+            Add(prologueAdjusted, Soup, 3, 4.50m)));
+
+        events.Add(Fulfillment(Order, 2, Staff, OrderActorRole.Kitchen, At(2), Fulfill(prologueFulfilled)));
+        events.Add(PriceAdjustment(Order, 3, Staff, OrderActorRole.Counter, At(3), AdjustPrice(prologueAdjusted, 3.25m, "half portion")));
+        events.Add(StaffEdit(Order, 4, Staff, OrderActorRole.Counter, At(4), Remove(prologueRemoved, "sent back")));
+
+        live.Add(prologueFulfilled);
+        live.Add(prologueAdjusted);
+        fulfilled.Add(prologueFulfilled);
+        pending.Add(prologueAdjusted);
+
+        for (int sequence = events.Count + 1; sequence <= eventCount; sequence++)
+        {
+            DateTimeOffset occurredAt = At(sequence * 17);
+            int choice = random.Next(0, 100);
+
+            if (choice < 40 || live.Count == 0)
+            {
+                int adds = random.Next(1, 4);
+                List<OrderOperation> operations = [];
+
+                for (int add = 0; add < adds; add++)
+                {
+                    Guid lineIdentifier = Guid.NewGuid();
+                    operations.Add(Add(
+                        lineIdentifier,
+                        menuItems[random.Next(menuItems.Length)],
+                        random.Next(1, 5),
+                        decimal.Round(random.Next(150, 2400) / 100m, 2),
+                        random.Next(0, 3) == 0 ? $"note {sequence}" : null));
+
+                    pending.Add(lineIdentifier);
+                    live.Add(lineIdentifier);
+                }
+
+                events.Add(GuestSubmission(Order, sequence, Guest, occurredAt, [.. operations]));
+                continue;
+            }
+
+            if (choice < 62 && pending.Count > 0)
+            {
+                Guid target = Take(random, pending);
+                fulfilled.Add(target);
+                events.Add(Fulfillment(Order, sequence, Staff, OrderActorRole.Kitchen, occurredAt, Fulfill(target)));
+                continue;
+            }
+
+            if (choice < 74 && fulfilled.Count > 0)
+            {
+                Guid target = Take(random, fulfilled);
+                pending.Add(target);
+                events.Add(FulfillmentReversal(Order, sequence, Staff, OrderActorRole.Kitchen, occurredAt, Revert(target)));
+                continue;
+            }
+
+            if (choice < 88 && live.Count > 0)
+            {
+                Guid target = live[random.Next(live.Count)];
+                events.Add(PriceAdjustment(
+                    Order,
+                    sequence,
+                    Staff,
+                    OrderActorRole.Counter,
+                    occurredAt,
+                    AdjustPrice(target, decimal.Round(random.Next(0, 2400) / 100m, 2), $"adjusted at {sequence}")));
+                continue;
+            }
+
+            Guid removed = Take(random, live);
+            pending.Remove(removed);
+            fulfilled.Remove(removed);
+            events.Add(StaffEdit(
+                Order,
+                sequence,
+                Staff,
+                OrderActorRole.Counter,
+                occurredAt,
+                Remove(removed, random.Next(0, 2) == 0 ? $"removed at {sequence}" : null)));
+        }
+
+        return events;
+    }
+
+    private static Guid Take(Random random, List<Guid> candidates)
+    {
+        int index = random.Next(candidates.Count);
+        Guid value = candidates[index];
+        candidates.RemoveAt(index);
+        return value;
+    }
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.Domain.Tests/OrderProjectionTests.cs
 ################################################################################
 
@@ -38423,6 +40659,473 @@ public sealed class WebAuthnOriginPolicyTests
 </Project>
 
 ################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Orders/MoneyTextTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             MoneyTextTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Orders/MoneyTextTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Orders/MoneyTextTests.cs
+  Size:                  2.4 KiB (2415 bytes)
+  Last modified:         2026-07-26 19:12:47.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25836158
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               862e96e794d885c2ebd17f6a1fbf267b5edf67aa3d9872fe24b90a83d9fe1b83
+  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
+
+--- CONTENT ---
+using MyRestaurant.WebApplication.Orders;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests;
+
+/// <summary>
+/// Unit tests for <see cref="MoneyText"/> (TECHNICAL_SPECIFICATION §8.1, §13 — the currency code is
+/// "display only"). Small, but worth pinning: the whole reason this type exists rather than
+/// <c>ToString("C")</c> is that the framework's currency formatting reads the <em>server's</em> culture
+/// and ignores <c>RESTAURANT_CURRENCY_CODE</c> entirely, which would print dollars for a restaurant
+/// configured in euros and do it silently.
+/// </summary>
+public sealed class MoneyTextTests
+{
+    [Theory]
+    [InlineData("USD", "$4.50")]
+    [InlineData("EUR", "€4.50")]
+    [InlineData("GBP", "£4.50")]
+    [InlineData("JPY", "¥4.50")]
+    [InlineData("INR", "₹4.50")]
+    public void AKnownCode_IsRenderedWithItsSymbol(string currencyCode, string expected)
+        => Assert.Equal(expected, MoneyText.Format(4.50m, currencyCode));
+
+    [Fact]
+    public void AnUnknownCode_FallsBackToTheCodeItself_RatherThanToAWrongSymbol()
+        => Assert.Equal("ISK 1200.00", MoneyText.Format(1200m, "ISK"));
+
+    [Fact]
+    public void TheCodeIsMatchedWithoutRegardToCase()
+        => Assert.Equal("$4.50", MoneyText.Format(4.50m, "usd"));
+
+    [Fact]
+    public void AnUnknownLowerCaseCode_IsUpperCasedInTheFallback()
+        => Assert.Equal("ISK 4.50", MoneyText.Format(4.50m, "isk"));
+
+    [Theory]
+    [InlineData(0, "$0.00")]
+    [InlineData(4, "$4.00")]
+    [InlineData(1200, "$1200.00")]
+    public void TheAmountAlwaysCarriesTwoDecimalsAndIsNeverGrouped(int amount, string expected)
+    {
+        // numeric(10,2) throughout (§8.1), and a guest checking a bill against a menu board wants the
+        // digits to line up rather than to be re-separated by whichever locale the container carries.
+        Assert.Equal(expected, MoneyText.Format(amount, "USD"));
+    }
+
+    [Fact]
+    public void ANegativeAmount_KeepsItsSignInFrontOfTheSymbol()
+        => Assert.Equal("-$2.00", MoneyText.Format(-2.00m, "USD"));
+
+    [Fact]
+    public void AnEmptyCode_DegradesToBareDigitsRatherThanThrowing()
+    {
+        // RestaurantOptions validates the code at startup (§13), so this cannot happen in a running
+        // application — but a formatter that throws on a screen is worse than one that renders plainly.
+        Assert.Equal(" 4.50", MoneyText.Format(4.50m, string.Empty));
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Orders/OrderStagingTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             OrderStagingTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Orders/OrderStagingTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Orders/OrderStagingTests.cs
+  Size:                  13.2 KiB (13470 bytes)
+  Last modified:         2026-07-26 19:12:33.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25836159
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               78370fb7777c053d73b7d2417caf216914fc7a2041d6dce2d210e292fd61c401
+  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
+
+--- CONTENT ---
+using MyRestaurant.DataAccess.Menu;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.Orders;
+using MyRestaurant.WebApplication.Orders;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests;
+
+/// <summary>
+/// Unit tests for <see cref="OrderStaging"/> — the guest's basket (TECHNICAL_SPECIFICATION §6.3,
+/// §6.5.4, §7, §11.1). No database and no rendering: this type exists outside the Razor component
+/// precisely so the decisions in it can be checked here (§16.1 — there is no bUnit in this repository,
+/// so anything with a decision in it moves out of the component).
+///
+/// <para>Two of these protect requirements that fail quietly. <see cref="PruneRemovals"/> is the one
+/// that stops a stale tick from sinking every subsequent send — §6.5.9 refuses the <em>whole</em> event
+/// on one bad operation, so a checkbox left over from before the kitchen fulfilled that line would make
+/// the Send button permanently useless with no explanation. And <see cref="Build"/>'s zero price is the
+/// one that keeps §6.5.4 honest: the transaction is the pricing authority, and sending a
+/// plausible-looking number instead would let a regression there pass unnoticed.</para>
+/// </summary>
+public sealed class OrderStagingTests
+{
+    private static readonly Guid SoupIdentifier = Guid.Parse("0192f200-0000-7000-8000-0000000000a1");
+    private static readonly Guid SaladIdentifier = Guid.Parse("0192f200-0000-7000-8000-0000000000a2");
+    private static readonly Guid LineOne = Guid.Parse("0192f200-0000-7000-8000-0000000000b1");
+    private static readonly Guid LineTwo = Guid.Parse("0192f200-0000-7000-8000-0000000000b2");
+
+    private static readonly MenuItemSummary Soup = Item(SoupIdentifier, "Soup", 4.50m, isActive: true);
+    private static readonly MenuItemSummary Salad = Item(SaladIdentifier, "Salad", 6.00m, isActive: true);
+    private static readonly MenuItemSummary Salmon = Item(Guid.Parse("0192f200-0000-7000-8000-0000000000a3"), "Salmon", 18.00m, isActive: false);
+
+    [Fact]
+    public void ANewStagingArea_IsEmptyAndHasNothingToSend()
+    {
+        OrderStaging staging = new();
+
+        Assert.True(staging.IsEmpty);
+        Assert.Equal(0, staging.OperationCount);
+        Assert.Empty(staging.Lines);
+        Assert.Empty(staging.Removals);
+    }
+
+    [Fact]
+    public void Stage_KeepsTheItemWithATrimmedNote()
+    {
+        OrderStaging staging = new();
+
+        StagingResult result = staging.Stage(Soup, 2, "   extra hot   ");
+
+        Assert.True(result.Accepted);
+        Assert.Null(result.Reason);
+
+        StagedOrderLine line = Assert.Single(staging.Lines);
+        Assert.Equal(SoupIdentifier, line.MenuItemIdentifier);
+        Assert.Equal("Soup", line.MenuItemName);
+        Assert.Equal(2, line.Quantity);
+        Assert.Equal("extra hot", line.CustomizationNote);
+        Assert.NotEqual(Guid.Empty, line.StagingIdentifier);
+
+        Assert.False(staging.IsEmpty);
+        Assert.Equal(1, staging.OperationCount);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Stage_CollapsesABlankNoteToNull_TheSameWayTheTransactionWould(string? note)
+    {
+        OrderStaging staging = new();
+
+        staging.Stage(Soup, 1, note);
+
+        Assert.Null(Assert.Single(staging.Lines).CustomizationNote);
+    }
+
+    [Fact]
+    public void Stage_RefusesAnItemThatIsCurrentlyUnavailable()
+    {
+        // §7: a deactivated item stays visible on the menu and cannot be added to a send.
+        OrderStaging staging = new();
+
+        StagingResult result = staging.Stage(Salmon, 1, null);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("Salmon is currently unavailable.", result.Reason);
+        Assert.Empty(staging.Lines);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(101)]
+    [InlineData(int.MaxValue)]
+    public void Stage_RefusesAQuantityOutsideOneToOneHundred(int quantity)
+    {
+        OrderStaging staging = new();
+
+        StagingResult result = staging.Stage(Soup, quantity, null);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("Choose a quantity between 1 and 100.", result.Reason);
+        Assert.Empty(staging.Lines);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(100)]
+    public void Stage_AcceptsBothEndsOfTheRange(int quantity)
+    {
+        OrderStaging staging = new();
+
+        Assert.True(staging.Stage(Soup, quantity, null).Accepted);
+        Assert.Equal(quantity, Assert.Single(staging.Lines).Quantity);
+    }
+
+    [Fact]
+    public void TheQuantityBoundsAreTheValidatorsOwn_SoTheTwoCannotDrift()
+    {
+        Assert.Equal(OrderMutationValidator.MinimumQuantity, OrderStaging.MinimumQuantity);
+        Assert.Equal(OrderMutationValidator.MaximumQuantity, OrderStaging.MaximumQuantity);
+    }
+
+    [Fact]
+    public void StagingTheSameItemTwice_MakesTwoRows_NotOneDoubled()
+    {
+        // Two portions with different notes are two lines in the log (§6.3), so they are two rows here.
+        OrderStaging staging = new();
+
+        staging.Stage(Soup, 1, "no salt");
+        staging.Stage(Soup, 1, "extra salt");
+
+        Assert.Equal(2, staging.Lines.Count);
+        Assert.Equal(2, staging.OperationCount);
+    }
+
+    [Fact]
+    public void Unstage_TakesOutOnlyThatRow_AndReportsAnUnknownKey()
+    {
+        OrderStaging staging = new();
+        staging.Stage(Soup, 1, null);
+        staging.Stage(Salad, 1, null);
+
+        Guid target = staging.Lines[0].StagingIdentifier;
+
+        Assert.True(staging.Unstage(target));
+        Assert.Equal(SaladIdentifier, Assert.Single(staging.Lines).MenuItemIdentifier);
+
+        Assert.False(staging.Unstage(target));
+    }
+
+    [Fact]
+    public void SetQuantity_ChangesTheRowInPlaceAndKeepsItsPosition()
+    {
+        OrderStaging staging = new();
+        staging.Stage(Soup, 1, "keep me");
+        staging.Stage(Salad, 1, null);
+
+        Guid target = staging.Lines[0].StagingIdentifier;
+
+        Assert.True(staging.SetQuantity(target, 7).Accepted);
+
+        Assert.Equal(SoupIdentifier, staging.Lines[0].MenuItemIdentifier);
+        Assert.Equal(7, staging.Lines[0].Quantity);
+        Assert.Equal("keep me", staging.Lines[0].CustomizationNote);
+        Assert.Equal(target, staging.Lines[0].StagingIdentifier);
+    }
+
+    [Fact]
+    public void SetQuantity_RefusesAnOutOfRangeValueAndLeavesTheRowUntouched()
+    {
+        OrderStaging staging = new();
+        staging.Stage(Soup, 3, null);
+        Guid target = staging.Lines[0].StagingIdentifier;
+
+        StagingResult result = staging.SetQuantity(target, 0);
+
+        Assert.False(result.Accepted);
+        Assert.Equal(3, staging.Lines[0].Quantity);
+    }
+
+    [Fact]
+    public void SetQuantity_RefusesAnUnknownRow()
+    {
+        OrderStaging staging = new();
+
+        StagingResult result = staging.SetQuantity(Guid.NewGuid(), 2);
+
+        Assert.False(result.Accepted);
+        Assert.Equal("That item is no longer in your basket.", result.Reason);
+    }
+
+    [Fact]
+    public void MarkingALineForRemoval_IsIdempotent_AndUntickingTakesItBackOut()
+    {
+        OrderStaging staging = new();
+
+        staging.SetMarkedForRemoval(LineOne, "1 × Soup", marked: true);
+        staging.SetMarkedForRemoval(LineOne, "1 × Soup", marked: true);
+
+        Assert.True(staging.IsMarkedForRemoval(LineOne));
+        Assert.Single(staging.Removals);
+        Assert.Equal(1, staging.OperationCount);
+
+        staging.SetMarkedForRemoval(LineOne, "1 × Soup", marked: false);
+
+        Assert.False(staging.IsMarkedForRemoval(LineOne));
+        Assert.Empty(staging.Removals);
+        Assert.True(staging.IsEmpty);
+    }
+
+    [Fact]
+    public void PruneRemovals_DropsMarksForLinesThatAreNoLongerTheGuestsToRemove()
+    {
+        // The kitchen fulfilled LineTwo while the tick sat there. Left alone, §6.5.9 would refuse every
+        // send from now on, and the guest would have no idea why.
+        OrderStaging staging = new();
+        staging.SetMarkedForRemoval(LineOne, "1 × Soup", marked: true);
+        staging.SetMarkedForRemoval(LineTwo, "1 × Salad", marked: true);
+
+        int dropped = staging.PruneRemovals([LineOne]);
+
+        Assert.Equal(1, dropped);
+        Assert.True(staging.IsMarkedForRemoval(LineOne));
+        Assert.False(staging.IsMarkedForRemoval(LineTwo));
+    }
+
+    [Fact]
+    public void PruneRemovals_DropsNothingWhenEveryMarkIsStillGood()
+    {
+        OrderStaging staging = new();
+        staging.SetMarkedForRemoval(LineOne, "1 × Soup", marked: true);
+
+        Assert.Equal(0, staging.PruneRemovals([LineOne, LineTwo]));
+        Assert.Single(staging.Removals);
+    }
+
+    [Fact]
+    public void PruneRemovals_LeavesStagedAddsAlone()
+    {
+        OrderStaging staging = new();
+        staging.Stage(Soup, 1, null);
+        staging.SetMarkedForRemoval(LineOne, "1 × Soup", marked: true);
+
+        staging.PruneRemovals([]);
+
+        Assert.Single(staging.Lines);
+        Assert.Empty(staging.Removals);
+    }
+
+    [Fact]
+    public void Build_EmitsEveryAddThenEveryRemoval_WithADescriptionPerOperation()
+    {
+        OrderStaging staging = new();
+        staging.Stage(Soup, 2, "extra hot");
+        staging.Stage(Salad, 1, null);
+        staging.SetMarkedForRemoval(LineOne, "1 × Bread", marked: true);
+
+        StagedBatch batch = staging.Build(new CountingIdentifierFactory());
+
+        Assert.Equal(3, batch.Operations.Count);
+        Assert.Equal(3, batch.Descriptions.Count);
+
+        LineAddedOperation first = Assert.IsType<LineAddedOperation>(batch.Operations[0]);
+        Assert.Equal(SoupIdentifier, first.MenuItemIdentifier);
+        Assert.Equal(2, first.Quantity);
+        Assert.Equal("extra hot", first.CustomizationNote);
+
+        LineAddedOperation second = Assert.IsType<LineAddedOperation>(batch.Operations[1]);
+        Assert.Equal(SaladIdentifier, second.MenuItemIdentifier);
+
+        LineRemovedOperation third = Assert.IsType<LineRemovedOperation>(batch.Operations[2]);
+        Assert.Equal(LineOne, third.OrderLineIdentifier);
+
+        // The descriptions are what the rejection panel prints against OperationIndex, so they must be
+        // in exactly the same order as the operations.
+        Assert.Equal("2 × Soup", batch.Descriptions[0]);
+        Assert.Equal("1 × Salad", batch.Descriptions[1]);
+        Assert.Equal("Remove 1 × Bread", batch.Descriptions[2]);
+    }
+
+    [Fact]
+    public void Build_MintsAFreshLineIdentifierForEachAddedLine()
+    {
+        // §6.4: the identifier is the line's identity. Two portions of soup are two lines.
+        OrderStaging staging = new();
+        staging.Stage(Soup, 1, null);
+        staging.Stage(Soup, 1, null);
+
+        StagedBatch batch = staging.Build(new CountingIdentifierFactory());
+
+        Guid[] identifiers = batch.Operations
+            .OfType<LineAddedOperation>()
+            .Select(operation => operation.OrderLineIdentifier)
+            .ToArray();
+
+        Assert.Equal(2, identifiers.Length);
+        Assert.Equal(2, identifiers.Distinct().Count());
+        Assert.DoesNotContain(Guid.Empty, identifiers);
+    }
+
+    [Fact]
+    public void Build_ProposesEveryAddedLineAtZero_BecauseTheTransactionIsThePricingAuthority()
+    {
+        // §6.5.4: "unit_price_amount set server-side from the current menu price (client-sent prices
+        // are ignored)". Sending zero means a regression in that overwrite shows up as a free lunch on
+        // the very first order rather than as a stale price nobody spots.
+        OrderStaging staging = new();
+        staging.Stage(Soup, 3, null);
+
+        StagedBatch batch = staging.Build(new CountingIdentifierFactory());
+
+        Assert.Equal(0m, Assert.IsType<LineAddedOperation>(batch.Operations[0]).UnitPriceAmount);
+    }
+
+    [Fact]
+    public void Build_SendsNoReasonWithAGuestRemoval()
+    {
+        // §11.1 asks the guest to tick a line, not to justify it; §6.3 makes the reason nullable.
+        OrderStaging staging = new();
+        staging.SetMarkedForRemoval(LineOne, "1 × Soup", marked: true);
+
+        StagedBatch batch = staging.Build(new CountingIdentifierFactory());
+
+        Assert.Null(Assert.IsType<LineRemovedOperation>(batch.Operations[0]).Reason);
+    }
+
+    [Fact]
+    public void Build_OnAnEmptyBasket_YieldsNoOperations()
+    {
+        StagedBatch batch = new OrderStaging().Build(new CountingIdentifierFactory());
+
+        Assert.Empty(batch.Operations);
+        Assert.Empty(batch.Descriptions);
+    }
+
+    [Fact]
+    public void Clear_EmptiesBothHalves()
+    {
+        OrderStaging staging = new();
+        staging.Stage(Soup, 1, null);
+        staging.SetMarkedForRemoval(LineOne, "1 × Soup", marked: true);
+
+        staging.Clear();
+
+        Assert.True(staging.IsEmpty);
+        Assert.Empty(staging.Lines);
+        Assert.Empty(staging.Removals);
+    }
+
+    private static MenuItemSummary Item(Guid identifier, string name, decimal price, bool isActive)
+        => new(identifier, name, price, isActive, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+    /// <summary>
+    /// A deterministic stand-in for <see cref="IIdentifierFactory"/> (§16.1 — hand-written fakes, no
+    /// Moq). Real UUIDv7s would be fine too; counting makes a failure message readable.
+    /// </summary>
+    private sealed class CountingIdentifierFactory : IIdentifierFactory
+    {
+        private int _next;
+
+        public Guid Create()
+        {
+            _next++;
+            return Guid.Parse($"0192f200-0000-7000-8000-{_next:D12}");
+        }
+    }
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.WebApplication.Tests/Orders/OrderWorkflowTests.cs
 ################################################################################
 
@@ -39548,10 +42251,10 @@ public sealed class TablesWiringTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 210
-  Total size     : 1.6 MiB (1647627 bytes)
+  Files dumped   : 218
+  Total size     : 1.7 MiB (1760055 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-26T15:15:32-04:00
+  Completed at   : 2026-07-26T19:26:14-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
