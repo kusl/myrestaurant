@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-25T19:21:59-04:00
+  Generated at   : 2026-07-25T20:01:23-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : f789e449ef412d56b1877fc915a7badeed1a4556
-  Commit (short) : f789e44
-  Commit date    : 2026-07-23 10:29:27 -0400
-  Commit message : run scripts
+  Commit (full)  : 4b105347da9945d5cfeaa58b15604d468febd20d
+  Commit (short) : 4b10534
+  Commit date    : 2026-07-25 19:59:03 -0400
+  Commit message : add claude changes
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 167
+  Files included : 176
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (167 included files)
+# FILE TREE  (176 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -550,6 +550,7 @@ cat "$OUTPUT_FILE"
 ├── _CHANGES.md
 ├── compose.yaml
 ├── docs
+│   ├── BUILD_PROGRESS.append.md
 │   ├── BUILD_PROGRESS.md
 │   ├── DOCUMENTATION_REVIEW.md
 │   ├── OPERATIONS.md
@@ -592,6 +593,9 @@ cat "$OUTPUT_FILE"
 │   │   ├── MyRestaurant.DataAccess.csproj
 │   │   ├── NpgsqlDatabaseConnectionFactory.cs
 │   │   ├── SchemaMigrationRunner.cs
+│   │   ├── Sittings
+│   │   │   ├── SittingDirectory.cs
+│   │   │   └── SittingMembership.cs
 │   │   └── Tables
 │   │       ├── TableAdministration.cs
 │   │       ├── TableDirectory.cs
@@ -657,7 +661,8 @@ cat "$OUTPUT_FILE"
 │       │   │   ├── Home.razor
 │       │   │   ├── Setup.razor
 │       │   │   └── Table
-│       │   │       └── TableArea.razor
+│       │   │       ├── TableArea.razor
+│       │   │       └── TableJoin.razor
 │       │   ├── Routes.razor
 │       │   └── _Imports.razor
 │       ├── Configuration
@@ -668,6 +673,7 @@ cat "$OUTPUT_FILE"
 │       │   ├── ObligationsEnforcement.cs
 │       │   ├── ObligationsMiddleware.cs
 │       │   ├── PasskeyContracts.cs
+│       │   ├── PersonPrincipal.cs
 │       │   ├── PublicOriginMiddleware.cs
 │       │   ├── RestaurantAuthenticatorTokenProvider.cs
 │       │   ├── RestaurantClaimsPrincipalFactory.cs
@@ -684,6 +690,7 @@ cat "$OUTPUT_FILE"
 │       ├── Properties
 │       │   └── launchSettings.json
 │       ├── Tables
+│       │   ├── JoinGrant.cs
 │       │   ├── TableJoinTokens.cs
 │       │   └── TablesServiceCollectionExtensions.cs
 │       ├── appsettings.Development.json
@@ -706,6 +713,8 @@ cat "$OUTPUT_FILE"
     │   ├── MyRestaurant.DataAccess.Tests.csproj
     │   ├── PostgreSqlFixture.cs
     │   ├── SchemaMigrationRunnerTests.cs
+    │   ├── Sittings
+    │   │   └── SittingMembershipTests.cs
     │   └── Tables
     │       ├── TableAdministrationTests.cs
     │       └── TableJoinSecretReaderTests.cs
@@ -734,6 +743,7 @@ cat "$OUTPUT_FILE"
         ├── Identity
         │   ├── IdentityWiringTests.cs
         │   ├── ObligationsEnforcementTests.cs
+        │   ├── PersonPrincipalTests.cs
         │   ├── RestaurantAuthenticatorTokenProviderTests.cs
         │   ├── RestaurantClaimsPrincipalFactoryTests.cs
         │   ├── SetupTicketTests.cs
@@ -742,6 +752,7 @@ cat "$OUTPUT_FILE"
         ├── MyRestaurant.WebApplication.Tests.csproj
         ├── RestaurantOptionsTests.cs
         └── Tables
+            ├── JoinGrantTests.cs
             ├── TableJoinTokensTests.cs
             └── TablesWiringTests.cs
 
@@ -2148,71 +2159,86 @@ environment (no toolchain or package feed there). On a networked machine:
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  2.7 KiB (2732 bytes)
-  Last modified:         2026-07-23 01:23:43.000000000 -0400
+  Size:                  3.5 KiB (3553 bytes)
+  Last modified:         2026-07-25 19:53:10.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25103630
+  Inode:                 25362695
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               a9d10e6aa7357f9e751a66594c596cb2f2f6c5778dde9f43d70990b8f46734f2
-  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+  SHA-256:               f102239b5dd839a8df9054f60910cd2e01e0f4cbea489a15d9be5b2f080290db
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
 
 --- CONTENT ---
-# F-06a — passkeys work on Cloudflare quick tunnels (course correction)
+# M3 Slice 3 — join grant, `/table/{id}` routing, sitting open + membership
 
-Every file below is a **full file** at its **repo-relative path**. Drop this folder's
-contents over your working tree (same paths) and rebuild. `git status` will show exactly
-these 17 files as modified/added.
+Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo
+root and the contents drop straight over your working tree. `git status` will show exactly these
+12 files as modified/added (13 counting this one).
 
 ## Files to DELETE
 
 **None.** Every change is an in-place edit or a new file. Nothing is removed or renamed.
-`ResolveWebAuthnRelyingPartyId()` is kept (it now supplies the QR-URL / fallback host,
-not a pinned RP ID), and its existing test is kept. `wwwroot/js/passkey.js` and ADR-0010
-needed no change, so they are not in this bundle.
 
-## New files (2)
+The one file that does not belong in the tree afterwards is `docs/BUILD_PROGRESS.append.md`, which
+exists only to be appended and then removed — see the last section.
 
-- `src/MyRestaurant.WebApplication/Identity/WebAuthnOriginPolicy.cs`
-- `src/MyRestaurant.WebApplication/Identity/PublicOriginMiddleware.cs`
+## New files (7)
+
+### Code (5)
+
+- `src/MyRestaurant.DataAccess/Sittings/SittingDirectory.cs`
+  `TableSittingSummary`, `SittingMemberSummary`, `ISittingDirectory`/`DapperSittingDirectory` (§5.1, §5.2).
+- `src/MyRestaurant.DataAccess/Sittings/SittingMembership.cs`
+  `JoinTableOutcome`, `JoinTableResult`, `ISittingMembership`/`DapperSittingMembership` (§4.4, §5.1).
+- `src/MyRestaurant.WebApplication/Tables/JoinGrant.cs`
+  `JoinGrant`, `JoinGrantProtector`, `JoinGrantCookie` (§4.4).
+- `src/MyRestaurant.WebApplication/Identity/PersonPrincipal.cs`
+  Reads the person identifier off a `ClaimsPrincipal` (§3.1).
+- `src/MyRestaurant.WebApplication/Components/Pages/Table/TableJoin.razor`
+  `/table/{TableId:guid}` — anonymous, static SSR, the whole §4.4 flow plus the member surface.
+
+### Tests (2)
+
+- `tests/MyRestaurant.DataAccess.Tests/Sittings/SittingMembershipTests.cs`  (Testcontainers, 9 facts)
+- `tests/MyRestaurant.WebApplication.Tests/Tables/JoinGrantTests.cs`        (8 facts, no container)
+- `tests/MyRestaurant.WebApplication.Tests/Identity/PersonPrincipalTests.cs` (6 facts, no container)
 
 ## Edited — code (3)
 
-- `src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs`
-- `src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs`
+- `src/MyRestaurant.WebApplication/Tables/TablesServiceCollectionExtensions.cs`
+  Registers `ISittingDirectory`, `ISittingMembership` (scoped) and `JoinGrantProtector` (singleton).
+- `src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor`
+  `/table` becomes the "your open sittings" index; still interactive-server.
 - `src/MyRestaurant.WebApplication/Program.cs`
+  **Comment only.** The `AddRestaurantTables()` note now covers sittings and the grant protector.
 
-## Edited / new — tests (3)
+## Edited — tests (1)
 
-- `tests/MyRestaurant.WebApplication.Tests/Identity/WebAuthnOriginPolicyTests.cs`  (new)
-- `tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs`        (edited)
-- `tests/MyRestaurant.WebApplication.Tests/RestaurantOptionsTests.cs`             (edited)
+- `tests/MyRestaurant.WebApplication.Tests/Tables/TablesWiringTests.cs`
+  Adds an identifier factory and an ephemeral Data-Protection provider to the test container, plus
+  three resolvability facts (`ISittingDirectory`, `ISittingMembership`, `JoinGrantProtector`).
 
-## Edited — scripts & config (4)
+## Docs (1, append-then-delete)
 
-- `scripts/quick_tunnel.sh`  (rewritten: one-command orchestrator; `chmod +x`)
-- `run.sh`                   (comment/banner text only — the quick-tunnel note was wrong)
-- `compose.yaml`             (passes `RESTAURANT_TRUSTED_ORIGIN_PATTERNS` to `web`)
-- `.env.example`             (documents `RESTAURANT_TRUSTED_ORIGIN_PATTERNS`)
+`docs/BUILD_PROGRESS.md` is ~65 KB, so it is not regenerated here. The new section ships separately:
 
-## Edited — docs (5)
+```bash
+cat docs/BUILD_PROGRESS.append.md >> docs/BUILD_PROGRESS.md && rm docs/BUILD_PROGRESS.append.md
+```
 
-- `docs/adr/0005-origins-and-tls-cloudflare-named-tunnel.md`  (rewritten ruling + F-06a revision)
-- `docs/TECHNICAL_SPECIFICATION.md`  (§3.3, §13 table, §14.3, accepted-risks, traceability)
-- `docs/BUILD_PROGRESS.md`           (settled-note, both manual-test items, new Slice 7)
-- `docs/OPERATIONS.md`               (§7 reasoning, §9 precision, §10 runbook)
-- `README.md`                        (one-command demo + corrected passkey framing)
+No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, or ADR edit: this slice realizes
+behaviour §4.4, §5.1, and §9 already specify. No migration (`table_sitting` and `table_sitting_member`
+ship in `0001_initial_schema.sql`). No new packages.
 
 ## The one-line why
 
-`IdentityPasskeyOptions.ServerDomain` was pinned to the boot-time origin host, so the RP ID
-could never match a quick tunnel's per-run `*.trycloudflare.com` hostname. It is now left
-**null**, so the .NET 10 handler derives the RP ID from `Request.Host` per request
-(normalized by `PublicOriginMiddleware`, gated by `ValidateOrigin`) — the same per-request
-approach your GoTunnels project uses. Safe because credentials are RP-ID-scoped by the
-authenticator. The named tunnel remains the production origin for *persistence*, not as a
-passkey prerequisite.
+Scanning a table's QR and joining its party are separated by a sign-in the guest usually has not done
+yet, and by the time they come back the rotating token has rotated away. The join grant is the
+short-lived, encrypted, table-scoped, single-use proof-of-scan that survives that detour — and
+consuming it opens the sitting and inserts the membership in one locked transaction, so two guests
+scanning the same display in the same second end up at the same table rather than racing the
+one-open-sitting-per-table index.
 
 ################################################################################
 # FILE: compose.yaml
@@ -2341,6 +2367,131 @@ volumes:
   caddy-data:
   caddy-config:
   
+
+################################################################################
+# FILE: docs/BUILD_PROGRESS.append.md
+################################################################################
+
+--- METADATA ---
+  File name:             BUILD_PROGRESS.append.md
+  Relative path:         docs/BUILD_PROGRESS.append.md
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.append.md
+  Size:                  8.6 KiB (8757 bytes)
+  Last modified:         2026-07-25 19:52:50.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25362697
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               9af0f20c9ab104b503fca89e5b019289c2320b1d83515c10ba6c103bc394a502
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
+
+--- CONTENT ---
+### M3 Slice 3 — join grant, `/table/{id}` routing, sitting open + membership (landed)
+
+The join flow is now end-to-end (§4.4, §5.1, §9). New `ISittingDirectory`/`DapperSittingDirectory`
+(DataAccess/Sittings) answers the two questions the table surface asks — "is this person already a
+member of this table's open sitting?" (`GetOpenSittingForMemberAsync`, one round trip, the query
+§4.4's "members bypass tokens entirely" rule turns on), "who else is here?" (`ListMembersAsync`,
+join-order roster with a username fallback when no display name is set) — plus `GetOpenSittingAsync`
+and `ListOpenSittingsForPersonAsync` for the confirmation copy and the `/table` index. Every column
+is table-qualified: `table_sitting`, `restaurant_table`, and `table_sitting_member` all carry
+same-named identifier columns, and an unqualified reference across the join is exactly how error
+42702 bites (the `DapperUserStore` lesson). Rows are read into internal row types with `DateTime`
+members and projected to `DateTimeOffset` records, the same Npgsql/Dapper constructor-binding fix
+`TableDirectory` and `PersonDirectory` carry.
+
+New `ISittingMembership`/`DapperSittingMembership` is the single write path a consumed grant flows
+into. One connection, one transaction, one `IClock.UtcNow` instant, UUIDv7 keys from
+`IIdentifierFactory`. §5.1's "atomically" is taken literally: the transaction first takes
+`pg_advisory_xact_lock(hashtext('myrestaurant_table_sitting:{table}'))` — keyed per table, not
+globally, so two tables never block each other — then re-checks `is_active` and re-reads the open
+sitting **under the lock**, so two guests scanning the same display in the same second do not both
+find "no open sitting" and race the `table_sitting_one_open_per_table` partial unique index; the
+loser joins the winner's sitting. Four outcomes: `SittingOpened` (sitting row + first membership),
+`JoinedOpenSitting`, `AlreadyMember` (nothing written — the `UNIQUE (table_sitting_identifier,
+person_identifier)` constraint's promise, so a re-scan or a double submit is a no-op), and
+`TableUnavailable` (unknown or deactivated table, §4.1). `JoinTableResult.MembershipInserted` is the
+exact predicate §9 attaches the broadcast to ("fired on: membership insert"), so an idempotent
+re-join announces nothing. Sittings are not in the person-scoped `security_event` vocabulary (§8.2),
+so nothing is audited here.
+
+New `JoinGrant`/`JoinGrantProtector`/`JoinGrantCookie` (WebApplication/Tables) is the §4.4 grant,
+built exactly like the setup ticket: the payload is the specification's `{table_identifier,
+issued_at}` and nothing more, serialized to JSON, Data-Protection-encrypted under its own purpose
+(`MyRestaurant.Tables.JoinGrant.v1`, distinct from every other protector so a value from one context
+can never be unprotected as another), and carried in a Secure/HttpOnly/SameSite=Lax cookie
+(`myrestaurant.join`) whose `MaxAge` is `TABLE_JOIN_GRANT_MINUTES`. The server never trusts that
+`MaxAge`: the authoritative expiry is the protected `issued_at`, which a guest cannot edit. The
+protector is a singleton (unlike the setup ticket's, which one page constructs ad hoc) because the
+table surface reads it on every request in the flow and the display surface will too.
+
+New static-SSR page `/table/{TableId:guid}` (`Components/Pages/Table/TableJoin.razor`), deliberately
+**anonymous** — §4.4 requires the grant to be issued *before* the detour through sign-in, and a guest
+scanning an unfamiliar table has no account yet. It resolves to one of four states in §4.4's order:
+a member sees the table surface with no query string consulted at all (and a table deactivated
+mid-sitting does not evict them — §4.1 stops *new* tokens and display rendering, not a sitting in
+progress); a signed-in non-member holding a live grant gets the join confirmation; an anonymous
+holder of a live grant is redirected to `/sign-in` with this page as the return URL, grant cookie
+already written; everything else renders the friendly "that code has expired — scan again" page at
+HTTP 200 with one wording for every failure, so an unknown table, a deactivated table, a stale token
+and a forged grant are indistinguishable to a prober. A presented token is validated on GET only —
+the join POST re-posts to the same URL, query string and all, and re-validating there would
+double-count one scan in `table_join_tokens_validated_total`. The join itself is post/redirect/get:
+consume the grant (cleared whatever the outcome, so it cannot be replayed), open-or-join in one
+transaction, publish `SittingMemberJoined` only when a row was inserted, redirect back.
+
+`/table` (`TableArea.razor`) becomes the index it should be: the open sittings this person is a
+member of, oldest first, each linking to its `/table/{id}`. §5.1 allows memberships in several open
+sittings at once, so picking one is a real task. It stays interactive-server (it sets no cookie and
+issues no redirect) and reads the principal through the cascading `Task<AuthenticationState>`, which
+works identically in the prerender pass and on the circuit. New `PersonPrincipal` helper
+(WebApplication/Identity) is the one place the person identifier is read off a principal —
+`ClaimTypes.NameIdentifier`, the default `ClaimsIdentityOptions.UserIdClaimType` this application
+never reconfigures — returning `null` for anonymous, missing, malformed, and all-zero values so every
+caller reads a bad claim as "not signed in".
+
+All four services plus the protector are registered by the existing `AddRestaurantTables()`; the
+`Program.cs` change is its comment. No migration (`table_sitting` and `table_sitting_member` ship in
+0001), no packages, no spec edit — this realizes already-specified behaviour. Tests:
+`SittingMembershipTests` (Testcontainers, 9 facts — first join opens the sitting and inserts the
+first membership with one instant, a second person joins the same sitting, a repeat join is
+idempotent, deactivated and unknown tables write nothing, a new sitting opens after the previous one
+closes, the member/non-member split, the closed-sitting predicates, oldest-first listing scoped to
+one person, and the roster's display-name fallback), `JoinGrantTests` (8 facts — round trip, missing,
+tampered, foreign key ring, foreign purpose, the expiry boundary, the wrong-table refusal, and
+cookie/purpose distinctness from the setup flow), `PersonPrincipalTests` (6 facts), and three added
+resolvability facts in `TablesWiringTests`.
+
+**Known consequence — obligations outrank scanning.** A staff account with an outstanding
+`must_change_password` / `must_enroll_totp` flag that scans a table code is redirected to the
+obligation page before `/table/{id}` runs, so no grant is issued on that request (§3.5: nothing else
+is reachable). The `ReturnUrl` carries the full URL including the token, so clearing the obligation
+lands them back on the scan — and the token still validates if they were quick (worst case ~2× the
+rotation, §4.3). This is the pipeline behaving as specified, not a defect; guests, who have no
+obligations, never meet it.
+
+Deferred to the next M3 slice: display pairing, device auth, and the `/display/{table}` surface with
+its window-aligned QR refresh and party-size chip (§4.2/§11.5) — the chip consumes the
+`SittingMemberJoined` broadcast this slice now publishes. Guest self-registration on the join path
+(§11.1's "sign-in/registration, passkey-first") is still to come; today an anonymous scanner is sent
+to `/sign-in` and needs an existing account.
+
+### Build/test checklist for this slice
+
+- `dotnet build` — green (Razor is the likely site of any compiler catch: `TableJoin.razor` and
+  `TableArea.razor` are the two new/changed components).
+- `dotnet test` — `SittingMembershipTests` needs a container engine; on rootless Podman,
+  `systemctl --user enable --now podman.socket` once. The other three test files never touch one.
+- Manual, end to end: `bash scripts/quick_tunnel.sh`, create a table in `/administration/tables`,
+  open its `/administration/tables/{id}/join-code`, scan it with a phone that is **not** signed in →
+  expect the sign-in page, sign in → expect the join confirmation → Join → expect the table surface
+  with your name on the roster. Then hit `/table/{id}` with no query string at all → still the table
+  surface (the members-bypass rule). Then sign in as a second person and scan the same code → expect
+  the roster to show two people and the sitting count to stay at one.
+- Manual, refusals: scan, wait past `TABLE_JOIN_GRANT_MINUTES`, then Join → the expired page, not an
+  error. Deactivate the table and scan → the expired page. Edit one character of the
+  `myrestaurant.join` cookie → the expired page.
 
 ################################################################################
 # FILE: docs/BUILD_PROGRESS.md
@@ -9262,6 +9413,584 @@ public sealed class SchemaMigrationException : Exception
     public SchemaMigrationException(string message, Exception? innerException)
         : base(message, innerException)
     {
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.DataAccess/Sittings/SittingDirectory.cs
+################################################################################
+
+--- METADATA ---
+  File name:             SittingDirectory.cs
+  Relative path:         src/MyRestaurant.DataAccess/Sittings/SittingDirectory.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Sittings/SittingDirectory.cs
+  Size:                  13.3 KiB (13570 bytes)
+  Last modified:         2026-07-25 19:39:06.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25362684
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               f16652aec6e41def0bd5425d157033bc6d685bbdf262d5b65da86e7a356803e7
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+
+namespace MyRestaurant.DataAccess.Sittings;
+
+/// <summary>
+/// A read-only projection of a <c>table_sitting</c> row for the table surface
+/// (TECHNICAL_SPECIFICATION §5.1, §5.2, §11.1). It carries the table's label so a caller can name the
+/// sitting without a second lookup, and the current member count so the roster size (and the display's
+/// party-size chip, §11.5) is available without loading the roster itself.
+///
+/// <para><see cref="ClosedAt"/> is <c>null</c> while the sitting is open; every query on this interface
+/// filters to open sittings today, but the field is projected rather than dropped so the same record
+/// serves the closed-sitting lookups §5.3/§11.3 add later. The settled total is deliberately absent —
+/// it is a billing projection (<c>sitting_bill</c>, §8.3), not a membership fact.</para>
+/// </summary>
+/// <param name="SittingIdentifier">The sitting's UUIDv7 primary key (ADR-0011).</param>
+/// <param name="TableIdentifier">The table the sitting is on (§4.1).</param>
+/// <param name="TableLabel">That table's unique human label (e.g. "Table 5", §4.1).</param>
+/// <param name="OpenedAt">When the first grant was consumed and the sitting opened (§5.1).</param>
+/// <param name="ClosedAt">When the counter closed and settled it, or <c>null</c> while open (§5.3).</param>
+/// <param name="MemberCount">How many people have joined this sitting (§5.1).</param>
+public sealed record TableSittingSummary(
+    Guid SittingIdentifier,
+    Guid TableIdentifier,
+    string TableLabel,
+    DateTimeOffset OpenedAt,
+    DateTimeOffset? ClosedAt,
+    int MemberCount)
+{
+    /// <summary>True while the sitting is open — nobody has closed and settled it yet (§5.3).</summary>
+    public bool IsOpen => ClosedAt is null;
+}
+
+/// <summary>
+/// One member of a sitting, as the party roster shows them (TECHNICAL_SPECIFICATION §5.2, §11.1).
+/// Both the username and the optional display name are carried so the caller can prefer the display
+/// name and still have something to render when it is absent — see <see cref="RosterName"/>.
+/// </summary>
+/// <param name="PersonIdentifier">The member's person id (ADR-0011).</param>
+/// <param name="Username">The unique <c>citext</c> username (§3.1) — always present.</param>
+/// <param name="DisplayName">The optional human display name (§3.1), or <c>null</c>.</param>
+/// <param name="JoinedAt">When this person's membership row was inserted (§5.1).</param>
+public sealed record SittingMemberSummary(
+    Guid PersonIdentifier,
+    string Username,
+    string? DisplayName,
+    DateTimeOffset JoinedAt)
+{
+    /// <summary>The name to show on the roster: the display name when set, otherwise the username (§5.2).</summary>
+    public string RosterName => string.IsNullOrWhiteSpace(DisplayName) ? Username : DisplayName;
+}
+
+/// <summary>
+/// Reads sittings and their membership (TECHNICAL_SPECIFICATION §5.1, §5.2, §11.1). This is the
+/// read-only reporting companion to <see cref="ISittingMembership"/>, mirroring how
+/// <see cref="Tables.ITableDirectory"/> stands beside <see cref="Tables.ITableAdministration"/>:
+/// answering "is this person already a member here?" and "who is at this table?" is a query, not part
+/// of the join write path, so it lives behind its own interface and is substitutable in tests.
+///
+/// <para><see cref="GetOpenSittingForMemberAsync"/> is the specific query §4.4's "members bypass tokens
+/// entirely" rule needs: one round trip that answers both "is there an open sitting on this table?"
+/// and "is this person in it?", so the table surface can render the order view for a member without
+/// looking at the query string at all.</para>
+/// </summary>
+public interface ISittingDirectory
+{
+    /// <summary>
+    /// The open sitting on a table, or <c>null</c> when none is open (§5.1 — the partial unique index
+    /// <c>table_sitting_one_open_per_table</c> guarantees there is at most one).
+    /// </summary>
+    Task<TableSittingSummary?> GetOpenSittingAsync(Guid tableIdentifier, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The open sitting on a table <b>if</b> the given person is a member of it, otherwise <c>null</c>
+    /// (§4.4: a member reaches the table surface regardless of any token).
+    /// </summary>
+    Task<TableSittingSummary?> GetOpenSittingForMemberAsync(
+        Guid tableIdentifier,
+        Guid personIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every open sitting the person is a member of, oldest first. A person may hold memberships in
+    /// several open sittings at once (§5.1), so the <c>/table</c> index lists them and lets the person
+    /// pick the one they mean.
+    /// </summary>
+    Task<IReadOnlyList<TableSittingSummary>> ListOpenSittingsForPersonAsync(
+        Guid personIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>The sitting's party roster, in join order then username (§5.2).</summary>
+    Task<IReadOnlyList<SittingMemberSummary>> ListMembersAsync(
+        Guid sittingIdentifier,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// The Dapper implementation of <see cref="ISittingDirectory"/>. One connection per call from the
+/// singleton <see cref="IDatabaseConnectionFactory"/>, no transaction (these are lone reads), and
+/// columns aliased to the records' member names so Dapper maps them without
+/// <c>MatchNamesWithUnderscores</c>. Every column reference is table-qualified: <c>table_sitting</c>,
+/// <c>restaurant_table</c>, and <c>table_sitting_member</c> all carry same-named identifier columns, and
+/// an unqualified reference across the join is exactly how PostgreSQL error 42702 (ambiguous column)
+/// bites.
+/// </summary>
+public sealed class DapperSittingDirectory : ISittingDirectory
+{
+    // The member count is a correlated subquery rather than a GROUP BY so the row shape stays flat and
+    // the projection is identical for every query below.
+    private const string SittingColumns = """
+        table_sitting.table_sitting_identifier    AS SittingIdentifier,
+        table_sitting.restaurant_table_identifier AS TableIdentifier,
+        restaurant_table.label                    AS TableLabel,
+        table_sitting.opened_at                   AS OpenedAt,
+        table_sitting.closed_at                   AS ClosedAt,
+        (SELECT count(*)
+         FROM table_sitting_member
+         WHERE table_sitting_member.table_sitting_identifier = table_sitting.table_sitting_identifier)::int
+                                                  AS MemberCount
+        """;
+
+    private const string SittingFrom = """
+        FROM table_sitting
+        INNER JOIN restaurant_table
+                ON restaurant_table.restaurant_table_identifier = table_sitting.restaurant_table_identifier
+        """;
+
+    // Built from the shared fragments at type-init (static readonly, not const) so the column list is
+    // interpolated once without relying on constant-interpolated-string support.
+    private static readonly string OpenSittingByTableSql = $"""
+        SELECT {SittingColumns}
+        {SittingFrom}
+        WHERE table_sitting.restaurant_table_identifier = @TableIdentifier
+          AND table_sitting.closed_at IS NULL;
+        """;
+
+    private static readonly string OpenSittingForMemberSql = $"""
+        SELECT {SittingColumns}
+        {SittingFrom}
+        WHERE table_sitting.restaurant_table_identifier = @TableIdentifier
+          AND table_sitting.closed_at IS NULL
+          AND EXISTS (
+              SELECT 1
+              FROM table_sitting_member
+              WHERE table_sitting_member.table_sitting_identifier = table_sitting.table_sitting_identifier
+                AND table_sitting_member.person_identifier = @PersonIdentifier);
+        """;
+
+    private static readonly string OpenSittingsForPersonSql = $"""
+        SELECT {SittingColumns}
+        {SittingFrom}
+        WHERE table_sitting.closed_at IS NULL
+          AND EXISTS (
+              SELECT 1
+              FROM table_sitting_member
+              WHERE table_sitting_member.table_sitting_identifier = table_sitting.table_sitting_identifier
+                AND table_sitting_member.person_identifier = @PersonIdentifier)
+        ORDER BY table_sitting.opened_at, restaurant_table.label;
+        """;
+
+    private const string MembersSql = """
+        SELECT person.person_identifier        AS PersonIdentifier,
+               person.username                 AS Username,
+               person.display_name             AS DisplayName,
+               table_sitting_member.joined_at  AS JoinedAt
+        FROM table_sitting_member
+        INNER JOIN person
+                ON person.person_identifier = table_sitting_member.person_identifier
+        WHERE table_sitting_member.table_sitting_identifier = @SittingIdentifier
+        ORDER BY table_sitting_member.joined_at, person.username;
+        """;
+
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+
+    public DapperSittingDirectory(IDatabaseConnectionFactory connectionFactory)
+    {
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+        _connectionFactory = connectionFactory;
+    }
+
+    public async Task<TableSittingSummary?> GetOpenSittingAsync(
+        Guid tableIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        TableSittingRow? row = await connection.QuerySingleOrDefaultAsync<TableSittingRow>(new CommandDefinition(
+            OpenSittingByTableSql,
+            new { TableIdentifier = tableIdentifier },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        return row is null ? null : ToSummary(row);
+    }
+
+    public async Task<TableSittingSummary?> GetOpenSittingForMemberAsync(
+        Guid tableIdentifier,
+        Guid personIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        TableSittingRow? row = await connection.QuerySingleOrDefaultAsync<TableSittingRow>(new CommandDefinition(
+            OpenSittingForMemberSql,
+            new { TableIdentifier = tableIdentifier, PersonIdentifier = personIdentifier },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        return row is null ? null : ToSummary(row);
+    }
+
+    public async Task<IReadOnlyList<TableSittingSummary>> ListOpenSittingsForPersonAsync(
+        Guid personIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        IEnumerable<TableSittingRow> rows = await connection.QueryAsync<TableSittingRow>(new CommandDefinition(
+            OpenSittingsForPersonSql,
+            new { PersonIdentifier = personIdentifier },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        return rows.Select(ToSummary).ToArray();
+    }
+
+    public async Task<IReadOnlyList<SittingMemberSummary>> ListMembersAsync(
+        Guid sittingIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        IEnumerable<SittingMemberRow> rows = await connection.QueryAsync<SittingMemberRow>(new CommandDefinition(
+            MembersSql,
+            new { SittingIdentifier = sittingIdentifier },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        return rows.Select(ToSummary).ToArray();
+    }
+
+    // Npgsql materialises a `timestamptz` column as a UTC `DateTime`, and Dapper's constructor binding
+    // will not feed a `DateTime` into a `DateTimeOffset` parameter — so the rows below are read with
+    // `DateTime` members that match the reader exactly, then projected to the public `DateTimeOffset`
+    // records here. The stored instants are UTC, so the offset is zero (SpecifyKind guards against a
+    // non-UTC Kind arriving from a future provider change).
+    private static TableSittingSummary ToSummary(TableSittingRow row) => new(
+        row.SittingIdentifier,
+        row.TableIdentifier,
+        row.TableLabel,
+        AsUtc(row.OpenedAt),
+        row.ClosedAt is { } closedAt ? AsUtc(closedAt) : null,
+        row.MemberCount);
+
+    private static SittingMemberSummary ToSummary(SittingMemberRow row) => new(
+        row.PersonIdentifier,
+        row.Username,
+        row.DisplayName,
+        AsUtc(row.JoinedAt));
+
+    private static DateTimeOffset AsUtc(DateTime value)
+        => new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+
+    // Dapper maps these positional records by constructor-parameter name (case-insensitive) against the
+    // aliased columns above; their members mirror what Npgsql returns for each column type.
+    private sealed record TableSittingRow(
+        Guid SittingIdentifier,
+        Guid TableIdentifier,
+        string TableLabel,
+        DateTime OpenedAt,
+        DateTime? ClosedAt,
+        int MemberCount);
+
+    private sealed record SittingMemberRow(
+        Guid PersonIdentifier,
+        string Username,
+        string? DisplayName,
+        DateTime JoinedAt);
+}
+
+################################################################################
+# FILE: src/MyRestaurant.DataAccess/Sittings/SittingMembership.cs
+################################################################################
+
+--- METADATA ---
+  File name:             SittingMembership.cs
+  Relative path:         src/MyRestaurant.DataAccess/Sittings/SittingMembership.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Sittings/SittingMembership.cs
+  Size:                  11.4 KiB (11685 bytes)
+  Last modified:         2026-07-25 19:39:49.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25362683
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               1592c4ce9710c2c33d060015e5913037be912eb1b53bef43ca80ea88731f7cb5
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.Time;
+
+namespace MyRestaurant.DataAccess.Sittings;
+
+/// <summary>What happened when a consumed join grant was turned into membership (§4.4, §5.1).</summary>
+public enum JoinTableOutcome
+{
+    /// <summary>
+    /// No sitting was open on the table, so one was created and this person became its first member —
+    /// both in the same transaction (§5.1: "the first consumed grant … creates <c>table_sitting</c> and
+    /// the first membership atomically").
+    /// </summary>
+    SittingOpened,
+
+    /// <summary>A sitting was already open and this person was added to it (§5.1).</summary>
+    JoinedOpenSitting,
+
+    /// <summary>
+    /// The person was already a member of the open sitting, so nothing was written — the
+    /// <c>UNIQUE (table_sitting_identifier, person_identifier)</c> constraint makes a double join
+    /// idempotent (§5.1), and re-scanning a code must not be an error.
+    /// </summary>
+    AlreadyMember,
+
+    /// <summary>
+    /// No <b>active</b> table has that identifier, so there is nothing to join: it never existed, or it
+    /// has been deactivated (§4.1 — deactivating stops token validation and display rendering, and by
+    /// the same rule stops new sittings and joins). Nothing was written.
+    /// </summary>
+    TableUnavailable,
+}
+
+/// <summary>
+/// The result of a join attempt: what happened, and which sitting the person is now in.
+/// </summary>
+/// <param name="Outcome">Which of the four §4.4/§5.1 cases occurred.</param>
+/// <param name="SittingIdentifier">
+/// The sitting the person belongs to, or <c>null</c> for <see cref="JoinTableOutcome.TableUnavailable"/>.
+/// </param>
+public sealed record JoinTableResult(JoinTableOutcome Outcome, Guid? SittingIdentifier)
+{
+    /// <summary>
+    /// True when a <c>table_sitting_member</c> row was actually inserted — the exact condition
+    /// §9 attaches the <c>SittingMemberJoined</c> broadcast to ("fired on: membership insert"). An
+    /// idempotent re-join inserts nothing and therefore broadcasts nothing.
+    /// </summary>
+    public bool MembershipInserted =>
+        Outcome is JoinTableOutcome.SittingOpened or JoinTableOutcome.JoinedOpenSitting;
+
+    /// <summary>True when the person is a member of <see cref="SittingIdentifier"/> after this call.</summary>
+    public bool IsMember => MembershipInserted || Outcome is JoinTableOutcome.AlreadyMember;
+}
+
+/// <summary>
+/// Turns a consumed join grant into sitting membership (TECHNICAL_SPECIFICATION §4.4, §5.1). This is
+/// the single write path the join flow drives: the caller has already validated the token, issued the
+/// grant, authenticated the person, and confirmed the grant matches this table — everything left is one
+/// atomic database decision, which is what lives here.
+///
+/// <para>The atomicity §5.1 asks for is real: "open a sitting if none is open, then insert membership"
+/// is a read-then-write race between two guests scanning the same table at the same instant. The
+/// implementation serializes on a per-table transaction-scoped advisory lock (the same device
+/// <c>/setup</c> uses for the zero-administrator gate, §3.6) and re-reads the open sitting under it, so
+/// the loser of the race joins the winner's sitting instead of tripping the
+/// <c>table_sitting_one_open_per_table</c> partial unique index.</para>
+///
+/// <para>Sittings are not part of the person-scoped <c>security_event</c> vocabulary (§8.2), so no audit
+/// row is written here; the live-update broadcast is the web layer's job, after commit (§9).</para>
+/// </summary>
+public interface ISittingMembership
+{
+    /// <summary>
+    /// Joins <paramref name="personIdentifier"/> to the open sitting on <paramref name="tableIdentifier"/>,
+    /// opening that sitting first if none is open (§5.1). Idempotent: a person already in the sitting
+    /// gets <see cref="JoinTableOutcome.AlreadyMember"/> and nothing is written. An unknown or
+    /// deactivated table gets <see cref="JoinTableOutcome.TableUnavailable"/> (§4.1).
+    /// </summary>
+    Task<JoinTableResult> JoinTableAsync(
+        Guid tableIdentifier,
+        Guid personIdentifier,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// The Dapper implementation of <see cref="ISittingMembership"/>. Like the other write services
+/// (<c>DapperTableAdministration</c>, <c>DapperAccountAdministration</c>) it owns one connection and one
+/// transaction per operation, stamps every row from a single <see cref="IClock.UtcNow"/> instant, mints
+/// surrogate keys with the application <see cref="IIdentifierFactory"/> (UUIDv7, ADR-0011), and holds no
+/// state.
+/// </summary>
+public sealed class DapperSittingMembership : ISittingMembership
+{
+    /// <summary>
+    /// The per-table advisory-lock key prefix (§5.1). <c>hashtext</c> maps the composed text to the
+    /// <c>integer</c> the transaction-scoped lock takes; the lock releases automatically on commit or
+    /// rollback. Keyed per table, not globally, so two different tables never block each other.
+    /// </summary>
+    private const string AdvisoryLockKeyPrefix = "myrestaurant_table_sitting:";
+
+    private const string TableIsActiveSql = """
+        SELECT EXISTS (
+            SELECT 1
+            FROM restaurant_table
+            WHERE restaurant_table_identifier = @TableIdentifier
+              AND is_active = true);
+        """;
+
+    private const string OpenSittingIdentifierSql = """
+        SELECT table_sitting_identifier
+        FROM table_sitting
+        WHERE restaurant_table_identifier = @TableIdentifier
+          AND closed_at IS NULL;
+        """;
+
+    private const string MembershipExistsSql = """
+        SELECT EXISTS (
+            SELECT 1
+            FROM table_sitting_member
+            WHERE table_sitting_identifier = @SittingIdentifier
+              AND person_identifier = @PersonIdentifier);
+        """;
+
+    private const string InsertSittingSql = """
+        INSERT INTO table_sitting (
+            table_sitting_identifier, restaurant_table_identifier, opened_at,
+            closed_at, closed_by_person_identifier, settled_total_amount)
+        VALUES (
+            @SittingIdentifier, @TableIdentifier, @OpenedAt,
+            NULL, NULL, NULL);
+        """;
+
+    private const string InsertMembershipSql = """
+        INSERT INTO table_sitting_member (
+            table_sitting_member_identifier, table_sitting_identifier, person_identifier, joined_at)
+        VALUES (
+            @MembershipIdentifier, @SittingIdentifier, @PersonIdentifier, @JoinedAt);
+        """;
+
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+    private readonly IClock _clock;
+    private readonly IIdentifierFactory _identifierFactory;
+
+    public DapperSittingMembership(
+        IDatabaseConnectionFactory connectionFactory,
+        IClock clock,
+        IIdentifierFactory identifierFactory)
+    {
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+        ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(identifierFactory);
+
+        _connectionFactory = connectionFactory;
+        _clock = clock;
+        _identifierFactory = identifierFactory;
+    }
+
+    public async Task<JoinTableResult> JoinTableAsync(
+        Guid tableIdentifier,
+        Guid personIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        // One instant for the whole operation: a sitting opened by this join and the membership that
+        // opened it carry the same timestamp, which is what "atomically" means to a reader (§5.1).
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        // (1) Serialize concurrent joins on THIS table. Two guests scanning the same display in the
+        // same second both find "no open sitting" without this; the second one blocks here and then
+        // re-reads the sitting the first just opened.
+        await connection.ExecuteAsync(new CommandDefinition(
+            "SELECT pg_advisory_xact_lock(hashtext(@Key));",
+            new { Key = AdvisoryLockKeyPrefix + tableIdentifier.ToString("D") },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        // (2) The table must exist and be active (§4.1). Checked under the lock so a deactivation that
+        // commits mid-flight cannot slip a new sitting in behind it.
+        bool tableIsActive = await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            TableIsActiveSql,
+            new { TableIdentifier = tableIdentifier },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        if (!tableIsActive)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new JoinTableResult(JoinTableOutcome.TableUnavailable, null);
+        }
+
+        // (3) The open sitting, if any — authoritative because we hold the lock.
+        Guid? existingSitting = await connection.ExecuteScalarAsync<Guid?>(new CommandDefinition(
+            OpenSittingIdentifierSql,
+            new { TableIdentifier = tableIdentifier },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        Guid sittingIdentifier;
+        JoinTableOutcome outcome;
+
+        if (existingSitting is { } openSitting)
+        {
+            sittingIdentifier = openSitting;
+
+            bool alreadyMember = await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+                MembershipExistsSql,
+                new { SittingIdentifier = sittingIdentifier, PersonIdentifier = personIdentifier },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            if (alreadyMember)
+            {
+                // Nothing to write: re-scanning a code, or a double submit, is a no-op (§5.1).
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return new JoinTableResult(JoinTableOutcome.AlreadyMember, sittingIdentifier);
+            }
+
+            outcome = JoinTableOutcome.JoinedOpenSitting;
+        }
+        else
+        {
+            sittingIdentifier = _identifierFactory.Create();
+            outcome = JoinTableOutcome.SittingOpened;
+
+            await connection.ExecuteAsync(new CommandDefinition(
+                InsertSittingSql,
+                new
+                {
+                    SittingIdentifier = sittingIdentifier,
+                    TableIdentifier = tableIdentifier,
+                    OpenedAt = now,
+                },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            InsertMembershipSql,
+            new
+            {
+                MembershipIdentifier = _identifierFactory.Create(),
+                SittingIdentifier = sittingIdentifier,
+                PersonIdentifier = personIdentifier,
+                JoinedAt = now,
+            },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new JoinTableResult(outcome, sittingIdentifier);
     }
 }
 
@@ -16308,56 +17037,530 @@ else
   File name:             TableArea.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor
-  Size:                  1.5 KiB (1586 bytes)
-  Last modified:         2026-07-19 08:48:51.000000000 -0400
+  Size:                  4.0 KiB (4067 bytes)
+  Last modified:         2026-07-25 19:45:18.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654792
+  Inode:                 25362680
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               756d495e0d7414ed2cadf311567cffad6e90448eee53cfcbf5a5418ac6dcfcbb
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               6fddb91175d16048aafba92290518b35ec0acbbdce8e51301d4bd05709b6af98
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
 
 --- CONTENT ---
 @page "/table"
 @attribute [Authorize(Policy = AuthorizationPolicies.Table)]
+@using MyRestaurant.DataAccess.Sittings
+@inject ISittingDirectory Sittings
 
-@* The first [Authorize]-gated area (TECHNICAL_SPECIFICATION §3.7 — `area.table`: any authenticated
-   person). This interactive placeholder exists to prove the whole chain live — cookie → claims →
-   policy → AuthorizeRouteView → circuit — before the real guest experience (joining, staging,
-   sending; M3/M4) replaces its body. Anonymous visitors are redirected to /sign-in with this page
-   as the return URL. *@
+@* The table index (TECHNICAL_SPECIFICATION §5.1, §11.1). A person may hold memberships in several
+   open sittings at once — §5.1 says so explicitly, and "the UI scopes to the sitting behind the
+   current /table/{id} route" — so this page's whole job is to let someone pick which of their tables
+   they mean, and to say plainly how to get a new one (scan the code on the table).
 
-<PageTitle>Your table</PageTitle>
+   Interactive server, unlike /table/{id}: this page sets no cookie and issues no redirect, so it can
+   stay on the circuit, and it remains the standing proof that the whole chain — cookie → claims →
+   area policy → AuthorizeRouteView → circuit — is live. Anonymous visitors are sent to /sign-in with
+   this page as the return URL. *@
+
+<PageTitle>Your tables</PageTitle>
 
 <section class="panel">
-    <p class="eyebrow">Table area</p>
-    <h1>Signed in and gated</h1>
+    <p class="eyebrow">Your tables</p>
+    <h1>Where you are seated</h1>
 
-    <AuthorizeView>
-        <Authorized>
-            <p class="lede">
-                You are signed in as <strong>@context.User.Identity?.Name</strong>@DisplayNameSuffix(context.User),
-                and the <code>area.table</code> policy admitted you — the authentication cookie, the
-                claims principal, and the area authorization are all live.
-            </p>
-        </Authorized>
-    </AuthorizeView>
+    @if (!_loaded)
+    {
+        <p class="lede">Looking up your tables…</p>
+    }
+    else if (_sittings.Count == 0)
+    {
+        <p class="lede">
+            You are not seated at a table right now. Scan the code on a table's display to join it —
+            or ask any member of staff to show you one from the counter.
+        </p>
+    }
+    else
+    {
+        <p class="lede">
+            You are part of @_sittings.Count open
+            @(_sittings.Count == 1 ? "sitting" : "sittings"). Pick the table you are at.
+        </p>
+
+        <ul class="sitting-list">
+            @foreach (TableSittingSummary sitting in _sittings)
+            {
+                <li>
+                    <a class="sitting-link" href="@($"/table/{sitting.TableIdentifier}")">
+                        <span class="sitting-label">@sitting.TableLabel</span>
+                        <span class="sitting-meta">
+                            open since @sitting.OpenedAt.ToLocalTime().ToString("t") ·
+                            @sitting.MemberCount @(sitting.MemberCount == 1 ? "person" : "people")
+                        </span>
+                    </a>
+                </li>
+            }
+        </ul>
+    }
 
     <p class="lede">
-        Joining a table by scanning its rotating code, and building and sending orders, arrive with
-        Milestones&nbsp;3 and&nbsp;4.
+        Choosing from the menu, staging items, and sending them to the kitchen arrive with
+        Milestone&nbsp;4.
     </p>
 
     <p><a href="/">Back to the home page</a></p>
 </section>
 
-@code {
-    private static string DisplayNameSuffix(System.Security.Claims.ClaimsPrincipal user)
-    {
-        string? displayName = user.FindFirst(RestaurantClaimTypes.DisplayName)?.Value;
-        return string.IsNullOrWhiteSpace(displayName) ? string.Empty : $" ({displayName})";
+<style>
+    .sitting-list {
+        list-style: none;
+        margin: 1rem 0;
+        padding: 0;
+        display: grid;
+        gap: 0.5rem;
     }
+
+    .sitting-link {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        padding: 0.7rem 0.85rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.5rem;
+        background: var(--surface-raised, #ffffff);
+        text-decoration: none;
+        color: inherit;
+    }
+
+    .sitting-link:hover {
+        border-color: var(--accent, #0f766e);
+    }
+
+    .sitting-label {
+        font-weight: 600;
+    }
+
+    .sitting-meta {
+        font-size: 0.85rem;
+        color: var(--ink-soft, #55636f);
+    }
+</style>
+
+@code {
+    private IReadOnlyList<TableSittingSummary> _sittings = [];
+    private bool _loaded;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The cascading authentication state is the circuit-safe way to read the principal: there is
+        // no HttpContext once the component is interactive, and this works identically during the
+        // static prerender pass (AddCascadingAuthenticationState is wired in AddRestaurantIdentity).
+        if (AuthenticationStateTask is not null)
+        {
+            AuthenticationState state = await AuthenticationStateTask;
+            if (PersonPrincipal.IdentifierFor(state.User) is { } person)
+            {
+                _sittings = await Sittings.ListOpenSittingsForPersonAsync(person);
+            }
+        }
+
+        _loaded = true;
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Pages/Table/TableJoin.razor
+################################################################################
+
+--- METADATA ---
+  File name:             TableJoin.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Table/TableJoin.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Table/TableJoin.razor
+  Size:                  14.2 KiB (14573 bytes)
+  Last modified:         2026-07-25 19:53:44.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25362679
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               d5f0a5a00b8947753a5eeb5db125148a198a88d8da62b3c46d20a501c4df9e6e
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
+
+--- CONTENT ---
+@page "/table/{TableId:guid}"
+@attribute [ExcludeFromInteractiveRouting]
+@using MyRestaurant.DataAccess.Sittings
+@using MyRestaurant.DataAccess.Tables
+@using MyRestaurant.Domain.LiveUpdates
+@using MyRestaurant.Domain.Security
+@using MyRestaurant.Domain.Time
+@using MyRestaurant.WebApplication.Tables
+@inject ITableDirectory TableDirectory
+@inject ITableJoinTokens JoinTokens
+@inject ISittingDirectory Sittings
+@inject ISittingMembership Membership
+@inject JoinGrantProtector Grants
+@inject IDomainEventBroadcaster Broadcaster
+@inject IClock Clock
+@inject RestaurantOptions Options
+@inject NavigationManager Navigation
+
+@* The table join flow and the member's table surface (TECHNICAL_SPECIFICATION §4.4, §5.1, §11.1).
+
+   Deliberately ANONYMOUS and static SSR. Anonymous because a guest scanning a table's QR for the
+   first time has no account yet, and §4.4 requires the grant to be issued *before* the detour through
+   sign-in — the whole point of the grant is that it survives that detour. Static SSR because the flow
+   writes and clears a cookie and issues redirects, none of which a Blazor circuit can do.
+
+   The four states this page resolves to, in the order §4.4 decides them:
+
+     1. Member  — an authenticated member of this table's open sitting. Members bypass tokens
+                  entirely: no query string is consulted, and a deactivated table does not evict
+                  anyone (§4.1 stops *new* tokens and display rendering, not a sitting in progress).
+     2. Confirm — a non-member holding a live grant, signed in. One button turns the grant into
+                  membership.
+     3. (redirect) — a non-member holding a live grant, anonymous: off to sign-in with this page as
+                  the return URL. The grant cookie is already written, so the trip back needs no token.
+     4. Expired — everything else, rendered as a friendly re-scan page at HTTP 200 with no detail
+                  about *which* thing failed (§4.4: "no oracle detail"). An unknown table, a
+                  deactivated table, a stale token, and a forged grant are indistinguishable here.
+
+   The join itself is a post/redirect/get: the POST consumes the grant, opens or joins the sitting in
+   one transaction (§5.1), broadcasts SittingMemberJoined only when a membership row was actually
+   inserted (§9), and redirects back here so a refresh cannot re-post. Building and sending orders on
+   this surface arrives with Milestone 4. *@
+
+<PageTitle>@PageTitleText</PageTitle>
+
+@if (_stage == JoinStage.Member && _table is not null && _sitting is not null)
+{
+    <section class="panel table-panel">
+        <p class="eyebrow">Your table</p>
+        <h1>@_table.Label</h1>
+
+        @if (_justJoined)
+        {
+            <p class="status-success" role="status">You have joined @(_table.Label).</p>
+        }
+
+        @if (!_table.IsActive)
+        {
+            <p class="status-error" role="alert">
+                This table has been taken out of service. Your sitting is still open and your order is
+                intact — nobody new can join by scanning, though. Please speak to the counter.
+            </p>
+        }
+
+        <p class="lede">
+            Open since @_sitting.OpenedAt.ToLocalTime().ToString("t") —
+            @_roster.Count @(_roster.Count == 1 ? "person" : "people") at the table.
+        </p>
+
+        <h2 class="table-heading">Who is here</h2>
+        <ul class="table-roster">
+            @foreach (SittingMemberSummary member in _roster)
+            {
+                <li>
+                    <span class="table-roster-name">@member.RosterName</span>
+                    <span class="table-roster-joined">joined @member.JoinedAt.ToLocalTime().ToString("t")</span>
+                </li>
+            }
+        </ul>
+
+        <hr class="table-rule" />
+
+        <h2 class="table-heading">Your order</h2>
+        <p class="lede">
+            Choosing from the menu, staging items, and sending them to the kitchen arrive with
+            Milestone&nbsp;4. Your seat at this table is held until the counter closes and settles the
+            sitting.
+        </p>
+
+        <p class="table-back"><a href="/table">All your tables</a></p>
+    </section>
+}
+else if (_stage == JoinStage.Confirm && _table is not null)
+{
+    <section class="panel table-panel">
+        <p class="eyebrow">Join a table</p>
+        <h1>@_table.Label</h1>
+
+        <p class="lede">
+            You scanned the code for <strong>@_table.Label</strong>. Joining puts you on this table's
+            party, so everyone here can see what has been ordered and the running total.
+        </p>
+
+        @if (_openSittingMemberCount > 0)
+        {
+            <p class="lede">
+                @_openSittingMemberCount @(_openSittingMemberCount == 1 ? "person is" : "people are")
+                already seated here.
+            </p>
+        }
+        else
+        {
+            <p class="lede">You would be the first to sit down at this table.</p>
+        }
+
+        <form method="post" @formname="table-join" @onsubmit="JoinAsync">
+            <AntiforgeryToken />
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Join @_table.Label</button>
+                <a class="button-secondary" href="/">Not now</a>
+            </div>
+        </form>
+
+        <p class="form-footnote">
+            This invitation stays good for @Options.TableJoinGrantMinutes
+            minute@(Options.TableJoinGrantMinutes == 1 ? "" : "s") from the moment you scanned.
+        </p>
+    </section>
+}
+else
+{
+    @* §4.4's friendly page. One wording for every failure so it tells a prober nothing. *@
+    <section class="panel table-panel">
+        <p class="eyebrow">Join a table</p>
+        <h1>That code has expired</h1>
+        <p class="lede">
+            Table codes change every @Options.TableJoinTokenRotationSeconds seconds, so the one you
+            used is no longer good. Please scan the code on the table's display again.
+        </p>
+        <p class="lede">
+            If the display is dark or the code will not work, any member of staff can show you a fresh
+            one from the counter.
+        </p>
+        <p class="table-back"><a href="/">Back to the home page</a></p>
+    </section>
+}
+
+@* Namespaced under .table-* and inline, for the same reason the administration pages keep their CSS
+   inline: App.razor links the static stylesheet, so component CSS isolation is not active. *@
+<style>
+    .table-heading {
+        font-size: 1.05rem;
+        margin: 1.25rem 0 0.35rem;
+    }
+
+    .table-rule {
+        border: 0;
+        border-top: 1px solid var(--hairline, #e2e6ec);
+        margin: 1.5rem 0;
+    }
+
+    .table-roster {
+        list-style: none;
+        margin: 0.5rem 0 0;
+        padding: 0;
+        display: grid;
+        gap: 0.4rem;
+    }
+
+    .table-roster li {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: baseline;
+        padding: 0.45rem 0.6rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.4rem;
+        background: var(--surface-raised, #ffffff);
+    }
+
+    .table-roster-name {
+        font-weight: 600;
+    }
+
+    .table-roster-joined {
+        font-size: 0.85rem;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .table-back {
+        margin-top: 1.5rem;
+    }
+</style>
+
+@code {
+    /// <summary>Which of the §4.4 outcomes this request resolved to. A redirect never reaches a stage.</summary>
+    private enum JoinStage
+    {
+        /// <summary>Friendly re-scan page (§4.4) — the catch-all, and the default before anything is decided.</summary>
+        Expired,
+
+        /// <summary>Signed in, holding a live grant, not yet a member: offer the join button.</summary>
+        Confirm,
+
+        /// <summary>A member of this table's open sitting: the table surface itself.</summary>
+        Member,
+    }
+
+    private JoinStage _stage = JoinStage.Expired;
+    private RestaurantTableSummary? _table;
+    private TableSittingSummary? _sitting;
+    private IReadOnlyList<SittingMemberSummary> _roster = [];
+    private int _openSittingMemberCount;
+    private bool _justJoined;
+
+    [Parameter]
+    public Guid TableId { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery(Name = "token")]
+    private string? Token { get; set; }
+
+    [SupplyParameterFromQuery(Name = "joined")]
+    private string? Joined { get; set; }
+
+    private TimeSpan GrantLifetime => TimeSpan.FromMinutes(Options.TableJoinGrantMinutes);
+
+    private string TablePath => $"/table/{TableId}";
+
+    private string PageTitleText => _stage switch
+    {
+        JoinStage.Member when _table is not null => _table.Label,
+        JoinStage.Confirm when _table is not null => $"Join {_table.Label}",
+        _ => "Join a table",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        CancellationToken cancellationToken = HttpContext.RequestAborted;
+        bool isGet = HttpMethods.IsGet(HttpContext.Request.Method);
+
+        _table = await TableDirectory.GetTableAsync(TableId, cancellationToken);
+        if (_table is null)
+        {
+            // No oracle: an unknown table reads exactly like a stale code (§4.4).
+            _stage = JoinStage.Expired;
+            return;
+        }
+
+        Guid? personIdentifier = PersonPrincipal.IdentifierFor(HttpContext.User);
+
+        // (1) Members bypass tokens entirely (§4.4) — and a deactivated table does not evict them.
+        if (personIdentifier is { } member)
+        {
+            _sitting = await Sittings.GetOpenSittingForMemberAsync(TableId, member, cancellationToken);
+            if (_sitting is not null)
+            {
+                _roster = await Sittings.ListMembersAsync(_sitting.SittingIdentifier, cancellationToken);
+                _stage = JoinStage.Member;
+                _justJoined = isGet && string.Equals(Joined, "yes", StringComparison.Ordinal);
+                return;
+            }
+        }
+
+        // (2) A non-member cannot join a table that is out of service (§4.1).
+        if (!_table.IsActive)
+        {
+            _stage = JoinStage.Expired;
+            return;
+        }
+
+        // (3) A presented token is always validated on a GET, so the §4.3 metric counts every scan —
+        // even when a grant is already held. A valid one (re)issues the grant and restarts its clock.
+        // The join POST re-posts to this same URL, query string and all; re-validating there would
+        // double-count one scan, so the metric stays on the navigation that actually is a scan.
+        bool holdsGrant = false;
+        if (isGet && !string.IsNullOrEmpty(Token))
+        {
+            JoinTokenValidationResult validation = await JoinTokens.ValidateAsync(TableId, Token, cancellationToken);
+            if (validation == JoinTokenValidationResult.Valid)
+            {
+                JoinGrantCookie.Write(
+                    HttpContext.Response,
+                    Grants.Protect(new JoinGrant(TableId, Clock.UtcNow)),
+                    GrantLifetime);
+                holdsGrant = true;
+            }
+        }
+
+        // (4) No usable token is not the end: an unconsumed grant from an earlier scan still counts.
+        // That is what carries the flow back from sign-in, where the return URL has no token (§4.4).
+        holdsGrant = holdsGrant || TryReadUsableGrant();
+
+        if (!holdsGrant)
+        {
+            _stage = JoinStage.Expired;
+            return;
+        }
+
+        if (personIdentifier is null)
+        {
+            // Anonymous with a live grant → sign in (or register) and come straight back here (§4.4).
+            Navigation.NavigateTo($"{AccountRoutes.SignIn}?ReturnUrl={Uri.EscapeDataString(TablePath)}");
+            return;
+        }
+
+        // Purely for the confirmation copy — how full the table already is. Skipped on the join POST,
+        // which either redirects or falls to the expired page and never renders that sentence.
+        if (isGet)
+        {
+            TableSittingSummary? openSitting = await Sittings.GetOpenSittingAsync(TableId, cancellationToken);
+            _openSittingMemberCount = openSitting?.MemberCount ?? 0;
+        }
+
+        _stage = JoinStage.Confirm;
+    }
+
+    /// <summary>
+    /// Turns the held grant into membership (§4.4, §5.1). Every precondition is re-checked here rather
+    /// than trusted from the render that drew the button: a POST is a separate request, and the grant
+    /// may have expired, been spent, or never have matched this table at all.
+    /// </summary>
+    private async Task JoinAsync()
+    {
+        CancellationToken cancellationToken = HttpContext.RequestAborted;
+
+        if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } person)
+        {
+            Navigation.NavigateTo($"{AccountRoutes.SignIn}?ReturnUrl={Uri.EscapeDataString(TablePath)}");
+            return;
+        }
+
+        if (!TryReadUsableGrant())
+        {
+            JoinGrantCookie.Delete(HttpContext.Response);
+            _stage = JoinStage.Expired;
+            return;
+        }
+
+        JoinTableResult result = await Membership.JoinTableAsync(TableId, person, cancellationToken);
+
+        // Single-use, whatever the outcome: a spent or refused grant must never be replayable (§4.4).
+        JoinGrantCookie.Delete(HttpContext.Response);
+
+        if (result.Outcome == JoinTableOutcome.TableUnavailable)
+        {
+            _stage = JoinStage.Expired;
+            return;
+        }
+
+        // After commit, and only when a membership row was really inserted (§9: "fired on: membership
+        // insert"). An idempotent re-join writes nothing and so announces nothing.
+        if (result.MembershipInserted && result.SittingIdentifier is { } sittingIdentifier)
+        {
+            Broadcaster.Publish(new SittingMemberJoined(sittingIdentifier));
+        }
+
+        Navigation.NavigateTo($"{TablePath}?joined=yes");
+    }
+
+    /// <summary>
+    /// True when the request carries a grant that is ours, intact, names <b>this</b> table, and has not
+    /// aged past <c>TABLE_JOIN_GRANT_MINUTES</c>. The lifetime is judged against the protected
+    /// <c>issued_at</c>, not the cookie's own expiry, because only the former is beyond the guest's reach.
+    /// </summary>
+    private bool TryReadUsableGrant()
+        => Grants.TryUnprotect(JoinGrantCookie.Read(HttpContext.Request), out JoinGrant? grant)
+            && grant is not null
+            && grant.IsUsableFor(TableId, Clock.UtcNow, GrantLifetime);
 }
 
 ################################################################################
@@ -17415,6 +18618,64 @@ public sealed class PasskeyInputModel
 
     /// <summary>Set instead of <see cref="CredentialJson"/> when the browser ceremony failed.</summary>
     public string? Error { get; set; }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Identity/PersonPrincipal.cs
+################################################################################
+
+--- METADATA ---
+  File name:             PersonPrincipal.cs
+  Relative path:         src/MyRestaurant.WebApplication/Identity/PersonPrincipal.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/PersonPrincipal.cs
+  Size:                  2.1 KiB (2102 bytes)
+  Last modified:         2026-07-25 19:40:01.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25362675
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               b07a96110b701769b7a746e3973e44841591c1748092ed4815e44b5ab131dafb
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
+
+--- CONTENT ---
+using System.Security.Claims;
+
+namespace MyRestaurant.WebApplication.Identity;
+
+/// <summary>
+/// Reads the signed-in person's identifier off a <see cref="ClaimsPrincipal"/>
+/// (TECHNICAL_SPECIFICATION §3.1). Surfaces that need to scope a query to "me" — the table join flow
+/// (§4.4), the sittings index (§11.1), and the guest order surface that follows — all need the
+/// <c>person.person_identifier</c> UUIDv7, and they should not each re-derive it or reach for a
+/// <c>UserManager</c> round trip just to parse a claim that is already in the cookie.
+///
+/// <para>The claim read is <see cref="ClaimTypes.NameIdentifier"/>, which is the default
+/// <c>ClaimsIdentityOptions.UserIdClaimType</c> that
+/// <see cref="Microsoft.AspNetCore.Identity.UserClaimsPrincipalFactory{TUser}"/> writes the user id
+/// into — and this application never reconfigures it (see
+/// <see cref="RestaurantClaimsPrincipalFactory"/>, which adds claims on top of the base factory rather
+/// than replacing its identity claims). A principal whose id claim is missing, unparseable, or the
+/// all-zero <see cref="Guid"/> yields <c>null</c> rather than a nonsense identifier: callers treat that
+/// exactly as "not signed in", which is the safe reading.</para>
+/// </summary>
+public static class PersonPrincipal
+{
+    /// <summary>
+    /// The person identifier for an authenticated principal, or <c>null</c> when the principal is
+    /// anonymous or carries no usable id claim.
+    /// </summary>
+    public static Guid? IdentifierFor(ClaimsPrincipal? principal)
+        => principal?.Identity?.IsAuthenticated == true
+            ? ParseIdentifier(principal.FindFirstValue(ClaimTypes.NameIdentifier))
+            : null;
+
+    /// <summary>
+    /// Parses a user-id claim value into a person identifier, or <c>null</c> when it is absent,
+    /// malformed, or the all-zero <see cref="Guid"/> (which no UUIDv7 key can legitimately be).
+    /// </summary>
+    public static Guid? ParseIdentifier(string? value)
+        => Guid.TryParse(value, out Guid identifier) && identifier != Guid.Empty ? identifier : null;
 }
 
 ################################################################################
@@ -19139,15 +20400,15 @@ public sealed class RestaurantMetrics : IDisposable
   File name:             Program.cs
   Relative path:         src/MyRestaurant.WebApplication/Program.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Program.cs
-  Size:                  8.6 KiB (8850 bytes)
-  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Size:                  9.0 KiB (9170 bytes)
+  Last modified:         2026-07-25 19:45:48.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25103612
+  Inode:                 25362673
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               50cfd12bd6462726e064887b28e19bf3e565800201302b714d252b059f13c1f4
-  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+  SHA-256:               043edf6a8190a5c495ab7e93a695d6ac2ae3c729e6f956a44b990e7826a6856e
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
 
 --- CONTENT ---
 using System.Data.Common;
@@ -19261,10 +20522,13 @@ builder.Services.AddDataProtection()
 // because the hasher and sign-in manager report there.
 builder.Services.AddRestaurantIdentity(options);
 
-// Table management services (§4.1): the read-only ITableDirectory the administration tables pages read
-// from and the transactional ITableAdministration they write through (create, rename, rotate the join
-// secret, deactivate/reactivate). A §4 concern, kept separate from AddRestaurantIdentity; both resolve
-// the same connection factory, clock, and identifier factory registered above.
+// Table and sitting services (§4, §5): the read-only ITableDirectory the administration tables pages
+// read from and the transactional ITableAdministration they write through; the server-only join-secret
+// reader and the ITableJoinTokens service that renders and validates the rotating QR (§4.3–§4.5); the
+// ISittingDirectory/ISittingMembership pair behind the §4.4 join flow and §5.1 sitting open; and the
+// JoinGrantProtector for the short-lived join-grant cookie. A §4/§5 concern, kept separate from
+// AddRestaurantIdentity; all of it resolves the same connection factory, clock, identifier factory,
+// metrics, and Data Protection provider registered above — hence the position after them.
 builder.Services.AddRestaurantTables();
 
 // The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
@@ -19342,6 +20606,7 @@ app.Run();
 
 return 0;
 
+
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Properties/launchSettings.json
 ################################################################################
@@ -19383,6 +20648,183 @@ return 0;
       }
     }
   }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Tables/JoinGrant.cs
+################################################################################
+
+--- METADATA ---
+  File name:             JoinGrant.cs
+  Relative path:         src/MyRestaurant.WebApplication/Tables/JoinGrant.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Tables/JoinGrant.cs
+  Size:                  7.3 KiB (7469 bytes)
+  Last modified:         2026-07-25 19:40:34.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25362672
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               6d8d8bb933a3a2f22270be00ed6d7e4ea780599bfaaae1b3f18251fbf365c8ad
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
+
+--- CONTENT ---
+using System.Security.Cryptography;
+using System.Text.Json;
+using Microsoft.AspNetCore.DataProtection;
+
+namespace MyRestaurant.WebApplication.Tables;
+
+/// <summary>
+/// The join grant (TECHNICAL_SPECIFICATION §4.4): proof that <em>this browser</em> presented a valid
+/// rotating token for <em>this table</em> at <see cref="IssuedAt"/>. It is the whole payload the
+/// specification names — <c>{table_identifier, issued_at}</c> — and nothing more, because nothing more
+/// is needed: it is not an authentication, it does not name a person, and it grants no capability
+/// beyond "you may now ask to join this one table".
+///
+/// <para>Its reason to exist is the gap between scanning and joining. A guest who scans an unfamiliar
+/// table's QR is very often anonymous, so the flow has to detour through sign-in — or through a
+/// registration that includes a WebAuthn ceremony — and the rotating token that got them in will very
+/// likely have rotated away by the time they come back (worst case 2 × the rotation window, §4.3).
+/// The grant carries the proof across that detour so the guest does not have to re-scan a code they
+/// can no longer see. §4.4: "the grant cookie survives the passkey ceremony; that is its purpose."</para>
+///
+/// <para>It is deliberately short-lived (<c>TABLE_JOIN_GRANT_MINUTES</c>, default 10) and single-use:
+/// the join action consumes it and clears the cookie, so it cannot be replayed to join the same table
+/// twice or held indefinitely against a table whose secret has since been rotated.</para>
+/// </summary>
+/// <param name="TableIdentifier">The one table this grant is good for (§4.4).</param>
+/// <param name="IssuedAt">When the validating token was accepted — the clock the TTL runs from.</param>
+public sealed record JoinGrant(Guid TableIdentifier, DateTimeOffset IssuedAt)
+{
+    /// <summary>True once the grant is older than <paramref name="lifetime"/> (§4.4: re-scan required).</summary>
+    public bool HasExpired(DateTimeOffset now, TimeSpan lifetime) => now - IssuedAt > lifetime;
+
+    /// <summary>
+    /// True when this grant may be spent on <paramref name="tableIdentifier"/> right now: it names that
+    /// table and it has not expired. A grant for a different table is simply not a grant for this one —
+    /// scanning table 3 must never let anyone join table 4.
+    /// </summary>
+    public bool IsUsableFor(Guid tableIdentifier, DateTimeOffset now, TimeSpan lifetime)
+        => TableIdentifier == tableIdentifier && !HasExpired(now, lifetime);
+}
+
+/// <summary>
+/// Protects and reads the <see cref="JoinGrant"/> with ASP.NET Data Protection, exactly as
+/// <see cref="Identity.SetupTicketProtector"/> does for the setup wizard: the value in the cookie is
+/// encrypted and tamper-evident, so a guest cannot mint a grant for a table they never scanned, and no
+/// server-side session store is needed (there is no Redis — ADR-0006).
+///
+/// <para>The <see cref="Purpose"/> string is distinct from every other protector in the application
+/// (the at-rest TOTP secret, the TOTP enrollment ticket, the setup ticket, the auth cookie), so a value
+/// produced in one context can never be unprotected as another.</para>
+///
+/// <para>Registered as a singleton by <c>AddRestaurantTables()</c> — unlike the setup ticket's
+/// protector, which one page constructs ad hoc, this one is read by the table surface on every request
+/// in the join flow and will be read by the display surface too, so it earns a registration.</para>
+/// </summary>
+public sealed class JoinGrantProtector
+{
+    /// <summary>Data-Protection purpose for the join grant. Changing it invalidates in-flight grants.</summary>
+    public const string Purpose = "MyRestaurant.Tables.JoinGrant.v1";
+
+    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+
+    private readonly IDataProtector _protector;
+
+    public JoinGrantProtector(IDataProtectionProvider dataProtectionProvider)
+    {
+        ArgumentNullException.ThrowIfNull(dataProtectionProvider);
+        _protector = dataProtectionProvider.CreateProtector(Purpose);
+    }
+
+    /// <summary>Serializes and protects the grant into the opaque string carried by the cookie.</summary>
+    public string Protect(JoinGrant grant)
+    {
+        ArgumentNullException.ThrowIfNull(grant);
+        return _protector.Protect(JsonSerializer.Serialize(grant, SerializerOptions));
+    }
+
+    /// <summary>
+    /// Unprotects and deserializes a cookie value. Returns <c>false</c> (never throws) when the value is
+    /// missing, tampered, protected with a different purpose or key, or not deserializable — so the join
+    /// flow can treat any bad grant as "no grant" and show the friendly re-scan page (§4.4), never an
+    /// error that would tell a prober which of those it was.
+    /// </summary>
+    public bool TryUnprotect(string? protectedGrant, out JoinGrant? grant)
+    {
+        grant = null;
+        if (string.IsNullOrEmpty(protectedGrant))
+        {
+            return false;
+        }
+
+        string payload;
+        try
+        {
+            payload = _protector.Unprotect(protectedGrant);
+        }
+        catch (CryptographicException)
+        {
+            return false; // tampered, wrong key, or not one of ours
+        }
+
+        try
+        {
+            grant = JsonSerializer.Deserialize<JoinGrant>(payload, SerializerOptions);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        return grant is not null;
+    }
+}
+
+/// <summary>
+/// The join grant's cookie (§4.4). Hardened like the setup and authentication cookies — Secure,
+/// HttpOnly, SameSite=Lax — so it is inaccessible to script and is not sent on cross-site requests,
+/// while still surviving the top-level navigations the flow depends on: the redirect to sign-in, the
+/// return from it, and the same-origin fetches of a WebAuthn ceremony.
+///
+/// <para>Its <c>MaxAge</c> is the configured <c>TABLE_JOIN_GRANT_MINUTES</c>, but the server never
+/// trusts that: the browser's copy expiring is a convenience, and the authoritative check is the
+/// <see cref="JoinGrant.IssuedAt"/> inside the protected payload, which a guest cannot edit.</para>
+/// </summary>
+public static class JoinGrantCookie
+{
+    /// <summary>The cookie name.</summary>
+    public const string Name = "myrestaurant.join";
+
+    /// <summary>Reads the raw protected value, or <c>null</c> when the browser sent no grant.</summary>
+    public static string? Read(HttpRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return request.Cookies[Name];
+    }
+
+    /// <summary>Writes (or replaces) the protected grant cookie on the response.</summary>
+    public static void Write(HttpResponse response, string protectedGrant, TimeSpan lifetime)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        response.Cookies.Append(Name, protectedGrant, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Lax,
+            IsEssential = true,
+            Path = "/",
+            MaxAge = lifetime,
+        });
+    }
+
+    /// <summary>Clears the grant cookie — on consumption (§4.4: single-use) or when it is unusable.</summary>
+    public static void Delete(HttpResponse response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        response.Cookies.Delete(Name, new CookieOptions { Path = "/" });
+    }
 }
 
 ################################################################################
@@ -19601,36 +21043,52 @@ public sealed class TableJoinTokens : ITableJoinTokens
   File name:             TablesServiceCollectionExtensions.cs
   Relative path:         src/MyRestaurant.WebApplication/Tables/TablesServiceCollectionExtensions.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Tables/TablesServiceCollectionExtensions.cs
-  Size:                  2.1 KiB (2159 bytes)
-  Last modified:         2026-07-23 09:57:42.000000000 -0400
+  Size:                  3.8 KiB (3864 bytes)
+  Last modified:         2026-07-25 19:45:36.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25243968
+  Inode:                 25362671
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               6c2ee9974e99e1ab3dc24781063de71d61f02fd6de64eef030deb33b3eea409d
-  Last git commit:       e0e95f9 2026-07-23 10:23:48 -0400 add claude response
+  SHA-256:               ea00c9b74928ca43b518a214fa4c805f62590f272fc2120a3cdd53981e5c27eb
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
 
 --- CONTENT ---
+using MyRestaurant.DataAccess.Sittings;
 using MyRestaurant.DataAccess.Tables;
 
 namespace MyRestaurant.WebApplication.Tables;
 
 /// <summary>
-/// Wires the table services (TECHNICAL_SPECIFICATION §4). The management surface (§4.1): the read-only
-/// <see cref="ITableDirectory"/> the administration tables list/detail pages read from, and the
-/// transactional <see cref="ITableAdministration"/> those pages write through (create, rename, rotate
-/// the join secret, deactivate/reactivate). The join-token surface (§4.3–§4.5): the server-only
-/// <see cref="ITableJoinSecretReader"/> and the <see cref="ITableJoinTokens"/> service that reads the
-/// secret through it to render a table's current rotating QR (the counter/admin fallback, §4.5) and to
-/// validate a presented token, recording <c>table_join_tokens_validated_total{result}</c> (§12).
+/// Wires the table and sitting services (TECHNICAL_SPECIFICATION §4, §5). Four groups:
 ///
-/// <para>Kept separate from <c>AddRestaurantIdentity</c> because tables are a §4 concern, not identity;
-/// both are registered from <c>Program.cs</c>. Scoped, matching the identity services' lifetime — they
-/// hold no state and open their own connection per call from the singleton
-/// <see cref="MyRestaurant.DataAccess.IDatabaseConnectionFactory"/>; their other dependencies
-/// (<see cref="MyRestaurant.Domain.Time.IClock"/>, the options, and the metrics) are singletons
-/// registered before this call.</para>
+/// <list type="bullet">
+///   <item><description><b>Management (§4.1)</b> — the read-only <see cref="ITableDirectory"/> the
+///   administration tables list/detail pages read from, and the transactional
+///   <see cref="ITableAdministration"/> those pages write through (create, rename, rotate the join
+///   secret, deactivate/reactivate).</description></item>
+///   <item><description><b>Join tokens (§4.3–§4.5)</b> — the server-only
+///   <see cref="ITableJoinSecretReader"/> and the <see cref="ITableJoinTokens"/> service that reads the
+///   secret through it to render a table's current rotating QR (the counter/admin fallback, §4.5) and to
+///   validate a presented token, recording <c>table_join_tokens_validated_total{result}</c>
+///   (§12).</description></item>
+///   <item><description><b>Sittings (§5.1)</b> — the read-only <see cref="ISittingDirectory"/> the table
+///   surface asks "is this person already a member here, and who else is?", and the transactional
+///   <see cref="ISittingMembership"/> that opens a sitting and inserts membership atomically when a
+///   grant is consumed.</description></item>
+///   <item><description><b>The join grant (§4.4)</b> — <see cref="JoinGrantProtector"/>, which
+///   encrypts and verifies the short-lived cookie that carries proof-of-scan across the detour through
+///   sign-in or registration.</description></item>
+/// </list>
+///
+/// <para>Kept separate from <c>AddRestaurantIdentity</c> because tables and sittings are a §4/§5
+/// concern, not identity; both are registered from <c>Program.cs</c>. The data services are scoped,
+/// matching the identity services' lifetime — they hold no state and open their own connection per call
+/// from the singleton <see cref="MyRestaurant.DataAccess.IDatabaseConnectionFactory"/>; their other
+/// dependencies (<see cref="MyRestaurant.Domain.Time.IClock"/>,
+/// <see cref="MyRestaurant.Domain.Identifiers.IIdentifierFactory"/>, the options, and the metrics) are
+/// singletons registered before this call. The grant protector is a singleton: it wraps one
+/// <c>IDataProtector</c> derived once from the singleton provider, and holds nothing per request.</para>
 /// </summary>
 public static class TablesServiceCollectionExtensions
 {
@@ -19647,6 +21105,15 @@ public static class TablesServiceCollectionExtensions
         // validation outcome.
         services.AddScoped<ITableJoinSecretReader, DapperTableJoinSecretReader>();
         services.AddScoped<ITableJoinTokens, TableJoinTokens>();
+
+        // Sittings (§5.1). The directory answers the membership question §4.4's "members bypass tokens"
+        // rule turns on; the membership service is the single write path a consumed grant flows into.
+        services.AddScoped<ISittingDirectory, DapperSittingDirectory>();
+        services.AddScoped<ISittingMembership, DapperSittingMembership>();
+
+        // The join grant (§4.4). Depends only on the Data Protection provider registered in Program.cs
+        // before this call, so a singleton is safe and avoids re-deriving the protector per request.
+        services.AddSingleton<JoinGrantProtector>();
 
         return services;
     }
@@ -22815,6 +24282,428 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
             MaximumAttempts = 3,
             DelayBetweenAttempts = TimeSpan.FromMilliseconds(200),
         };
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.DataAccess.Tests/Sittings/SittingMembershipTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             SittingMembershipTests.cs
+  Relative path:         tests/MyRestaurant.DataAccess.Tests/Sittings/SittingMembershipTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/Sittings/SittingMembershipTests.cs
+  Size:                  18.4 KiB (18866 bytes)
+  Last modified:         2026-07-25 19:50:04.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25362694
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               87b926be03367e7b7d99dfaffe649dac980b1bf15363ffeeb8ed8b4eef9bad97
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using MyRestaurant.DataAccess.Sittings;
+using MyRestaurant.DataAccess.Tables;
+using MyRestaurant.DataAccess.Tests.Identity;
+using MyRestaurant.Domain.Identifiers;
+using Xunit;
+
+namespace MyRestaurant.DataAccess.Tests.Sittings;
+
+/// <summary>
+/// Integration tests for <see cref="DapperSittingMembership"/> and <see cref="DapperSittingDirectory"/>
+/// (TECHNICAL_SPECIFICATION §4.4, §5.1, §5.2) against a real PostgreSQL 17 container. They pin the
+/// behaviours that make the join slice correct: the first consumed grant opens a sitting and inserts the
+/// first membership in one transaction; later grants add members to that same sitting; a repeat join is
+/// idempotent and writes nothing; an unknown or deactivated table cannot be joined at all (§4.1); a new
+/// sitting opens once the previous one is closed; and the directory answers the two questions the table
+/// surface asks — "is this person a member here?" and "who else is?".
+///
+/// <para>Each test truncates the people, tables, and sitting tables first (xUnit builds a fresh instance
+/// per test and runs them sequentially). Own <c>IClassFixture</c> (own container); if no container engine
+/// is available, every test skips — mirroring <c>TableAdministrationTests</c>.</para>
+/// </summary>
+public sealed class SittingMembershipTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
+{
+    private const string SamplePasswordHash =
+        "$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHRzYWx0c2E$dGFndGFndGFndGFndGFndGFndGFndGFndGE";
+
+    private readonly PostgreSqlFixture _fixture;
+    private readonly FixedClock _clock = new(new DateTimeOffset(2026, 2, 3, 18, 30, 0, TimeSpan.Zero));
+    private readonly UuidV7IdentifierFactory _identifiers = new();
+    private NpgsqlDatabaseConnectionFactory? _connectionFactory;
+
+    public SittingMembershipTests(PostgreSqlFixture fixture) => _fixture = fixture;
+
+    public async ValueTask InitializeAsync()
+    {
+        if (_fixture.ConnectionString is null)
+        {
+            return;
+        }
+
+        new SchemaMigrationRunner(_fixture.ConnectionString)
+        {
+            MaximumAttempts = 3,
+            DelayBetweenAttempts = TimeSpan.FromMilliseconds(200),
+        }.Run();
+
+        _connectionFactory = new NpgsqlDatabaseConnectionFactory(_fixture.ConnectionString);
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(TestContext.Current.CancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            "TRUNCATE TABLE person, person_role, restaurant_table, table_sitting, table_sitting_member CASCADE;",
+            cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connectionFactory is not null)
+        {
+            await _connectionFactory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task JoinTableAsync_FirstJoin_OpensTheSittingAndInsertsTheFirstMembership()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid tableId = await CreateTableAsync("Table 1", cancellationToken);
+        Guid personId = await SeedPersonAsync("ada", "Ada", cancellationToken);
+
+        JoinTableResult result = await Membership().JoinTableAsync(tableId, personId, cancellationToken);
+
+        Assert.Equal(JoinTableOutcome.SittingOpened, result.Outcome);
+        Assert.True(result.MembershipInserted);
+        Assert.True(result.IsMember);
+        Assert.NotNull(result.SittingIdentifier);
+
+        SittingProbeRow sitting = await ReadSittingAsync(result.SittingIdentifier!.Value, cancellationToken);
+        Assert.Equal(tableId, sitting.RestaurantTableIdentifier);
+        Assert.Equal(_clock.UtcNow, sitting.OpenedAt);
+        Assert.Null(sitting.ClosedAt);
+        Assert.Null(sitting.SettledTotalAmount);
+
+        Assert.Equal(1, await CountSittingsAsync(cancellationToken));
+        Assert.Equal(1, await CountMembersAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task JoinTableAsync_SecondPerson_JoinsTheSameOpenSitting()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid tableId = await CreateTableAsync("Table 2", cancellationToken);
+        Guid first = await SeedPersonAsync("ada", "Ada", cancellationToken);
+        Guid second = await SeedPersonAsync("grace", "Grace", cancellationToken);
+
+        JoinTableResult opened = await Membership().JoinTableAsync(tableId, first, cancellationToken);
+        _clock.UtcNow = _clock.UtcNow.AddMinutes(2);
+        JoinTableResult joined = await Membership().JoinTableAsync(tableId, second, cancellationToken);
+
+        Assert.Equal(JoinTableOutcome.SittingOpened, opened.Outcome);
+        Assert.Equal(JoinTableOutcome.JoinedOpenSitting, joined.Outcome);
+        Assert.True(joined.MembershipInserted);
+        Assert.Equal(opened.SittingIdentifier, joined.SittingIdentifier);
+
+        // §5.1: later grants add members — they do not open a second sitting on the same table.
+        Assert.Equal(1, await CountSittingsAsync(cancellationToken));
+        Assert.Equal(2, await CountMembersAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task JoinTableAsync_SamePersonTwice_IsIdempotentAndWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid tableId = await CreateTableAsync("Table 3", cancellationToken);
+        Guid personId = await SeedPersonAsync("ada", "Ada", cancellationToken);
+
+        JoinTableResult first = await Membership().JoinTableAsync(tableId, personId, cancellationToken);
+        JoinTableResult again = await Membership().JoinTableAsync(tableId, personId, cancellationToken);
+
+        Assert.Equal(JoinTableOutcome.AlreadyMember, again.Outcome);
+        Assert.False(again.MembershipInserted);
+        Assert.True(again.IsMember);
+        Assert.Equal(first.SittingIdentifier, again.SittingIdentifier);
+
+        Assert.Equal(1, await CountSittingsAsync(cancellationToken));
+        Assert.Equal(1, await CountMembersAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task JoinTableAsync_DeactivatedTable_ReturnsTableUnavailableAndWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid tableId = await CreateTableAsync("Table 4", cancellationToken);
+        Guid personId = await SeedPersonAsync("ada", "Ada", cancellationToken);
+
+        Assert.Equal(
+            TableActivationOutcome.Changed,
+            await Administration().SetTableActiveAsync(tableId, false, cancellationToken));
+
+        JoinTableResult result = await Membership().JoinTableAsync(tableId, personId, cancellationToken);
+
+        Assert.Equal(JoinTableOutcome.TableUnavailable, result.Outcome);
+        Assert.False(result.IsMember);
+        Assert.Null(result.SittingIdentifier);
+        Assert.Equal(0, await CountSittingsAsync(cancellationToken));
+        Assert.Equal(0, await CountMembersAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task JoinTableAsync_UnknownTable_ReturnsTableUnavailable()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid personId = await SeedPersonAsync("ada", "Ada", cancellationToken);
+
+        JoinTableResult result = await Membership()
+            .JoinTableAsync(_identifiers.Create(), personId, cancellationToken);
+
+        Assert.Equal(JoinTableOutcome.TableUnavailable, result.Outcome);
+        Assert.Equal(0, await CountSittingsAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task JoinTableAsync_AfterTheSittingIsClosed_OpensANewOne()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid tableId = await CreateTableAsync("Table 5", cancellationToken);
+        Guid personId = await SeedPersonAsync("ada", "Ada", cancellationToken);
+
+        JoinTableResult first = await Membership().JoinTableAsync(tableId, personId, cancellationToken);
+        await CloseSittingAsync(first.SittingIdentifier!.Value, personId, cancellationToken);
+
+        _clock.UtcNow = _clock.UtcNow.AddHours(1);
+        JoinTableResult second = await Membership().JoinTableAsync(tableId, personId, cancellationToken);
+
+        // The partial unique index only forbids two OPEN sittings per table, so a closed one is no bar.
+        Assert.Equal(JoinTableOutcome.SittingOpened, second.Outcome);
+        Assert.NotEqual(first.SittingIdentifier, second.SittingIdentifier);
+        Assert.Equal(2, await CountSittingsAsync(cancellationToken));
+        Assert.Equal(2, await CountMembersAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task GetOpenSittingForMemberAsync_ReturnsTheSittingForAMemberAndNullForEveryoneElse()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid tableId = await CreateTableAsync("Table 6", cancellationToken);
+        Guid member = await SeedPersonAsync("ada", "Ada", cancellationToken);
+        Guid stranger = await SeedPersonAsync("mallory", null, cancellationToken);
+
+        JoinTableResult joined = await Membership().JoinTableAsync(tableId, member, cancellationToken);
+
+        TableSittingSummary? forMember = await Directory()
+            .GetOpenSittingForMemberAsync(tableId, member, cancellationToken);
+        TableSittingSummary? forStranger = await Directory()
+            .GetOpenSittingForMemberAsync(tableId, stranger, cancellationToken);
+
+        Assert.NotNull(forMember);
+        Assert.Equal(joined.SittingIdentifier, forMember!.SittingIdentifier);
+        Assert.Equal("Table 6", forMember.TableLabel);
+        Assert.Equal(1, forMember.MemberCount);
+        Assert.True(forMember.IsOpen);
+
+        // §4.4's bypass is membership-scoped: a signed-in non-member gets nothing and must present a token.
+        Assert.Null(forStranger);
+    }
+
+    [Fact]
+    public async Task GetOpenSittingAsync_ReturnsNullOnceTheSittingIsClosed()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid tableId = await CreateTableAsync("Table 7", cancellationToken);
+        Guid personId = await SeedPersonAsync("ada", "Ada", cancellationToken);
+
+        JoinTableResult joined = await Membership().JoinTableAsync(tableId, personId, cancellationToken);
+        Assert.NotNull(await Directory().GetOpenSittingAsync(tableId, cancellationToken));
+
+        await CloseSittingAsync(joined.SittingIdentifier!.Value, personId, cancellationToken);
+
+        Assert.Null(await Directory().GetOpenSittingAsync(tableId, cancellationToken));
+        Assert.Null(await Directory().GetOpenSittingForMemberAsync(tableId, personId, cancellationToken));
+    }
+
+    [Fact]
+    public async Task ListOpenSittingsForPersonAsync_ReturnsEveryOpenSittingOldestFirst()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid patio = await CreateTableAsync("Patio", cancellationToken);
+        Guid bar = await CreateTableAsync("Bar", cancellationToken);
+        Guid personId = await SeedPersonAsync("ada", "Ada", cancellationToken);
+        Guid other = await SeedPersonAsync("grace", "Grace", cancellationToken);
+
+        await Membership().JoinTableAsync(patio, personId, cancellationToken);
+        _clock.UtcNow = _clock.UtcNow.AddMinutes(5);
+        await Membership().JoinTableAsync(bar, personId, cancellationToken);
+
+        // Someone else's sitting on a third table must not leak into this person's list.
+        Guid window = await CreateTableAsync("Window", cancellationToken);
+        await Membership().JoinTableAsync(window, other, cancellationToken);
+
+        IReadOnlyList<TableSittingSummary> sittings = await Directory()
+            .ListOpenSittingsForPersonAsync(personId, cancellationToken);
+
+        // §5.1: a person may hold memberships in several open sittings at once.
+        Assert.Equal(new[] { "Patio", "Bar" }, sittings.Select(sitting => sitting.TableLabel).ToArray());
+        Assert.All(sittings, sitting => Assert.True(sitting.IsOpen));
+    }
+
+    [Fact]
+    public async Task ListMembersAsync_ReturnsTheRosterInJoinOrderAndFallsBackToTheUsername()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid tableId = await CreateTableAsync("Table 8", cancellationToken);
+        Guid first = await SeedPersonAsync("ada", "Ada Lovelace", cancellationToken);
+        Guid second = await SeedPersonAsync("grace", null, cancellationToken);
+
+        JoinTableResult opened = await Membership().JoinTableAsync(tableId, first, cancellationToken);
+        _clock.UtcNow = _clock.UtcNow.AddMinutes(3);
+        await Membership().JoinTableAsync(tableId, second, cancellationToken);
+
+        IReadOnlyList<SittingMemberSummary> roster = await Directory()
+            .ListMembersAsync(opened.SittingIdentifier!.Value, cancellationToken);
+
+        Assert.Equal(2, roster.Count);
+        Assert.Equal(first, roster[0].PersonIdentifier);
+        Assert.Equal("Ada Lovelace", roster[0].RosterName);
+        Assert.Equal(second, roster[1].PersonIdentifier);
+
+        // No display name set → the roster shows the username rather than a blank (§5.2).
+        Assert.Null(roster[1].DisplayName);
+        Assert.Equal("grace", roster[1].RosterName);
+    }
+
+    // --- helpers -----------------------------------------------------------------------------------
+
+    private void SkipIfNoContainer()
+        => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+
+    private DapperSittingMembership Membership() => new(_connectionFactory!, _clock, _identifiers);
+
+    private DapperSittingDirectory Directory() => new(_connectionFactory!);
+
+    private DapperTableAdministration Administration() => new(_connectionFactory!, _clock);
+
+    /// <summary>Creates a real table through the administration service (so it gets a real join secret).</summary>
+    private async Task<Guid> CreateTableAsync(string label, CancellationToken cancellationToken)
+    {
+        Guid tableId = _identifiers.Create();
+        Assert.Equal(
+            CreateTableOutcome.Created,
+            await Administration().CreateTableAsync(tableId, label, cancellationToken));
+        return tableId;
+    }
+
+    /// <summary>Seeds a bare active person (a password, no roles, no obligations) and returns its id.</summary>
+    private async Task<Guid> SeedPersonAsync(string username, string? displayName, CancellationToken cancellationToken)
+    {
+        Guid id = _identifiers.Create();
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO person (
+                person_identifier, username, display_name, email_address, phone_number,
+                password_hash, totp_secret_protected, must_change_password, must_enroll_totp,
+                security_stamp, failed_access_count, lockout_end_at, is_active, created_at)
+            VALUES (
+                @Id, @Username, @DisplayName, NULL, NULL,
+                @PasswordHash, NULL, false, false,
+                @Stamp, 0, NULL, true, @CreatedAt);
+            """,
+            new
+            {
+                Id = id,
+                Username = username,
+                DisplayName = displayName,
+                PasswordHash = SamplePasswordHash,
+                Stamp = Guid.NewGuid(),
+                CreatedAt = _clock.UtcNow,
+            },
+            cancellationToken: cancellationToken));
+        return id;
+    }
+
+    /// <summary>
+    /// Closes a sitting directly. Close-and-settle is the counter's §5.3 transaction and lands with M5;
+    /// these tests only need the closed state to exist so the "open" predicates can be exercised.
+    /// </summary>
+    private async Task CloseSittingAsync(Guid sittingId, Guid closedBy, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE table_sitting
+            SET closed_at = @ClosedAt,
+                closed_by_person_identifier = @ClosedBy,
+                settled_total_amount = 0
+            WHERE table_sitting_identifier = @SittingId;
+            """,
+            new { ClosedAt = _clock.UtcNow, ClosedBy = closedBy, SittingId = sittingId },
+            cancellationToken: cancellationToken));
+    }
+
+    private async Task<SittingProbeRow> ReadSittingAsync(Guid sittingId, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        return await connection.QuerySingleAsync<SittingProbeRow>(new CommandDefinition(
+            """
+            SELECT restaurant_table_identifier AS RestaurantTableIdentifier,
+                   opened_at                   AS OpenedAt,
+                   closed_at                   AS ClosedAt,
+                   settled_total_amount        AS SettledTotalAmount
+            FROM table_sitting
+            WHERE table_sitting_identifier = @SittingId;
+            """,
+            new { SittingId = sittingId },
+            cancellationToken: cancellationToken));
+    }
+
+    private Task<int> CountSittingsAsync(CancellationToken cancellationToken)
+        => CountAsync("SELECT count(*)::int FROM table_sitting;", cancellationToken);
+
+    private Task<int> CountMembersAsync(CancellationToken cancellationToken)
+        => CountAsync("SELECT count(*)::int FROM table_sitting_member;", cancellationToken);
+
+    private async Task<int> CountAsync(string sql, CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
+        return await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            sql, cancellationToken: cancellationToken));
+    }
+
+    // Plain mutable POCO so Dapper's default property mapping applies; the SELECT aliases its
+    // snake_case columns to these PascalCase names.
+    private sealed class SittingProbeRow
+    {
+        public Guid RestaurantTableIdentifier { get; set; }
+        public DateTimeOffset OpenedAt { get; set; }
+        public DateTimeOffset? ClosedAt { get; set; }
+        public decimal? SettledTotalAmount { get; set; }
+    }
 }
 
 ################################################################################
@@ -25993,6 +27882,114 @@ public sealed class ObligationsEnforcementTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Identity/PersonPrincipalTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             PersonPrincipalTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/PersonPrincipalTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/PersonPrincipalTests.cs
+  Size:                  3.8 KiB (3862 bytes)
+  Last modified:         2026-07-25 19:49:06.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25362691
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               b65e659f9b00acc84498661530455df9e7ba01630ecae771c52478630a6ab20e
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
+
+--- CONTENT ---
+using System.Security.Claims;
+using MyRestaurant.WebApplication.Identity;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests.Identity;
+
+/// <summary>
+/// Pure tests for <see cref="PersonPrincipal"/> (TECHNICAL_SPECIFICATION §3.1) — the one place the
+/// surfaces read "who is this?" off the authentication cookie's principal. The interesting cases are all
+/// the ways it must answer <c>null</c> rather than something plausible-looking: an anonymous visitor, an
+/// authenticated identity with no id claim, a malformed value, and the all-zero <see cref="Guid"/>, which
+/// no UUIDv7 primary key can legitimately be. Every caller treats <c>null</c> as "not signed in", so a
+/// wrong answer here would either hide a member's table or scope a query to nobody.
+/// </summary>
+public sealed class PersonPrincipalTests
+{
+    private const string AuthenticationType = "TestCookie";
+
+    private static readonly Guid PersonIdentifier = Guid.Parse("0192f000-0000-7000-8000-0000000000aa");
+
+    [Fact]
+    public void IdentifierFor_AuthenticatedPrincipalWithNameIdentifier_ReturnsTheParsedIdentifier()
+    {
+        ClaimsPrincipal principal = Authenticated(
+            new Claim(ClaimTypes.NameIdentifier, PersonIdentifier.ToString("D")));
+
+        Assert.Equal(PersonIdentifier, PersonPrincipal.IdentifierFor(principal));
+    }
+
+    [Fact]
+    public void IdentifierFor_IsCaseAndFormatInsensitiveAboutTheClaimValue()
+    {
+        // Identity writes the value with UserManager.GetUserIdAsync (Guid.ToString()); accept the
+        // braced/upper spellings too rather than silently dropping a real member.
+        Assert.Equal(
+            PersonIdentifier,
+            PersonPrincipal.IdentifierFor(Authenticated(
+                new Claim(ClaimTypes.NameIdentifier, PersonIdentifier.ToString("D").ToUpperInvariant()))));
+
+        Assert.Equal(
+            PersonIdentifier,
+            PersonPrincipal.IdentifierFor(Authenticated(
+                new Claim(ClaimTypes.NameIdentifier, PersonIdentifier.ToString("B")))));
+    }
+
+    [Fact]
+    public void IdentifierFor_AnonymousPrincipal_ReturnsNull()
+    {
+        // No authentication type → IsAuthenticated is false, even with an id claim attached.
+        ClaimsPrincipal anonymous = new(new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, PersonIdentifier.ToString("D"))]));
+
+        Assert.Null(PersonPrincipal.IdentifierFor(anonymous));
+        Assert.Null(PersonPrincipal.IdentifierFor(new ClaimsPrincipal(new ClaimsIdentity())));
+        Assert.Null(PersonPrincipal.IdentifierFor(null));
+    }
+
+    [Fact]
+    public void IdentifierFor_AuthenticatedWithoutAnIdentifierClaim_ReturnsNull()
+    {
+        ClaimsPrincipal principal = Authenticated(new Claim(ClaimTypes.Name, "ada"));
+
+        Assert.Null(PersonPrincipal.IdentifierFor(principal));
+    }
+
+    [Fact]
+    public void IdentifierFor_MalformedOrEmptyIdentifier_ReturnsNull()
+    {
+        Assert.Null(PersonPrincipal.IdentifierFor(Authenticated(new Claim(ClaimTypes.NameIdentifier, "ada"))));
+        Assert.Null(PersonPrincipal.IdentifierFor(Authenticated(
+            new Claim(ClaimTypes.NameIdentifier, Guid.Empty.ToString("D")))));
+    }
+
+    [Fact]
+    public void ParseIdentifier_RejectsNullEmptyGarbageAndTheZeroGuid()
+    {
+        Assert.Null(PersonPrincipal.ParseIdentifier(null));
+        Assert.Null(PersonPrincipal.ParseIdentifier(string.Empty));
+        Assert.Null(PersonPrincipal.ParseIdentifier("   "));
+        Assert.Null(PersonPrincipal.ParseIdentifier("not-a-guid"));
+        Assert.Null(PersonPrincipal.ParseIdentifier(Guid.Empty.ToString("D")));
+
+        Assert.Equal(PersonIdentifier, PersonPrincipal.ParseIdentifier(PersonIdentifier.ToString("D")));
+    }
+
+    private static ClaimsPrincipal Authenticated(params Claim[] claims)
+        => new(new ClaimsIdentity(claims, AuthenticationType));
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.WebApplication.Tests/Identity/RestaurantAuthenticatorTokenProviderTests.cs
 ################################################################################
 
@@ -27167,6 +29164,154 @@ public sealed class RestaurantOptionsTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Tables/JoinGrantTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             JoinGrantTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Tables/JoinGrantTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Tables/JoinGrantTests.cs
+  Size:                  5.6 KiB (5725 bytes)
+  Last modified:         2026-07-25 19:48:47.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25362688
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               baf2025ad597d06f570a2ec0304533a0a8364d50a3ff29948acacf40fbf2dcbe
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
+
+--- CONTENT ---
+using Microsoft.AspNetCore.DataProtection;
+using MyRestaurant.WebApplication.Tables;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests;
+
+/// <summary>
+/// Pure tests for the table join grant (TECHNICAL_SPECIFICATION §4.4): the Data-Protection round-trip
+/// carries the table and the issue instant, a tampered or foreign-purpose value is rejected rather than
+/// trusted, the embedded <c>issued_at</c> bounds how long a scan stays good, and a grant for one table
+/// is never usable on another. No server, no container — these always run. An
+/// <see cref="EphemeralDataProtectionProvider"/> gives each test a throwaway key ring, mirroring the
+/// setup-ticket tests.
+/// </summary>
+public sealed class JoinGrantTests
+{
+    private static readonly Guid TableIdentifier = Guid.Parse("0192f000-0000-7000-8000-00000000ab01");
+    private static readonly Guid OtherTable = Guid.Parse("0192f000-0000-7000-8000-00000000ab02");
+    private static readonly DateTimeOffset IssuedAt = new(2026, 2, 3, 18, 30, 0, TimeSpan.Zero);
+    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
+
+    [Fact]
+    public void Protect_ThenTryUnprotect_RoundTripsTheTableAndInstant()
+    {
+        JoinGrantProtector protector = NewProtector();
+        JoinGrant original = new(TableIdentifier, IssuedAt);
+
+        bool ok = protector.TryUnprotect(protector.Protect(original), out JoinGrant? roundTripped);
+
+        Assert.True(ok);
+        Assert.NotNull(roundTripped);
+        Assert.Equal(TableIdentifier, roundTripped!.TableIdentifier);
+        Assert.Equal(IssuedAt, roundTripped.IssuedAt);
+    }
+
+    [Fact]
+    public void TryUnprotect_MissingOrEmptyValue_ReturnsFalse()
+    {
+        JoinGrantProtector protector = NewProtector();
+
+        Assert.False(protector.TryUnprotect(null, out JoinGrant? fromNull));
+        Assert.Null(fromNull);
+
+        Assert.False(protector.TryUnprotect(string.Empty, out JoinGrant? fromEmpty));
+        Assert.Null(fromEmpty);
+    }
+
+    [Fact]
+    public void TryUnprotect_TamperedValue_ReturnsFalseRatherThanThrowing()
+    {
+        JoinGrantProtector protector = NewProtector();
+        string protectedGrant = protector.Protect(new JoinGrant(TableIdentifier, IssuedAt));
+
+        // Change one character of the payload to a different, still-valid Base64Url character, so the
+        // failure is the authentication tag rejecting it rather than a decoding accident.
+        char[] characters = protectedGrant.ToCharArray();
+        int middle = characters.Length / 2;
+        characters[middle] = characters[middle] == 'A' ? 'B' : 'A';
+        string tampered = new(characters);
+
+        Assert.NotEqual(protectedGrant, tampered);
+        Assert.False(protector.TryUnprotect(tampered, out JoinGrant? grant));
+        Assert.Null(grant);
+    }
+
+    [Fact]
+    public void TryUnprotect_ValueFromADifferentKeyRing_ReturnsFalse()
+    {
+        // Two independent ephemeral providers stand in for "a value that is not one of ours".
+        string foreign = NewProtector().Protect(new JoinGrant(TableIdentifier, IssuedAt));
+
+        Assert.False(NewProtector().TryUnprotect(foreign, out JoinGrant? grant));
+        Assert.Null(grant);
+    }
+
+    [Fact]
+    public void TryUnprotect_ValueProtectedForAnotherPurpose_ReturnsFalse()
+    {
+        // Same key ring, different purpose string: purpose isolation must keep the two apart, which is
+        // why the join grant's purpose is distinct from every other protector in the application.
+        EphemeralDataProtectionProvider provider = new();
+        string otherPurposeValue = provider
+            .CreateProtector(MyRestaurant.WebApplication.Identity.SetupTicketProtector.Purpose)
+            .Protect("""{"tableIdentifier":"0192f000-0000-7000-8000-00000000ab01","issuedAt":"2026-02-03T18:30:00+00:00"}""");
+
+        Assert.False(new JoinGrantProtector(provider).TryUnprotect(otherPurposeValue, out JoinGrant? grant));
+        Assert.Null(grant);
+    }
+
+    [Fact]
+    public void HasExpired_IsFalseUpToTheLifetimeAndTrueBeyondIt()
+    {
+        JoinGrant grant = new(TableIdentifier, IssuedAt);
+
+        Assert.False(grant.HasExpired(IssuedAt, Lifetime));
+        Assert.False(grant.HasExpired(IssuedAt + Lifetime, Lifetime));            // exactly at the edge
+        Assert.True(grant.HasExpired(IssuedAt + Lifetime + TimeSpan.FromSeconds(1), Lifetime));
+    }
+
+    [Fact]
+    public void IsUsableFor_RequiresTheMatchingTableAndALiveGrant()
+    {
+        JoinGrant grant = new(TableIdentifier, IssuedAt);
+
+        Assert.True(grant.IsUsableFor(TableIdentifier, IssuedAt.AddMinutes(9), Lifetime));
+
+        // Scanning table 1 must never let anyone join table 2 (§4.4).
+        Assert.False(grant.IsUsableFor(OtherTable, IssuedAt.AddMinutes(9), Lifetime));
+
+        // Right table, but the scan is stale — the friendly re-scan page, not a join.
+        Assert.False(grant.IsUsableFor(TableIdentifier, IssuedAt.AddMinutes(11), Lifetime));
+    }
+
+    [Fact]
+    public void CookieAndPurpose_AreDistinctFromTheSetupFlow()
+    {
+        // The join grant and the setup ticket are different short-lived flows on the same origin; a
+        // shared cookie name would have one silently clobber the other, and a shared Data-Protection
+        // purpose would let a value from one be unprotected as the other.
+        Assert.Equal("myrestaurant.join", JoinGrantCookie.Name);
+        Assert.NotEqual(MyRestaurant.WebApplication.Identity.SetupCookie.Name, JoinGrantCookie.Name);
+        Assert.NotEqual(
+            MyRestaurant.WebApplication.Identity.SetupTicketProtector.Purpose,
+            JoinGrantProtector.Purpose);
+    }
+
+    private static JoinGrantProtector NewProtector() => new(new EphemeralDataProtectionProvider());
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.WebApplication.Tests/Tables/TableJoinTokensTests.cs
 ################################################################################
 
@@ -27357,22 +29502,25 @@ public sealed class TableJoinTokensTests : IDisposable
   File name:             TablesWiringTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Tables/TablesWiringTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Tables/TablesWiringTests.cs
-  Size:                  3.8 KiB (3889 bytes)
-  Last modified:         2026-07-23 10:01:32.000000000 -0400
+  Size:                  6.0 KiB (6129 bytes)
+  Last modified:         2026-07-25 19:49:33.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25243982
+  Inode:                 25362689
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               58024c74943a995c82cfccb452ba94092a641f7d01c7ccae71bde507d3d33b0e
-  Last git commit:       e0e95f9 2026-07-23 10:23:48 -0400 add claude response
+  SHA-256:               1b839194e93c52d49a260da23c40248f45f5876cd0bed3b3aaa4b5417efbaaae
+  Last git commit:       4b10534 2026-07-25 19:59:03 -0400 add claude changes
 
 --- CONTENT ---
 using System.Data.Common;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MyRestaurant.DataAccess;
+using MyRestaurant.DataAccess.Sittings;
 using MyRestaurant.DataAccess.Tables;
+using MyRestaurant.Domain.Identifiers;
 using MyRestaurant.Domain.Time;
 using MyRestaurant.WebApplication.Configuration;
 using MyRestaurant.WebApplication.Observability;
@@ -27382,14 +29530,16 @@ using Xunit;
 namespace MyRestaurant.WebApplication.Tests;
 
 /// <summary>
-/// Verifies the table wiring composed by
-/// <see cref="TablesServiceCollectionExtensions.AddRestaurantTables"/> (TECHNICAL_SPECIFICATION §4): the
-/// read-only <see cref="ITableDirectory"/> and transactional <see cref="ITableAdministration"/>
-/// management services (§4.1), plus the join-token services (§4.3–§4.5) — the server-only
-/// <see cref="ITableJoinSecretReader"/> and the <see cref="ITableJoinTokens"/> that depends on it — all
-/// resolve to their concrete implementations. Constructing them opens no connection (they only capture
-/// the connection factory, clock, options, and metrics), so this resolves without a database — mirroring
-/// the resolvability facts in <see cref="IdentityWiringTests"/>.
+/// Verifies the table and sitting wiring composed by
+/// <see cref="TablesServiceCollectionExtensions.AddRestaurantTables"/> (TECHNICAL_SPECIFICATION §4, §5):
+/// the read-only <see cref="ITableDirectory"/> and transactional <see cref="ITableAdministration"/>
+/// management services (§4.1); the join-token services (§4.3–§4.5) — the server-only
+/// <see cref="ITableJoinSecretReader"/> and the <see cref="ITableJoinTokens"/> that depends on it; the
+/// sitting services (§5.1) — <see cref="ISittingDirectory"/> and <see cref="ISittingMembership"/>; and the
+/// singleton <see cref="JoinGrantProtector"/> behind the §4.4 join-grant cookie — all resolve to their
+/// concrete implementations. Constructing them opens no connection (they only capture the connection
+/// factory, clock, identifier factory, options, metrics, and data protector), so this resolves without a
+/// database — mirroring the resolvability facts in <see cref="Identity.IdentityWiringTests"/>.
 /// </summary>
 public sealed class TablesWiringTests
 {
@@ -27437,18 +29587,60 @@ public sealed class TablesWiringTests
         Assert.IsType<TableJoinTokens>(tokens);
     }
 
+    [Fact]
+    public void SittingDirectory_IsResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        ISittingDirectory directory = scope.ServiceProvider.GetRequiredService<ISittingDirectory>();
+
+        Assert.IsType<DapperSittingDirectory>(directory);
+    }
+
+    [Fact]
+    public void SittingMembership_IsResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        ISittingMembership membership = scope.ServiceProvider.GetRequiredService<ISittingMembership>();
+
+        Assert.IsType<DapperSittingMembership>(membership);
+    }
+
+    [Fact]
+    public void JoinGrantProtector_IsASingletonAndProtectsWhatItUnprotects()
+    {
+        using ServiceProvider provider = BuildProvider();
+
+        JoinGrantProtector first = provider.GetRequiredService<JoinGrantProtector>();
+        JoinGrantProtector second = provider.GetRequiredService<JoinGrantProtector>();
+
+        // One instance for the process: it wraps a protector derived once from the singleton provider.
+        Assert.Same(first, second);
+
+        // And the registration is wired to a real data-protection provider, not a stub that no-ops.
+        JoinGrant grant = new(Guid.Parse("0192f000-0000-7000-8000-00000000ab01"), DateTimeOffset.UtcNow);
+        Assert.True(first.TryUnprotect(first.Protect(grant), out JoinGrant? roundTripped));
+        Assert.Equal(grant.TableIdentifier, roundTripped!.TableIdentifier);
+    }
+
     private static ServiceProvider BuildProvider()
     {
         ServiceCollection services = new();
 
-        // The prerequisites Program.cs registers before AddRestaurantTables: a clock, a connection
-        // factory, the bound options, and the metrics (which need an IMeterFactory via AddMetrics). The
-        // connection factory is never used here — resolution constructs, it does not connect.
+        // The prerequisites Program.cs registers before AddRestaurantTables: a clock, an identifier
+        // factory, a connection factory, the bound options, the metrics (which need an IMeterFactory via
+        // AddMetrics), and Data Protection. The connection factory is never used here — resolution
+        // constructs, it does not connect — and an ephemeral key ring keeps the test off the file system.
         services.AddSingleton<IClock, SystemClock>();
+        services.AddSingleton<IIdentifierFactory, UuidV7IdentifierFactory>();
         services.AddSingleton<IDatabaseConnectionFactory, UnusedConnectionFactory>();
         services.AddSingleton(RestaurantOptions.FromConfiguration(new ConfigurationBuilder().Build()));
         services.AddMetrics();
         services.AddSingleton<RestaurantMetrics>();
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
 
         services.AddRestaurantTables();
 
@@ -27466,10 +29658,10 @@ public sealed class TablesWiringTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 167
-  Total size     : 1.1 MiB (1127646 bytes)
+  Files dumped   : 176
+  Total size     : 1.2 MiB (1221822 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-25T19:22:05-04:00
+  Completed at   : 2026-07-25T20:01:28-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
