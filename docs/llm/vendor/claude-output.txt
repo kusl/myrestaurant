@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-26T07:22:28-04:00
+  Generated at   : 2026-07-26T13:37:34-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 846266e01111b5202ef5a649c90b7e9db6d475bb
-  Commit (short) : 846266e
-  Commit date    : 2026-07-26 07:22:23 -0400
-  Commit message : append build progress
+  Commit (full)  : 0a2923fa4a0090993f1b0b1d562d2fb050ac1574
+  Commit (short) : 0a2923f
+  Commit date    : 2026-07-26 13:37:18 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 193
+  Files included : 197
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (193 included files)
+# FILE TREE  (197 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -640,10 +640,12 @@ cat "$OUTPUT_FILE"
 │       │   ├── Account
 │       │   │   ├── Pages
 │       │   │   │   ├── AccessDenied.razor
+│       │   │   │   ├── ChangePassword.razor
 │       │   │   │   ├── ChangePasswordRequired.razor
 │       │   │   │   ├── EnrollTotp.razor
 │       │   │   │   ├── EnrollTotpRequired.razor
 │       │   │   │   ├── Passkeys.razor
+│       │   │   │   ├── Profile.razor
 │       │   │   │   ├── SignIn.razor
 │       │   │   │   ├── SignInRecoveryCode.razor
 │       │   │   │   └── SignInTwoFactor.razor
@@ -688,6 +690,7 @@ cat "$OUTPUT_FILE"
 │       │   ├── ObligationsMiddleware.cs
 │       │   ├── PasskeyContracts.cs
 │       │   ├── PersonPrincipal.cs
+│       │   ├── ProfileDetails.cs
 │       │   ├── PublicOriginMiddleware.cs
 │       │   ├── RestaurantAuthenticatorTokenProvider.cs
 │       │   ├── RestaurantClaimsPrincipalFactory.cs
@@ -766,6 +769,7 @@ cat "$OUTPUT_FILE"
         │   ├── IdentityWiringTests.cs
         │   ├── ObligationsEnforcementTests.cs
         │   ├── PersonPrincipalTests.cs
+        │   ├── ProfileDetailsTests.cs
         │   ├── RestaurantAuthenticatorTokenProviderTests.cs
         │   ├── RestaurantClaimsPrincipalFactoryTests.cs
         │   ├── SetupTicketTests.cs
@@ -2436,15 +2440,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  82.7 KiB (84733 bytes)
-  Last modified:         2026-07-26 07:22:08.855036917 -0400
+  Size:                  92.3 KiB (94513 bytes)
+  Last modified:         2026-07-26 08:55:51.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25103633
+  Inode:                 25661728
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               b58ecb8b1e12f04b45735d0131427eee9bf001ba0b1c0e16a74e32d98b0bf5d3
-  Last git commit:       846266e 2026-07-26 07:22:23 -0400 append build progress
+  SHA-256:               0e576cc3d871a829148d30d504ed22bf279ae4efe3b1dbeae420ca56dde7efda
+  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
 
 --- CONTENT ---
 # Build progress
@@ -3570,6 +3574,126 @@ staging and batch send, fulfillment, and the kitchen surface.
    - Deactivate the table → the display shows "out of service" rather than a code, and stays paired.
    - Open `/display/{some-other-table}` on the tablet → **Wrong table**, with a link back to its own.
 
+### M2 close-out — the person's own profile: display name, contact details, password (landed)
+
+A gap found in use rather than in review, and closed before M4 opens (ledger F-35). §4.6 and §11.1 both
+say every person has a profile page; §19's build order never named it, so no milestone claimed it. M2
+shipped the individual credential pages — `/account/enroll-totp`, `/account/passkeys` — with no hub above
+them and no surface at all for the three fields that belong to the person rather than to a role. Two
+freshly created staff accounts could not set their own display names, and there was nowhere to change a
+password voluntarily either (only the forced §3.5 page existed). §11.2 groups the kitchen queue by *person
+display name*, so M4 would have inherited tickets reading `betty`.
+
+**New `Identity/ProfileDetails.cs`** — a pure record carrying the three self-editable fields with
+`Normalize`, `Validate`, and `SameAs`. Normalization is trim + internal-whitespace collapse + control-
+character removal in one pass, with blank collapsing to `null` (the schema's "unset" for all three
+columns); `Booth  1` and `Ad\0am` are the cases that motivated it. Validation is deliberately loose:
+these contact fields exist for *manual* escalation only (§4.6), nothing ever sends to them, and no paid
+sending service is permitted, so there is no deliverability to check and nothing is gained by rejecting an
+unusual-but-plausible value. It refuses only what is certainly a mistake — no `@`, an undotted domain,
+letters in a phone number, fewer than three digits. `SameAs` normalizes the *stored* side too, so a row
+written before this page existed does not read as "changed" forever, and compares the e-mail
+case-insensitively because the column is `citext`. It lives outside the component for the reason
+`ObligationsEnforcement`, `WebAuthnOriginPolicy`, and `PairingCode.Normalize` do: a static-SSR Razor
+component is not unit-testable here (no bUnit, §16.1), so the parts with decisions in them move out.
+
+**New `/account` (`Components/Account/Pages/Profile.razor`)** — static SSR, `[Authorize]` only, no area
+policy: every authenticated principal has one, guest to administrator. **Your details** is one form
+writing one `person` row update through `UserManager.UpdateAsync`, which (verified against
+`dotnet/aspnetcore` `release/10.0`) validates and normalizes but does **not** rotate the security stamp —
+correct, since none of these three fields is a credential and live sessions have no reason to be cut. The
+username renders read-only with the reason. A changed display name *does* call `RefreshSignInAsync`,
+because the name travels as a claim (`RestaurantClaimsPrincipalFactory`) and would otherwise not appear
+until the five-minute revalidation. No `security_event` is written: §8.2's vocabulary is closed and has no
+profile-edit type, which is right. **Sign-in and security** is a status row per credential — password
+set/unset, authenticator enrolled/not, passkey count from `UserManager.GetPasskeysAsync` — each linking to
+the surface that owns it. Post/redirect/get on save, carrying a one-word outcome, so a refresh does not
+re-post; a no-op save is detected and reported as "nothing changed" rather than writing a row.
+
+**New `/account/change-password` (`Components/Account/Pages/ChangePassword.razor`)** — the voluntary
+password surface, distinct from `ChangePasswordRequired.razor`, which is obligation (1) of §3.5, is exempt
+from the pipeline, and clears the flag. This one is an ordinary authenticated destination, so a person with
+an outstanding obligation is routed to the forced page and never lands here. Two branches and two named
+forms, because a passkey-only account (§3.2) has no current password to confirm and `[Required]` cannot be
+made conditional: `change-password` → `ChangePasswordAsync`, `add-password` → `AddPasswordAsync` (which
+re-reads the stored hash and refuses if one appeared meanwhile, so a stale form cannot overwrite). Both
+record `password_changed` — §8.2 has no separate "added" type, and from the audit's point of view that is
+what happened — with a null actor, the §8.2 convention for "the subject did it themselves". Both then call
+`RefreshSignInAsync`: the framework rotates the security stamp inside `UpdatePasswordHash` on *both* paths,
+so without it the person signs themselves out of the session they are sitting in.
+
+**Both pages guard every render branch on `_person`.** This is the `/account/enroll-totp` 500 lesson
+applied prospectively: `ComponentBase` issues an intermediate render the instant the `await` in
+`OnInitializedAsync` suspends, with every field still at its default, and a dereference there aborts the
+whole static-SSR response with a bare 500.
+
+### Fix — role checkboxes were stretched and unlabelled (staff creation)
+
+Reported as "the checkboxes don't feel aligned to anything", and it was not a design choice. `app.css` has
+`.form-field input { width: 100%; padding: 0.6rem 0.75rem; border-radius: 8px }`, and `CreateStaff.razor`
+put `class="form-field roles-fieldset"` on the fieldset — so each `InputCheckbox` inside inherited a text
+field's full width, padding, and corner radius. Worse, the page's inline `.role-option { display: flex }`
+**loses on specificity** to `.form-field label` (0,1,1 against 0,1,0), so the label reverted to
+`display: block` and its text dropped below the stretched box.
+
+Two changes. `app.css` gains an `input[type="checkbox"] / input[type="radio"]` override — an attribute
+selector outranks the bare `.form-field input` regardless of source order, so it holds wherever a checkbox
+lands in a form field — and a shared `.choice-fieldset` / `.choice-list` / `.choice` vocabulary for option
+rows, deliberately two classes deep so it outranks `.form-field label`. `CreateStaff.razor` adopts it and
+drops its inline `<style>` block; the fieldset no longer carries `.form-field` at all. `:has()` marks the
+checked row as progressive enhancement — everything works without it. While there, `.form-actions` became
+a wrapping flex row with a gap, which fixes button/link pairs butting together on several existing pages,
+and the `.chip` / `.chip-ok` / `.chip-warn` / `.chip-role` / `.muted` vocabulary moved into `app.css`: it
+had been invented inline twice (namespaced in `AdministrationHome`, bare in `ManagePerson`) so a third page
+wanting a status chip had nowhere to reach. The two inline copies are redundant but harmless and are left
+alone; fold them in whenever those pages are next edited.
+
+### Fix — one Account link in place of two
+
+`MainLayout` carried a **Security** link and a **Passkeys** link side by side. With the person's name and
+the administrator link, that wrapped onto three rows at 375px (iPhone SE), and neither link was where you
+would look for a display name. Both are replaced by one **Account** link to the new hub, which is also
+where the header stops growing every time a credential surface is added.
+
+### Documentation
+
+Atomic, per §18: `REQUIREMENTS.md` §4.6 now states display-name editing and username immutability outright,
+and records that the three fields are the person's own (the §4.5 administrative powers stop at credentials,
+roles, and activation); `TECHNICAL_SPECIFICATION.md` §11.1 points at a new **§11.6 `/account`** specifying
+the surface, and §19's M2 line names the profile page and admits it landed after M3;
+`DOCUMENTATION_REVIEW.md` gains **F-35**. Addresses stay unsurfaced with the reason recorded in §11.6 —
+nothing in version 1 consumes an address, and a form for data no reader exists for is scaffolding
+pretending to be a feature. No ADR is affected.
+
+### Build/test checklist for this slice
+
+1. `dotnet restore` — **no new packages**, no migration, no DI change (both pages resolve `UserManager`,
+   `SignInManager`, and `ISecurityEventLog`, all already registered; `ProfileDetails` is a pure type with
+   no lifetime).
+2. `dotnet build` — the two new Razor components are the likely home of anything the compiler catches.
+3. `dotnet test` — the previous green set plus `ProfileDetailsTests` (16 pure facts and theories; no
+   container engine, so they always run).
+4. Manual: sign in as **adam** → **Account** in the header → set a display name → save → the header and
+   the `/table` roster both show it. Change the password → you stay signed in (that is the
+   `RefreshSignInAsync`; if you get bounced to `/sign-in`, the refresh did not happen). Save with nothing
+   altered → "Nothing changed", no write. Enter `adam@example` → refused; leave both contact fields blank
+   → accepted.
+5. Manual, the checkbox fix: Administration → **Create staff account**. The three role rows are bordered
+   cards with a normal-sized checkbox aligned to the first line of its label, and the checked one is
+   tinted. Check it at 375px.
+6. Manual, refusals: as a person with an outstanding `must_change_password`, hit `/account` → the forced
+   page, not the profile (§3.5 — the profile is deliberately *not* on the exempt list).
+
+**Still deferred from M2**, unchanged by this slice: voluntary TOTP *removal* and the §4.2 "an
+administrator cannot remove their own enrolment" rule, which need a store-level `TotpRemoved` path; the
+grant-time passkey mandate for the kitchen and administrator roles in the create-staff-without-session
+case; and guest self-registration on the join path (§11.1), where an anonymous scanner is still sent to
+`/sign-in` and needs an account already.
+
+**Next: M4 — ordering.** Living order plus the §6.6 locking protocol, staging UI, batch send with
+all-or-nothing validation, staff edits, fulfillment and reversal, projections with fold-equivalence tests,
+and the kitchen surface with its alerts and reminder service.
+
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
 ################################################################################
@@ -3578,15 +3702,15 @@ staging and batch send, fulfillment, and the kitchen surface.
   File name:             DOCUMENTATION_REVIEW.md
   Relative path:         docs/DOCUMENTATION_REVIEW.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/DOCUMENTATION_REVIEW.md
-  Size:                  13.4 KiB (13713 bytes)
-  Last modified:         2026-07-20 17:42:04.000000000 -0400
+  Size:                  14.6 KiB (14944 bytes)
+  Last modified:         2026-07-26 08:54:36.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21956019
+  Inode:                 25661730
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               0b4eed3e49fd600d74625bbab2dd148f34035a5449bdc1a661b5408b3bca182a
-  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+  SHA-256:               fd9f6b6c79b0b1408f8204873d223b1ef22145041f3841ff61f0378e0efe9de6
+  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
@@ -3662,6 +3786,7 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 | ID | Finding | Resolution | Embodied in |
 |---|---|---|---|
 | F-34 | §8.2's `passkey_credential` was specified before ASP.NET Core Identity's .NET 10 passkey API was verified against source. That API's `UserPasskeyInfo` credential record carries WebAuthn state the table did not model (user-verified, backup-eligible, backed-up), and assertion **reads** the stored backup-eligible bit and fails the ceremony on a mismatch — so it cannot be dropped and reconstructed. | Additive migration `0002_passkey_credential_webauthn_state.sql` adds `is_user_verified` / `is_backup_eligible` / `is_backed_up` (all `NOT NULL DEFAULT false`); `0001` is left untouched (DbUp journals per script). The raw attestation object and client-data JSON `UserPasskeyInfo` also exposes are deliberately not stored (attestation is `none`, §3.3; nothing re-reads them) and are reconstructed as empty on read. This is the framework gap §3.3 anticipated — no fallback library was needed, only the columns. | S§8.2 (schema-evolution note), S§3.3 · `0002_*.sql`, `DapperUserStore` passkey region · BUILD_PROGRESS Slice 5 |
+| F-35 | The profile page is specified twice — R§4.6 ("every person has a profile page") and S§11.1 (in the `/table` surface list) — but §19's build order never named it, so no milestone claimed it. M2 shipped the individual credential pages (`/account/enroll-totp`, `/account/passkeys`) with no hub and no way to edit the three self-owned fields, and the gap was only noticed in use, after M3: two freshly created staff accounts could not set their own display names. Compounding it, §11.2 groups the kitchen queue by *person display name*, so M4 would have inherited tickets reading `betty`. | The profile page ships as an M2 close-out slice before M4 opens: `/account` (display name, email, phone, plus the credential status hub) and `/account/change-password` (voluntary change, and add-a-password for a passkey-only account). R§4.6 now states display-name editing and username immutability explicitly; S§11.1 points at a new S§11.6 that specifies the surface; S§19's M2 line names it and records that it landed late. Addresses stay unsurfaced, with the reason recorded in S§11.6. | R§4.6 · S§11.1, S§11.6, S§19 · `ProfileDetails.cs`, `Profile.razor`, `ChangePassword.razor` · BUILD_PROGRESS M2 close-out |
 
 ---
 
@@ -3837,15 +3962,15 @@ Migrations are append-only and roll forward only — the same philosophy as the 
   File name:             REQUIREMENTS.md
   Relative path:         docs/REQUIREMENTS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/REQUIREMENTS.md
-  Size:                  21.8 KiB (22273 bytes)
-  Last modified:         2026-07-17 11:52:02.000000000 -0400
+  Size:                  22.4 KiB (22891 bytes)
+  Last modified:         2026-07-26 08:54:54.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21195457
+  Inode:                 25661731
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               f849dae345dc378bff7ad8aff08fdd3f223b50b74ae777b94579d14e7d4c1fb2
-  Last git commit:       f4b25f9 2026-07-17 09:22:33 -0400 update documentation
+  SHA-256:               cc720bf6d17eb57cfae346781ab637bf504bbad2000060d770e899b5e4c741b4
+  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Requirements
@@ -3931,10 +4056,12 @@ Guests who lose access ask the counter, who identifies them in person and relays
 
 ### 4.6 Profile, contact details, and addresses
 
-Every person has a profile page where they manage their credentials (passkeys, password, TOTP and recovery codes) and may, all optionally:
+Every person has a profile page. There they set their own **display name** — the name their table-mates and the kitchen see in place of their username, blank meaning "show my username" — and manage their credentials (passkeys, password, TOTP and recovery codes). The **username itself is immutable**: it is what every order, bill, and security event is filed under. They may also, all optionally:
 
 - Store a **phone number and/or email address**. These exist for **manual escalation only** — e.g., an administrator resets a password and then calls or texts the user outside the system. They are wired to no automated pipeline (no "your order is ready" texts); building one would require a paid sending service, which conflicts with the no-paid-dependency principle. This may be revisited later as an explicit, named future integration — never assumed in scope.
 - Store **postal addresses with free-text labels** ("Home", "Work", "Grandparents' house"). Structured street/city/postal-code fields are a reasonable implementation detail, but the label is always free text chosen by the user. Nothing consumes addresses in version 1 — they are deliberate scaffolding for a possible future delivery/takeout feature, not dead weight to be removed, and not load-bearing for anything now.
+
+These three fields — display name, phone number, email address — are the person's **own**. An administrator creating a staff account may seed a display name, but the administrative powers enumerated in §4.5 stop at credentials, roles, and activation; they do not extend to editing somebody else's identity afterwards. The person edits it themselves.
 
 ## 5. Tables, sittings, and joining
 
@@ -4055,15 +4182,15 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
   File name:             TECHNICAL_SPECIFICATION.md
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/TECHNICAL_SPECIFICATION.md
-  Size:                  70.4 KiB (72075 bytes)
-  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Size:                  72.4 KiB (74123 bytes)
+  Last modified:         2026-07-26 08:55:00.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25103634
+  Inode:                 25661729
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               52384914cb16cec445614e2327affcf7de0198677ca9086b750375c44d208430
-  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+  SHA-256:               203947bed025ca177b7944a6298874402d0468e67d81a93dcaab9d8e3c1a2604
+  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
@@ -4765,7 +4892,7 @@ Browsers block autoplay: the kitchen surface shows a one-tap "enable sound" arm 
 
 ### 11.1 `/table`
 
-Anonymous with valid token → grant → sign-in/registration (passkey-first, password offered) → join. Member view: the party roster; **my order** — staging area (add item pickers from the menu — deactivated items greyed out and unselectable (§7) — with quantity 1–100 and note; mark-my-pending-line-for-removal) with a Send button that is disabled while empty and shows an all-or-nothing error panel (per-operation reasons) on rejection; below it the committed living order, each line badged pending/fulfilled, removed lines struck-through with actor + reason, price adjustments shown old → new with reason; **party orders** — read-only equivalents for other members; running personal and table totals; history (the guest's **own** past orders at this restaurant — cross-member history is never shown); a per-order **Hide** control on closed orders, confirmed as irreversible from the guest's account (§6.8); and a **profile page** — manage passkeys, password, TOTP and recovery codes; optional phone number and email address (used for manual staff escalation only — nothing in the system sends to them automatically); postal addresses with **free-text labels** ("Home", "Work", "Grandparents' house") — deliberate scaffolding for a possible future delivery/takeout feature, consumed by nothing in version 1 and not to be removed as dead weight. On `SittingClosed`, the surface flips to a read-only settled-bill view.
+Anonymous with valid token → grant → sign-in/registration (passkey-first, password offered) → join. Member view: the party roster; **my order** — staging area (add item pickers from the menu — deactivated items greyed out and unselectable (§7) — with quantity 1–100 and note; mark-my-pending-line-for-removal) with a Send button that is disabled while empty and shows an all-or-nothing error panel (per-operation reasons) on rejection; below it the committed living order, each line badged pending/fulfilled, removed lines struck-through with actor + reason, price adjustments shown old → new with reason; **party orders** — read-only equivalents for other members; running personal and table totals; history (the guest's **own** past orders at this restaurant — cross-member history is never shown); a per-order **Hide** control on closed orders, confirmed as irreversible from the guest's account (§6.8); and a link to the **profile page** (§11.6) — set the display name; manage passkeys, password, TOTP and recovery codes; optional phone number and email address (used for manual staff escalation only — nothing in the system sends to them automatically); postal addresses with **free-text labels** ("Home", "Work", "Grandparents' house") — deliberate scaffolding for a possible future delivery/takeout feature, consumed by nothing in version 1 and not to be removed as dead weight. On `SittingClosed`, the surface flips to a read-only settled-bill view.
 
 ### 11.2 `/kitchen`
 
@@ -4782,6 +4909,16 @@ Users (create staff, roles grant/revoke, activate/deactivate, **Reset credential
 ### 11.5 `/display/{table}`
 
 Unpaired device → redirect `/display/pair` (code entry). Paired: full-screen table label + rotating QR (server SVG, window-aligned refresh), party-size chip when a sitting is open (via `SittingMemberJoined`/`SittingClosed`), connection-state indicator (circuit down → prominent "offline — see the counter" state; the QR must not silently freeze stale), wake lock. Revoked → pairing screen with "this display was disconnected".
+
+### 11.6 `/account`
+
+The person's own profile (§4.6) — reachable by **every** authenticated principal, guest to administrator, since the fields it edits belong to the person rather than to a role. It is not an area: no policy guards it, only `[Authorize]`, and it is **not** exempt from the §3.5 obligations pipeline (an outstanding flag routes elsewhere first).
+
+Two things live here. **Your details** — display name, email address, phone number — is one form writing one `person` row update; the username is rendered read-only with the reason. None of the three is a credential, so the update rotates no security stamp and writes no `security_event` (§8.2's vocabulary is closed and contains no profile-edit type, correctly). A changed display name does re-issue the authentication cookie, because the name travels as a claim. **Sign-in and security** is a status row per credential — password set/unset, authenticator enrolled/not, passkey count — each linking to the surface that owns it: `/account/change-password`, `/account/enroll-totp` (§3.4), `/account/passkeys` (§3.3). Those three record their own events.
+
+`/account/change-password` is the voluntary password surface, distinct from the forced `/account/change-password-required` of §3.5: it takes current + new (or, for a passkey-only account, new alone via an add path), records `password_changed`, and re-issues the cookie — the framework rotates the security stamp inside the password update, so without that the person would sign themselves out.
+
+Address management (§4.6's free-text-labelled postal addresses) is **not surfaced**: nothing in version 1 consumes an address, and a form for data no reader exists for would be scaffolding pretending to be a feature. The table and columns stay as specified.
 
 ## 12. Observability
 
@@ -4866,7 +5003,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 ## 19. Build order (milestones)
 
 - **M1 — skeleton:** solution layout (§2), Containerfile, compose dev profile, DbUp with `0001_initial_schema.sql`, health endpoints, OTel wiring, `run.sh`.
-- **M2 — identity:** Dapper Identity stores, Argon2id hasher (+floor guard, semaphore), passkeys, TOTP + recovery codes, lockout, obligations pipeline, `/setup` bootstrap, roles/policies, security events, admin user management + reset.
+- **M2 — identity:** Dapper Identity stores, Argon2id hasher (+floor guard, semaphore), passkeys, TOTP + recovery codes, lockout, obligations pipeline, `/setup` bootstrap, roles/policies, security events, admin user management + reset, and the person's own profile page (§11.6: display name, contact details, voluntary password change). The profile page belongs to this milestone but was not listed here originally and landed after M3 — see F-35.
 - **M3 — tables & joining:** table CRUD + join secrets + rotation, display pairing + device auth + `/display`, token generate/validate + metrics, grant cookie, join flow, sittings + membership.
 - **M4 — ordering:** living order + locking protocol, staging UI, batch send + validation, staff edits, fulfillment/reversal, projections + fold + equivalence tests, kitchen surface + alerts + reminder service.
 - **M5 — counter & administration:** bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu management + events, event explorer, hide/unhide, post-close corrections.
@@ -13790,6 +13927,276 @@ public static class AuthorizationServiceCollectionExtensions
 </section>
 
 ################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/ChangePassword.razor
+################################################################################
+
+--- METADATA ---
+  File name:             ChangePassword.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/ChangePassword.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/ChangePassword.razor
+  Size:                  10.2 KiB (10452 bytes)
+  Last modified:         2026-07-26 08:06:23.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25661721
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               521ea6f4ee09225022614a9326030a92a34b9447de7d1e3a8e8b16e84dd19774
+  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
+
+--- CONTENT ---
+@page "/account/change-password"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize]
+@using MyRestaurant.Domain.Authentication
+@inject UserManager<Person> UserManager
+@inject SignInManager<Person> SignInManager
+@inject ISecurityEventLog SecurityEventLog
+@inject NavigationManager Navigation
+
+@* The voluntary password page (TECHNICAL_SPECIFICATION §3.2, §4.6, §11.6) — the "password" half of
+   the profile page's credential management, alongside the authenticator and passkey pages.
+
+   Distinct from ChangePasswordRequired.razor, which is obligation (1) of the §3.5 pipeline: that page
+   is reachable only while must_change_password is set, is exempt from the pipeline, and clears the
+   flag. This one is an ordinary authenticated destination — a person with an outstanding obligation
+   is routed to the forced page by the middleware and never lands here.
+
+   Two branches, two named forms, because a password-less account (passkey-only, §3.2) has no current
+   password to confirm and DataAnnotations cannot make [Required] conditional:
+     • "change-password" — current + new + confirm → UserManager.ChangePasswordAsync;
+     • "add-password"    — new + confirm          → UserManager.AddPasswordAsync.
+   Both record `password_changed` (§8.2 has no separate "password added" type, and from the audit's
+   point of view that is what happened), and both re-issue the cookie: the framework rotates the
+   security stamp inside UpdatePasswordHash, so without RefreshSignInAsync the person would be signed
+   out of their own session within the five-minute revalidation window (§3.1). Static SSR for exactly
+   that reason — a circuit cannot write the cookie. *@
+
+<PageTitle>@(_hasPassword ? "Change your password" : "Add a password")</PageTitle>
+
+@* Guarded on _person for the same reason as every other static-SSR account page: the intermediate
+   render that fires when OnInitializedAsync suspends must not dereference anything. *@
+@if (_person is not null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Your account</p>
+
+        @if (_hasPassword)
+        {
+            <h1>Change your password</h1>
+            <p class="lede">
+                Pick something at least 12 characters long — length is the only rule, so a short
+                sentence works well. Your other sign-in methods are unaffected.
+            </p>
+        }
+        else
+        {
+            <h1>Add a password</h1>
+            <p class="lede">
+                This account signs in without a password today. Adding one gives you a way in from a
+                device that does not hold one of your passkeys. At least 12 characters — length is
+                the only rule.
+            </p>
+        }
+
+        @if (_errors.Count > 0)
+        {
+            <ul class="status-error" role="alert">
+                @foreach (string error in _errors)
+                {
+                    <li>@error</li>
+                }
+            </ul>
+        }
+
+        @if (_hasPassword)
+        {
+            <EditForm Model="ChangeInput" method="post" OnValidSubmit="ChangeAsync" FormName="change-password">
+                <DataAnnotationsValidator />
+
+                <div class="form-field">
+                    <label for="current-password">Current password</label>
+                    <InputText id="current-password" type="password" @bind-Value="ChangeInput.CurrentPassword"
+                               autocomplete="current-password" autofocus />
+                    <ValidationMessage For="@(() => ChangeInput.CurrentPassword)" />
+                </div>
+
+                <div class="form-field">
+                    <label for="new-password">New password</label>
+                    <InputText id="new-password" type="password" @bind-Value="ChangeInput.NewPassword"
+                               autocomplete="new-password" />
+                    <ValidationMessage For="@(() => ChangeInput.NewPassword)" />
+                </div>
+
+                <div class="form-field">
+                    <label for="confirm-password">New password, again</label>
+                    <InputText id="confirm-password" type="password" @bind-Value="ChangeInput.ConfirmPassword"
+                               autocomplete="new-password" />
+                    <ValidationMessage For="@(() => ChangeInput.ConfirmPassword)" />
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="button-primary">Change password</button>
+                    <a class="button-secondary" href="@AccountRoutes.Profile">Cancel</a>
+                </div>
+            </EditForm>
+        }
+        else
+        {
+            <EditForm Model="AddInput" method="post" OnValidSubmit="AddAsync" FormName="add-password">
+                <DataAnnotationsValidator />
+
+                <div class="form-field">
+                    <label for="add-new-password">Password</label>
+                    <InputText id="add-new-password" type="password" @bind-Value="AddInput.NewPassword"
+                               autocomplete="new-password" autofocus />
+                    <ValidationMessage For="@(() => AddInput.NewPassword)" />
+                </div>
+
+                <div class="form-field">
+                    <label for="add-confirm-password">Password, again</label>
+                    <InputText id="add-confirm-password" type="password" @bind-Value="AddInput.ConfirmPassword"
+                               autocomplete="new-password" />
+                    <ValidationMessage For="@(() => AddInput.ConfirmPassword)" />
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="button-primary">Set password</button>
+                    <a class="button-secondary" href="@AccountRoutes.Profile">Cancel</a>
+                </div>
+            </EditForm>
+        }
+
+        <p class="form-footnote">
+            Forgotten your password? There is no self-service reset — ask the counter, who will
+            identify you in person and have an administrator issue a temporary one (§4.5).
+        </p>
+    </section>
+}
+
+@code {
+    private readonly List<string> _errors = [];
+
+    private Person? _person;
+    private bool _hasPassword;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "change-password")]
+    private ChangePasswordInputModel ChangeInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "add-password")]
+    private AddPasswordInputModel AddInput { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: the form POSTs bind these themselves and may assign null, so the defaults live here.
+        ChangeInput ??= new();
+        AddInput ??= new();
+
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        _person = user;
+        _hasPassword = user.PasswordHash is not null;
+    }
+
+    private async Task ChangeAsync()
+    {
+        Person? user = _person;
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        IdentityResult result = await UserManager.ChangePasswordAsync(
+            user,
+            ChangeInput.CurrentPassword,
+            ChangeInput.NewPassword);
+
+        if (!result.Succeeded)
+        {
+            _errors.Clear();
+            _errors.AddRange(result.Errors.Select(error => error.Description));
+            return;
+        }
+
+        await CompleteAsync(user, "password-changed");
+    }
+
+    private async Task AddAsync()
+    {
+        Person? user = _person;
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        // AddPasswordAsync re-reads the stored hash and refuses if one is already set, so a stale form
+        // posted after a password was added elsewhere fails cleanly rather than overwriting it.
+        IdentityResult result = await UserManager.AddPasswordAsync(user, AddInput.NewPassword);
+
+        if (!result.Succeeded)
+        {
+            _errors.Clear();
+            _errors.AddRange(result.Errors.Select(error => error.Description));
+            return;
+        }
+
+        await CompleteAsync(user, "password-added");
+    }
+
+    private async Task CompleteAsync(Person user, string outcome)
+    {
+        // The subject is also the actor: this is the person changing their own password, so
+        // actorPersonIdentifier stays null (the §8.2 convention — a non-null actor means somebody
+        // else did it, as an administrative reset does).
+        await SecurityEventLog.RecordAsync(
+            user.PersonIdentifier,
+            actorPersonIdentifier: null,
+            SecurityEventType.PasswordChanged);
+
+        // UpdatePasswordHash rotated the security stamp; re-issue the cookie so this session survives
+        // the change instead of being cut at the next revalidation (§3.1).
+        await SignInManager.RefreshSignInAsync(user);
+
+        Navigation.NavigateTo($"{AccountRoutes.Profile}?done={outcome}");
+    }
+
+    private sealed class ChangePasswordInputModel
+    {
+        [Required(ErrorMessage = "Enter your current password.")]
+        public string CurrentPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Choose a new password.")]
+        [MinLength(12, ErrorMessage = "Passwords are at least 12 characters (§3.2) — a short sentence works.")]
+        public string NewPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Repeat the new password.")]
+        [Compare(nameof(NewPassword), ErrorMessage = "The two entries do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+
+    private sealed class AddPasswordInputModel
+    {
+        [Required(ErrorMessage = "Choose a password.")]
+        [MinLength(12, ErrorMessage = "Passwords are at least 12 characters (§3.2) — a short sentence works.")]
+        public string NewPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Repeat the password.")]
+        [Compare(nameof(NewPassword), ErrorMessage = "The two entries do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/ChangePasswordRequired.razor
 ################################################################################
 
@@ -14723,6 +15130,321 @@ public static class AuthorizationServiceCollectionExtensions
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/Profile.razor
+################################################################################
+
+--- METADATA ---
+  File name:             Profile.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/Profile.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/Profile.razor
+  Size:                  11.8 KiB (12044 bytes)
+  Last modified:         2026-07-26 08:05:38.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25661722
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               c051cce28acc56db4e4fdac44cae5428538cf50d66fe3914b4f192d4a0d738c1
+  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
+
+--- CONTENT ---
+@page "/account"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize]
+@inject UserManager<Person> UserManager
+@inject SignInManager<Person> SignInManager
+@inject NavigationManager Navigation
+
+@* The person's own profile (TECHNICAL_SPECIFICATION §4.6, §11.6). Everyone who can sign in has one —
+   guest, counter, kitchen, administrator — because the three fields it edits are the person's own and
+   §3.7's administrative powers deliberately do not include editing somebody else's identity.
+
+   Static SSR, like every account surface: saving a display name re-issues the authentication cookie
+   (the name travels as a claim, RestaurantClaimsPrincipalFactory), and a Blazor circuit cannot write
+   cookies. Not in the obligations-exempt list — this is an ordinary authenticated destination, so a
+   person with an outstanding §3.5 flag is routed to the pipeline page instead of here.
+
+   Nothing here writes a security_event: §8.2's vocabulary is closed and contains no profile-edit type,
+   which is correct — none of these three fields is a credential, and none of them affects sign-in. The
+   password, authenticator, and passkey surfaces this page links to each record their own events.
+
+   Post/redirect/get on save, carrying a one-word outcome, so a refresh does not re-post. *@
+
+<PageTitle>Your account</PageTitle>
+
+@* Guard every branch on _person. ComponentBase issues an intermediate render the moment the await in
+   OnInitializedAsync suspends, with every field still at its default; a bare else would dereference
+   null there and the resulting NullReferenceException aborts the whole static-SSR response (this is
+   the enroll-totp 500 all over again). Rendering just the eyebrow on that transient pass is fine —
+   static SSR flushes only the final, quiescent HTML. *@
+@if (_person is not null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Your account</p>
+        <h1>@(string.IsNullOrWhiteSpace(_person.DisplayName) ? _person.Username : _person.DisplayName)</h1>
+
+        @if (_flashMessage is not null)
+        {
+            <p class="status-success" role="status">@_flashMessage</p>
+        }
+        @if (_errors.Count > 0)
+        {
+            <ul class="status-error" role="alert">
+                @foreach (string error in _errors)
+                {
+                    <li>@error</li>
+                }
+            </ul>
+        }
+
+        <dl class="account-facts">
+            <div>
+                <dt>Username</dt>
+                <dd>@_person.Username</dd>
+            </div>
+            <div>
+                <dt>Roles</dt>
+                <dd>
+                    @if (_roles.Count == 0)
+                    {
+                        <span class="muted">Guest</span>
+                    }
+                    else
+                    {
+                        @foreach (string role in _roles)
+                        {
+                            <span class="chip chip-role">@role</span>
+                        }
+                    }
+                </dd>
+            </div>
+        </dl>
+
+        <hr class="account-rule" />
+
+        <h2 class="account-heading">Your details</h2>
+        <p class="lede">
+            Your display name is what your table-mates and the kitchen see instead of your username.
+            Leave it blank to be shown as <strong>@_person.Username</strong>.
+        </p>
+
+        <EditForm Model="Input" method="post" OnValidSubmit="SaveDetailsAsync" FormName="account-details">
+            <DataAnnotationsValidator />
+
+            <div class="form-field">
+                <label for="display-name">Display name <span class="optional">(optional)</span></label>
+                <InputText id="display-name" @bind-Value="Input.DisplayName" autocomplete="nickname" />
+                <ValidationMessage For="@(() => Input.DisplayName)" />
+            </div>
+
+            <div class="form-field">
+                <label for="email-address">Email address <span class="optional">(optional)</span></label>
+                <InputText id="email-address" type="email" @bind-Value="Input.EmailAddress"
+                           autocomplete="email" autocapitalize="none" spellcheck="false" />
+                <ValidationMessage For="@(() => Input.EmailAddress)" />
+            </div>
+
+            <div class="form-field">
+                <label for="phone-number">Phone number <span class="optional">(optional)</span></label>
+                <InputText id="phone-number" type="tel" @bind-Value="Input.PhoneNumber" autocomplete="tel" />
+                <ValidationMessage For="@(() => Input.PhoneNumber)" />
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Save details</button>
+            </div>
+        </EditForm>
+
+        <p class="form-footnote">
+            Your username cannot be changed — it is the name every past order and security record is
+            filed under. An email address or phone number here is only ever read by staff, by hand,
+            when they need to reach you: nothing in this system sends messages to either.
+        </p>
+
+        <hr class="account-rule" />
+
+        <h2 class="account-heading">Sign-in and security</h2>
+        <ul class="account-security">
+            <li>
+                <div class="account-security-fact">
+                    <span class="account-security-name">Password</span>
+                    @if (_person.PasswordHash is null)
+                    {
+                        <span class="chip chip-warn">Not set</span>
+                    }
+                    else
+                    {
+                        <span class="chip chip-ok">Set</span>
+                    }
+                </div>
+                <a class="button-secondary" href="@AccountRoutes.ChangePassword">
+                    @(_person.PasswordHash is null ? "Add a password" : "Change password")
+                </a>
+            </li>
+            <li>
+                <div class="account-security-fact">
+                    <span class="account-security-name">Authenticator</span>
+                    @if (_person.TotpSecretProtected is null)
+                    {
+                        <span class="chip chip-warn">Not set up</span>
+                    }
+                    else
+                    {
+                        <span class="chip chip-ok">Enrolled</span>
+                    }
+                </div>
+                <a class="button-secondary" href="@AccountRoutes.TotpEnrollment">
+                    @(_person.TotpSecretProtected is null ? "Set up authenticator" : "Recovery codes")
+                </a>
+            </li>
+            <li>
+                <div class="account-security-fact">
+                    <span class="account-security-name">Passkeys</span>
+                    @if (_passkeyCount == 0)
+                    {
+                        <span class="chip chip-warn">None</span>
+                    }
+                    else
+                    {
+                        <span class="chip chip-ok">@_passkeyCount registered</span>
+                    }
+                </div>
+                <a class="button-secondary" href="@AccountRoutes.Passkeys">Manage passkeys</a>
+            </li>
+        </ul>
+
+        <p class="form-footnote">
+            <a href="/">Back to the home page</a>
+        </p>
+    </section>
+}
+
+@code {
+    private readonly List<string> _errors = [];
+
+    private Person? _person;
+    private IList<string> _roles = [];
+    private int _passkeyCount;
+    private string? _flashMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "account-details")]
+    private ProfileInputModel Input { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? Done { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: the form POST binds Input itself and may assign null, so the default lives here
+        // rather than in a property initializer the binder would silently discard.
+        Input ??= new();
+
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        _person = user;
+        _roles = await UserManager.GetRolesAsync(user);
+        _passkeyCount = (await UserManager.GetPasskeysAsync(user)).Count;
+
+        // Prefill only on GET: on a POST the binder has already filled Input from the submitted form,
+        // and overwriting it here would throw away what the person just typed.
+        if (HttpContext.Request.Method == HttpMethods.Get)
+        {
+            Input.DisplayName = user.DisplayName;
+            Input.EmailAddress = user.EmailAddress;
+            Input.PhoneNumber = user.PhoneNumber;
+            _flashMessage = FlashFor(Done);
+        }
+    }
+
+    private async Task SaveDetailsAsync()
+    {
+        Person? user = _person;
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        ProfileDetails details = ProfileDetails.Normalize(Input.DisplayName, Input.EmailAddress, Input.PhoneNumber);
+
+        IReadOnlyList<string> problems = details.Validate();
+        if (problems.Count > 0)
+        {
+            _errors.Clear();
+            _errors.AddRange(problems);
+            return;
+        }
+
+        if (details.SameAs(user.DisplayName, user.EmailAddress, user.PhoneNumber))
+        {
+            RedirectWithOutcome("details-unchanged");
+            return;
+        }
+
+        // The display name is a claim (RestaurantClaimsPrincipalFactory), so note whether it moved
+        // before the entity is mutated — that decides whether the cookie has to be re-issued.
+        bool displayNameChanged = !string.Equals(user.DisplayName, details.DisplayName, StringComparison.Ordinal);
+
+        user.DisplayName = details.DisplayName;
+        user.EmailAddress = details.EmailAddress;
+        user.PhoneNumber = details.PhoneNumber;
+
+        // One store update writes all three columns (DapperUserStore.UpdateAsync persists the whole
+        // row). UserManager.UpdateAsync validates and normalizes first; it does NOT rotate the
+        // security stamp, which is right — none of these three fields is a credential, so live
+        // sessions have no reason to be invalidated.
+        IdentityResult result = await UserManager.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            _errors.Clear();
+            _errors.AddRange(result.Errors.Select(error => error.Description));
+            return;
+        }
+
+        if (displayNameChanged)
+        {
+            // Re-issue the cookie so the new name shows immediately rather than at the next
+            // five-minute security-stamp revalidation (§3.1).
+            await SignInManager.RefreshSignInAsync(user);
+        }
+
+        RedirectWithOutcome("details-saved");
+    }
+
+    private void RedirectWithOutcome(string outcome)
+        => Navigation.NavigateTo($"{AccountRoutes.Profile}?done={outcome}");
+
+    private static string? FlashFor(string? outcome) => outcome switch
+    {
+        "details-saved" => "Your details were saved.",
+        "details-unchanged" => "Nothing changed.",
+        "password-changed" => "Your password was changed.",
+        "password-added" => "Your password was set. You can now sign in with it.",
+        _ => null,
+    };
+
+    private sealed class ProfileInputModel
+    {
+        [StringLength(ProfileDetails.DisplayNameMaximumLength, ErrorMessage = "That display name is too long.")]
+        public string? DisplayName { get; set; }
+
+        [StringLength(ProfileDetails.EmailAddressMaximumLength, ErrorMessage = "That email address is too long.")]
+        public string? EmailAddress { get; set; }
+
+        [StringLength(ProfileDetails.PhoneNumberMaximumLength, ErrorMessage = "That phone number is too long.")]
+        public string? PhoneNumber { get; set; }
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor
 ################################################################################
 
@@ -15446,15 +16168,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             MainLayout.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
-  Size:                  1.8 KiB (1844 bytes)
-  Last modified:         2026-07-21 09:00:16.000000000 -0400
+  Size:                  2.0 KiB (2064 bytes)
+  Last modified:         2026-07-26 08:56:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 22486184
+  Inode:                 25661718
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               afbbf3f10db4468c01b626ab218975c7ed2b0431e988272d3850fcd99e7af7e0
-  Last git commit:       d8de5c8 2026-07-21 09:07:53 -0400 add claude response
+  SHA-256:               546a459ee2f8d4b15ef920d5743db93de714f1db949161ef062a054c2f7d7053
+  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
 
 --- CONTENT ---
 @inherits LayoutComponentBase
@@ -15464,7 +16186,11 @@ public static class AuthorizationServiceCollectionExtensions
    page renders as static SSR (the account pages) or over an interactive circuit. The Administration
    link is shown only to the administrator role: <AuthorizeView Roles="administrator"> matches the role
    claim the RestaurantClaimsPrincipalFactory emits under the configured RoleClaimType, the same claim
-   the area.administration policy checks (§3.7). *@
+   the area.administration policy checks (§3.7).
+
+   One Account link rather than one per credential surface: the profile page (§11.6) is the hub for the display name, contact
+   details, password, authenticator, and passkeys. The header is the only chrome the phone-sized
+   guest surface has, and four session links plus a name wrapped onto three rows at 375px. *@
 <div class="app-shell">
     <header class="app-header">
         <a class="app-brand" href="/">MyRestaurant</a>
@@ -15475,8 +16201,7 @@ public static class AuthorizationServiceCollectionExtensions
                     <AuthorizeView Roles="administrator" Context="administrator">
                         <a class="session-link" href="/administration">Administration</a>
                     </AuthorizeView>
-                    <a class="session-link" href="@AccountRoutes.TotpEnrollment">Security</a>
-                    <a class="session-link" href="@AccountRoutes.Passkeys">Passkeys</a>
+                    <a class="session-link" href="@AccountRoutes.Profile">Account</a>
                     <form class="sign-out-form" method="post" action="@AccountRoutes.SignOut">
                         <AntiforgeryToken />
                         <button type="submit" class="link-button">Sign out</button>
@@ -15984,15 +16709,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             CreateStaff.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/CreateStaff.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/CreateStaff.razor
-  Size:                  9.1 KiB (9280 bytes)
-  Last modified:         2026-07-22 09:27:45.000000000 -0400
+  Size:                  9.6 KiB (9824 bytes)
+  Last modified:         2026-07-26 08:53:31.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 23579607
+  Inode:                 25661716
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               b26670c34b1eb5326344d899e8233db4d74d4199f8fac4bd0bdb95b9c58e701e
-  Last git commit:       2477e46 2026-07-22 09:51:13 -0400 add claude response
+  SHA-256:               4e0b2a7ad9d3163c6566aef470a9e25ebf2e8545f085847b0812ae4a2a665346
+  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
 
 --- CONTENT ---
 @page "/administration/people/new"
@@ -16076,20 +16801,36 @@ else
                 <ValidationMessage For="@(() => Input.DisplayName)" />
             </div>
 
-            <fieldset class="form-field roles-fieldset">
+            @* Option rows use the shared .choice-fieldset / .choice-list / .choice vocabulary in
+               app.css. The fieldset deliberately does NOT carry .form-field: that class's
+               `input { width: 100% }` stretched each checkbox across the panel, and its
+               `label { display: block }` outranked a single-class .role-option and pushed the text
+               under the box — which is why these never lined up with anything. *@
+            <fieldset class="choice-fieldset">
                 <legend>Roles</legend>
-                <label class="role-option">
-                    <InputCheckbox @bind-Value="Input.GrantCounter" />
-                    <span><strong>Counter</strong> — close and settle sittings, adjust prices, show a table's join QR</span>
-                </label>
-                <label class="role-option">
-                    <InputCheckbox @bind-Value="Input.GrantKitchen" />
-                    <span><strong>Kitchen</strong> — fulfil lines, edit orders, activate/deactivate menu items</span>
-                </label>
-                <label class="role-option">
-                    <InputCheckbox @bind-Value="Input.GrantAdministrator" />
-                    <span><strong>Administrator</strong> — full access, including this administration area</span>
-                </label>
+                <div class="choice-list">
+                    <label class="choice">
+                        <InputCheckbox @bind-Value="Input.GrantCounter" />
+                        <span class="choice-text">
+                            <span class="choice-name">Counter</span>
+                            <span class="choice-detail">Close and settle sittings, adjust prices, show a table's join QR.</span>
+                        </span>
+                    </label>
+                    <label class="choice">
+                        <InputCheckbox @bind-Value="Input.GrantKitchen" />
+                        <span class="choice-text">
+                            <span class="choice-name">Kitchen</span>
+                            <span class="choice-detail">Fulfil lines, edit orders, activate and deactivate menu items.</span>
+                        </span>
+                    </label>
+                    <label class="choice">
+                        <InputCheckbox @bind-Value="Input.GrantAdministrator" />
+                        <span class="choice-text">
+                            <span class="choice-name">Administrator</span>
+                            <span class="choice-detail">Full access, including this administration area.</span>
+                        </span>
+                    </label>
+                </div>
             </fieldset>
 
             <div class="form-actions">
@@ -16104,31 +16845,6 @@ else
         </p>
     </section>
 }
-
-<style>
-    .roles-fieldset {
-        border: 1px solid var(--rule, #e5e5e5);
-        border-radius: 0.5rem;
-        padding: 0.75rem 1rem;
-    }
-
-    .roles-fieldset legend {
-        font-weight: 600;
-        padding: 0 0.35rem;
-    }
-
-    .role-option {
-        display: flex;
-        gap: 0.6rem;
-        align-items: flex-start;
-        margin: 0.4rem 0;
-        font-weight: 400;
-    }
-
-    .role-option input {
-        margin-top: 0.2rem;
-    }
-</style>
 
 @code {
     private bool _created;
@@ -21203,15 +21919,15 @@ public static class IdentityServiceCollectionExtensions
   File name:             ObligationsEnforcement.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
-  Size:                  7.3 KiB (7425 bytes)
-  Last modified:         2026-07-21 12:14:18.000000000 -0400
-  Permissions:           -rw-------
+  Size:                  7.9 KiB (8091 bytes)
+  Last modified:         2026-07-26 08:53:31.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 22331454
+  Inode:                 25661710
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               eb5f8f6f581b50ad29fc860f5c98f69d59761122260fbf024e25b7de6f4daf0b
-  Last git commit:       abd7e61 2026-07-21 08:24:16 -0400 add claude response
+  SHA-256:               b846423c69d95e6be1f0df0cc86276897cb61f69abab4300a42f20d7f8dd063e
+  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
 
 --- CONTENT ---
 using System.Security.Claims;
@@ -21245,6 +21961,19 @@ public static class AccountRoutes
 
     /// <summary>The forced TOTP re-enrollment page — obligation (2) of §3.5.</summary>
     public const string ForcedTotpEnrollment = "/account/enroll-totp-required";
+
+    /// <summary>
+    /// The person's own profile — display name, contact details, and the hub that links to the three
+    /// credential surfaces below (§4.6, §11.6). Every signed-in principal has one, guests included.
+    /// </summary>
+    public const string Profile = "/account";
+
+    /// <summary>
+    /// The voluntary password page: change a password, or add one to a passkey-only account (§3.2,
+    /// §4.6). Distinct from <see cref="ForcedPasswordChange"/>, which exists only while the §3.5
+    /// obligation is outstanding and is exempt from the pipeline.
+    /// </summary>
+    public const string ChangePassword = "/account/change-password";
 
     /// <summary>The voluntary authenticator page: enroll, or regenerate recovery codes (§3.4, §4.2).</summary>
     public const string TotpEnrollment = "/account/enroll-totp";
@@ -21538,6 +22267,221 @@ public static class PersonPrincipal
     /// </summary>
     public static Guid? ParseIdentifier(string? value)
         => Guid.TryParse(value, out Guid identifier) && identifier != Guid.Empty ? identifier : null;
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Identity/ProfileDetails.cs
+################################################################################
+
+--- METADATA ---
+  File name:             ProfileDetails.cs
+  Relative path:         src/MyRestaurant.WebApplication/Identity/ProfileDetails.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/ProfileDetails.cs
+  Size:                  8.0 KiB (8214 bytes)
+  Last modified:         2026-07-26 08:04:56.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25661709
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               692f6c2f9e8423fb35924242ce40c5160c4af0276d67af04bbb1149026676881
+  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
+
+--- CONTENT ---
+using System.Text;
+
+namespace MyRestaurant.WebApplication.Identity;
+
+/// <summary>
+/// The three self-editable fields of a person's profile (TECHNICAL_SPECIFICATION §4.6, §11.6), in
+/// normalized form: display name, e-mail address, phone number. Everything else on the profile page
+/// is a credential managed by its own surface (passkeys, password, authenticator).
+///
+/// <para><b>Why this is a separate, pure type.</b> The profile page is a static-SSR Razor component,
+/// which nothing in this repository can unit-test (no bUnit, §16.1). Normalization and validation are
+/// the only parts with real decisions in them, so they live here — no <c>Person</c>, no
+/// <c>HttpContext</c>, no database — exactly as <c>ObligationsEnforcement</c>,
+/// <c>WebAuthnOriginPolicy</c>, and <c>PairingCode</c> already do for their surfaces.</para>
+///
+/// <para><b>Validation is deliberately loose.</b> The e-mail address and phone number exist for
+/// <em>manual</em> staff escalation only (§4.6): nothing in the system ever sends to them, and no
+/// paid sending service is permitted, so there is no deliverability check to be had and nothing is
+/// lost by accepting an unusual-but-plausible value. The checks below reject only what is certainly
+/// a mistake (no <c>@</c>, letters in a phone number, a stray control character) and let everything
+/// else through. A person locked out of their own profile page by an over-strict e-mail regex is a
+/// worse outcome than a typo nobody dials.</para>
+/// </summary>
+/// <param name="DisplayName">The optional human name shown on rosters and kitchen tickets (§3.1, §11.2), or <c>null</c>.</param>
+/// <param name="EmailAddress">The optional <c>citext</c> e-mail address — manual escalation only, or <c>null</c>.</param>
+/// <param name="PhoneNumber">The optional phone number — manual escalation only, or <c>null</c>.</param>
+public sealed record ProfileDetails(string? DisplayName, string? EmailAddress, string? PhoneNumber)
+{
+    /// <summary>Matches the length the staff-creation form already enforces on a display name.</summary>
+    public const int DisplayNameMaximumLength = 120;
+
+    /// <summary>The RFC 5321 maximum for a forward path, which is as good a cap as any.</summary>
+    public const int EmailAddressMaximumLength = 254;
+
+    /// <summary>Comfortably over E.164 plus separators and an extension.</summary>
+    public const int PhoneNumberMaximumLength = 32;
+
+    /// <summary>
+    /// Trims, collapses every internal whitespace run to a single space, drops control characters,
+    /// and turns an all-whitespace value into <c>null</c> — the schema's "unset" for all three
+    /// columns. Purely reshaping: the result still has to pass <see cref="Validate"/>.
+    /// </summary>
+    public static ProfileDetails Normalize(string? displayName, string? emailAddress, string? phoneNumber)
+        => new(NormalizeText(displayName), NormalizeText(emailAddress), NormalizeText(phoneNumber));
+
+    /// <summary>
+    /// Every problem with this (already normalized) set of details, in field order; empty when it is
+    /// safe to persist. Returning all of them at once means one round trip fixes one form.
+    /// </summary>
+    public IReadOnlyList<string> Validate()
+    {
+        List<string> problems = [];
+
+        if (DisplayName is { } displayName && displayName.Length > DisplayNameMaximumLength)
+        {
+            problems.Add($"The display name must be {DisplayNameMaximumLength} characters or fewer.");
+        }
+
+        if (EmailAddress is { } emailAddress)
+        {
+            if (emailAddress.Length > EmailAddressMaximumLength)
+            {
+                problems.Add($"The email address must be {EmailAddressMaximumLength} characters or fewer.");
+            }
+            else if (!LooksLikeEmailAddress(emailAddress))
+            {
+                problems.Add("That does not look like an email address. Leave it blank if you would rather not give one.");
+            }
+        }
+
+        if (PhoneNumber is { } phoneNumber)
+        {
+            if (phoneNumber.Length > PhoneNumberMaximumLength)
+            {
+                problems.Add($"The phone number must be {PhoneNumberMaximumLength} characters or fewer.");
+            }
+            else if (!LooksLikePhoneNumber(phoneNumber))
+            {
+                problems.Add("A phone number can contain digits, spaces, and the characters + - ( ) . / # only.");
+            }
+        }
+
+        return problems;
+    }
+
+    /// <summary>
+    /// True when this set of details would change nothing about the three stored values. The stored
+    /// side is normalized too, so a row written before this page existed (an untrimmed display name
+    /// from the staff-creation form, say) does not read as "changed" forever. The e-mail comparison
+    /// is case-insensitive because the column is <c>citext</c>.
+    /// </summary>
+    public bool SameAs(string? storedDisplayName, string? storedEmailAddress, string? storedPhoneNumber)
+        => string.Equals(DisplayName, NormalizeText(storedDisplayName), StringComparison.Ordinal)
+        && string.Equals(EmailAddress, NormalizeText(storedEmailAddress), StringComparison.OrdinalIgnoreCase)
+        && string.Equals(PhoneNumber, NormalizeText(storedPhoneNumber), StringComparison.Ordinal);
+
+    /// <summary>
+    /// Trim + internal-whitespace collapse + control-character removal in one pass. A leading
+    /// whitespace run appends nothing (the builder is still empty) and a trailing one appends nothing
+    /// (there is no following character), which is the trim; a run in the middle appends exactly one
+    /// space, which is the collapse.
+    /// </summary>
+    private static string? NormalizeText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        StringBuilder builder = new(value.Length);
+        bool pendingSpace = false;
+
+        foreach (char character in value)
+        {
+            if (char.IsWhiteSpace(character))
+            {
+                pendingSpace = true;
+                continue;
+            }
+
+            if (char.IsControl(character))
+            {
+                // A control character that is not whitespace simply vanishes; it never became a word
+                // boundary, so it must not introduce one.
+                continue;
+            }
+
+            if (pendingSpace && builder.Length > 0)
+            {
+                builder.Append(' ');
+            }
+
+            pendingSpace = false;
+            builder.Append(character);
+        }
+
+        return builder.Length == 0 ? null : builder.ToString();
+    }
+
+    /// <summary>
+    /// Exactly one <c>@</c>, something before it, and a dotted domain after it that does not begin or
+    /// end with a dot or a hyphen. See the type remarks for why this stops there.
+    /// </summary>
+    private static bool LooksLikeEmailAddress(string value)
+    {
+        int at = value.IndexOf('@');
+        if (at <= 0 || at != value.LastIndexOf('@') || at == value.Length - 1)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<char> local = value.AsSpan(0, at);
+        ReadOnlySpan<char> domain = value.AsSpan(at + 1);
+
+        if (local.Contains(' ') || domain.Contains(' '))
+        {
+            return false;
+        }
+
+        // The shortest plausible domain is a.bc.
+        if (domain.Length < 4 || !domain.Contains('.'))
+        {
+            return false;
+        }
+
+        return domain[0] is not ('.' or '-') && domain[^1] is not ('.' or '-');
+    }
+
+    /// <summary>
+    /// Digits plus the separators people actually type, and at least three digits so a lone "+" or a
+    /// pair of brackets does not count as a number.
+    /// </summary>
+    private static bool LooksLikePhoneNumber(string value)
+    {
+        int digits = 0;
+
+        foreach (char character in value)
+        {
+            if (char.IsAsciiDigit(character))
+            {
+                digits++;
+                continue;
+            }
+
+            if (character is ' ' or '+' or '-' or '(' or ')' or '.' or '/' or '#')
+            {
+                continue;
+            }
+
+            return false;
+        }
+
+        return digits >= 3;
+    }
 }
 
 ################################################################################
@@ -24068,15 +25012,15 @@ public static class TablesServiceCollectionExtensions
   File name:             app.css
   Relative path:         src/MyRestaurant.WebApplication/wwwroot/app.css
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/wwwroot/app.css
-  Size:                  13.0 KiB (13276 bytes)
-  Last modified:         2026-07-23 02:10:54.000000000 -0400
+  Size:                  18.1 KiB (18570 bytes)
+  Last modified:         2026-07-26 08:53:58.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25148851
+  Inode:                 25661712
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               567a589cbd1c6804ad47bb6cf6a6f7c8c753d44798f80f68ca6f4770766abd02
-  Last git commit:       ca8a720 2026-07-23 02:23:00 -0400 add claude response
+  SHA-256:               5149b0dae6a096078fb763a3516eee7a85826f6893bd41d1e97a888cf8b697f8
+  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
 
 --- CONTENT ---
 /*
@@ -24333,8 +25277,110 @@ body {
     border-color: var(--accent);
 }
 
+/* Checkboxes and radios are `input` too, and the rule above would stretch one across the whole
+ * panel with a text field's padding and corner radius. That is exactly what happened to the role
+ * options on the staff-creation form. An attribute selector outranks the bare `.form-field input`
+ * regardless of source order, so this holds wherever a checkbox lands inside a form field. */
+.form-field input[type="checkbox"],
+.form-field input[type="radio"],
+.choice input[type="checkbox"],
+.choice input[type="radio"] {
+    flex: 0 0 auto;
+    width: 1.15rem;
+    height: 1.15rem;
+    margin: 0;
+    padding: 0;
+    border-radius: 0.25rem;
+    accent-color: var(--accent);
+}
+
 .form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
     margin-top: 1.5rem;
+}
+
+/* --- Choice lists: checkbox / radio option rows ------------------------------------------------ */
+
+/* A fieldset of option rows, each a bordered card with the control aligned to the first line of its
+ * label. `.choice-list .choice` is two classes deep on purpose: `.form-field label` is a class plus
+ * an element, which outranks a lone `.choice`, and the `display: block` it sets is what dropped the
+ * label text below the control. Everything here degrades cleanly without `:has()`. */
+
+.choice-fieldset {
+    margin: 0 0 1.1rem;
+    padding: 0.85rem 1rem 1rem;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+}
+
+.choice-fieldset legend {
+    padding: 0 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+
+.choice-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.choice-list .choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    margin: 0;
+    padding: 0.7rem 0.85rem;
+    background-color: var(--surface-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 400;
+    color: var(--ink);
+    cursor: pointer;
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.choice-list .choice input {
+    /* Optical alignment with the cap height of the first line of label text. */
+    margin-top: 0.2rem;
+}
+
+.choice-list .choice:hover {
+    border-color: var(--accent);
+}
+
+.choice-list .choice:has(input:checked) {
+    border-color: var(--accent);
+    background-color: #f2f8f7;
+}
+
+.choice-list .choice:has(input:focus-visible) {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+.choice-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.choice-name {
+    font-weight: 600;
+}
+
+.choice-detail {
+    color: var(--ink-soft);
+    font-size: 0.88rem;
+    line-height: 1.45;
 }
 
 .button-primary {
@@ -24697,6 +25743,121 @@ a:focus-visible,
 
 .setup-callout .button-primary {
     margin-top: 0.25rem;
+}
+
+/* -----------------------------------------------------------------------------
+ * Status chips and the person's own profile page (§4.6, §11.6).
+ *
+ * The chip vocabulary was invented twice inline — once in AdministrationHome
+ * (namespaced under .admin-people) and once in ManagePerson (bare) — so a third
+ * page wanting one had nowhere to reach. It lives here now: "Active" should look
+ * the same wherever it appears. The two inline copies are redundant but harmless
+ * and are left alone; fold them in whenever those pages are next edited.
+ * ---------------------------------------------------------------------------*/
+
+.chip {
+    display: inline-block;
+    margin: 0.1rem 0.2rem 0.1rem 0;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: nowrap;
+    background-color: #eef1f5;
+    color: var(--ink);
+}
+
+.chip-role {
+    text-transform: capitalize;
+}
+
+.chip-ok {
+    background-color: #e6f4ea;
+    color: #1e7a37;
+}
+
+.chip-warn {
+    background-color: var(--danger-surface);
+    color: var(--danger-ink);
+}
+
+.muted {
+    color: var(--ink-soft);
+}
+
+.account-facts {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0 0 1.5rem;
+    padding: 1rem 0;
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+}
+
+.account-facts > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 1rem;
+}
+
+.account-facts dt {
+    min-width: 6rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+
+.account-facts dd {
+    margin: 0;
+    font-weight: 600;
+}
+
+.account-heading {
+    margin: 0 0 0.4rem;
+    font-size: 1.05rem;
+}
+
+.account-rule {
+    margin: 1.75rem 0;
+    border: 0;
+    border-top: 1px solid var(--hairline);
+}
+
+/* One row per credential: what it is, whether it is set, and the way to change it. Wraps to two
+ * lines on a narrow phone rather than squeezing the button. */
+.account-security {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.account-security li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem 0.75rem;
+    padding: 0.85rem 1rem;
+    background-color: var(--surface-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+}
+
+.account-security-fact {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.account-security-name {
+    font-weight: 600;
 }
 
 ################################################################################
@@ -32230,6 +33391,191 @@ public sealed class PersonPrincipalTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Identity/ProfileDetailsTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             ProfileDetailsTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/ProfileDetailsTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/ProfileDetailsTests.cs
+  Size:                  6.4 KiB (6555 bytes)
+  Last modified:         2026-07-26 08:07:24.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25661726
+  Hard links:            1
+  MIME type:             text/x-Algol68
+  SHA-256:               fac91f90991c9ed73f1c8a2da5ee82f60916c5c45ea568647569aea5ad7aaa48
+  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
+
+--- CONTENT ---
+using MyRestaurant.WebApplication.Identity;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests;
+
+/// <summary>
+/// Verifies the normalization and validation behind the profile page (TECHNICAL_SPECIFICATION §4.6,
+/// §11.6). Pure — no container engine, no HTTP, no database — which is the whole reason this logic
+/// was lifted out of the Razor component.
+/// </summary>
+public sealed class ProfileDetailsTests
+{
+    [Theory]
+    // The cast matters: a bare [InlineData(null)] on a single-parameter theory is passed as the
+    // argument *array*, not as one null argument, and xUnit throws at discovery.
+    [InlineData((string?)null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("\t\r\n")]
+    public void Normalize_TurnsBlankIntoNull(string? blank)
+    {
+        ProfileDetails details = ProfileDetails.Normalize(blank, blank, blank);
+
+        Assert.Null(details.DisplayName);
+        Assert.Null(details.EmailAddress);
+        Assert.Null(details.PhoneNumber);
+    }
+
+    [Theory]
+    [InlineData("  Adam  ", "Adam")]
+    [InlineData("Adam   Baker", "Adam Baker")]
+    [InlineData("\tBetty\nCarter ", "Betty Carter")]
+    [InlineData("Booth  1", "Booth 1")]
+    public void Normalize_TrimsAndCollapsesWhitespace(string input, string expected)
+        => Assert.Equal(expected, ProfileDetails.Normalize(input, null, null).DisplayName);
+
+    [Fact]
+    public void Normalize_DropsControlCharactersWithoutIntroducingWordBreaks()
+    {
+        // A stray NUL or bell in a pasted name must vanish, not become a space: "Ad\0am" is "Adam".
+        ProfileDetails details = ProfileDetails.Normalize("Ad\0am\u0007", null, null);
+
+        Assert.Equal("Adam", details.DisplayName);
+    }
+
+    [Fact]
+    public void Normalize_KeepsNonAsciiNames()
+    {
+        // Nothing here is ASCII-only: the display name is a human name.
+        ProfileDetails details = ProfileDetails.Normalize("Zoë Ngô", null, null);
+
+        Assert.Equal("Zoë Ngô", details.DisplayName);
+    }
+
+    [Fact]
+    public void Validate_AcceptsAllThreeFieldsUnset()
+        => Assert.Empty(ProfileDetails.Normalize(null, null, null).Validate());
+
+    [Fact]
+    public void Validate_AcceptsAPlausibleSet()
+    {
+        ProfileDetails details = ProfileDetails.Normalize("Adam Baker", "adam@example.com", "+1 (757) 555-0143");
+
+        Assert.Empty(details.Validate());
+    }
+
+    [Theory]
+    [InlineData("adam@example.com")]
+    [InlineData("adam.baker+orders@mail.example.co.uk")]
+    [InlineData("a@b.cd")]
+    public void Validate_AcceptsEmailAddressesThatLookLikeAddresses(string emailAddress)
+        => Assert.Empty(ProfileDetails.Normalize(null, emailAddress, null).Validate());
+
+    [Theory]
+    [InlineData("adam")]                 // no @
+    [InlineData("@example.com")]         // nothing before the @
+    [InlineData("adam@")]                // nothing after the @
+    [InlineData("adam@@example.com")]    // two @
+    [InlineData("adam@example")]         // undotted domain
+    [InlineData("adam@.example.com")]    // domain begins with a dot
+    [InlineData("adam@example.com.")]    // domain ends with a dot
+    [InlineData("adam@-example.com")]    // domain begins with a hyphen
+    [InlineData("adam baker@example.com")] // the space survives normalization inside the local part
+    public void Validate_RejectsEmailAddressesThatDoNot(string emailAddress)
+        => Assert.Single(ProfileDetails.Normalize(null, emailAddress, null).Validate());
+
+    [Theory]
+    [InlineData("7575550143")]
+    [InlineData("+1 757 555 0143")]
+    [InlineData("(757) 555-0143")]
+    [InlineData("757.555.0143")]
+    [InlineData("020 7946 0018 #22")]
+    public void Validate_AcceptsPhoneNumbersPeopleActuallyType(string phoneNumber)
+        => Assert.Empty(ProfileDetails.Normalize(null, null, phoneNumber).Validate());
+
+    [Theory]
+    [InlineData("call the counter")] // letters
+    [InlineData("+")]                // no digits at all
+    [InlineData("()")]               // still no digits
+    [InlineData("12")]               // fewer than three digits
+    public void Validate_RejectsPhoneNumbersThatAreNot(string phoneNumber)
+        => Assert.Single(ProfileDetails.Normalize(null, null, phoneNumber).Validate());
+
+    [Fact]
+    public void Validate_ReportsEveryProblemAtOnce()
+    {
+        ProfileDetails details = ProfileDetails.Normalize(
+            new string('x', ProfileDetails.DisplayNameMaximumLength + 1),
+            "not-an-address",
+            "no digits here");
+
+        Assert.Equal(3, details.Validate().Count);
+    }
+
+    [Fact]
+    public void Validate_RejectsAnOverlongDisplayName_ButAcceptsOneAtTheLimit()
+    {
+        Assert.Empty(ProfileDetails.Normalize(new string('x', ProfileDetails.DisplayNameMaximumLength), null, null).Validate());
+        Assert.Single(ProfileDetails.Normalize(new string('x', ProfileDetails.DisplayNameMaximumLength + 1), null, null).Validate());
+    }
+
+    [Fact]
+    public void SameAs_NormalizesTheStoredSideToo()
+    {
+        ProfileDetails details = ProfileDetails.Normalize("Adam Baker", "adam@example.com", "7575550143");
+
+        // A row written before this page existed may carry untrimmed text; that is not a change.
+        Assert.True(details.SameAs("  Adam  Baker ", "adam@example.com", "7575550143"));
+    }
+
+    [Fact]
+    public void SameAs_IsCaseInsensitiveForEmail_BecauseTheColumnIsCitext()
+    {
+        ProfileDetails details = ProfileDetails.Normalize(null, "adam@example.com", null);
+
+        Assert.True(details.SameAs(null, "Adam@Example.COM", null));
+    }
+
+    [Fact]
+    public void SameAs_IsCaseSensitiveForDisplayName()
+    {
+        ProfileDetails details = ProfileDetails.Normalize("adam", null, null);
+
+        // Recasing your own name is a real edit and must reach the database.
+        Assert.False(details.SameAs("Adam", null, null));
+    }
+
+    [Theory]
+    [InlineData("Adam", null, null, null, null, null)]
+    [InlineData(null, null, null, "Adam", null, null)]
+    [InlineData(null, "adam@example.com", null, null, null, null)]
+    [InlineData(null, null, "7575550143", null, null, "7575550144")]
+    public void SameAs_DetectsEverySingleFieldChange(
+        string? displayName,
+        string? emailAddress,
+        string? phoneNumber,
+        string? storedDisplayName,
+        string? storedEmailAddress,
+        string? storedPhoneNumber)
+    {
+        ProfileDetails details = ProfileDetails.Normalize(displayName, emailAddress, phoneNumber);
+
+        Assert.False(details.SameAs(storedDisplayName, storedEmailAddress, storedPhoneNumber));
+    }
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.WebApplication.Tests/Identity/RestaurantAuthenticatorTokenProviderTests.cs
 ################################################################################
 
@@ -33898,10 +35244,10 @@ public sealed class TablesWiringTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 193
-  Total size     : 1.3 MiB (1400955 bytes)
+  Files dumped   : 197
+  Total size     : 1.4 MiB (1458621 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-26T07:22:34-04:00
+  Completed at   : 2026-07-26T13:37:41-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
