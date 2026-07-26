@@ -270,10 +270,17 @@ public sealed class DisplayDeviceAuthenticatorTests : IClassFixture<PostgreSqlFi
         return id;
     }
 
+    /// <summary>
+    /// Reads <c>last_seen_at</c> straight out of the row. Npgsql materialises a <c>timestamptz</c> as a
+    /// UTC <see cref="DateTime"/>, and Dapper will not convert that to a <see cref="DateTimeOffset"/> —
+    /// <c>ExecuteScalarAsync&lt;DateTimeOffset?&gt;</c> throws <see cref="InvalidCastException"/>. So the
+    /// scalar is read at the type the reader actually hands back and projected here, exactly the way
+    /// DisplayDeviceDirectory, TableDirectory, PersonDirectory, and SittingDirectory do it.
+    /// </summary>
     private async Task<DateTimeOffset?> ReadLastSeenAtAsync(Guid deviceIdentifier, CancellationToken cancellationToken)
     {
         await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
-        return await connection.ExecuteScalarAsync<DateTimeOffset?>(new CommandDefinition(
+        DateTime? lastSeenAt = await connection.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
             """
             SELECT last_seen_at
             FROM table_display_device
@@ -281,6 +288,10 @@ public sealed class DisplayDeviceAuthenticatorTests : IClassFixture<PostgreSqlFi
             """,
             new { DeviceIdentifier = deviceIdentifier },
             cancellationToken: cancellationToken));
+
+        return lastSeenAt is { } value
+            ? new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc))
+            : null;
     }
 
     private sealed record PairedDevice(
