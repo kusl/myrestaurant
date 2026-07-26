@@ -30,6 +30,19 @@ public static class AccountRoutes
     /// <summary>The forced TOTP re-enrollment page — obligation (2) of §3.5.</summary>
     public const string ForcedTotpEnrollment = "/account/enroll-totp-required";
 
+    /// <summary>
+    /// The person's own profile — display name, contact details, and the hub that links to the three
+    /// credential surfaces below (§4.6, §11.6). Every signed-in principal has one, guests included.
+    /// </summary>
+    public const string Profile = "/account";
+
+    /// <summary>
+    /// The voluntary password page: change a password, or add one to a passkey-only account (§3.2,
+    /// §4.6). Distinct from <see cref="ForcedPasswordChange"/>, which exists only while the §3.5
+    /// obligation is outstanding and is exempt from the pipeline.
+    /// </summary>
+    public const string ChangePassword = "/account/change-password";
+
     /// <summary>The voluntary authenticator page: enroll, or regenerate recovery codes (§3.4, §4.2).</summary>
     public const string TotpEnrollment = "/account/enroll-totp";
 

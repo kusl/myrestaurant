@@ -1,0 +1,295 @@
+@page "/account"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize]
+@inject UserManager<Person> UserManager
+@inject SignInManager<Person> SignInManager
+@inject NavigationManager Navigation
+
+@* The person's own profile (TECHNICAL_SPECIFICATION §4.6, §11.6). Everyone who can sign in has one —
+   guest, counter, kitchen, administrator — because the three fields it edits are the person's own and
+   §3.7's administrative powers deliberately do not include editing somebody else's identity.
+
+   Static SSR, like every account surface: saving a display name re-issues the authentication cookie
+   (the name travels as a claim, RestaurantClaimsPrincipalFactory), and a Blazor circuit cannot write
+   cookies. Not in the obligations-exempt list — this is an ordinary authenticated destination, so a
+   person with an outstanding §3.5 flag is routed to the pipeline page instead of here.
+
+   Nothing here writes a security_event: §8.2's vocabulary is closed and contains no profile-edit type,
+   which is correct — none of these three fields is a credential, and none of them affects sign-in. The
+   password, authenticator, and passkey surfaces this page links to each record their own events.
+
+   Post/redirect/get on save, carrying a one-word outcome, so a refresh does not re-post. *@
+
+<PageTitle>Your account</PageTitle>
+
+@* Guard every branch on _person. ComponentBase issues an intermediate render the moment the await in
+   OnInitializedAsync suspends, with every field still at its default; a bare else would dereference
+   null there and the resulting NullReferenceException aborts the whole static-SSR response (this is
+   the enroll-totp 500 all over again). Rendering just the eyebrow on that transient pass is fine —
+   static SSR flushes only the final, quiescent HTML. *@
+@if (_person is not null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Your account</p>
+        <h1>@(string.IsNullOrWhiteSpace(_person.DisplayName) ? _person.Username : _person.DisplayName)</h1>
+
+        @if (_flashMessage is not null)
+        {
+            <p class="status-success" role="status">@_flashMessage</p>
+        }
+        @if (_errors.Count > 0)
+        {
+            <ul class="status-error" role="alert">
+                @foreach (string error in _errors)
+                {
+                    <li>@error</li>
+                }
+            </ul>
+        }
+
+        <dl class="account-facts">
+            <div>
+                <dt>Username</dt>
+                <dd>@_person.Username</dd>
+            </div>
+            <div>
+                <dt>Roles</dt>
+                <dd>
+                    @if (_roles.Count == 0)
+                    {
+                        <span class="muted">Guest</span>
+                    }
+                    else
+                    {
+                        @foreach (string role in _roles)
+                        {
+                            <span class="chip chip-role">@role</span>
+                        }
+                    }
+                </dd>
+            </div>
+        </dl>
+
+        <hr class="account-rule" />
+
+        <h2 class="account-heading">Your details</h2>
+        <p class="lede">
+            Your display name is what your table-mates and the kitchen see instead of your username.
+            Leave it blank to be shown as <strong>@_person.Username</strong>.
+        </p>
+
+        <EditForm Model="Input" method="post" OnValidSubmit="SaveDetailsAsync" FormName="account-details">
+            <DataAnnotationsValidator />
+
+            <div class="form-field">
+                <label for="display-name">Display name <span class="optional">(optional)</span></label>
+                <InputText id="display-name" @bind-Value="Input.DisplayName" autocomplete="nickname" />
+                <ValidationMessage For="@(() => Input.DisplayName)" />
+            </div>
+
+            <div class="form-field">
+                <label for="email-address">Email address <span class="optional">(optional)</span></label>
+                <InputText id="email-address" type="email" @bind-Value="Input.EmailAddress"
+                           autocomplete="email" autocapitalize="none" spellcheck="false" />
+                <ValidationMessage For="@(() => Input.EmailAddress)" />
+            </div>
+
+            <div class="form-field">
+                <label for="phone-number">Phone number <span class="optional">(optional)</span></label>
+                <InputText id="phone-number" type="tel" @bind-Value="Input.PhoneNumber" autocomplete="tel" />
+                <ValidationMessage For="@(() => Input.PhoneNumber)" />
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Save details</button>
+            </div>
+        </EditForm>
+
+        <p class="form-footnote">
+            Your username cannot be changed — it is the name every past order and security record is
+            filed under. An email address or phone number here is only ever read by staff, by hand,
+            when they need to reach you: nothing in this system sends messages to either.
+        </p>
+
+        <hr class="account-rule" />
+
+        <h2 class="account-heading">Sign-in and security</h2>
+        <ul class="account-security">
+            <li>
+                <div class="account-security-fact">
+                    <span class="account-security-name">Password</span>
+                    @if (_person.PasswordHash is null)
+                    {
+                        <span class="chip chip-warn">Not set</span>
+                    }
+                    else
+                    {
+                        <span class="chip chip-ok">Set</span>
+                    }
+                </div>
+                <a class="button-secondary" href="@AccountRoutes.ChangePassword">
+                    @(_person.PasswordHash is null ? "Add a password" : "Change password")
+                </a>
+            </li>
+            <li>
+                <div class="account-security-fact">
+                    <span class="account-security-name">Authenticator</span>
+                    @if (_person.TotpSecretProtected is null)
+                    {
+                        <span class="chip chip-warn">Not set up</span>
+                    }
+                    else
+                    {
+                        <span class="chip chip-ok">Enrolled</span>
+                    }
+                </div>
+                <a class="button-secondary" href="@AccountRoutes.TotpEnrollment">
+                    @(_person.TotpSecretProtected is null ? "Set up authenticator" : "Recovery codes")
+                </a>
+            </li>
+            <li>
+                <div class="account-security-fact">
+                    <span class="account-security-name">Passkeys</span>
+                    @if (_passkeyCount == 0)
+                    {
+                        <span class="chip chip-warn">None</span>
+                    }
+                    else
+                    {
+                        <span class="chip chip-ok">@_passkeyCount registered</span>
+                    }
+                </div>
+                <a class="button-secondary" href="@AccountRoutes.Passkeys">Manage passkeys</a>
+            </li>
+        </ul>
+
+        <p class="form-footnote">
+            <a href="/">Back to the home page</a>
+        </p>
+    </section>
+}
+
+@code {
+    private readonly List<string> _errors = [];
+
+    private Person? _person;
+    private IList<string> _roles = [];
+    private int _passkeyCount;
+    private string? _flashMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "account-details")]
+    private ProfileInputModel Input { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? Done { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: the form POST binds Input itself and may assign null, so the default lives here
+        // rather than in a property initializer the binder would silently discard.
+        Input ??= new();
+
+        Person? user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        _person = user;
+        _roles = await UserManager.GetRolesAsync(user);
+        _passkeyCount = (await UserManager.GetPasskeysAsync(user)).Count;
+
+        // Prefill only on GET: on a POST the binder has already filled Input from the submitted form,
+        // and overwriting it here would throw away what the person just typed.
+        if (HttpContext.Request.Method == HttpMethods.Get)
+        {
+            Input.DisplayName = user.DisplayName;
+            Input.EmailAddress = user.EmailAddress;
+            Input.PhoneNumber = user.PhoneNumber;
+            _flashMessage = FlashFor(Done);
+        }
+    }
+
+    private async Task SaveDetailsAsync()
+    {
+        Person? user = _person;
+        if (user is null)
+        {
+            Navigation.NavigateTo(AccountRoutes.SignIn);
+            return;
+        }
+
+        ProfileDetails details = ProfileDetails.Normalize(Input.DisplayName, Input.EmailAddress, Input.PhoneNumber);
+
+        IReadOnlyList<string> problems = details.Validate();
+        if (problems.Count > 0)
+        {
+            _errors.Clear();
+            _errors.AddRange(problems);
+            return;
+        }
+
+        if (details.SameAs(user.DisplayName, user.EmailAddress, user.PhoneNumber))
+        {
+            RedirectWithOutcome("details-unchanged");
+            return;
+        }
+
+        // The display name is a claim (RestaurantClaimsPrincipalFactory), so note whether it moved
+        // before the entity is mutated — that decides whether the cookie has to be re-issued.
+        bool displayNameChanged = !string.Equals(user.DisplayName, details.DisplayName, StringComparison.Ordinal);
+
+        user.DisplayName = details.DisplayName;
+        user.EmailAddress = details.EmailAddress;
+        user.PhoneNumber = details.PhoneNumber;
+
+        // One store update writes all three columns (DapperUserStore.UpdateAsync persists the whole
+        // row). UserManager.UpdateAsync validates and normalizes first; it does NOT rotate the
+        // security stamp, which is right — none of these three fields is a credential, so live
+        // sessions have no reason to be invalidated.
+        IdentityResult result = await UserManager.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            _errors.Clear();
+            _errors.AddRange(result.Errors.Select(error => error.Description));
+            return;
+        }
+
+        if (displayNameChanged)
+        {
+            // Re-issue the cookie so the new name shows immediately rather than at the next
+            // five-minute security-stamp revalidation (§3.1).
+            await SignInManager.RefreshSignInAsync(user);
+        }
+
+        RedirectWithOutcome("details-saved");
+    }
+
+    private void RedirectWithOutcome(string outcome)
+        => Navigation.NavigateTo($"{AccountRoutes.Profile}?done={outcome}");
+
+    private static string? FlashFor(string? outcome) => outcome switch
+    {
+        "details-saved" => "Your details were saved.",
+        "details-unchanged" => "Nothing changed.",
+        "password-changed" => "Your password was changed.",
+        "password-added" => "Your password was set. You can now sign in with it.",
+        _ => null,
+    };
+
+    private sealed class ProfileInputModel
+    {
+        [StringLength(ProfileDetails.DisplayNameMaximumLength, ErrorMessage = "That display name is too long.")]
+        public string? DisplayName { get; set; }
+
+        [StringLength(ProfileDetails.EmailAddressMaximumLength, ErrorMessage = "That email address is too long.")]
+        public string? EmailAddress { get; set; }
+
+        [StringLength(ProfileDetails.PhoneNumberMaximumLength, ErrorMessage = "That phone number is too long.")]
+        public string? PhoneNumber { get; set; }
+    }
+}

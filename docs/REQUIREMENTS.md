@@ -81,10 +81,12 @@ Guests who lose access ask the counter, who identifies them in person and relays
 
 ### 4.6 Profile, contact details, and addresses
 
-Every person has a profile page where they manage their credentials (passkeys, password, TOTP and recovery codes) and may, all optionally:
+Every person has a profile page. There they set their own **display name** — the name their table-mates and the kitchen see in place of their username, blank meaning "show my username" — and manage their credentials (passkeys, password, TOTP and recovery codes). The **username itself is immutable**: it is what every order, bill, and security event is filed under. They may also, all optionally:
 
 - Store a **phone number and/or email address**. These exist for **manual escalation only** — e.g., an administrator resets a password and then calls or texts the user outside the system. They are wired to no automated pipeline (no "your order is ready" texts); building one would require a paid sending service, which conflicts with the no-paid-dependency principle. This may be revisited later as an explicit, named future integration — never assumed in scope.
 - Store **postal addresses with free-text labels** ("Home", "Work", "Grandparents' house"). Structured street/city/postal-code fields are a reasonable implementation detail, but the label is always free text chosen by the user. Nothing consumes addresses in version 1 — they are deliberate scaffolding for a possible future delivery/takeout feature, not dead weight to be removed, and not load-bearing for anything now.
+
+These three fields — display name, phone number, email address — are the person's **own**. An administrator creating a staff account may seed a display name, but the administrative powers enumerated in §4.5 stop at credentials, roles, and activation; they do not extend to editing somebody else's identity afterwards. The person edits it themselves.
 
 ## 5. Tables, sittings, and joining
 

@@ -252,8 +252,110 @@ body {
     border-color: var(--accent);
 }
 
+/* Checkboxes and radios are `input` too, and the rule above would stretch one across the whole
+ * panel with a text field's padding and corner radius. That is exactly what happened to the role
+ * options on the staff-creation form. An attribute selector outranks the bare `.form-field input`
+ * regardless of source order, so this holds wherever a checkbox lands inside a form field. */
+.form-field input[type="checkbox"],
+.form-field input[type="radio"],
+.choice input[type="checkbox"],
+.choice input[type="radio"] {
+    flex: 0 0 auto;
+    width: 1.15rem;
+    height: 1.15rem;
+    margin: 0;
+    padding: 0;
+    border-radius: 0.25rem;
+    accent-color: var(--accent);
+}
+
 .form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
     margin-top: 1.5rem;
+}
+
+/* --- Choice lists: checkbox / radio option rows ------------------------------------------------ */
+
+/* A fieldset of option rows, each a bordered card with the control aligned to the first line of its
+ * label. `.choice-list .choice` is two classes deep on purpose: `.form-field label` is a class plus
+ * an element, which outranks a lone `.choice`, and the `display: block` it sets is what dropped the
+ * label text below the control. Everything here degrades cleanly without `:has()`. */
+
+.choice-fieldset {
+    margin: 0 0 1.1rem;
+    padding: 0.85rem 1rem 1rem;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+}
+
+.choice-fieldset legend {
+    padding: 0 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+
+.choice-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.choice-list .choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    margin: 0;
+    padding: 0.7rem 0.85rem;
+    background-color: var(--surface-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 400;
+    color: var(--ink);
+    cursor: pointer;
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.choice-list .choice input {
+    /* Optical alignment with the cap height of the first line of label text. */
+    margin-top: 0.2rem;
+}
+
+.choice-list .choice:hover {
+    border-color: var(--accent);
+}
+
+.choice-list .choice:has(input:checked) {
+    border-color: var(--accent);
+    background-color: #f2f8f7;
+}
+
+.choice-list .choice:has(input:focus-visible) {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+.choice-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.choice-name {
+    font-weight: 600;
+}
+
+.choice-detail {
+    color: var(--ink-soft);
+    font-size: 0.88rem;
+    line-height: 1.45;
 }
 
 .button-primary {
@@ -616,4 +718,119 @@ a:focus-visible,
 
 .setup-callout .button-primary {
     margin-top: 0.25rem;
+}
+
+/* -----------------------------------------------------------------------------
+ * Status chips and the person's own profile page (§4.6, §11.6).
+ *
+ * The chip vocabulary was invented twice inline — once in AdministrationHome
+ * (namespaced under .admin-people) and once in ManagePerson (bare) — so a third
+ * page wanting one had nowhere to reach. It lives here now: "Active" should look
+ * the same wherever it appears. The two inline copies are redundant but harmless
+ * and are left alone; fold them in whenever those pages are next edited.
+ * ---------------------------------------------------------------------------*/
+
+.chip {
+    display: inline-block;
+    margin: 0.1rem 0.2rem 0.1rem 0;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: nowrap;
+    background-color: #eef1f5;
+    color: var(--ink);
+}
+
+.chip-role {
+    text-transform: capitalize;
+}
+
+.chip-ok {
+    background-color: #e6f4ea;
+    color: #1e7a37;
+}
+
+.chip-warn {
+    background-color: var(--danger-surface);
+    color: var(--danger-ink);
+}
+
+.muted {
+    color: var(--ink-soft);
+}
+
+.account-facts {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0 0 1.5rem;
+    padding: 1rem 0;
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+}
+
+.account-facts > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 1rem;
+}
+
+.account-facts dt {
+    min-width: 6rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+
+.account-facts dd {
+    margin: 0;
+    font-weight: 600;
+}
+
+.account-heading {
+    margin: 0 0 0.4rem;
+    font-size: 1.05rem;
+}
+
+.account-rule {
+    margin: 1.75rem 0;
+    border: 0;
+    border-top: 1px solid var(--hairline);
+}
+
+/* One row per credential: what it is, whether it is set, and the way to change it. Wraps to two
+ * lines on a narrow phone rather than squeezing the button. */
+.account-security {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.account-security li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem 0.75rem;
+    padding: 0.85rem 1rem;
+    background-color: var(--surface-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+}
+
+.account-security-fact {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.account-security-name {
+    font-weight: 600;
 }

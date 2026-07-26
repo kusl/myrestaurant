@@ -1120,3 +1120,123 @@ staging and batch send, fulfillment, and the kitchen surface.
      should navigate itself to `/display/pair` and say **This display was disconnected.**
    - Deactivate the table → the display shows "out of service" rather than a code, and stays paired.
    - Open `/display/{some-other-table}` on the tablet → **Wrong table**, with a link back to its own.
+
+### M2 close-out — the person's own profile: display name, contact details, password (landed)
+
+A gap found in use rather than in review, and closed before M4 opens (ledger F-35). §4.6 and §11.1 both
+say every person has a profile page; §19's build order never named it, so no milestone claimed it. M2
+shipped the individual credential pages — `/account/enroll-totp`, `/account/passkeys` — with no hub above
+them and no surface at all for the three fields that belong to the person rather than to a role. Two
+freshly created staff accounts could not set their own display names, and there was nowhere to change a
+password voluntarily either (only the forced §3.5 page existed). §11.2 groups the kitchen queue by *person
+display name*, so M4 would have inherited tickets reading `betty`.
+
+**New `Identity/ProfileDetails.cs`** — a pure record carrying the three self-editable fields with
+`Normalize`, `Validate`, and `SameAs`. Normalization is trim + internal-whitespace collapse + control-
+character removal in one pass, with blank collapsing to `null` (the schema's "unset" for all three
+columns); `Booth  1` and `Ad\0am` are the cases that motivated it. Validation is deliberately loose:
+these contact fields exist for *manual* escalation only (§4.6), nothing ever sends to them, and no paid
+sending service is permitted, so there is no deliverability to check and nothing is gained by rejecting an
+unusual-but-plausible value. It refuses only what is certainly a mistake — no `@`, an undotted domain,
+letters in a phone number, fewer than three digits. `SameAs` normalizes the *stored* side too, so a row
+written before this page existed does not read as "changed" forever, and compares the e-mail
+case-insensitively because the column is `citext`. It lives outside the component for the reason
+`ObligationsEnforcement`, `WebAuthnOriginPolicy`, and `PairingCode.Normalize` do: a static-SSR Razor
+component is not unit-testable here (no bUnit, §16.1), so the parts with decisions in them move out.
+
+**New `/account` (`Components/Account/Pages/Profile.razor`)** — static SSR, `[Authorize]` only, no area
+policy: every authenticated principal has one, guest to administrator. **Your details** is one form
+writing one `person` row update through `UserManager.UpdateAsync`, which (verified against
+`dotnet/aspnetcore` `release/10.0`) validates and normalizes but does **not** rotate the security stamp —
+correct, since none of these three fields is a credential and live sessions have no reason to be cut. The
+username renders read-only with the reason. A changed display name *does* call `RefreshSignInAsync`,
+because the name travels as a claim (`RestaurantClaimsPrincipalFactory`) and would otherwise not appear
+until the five-minute revalidation. No `security_event` is written: §8.2's vocabulary is closed and has no
+profile-edit type, which is right. **Sign-in and security** is a status row per credential — password
+set/unset, authenticator enrolled/not, passkey count from `UserManager.GetPasskeysAsync` — each linking to
+the surface that owns it. Post/redirect/get on save, carrying a one-word outcome, so a refresh does not
+re-post; a no-op save is detected and reported as "nothing changed" rather than writing a row.
+
+**New `/account/change-password` (`Components/Account/Pages/ChangePassword.razor`)** — the voluntary
+password surface, distinct from `ChangePasswordRequired.razor`, which is obligation (1) of §3.5, is exempt
+from the pipeline, and clears the flag. This one is an ordinary authenticated destination, so a person with
+an outstanding obligation is routed to the forced page and never lands here. Two branches and two named
+forms, because a passkey-only account (§3.2) has no current password to confirm and `[Required]` cannot be
+made conditional: `change-password` → `ChangePasswordAsync`, `add-password` → `AddPasswordAsync` (which
+re-reads the stored hash and refuses if one appeared meanwhile, so a stale form cannot overwrite). Both
+record `password_changed` — §8.2 has no separate "added" type, and from the audit's point of view that is
+what happened — with a null actor, the §8.2 convention for "the subject did it themselves". Both then call
+`RefreshSignInAsync`: the framework rotates the security stamp inside `UpdatePasswordHash` on *both* paths,
+so without it the person signs themselves out of the session they are sitting in.
+
+**Both pages guard every render branch on `_person`.** This is the `/account/enroll-totp` 500 lesson
+applied prospectively: `ComponentBase` issues an intermediate render the instant the `await` in
+`OnInitializedAsync` suspends, with every field still at its default, and a dereference there aborts the
+whole static-SSR response with a bare 500.
+
+### Fix — role checkboxes were stretched and unlabelled (staff creation)
+
+Reported as "the checkboxes don't feel aligned to anything", and it was not a design choice. `app.css` has
+`.form-field input { width: 100%; padding: 0.6rem 0.75rem; border-radius: 8px }`, and `CreateStaff.razor`
+put `class="form-field roles-fieldset"` on the fieldset — so each `InputCheckbox` inside inherited a text
+field's full width, padding, and corner radius. Worse, the page's inline `.role-option { display: flex }`
+**loses on specificity** to `.form-field label` (0,1,1 against 0,1,0), so the label reverted to
+`display: block` and its text dropped below the stretched box.
+
+Two changes. `app.css` gains an `input[type="checkbox"] / input[type="radio"]` override — an attribute
+selector outranks the bare `.form-field input` regardless of source order, so it holds wherever a checkbox
+lands in a form field — and a shared `.choice-fieldset` / `.choice-list` / `.choice` vocabulary for option
+rows, deliberately two classes deep so it outranks `.form-field label`. `CreateStaff.razor` adopts it and
+drops its inline `<style>` block; the fieldset no longer carries `.form-field` at all. `:has()` marks the
+checked row as progressive enhancement — everything works without it. While there, `.form-actions` became
+a wrapping flex row with a gap, which fixes button/link pairs butting together on several existing pages,
+and the `.chip` / `.chip-ok` / `.chip-warn` / `.chip-role` / `.muted` vocabulary moved into `app.css`: it
+had been invented inline twice (namespaced in `AdministrationHome`, bare in `ManagePerson`) so a third page
+wanting a status chip had nowhere to reach. The two inline copies are redundant but harmless and are left
+alone; fold them in whenever those pages are next edited.
+
+### Fix — one Account link in place of two
+
+`MainLayout` carried a **Security** link and a **Passkeys** link side by side. With the person's name and
+the administrator link, that wrapped onto three rows at 375px (iPhone SE), and neither link was where you
+would look for a display name. Both are replaced by one **Account** link to the new hub, which is also
+where the header stops growing every time a credential surface is added.
+
+### Documentation
+
+Atomic, per §18: `REQUIREMENTS.md` §4.6 now states display-name editing and username immutability outright,
+and records that the three fields are the person's own (the §4.5 administrative powers stop at credentials,
+roles, and activation); `TECHNICAL_SPECIFICATION.md` §11.1 points at a new **§11.6 `/account`** specifying
+the surface, and §19's M2 line names the profile page and admits it landed after M3;
+`DOCUMENTATION_REVIEW.md` gains **F-35**. Addresses stay unsurfaced with the reason recorded in §11.6 —
+nothing in version 1 consumes an address, and a form for data no reader exists for is scaffolding
+pretending to be a feature. No ADR is affected.
+
+### Build/test checklist for this slice
+
+1. `dotnet restore` — **no new packages**, no migration, no DI change (both pages resolve `UserManager`,
+   `SignInManager`, and `ISecurityEventLog`, all already registered; `ProfileDetails` is a pure type with
+   no lifetime).
+2. `dotnet build` — the two new Razor components are the likely home of anything the compiler catches.
+3. `dotnet test` — the previous green set plus `ProfileDetailsTests` (16 pure facts and theories; no
+   container engine, so they always run).
+4. Manual: sign in as **adam** → **Account** in the header → set a display name → save → the header and
+   the `/table` roster both show it. Change the password → you stay signed in (that is the
+   `RefreshSignInAsync`; if you get bounced to `/sign-in`, the refresh did not happen). Save with nothing
+   altered → "Nothing changed", no write. Enter `adam@example` → refused; leave both contact fields blank
+   → accepted.
+5. Manual, the checkbox fix: Administration → **Create staff account**. The three role rows are bordered
+   cards with a normal-sized checkbox aligned to the first line of its label, and the checked one is
+   tinted. Check it at 375px.
+6. Manual, refusals: as a person with an outstanding `must_change_password`, hit `/account` → the forced
+   page, not the profile (§3.5 — the profile is deliberately *not* on the exempt list).
+
+**Still deferred from M2**, unchanged by this slice: voluntary TOTP *removal* and the §4.2 "an
+administrator cannot remove their own enrolment" rule, which need a store-level `TotpRemoved` path; the
+grant-time passkey mandate for the kitchen and administrator roles in the create-staff-without-session
+case; and guest self-registration on the join path (§11.1), where an anonymous scanner is still sent to
+`/sign-in` and needs an account already.
+
+**Next: M4 — ordering.** Living order plus the §6.6 locking protocol, staging UI, batch send with
+all-or-nothing validation, staff edits, fulfillment and reversal, projections with fold-equivalence tests,
+and the kitchen surface with its alerts and reminder service.

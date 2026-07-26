@@ -697,7 +697,7 @@ Browsers block autoplay: the kitchen surface shows a one-tap "enable sound" arm 
 
 ### 11.1 `/table`
 
-Anonymous with valid token → grant → sign-in/registration (passkey-first, password offered) → join. Member view: the party roster; **my order** — staging area (add item pickers from the menu — deactivated items greyed out and unselectable (§7) — with quantity 1–100 and note; mark-my-pending-line-for-removal) with a Send button that is disabled while empty and shows an all-or-nothing error panel (per-operation reasons) on rejection; below it the committed living order, each line badged pending/fulfilled, removed lines struck-through with actor + reason, price adjustments shown old → new with reason; **party orders** — read-only equivalents for other members; running personal and table totals; history (the guest's **own** past orders at this restaurant — cross-member history is never shown); a per-order **Hide** control on closed orders, confirmed as irreversible from the guest's account (§6.8); and a **profile page** — manage passkeys, password, TOTP and recovery codes; optional phone number and email address (used for manual staff escalation only — nothing in the system sends to them automatically); postal addresses with **free-text labels** ("Home", "Work", "Grandparents' house") — deliberate scaffolding for a possible future delivery/takeout feature, consumed by nothing in version 1 and not to be removed as dead weight. On `SittingClosed`, the surface flips to a read-only settled-bill view.
+Anonymous with valid token → grant → sign-in/registration (passkey-first, password offered) → join. Member view: the party roster; **my order** — staging area (add item pickers from the menu — deactivated items greyed out and unselectable (§7) — with quantity 1–100 and note; mark-my-pending-line-for-removal) with a Send button that is disabled while empty and shows an all-or-nothing error panel (per-operation reasons) on rejection; below it the committed living order, each line badged pending/fulfilled, removed lines struck-through with actor + reason, price adjustments shown old → new with reason; **party orders** — read-only equivalents for other members; running personal and table totals; history (the guest's **own** past orders at this restaurant — cross-member history is never shown); a per-order **Hide** control on closed orders, confirmed as irreversible from the guest's account (§6.8); and a link to the **profile page** (§11.6) — set the display name; manage passkeys, password, TOTP and recovery codes; optional phone number and email address (used for manual staff escalation only — nothing in the system sends to them automatically); postal addresses with **free-text labels** ("Home", "Work", "Grandparents' house") — deliberate scaffolding for a possible future delivery/takeout feature, consumed by nothing in version 1 and not to be removed as dead weight. On `SittingClosed`, the surface flips to a read-only settled-bill view.
 
 ### 11.2 `/kitchen`
 
@@ -714,6 +714,16 @@ Users (create staff, roles grant/revoke, activate/deactivate, **Reset credential
 ### 11.5 `/display/{table}`
 
 Unpaired device → redirect `/display/pair` (code entry). Paired: full-screen table label + rotating QR (server SVG, window-aligned refresh), party-size chip when a sitting is open (via `SittingMemberJoined`/`SittingClosed`), connection-state indicator (circuit down → prominent "offline — see the counter" state; the QR must not silently freeze stale), wake lock. Revoked → pairing screen with "this display was disconnected".
+
+### 11.6 `/account`
+
+The person's own profile (§4.6) — reachable by **every** authenticated principal, guest to administrator, since the fields it edits belong to the person rather than to a role. It is not an area: no policy guards it, only `[Authorize]`, and it is **not** exempt from the §3.5 obligations pipeline (an outstanding flag routes elsewhere first).
+
+Two things live here. **Your details** — display name, email address, phone number — is one form writing one `person` row update; the username is rendered read-only with the reason. None of the three is a credential, so the update rotates no security stamp and writes no `security_event` (§8.2's vocabulary is closed and contains no profile-edit type, correctly). A changed display name does re-issue the authentication cookie, because the name travels as a claim. **Sign-in and security** is a status row per credential — password set/unset, authenticator enrolled/not, passkey count — each linking to the surface that owns it: `/account/change-password`, `/account/enroll-totp` (§3.4), `/account/passkeys` (§3.3). Those three record their own events.
+
+`/account/change-password` is the voluntary password surface, distinct from the forced `/account/change-password-required` of §3.5: it takes current + new (or, for a passkey-only account, new alone via an add path), records `password_changed`, and re-issues the cookie — the framework rotates the security stamp inside the password update, so without that the person would sign themselves out.
+
+Address management (§4.6's free-text-labelled postal addresses) is **not surfaced**: nothing in version 1 consumes an address, and a form for data no reader exists for would be scaffolding pretending to be a feature. The table and columns stay as specified.
 
 ## 12. Observability
 
@@ -798,7 +808,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 ## 19. Build order (milestones)
 
 - **M1 — skeleton:** solution layout (§2), Containerfile, compose dev profile, DbUp with `0001_initial_schema.sql`, health endpoints, OTel wiring, `run.sh`.
-- **M2 — identity:** Dapper Identity stores, Argon2id hasher (+floor guard, semaphore), passkeys, TOTP + recovery codes, lockout, obligations pipeline, `/setup` bootstrap, roles/policies, security events, admin user management + reset.
+- **M2 — identity:** Dapper Identity stores, Argon2id hasher (+floor guard, semaphore), passkeys, TOTP + recovery codes, lockout, obligations pipeline, `/setup` bootstrap, roles/policies, security events, admin user management + reset, and the person's own profile page (§11.6: display name, contact details, voluntary password change). The profile page belongs to this milestone but was not listed here originally and landed after M3 — see F-35.
 - **M3 — tables & joining:** table CRUD + join secrets + rotation, display pairing + device auth + `/display`, token generate/validate + metrics, grant cookie, join flow, sittings + membership.
 - **M4 — ordering:** living order + locking protocol, staging UI, batch send + validation, staff edits, fulfillment/reversal, projections + fold + equivalence tests, kitchen surface + alerts + reminder service.
 - **M5 — counter & administration:** bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu management + events, event explorer, hide/unhide, post-close corrections.
