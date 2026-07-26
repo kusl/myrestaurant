@@ -1,0 +1,441 @@
+@page "/display/{TableId:guid}"
+@using MyRestaurant.DataAccess.Displays
+@using MyRestaurant.DataAccess.Sittings
+@using MyRestaurant.Domain.LiveUpdates
+@using MyRestaurant.Domain.Time
+@using MyRestaurant.WebApplication.Displays
+@using MyRestaurant.WebApplication.Tables
+@layout DisplayLayout
+@implements IDisposable
+@inject IDisplayDeviceAuthenticator Devices
+@inject ITableJoinTokens JoinTokens
+@inject ISittingDirectory Sittings
+@inject IDomainEventBroadcaster Broadcaster
+@inject IClock Clock
+@inject RestaurantOptions Options
+@inject NavigationManager Navigation
+
+@* The table display surface (TECHNICAL_SPECIFICATION §4.3, §11.5).
+
+   Interactive server, unlike every other cookie-adjacent page here, because §11.5 asks for three live
+   things: a QR that re-renders on the rotation boundary, a party-size chip fed by SittingMemberJoined,
+   and a connection state that must never let a frozen code masquerade as a fresh one.
+
+   ANONYMOUS at the endpoint, gated in the component. §11.5 says an unpaired device is *redirected* to
+   /display/pair, and [Authorize] cannot produce that: a failed policy challenges the default scheme and
+   lands the screen on /sign-in, which is meaningless for a tablet. The device principal itself is
+   installed by DisplayDeviceAuthenticationMiddleware and reaches the circuit through the cascading
+   authentication state, so the gate below is reading a server-set principal, never anything the browser
+   claimed. §3.7's "table claim matches {table}" is a comparison against a route value, which likewise
+   belongs in the surface — the same place §3.7 already leaves /table's per-sitting membership check.
+
+   Rotation is continuous and independent of sitting state (§4.3), so the timer runs whether or not the
+   table has anyone at it. Deactivating the table stops rendering (§4.1) without unpairing the device. *@
+
+<PageTitle>@PageTitleText</PageTitle>
+
+@if (_stage == DisplayStage.WrongTable && _deviceTable is { } ownTable)
+{
+    <section class="display-card">
+        <p class="display-eyebrow">@Options.RestaurantName</p>
+        <h1>Wrong table</h1>
+        <p class="display-lede">
+            This display is paired to <strong>@(_deviceTableLabel ?? "another table")</strong>, so it will
+            not show a join code for this one. Open its own table, or ask an administrator to revoke and
+            re-pair it.
+        </p>
+        <div class="display-actions">
+            <a class="button-primary" href="@DisplayRoutes.ForTable(ownTable)">Open @(_deviceTableLabel ?? "its table")</a>
+        </div>
+    </section>
+}
+else if (_stage == DisplayStage.NotPaired)
+{
+    <section class="display-card">
+        <p class="display-eyebrow">@Options.RestaurantName</p>
+        <h1>This display is not paired</h1>
+        <p class="display-lede">
+            Ask an administrator for a pairing code, then enter it on the pairing screen.
+        </p>
+        <div class="display-actions">
+            <a class="button-primary" href="@DisplayRoutes.Pair">Go to pairing</a>
+        </div>
+    </section>
+}
+else if (_stage == DisplayStage.TableOutOfService)
+{
+    <section class="display-card">
+        <p class="display-eyebrow">@Options.RestaurantName</p>
+        <h1>@_tableLabel</h1>
+        <p class="display-lede">
+            This table is out of service, so it is not showing a join code. Please speak to the counter.
+        </p>
+    </section>
+}
+else if (_qr is not null)
+{
+    @* data-refresh-token / data-fresh-for-ms drive js/display.js: it measures the deadline from when it
+       observes the token change, so a kiosk with a badly wrong clock still detects a dead circuit. *@
+    <section class="display-card display-surface" id="table-display-surface"
+             data-refresh-token="@_refreshSequence" data-fresh-for-ms="@FreshForMilliseconds">
+        <p class="display-eyebrow">@Options.RestaurantName</p>
+        <h1>@_tableLabel</h1>
+
+        <p class="display-lede">Scan to join this table and order from your phone.</p>
+
+        <div class="display-qr">
+            @((MarkupString)_qr.QrCodeSvg)
+            <div class="display-offline" role="status">
+                <p class="display-offline-title">Reconnecting…</p>
+                <p class="display-offline-body">
+                    This code may have expired. Please ask at the counter for a fresh one.
+                </p>
+            </div>
+        </div>
+
+        @if (_partySize > 0)
+        {
+            <p class="display-party">
+                <span class="display-chip">
+                    @_partySize @(_partySize == 1 ? "person" : "people") seated
+                </span>
+            </p>
+        }
+        else
+        {
+            <p class="display-party"><span class="display-chip display-chip-quiet">Table free</span></p>
+        }
+    </section>
+}
+else
+{
+    @* Active table, no code back. Transient rather than fatal — the refresh loop will try again on the
+       next boundary — so say so plainly instead of dereferencing a null or showing a blank screen. *@
+    <section class="display-card display-surface" id="table-display-surface"
+             data-refresh-token="@_refreshSequence" data-fresh-for-ms="@FreshForMilliseconds">
+        <p class="display-eyebrow">@Options.RestaurantName</p>
+        <h1>@_tableLabel</h1>
+        <p class="display-lede">Preparing the join code…</p>
+    </section>
+}
+
+<style>
+    .display-qr {
+        position: relative;
+        display: flex;
+        justify-content: center;
+        margin: 1rem auto 0.5rem;
+        max-width: min(70vh, 26rem);
+    }
+
+    .display-qr .join-qr-svg {
+        width: 100%;
+        height: auto;
+        border-radius: 0.75rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+    }
+
+    /* Raised only when js/display.js sets .is-stale on the surface. */
+    .display-offline {
+        display: none;
+    }
+
+    .display-surface.is-stale .display-offline {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        padding: 1rem;
+        border-radius: 0.75rem;
+        background: rgba(127, 29, 29, 0.94);
+        color: #ffffff;
+        text-align: center;
+    }
+
+    .display-offline-title {
+        margin: 0;
+        font-size: clamp(1.25rem, 4vw, 1.9rem);
+        font-weight: 700;
+    }
+
+    .display-offline-body {
+        margin: 0;
+        max-width: 20rem;
+        font-size: 0.95rem;
+    }
+
+    .display-party {
+        margin: 0.75rem 0 0;
+    }
+
+    .display-chip {
+        display: inline-block;
+        padding: 0.3rem 0.9rem;
+        border-radius: 999px;
+        background: #e6f4ea;
+        color: #1e7a37;
+        font-weight: 700;
+        font-size: clamp(0.95rem, 2.5vw, 1.15rem);
+    }
+
+    .display-chip-quiet {
+        background: var(--surface, #f7f8fa);
+        color: var(--ink-soft, #55636f);
+        font-weight: 600;
+    }
+
+    .display-actions {
+        display: flex;
+        justify-content: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+</style>
+
+@code {
+    /// <summary>Which of the §11.5 states this display resolved to.</summary>
+    private enum DisplayStage
+    {
+        /// <summary>No live device credential: §11.5 sends the screen to the pairing surface.</summary>
+        NotPaired,
+
+        /// <summary>A live device, but it belongs to a different table (§3.7's table-claim rule).</summary>
+        WrongTable,
+
+        /// <summary>Paired and correct, but the table is deactivated — no code renders (§4.1).</summary>
+        TableOutOfService,
+
+        /// <summary>Paired, correct, and in service: the rotating QR.</summary>
+        Live,
+    }
+
+    private DisplayStage _stage = DisplayStage.NotPaired;
+    private Guid? _deviceIdentifier;
+    private Guid? _deviceTable;
+    private string? _deviceTableLabel;
+    private string _tableLabel = string.Empty;
+    private TableJoinQrCode? _qr;
+    private int _partySize;
+    private int _refreshSequence;
+
+    // Captured once, so nothing ever touches _lifetime.Token after Dispose has run.
+    private readonly CancellationTokenSource _lifetime = new();
+    private CancellationToken _stopping;
+    private IDisposable? _subscription;
+    private bool _disposed;
+
+    [Parameter]
+    public Guid TableId { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private string PageTitleText => _stage == DisplayStage.NotPaired
+        ? "Pair this display"
+        : string.IsNullOrEmpty(_tableLabel) ? "Table display" : _tableLabel;
+
+    /// <summary>
+    /// How long a rendered code stays trustworthy, for js/display.js. One rotation covers the healthy
+    /// case (the loop refreshes within a fraction of a second of the boundary); the extra ten seconds is
+    /// slack for a slow round trip, so a working display never flickers into the offline state.
+    /// </summary>
+    private int FreshForMilliseconds => (Options.TableJoinTokenRotationSeconds + 10) * 1000;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _stopping = _lifetime.Token;
+
+        if (AuthenticationStateTask is null)
+        {
+            _stage = DisplayStage.NotPaired;
+            return;
+        }
+
+        // The cascading authentication state is the circuit-safe way to read the principal: there is no
+        // HttpContext once the component is interactive, and it works identically during the prerender
+        // pass. The device principal reaches both because the middleware runs on /display AND /_blazor.
+        AuthenticationState state = await AuthenticationStateTask;
+
+        _deviceIdentifier = DisplayDevicePrincipal.DeviceIdentifierFor(state.User);
+        _deviceTable = DisplayDevicePrincipal.TableIdentifierFor(state.User);
+        _deviceTableLabel = DisplayDevicePrincipal.TableLabelFor(state.User);
+
+        if (_deviceIdentifier is null || _deviceTable is null)
+        {
+            // §11.5: "Unpaired device → redirect /display/pair". During the prerender pass this becomes
+            // an HTTP redirect and the circuit never starts; on the circuit it is a navigation. The
+            // rendered not-paired card above stands behind it either way.
+            _stage = DisplayStage.NotPaired;
+            Navigation.NavigateTo(DisplayRoutes.Pair);
+            return;
+        }
+
+        if (_deviceTable.Value != TableId)
+        {
+            _stage = DisplayStage.WrongTable;
+            return;
+        }
+
+        _tableLabel = _deviceTableLabel ?? string.Empty;
+        await LoadAsync();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender || _stage is DisplayStage.NotPaired or DisplayStage.WrongTable)
+        {
+            return;
+        }
+
+        // Only on the circuit: OnAfterRender does not run during prerendering, so neither the timer nor
+        // the subscription is ever created for a render that is about to be thrown away.
+        _subscription = Broadcaster.Subscribe(OnDomainNotification);
+        _ = RunRefreshLoopAsync();
+    }
+
+    /// <summary>
+    /// Re-reads everything the surface shows. Revalidating the device on every pass is what makes §4.2's
+    /// "revocation kills the device on its next request <b>or circuit revalidation</b>" true for a screen
+    /// that may sit on one circuit for a week — and it doubles as the <c>last_seen_at</c> heartbeat,
+    /// since that touch is rate-limited to once a minute inside the authenticator.
+    /// </summary>
+    private async Task LoadAsync()
+    {
+        DisplayDeviceSession? session = await Devices.RevalidateAsync(_deviceIdentifier!.Value, _stopping);
+        if (session is null)
+        {
+            _stage = DisplayStage.NotPaired;
+            _qr = null;
+            return;
+        }
+
+        _tableLabel = session.TableLabel;
+        _deviceTableLabel = session.TableLabel;
+
+        if (!session.TableIsActive)
+        {
+            // §4.1: deactivating a table stops its display rendering. The device stays paired.
+            _stage = DisplayStage.TableOutOfService;
+            _qr = null;
+            return;
+        }
+
+        _stage = DisplayStage.Live;
+        _qr = await JoinTokens.DescribeCurrentAsync(TableId, _stopping);
+
+        TableSittingSummary? sitting = await Sittings.GetOpenSittingAsync(TableId, _stopping);
+        _partySize = sitting?.MemberCount ?? 0;
+        _refreshSequence++;
+    }
+
+    /// <summary>
+    /// The window-aligned refresh (§4.3: "the display re-renders on a server timer aligned to the window
+    /// boundary — fire at <c>(window_index+1) × rotation</c>"). The next boundary comes from the code
+    /// just rendered, so the loop stays aligned without keeping its own notion of the window.
+    /// </summary>
+    private async Task RunRefreshLoopAsync()
+    {
+        while (!_stopping.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(DelayUntilNextWindow(), _stopping);
+                await InvokeAsync(RefreshAsync);
+            }
+            catch (OperationCanceledException)
+            {
+                return; // the circuit went away
+            }
+            catch (ObjectDisposedException)
+            {
+                return; // torn down mid-flight
+            }
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        await LoadAsync();
+
+        if (_stage == DisplayStage.NotPaired)
+        {
+            // Revoked while we were watching. A full-page navigation re-runs the middleware, which
+            // clears the dead cookie, so the pairing screen greets it with "this display was
+            // disconnected" rather than a bare form (§11.5).
+            Navigation.NavigateTo(DisplayRoutes.Pair, forceLoad: true);
+            return;
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Time until just after the next rotation boundary. The 250 ms of overshoot keeps the refresh on the
+    /// far side of the boundary, so the code rendered is the new window's rather than the old one's; the
+    /// floor and ceiling stop a clock jump from turning the loop into a spin or a long sleep.
+    /// </summary>
+    private TimeSpan DelayUntilNextWindow()
+    {
+        TimeSpan rotation = TimeSpan.FromSeconds(Options.TableJoinTokenRotationSeconds);
+        DateTimeOffset now = Clock.UtcNow;
+        DateTimeOffset boundary = _qr?.NextRotationAt ?? now + rotation;
+
+        TimeSpan delay = boundary - now + TimeSpan.FromMilliseconds(250);
+
+        if (delay < TimeSpan.FromMilliseconds(500))
+        {
+            return TimeSpan.FromMilliseconds(500);
+        }
+
+        return delay > rotation ? rotation : delay;
+    }
+
+    /// <summary>
+    /// §9 attaches the party-size chip to <c>SittingMemberJoined</c>, and a close empties the table, so
+    /// both are re-read. The sitting identifier is deliberately not compared: the very notification that
+    /// matters most — the first person joining — announces a sitting this surface has never seen, so
+    /// filtering on a known id would drop it. One cheap scoped query per table event is the right trade.
+    /// </summary>
+    private void OnDomainNotification(DomainNotification notification)
+    {
+        if (notification is not SittingMemberJoined && notification is not SittingClosed)
+        {
+            return;
+        }
+
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                TableSittingSummary? sitting = await Sittings.GetOpenSittingAsync(TableId, _stopping);
+                _partySize = sitting?.MemberCount ?? 0;
+                StateHasChanged();
+            }
+            catch (OperationCanceledException)
+            {
+                // Disposed between the broadcast and the query; nothing to update.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Same, one layer down.
+            }
+        });
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _subscription?.Dispose();
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

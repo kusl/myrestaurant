@@ -1,0 +1,187 @@
+@page "/display/pair"
+@using Microsoft.AspNetCore.RateLimiting
+@using MyRestaurant.DataAccess.Displays
+@using MyRestaurant.WebApplication.Displays
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [EnableRateLimiting(DisplayRoutes.PairingRateLimitPolicy)]
+@layout DisplayLayout
+@inject IDisplayDevicePairing Pairing
+@inject RestaurantOptions Options
+@inject NavigationManager Navigation
+
+@* Display-device pairing (TECHNICAL_SPECIFICATION §4.2, §11.5).
+
+   Anonymous by necessity: this is the one page an unpaired screen can reach, and it is what it reaches
+   INSTEAD of a sign-in page — a tablet has no account and never will. §4.2 pays for that openness with a
+   rate limit rather than a credential: 5 attempts per minute per IP, enforced by the policy named in the
+   attribute above, so an attacker cannot walk the 31^8 code space and a fat-fingered member of staff is
+   barely inconvenienced.
+
+   Static SSR, like every surface that writes a cookie: pairing's last act is to set the year-long device
+   credential, which a Blazor circuit cannot do.
+
+   Three entry states, decided on GET:
+     • already paired  — the middleware resolved a live credential; offer the display, do not re-pair.
+     • disconnected    — a cookie was presented but not honoured, so the middleware cleared it. §11.5
+                         asks for exactly this wording; revoked and mangled look the same, on purpose.
+     • fresh           — no cookie at all; just the form.
+
+   Failures are indistinguishable by design. Unknown, expired, already-used, and malformed codes all
+   produce one sentence, because anything finer turns an anonymous endpoint into an oracle for which
+   codes exist (§4.2: "failed attempts burn nothing but the rate budget"). *@
+
+<PageTitle>Pair this display</PageTitle>
+
+<section class="display-card">
+    <p class="display-eyebrow">@Options.RestaurantName</p>
+
+    @if (_pairedTable is { } pairedTable)
+    {
+        <h1>This display is paired</h1>
+        <p class="display-lede">
+            It is already showing <strong>@(_pairedTableLabel ?? "a table")</strong>. There is nothing to
+            do here — open the display, or ask an administrator to revoke this device first if it needs
+            to move to another table.
+        </p>
+        <div class="form-actions display-actions">
+            <a class="button-primary" href="@DisplayRoutes.ForTable(pairedTable)">Open the display</a>
+        </div>
+    }
+    else
+    {
+        <h1>Pair this display</h1>
+
+        @if (_wasDisconnected)
+        {
+            <p class="status-error" role="alert">
+                This display was disconnected. Ask an administrator for a new pairing code to bring it
+                back.
+            </p>
+        }
+
+        <p class="display-lede">
+            An administrator generates a one-time code from Administration → Tables → the table →
+            <strong>Display devices</strong>. Type it in below. Codes last
+            @Options.TableDisplayPairingCodeMinutes
+            minute@(Options.TableDisplayPairingCodeMinutes == 1 ? "" : "s") and work once.
+        </p>
+
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <EditForm Model="PairInput" method="post" OnValidSubmit="PairAsync" FormName="display-pair" class="display-form">
+            <DataAnnotationsValidator />
+
+            <div class="form-field">
+                <label for="pairing-code">Pairing code</label>
+                <InputText id="pairing-code" class="pairing-code-input" @bind-Value="PairInput.Code"
+                           autocomplete="off" autocapitalize="characters" autocorrect="off"
+                           spellcheck="false" inputmode="text" maxlength="32" />
+                <ValidationMessage For="@(() => PairInput.Code)" />
+            </div>
+
+            <div class="form-field">
+                <label for="device-label">Name this display <span class="optional">(optional)</span></label>
+                <InputText id="device-label" @bind-Value="PairInput.DeviceLabel"
+                           placeholder="Window tablet" autocomplete="off" maxlength="120" />
+                <ValidationMessage For="@(() => PairInput.DeviceLabel)" />
+            </div>
+
+            <div class="form-actions display-actions">
+                <button type="submit" class="button-primary">Pair this display</button>
+            </div>
+        </EditForm>
+
+        <p class="form-footnote">
+            Pairing stores a long-lived credential on this device. If the tablet is lost or replaced, an
+            administrator revokes it and the credential dies on its next request — the table's join
+            secret never leaves the server, so the screen itself holds nothing worth taking.
+        </p>
+    }
+</section>
+
+<style>
+    .display-form {
+        margin: 1.25rem auto 0;
+        max-width: 24rem;
+        text-align: left;
+    }
+
+    .display-actions {
+        justify-content: center;
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .pairing-code-input {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 1.5rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+    }
+</style>
+
+@code {
+    private string? _errorMessage;
+    private bool _wasDisconnected;
+    private Guid? _pairedTable;
+    private string? _pairedTableLabel;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "display-pair")]
+    private PairInputModel PairInput { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        // BL0008: a form POST binds PairInput itself and may assign null, so the default lives here.
+        PairInput ??= new();
+
+        // The middleware has already run, so a live credential is visible as the request's principal and
+        // a dead one has already been cleared from the response — but the request's own copy is still
+        // readable, which is how "disconnected" is told apart from "never paired" (§11.5).
+        _pairedTable = DisplayDevicePrincipal.TableIdentifierFor(HttpContext.User);
+        _pairedTableLabel = DisplayDevicePrincipal.TableLabelFor(HttpContext.User);
+        _wasDisconnected = _pairedTable is null && DisplayDeviceCookie.WasPresented(HttpContext.Request);
+    }
+
+    /// <summary>
+    /// Redeems the typed code. Normalization (case, spaces, hyphens) happens inside the service, so what
+    /// a person read off one screen and typed into another does not have to match byte for byte.
+    /// </summary>
+    private async Task PairAsync()
+    {
+        RedeemPairingCodeResult result = await Pairing.RedeemPairingCodeAsync(
+            PairInput.Code, PairInput.DeviceLabel, HttpContext.RequestAborted);
+
+        if (result.Outcome == RedeemPairingCodeOutcome.Paired
+            && result.DeviceIdentifier is { } device
+            && result.TableIdentifier is { } table
+            && result.DeviceSecret is { } secret)
+        {
+            // The secret exists in memory exactly once, here: only its SHA-256 hash was stored (§4.2).
+            DisplayDeviceCookie.Write(HttpContext.Response, device, secret);
+            Navigation.NavigateTo(DisplayRoutes.ForTable(table));
+            return;
+        }
+
+        // One wording for every refusal. A deactivated table, an expired code, a used code and a typo
+        // must be indistinguishable from out here (§4.2).
+        _errorMessage = "That code was not recognised. Codes work once and expire quickly — ask for a "
+            + "fresh one and try again.";
+    }
+
+    private sealed class PairInputModel
+    {
+        [Required(ErrorMessage = "Enter the pairing code.")]
+        [StringLength(32, MinimumLength = 8, ErrorMessage = "A pairing code is 8 characters.")]
+        public string Code { get; set; } = string.Empty;
+
+        [StringLength(120, ErrorMessage = "Keep the name under 120 characters.")]
+        public string? DeviceLabel { get; set; }
+    }
+}

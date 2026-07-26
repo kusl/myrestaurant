@@ -7,6 +7,7 @@ using MyRestaurant.Domain.LiveUpdates;
 using MyRestaurant.Domain.Time;
 using MyRestaurant.WebApplication.Components;
 using MyRestaurant.WebApplication.Configuration;
+using MyRestaurant.WebApplication.Displays;
 using MyRestaurant.WebApplication.Identity;
 using MyRestaurant.WebApplication.LiveUpdates;
 using MyRestaurant.WebApplication.Observability;
@@ -22,8 +23,8 @@ using OpenTelemetry.Trace;
 //   2. wire OpenTelemetry (exporters only when an OTLP endpoint is configured);
 //   3. register services;
 //   4. apply database migrations BEFORE binding HTTP (never serve on a half-applied schema, §17);
-//   5. forwarded headers → public-origin host normalization → auth → obligations pipeline → health
-//      endpoints → Blazor components.
+//   5. forwarded headers → public-origin host normalization → rate limiting → auth → display-device
+//      principal → obligations pipeline → health endpoints → Blazor components.
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
@@ -118,6 +119,14 @@ builder.Services.AddRestaurantIdentity(options);
 // metrics, and Data Protection provider registered above — hence the position after them.
 builder.Services.AddRestaurantTables();
 
+// Display devices (§4.2, §11.5): the read-only IDisplayDeviceDirectory the administration devices page
+// lists from, the transactional IDisplayDevicePairing behind issue/redeem/revoke, the
+// IDisplayDeviceAuthenticator the request middleware and the live surface re-validate with, and the
+// 5-per-minute-per-IP rate-limiter policy /display/pair opts into. A display is a device principal, not
+// a person, so it is wired apart from AddRestaurantIdentity — but it renders the rotating QR through
+// AddRestaurantTables' ITableJoinTokens, hence the position after it.
+builder.Services.AddRestaurantDisplays();
+
 // The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
 // so honour its X-Forwarded-* headers. KnownIPNetworks/KnownProxies are cleared deliberately — safe
 // ONLY because the origin is never exposed directly (BUILD_PROGRESS: forwarded-headers trust).
@@ -153,8 +162,20 @@ app.UseForwardedHeaders();
 // *.trycloudflare.com hostname. Sits right after forwarded headers so it can see X-Forwarded-Host and
 // before auth/endpoints so the ceremony sees the corrected host (§3.3, ADR-0005).
 app.UseMiddleware<PublicOriginMiddleware>();
+// Endpoint rate limiting (§4.2: /display/pair is anonymous and limited to 5 attempts/minute/IP). It
+// MUST sit after UseForwardedHeaders, because the limiter partitions on the connection's remote
+// address — before the forwarded headers are applied that address is the proxy's, and every device in
+// the building would share one bucket. Only endpoints carrying [EnableRateLimiting] are affected;
+// there is no global limiter, so everything else passes straight through.
+app.UseRateLimiter();
 app.UseStaticFiles();
 app.UseAuthentication();
+// A paired table display is a device principal, not a person (§0, §4.2), so it is resolved from its own
+// long-lived cookie right after the Identity cookie has had its chance — a signed-in person always
+// wins. Plain middleware rather than an authentication scheme on purpose: the display surface is
+// interactive, and a circuit takes its principal from the /_blazor request, which authenticates with
+// the default scheme; middleware runs there too, so the device reaches the circuit (see the class docs).
+app.UseMiddleware<DisplayDeviceAuthenticationMiddleware>();
 app.UseAuthorization();
 app.UseMiddleware<ObligationsMiddleware>();
 app.UseAntiforgery();
@@ -192,4 +213,3 @@ app.MapRazorComponents<App>()
 app.Run();
 
 return 0;
-

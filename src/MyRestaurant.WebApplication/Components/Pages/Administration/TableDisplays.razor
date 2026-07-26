@@ -1,0 +1,440 @@
+@page "/administration/tables/{TableId:guid}/displays"
+@using MyRestaurant.DataAccess.Displays
+@using MyRestaurant.DataAccess.Tables
+@using MyRestaurant.WebApplication.Displays
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@inject ITableDirectory TableDirectory
+@inject IDisplayDeviceDirectory DisplayDevices
+@inject IDisplayDevicePairing Pairing
+@inject RestaurantOptions Options
+@inject NavigationManager Navigation
+
+@* Display devices for one table (TECHNICAL_SPECIFICATION §4.2, §11.4 — `area.administration`).
+   Static SSR, like every administration surface.
+
+   Generate deliberately does NOT post/redirect/get: the plaintext code exists exactly once, in the
+   response to the POST that made it, and a redirect would throw it away — the same reason the TOTP
+   slice renders recovery codes in place. A refresh therefore mints a fresh code; the previous one is
+   simply left to expire, which is harmless because codes are single-use and short-lived.
+
+   Revoke does use post/redirect/get, and picks its device from a select rather than rendering a form
+   per row — the same shape ManagePerson uses for role revocation, and the reason is the same: one
+   named form per action keeps static-SSR form matching unambiguous. *@
+
+<PageTitle>@(_table is null ? "Display devices" : $"Displays — {_table.Label}")</PageTitle>
+
+@if (_table is null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Table not found</h1>
+        <p class="lede">No table exists with that identifier. It may have never existed, or the link is stale.</p>
+        <p><a href="/administration/tables">Back to tables</a></p>
+    </section>
+}
+else
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration — display devices</p>
+        <h1>@_table.Label</h1>
+
+        @if (_flashMessage is not null)
+        {
+            <p class="status-success" role="status">@_flashMessage</p>
+        }
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        @if (_issuedCode is not null)
+        {
+            <div class="pairing-issued">
+                <p class="pairing-issued-label">Enter this on the display, at <code>@PairingUrl</code></p>
+                <p class="pairing-code">@_issuedCode</p>
+                <p class="form-footnote">
+                    Shown once — it is stored hashed, so it cannot be read back. Works once, and expires
+                    @if (_issuedExpiresAt is { } expiresAt)
+                    {
+                        <text>at <strong>@expiresAt.ToLocalTime().ToString("T")</strong>.</text>
+                    }
+                    else
+                    {
+                        <text>shortly.</text>
+                    }
+                </p>
+            </div>
+        }
+
+        <h2 class="manage-heading">Pair a new display</h2>
+        @if (_table.IsActive)
+        {
+            <p class="lede">
+                Generate a one-time code, then open <code>@PairingUrl</code> on the tablet and type it in.
+                Codes last @Options.TableDisplayPairingCodeMinutes
+                minute@(Options.TableDisplayPairingCodeMinutes == 1 ? "" : "s"), work once, and the
+                pairing page is rate-limited to @DisplayRoutes.PairingAttemptsPerWindow attempts a minute
+                per device.
+            </p>
+            <form method="post" @formname="display-generate-code" @onsubmit="GenerateCodeAsync">
+                <AntiforgeryToken />
+                <div class="form-actions">
+                    <button type="submit" class="button-primary">Generate pairing code</button>
+                </div>
+            </form>
+        }
+        else
+        {
+            <p class="lede">
+                This table is deactivated, so it takes no new displays and renders no join code.
+                Reactivate it first.
+            </p>
+        }
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Paired displays</h2>
+        @if (_devices.Count == 0)
+        {
+            <p class="lede">No display has ever been paired to this table.</p>
+        }
+        else
+        {
+            <div class="admin-tables">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Display</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Paired</th>
+                            <th scope="col">Last seen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (TableDisplayDeviceSummary device in _devices)
+                        {
+                            <tr>
+                                <td><span class="table-label">@device.DeviceLabel</span></td>
+                                <td>
+                                    @if (device.IsRevoked)
+                                    {
+                                        <span class="chip chip-warn">Revoked</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="chip chip-ok">Live</span>
+                                    }
+                                </td>
+                                <td>
+                                    @device.PairedAt.ToLocalTime().ToString("g")
+                                    <span class="muted">by @device.PairedByUsername</span>
+                                </td>
+                                <td>
+                                    @if (device.IsRevoked && device.RevokedAt is { } revokedAt)
+                                    {
+                                        <span class="muted">
+                                            revoked @revokedAt.ToLocalTime().ToString("g")
+                                            @if (device.RevokedByUsername is { } revokedBy)
+                                            {
+                                                <text> by @revokedBy</text>
+                                            }
+                                        </span>
+                                    }
+                                    else if (device.LastSeenAt is { } lastSeenAt)
+                                    {
+                                        <span>@lastSeenAt.ToLocalTime().ToString("g")</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">Never</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (_revocableDevices.Count > 0)
+            {
+                @* No explicit <AntiforgeryToken />: EditForm renders one itself for a named SSR form
+                   (RenderSSRFormHandlingChildren), and a second field of the same name would make the
+                   value ambiguous to the token store. The plain <form> above is not an EditForm, so it
+                   does carry one — the same split ManageTable already uses. *@
+                <EditForm Model="RevokeInput" method="post" OnValidSubmit="RevokeDeviceAsync"
+                          FormName="display-revoke" class="manage-inline-form">
+                    <label class="visually-hidden" for="revoke-display">Display to revoke</label>
+                    <InputSelect id="revoke-display" @bind-Value="RevokeInput.DeviceIdentifier">
+                        <option value="">Choose a display…</option>
+                        @foreach (TableDisplayDeviceSummary device in _revocableDevices)
+                        {
+                            <option value="@device.DeviceIdentifier">@device.DeviceLabel</option>
+                        }
+                    </InputSelect>
+                    <button type="submit" class="link-button danger">Revoke display</button>
+                </EditForm>
+
+                <p class="form-footnote">
+                    Revoking kills the credential on the device's next request or circuit revalidation.
+                    Nothing is deleted, so the record of which screen showed this table stays. If a
+                    display walked away, consider rotating the join secret too — every in-flight QR dies
+                    instantly and the replacement picks up the new sequence on its next window.
+                </p>
+            }
+        }
+
+        <p class="manage-back"><a href="@ManagePath">Back to @_table.Label</a></p>
+    </section>
+}
+
+@* Namespaced and inline for the same reason the other administration pages keep their CSS inline:
+   App.razor links the static stylesheet, so component CSS isolation is not active. *@
+<style>
+    .manage-heading {
+        font-size: 1.05rem;
+        margin: 1.25rem 0 0.35rem;
+    }
+
+    .manage-rule {
+        border: 0;
+        border-top: 1px solid var(--hairline, #e2e6ec);
+        margin: 1.5rem 0;
+    }
+
+    .manage-inline-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        align-items: center;
+        margin: 0.75rem 0;
+    }
+
+    .manage-inline-form select {
+        padding: 0.45rem 0.6rem;
+        border: 1px solid var(--hairline, #ccc);
+        border-radius: 0.4rem;
+        min-width: 12rem;
+    }
+
+    .manage-back {
+        margin-top: 1.5rem;
+    }
+
+    .pairing-issued {
+        margin: 1rem 0;
+        padding: 1rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.6rem;
+        background: var(--surface, #f7f8fa);
+        text-align: center;
+    }
+
+    .pairing-issued-label {
+        margin: 0;
+        font-size: 0.85rem;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .pairing-code {
+        margin: 0.35rem 0 0.5rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: clamp(1.75rem, 6vw, 2.5rem);
+        font-weight: 700;
+        letter-spacing: 0.22em;
+    }
+
+    .admin-tables table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.75rem 0;
+        font-size: 0.95rem;
+    }
+
+    .admin-tables th,
+    .admin-tables td {
+        text-align: left;
+        padding: 0.5rem 0.6rem;
+        border-bottom: 1px solid var(--hairline, #e2e6ec);
+        vertical-align: top;
+    }
+
+    .table-label {
+        font-weight: 600;
+    }
+
+    .muted {
+        color: var(--ink-soft, #99a3ad);
+    }
+
+    .chip {
+        display: inline-block;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        white-space: nowrap;
+    }
+
+    .chip-ok {
+        background: #e6f4ea;
+        color: #1e7a37;
+    }
+
+    .chip-warn {
+        background: #fdecea;
+        color: #a3261c;
+    }
+
+    .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+</style>
+
+@code {
+    private RestaurantTableSummary? _table;
+    private IReadOnlyList<TableDisplayDeviceSummary> _devices = [];
+    private IReadOnlyList<TableDisplayDeviceSummary> _revocableDevices = [];
+    private string? _issuedCode;
+    private DateTimeOffset? _issuedExpiresAt;
+    private string? _flashMessage;
+    private string? _errorMessage;
+
+    [Parameter]
+    public Guid TableId { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "display-revoke")]
+    private RevokeInputModel RevokeInput { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? Done { get; set; }
+
+    private string ManagePath => $"/administration/tables/{TableId}";
+
+    private string DisplaysPath => $"/administration/tables/{TableId}/displays";
+
+    /// <summary>The absolute URL to read aloud to whoever is holding the tablet (§4.2).</summary>
+    private string PairingUrl => $"{Options.PublicOrigin.TrimEnd('/')}{DisplayRoutes.Pair}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form POST binds RevokeInput itself and may assign null, so the default lives here.
+        RevokeInput ??= new();
+
+        _table = await TableDirectory.GetTableAsync(TableId, HttpContext.RequestAborted);
+        if (_table is null)
+        {
+            return;
+        }
+
+        await LoadDevicesAsync();
+
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            _flashMessage = FlashFor(Done);
+        }
+    }
+
+    private async Task LoadDevicesAsync()
+    {
+        _devices = await DisplayDevices.ListDevicesForTableAsync(TableId, HttpContext.RequestAborted);
+        _revocableDevices = _devices.Where(device => !device.IsRevoked).ToArray();
+    }
+
+    private async Task GenerateCodeAsync()
+    {
+        if (_table is null)
+        {
+            Navigation.NavigateTo("/administration/tables");
+            return;
+        }
+
+        if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } administrator)
+        {
+            // Endpoint authorization already guarantees an administrator; this is the belt to that
+            // brace, because created_by_person_identifier is NOT NULL and has no anonymous option.
+            _errorMessage = "Your session could not be identified. Sign in again and retry.";
+            return;
+        }
+
+        IssuePairingCodeResult result = await Pairing.IssuePairingCodeAsync(
+            TableId,
+            administrator,
+            TimeSpan.FromMinutes(Options.TableDisplayPairingCodeMinutes),
+            HttpContext.RequestAborted);
+
+        if (result.Outcome == IssuePairingCodeOutcome.Issued)
+        {
+            // Rendered in place, never redirected: this is the only moment the plaintext exists.
+            _issuedCode = result.Code;
+            _issuedExpiresAt = result.ExpiresAt;
+            return;
+        }
+
+        _errorMessage = "This table is deactivated, so it cannot take a new display. Reactivate it first.";
+    }
+
+    private async Task RevokeDeviceAsync()
+    {
+        if (_table is null)
+        {
+            Navigation.NavigateTo("/administration/tables");
+            return;
+        }
+
+        // Bound as text rather than Guid so the "Choose a display…" empty option is representable and
+        // InputSelect never has to parse a non-string type.
+        if (!Guid.TryParse(RevokeInput.DeviceIdentifier, out Guid deviceIdentifier))
+        {
+            _errorMessage = "Choose which display to revoke.";
+            return;
+        }
+
+        if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } administrator)
+        {
+            _errorMessage = "Your session could not be identified. Sign in again and retry.";
+            return;
+        }
+
+        RevokeDisplayDeviceOutcome outcome = await Pairing.RevokeDeviceAsync(
+            deviceIdentifier, administrator, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case RevokeDisplayDeviceOutcome.Revoked:
+                Navigation.NavigateTo($"{DisplaysPath}?done=revoked");
+                break;
+            case RevokeDisplayDeviceOutcome.AlreadyRevoked:
+                Navigation.NavigateTo($"{DisplaysPath}?done=already-revoked");
+                break;
+            case RevokeDisplayDeviceOutcome.DeviceNotFound:
+                _errorMessage = "That display no longer exists.";
+                await LoadDevicesAsync();
+                break;
+        }
+    }
+
+    private static string? FlashFor(string? outcome) => outcome switch
+    {
+        "revoked" => "Display revoked. Its credential stops working on the device's next request.",
+        "already-revoked" => "That display had already been revoked — nothing changed.",
+        _ => null,
+    };
+
+    private sealed class RevokeInputModel
+    {
+        [Required(ErrorMessage = "Choose which display to revoke.")]
+        public string DeviceIdentifier { get; set; } = string.Empty;
+    }
+}
