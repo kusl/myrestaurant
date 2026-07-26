@@ -1,0 +1,794 @@
+@using System.Globalization
+@using MyRestaurant.DataAccess.Menu
+@using MyRestaurant.DataAccess.Orders
+@using MyRestaurant.DataAccess.Sittings
+@using MyRestaurant.Domain.Identifiers
+@using MyRestaurant.Domain.LiveUpdates
+@using MyRestaurant.Domain.Orders
+@using MyRestaurant.WebApplication.Orders
+@implements IDisposable
+@inject IMenuDirectory MenuDirectory
+@inject IOrderReadModel OrderReads
+@inject IOrderEventLog EventLog
+@inject IOrderWorkflow Workflow
+@inject ISittingDirectory Sittings
+@inject IDomainEventBroadcaster Broadcaster
+@inject IIdentifierFactory Identifiers
+@inject RestaurantOptions Options
+
+@* The guest ordering surface (TECHNICAL_SPECIFICATION §6, §7, §9, §11.1).
+
+   An INTERACTIVE ISLAND inside a static-SSR page, which is the one structural decision in this file
+   worth reading twice. /table/{id} is [ExcludeFromInteractiveRouting] because the join flow writes the
+   grant cookie and issues redirects, and a Blazor circuit can do neither. But everything §11.1 asks for
+   below the join — a basket that survives a mis-tap, a Send that reports per-operation reasons, lines
+   that re-badge when the kitchen fulfills them, a party total that moves when someone else orders — is
+   live. So the page stays static and hosts this component with @@rendermode="InteractiveServer". The
+   parent keeps the cookie work; this keeps the circuit.
+
+   It is deliberately given only the two identifiers it needs and re-derives everything else. The person
+   comes from the cascading authentication state rather than from a parameter, so the component is
+   correct on its own terms and not merely correct because its caller was careful; membership and
+   openness are re-read on every pass, which is what makes the §11.1 flip to a settled view happen
+   without anyone telling this component that the counter closed the sitting.
+
+   Nothing here enforces §6.5. The transaction does, under the lock, against a menu it re-reads there
+   (§6.6). What this surface refuses — an unavailable item, a quantity outside 1–100, a tick on a line
+   that is no longer the guest's to remove — it refuses only so the answer arrives at the moment of the
+   tap instead of after a round trip. *@
+
+@if (!_loaded)
+{
+    <p class="lede">Loading your table…</p>
+}
+else if (_person is null)
+{
+    @* Only reachable if the cookie expired between the page render and the circuit starting. *@
+    <p class="status-error" role="alert">
+        Your session has ended. Please <a href="@AccountRoutes.SignIn">sign in</a> again to see your order.
+    </p>
+}
+else
+{
+    <h2 class="table-heading">Who is here</h2>
+
+    @if (_sitting is not null)
+    {
+        <p class="lede">
+            Open since @_sitting.OpenedAt.ToLocalTime().ToString("t") —
+            @_roster.Count @(_roster.Count == 1 ? "person" : "people") at the table.
+        </p>
+    }
+
+    <ul class="table-roster">
+        @foreach (SittingMemberSummary member in _roster)
+        {
+            <li @key="member.PersonIdentifier">
+                <span class="table-roster-name">@member.RosterName</span>
+                @if (member.PersonIdentifier == Person)
+                {
+                    <span class="chip">you</span>
+                }
+                <span class="table-roster-joined">joined @member.JoinedAt.ToLocalTime().ToString("t")</span>
+            </li>
+        }
+    </ul>
+
+    <hr class="table-rule" />
+
+    @if (_sitting is null)
+    {
+        @* §11.1: "On SittingClosed, the surface flips to a read-only settled-bill view." *@
+        <h2 class="table-heading">This sitting has been settled</h2>
+        <p class="lede">
+            The counter has closed and settled this table, so nothing more can be ordered against it.
+            What was ordered is below, and stays on your history.
+        </p>
+    }
+    else
+    {
+        <h2 class="table-heading">Your order</h2>
+
+        @if (_sendStatus is { } sendStatus)
+        {
+            <p class="status-success" role="status">@sendStatus</p>
+        }
+
+        @if (_rejection is { Count: > 0 })
+        {
+            @* §6.5.9 is all-or-nothing at the granularity of the event, so the honest headline is that
+               nothing at all was written — not that "some items failed". *@
+            <div class="status-error" role="alert">
+                <p class="order-reject-lede">
+                    <strong>Nothing was sent.</strong> A send is accepted or refused as a whole, so your
+                    basket is exactly as you left it. Fix these and send again.
+                </p>
+                <ul class="order-reject-list">
+                    @foreach (RejectedOperation problem in _rejection)
+                    {
+                        <li><strong>@problem.What</strong> — @problem.Reason</li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @if (_pruneNotice is { } pruneNotice)
+        {
+            <p class="status-error" role="status">@pruneNotice</p>
+        }
+
+        @* ---- staging area (§11.1) ------------------------------------------------------------ *@
+        <div class="order-picker">
+            <div class="form-field">
+                <label for="order-picker-item">Item</label>
+                <select id="order-picker-item" @bind="_pickedMenuItemId">
+                    <option value="">Choose something…</option>
+                    @foreach (MenuItemSummary item in _menu)
+                    {
+                        @* §7: a deactivated item stays on the menu, marked, and cannot be picked —
+                           "the guest sees that the salmon exists and is out". *@
+                        <option value="@item.MenuItemIdentifier" disabled="@(!item.IsActive)">
+                            @item.Name — @Money(item.PriceAmount)@(item.IsActive ? string.Empty : " (currently unavailable)")
+                        </option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-field order-picker-quantity">
+                <label for="order-picker-quantity">Quantity</label>
+                <input id="order-picker-quantity" type="number" inputmode="numeric"
+                       min="@OrderStaging.MinimumQuantity" max="@OrderStaging.MaximumQuantity" step="1"
+                       @bind="_pickedQuantity" />
+            </div>
+
+            <div class="form-field">
+                <label for="order-picker-note">Anything to note? <span class="optional">(optional)</span></label>
+                <input id="order-picker-note" type="text" maxlength="200" autocomplete="off"
+                       placeholder="No onions, extra hot…" @bind="_pickedNote" />
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="button-secondary" @onclick="StageItem">Add to basket</button>
+            </div>
+
+            @if (_stagingNotice is { } stagingNotice)
+            {
+                <p class="status-error" role="alert">@stagingNotice</p>
+            }
+        </div>
+
+        @if (_menu.Count == 0)
+        {
+            <p class="muted">
+                There is nothing on the menu yet. Please ask a member of staff.
+            </p>
+        }
+
+        @if (_staging.IsEmpty)
+        {
+            <p class="muted order-basket-empty">
+                Your basket is empty. Pick something above — nothing reaches the kitchen until you press
+                <strong>Send</strong>.
+            </p>
+        }
+        else
+        {
+            <ul class="order-basket">
+                @foreach (StagedOrderLine staged in _staging.Lines)
+                {
+                    MenuItemSummary? item = MenuItem(staged.MenuItemIdentifier);
+
+                    <li class="order-basket-line" @key="staged.StagingIdentifier">
+                        <div class="order-line-main">
+                            <span class="order-line-name">@(item?.Name ?? staged.MenuItemName)</span>
+                            <span class="order-line-price">@Money(StagedLineTotal(staged))</span>
+                        </div>
+
+                        @if (staged.CustomizationNote is { } note)
+                        {
+                            <p class="order-line-note">“@note”</p>
+                        }
+
+                        @if (item is null || !item.IsActive)
+                        {
+                            @* §7: "guest staging areas mark newly-inactive staged items and the send
+                               re-validates server-side regardless". Marked, not silently dropped. *@
+                            <p class="order-line-warning">
+                                This became unavailable while it was in your basket. Take it out, or the
+                                whole send will be refused.
+                            </p>
+                        }
+
+                        <div class="order-basket-controls">
+                            <label class="order-basket-quantity">
+                                <span>Quantity</span>
+                                <input type="number" inputmode="numeric"
+                                       min="@OrderStaging.MinimumQuantity" max="@OrderStaging.MaximumQuantity" step="1"
+                                       value="@staged.Quantity"
+                                       @onchange="args => ChangeStagedQuantity(staged.StagingIdentifier, args)" />
+                            </label>
+                            <button type="button" class="link-button danger"
+                                    @onclick="() => Unstage(staged.StagingIdentifier)">
+                                Take out
+                            </button>
+                        </div>
+                    </li>
+                }
+
+                @foreach (StagedRemoval removal in _staging.Removals)
+                {
+                    <li class="order-basket-line is-removal" @key="removal.OrderLineIdentifier">
+                        <div class="order-line-main">
+                            <span class="order-line-name">Remove @removal.Description</span>
+                        </div>
+                        <div class="order-basket-controls">
+                            <button type="button" class="link-button"
+                                    @onclick="() => _staging.SetMarkedForRemoval(removal.OrderLineIdentifier, removal.Description, false)">
+                                Keep it after all
+                            </button>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+
+        <div class="form-actions order-send">
+            <button type="button" class="button-primary" disabled="@(_staging.IsEmpty || _sending)"
+                    @onclick="SendAsync">
+                @(_sending ? "Sending…" : SendLabel)
+            </button>
+            @if (!_staging.IsEmpty && StagedTotal > 0m)
+            {
+                <span class="order-send-total">@Money(StagedTotal) to add</span>
+            }
+        </div>
+    }
+
+    @* ---- the committed living order (§11.1) ---------------------------------------------------- *@
+    <h3 class="order-subheading">@(_sitting is null ? "What you ordered" : "Sent to the kitchen")</h3>
+
+    @if (_myLines.Count == 0)
+    {
+        <p class="muted">You have not sent anything yet.</p>
+    }
+    else
+    {
+        <ul class="order-lines">
+            @foreach (NarratedOrderLine line in _myLines)
+            {
+                <li class="order-line @(line.IsRemoved ? "is-removed" : string.Empty)" @key="line.OrderLineIdentifier">
+                    <div class="order-line-main">
+                        <span class="order-line-name">@line.Quantity × @MenuItemName(line.MenuItemIdentifier)</span>
+                        <span class="order-line-price">@Money(line.Quantity * line.CurrentUnitPriceAmount)</span>
+                    </div>
+
+                    @if (line.CustomizationNote is { } note)
+                    {
+                        <p class="order-line-note">“@note”</p>
+                    }
+
+                    <p class="order-line-badges">
+                        @if (line.IsRemoved)
+                        {
+                            <span class="chip chip-warn">Removed</span>
+                        }
+                        else if (line.IsFulfilled)
+                        {
+                            <span class="chip chip-ok">At your table</span>
+                        }
+                        else
+                        {
+                            <span class="chip">With the kitchen</span>
+                        }
+                        <span class="order-line-when">sent @line.AddedAt.ToLocalTime().ToString("t")</span>
+                    </p>
+
+                    @if (line.IsRemoved)
+                    {
+                        @* §11.1: "removed lines struck-through with actor + reason". *@
+                        <p class="order-line-detail">
+                            Taken off by @ActorText(line.RemovedByActorRole, line.RemovedByActorPersonIdentifier, Person)@(line.RemovalReason is { } removalReason ? $" — {removalReason}" : string.Empty).
+                        </p>
+                    }
+
+                    @foreach (NarratedPriceAdjustment adjustment in line.PriceAdjustments)
+                    {
+                        @* §11.1: "price adjustments shown old → new with reason". *@
+                        <p class="order-line-detail">
+                            Price changed from <s>@Money(adjustment.PreviousUnitPriceAmount)</s>
+                            to <strong>@Money(adjustment.NewUnitPriceAmount)</strong>
+                            by @DescribeRole(adjustment.ActorRole) — @adjustment.Reason.
+                        </p>
+                    }
+
+                    @if (_sitting is not null && line.GuestMayRemove(Person))
+                    {
+                        <label class="order-line-remove">
+                            <input type="checkbox"
+                                   checked="@_staging.IsMarkedForRemoval(line.OrderLineIdentifier)"
+                                   @onchange="args => ToggleRemoval(line, args)" />
+                            <span>Take this off my order on the next send</span>
+                        </label>
+                    }
+                </li>
+            }
+        </ul>
+    }
+
+    @* ---- totals and the rest of the party (§11.1) ---------------------------------------------- *@
+    @* A <dl> with <div> groupings — dt/dd outside a definition list is invalid HTML5, and the div
+       wrappers are what .order-totals lays out. The same shape .account-facts already uses. *@
+    <dl class="order-totals">
+        <div>
+            <dt>Your total</dt>
+            <dd>@Money(MyTotal)</dd>
+        </div>
+        <div>
+            <dt>Table total</dt>
+            <dd>@Money(TableTotal)</dd>
+        </div>
+    </dl>
+
+    <h3 class="order-subheading">@(_sitting is null ? "The settled bill" : "The rest of the table")</h3>
+
+    @if (OtherPeople.Count == 0)
+    {
+        <p class="muted">Nobody else at this table has ordered yet.</p>
+    }
+    else
+    {
+        <ul class="order-party">
+            @foreach (SittingBillEntry entry in OtherPeople)
+            {
+                <li class="order-party-order" @key="entry.GuestOrderIdentifier">
+                    <div class="order-line-main">
+                        <span class="order-line-name">@entry.BillName</span>
+                        <span class="order-line-price">@Money(entry.PersonTotalAmount)</span>
+                    </div>
+
+                    @{
+                        IReadOnlyList<OrderLineView> theirLines = LinesFor(entry.GuestOrderIdentifier);
+                    }
+
+                    @if (theirLines.Count == 0)
+                    {
+                        <p class="muted">Nothing on their order right now.</p>
+                    }
+                    else
+                    {
+                        <ul class="order-party-lines">
+                            @foreach (OrderLineView theirLine in theirLines)
+                            {
+                                <li @key="theirLine.OrderLineIdentifier">
+                                    <span>@theirLine.Quantity × @theirLine.MenuItemName</span>
+                                    @if (theirLine.IsFulfilled)
+                                    {
+                                        <span class="chip chip-ok">At the table</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="chip">With the kitchen</span>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                </li>
+            }
+        </ul>
+    }
+}
+
+@code {
+    /// <summary>One refused operation, already turned into two readable halves for the panel (§6.5.9).</summary>
+    private sealed record RejectedOperation(string What, string Reason);
+
+    private readonly OrderStaging _staging = new();
+
+    // Captured once, so nothing ever touches _lifetime.Token after Dispose has run — the same shape
+    // TableDisplay uses for its refresh loop.
+    private readonly CancellationTokenSource _lifetime = new();
+    private CancellationToken _stopping;
+    private IDisposable? _subscription;
+    private bool _disposed;
+
+    private Guid? _person;
+    private bool _loaded;
+
+    private IReadOnlyList<MenuItemSummary> _menu = [];
+    private Dictionary<Guid, MenuItemSummary> _menuById = new();
+    private IReadOnlyList<SittingMemberSummary> _roster = [];
+    private TableSittingSummary? _sitting;
+    private Guid? _myOrderIdentifier;
+    private IReadOnlyList<NarratedOrderLine> _myLines = [];
+    private IReadOnlyList<SittingBillEntry> _bill = [];
+    private IReadOnlyList<OrderLineView> _partyLines = [];
+
+    private string _pickedMenuItemId = string.Empty;
+    private int _pickedQuantity = OrderStaging.MinimumQuantity;
+    private string _pickedNote = string.Empty;
+
+    private string? _stagingNotice;
+    private string? _sendStatus;
+    private string? _pruneNotice;
+    private IReadOnlyList<RejectedOperation>? _rejection;
+    private bool _sending;
+
+    /// <summary>The table this surface belongs to — used to re-check membership, never trusted for scoping a read.</summary>
+    [Parameter]
+    [EditorRequired]
+    public Guid TableId { get; set; }
+
+    /// <summary>
+    /// The sitting the parent resolved. Every query is scoped by this rather than by the table, so a
+    /// sitting that closes and is followed by a new one on the same table does not silently swap the
+    /// order under the reader's feet — it flips to the settled view, which is what §11.1 asks for.
+    /// </summary>
+    [Parameter]
+    [EditorRequired]
+    public Guid SittingId { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    /// <summary>
+    /// The signed-in person, for the render tree. Every branch that reads it sits behind an
+    /// <c>_person is null</c> guard; the fallback exists so the property is total rather than relying on
+    /// a pattern variable's definite assignment surviving Razor's generated control flow.
+    /// </summary>
+    private Guid Person => _person ?? Guid.Empty;
+
+    private IReadOnlyList<SittingBillEntry> OtherPeople
+        => _bill.Where(entry => entry.PersonIdentifier != _person).ToArray();
+
+    private decimal MyTotal
+        => _bill.FirstOrDefault(entry => entry.PersonIdentifier == _person)?.PersonTotalAmount ?? 0m;
+
+    private decimal TableTotal => _bill.Sum(entry => entry.PersonTotalAmount);
+
+    private decimal StagedTotal => _staging.Lines.Sum(StagedLineTotal);
+
+    private string SendLabel
+    {
+        get
+        {
+            int count = _staging.OperationCount;
+            return count == 0 ? "Send to the kitchen" : $"Send {count} change{(count == 1 ? string.Empty : "s")}";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _stopping = _lifetime.Token;
+
+        if (AuthenticationStateTask is not null)
+        {
+            AuthenticationState state = await AuthenticationStateTask;
+            _person = PersonPrincipal.IdentifierFor(state.User);
+        }
+
+        if (_person is null)
+        {
+            _loaded = true;
+            return;
+        }
+
+        await LoadMenuAsync();
+        await LoadAsync();
+        _loaded = true;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender || _person is null)
+        {
+            return;
+        }
+
+        // Only on the circuit: OnAfterRender does not run during prerendering, so the subscription is
+        // never created for a render that is about to be thrown away.
+        _subscription = Broadcaster.Subscribe(OnDomainNotification);
+    }
+
+    /// <summary>
+    /// Everything the surface shows, re-read in one pass. Scoped by <see cref="SittingId"/> throughout;
+    /// the only query keyed by the table is the membership/openness check, and its answer is discarded
+    /// unless it names <em>this</em> sitting.
+    /// </summary>
+    private async Task LoadAsync()
+    {
+        if (_person is not { } person)
+        {
+            return;
+        }
+
+        TableSittingSummary? openSitting = await Sittings
+            .GetOpenSittingForMemberAsync(TableId, person, _stopping);
+
+        _sitting = openSitting is not null && openSitting.SittingIdentifier == SittingId ? openSitting : null;
+
+        _roster = await Sittings.ListMembersAsync(SittingId, _stopping);
+
+        _myOrderIdentifier = await OrderReads.FindLivingOrderAsync(SittingId, person, _stopping);
+        _myLines = _myOrderIdentifier is { } orderIdentifier
+            ? OrderNarrative.FromEvents(await EventLog.ReadEventsAsync(orderIdentifier, _stopping))
+            : [];
+
+        _bill = await OrderReads.ListSittingBillAsync(SittingId, _stopping);
+        _partyLines = await OrderReads.ListLinesForSittingAsync(SittingId, _stopping);
+
+        // A tick that has gone stale — the kitchen fulfilled the line, or staff took it off — would
+        // sink every subsequent send, because §6.5.9 refuses the whole event on one bad operation.
+        // Drop those marks and say so, rather than letting the guest press Send into a wall.
+        _pruneNotice = null;
+        int dropped = _staging.PruneRemovals(_myLines
+            .Where(line => line.GuestMayRemove(person))
+            .Select(line => line.OrderLineIdentifier));
+
+        if (dropped > 0)
+        {
+            _pruneNotice = dropped == 1
+                ? "One line you had marked to remove is no longer yours to remove — it has been unticked."
+                : $"{dropped} lines you had marked to remove are no longer yours to remove — they have been unticked.";
+        }
+    }
+
+    private async Task LoadMenuAsync()
+    {
+        _menu = await MenuDirectory.ListAsync(_stopping);
+        _menuById = _menu.ToDictionary(item => item.MenuItemIdentifier);
+    }
+
+    private void StageItem()
+    {
+        _stagingNotice = null;
+
+        if (!Guid.TryParse(_pickedMenuItemId, out Guid menuItemIdentifier)
+            || MenuItem(menuItemIdentifier) is not { } menuItem)
+        {
+            _stagingNotice = "Choose something from the menu first.";
+            return;
+        }
+
+        StagingResult result = _staging.Stage(menuItem, _pickedQuantity, _pickedNote);
+        if (!result.Accepted)
+        {
+            _stagingNotice = result.Reason;
+            return;
+        }
+
+        // A cleared picker is the signal that the tap landed; the basket below is the receipt.
+        _pickedMenuItemId = string.Empty;
+        _pickedQuantity = OrderStaging.MinimumQuantity;
+        _pickedNote = string.Empty;
+        _sendStatus = null;
+        _rejection = null;
+    }
+
+    private void Unstage(Guid stagingIdentifier)
+    {
+        _staging.Unstage(stagingIdentifier);
+        _stagingNotice = null;
+    }
+
+    private void ChangeStagedQuantity(Guid stagingIdentifier, ChangeEventArgs args)
+    {
+        if (!int.TryParse(
+                args.Value?.ToString(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out int quantity))
+        {
+            _stagingNotice = $"Choose a quantity between {OrderStaging.MinimumQuantity} and {OrderStaging.MaximumQuantity}.";
+            return;
+        }
+
+        StagingResult result = _staging.SetQuantity(stagingIdentifier, quantity);
+        _stagingNotice = result.Accepted ? null : result.Reason;
+    }
+
+    private void ToggleRemoval(NarratedOrderLine line, ChangeEventArgs args)
+    {
+        bool marked = args.Value is bool value && value;
+
+        _staging.SetMarkedForRemoval(
+            line.OrderLineIdentifier,
+            $"{line.Quantity} × {MenuItemName(line.MenuItemIdentifier)}",
+            marked);
+
+        _sendStatus = null;
+        _rejection = null;
+    }
+
+    /// <summary>
+    /// §11.1's Send: one <c>guest_submission</c> owning every staged add and every ticked removal,
+    /// through <see cref="IOrderWorkflow"/> so the commit is both counted (§12) and broadcast (§9). The
+    /// basket is cleared only on an accepted event — a refusal leaves it exactly as it was, because
+    /// §6.5.9 wrote nothing and the guest is being asked to restage, not to retype.
+    /// </summary>
+    private async Task SendAsync()
+    {
+        if (_person is not { } person || _staging.IsEmpty || _sending)
+        {
+            return;
+        }
+
+        _sending = true;
+        _sendStatus = null;
+        _rejection = null;
+        _stagingNotice = null;
+
+        try
+        {
+            StagedBatch batch = _staging.Build(Identifiers);
+
+            AppendOrderEventResult result = await Workflow
+                .SubmitGuestBatchAsync(SittingId, person, batch.Operations, _stopping);
+
+            if (result.IsAppended)
+            {
+                _sendStatus = DescribeAcceptedSend(result.LinesAdded, result.LinesRemoved);
+                _staging.Clear();
+            }
+            else
+            {
+                _rejection = DescribeRejection(result, batch);
+            }
+
+            await LoadAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // The circuit went away mid-send. The transaction either committed or did not; either way
+            // there is no longer anyone to tell.
+        }
+        finally
+        {
+            _sending = false;
+        }
+    }
+
+    private static string DescribeAcceptedSend(int added, int removed)
+    {
+        if (added > 0 && removed > 0)
+        {
+            return $"Sent — {added} item{Plural(added)} added and {removed} taken off. The kitchen has been told.";
+        }
+
+        if (added > 0)
+        {
+            return $"Sent — {added} item{Plural(added)} on the way. The kitchen has been told.";
+        }
+
+        return $"Sent — {removed} item{Plural(removed)} taken off. The kitchen has been told.";
+    }
+
+    private static string Plural(int count) => count == 1 ? string.Empty : "s";
+
+    /// <summary>
+    /// Turns a refusal into sentences a guest can act on. <see cref="OrderMutationError.OperationIndex"/>
+    /// indexes the operation list that was sent, and <see cref="StagedBatch.Descriptions"/> was built in
+    /// exactly that order — which is why the batch is kept rather than rebuilt.
+    /// </summary>
+    private static IReadOnlyList<RejectedOperation> DescribeRejection(
+        AppendOrderEventResult result,
+        StagedBatch batch)
+    {
+        if (result.Outcome is AppendOrderEventOutcome.SittingNotFound or AppendOrderEventOutcome.OrderNotFound)
+        {
+            return [new RejectedOperation("This table", "It is no longer taking orders. Please speak to the counter.")];
+        }
+
+        List<RejectedOperation> problems = [];
+
+        foreach (OrderMutationError error in result.Errors)
+        {
+            string what = error.OperationIndex >= 0 && error.OperationIndex < batch.Descriptions.Count
+                ? batch.Descriptions[error.OperationIndex]
+                : "This send";
+
+            problems.Add(new RejectedOperation(what, error.Reason));
+        }
+
+        if (problems.Count == 0)
+        {
+            problems.Add(new RejectedOperation("This send", "It was refused. Please try again."));
+        }
+
+        return problems;
+    }
+
+    /// <summary>
+    /// §9 says which notifications a table member re-queries on. All four that can change what is on
+    /// this screen are handled with one re-read: the queries are small, scoped to one sitting, and a
+    /// restaurant table is not a hot path. <c>MenuChanged</c> additionally re-reads the menu, which is
+    /// how a staged item picks up its "currently unavailable" mark (§7).
+    /// </summary>
+    private void OnDomainNotification(DomainNotification notification)
+    {
+        bool concernsThisTable = notification switch
+        {
+            OrderLinesChanged changed => changed.SittingIdentifier == SittingId,
+            LineFulfillmentChanged changed => changed.SittingIdentifier == SittingId,
+            SittingMemberJoined joined => joined.SittingIdentifier == SittingId,
+            SittingClosed closed => closed.SittingIdentifier == SittingId,
+            MenuChanged => true,
+            _ => false,
+        };
+
+        if (!concernsThisTable)
+        {
+            return;
+        }
+
+        bool menuChanged = notification is MenuChanged;
+
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                if (menuChanged)
+                {
+                    await LoadMenuAsync();
+                }
+
+                await LoadAsync();
+                StateHasChanged();
+            }
+            catch (OperationCanceledException)
+            {
+                // Disposed between the broadcast and the query; nothing to update.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Same, one layer down.
+            }
+        });
+    }
+
+    private MenuItemSummary? MenuItem(Guid menuItemIdentifier)
+        => _menuById.TryGetValue(menuItemIdentifier, out MenuItemSummary? item) ? item : null;
+
+    /// <summary>
+    /// The item's <em>current</em> name, which is what <c>order_current_line</c> joins too (§8.3), so a
+    /// rename reads the same here as on the counter's bill.
+    /// </summary>
+    private string MenuItemName(Guid menuItemIdentifier) => MenuItem(menuItemIdentifier)?.Name ?? "Item";
+
+    /// <summary>
+    /// A staged line's extended price at the price the menu holds <em>now</em> — never a price captured
+    /// when it was staged. §6.5.4 prices the line inside the send transaction, so this is the only
+    /// figure that can honestly be shown before it.
+    /// </summary>
+    private decimal StagedLineTotal(StagedOrderLine staged)
+        => (MenuItem(staged.MenuItemIdentifier)?.PriceAmount ?? 0m) * staged.Quantity;
+
+    private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
+
+    private static string DescribeRole(OrderActorRole role) => role switch
+    {
+        OrderActorRole.Guest => "a guest",
+        OrderActorRole.Kitchen => "the kitchen",
+        OrderActorRole.Counter => "the counter",
+        OrderActorRole.Administrator => "an administrator",
+        _ => "staff",
+    };
+
+    private static string ActorText(OrderActorRole? role, Guid? actor, Guid person)
+        => actor is { } actorIdentifier && actorIdentifier == person
+            ? "you"
+            : DescribeRole(role ?? OrderActorRole.Counter);
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _subscription?.Dispose();
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

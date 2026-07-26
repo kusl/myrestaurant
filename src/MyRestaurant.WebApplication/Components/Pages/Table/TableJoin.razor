@@ -38,8 +38,15 @@
 
    The join itself is a post/redirect/get: the POST consumes the grant, opens or joins the sitting in
    one transaction (§5.1), broadcasts SittingMemberJoined only when a membership row was actually
-   inserted (§9), and redirects back here so a refresh cannot re-post. Building and sending orders on
-   this surface arrives with Milestone 4. *@
+   inserted (§9), and redirects back here so a refresh cannot re-post.
+
+   The MEMBER stage hosts <TableOrderSurface> as an interactive-server island. Everything §11.1 asks
+   for below the join — a basket, a Send that reports per-operation reasons, lines that re-badge when
+   the kitchen fulfills them, a party total that moves when someone else orders, the flip to a settled
+   bill on SittingClosed — is live, and none of it can happen on a statically rendered page. Splitting
+   it this way keeps the cookie work where an HTTP response exists and the live work on a circuit,
+   rather than compromising one for the other. The roster moved into the island for the same reason:
+   §9 sends SittingMemberJoined to table members, and a statically rendered list cannot hear it. *@
 
 <PageTitle>@PageTitleText</PageTitle>
 
@@ -62,30 +69,9 @@
             </p>
         }
 
-        <p class="lede">
-            Open since @_sitting.OpenedAt.ToLocalTime().ToString("t") —
-            @_roster.Count @(_roster.Count == 1 ? "person" : "people") at the table.
-        </p>
-
-        <h2 class="table-heading">Who is here</h2>
-        <ul class="table-roster">
-            @foreach (SittingMemberSummary member in _roster)
-            {
-                <li>
-                    <span class="table-roster-name">@member.RosterName</span>
-                    <span class="table-roster-joined">joined @member.JoinedAt.ToLocalTime().ToString("t")</span>
-                </li>
-            }
-        </ul>
-
-        <hr class="table-rule" />
-
-        <h2 class="table-heading">Your order</h2>
-        <p class="lede">
-            Choosing from the menu, staging items, and sending them to the kitchen arrive with
-            Milestone&nbsp;4. Your seat at this table is held until the counter closes and settles the
-            sitting.
-        </p>
+        <TableOrderSurface @rendermode="InteractiveServer"
+                           TableId="@TableId"
+                           SittingId="@_sitting.SittingIdentifier" />
 
         <p class="table-back"><a href="/table">All your tables</a></p>
     </section>
@@ -145,53 +131,6 @@ else
     </section>
 }
 
-@* Namespaced under .table-* and inline, for the same reason the administration pages keep their CSS
-   inline: App.razor links the static stylesheet, so component CSS isolation is not active. *@
-<style>
-    .table-heading {
-        font-size: 1.05rem;
-        margin: 1.25rem 0 0.35rem;
-    }
-
-    .table-rule {
-        border: 0;
-        border-top: 1px solid var(--hairline, #e2e6ec);
-        margin: 1.5rem 0;
-    }
-
-    .table-roster {
-        list-style: none;
-        margin: 0.5rem 0 0;
-        padding: 0;
-        display: grid;
-        gap: 0.4rem;
-    }
-
-    .table-roster li {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        align-items: baseline;
-        padding: 0.45rem 0.6rem;
-        border: 1px solid var(--hairline, #e2e6ec);
-        border-radius: 0.4rem;
-        background: var(--surface-raised, #ffffff);
-    }
-
-    .table-roster-name {
-        font-weight: 600;
-    }
-
-    .table-roster-joined {
-        font-size: 0.85rem;
-        color: var(--ink-soft, #55636f);
-    }
-
-    .table-back {
-        margin-top: 1.5rem;
-    }
-</style>
-
 @code {
     /// <summary>Which of the §4.4 outcomes this request resolved to. A redirect never reaches a stage.</summary>
     private enum JoinStage
@@ -209,7 +148,6 @@ else
     private JoinStage _stage = JoinStage.Expired;
     private RestaurantTableSummary? _table;
     private TableSittingSummary? _sitting;
-    private IReadOnlyList<SittingMemberSummary> _roster = [];
     private int _openSittingMemberCount;
     private bool _justJoined;
 
@@ -257,7 +195,8 @@ else
             _sitting = await Sittings.GetOpenSittingForMemberAsync(TableId, member, cancellationToken);
             if (_sitting is not null)
             {
-                _roster = await Sittings.ListMembersAsync(_sitting.SittingIdentifier, cancellationToken);
+                // The roster, the order, and the totals are the island's job from here — this page
+                // stops at "you are a member of this sitting, here is the identifier".
                 _stage = JoinStage.Member;
                 _justJoined = isGet && string.Equals(Joined, "yes", StringComparison.Ordinal);
                 return;

@@ -834,3 +834,276 @@ a:focus-visible,
 .account-security-name {
     font-weight: 600;
 }
+
+/* -----------------------------------------------------------------------------
+ * The table surface: roster, staging area, living order, party orders (§11.1).
+ *
+ * These live here rather than inline in the component for one concrete reason:
+ * /table/{id} is a static-SSR page hosting an interactive island, so the markup
+ * is split across two components and an inline <style> in one of them styling
+ * the other's markup would be a dependency nobody could see. The .order-* half
+ * is also what §11.3's counter drill-in and §11.2's kitchen tickets will reuse —
+ * a line badged "with the kitchen" should look the same wherever it is read.
+ * ---------------------------------------------------------------------------*/
+
+.table-heading {
+    font-size: 1.05rem;
+    margin: 1.25rem 0 0.35rem;
+}
+
+.order-subheading {
+    font-size: 0.95rem;
+    margin: 1.5rem 0 0.5rem;
+    letter-spacing: 0.02em;
+}
+
+.table-rule {
+    border: 0;
+    border-top: 1px solid var(--hairline);
+    margin: 1.5rem 0;
+}
+
+.table-roster {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.4rem;
+}
+
+.table-roster li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: baseline;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--hairline);
+    border-radius: 0.4rem;
+    background: var(--surface-raised);
+}
+
+.table-roster-name {
+    font-weight: 600;
+}
+
+.table-roster-joined {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+.table-back {
+    margin-top: 1.5rem;
+}
+
+/* --- the picker and the basket ------------------------------------------------------------------ */
+
+.order-picker {
+    margin: 0.75rem 0 1rem;
+    padding: 0.9rem 1rem 0.4rem;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    background-color: var(--surface-raised);
+}
+
+/* A quantity box wants to be a box, not a full-width text field. */
+.order-picker-quantity input,
+.order-basket-quantity input {
+    width: 6rem;
+}
+
+.order-basket-empty {
+    margin: 0.5rem 0 1rem;
+}
+
+.order-basket,
+.order-lines,
+.order-party {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+}
+
+.order-basket-line,
+.order-line,
+.order-party-order {
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--hairline);
+    border-radius: 0.5rem;
+    background: var(--surface-raised);
+}
+
+/* The basket is a proposal, not a record — dashed, so it never reads as something already sent. */
+.order-basket-line {
+    border-style: dashed;
+}
+
+.order-basket-line.is-removal {
+    background-color: var(--danger-surface);
+    border-color: var(--danger-hairline);
+    color: var(--danger-ink);
+}
+
+.order-basket-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 0.75rem;
+    margin-top: 0.4rem;
+}
+
+.order-basket-quantity {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+.order-send {
+    margin-top: 1rem;
+    align-items: center;
+}
+
+.order-send-total {
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+
+/* --- one committed line -------------------------------------------------------------------------- */
+
+.order-line-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.4rem 0.75rem;
+}
+
+.order-line-name {
+    font-weight: 600;
+}
+
+.order-line-price {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.order-line-note {
+    margin: 0.2rem 0 0;
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+}
+
+.order-line-warning {
+    margin: 0.3rem 0 0;
+    font-size: 0.85rem;
+    color: var(--danger-ink);
+}
+
+.order-line-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.35rem 0 0;
+}
+
+.order-line-when,
+.order-line-detail {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+.order-line-detail {
+    margin: 0.25rem 0 0;
+}
+
+/* §11.1: "removed lines struck-through". The line stays visible — that is the whole point of an
+ * append-only log — but it must never be mistaken for something still on its way. */
+.order-line.is-removed .order-line-name,
+.order-line.is-removed .order-line-price,
+.order-line.is-removed .order-line-note {
+    text-decoration: line-through;
+    color: var(--ink-soft);
+}
+
+.order-line.is-removed {
+    background-color: var(--surface);
+}
+
+.order-line-remove {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.order-line-remove input[type="checkbox"] {
+    width: auto;
+    margin-top: 0.2rem;
+}
+
+/* --- totals and the rest of the party ------------------------------------------------------------- */
+
+.order-totals {
+    display: grid;
+    gap: 0.5rem;
+    margin: 1.25rem 0 0;
+    padding: 0.85rem 0;
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+}
+
+.order-totals > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+}
+
+.order-totals dt {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+
+.order-totals dd {
+    margin: 0;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.order-party-lines {
+    list-style: none;
+    margin: 0.4rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+}
+
+.order-party-lines li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* --- the all-or-nothing rejection panel (§6.5.9) --------------------------------------------------- */
+
+.order-reject-lede {
+    margin: 0 0 0.4rem;
+}
+
+.order-reject-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    display: grid;
+    gap: 0.2rem;
+}
