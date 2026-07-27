@@ -1,0 +1,895 @@
+@page "/kitchen"
+@attribute [Authorize(Policy = AuthorizationPolicies.Kitchen)]
+@using MyRestaurant.DataAccess.Menu
+@using MyRestaurant.DataAccess.Orders
+@using MyRestaurant.Domain.LiveUpdates
+@using MyRestaurant.Domain.Orders
+@using MyRestaurant.Domain.Time
+@using MyRestaurant.WebApplication.Menu
+@using MyRestaurant.WebApplication.Orders
+@implements IDisposable
+@inject IOrderReadModel OrderReads
+@inject IKitchenBoardReads KitchenReads
+@inject IMenuDirectory MenuDirectory
+@inject IMenuWorkflow MenuWorkflow
+@inject IOrderWorkflow Workflow
+@inject IDomainEventBroadcaster Broadcaster
+@inject IClock Clock
+@inject RestaurantOptions Options
+@inject RestaurantTime RestaurantClock
+@inject IJSRuntime JavaScript
+
+@* The kitchen board (TECHNICAL_SPECIFICATION §10, §11.2).
+
+   Interactive server, prerendered, and the only surface in the tree that is expected to sit on one
+   circuit for a whole service. Everything it shows is derived: the queue is the kitchen_pending_line
+   view (§8.3), the Undo list is IKitchenBoardReads, the "86" panel is the menu. It holds no state of its
+   own except the alert state, which is a browser-audio permission and therefore cannot be anything but
+   circuit state (§10.3).
+
+   Nothing here enforces §6.5. Every tap goes through IOrderWorkflow to the one transaction, which
+   re-decides under the lock (§6.6) — so two cooks tapping the same line at the same moment produce one
+   fulfillment and one refusal, and the refusal is shown rather than swallowed. What this surface
+   refuses on its own it refuses only to make the answer immediate.
+
+   The actor role is read from the principal rather than assumed: §6.2 lets kitchen OR administrator
+   author a fulfillment, and an administrator covering the pass must not be recorded as the kitchen. *@
+
+<PageTitle>Kitchen</PageTitle>
+
+<section class="panel kitchen-board" id="kitchen-board-surface">
+    <div class="kitchen-header">
+        <div>
+            <p class="eyebrow">@Options.RestaurantName</p>
+            <h1>Kitchen</h1>
+        </div>
+        <div class="kitchen-header-status">
+            @if (_alerts.HasUnseen)
+            {
+                @* §10.3: "a persistent, high-contrast visual badge with unseen-alert count". It is shown
+                   whenever something is unacknowledged, armed or not — the badge is the record of what
+                   arrived, and the sound is only how you find out sooner. *@
+                <button type="button" class="kitchen-alert-badge" @onclick="AcknowledgeAlerts">
+                    @_alerts.UnseenCount new @(_alerts.UnseenCount == 1 ? "alert" : "alerts")@(_alerts.UnseenReminderCount > 0 ? $" ({_alerts.UnseenReminderCount} overdue)" : string.Empty)
+                    <span class="kitchen-alert-dismiss">tap to clear</span>
+                </button>
+            }
+
+            @if (!_alerts.IsArmed)
+            {
+                <button type="button" class="button-primary kitchen-arm" @onclick="ArmSoundAsync">
+                    Enable sound
+                </button>
+            }
+            else if (_alerts.PlaybackFailed)
+            {
+                <button type="button" class="button-secondary kitchen-arm" @onclick="ArmSoundAsync">
+                    Sound failed — try again
+                </button>
+            }
+            else
+            {
+                <span class="chip chip-ok">Sound on</span>
+            }
+        </div>
+    </div>
+
+    @if (_alerts.ShowsVisualFallback)
+    {
+        <p class="kitchen-sound-notice" role="note">
+            @if (_alerts.PlaybackFailed)
+            {
+                <text>
+                    This browser would not play the alert. The badge above still counts everything that
+                    arrives — keep the board visible, and try <strong>Enable sound</strong> again.
+                </text>
+            }
+            else
+            {
+                <text>
+                    Alerts are silent until you tap <strong>Enable sound</strong> — browsers block sound
+                    until someone asks for it. Until then the badge above is the only warning.
+                </text>
+            }
+        </p>
+    }
+
+    @if (_actionNotice is { } actionNotice)
+    {
+        <p class="status-success" role="status">@actionNotice</p>
+    }
+
+    @if (_actionProblem is { } actionProblem)
+    {
+        <p class="status-error" role="alert">@actionProblem</p>
+    }
+
+    @if (!_loaded)
+    {
+        <p class="lede">Loading the board…</p>
+    }
+    else
+    {
+        <p class="lede">
+            @if (_queue.Count == 0)
+            {
+                <text>Nothing is waiting. New sends appear here the moment a guest presses Send.</text>
+            }
+            else
+            {
+                <text>
+                    @KitchenQueue.TotalLineCount(_queue) @(KitchenQueue.TotalLineCount(_queue) == 1 ? "line" : "lines")
+                    outstanding across @_queue.Count @(_queue.Count == 1 ? "table" : "tables"), oldest first.
+                </text>
+            }
+        </p>
+
+        @* ---- the queue (§11.2) ----------------------------------------------------------------- *@
+        @foreach (KitchenQueueTable table in _queue)
+        {
+            <article class="kitchen-table" @key="table.TableIdentifier">
+                <header class="kitchen-table-header">
+                    <h2>@table.TableLabel</h2>
+                    <span class="kitchen-waiting">waiting @Waiting(table.OldestAddedAt)</span>
+                </header>
+
+                @foreach (KitchenQueueTicket ticket in table.Tickets)
+                {
+                    <section class="kitchen-ticket" @key="ticket.GuestOrderIdentifier">
+                        <header class="kitchen-ticket-header">
+                            <div>
+                                <h3>@ticket.PersonName</h3>
+                                <p class="kitchen-ticket-sends">
+                                    sent @string.Join(", ", ticket.SendTimes.Select(instant => RestaurantClock.Time(instant)))
+                                </p>
+                            </div>
+                            <button type="button" class="button-secondary kitchen-fulfill-all"
+                                    disabled="@_busy"
+                                    @onclick="() => FulfillTicketAsync(ticket)">
+                                Fulfill all @ticket.LineCount
+                            </button>
+                        </header>
+
+                        <ul class="kitchen-lines">
+                            @foreach (KitchenQueueLine line in ticket.Lines)
+                            {
+                                <li class="kitchen-line @(line.HasNote ? "has-note" : string.Empty)"
+                                    @key="line.OrderLineIdentifier">
+                                    @* One tap on the line is one fulfillment event (§11.2). The whole row
+                                       is the target because a cook is wearing gloves and looking at a
+                                       pass, not aiming at a 24-pixel checkbox. *@
+                                    <button type="button" class="kitchen-line-button"
+                                            disabled="@_busy"
+                                            @onclick="() => FulfillLineAsync(ticket, line)">
+                                        <span class="kitchen-line-quantity">@line.Quantity×</span>
+                                        <span class="kitchen-line-name">@line.MenuItemName</span>
+                                        <span class="kitchen-line-action">Fulfill</span>
+                                    </button>
+
+                                    @if (line.CustomizationNote is { } note)
+                                    {
+                                        @* §11.2: "customization notes prominent". *@
+                                        <p class="kitchen-line-note">@note</p>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    </section>
+                }
+            </article>
+        }
+
+        @* ---- undo (§11.2) ------------------------------------------------------------------------ *@
+        @if (_recentlyFulfilled.Count > 0)
+        {
+            <section class="kitchen-recent">
+                <h2 class="kitchen-recent-heading">Just fulfilled</h2>
+                <p class="muted">
+                    Anything marked done in the last @((int)RecentFulfillmentWindow.TotalMinutes) minutes. Undo
+                    puts it back on the board and tells the guest it is with the kitchen again.
+                </p>
+
+                <ul class="kitchen-recent-list">
+                    @foreach (KitchenFulfilledLineView line in _recentlyFulfilled)
+                    {
+                        <li class="kitchen-recent-line" @key="line.OrderLineIdentifier">
+                            <div class="kitchen-recent-main">
+                                <span class="kitchen-recent-name">
+                                    @line.Quantity× @line.MenuItemName
+                                </span>
+                                <span class="kitchen-recent-where">
+                                    @line.TableLabel · @line.PersonName · @RestaurantClock.Time(line.FulfilledAt)
+                                </span>
+                            </div>
+                            <button type="button" class="link-button"
+                                    disabled="@_busy"
+                                    @onclick="() => UndoFulfillmentAsync(line)">
+                                Undo
+                            </button>
+                        </li>
+                    }
+                </ul>
+            </section>
+        }
+
+        @* ---- the "86" panel (§7, §11.2) ---------------------------------------------------------- *@
+        <section class="kitchen-eighty-six">
+            <h2 class="kitchen-recent-heading">Availability (“86”)</h2>
+            <p class="muted">
+                Turning something off leaves it on the guest's menu marked <em>currently unavailable</em>
+                and stops it being ordered. Orders already sent are untouched.
+            </p>
+
+            @if (_menu.Count == 0)
+            {
+                <p class="muted">There is nothing on the menu yet.</p>
+            }
+            else
+            {
+                <ul class="kitchen-menu">
+                    @foreach (MenuItemSummary item in _menu)
+                    {
+                        <li class="kitchen-menu-item @(item.IsActive ? string.Empty : "is-off")"
+                            @key="item.MenuItemIdentifier">
+                            <span class="kitchen-menu-name">@item.Name</span>
+                            <span class="kitchen-menu-state">
+                                @(item.IsActive ? "On" : "86'd")
+                            </span>
+                            <button type="button"
+                                    class="@(item.IsActive ? "button-secondary" : "button-primary")"
+                                    disabled="@_busy"
+                                    @onclick="() => ToggleMenuItemAsync(item)">
+                                @(item.IsActive ? "Turn off" : "Bring back")
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    }
+</section>
+
+<style>
+    /* Component-local, like TableDisplay's. Every class below is used only by this file, so putting it
+       in app.css would export a vocabulary nobody else reads; the .table-* classes moved to app.css
+       precisely because a second component did read them. Anything shared — .panel, .chip, .muted,
+       .button-primary, .status-error — is app.css's and is only consumed here. */
+
+    .kitchen-board {
+        /* A cook reads this from a step back with their hands full. Everything is bigger than the rest
+           of the application on purpose. */
+        font-size: 1.05rem;
+    }
+
+    .kitchen-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+
+    .kitchen-header-status {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .kitchen-arm {
+        white-space: nowrap;
+    }
+
+    .kitchen-alert-badge {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.1rem;
+        padding: 0.5rem 1rem;
+        border: 0;
+        border-radius: 0.6rem;
+        background: #b91c1c;
+        color: #ffffff;
+        font-size: 1.1rem;
+        font-weight: 800;
+        line-height: 1.2;
+        cursor: pointer;
+    }
+
+    .kitchen-alert-dismiss {
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        opacity: 0.85;
+    }
+
+    .kitchen-sound-notice {
+        margin: 0.75rem 0 0;
+        padding: 0.6rem 0.85rem;
+        border-radius: 0.5rem;
+        border: 2px solid #b45309;
+        background: #fff7ed;
+        color: #7c2d12;
+        font-weight: 600;
+    }
+
+    .kitchen-table {
+        margin-top: 1.25rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.75rem;
+        overflow: hidden;
+    }
+
+    .kitchen-table-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.6rem 0.9rem;
+        background: var(--surface, #f7f8fa);
+    }
+
+    .kitchen-table-header h2 {
+        margin: 0;
+        font-size: 1.35rem;
+    }
+
+    .kitchen-waiting {
+        font-variant-numeric: tabular-nums;
+        font-weight: 700;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .kitchen-ticket {
+        padding: 0.6rem 0.9rem 0.9rem;
+        border-top: 1px solid var(--hairline, #e2e6ec);
+    }
+
+    .kitchen-ticket-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .kitchen-ticket-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+    }
+
+    .kitchen-ticket-sends {
+        margin: 0.1rem 0 0;
+        font-size: 0.85rem;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .kitchen-lines {
+        list-style: none;
+        margin: 0.6rem 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }
+
+    .kitchen-line.has-note {
+        border-left: 4px solid #b45309;
+        padding-left: 0.4rem;
+    }
+
+    .kitchen-line-button {
+        display: flex;
+        width: 100%;
+        align-items: center;
+        gap: 0.6rem;
+        /* Comfortably bigger than the 44px touch target guidance: gloves, steam, and a hurry. */
+        min-height: 3rem;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.6rem;
+        background: #ffffff;
+        text-align: left;
+        font: inherit;
+        cursor: pointer;
+    }
+
+    .kitchen-line-button:disabled {
+        opacity: 0.55;
+        cursor: progress;
+    }
+
+    .kitchen-line-quantity {
+        font-variant-numeric: tabular-nums;
+        font-size: 1.3rem;
+        font-weight: 800;
+        min-width: 2.5rem;
+    }
+
+    .kitchen-line-name {
+        flex: 1 1 auto;
+        font-size: 1.15rem;
+        font-weight: 600;
+    }
+
+    .kitchen-line-action {
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #1e7a37;
+    }
+
+    .kitchen-line-note {
+        margin: 0.25rem 0 0 0.5rem;
+        padding: 0.35rem 0.6rem;
+        border-radius: 0.4rem;
+        background: #fff7ed;
+        color: #7c2d12;
+        font-weight: 700;
+    }
+
+    .kitchen-recent,
+    .kitchen-eighty-six {
+        margin-top: 1.75rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--hairline, #e2e6ec);
+    }
+
+    .kitchen-recent-heading {
+        margin: 0 0 0.25rem;
+        font-size: 1.15rem;
+    }
+
+    .kitchen-recent-list,
+    .kitchen-menu {
+        list-style: none;
+        margin: 0.6rem 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }
+
+    .kitchen-recent-line,
+    .kitchen-menu-item {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.5rem 0.6rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.5rem;
+    }
+
+    .kitchen-recent-main {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .kitchen-recent-name {
+        font-weight: 700;
+    }
+
+    .kitchen-recent-where {
+        font-size: 0.85rem;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .kitchen-menu-name {
+        flex: 1 1 8rem;
+        font-weight: 600;
+    }
+
+    .kitchen-menu-state {
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .kitchen-menu-item.is-off {
+        background: #fef2f2;
+        border-color: #fca5a5;
+    }
+
+    .kitchen-menu-item.is-off .kitchen-menu-state {
+        color: #b91c1c;
+    }
+</style>
+
+@code {
+    /// <summary>
+    /// How far back the Undo list reaches (§11.2's "recently-fulfilled"). Long enough that a mis-tap
+    /// noticed when the plate reaches the pass is still undoable, short enough that the panel does not
+    /// become a second, stale copy of the service. Not configuration: §13 does not name it, and a
+    /// setting nobody would ever change is a setting that only adds a way to be wrong.
+    /// </summary>
+    private static readonly TimeSpan RecentFulfillmentWindow = TimeSpan.FromMinutes(15);
+
+    private readonly KitchenAlertState _alerts = new();
+
+    // Captured once, so nothing ever touches _lifetime.Token after Dispose has run — the shape
+    // TableDisplay and TableOrderSurface both use.
+    private readonly CancellationTokenSource _lifetime = new();
+    private CancellationToken _stopping;
+    private IDisposable? _subscription;
+    private bool _disposed;
+
+    private Guid? _person;
+    private OrderActorRole _actorRole = OrderActorRole.Kitchen;
+    private bool _loaded;
+    private bool _busy;
+
+    private IReadOnlyList<KitchenQueueTable> _queue = [];
+    private IReadOnlyList<KitchenFulfilledLineView> _recentlyFulfilled = [];
+    private IReadOnlyList<MenuItemSummary> _menu = [];
+
+    private string? _actionNotice;
+    private string? _actionProblem;
+    private int _announcedAlertToken;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _stopping = _lifetime.Token;
+
+        if (AuthenticationStateTask is not null)
+        {
+            AuthenticationState state = await AuthenticationStateTask;
+            _person = PersonPrincipal.IdentifierFor(state.User);
+
+            // §6.2: a fulfillment may be authored by kitchen or administrator. Record what the person
+            // actually is. Kitchen wins when they hold both, because that is the capacity they are
+            // standing at this screen in.
+            _actorRole = state.User.IsInRole(RestaurantRoles.Kitchen)
+                ? OrderActorRole.Kitchen
+                : OrderActorRole.Administrator;
+        }
+
+        await LoadAsync();
+        _loaded = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Only on the circuit: OnAfterRender does not run during prerendering, so no subscription is
+            // created for a render about to be thrown away.
+            _subscription = Broadcaster.Subscribe(OnDomainNotification);
+        }
+
+        if (_alerts.AlertToken == _announcedAlertToken)
+        {
+            return;
+        }
+
+        // Claim the token before awaiting, so the re-render this may cause cannot announce it twice.
+        _announcedAlertToken = _alerts.AlertToken;
+
+        if (!_alerts.IsArmed)
+        {
+            return;
+        }
+
+        bool played;
+        try
+        {
+            played = await JavaScript.InvokeAsync<bool>(
+                "myRestaurantKitchen.alert", _stopping, _alerts.LastAlertWasReminder);
+        }
+        catch (JSDisconnectedException)
+        {
+            return; // the circuit went away mid-alert
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (JSException)
+        {
+            played = false;
+        }
+
+        // §10.3: "whenever playback fails" the visual badge is the fallback, so a failure has to be
+        // recorded rather than shrugged off.
+        bool changed = played ? _alerts.ReportPlaybackSucceeded() : _alerts.ReportPlaybackFailed();
+        if (changed)
+        {
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Everything the board shows, re-read in one pass. Three small, indexed queries.</summary>
+    private async Task LoadAsync()
+    {
+        IReadOnlyList<KitchenPendingLineView> pending = await OrderReads
+            .ListKitchenPendingLinesAsync(_stopping);
+
+        _queue = KitchenQueue.Build(pending);
+
+        _recentlyFulfilled = await KitchenReads
+            .ListRecentlyFulfilledLinesAsync(Clock.UtcNow - RecentFulfillmentWindow, _stopping);
+
+        _menu = await MenuDirectory.ListAsync(_stopping);
+    }
+
+    /// <summary>§11.2: "Tap a line → one <c>fulfillment</c> event".</summary>
+    private Task FulfillLineAsync(KitchenQueueTicket ticket, KitchenQueueLine line)
+        => AppendAsync(
+            ticket.GuestOrderIdentifier,
+            OrderEventType.Fulfillment,
+            [new LineFulfilledOperation(line.OrderLineIdentifier)],
+            $"{line.Quantity} × {line.MenuItemName} is away.");
+
+    /// <summary>§11.2: "'fulfill all for this order' → one event, N operations".</summary>
+    private Task FulfillTicketAsync(KitchenQueueTicket ticket)
+        => AppendAsync(
+            ticket.GuestOrderIdentifier,
+            OrderEventType.Fulfillment,
+            ticket.Lines.Select(line => (OrderOperation)new LineFulfilledOperation(line.OrderLineIdentifier)).ToArray(),
+            $"{ticket.PersonName}'s order is away — {ticket.LineCount} {(ticket.LineCount == 1 ? "line" : "lines")}.");
+
+    /// <summary>§11.2: "an Undo affordance on recently-fulfilled lines → <c>fulfillment_reversal</c>".</summary>
+    private Task UndoFulfillmentAsync(KitchenFulfilledLineView line)
+        => AppendAsync(
+            line.GuestOrderIdentifier,
+            OrderEventType.FulfillmentReversal,
+            [new LineFulfillmentRevertedOperation(line.OrderLineIdentifier)],
+            $"{line.Quantity} × {line.MenuItemName} is back on the board.");
+
+    /// <summary>
+    /// The one path every kitchen action takes. Through <see cref="IOrderWorkflow"/> so the commit is
+    /// counted (§12) and broadcast (§9) — a fulfillment the guest's phone never hears about is exactly
+    /// the badge that never turns green.
+    /// </summary>
+    private async Task AppendAsync(
+        Guid guestOrderIdentifier,
+        OrderEventType eventType,
+        IReadOnlyList<OrderOperation> operations,
+        string successMessage)
+    {
+        if (_person is not { } person || _busy || operations.Count == 0)
+        {
+            return;
+        }
+
+        _busy = true;
+        _actionNotice = null;
+        _actionProblem = null;
+
+        try
+        {
+            AppendOrderEventResult result = await Workflow.AppendStaffEventAsync(
+                guestOrderIdentifier,
+                new ProposedOrderEvent(eventType, person, _actorRole, operations),
+                _stopping);
+
+            if (result.IsAppended)
+            {
+                _actionNotice = successMessage;
+
+                // Acting on the board is acknowledging it: the cook has plainly seen what arrived.
+                _alerts.Acknowledge();
+            }
+            else
+            {
+                _actionProblem = DescribeRefusal(result);
+            }
+
+            await LoadAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // The circuit went away mid-write. The transaction either committed or did not; either way
+            // there is nobody left to tell.
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>
+    /// A refusal in plain words. The overwhelmingly likely cause is a race — two cooks on the same line,
+    /// or a guest removing something a second before it was tapped — so the message says what to do
+    /// (nothing; the board has already refreshed) rather than reading like a fault.
+    /// </summary>
+    private static string DescribeRefusal(AppendOrderEventResult result)
+    {
+        if (result.Outcome is AppendOrderEventOutcome.OrderNotFound or AppendOrderEventOutcome.SittingNotFound)
+        {
+            return "That table has been settled, so nothing more can be recorded against it.";
+        }
+
+        string reason = result.Errors.Count > 0
+            ? result.Errors[0].Reason
+            : "It was refused.";
+
+        return $"Nothing was changed — {reason} The board has been refreshed.";
+    }
+
+    /// <summary>§11.2: "An '86' panel lists menu items with active toggles."</summary>
+    private async Task ToggleMenuItemAsync(MenuItemSummary item)
+    {
+        if (_person is not { } person || _busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _actionNotice = null;
+        _actionProblem = null;
+
+        try
+        {
+            SetMenuItemAvailabilityResult result = await MenuWorkflow
+                .SetMenuItemActiveAsync(item.MenuItemIdentifier, !item.IsActive, person, _stopping);
+
+            _actionNotice = result.Outcome switch
+            {
+                SetMenuItemAvailabilityOutcome.Changed when result.IsActive => $"{result.Name} is back on.",
+                SetMenuItemAvailabilityOutcome.Changed => $"{result.Name} is 86'd.",
+                SetMenuItemAvailabilityOutcome.AlreadyInThatState => $"{result.Name} was already set that way.",
+                _ => null,
+            };
+
+            if (!result.ItemExists)
+            {
+                _actionProblem = "That item is no longer on the menu.";
+            }
+
+            await LoadAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // Circuit gone; nothing to update.
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>
+    /// §10.3's one-tap arm. The browser will only unlock audio inside a user gesture, so this has to be
+    /// a click handler and cannot be done for the cook at page load.
+    /// </summary>
+    private async Task ArmSoundAsync()
+    {
+        bool armed;
+        try
+        {
+            armed = await JavaScript.InvokeAsync<bool>("myRestaurantKitchen.arm", _stopping);
+        }
+        catch (JSDisconnectedException)
+        {
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (JSException)
+        {
+            armed = false;
+        }
+
+        _alerts.Arm(armed);
+
+        // Do not retro-play everything that arrived before the cook found the button.
+        _announcedAlertToken = _alerts.AlertToken;
+    }
+
+    private void AcknowledgeAlerts()
+    {
+        _alerts.Acknowledge();
+    }
+
+    /// <summary>
+    /// §9 lists which notifications the kitchen re-queries on. All five that can change this screen are
+    /// handled with one re-read: the queries are small and a kitchen is not a hot path.
+    ///
+    /// <para>Nothing is filtered by identifier here, unlike the table surface — the board is the whole
+    /// restaurant by definition, so every one of these events is this board's business.</para>
+    /// </summary>
+    private void OnDomainNotification(DomainNotification notification)
+    {
+        bool concernsTheBoard = notification
+            is OrderLinesChanged
+            or LineFulfillmentChanged
+            or SittingClosed
+            or MenuChanged
+            or KitchenAlert;
+
+        if (!concernsTheBoard)
+        {
+            return;
+        }
+
+        KitchenAlertKind? alertKind = notification is KitchenAlert alert ? alert.Kind : null;
+
+        _ = InvokeAsync(async () =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            // Recorded here rather than on the broadcaster's thread: KitchenAlertState is a plain
+            // counter, and the broadcaster fans out from whichever thread committed the event, so two
+            // sends landing together could lose an increment. The renderer's dispatcher serializes every
+            // mutation of it. It is recorded BEFORE the re-read so an alert still counts if the queries
+            // below fail — a board that missed a query is recoverable, a board that missed an alert is
+            // silent.
+            if (alertKind is { } kind)
+            {
+                _alerts.Record(kind);
+            }
+
+            try
+            {
+                await LoadAsync();
+                StateHasChanged();
+            }
+            catch (OperationCanceledException)
+            {
+                // Disposed between the broadcast and the query; nothing to update.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Same, one layer down.
+            }
+        });
+    }
+
+    /// <summary>
+    /// How long a ticket has been waiting, rendered coarsely. Coarse on purpose: a ticking
+    /// seconds counter on twenty rows is a re-render per second per row and tells a cook nothing that
+    /// "12m" does not. This is a duration, not an instant, so it does not go through
+    /// <see cref="RestaurantTime"/> — there is no zone to render it in.
+    /// </summary>
+    private string Waiting(DateTimeOffset since)
+    {
+        TimeSpan elapsed = Clock.UtcNow - since;
+
+        if (elapsed < TimeSpan.Zero)
+        {
+            elapsed = TimeSpan.Zero;
+        }
+
+        if (elapsed < TimeSpan.FromMinutes(1))
+        {
+            return "under a minute";
+        }
+
+        int minutes = (int)elapsed.TotalMinutes;
+        if (minutes < 60)
+        {
+            return $"{minutes}m";
+        }
+
+        int hours = minutes / 60;
+        return $"{hours}h {minutes % 60:D2}m";
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _subscription?.Dispose();
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

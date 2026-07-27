@@ -1,123 +1,112 @@
-# M4 Slice 1 — the order engine: the §6.6 transaction, the projections, and the menu read side
+# M4 Slice 4 — the kitchen board: the queue, fulfillment, the "86" panel, and the reminder service
 
 Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
-and the contents drop straight over your working tree. `git status` will show exactly these 14 files as
-modified/added (15 counting this one).
+and the contents drop straight over your working tree. `git status` will show exactly these 19 files as
+modified/added (20 counting this one).
 
 ```bash
-tar -xzf m4-slice1-order-engine.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m4-slice4-kitchen-board.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
-**None.** One file is an in-place edit (`Program.cs`); everything else is new.
+**None.** `Program.cs` is untouched, and no file is superseded.
 
-The one file that does not belong in the tree afterwards is `docs/BUILD_PROGRESS.append.md`, which exists
-only to be appended and then removed — see the last section.
+## What this closes
 
-## Before you extract: two files this archive deliberately does *not* touch
+§19's M4 line ends "…fulfillment/reversal, projections + fold + equivalence tests, **kitchen surface +
+alerts + reminder service**". Slice 1 landed the engine, Slice 2 the guest half, the close-out the time
+convention. This is the clause that was outstanding. With it, M4 is complete.
 
-- **`tests/MyRestaurant.DataAccess.Tests/Displays/DisplayDevicePairingTests.cs`** — you already fixed the
-  `Assert.DoesNotContain(':', …)` build break yourself. Overwriting your fix with mine would be a
-  needless risk, so it is not in the archive.
-- **`src/MyRestaurant.WebApplication/Program.cs`** — this *is* in the archive, rebuilt from the dump you
-  gave me plus two additions (a `using` and one `AddRestaurantOrders();` call with its comment). If you
-  have edited `Program.cs` since that dump, extract everything else and apply those two changes by hand
-  instead; they are quoted in full at the end of this file.
+## New files (15)
 
-## New files (13)
+### Code — DataAccess (3)
 
-### Code — DataAccess (5)
+- `src/MyRestaurant.DataAccess/Orders/KitchenBoardReads.cs`
+  `KitchenFulfilledLineView`, `IKitchenBoardReads`/`DapperKitchenBoardReads` — the recently-fulfilled
+  query behind §11.2's Undo. Deliberately not a sixth method on `IOrderReadModel`: "when did this flip"
+  is not a question the four §8.3 views can answer.
+- `src/MyRestaurant.DataAccess/Orders/KitchenNotifications.cs`
+  `IKitchenNotifications`/`DapperKitchenNotifications` — §8.4's scan plus the guarded insert.
+- `src/MyRestaurant.DataAccess/Menu/MenuAvailability.cs`
+  `IMenuAvailability`/`DapperMenuAvailability` — the "86" write, availability only.
 
-- `src/MyRestaurant.DataAccess/Menu/MenuDirectory.cs`
-  `MenuItemSummary`, `IMenuDirectory`/`DapperMenuDirectory` (§7). Read side only; returns inactive items.
-- `src/MyRestaurant.DataAccess/Orders/OrderEventVocabulary.cs`
-  The §6.2 enum ↔ SQL-string mapping, both directions, in one place. `internal`.
-- `src/MyRestaurant.DataAccess/Orders/OrderEventLog.cs`
-  `IOrderEventLog`/`DapperOrderEventLog` plus the shared `OrderEventReader` the transaction also uses.
-- `src/MyRestaurant.DataAccess/Orders/OrderReadModel.cs`
-  The four §8.3 views behind `IOrderReadModel`/`DapperOrderReadModel`, with their view records.
-- `src/MyRestaurant.DataAccess/Orders/OrderMutations.cs`
-  `IOrderMutations`/`DapperOrderMutations` — the §6.6 locking protocol, and the largest file here.
+### Code — WebApplication (6)
 
-### Code — WebApplication (2)
-
-- `src/MyRestaurant.WebApplication/Orders/OrderWorkflow.cs`
-  `IOrderWorkflow`/`OrderWorkflow` — §12 counters and §9 broadcasts, after commit.
-- `src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs`
-  `AddRestaurantOrders()` — the five services.
+- `src/MyRestaurant.WebApplication/Menu/MenuAvailabilityWorkflow.cs` — post-commit shell, publishes `MenuChanged`.
+- `src/MyRestaurant.WebApplication/Orders/KitchenQueue.cs` — the pure §11.2 grouping.
+- `src/MyRestaurant.WebApplication/Orders/KitchenAlertState.cs` — the pure §10.3 arm/unseen state.
+- `src/MyRestaurant.WebApplication/Orders/KitchenReminderService.cs` — the §10.2 `BackgroundService`.
+- `src/MyRestaurant.WebApplication/Components/Pages/Kitchen/KitchenBoard.razor` — `/kitchen`.
+- `src/MyRestaurant.WebApplication/wwwroot/js/kitchen.js` — alert sound and wake lock.
 
 ### Tests (6)
 
-- `tests/MyRestaurant.DataAccess.Tests/Orders/OrderTestWorld.cs`        (shared seeding helper, no facts)
-- `tests/MyRestaurant.DataAccess.Tests/Orders/OrderMutationsTests.cs`   (Testcontainers, 11 facts)
-- `tests/MyRestaurant.DataAccess.Tests/Orders/OrderReadModelTests.cs`   (Testcontainers, 5 facts — §8.5 lives here)
-- `tests/MyRestaurant.DataAccess.Tests/Menu/MenuDirectoryTests.cs`      (Testcontainers, 3 facts)
-- `tests/MyRestaurant.WebApplication.Tests/Orders/OrderWorkflowTests.cs` (7 facts/theories, no container)
-- `tests/MyRestaurant.WebApplication.Tests/Orders/OrdersWiringTests.cs`  (5 facts, no container)
+- `tests/MyRestaurant.DataAccess.Tests/Orders/KitchenNotificationsTests.cs`   (Testcontainers, 9 facts)
+- `tests/MyRestaurant.DataAccess.Tests/Orders/KitchenBoardReadsTests.cs`      (Testcontainers, 9 facts)
+- `tests/MyRestaurant.DataAccess.Tests/Menu/MenuAvailabilityTests.cs`         (Testcontainers, 7 facts)
+- `tests/MyRestaurant.WebApplication.Tests/Orders/KitchenQueueTests.cs`       (12 facts/theories, no container)
+- `tests/MyRestaurant.WebApplication.Tests/Orders/KitchenAlertStateTests.cs`  (13 facts, no container)
+- `tests/MyRestaurant.WebApplication.Tests/Orders/KitchenWiringTests.cs`      (6 facts, no container)
 
-## Edited — code (1)
+## Edited — code (4)
 
-- `src/MyRestaurant.WebApplication/Program.cs`
-  Adds `using MyRestaurant.WebApplication.Orders;` and `builder.Services.AddRestaurantOrders();` after
-  `AddRestaurantDisplays()`. Nothing else changes — no pipeline change, no new middleware.
+- `src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs`
+  Four new services and `AddHostedService<KitchenReminderService>()`.
+- `src/MyRestaurant.WebApplication/Components/App.razor`
+  Adds one `<script src="js/kitchen.js" defer>` alongside passkey/display/clock. Nothing else changes.
+- `src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor`
+  Adds a Kitchen link for the `kitchen` role. Nothing else changes.
+- `src/MyRestaurant.WebApplication/Components/Pages/Home.razor`
+  The lede said Milestone 2 was under way and the kitchen board was a later milestone; both stopped
+  being true. Now accurate, plus role-gated area links.
 
-## Docs (1, append-then-delete)
+## Docs (1, append-then-keep)
 
-`docs/BUILD_PROGRESS.md` is large, so it is not regenerated here. The new section ships separately:
+`docs/BUILD_PROGRESS.md` is large and is not regenerated. The new section ships as
+`docs/_append/BUILD_PROGRESS-m4-slice-4.md`, matching the two M4 sections already in that folder — append
+it or leave it there, whichever you have been doing:
 
 ```bash
-cat docs/BUILD_PROGRESS.append.md >> docs/BUILD_PROGRESS.md && rm docs/BUILD_PROGRESS.append.md
+cat docs/_append/BUILD_PROGRESS-m4-slice-4.md >> docs/BUILD_PROGRESS.md
 ```
 
-No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, or ADR edit: this slice realizes behaviour
-§6, §7, §8.3, §8.5, §9, §10.1, and §12 already specify. No migration — every table and view involved
-ships in `0001_initial_schema.sql`. No new packages.
+No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, or ADR edit: this realizes behaviour §7,
+§8.4, §9, §10, §11.2, and §12 already specify. No migration — `kitchen_notification`, `menu_item_event`,
+and every view involved ship in `0001_initial_schema.sql`. No new packages.
 
-## Three decisions worth knowing before you read the diff
+## Four decisions worth knowing before you read the diff
 
-**No Razor at all.** M4's visible half is three surfaces, and all three are renderings of one transaction
-and two projections. Building a staging area on an untested write path means debugging components and
-row-level locking simultaneously; this slice lands the engine green so the next one is only presentation.
+**§8.4's `now()` becomes `@DueBefore`, computed from `IClock`.** The spec's SQL compares `occurred_at`
+against the *database's* clock, but `occurred_at` was stamped by the *application's*. Same host today,
+wrong the day they are not — and untestable either way, since against `now()` there is no way to place a
+send precisely either side of the threshold. Everything else in that query is §8.4 verbatim. Veto this
+and the seven §10.2 facts go with it.
 
-**The server prices every line-add, staff edits included.** §6.5.4 only says it for guest submissions,
-but the menu is the price authority for an *add*, and a counter who means to charge something else has
-`price_adjustment` — which demands a reason and shows old → new on the bill. Veto this if you disagree;
-it is one branch in `ApplyServerSideValues`.
+**A hosted service is registered from `AddRestaurantOrders()`, not `Program.cs`.** §10 is one rule with
+two halves: §10.1's alert is already inside the order transaction, because a committed alert must never
+point at an event that rolled back. Wiring §10.2 anywhere else would make it possible to compose ordering
+into a host and get a system that alerts but never reminds. `Program.cs` is untouched as a result, which
+also means nothing to merge by hand.
 
-**§8.5 equivalence is asserted on the line *set*, not the row order.** Lines added in one send share an
-`occurred_at` to the microsecond, and the two tie-breakers cannot agree: the fold's `ThenBy(Guid)` uses
-.NET's `Guid.CompareTo` (Data1 as an `int`, then two `short`s, then bytes) while the view's `ORDER BY`
-uses PostgreSQL's bytewise `uuid` collation. Both are stable, neither is wrong, and §8.5's wording — "the
-line set, prices, and fulfillment flags" — never claimed an ordering. Same reasoning applies to
-operations within one event, which is why `OrderEventLog`'s doc comment now says its deterministic read
-order is not an insertion order.
+**The alert sound is synthesised, not a file.** Two square-wave beeps from Web Audio: no binary asset to
+ship or license, cannot 404, zero network latency, and the two patterns are distinguishable — a rising
+chime for a new send, a flat insistent triple for a reminder.
+
+**The kitchen CSS is a component-local `<style>` block, like `TableDisplay.razor`'s.** Every `.kitchen-*`
+class is used only by that file. The `.table-*` vocabulary moved to `app.css` in Slice 2 precisely
+because a *second* component had started reading it; nothing reads these. This also means `app.css` — all
+1,162 lines of it — is not in this archive and cannot be clobbered by it.
 
 ## The one-line why
 
-An order is not a row that gets edited — it is a log that gets appended to under two locks, and this is
-that append: one transaction that takes the sitting `FOR SHARE` and the order `FOR UPDATE`, prices every
-line from the menu rather than from the client, validates all nine §6.5 invariants against the log it
-just read, writes the event and the kitchen's alert together or writes neither, and hands back both the
-committed projection and — when it refuses — a reason per operation and a fresh projection to restage
-from.
+A send that nobody sees is not an order, and a send that nobody sees *and nobody is told about* is the
+only failure in this system that is completely silent — so this slice is a screen a cook stands at, and,
+behind it, a five-second scan whose "exactly once" is a unique constraint rather than a promise.
 
-## If you need to patch `Program.cs` by hand
+## Where to look if the build breaks
 
-Add to the `using` block, in alphabetical position:
-
-```csharp
-using MyRestaurant.WebApplication.Orders;
-```
-
-And immediately after the `builder.Services.AddRestaurantDisplays();` line:
-
-```csharp
-// Menu (read side) and orders (§6, §7, §8.3, §9, §12): the IMenuDirectory the staging area and the "86"
-// panel read; IOrderMutations, the single transaction implementing the §6.6 locking protocol;
-// IOrderReadModel over the §8.3 projection views and IOrderEventLog over the raw event log; and
-// IOrderWorkflow, the post-commit shell that records the §12 counters and publishes the §9 notifications
-// — surfaces call that, never IOrderMutations directly, or a send would never reach the kitchen. Last of
-// the four groups because an order hangs off a sitting, which AddRestaurantTables registered above.
-builder.Services.AddRestaurantOrders();
-```
+`KitchenBoard.razor`. It is the first component in the tree with lambda-bound `@onclick` handlers inside
+nested `@foreach` loops, the first to call `IJSRuntime.InvokeAsync<bool>` from `OnAfterRenderAsync`, and
+the first with a component-local `<style>` block since `TableDisplay.razor`. Everything else is ordinary
+C# in the same shapes the surrounding files already use.
