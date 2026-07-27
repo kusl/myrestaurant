@@ -6,6 +6,7 @@
 @inject ITableDirectory TableDirectory
 @inject ITableJoinTokens JoinTokens
 @inject RestaurantOptions Options
+@inject RestaurantTime RestaurantClock
 
 @* The administrator/counter join-code fallback (TECHNICAL_SPECIFICATION §4.5, §11.4). When a table's
    display device is dead, staff can render the *same* rotating QR here on demand; the guest scans this
@@ -72,7 +73,7 @@ else
 
         <p class="join-code-rotation">
             Rotates every @Options.TableJoinTokenRotationSeconds seconds — next at
-            <strong>@_qr.NextRotationAt.ToLocalTime().ToString("T")</strong>
+            <strong>@RestaurantClock.TimeWithSeconds(_qr.NextRotationAt)</strong>
             (about @SecondsUntilRotation second@(SecondsUntilRotation == 1 ? "" : "s") from now). A code
             that has just been scanned keeps working for up to about @(Options.TableJoinTokenRotationSeconds * 2)
             seconds, so it will not stop working in a guest's hand.

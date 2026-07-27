@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using MyRestaurant.Domain.Authentication;
 using MyRestaurant.WebApplication.Identity;
+using MyRestaurant.WebApplication.Time;
 using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Identity;
@@ -67,6 +68,9 @@ public sealed class ObligationsEnforcementTests
     [InlineData("/healthz/live")]
     [InlineData("/healthz/ready")]
     [InlineData("/_framework/blazor.web.js")]
+    // The footer wall clock's anchor (§11.7): the obligation pages render the footer too, and a
+    // redirect to HTML would leave the one page a locked-out user is allowed to see with a dead clock.
+    [InlineData(RestaurantClockRoutes.Snapshot)]
     public void IsExemptPath_PipelinePagesSignOutHealthAndFrameworkAssets_AreExempt(string path)
     {
         Assert.True(ObligationsEnforcement.IsExemptPath(new PathString(path)));

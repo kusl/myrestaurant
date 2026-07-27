@@ -9,6 +9,7 @@
 @inject IDisplayDevicePairing Pairing
 @inject RestaurantOptions Options
 @inject NavigationManager Navigation
+@inject RestaurantTime RestaurantClock
 
 @* Display devices for one table (TECHNICAL_SPECIFICATION §4.2, §11.4 — `area.administration`).
    Static SSR, like every administration surface.
@@ -57,7 +58,7 @@ else
                     Shown once — it is stored hashed, so it cannot be read back. Works once, and expires
                     @if (_issuedExpiresAt is { } expiresAt)
                     {
-                        <text>at <strong>@expiresAt.ToLocalTime().ToString("T")</strong>.</text>
+                        <text>at <strong>@RestaurantClock.TimeWithSeconds(expiresAt)</strong>.</text>
                     }
                     else
                     {
@@ -127,14 +128,14 @@ else
                                     }
                                 </td>
                                 <td>
-                                    @device.PairedAt.ToLocalTime().ToString("g")
+                                    @RestaurantClock.DateAndTime(device.PairedAt)
                                     <span class="muted">by @device.PairedByUsername</span>
                                 </td>
                                 <td>
                                     @if (device.IsRevoked && device.RevokedAt is { } revokedAt)
                                     {
                                         <span class="muted">
-                                            revoked @revokedAt.ToLocalTime().ToString("g")
+                                            revoked @RestaurantClock.DateAndTime(revokedAt)
                                             @if (device.RevokedByUsername is { } revokedBy)
                                             {
                                                 <text> by @revokedBy</text>
@@ -143,7 +144,7 @@ else
                                     }
                                     else if (device.LastSeenAt is { } lastSeenAt)
                                     {
-                                        <span>@lastSeenAt.ToLocalTime().ToString("g")</span>
+                                        <span>@RestaurantClock.DateAndTime(lastSeenAt)</span>
                                     }
                                     else
                                     {

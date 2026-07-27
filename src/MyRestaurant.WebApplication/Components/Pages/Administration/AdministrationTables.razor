@@ -3,6 +3,7 @@
 @attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
 @using MyRestaurant.DataAccess.Tables
 @inject ITableDirectory Tables
+@inject RestaurantTime RestaurantClock
 
 @* The administration tables list (TECHNICAL_SPECIFICATION §4.1, §11.4 — `area.administration`). It
    lists every table with its status and when its join secret was last rotated, links each to its
@@ -70,14 +71,14 @@
                             <td>
                                 @if (table.JoinSecretRotatedAt is { } rotatedAt)
                                 {
-                                    <span>@rotatedAt.ToLocalTime().ToString("g")</span>
+                                    <span>@RestaurantClock.DateAndTime(rotatedAt)</span>
                                 }
                                 else
                                 {
                                     <span class="muted">Never</span>
                                 }
                             </td>
-                            <td>@table.CreatedAt.ToLocalTime().ToString("g")</td>
+                            <td>@RestaurantClock.DateAndTime(table.CreatedAt)</td>
                             <td class="admin-row-actions">
                                 <a href="@($"/administration/tables/{table.TableIdentifier}")">Manage</a>
                             </td>

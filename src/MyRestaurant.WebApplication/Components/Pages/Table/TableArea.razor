@@ -2,6 +2,7 @@
 @attribute [Authorize(Policy = AuthorizationPolicies.Table)]
 @using MyRestaurant.DataAccess.Sittings
 @inject ISittingDirectory Sittings
+@inject RestaurantTime RestaurantClock
 
 @* The table index (TECHNICAL_SPECIFICATION §5.1, §11.1). A person may hold memberships in several
    open sittings at once — §5.1 says so explicitly, and "the UI scopes to the sitting behind the
@@ -48,7 +49,7 @@
                     <a class="sitting-link" href="@($"/table/{sitting.TableIdentifier}")">
                         <span class="sitting-label">@sitting.TableLabel</span>
                         <span class="sitting-meta">
-                            open since @sitting.OpenedAt.ToLocalTime().ToString("t") ·
+                            open since @RestaurantClock.Time(sitting.OpenedAt) ·
                             @sitting.MemberCount @(sitting.MemberCount == 1 ? "person" : "people")
                         </span>
                     </a>

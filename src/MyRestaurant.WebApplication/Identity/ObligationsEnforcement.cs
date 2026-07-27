@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using MyRestaurant.Domain.Authentication;
+using MyRestaurant.WebApplication.Time;
 
 namespace MyRestaurant.WebApplication.Identity;
 
@@ -93,16 +94,19 @@ public static class ObligationsEnforcement
 
     /// <summary>
     /// True when <paramref name="path"/> stays reachable while an obligation is outstanding (§3.5:
-    /// "no authenticated endpoint except sign-out and the pipeline pages themselves"). Health probes
-    /// and framework static assets are also exempt — they carry no user action. The Blazor circuit
-    /// endpoint (<c>/_blazor</c>) is deliberately <b>not</b> exempt: while a flag is set, interactive
-    /// circuits are refused too, so an already-open tab cannot keep acting.
+    /// "no authenticated endpoint except sign-out and the pipeline pages themselves"). Health probes,
+    /// framework static assets, and the wall clock's anchor (§11.7) are also exempt — none of them
+    /// carries a user action, and the obligation pages themselves render the footer that asks for the
+    /// last of those. The Blazor circuit endpoint (<c>/_blazor</c>) is deliberately <b>not</b> exempt:
+    /// while a flag is set, interactive circuits are refused too, so an already-open tab cannot keep
+    /// acting.
     /// </summary>
     public static bool IsExemptPath(PathString path)
         => path.StartsWithSegments(AccountRoutes.ForcedPasswordChange)
         || path.StartsWithSegments(AccountRoutes.ForcedTotpEnrollment)
         || path.StartsWithSegments(AccountRoutes.SignOut)
         || path.StartsWithSegments(AccountRoutes.AccessDenied)
+        || path.StartsWithSegments(RestaurantClockRoutes.Snapshot)
         || path.StartsWithSegments("/healthz")
         || path.StartsWithSegments("/_framework");
 

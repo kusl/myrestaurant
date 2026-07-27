@@ -13,6 +13,7 @@ using MyRestaurant.WebApplication.LiveUpdates;
 using MyRestaurant.WebApplication.Observability;
 using MyRestaurant.WebApplication.Orders;
 using MyRestaurant.WebApplication.Tables;
+using MyRestaurant.WebApplication.Time;
 using Npgsql;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -85,6 +86,10 @@ if (otlpExporterConfigured)
 builder.Services.AddMetrics();
 builder.Services.AddSingleton(options);
 builder.Services.AddSingleton<IClock, SystemClock>();
+// The only thing allowed to turn a stored UTC instant into text (§8.1, §11.7). Registered by factory
+// rather than by type because RestaurantTime also has a (zone, identifier, format) constructor for
+// tests, and the container should never have to guess which one was meant.
+builder.Services.AddSingleton(_ => new RestaurantTime(options));
 builder.Services.AddSingleton<IIdentifierFactory, UuidV7IdentifierFactory>();
 builder.Services.AddSingleton<IDatabaseConnectionFactory>(
     _ => new NpgsqlDatabaseConnectionFactory(options.DatabaseConnectionString));
@@ -212,6 +217,10 @@ app.MapGet(
             return Results.Text("not ready", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
         }
     });
+
+// The footer clock's anchor (§11.7). Anonymous, no-store, and exempt from the obligations pipeline —
+// it carries no user action and every page's footer, signed in or not, asks the same question.
+app.MapRestaurantClock();
 
 // The POST /sign-out endpoint (antiforgery-protected; exempt from the obligations pipeline).
 app.MapRestaurantAccountEndpoints();

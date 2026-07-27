@@ -1,0 +1,86 @@
+@using System.Globalization
+@using MyRestaurant.Domain.Time
+@inject IClock Clock
+@inject RestaurantTime RestaurantClock
+
+@* The restaurant wall clock (TECHNICAL_SPECIFICATION §11.7). On every page, in both layouts.
+
+   Every instant this application shows is rendered in RESTAURANT_TIME_ZONE and never in the reader's
+   own zone (§8.1) — which is the right rule and an invisible one. A guest reading "sent 3:04 PM" from
+   another continent has no way to know whose three o'clock that is unless the page says so, standing
+   somewhere they will look. This footer is that statement, and it earns its place by also being useful
+   to the people in the building: one authoritative clock, the same on the counter's screen, the
+   kitchen's, and the tablet on table four.
+
+   TICKING WITHOUT A TIMER. There is deliberately no server-side timer here. A Blazor timer would tick
+   only on interactive pages (half the surfaces here are static SSR), would cost one render and one
+   circuit message per second per open tab, and would keep a phone's radio awake to do it. Instead the
+   component renders one anchor — the instant, the zone offset that applies to it, and when that offset
+   next changes — and js/clock.js advances it locally against a monotonic clock, pausing entirely while
+   the tab is hidden. The server is asked again on a page load, and thereafter only rarely (§11.7).
+
+   ShouldRender is pinned false for the same reason: once the anchor is in the DOM the script owns that
+   text node, and a re-render from the framework would fight it. Nothing about this component depends on
+   state that changes, so there is nothing to lose by never rendering twice. *@
+
+<footer class="app-footer">
+    <p class="restaurant-clock"
+       id="@ElementId"
+       data-epoch-milliseconds="@_epochMilliseconds"
+       data-utc-offset-minutes="@_utcOffsetMinutes"
+       data-next-transition-epoch-milliseconds="@_nextTransitionEpochMilliseconds"
+       data-next-utc-offset-minutes="@_nextUtcOffsetMinutes"
+       data-twelve-hour-clock="@_twelveHourClock"
+       data-snapshot-url="@RestaurantClockRoutes.Snapshot">
+        <span class="restaurant-clock-label">Restaurant time</span>
+        <time class="restaurant-clock-reading"
+              data-restaurant-clock-reading="true"
+              datetime="@_machineReadable">@_reading</time>
+        <span class="restaurant-clock-zone" title="@_zoneIdentifier">@_zoneLabel</span>
+    </p>
+</footer>
+
+@code {
+    /// <summary>The element js/clock.js looks for. Exactly one per document.</summary>
+    public const string ElementId = "restaurant-clock";
+
+    private string _epochMilliseconds = string.Empty;
+    private string _utcOffsetMinutes = string.Empty;
+    private string _nextTransitionEpochMilliseconds = string.Empty;
+    private string _nextUtcOffsetMinutes = string.Empty;
+    private string _twelveHourClock = "true";
+    private string _machineReadable = string.Empty;
+    private string _reading = string.Empty;
+    private string _zoneLabel = string.Empty;
+    private string _zoneIdentifier = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        // One instant for the whole component, so the rendered text and the anchor the script starts
+        // from cannot disagree by the microseconds between two reads of the clock.
+        DateTimeOffset now = Clock.UtcNow;
+        RestaurantClockSnapshot snapshot = RestaurantClock.Snapshot(now);
+
+        // Every attribute is formatted invariantly rather than left to the ambient culture: these are
+        // numbers a script parses, not text a person reads, and a culture that groups digits or writes
+        // a different minus sign would hand js/clock.js something it cannot parse.
+        _epochMilliseconds = snapshot.EpochMilliseconds.ToString(CultureInfo.InvariantCulture);
+        _utcOffsetMinutes = snapshot.UtcOffsetMinutes.ToString(CultureInfo.InvariantCulture);
+        _nextTransitionEpochMilliseconds =
+            snapshot.NextTransitionEpochMilliseconds?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        _nextUtcOffsetMinutes =
+            snapshot.NextUtcOffsetMinutes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        _twelveHourClock = snapshot.UsesTwelveHourClock ? "true" : "false";
+
+        _reading = RestaurantClock.DateAndTimeWithSeconds(now);
+        _machineReadable = RestaurantClock.MachineReadable(now);
+        _zoneLabel = snapshot.ZoneLabel;
+        _zoneIdentifier = snapshot.ZoneIdentifier;
+    }
+
+    /// <summary>
+    /// Never re-render. The script owns this subtree after the first paint; a framework re-render would
+    /// overwrite a correct ticking reading with a stale one and reset the script's anchor for nothing.
+    /// </summary>
+    protected override bool ShouldRender() => false;
+}

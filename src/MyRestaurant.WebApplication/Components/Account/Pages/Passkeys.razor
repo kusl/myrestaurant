@@ -7,6 +7,7 @@
 @inject SignInManager<Person> SignInManager
 @inject ISecurityEventLog SecurityEventLog
 @inject NavigationManager Navigation
+@inject RestaurantTime RestaurantClock
 
 @* The voluntary passkey-management page (TECHNICAL_SPECIFICATION §3.3): any signed-in user can add a
    passkey, rename it, or remove it. Static SSR, like every account page — registering a passkey writes
@@ -50,7 +51,7 @@
                 <li class="passkey-row">
                     <div class="passkey-meta">
                         <span class="passkey-name">@(string.IsNullOrWhiteSpace(passkey.Name) ? "Unnamed passkey" : passkey.Name)</span>
-                        <span class="passkey-date">Added @passkey.CreatedAt.ToLocalTime().ToString("d MMM yyyy")</span>
+                        <span class="passkey-date">Added @RestaurantClock.Date(passkey.CreatedAt)</span>
                     </div>
                     <form class="passkey-actions" @formname="@($"passkey-{credentialId}")" method="post" @onsubmit="UpdatePasskeyAsync">
                         <AntiforgeryToken />
@@ -147,7 +148,7 @@
 
         // The authenticator does not supply a name; give it a readable default the user can change.
         UserPasskeyInfo passkey = attestation.Passkey;
-        passkey.Name = $"Passkey added {DateTimeOffset.UtcNow.ToLocalTime():d MMM yyyy}";
+        passkey.Name = $"Passkey added {RestaurantClock.Date(DateTimeOffset.UtcNow)}";
 
         IdentityResult added = await UserManager.AddOrUpdatePasskeyAsync(user, passkey);
         if (!added.Succeeded)

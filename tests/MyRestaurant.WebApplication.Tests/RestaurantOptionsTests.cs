@@ -19,6 +19,8 @@ public sealed class RestaurantOptionsTests
         Assert.Equal("My Restaurant", options.RestaurantName);
         Assert.Equal("https://localhost:8443", options.PublicOrigin);
         Assert.Equal("America/New_York", options.TimeZoneId);
+        Assert.Equal(RestaurantOptions.TwelveHourClockFormat, options.ClockFormat);
+        Assert.True(options.UsesTwelveHourClock);
         Assert.Equal("USD", options.CurrencyCode);
         Assert.Equal(65536, options.Argon2MemoryKibibytes);
         Assert.Equal(3, options.Argon2Iterations);
@@ -157,6 +159,64 @@ public sealed class RestaurantOptionsTests
         Assert.NotNull(zone);
     }
 
+    // --- RESTAURANT_CLOCK_FORMAT (§13, F-36) -----------------------------------------------------
+    //
+    // The 12-versus-24 question the specification never answered. It is configuration rather than a
+    // constant because the same code runs in restaurants on both conventions — and it is validated
+    // rather than merely parsed because a typo that silently fell back to the default would show the
+    // wrong clock on every screen in the building with nothing to say why.
+
+    [Theory]
+    [InlineData("12")]
+    [InlineData("12h")]
+    [InlineData("12-hour")]
+    [InlineData("12 hour")]
+    [InlineData("12hour")]
+    [InlineData("  12-HOUR  ")]
+    public void UsesTwelveHourClock_TwelveHourSpellings_AreAccepted(string clockFormat)
+    {
+        RestaurantOptions options = Build(clockFormat: clockFormat);
+
+        Assert.True(options.UsesTwelveHourClock);
+        Assert.Empty(options.Validate());
+    }
+
+    [Theory]
+    [InlineData("24")]
+    [InlineData("24h")]
+    [InlineData("24-hour")]
+    [InlineData("24 hour")]
+    [InlineData("24hour")]
+    [InlineData("  24-Hour  ")]
+    public void UsesTwelveHourClock_TwentyFourHourSpellings_AreAccepted(string clockFormat)
+    {
+        RestaurantOptions options = Build(clockFormat: clockFormat);
+
+        Assert.False(options.UsesTwelveHourClock);
+        Assert.Empty(options.Validate());
+    }
+
+    [Theory]
+    [InlineData("military")]
+    [InlineData("HH:mm")]
+    [InlineData("13")]
+    [InlineData("")]
+    public void Validate_UnknownClockFormat_IsRejected(string clockFormat)
+        => Assert.NotEmpty(Build(clockFormat: clockFormat).Validate());
+
+    [Fact]
+    public void FromConfiguration_ReadsTheClockFormat()
+    {
+        RestaurantOptions options = RestaurantOptions.FromConfiguration(ConfigurationWith(new()
+        {
+            ["RESTAURANT_CLOCK_FORMAT"] = "24-hour",
+        }));
+
+        Assert.Equal("24-hour", options.ClockFormat);
+        Assert.False(options.UsesTwelveHourClock);
+        Assert.Empty(options.Validate());
+    }
+
     private static IConfiguration EmptyConfiguration() => new ConfigurationBuilder().Build();
 
     private static IConfiguration ConfigurationWith(Dictionary<string, string?> values)
@@ -165,6 +225,7 @@ public sealed class RestaurantOptionsTests
     private static RestaurantOptions Build(
         string publicOrigin = "https://localhost:8443",
         string timeZoneId = "America/New_York",
+        string clockFormat = RestaurantOptions.DefaultClockFormat,
         string currencyCode = "USD",
         string databaseConnectionString = "Host=localhost;Database=x;Username=u;Password=p",
         int kitchenReminderSeconds = 60,
@@ -182,6 +243,7 @@ public sealed class RestaurantOptionsTests
             PublicOrigin = publicOrigin,
             TrustedOriginPatterns = trustedOriginPatterns ?? RestaurantOptions.DefaultTrustedOriginPatterns,
             TimeZoneId = timeZoneId,
+            ClockFormat = clockFormat,
             CurrencyCode = currencyCode,
             DatabaseConnectionString = databaseConnectionString,
             DataProtectionKeysDirectory = "/tmp/myrestaurant-keys",

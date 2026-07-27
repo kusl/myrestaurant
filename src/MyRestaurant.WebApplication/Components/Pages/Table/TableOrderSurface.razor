@@ -15,6 +15,7 @@
 @inject IDomainEventBroadcaster Broadcaster
 @inject IIdentifierFactory Identifiers
 @inject RestaurantOptions Options
+@inject RestaurantTime RestaurantClock
 
 @* The guest ordering surface (TECHNICAL_SPECIFICATION §6, §7, §9, §11.1).
 
@@ -55,7 +56,7 @@ else
     @if (_sitting is not null)
     {
         <p class="lede">
-            Open since @_sitting.OpenedAt.ToLocalTime().ToString("t") —
+            Open since @RestaurantClock.Time(_sitting.OpenedAt) —
             @_roster.Count @(_roster.Count == 1 ? "person" : "people") at the table.
         </p>
     }
@@ -69,7 +70,7 @@ else
                 {
                     <span class="chip">you</span>
                 }
-                <span class="table-roster-joined">joined @member.JoinedAt.ToLocalTime().ToString("t")</span>
+                <span class="table-roster-joined">joined @RestaurantClock.Time(member.JoinedAt)</span>
             </li>
         }
     </ul>
@@ -280,7 +281,7 @@ else
                         {
                             <span class="chip">With the kitchen</span>
                         }
-                        <span class="order-line-when">sent @line.AddedAt.ToLocalTime().ToString("t")</span>
+                        <span class="order-line-when">sent @RestaurantClock.Time(line.AddedAt)</span>
                     </p>
 
                     @if (line.IsRemoved)
@@ -402,7 +403,7 @@ else
     private Guid? _myOrderIdentifier;
     private IReadOnlyList<NarratedOrderLine> _myLines = [];
     private IReadOnlyList<SittingBillEntry> _bill = [];
-    private IReadOnlyList<OrderLineView> _partyLines = [];
+    private Dictionary<Guid, IReadOnlyList<OrderLineView>> _partyLinesByOrder = new();
 
     private string _pickedMenuItemId = string.Empty;
     private int _pickedQuantity = OrderStaging.MinimumQuantity;
@@ -515,7 +516,16 @@ else
             : [];
 
         _bill = await OrderReads.ListSittingBillAsync(SittingId, _stopping);
-        _partyLines = await OrderReads.ListLinesForSittingAsync(SittingId, _stopping);
+
+        // One read for the whole sitting, grouped once, rather than a query per person in the render
+        // loop below: §11.1 shows a row for everyone at the table, and a round trip inside that loop
+        // would turn a six-person table into six extra queries on every notification.
+        IReadOnlyList<OrderLineView> partyLines = await OrderReads.ListLinesForSittingAsync(SittingId, _stopping);
+        _partyLinesByOrder = partyLines
+            .GroupBy(line => line.GuestOrderIdentifier)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<OrderLineView>)group.ToArray());
 
         // A tick that has gone stale — the kitchen fulfilled the line, or staff took it off — would
         // sink every subsequent send, because §6.5.9 refuses the whole event on one bad operation.
@@ -748,6 +758,18 @@ else
 
     private MenuItemSummary? MenuItem(Guid menuItemIdentifier)
         => _menuById.TryGetValue(menuItemIdentifier, out MenuItemSummary? item) ? item : null;
+
+    /// <summary>
+    /// One other person's lines, out of the single sitting-wide read <see cref="LoadAsync"/> already
+    /// did. §11.1 shows the rest of the table as names and their items, and this is the second half of
+    /// that: <see cref="_bill"/> supplies the name and the total, this supplies the items underneath.
+    /// An order with nothing on it — someone who joined and has not sent yet — is absent from the
+    /// grouping rather than present and empty, so the empty list is the normal answer, not an error.
+    /// </summary>
+    private IReadOnlyList<OrderLineView> LinesFor(Guid guestOrderIdentifier)
+        => _partyLinesByOrder.TryGetValue(guestOrderIdentifier, out IReadOnlyList<OrderLineView>? lines)
+            ? lines
+            : [];
 
     /// <summary>
     /// The item's <em>current</em> name, which is what <c>order_current_line</c> joins too (§8.3), so a

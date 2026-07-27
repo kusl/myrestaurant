@@ -28,6 +28,28 @@ public sealed class RestaurantOptions
     /// </summary>
     public static readonly IReadOnlyList<string> DefaultTrustedOriginPatterns = ["https://*.trycloudflare.com"];
 
+    /// <summary>Canonical value of <c>RESTAURANT_CLOCK_FORMAT</c> for <c>3:04 PM</c>.</summary>
+    public const string TwelveHourClockFormat = "12-hour";
+
+    /// <summary>Canonical value of <c>RESTAURANT_CLOCK_FORMAT</c> for <c>15:04</c>.</summary>
+    public const string TwentyFourHourClockFormat = "24-hour";
+
+    /// <summary>
+    /// The default clock format (§13). Twelve-hour, matching the other US-shaped defaults on this
+    /// type (<c>America/New_York</c>, <c>USD</c>) — and, unlike them, a choice that had to be made
+    /// explicitly rather than inherited: before this it came from whatever culture the container image
+    /// happened to carry, which is to say from nobody (F-36).
+    /// </summary>
+    public const string DefaultClockFormat = TwelveHourClockFormat;
+
+    /// <summary>Everything accepted as "twelve-hour", lower-cased. Spelling should not be a trap.</summary>
+    private static readonly HashSet<string> TwelveHourSpellings =
+        new(StringComparer.OrdinalIgnoreCase) { "12", "12h", "12-hour", "12 hour", "12hour" };
+
+    /// <summary>Everything accepted as "twenty-four-hour", lower-cased.</summary>
+    private static readonly HashSet<string> TwentyFourHourSpellings =
+        new(StringComparer.OrdinalIgnoreCase) { "24", "24h", "24-hour", "24 hour", "24hour" };
+
     public required string RestaurantName { get; init; }
     public required string PublicOrigin { get; init; }
 
@@ -41,6 +63,14 @@ public sealed class RestaurantOptions
     public IReadOnlyList<string> TrustedOriginPatterns { get; init; } = DefaultTrustedOriginPatterns;
 
     public required string TimeZoneId { get; init; }
+
+    /// <summary>
+    /// Whether times render as <c>3:04 PM</c> or <c>15:04</c> (<c>RESTAURANT_CLOCK_FORMAT</c>, §13).
+    /// Not <c>required</c>, so a construction that predates it keeps the documented default; the whole
+    /// point of the setting is that this decision belongs to the restaurant rather than to the image.
+    /// </summary>
+    public string ClockFormat { get; init; } = DefaultClockFormat;
+
     public required string CurrencyCode { get; init; }
     public required string DatabaseConnectionString { get; init; }
     public required string DataProtectionKeysDirectory { get; init; }
@@ -63,6 +93,7 @@ public sealed class RestaurantOptions
             PublicOrigin = ReadString(configuration, "RESTAURANT_PUBLIC_ORIGIN", "https://localhost:8443"),
             TrustedOriginPatterns = ReadOriginPatterns(configuration, "RESTAURANT_TRUSTED_ORIGIN_PATTERNS", DefaultTrustedOriginPatterns),
             TimeZoneId = ReadString(configuration, "RESTAURANT_TIME_ZONE", "America/New_York"),
+            ClockFormat = ReadString(configuration, "RESTAURANT_CLOCK_FORMAT", DefaultClockFormat),
             CurrencyCode = ReadString(configuration, "RESTAURANT_CURRENCY_CODE", "USD"),
             DatabaseConnectionString = ReadString(
                 configuration,
@@ -99,6 +130,12 @@ public sealed class RestaurantOptions
         if (!TryResolveTimeZone(TimeZoneId))
         {
             errors.Add($"RESTAURANT_TIME_ZONE '{TimeZoneId}' is not a resolvable time zone on this host.");
+        }
+
+        if (!IsKnownClockFormat(ClockFormat))
+        {
+            errors.Add(
+                $"RESTAURANT_CLOCK_FORMAT must be '{TwelveHourClockFormat}' or '{TwentyFourHourClockFormat}' (was '{ClockFormat}').");
         }
 
         if (CurrencyCode.Length != 3 || !CurrencyCode.All(char.IsAsciiLetter))
@@ -165,8 +202,24 @@ public sealed class RestaurantOptions
     /// </summary>
     public string ResolveWebAuthnRelyingPartyId() => new Uri(PublicOrigin).Host;
 
-    /// <summary>The configured display time zone (validated at startup).</summary>
+    /// <summary>
+    /// The configured display time zone (validated at startup). Every instant the application renders
+    /// goes through this zone — see <see cref="Time.RestaurantTime"/>, which is the only caller and the
+    /// only place allowed to turn a stored UTC instant into text (§8.1).
+    /// </summary>
     public TimeZoneInfo ResolveTimeZone() => TimeZoneInfo.FindSystemTimeZoneById(TimeZoneId);
+
+    /// <summary>
+    /// The <see cref="ClockFormat"/> decision as a boolean. An unrecognized value reads as twelve-hour
+    /// (the default), but never silently: <see cref="Validate"/> has already refused to start.
+    /// </summary>
+    public bool UsesTwelveHourClock => !TwentyFourHourSpellings.Contains(ClockFormat.Trim());
+
+    private static bool IsKnownClockFormat(string clockFormat)
+    {
+        string value = clockFormat.Trim();
+        return TwelveHourSpellings.Contains(value) || TwentyFourHourSpellings.Contains(value);
+    }
 
     private static bool TryResolveTimeZone(string timeZoneId)
     {

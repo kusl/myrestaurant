@@ -214,7 +214,7 @@ Administrator-only appended events per §6.5(8), fully visible in history views 
 
 ### 8.1 Conventions
 
-PostgreSQL, current major. Extension: `citext`. All identifiers snake_case, unabbreviated (carve-out per requirements §8: TOTP/HMAC/QR/URL/SQL/TLS). Primary keys `uuid` named `{table}_identifier`, application-generated UUIDv7 (ADR-0011) — **no database defaults for identifiers**. Timestamps `timestamptz`, UTC, named `…_at`. Money `numeric(10,2)`. The DDL below ships verbatim as `src/MyRestaurant.DataAccess/Migrations/0001_initial_schema.sql` (plus `CREATE EXTENSION IF NOT EXISTS citext;` at top).
+PostgreSQL, current major. Extension: `citext`. All identifiers snake_case, unabbreviated (carve-out per requirements §8: TOTP/HMAC/QR/URL/SQL/TLS). Primary keys `uuid` named `{table}_identifier`, application-generated UUIDv7 (ADR-0011) — **no database defaults for identifiers**. Timestamps `timestamptz`, UTC, named `…_at`; **rendered in `RESTAURANT_TIME_ZONE` — never in the reader's zone, and never in the server process's.** A restaurant is a physical place in one IANA zone: a guest abroad reading last week's bill wants the times the meal happened at, and a kitchen ticket must agree with the counter's bill to the minute on every screen in the building. One type performs that conversion — `WebApplication/Time/RestaurantTime` — and nothing else may call `ToLocalTime()`, whose answer is the container's `TZ` (unset, therefore UTC). Its formats are explicit and invariant-cultured for the same reason `MoneyText` refuses `"C"`; the one real choice, 12- versus 24-hour, is `RESTAURANT_CLOCK_FORMAT` (§13) rather than an accident of the base image. Money `numeric(10,2)`. The DDL below ships verbatim as `src/MyRestaurant.DataAccess/Migrations/0001_initial_schema.sql` (plus `CREATE EXTENSION IF NOT EXISTS citext;` at top).
 
 ### 8.2 Tables (DDL)
 
@@ -725,6 +725,33 @@ Two things live here. **Your details** — display name, email address, phone nu
 
 Address management (§4.6's free-text-labelled postal addresses) is **not surfaced**: nothing in version 1 consumes an address, and a form for data no reader exists for would be scaffolding pretending to be a feature. The table and columns stay as specified.
 
+### 11.7 The wall clock (every page, both layouts)
+
+§8.1's rule — every instant in `RESTAURANT_TIME_ZONE`, for every reader — is correct and invisible. "Sent 3:04 PM" tells someone on another continent nothing unless the page says whose three o'clock that is. A footer therefore appears on **every** page in both layouts (`MainLayout` and, deliberately, `DisplayLayout`), reading `Restaurant time · Sun 26 Jul 2026, 3:04:05 PM · New York`, ticking to the second. It is the restaurant's own clock, and it is as useful to the counter and the kitchen as it is to a remote guest.
+
+**Server-anchored, client-driven.** There is **no server-side timer**: a Blazor timer would tick only on the interactive surfaces (half of these pages are static SSR), and would cost one render plus one circuit message per second per open tab — on phones, indefinitely. Instead `RestaurantClockFooter` renders one anchor and never re-renders (`ShouldRender() => false`; the script owns that text node thereafter):
+
+| Attribute | Meaning |
+|---|---|
+| `data-epoch-milliseconds` | the server's instant, UTC |
+| `data-utc-offset-minutes` | the zone's offset at that instant |
+| `data-next-transition-epoch-milliseconds` | when that offset next changes, if within ~800 days |
+| `data-next-utc-offset-minutes` | the offset that takes over then |
+| `data-twelve-hour-clock` | the §13 format decision |
+| `data-snapshot-url` | where to re-anchor |
+
+`wwwroot/js/clock.js` — a classic script alongside `passkey.js` and `display.js`, so it works on static SSR too — advances that anchor locally and formats it by reproducing `RestaurantTime`'s invariant patterns character for character. `Intl` is **forbidden here**: it formats in the *reader's* locale and zone, the exact thing §8.1 rules out. Precomputing the next transition is what lets a page left open across the first Sunday in November stop rendering EDT without a reload.
+
+**Handheld budget** (most readers are on a phone; the browser and the OS will both try to save battery, and this must not fight them):
+
+1. **Nothing runs while hidden.** `visibilitychange` clears the timer rather than letting it fire and be ignored. A backgrounded tab costs zero.
+2. **One wake per visible second.** `setTimeout` aimed at the coming second boundary, not `setInterval` (drift accumulates into double-fires) and never `requestAnimationFrame` (sixty wakes for one visible change).
+3. **No DOM write unless the text changed**, guarded by one string comparison; `tabular-nums` and `contain: content` keep the tick from reflowing the page around it.
+
+**Which clock is believed.** Elapsed time comes from `performance.now()` — monotonic, so an NTP step cannot move it. But it stops advancing during device suspend on several platforms, so a phone that spends an hour in a pocket would wake an hour behind; `Date.now()` is therefore read alongside it every tick, and a divergence past two seconds is treated as the signal it is (prefer the wall clock, which alone saw the suspend, and re-anchor).
+
+**`GET /restaurant-clock`** returns the same anchor as JSON: anonymous, `no-store`, and exempt from the §3.5 obligations pipeline (it carries no user action, and the obligation pages render this footer too). The page markup is the anchor for a short-lived page; the endpoint exists for the ones that are not — a `/display/{table}` tablet holds one URL for days on a cheap oscillator, and a guest's circuit lasts a meal. It is asked: every ten minutes while visible, on returning from a minute or more hidden, and on detected clock divergence. Never while hidden, never more than once a minute, and a failed request is ignored rather than allowed to blank the clock — half the round trip is subtracted as the usual symmetric-latency estimate.
+
 ## 12. Observability
 
 OpenTelemetry traces (ASP.NET Core + Npgsql instrumentation), logs, and metrics via OTLP (`OTEL_EXPORTER_OTLP_ENDPOINT` etc.; `run.sh` translates a legacy `UPTRACE_DSN` if present — any OTLP collector works). Custom meters (full snake_case):
@@ -738,7 +765,8 @@ OpenTelemetry traces (ASP.NET Core + Npgsql instrumentation), logs, and metrics 
 | `RESTAURANT_NAME` | `My Restaurant` | display + TOTP issuer |
 | `RESTAURANT_PUBLIC_ORIGIN` | `https://localhost:8443` (dev) | canonical origin: QR URLs, RP-ID fallback; production = stable named-tunnel domain (so passkeys persist) |
 | `RESTAURANT_TRUSTED_ORIGIN_PATTERNS` | `https://*.trycloudflare.com` | extra wildcard origins allowed as the WebAuthn RP besides the origin above + loopback (§3.3, ADR-0005); comma/space/newline separated, each `scheme://host`, https, optional single leading `*.`, no path/port |
-| `RESTAURANT_TIME_ZONE` | `America/New_York` | rendering only |
+| `RESTAURANT_TIME_ZONE` | `America/New_York` | rendering only — **all** instants, for **all** readers (§8.1, §11.7) |
+| `RESTAURANT_CLOCK_FORMAT` | `12-hour` | `12-hour` (3:04 PM) or `24-hour` (15:04); display only. Accepts `12`/`12h`/`12 hour` and the `24` equivalents; anything else fails startup |
 | `RESTAURANT_CURRENCY_CODE` | `USD` | display only |
 | `RESTAURANT_DATABASE_CONNECTION_STRING` | compose-internal default | Npgsql string |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | dev defaults | consumed by the postgres container; **must** be overridden in production |
@@ -811,6 +839,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 - **M2 — identity:** Dapper Identity stores, Argon2id hasher (+floor guard, semaphore), passkeys, TOTP + recovery codes, lockout, obligations pipeline, `/setup` bootstrap, roles/policies, security events, admin user management + reset, and the person's own profile page (§11.6: display name, contact details, voluntary password change). The profile page belongs to this milestone but was not listed here originally and landed after M3 — see F-35.
 - **M3 — tables & joining:** table CRUD + join secrets + rotation, display pairing + device auth + `/display`, token generate/validate + metrics, grant cookie, join flow, sittings + membership.
 - **M4 — ordering:** living order + locking protocol, staging UI, batch send + validation, staff edits, fulfillment/reversal, projections + fold + equivalence tests, kitchen surface + alerts + reminder service.
+- **M4 close-out — restaurant time:** the §8.1 rendering rule actually honoured on every surface (`RestaurantTime`, replacing eighteen `ToLocalTime()` call sites), the §13 clock-format decision, and the §11.7 footer clock. Scheduled here rather than inside a feature slice because a half-applied time convention is worse than a uniformly wrong one, and ahead of M5 because a wrong time on a settled bill is a different order of problem from a wrong time on a roster — see F-36.
 - **M5 — counter & administration:** bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu management + events, event explorer, hide/unhide, post-close corrections.
 - **M6 — hardening & production:** full E2E suite (§16.3), backups + restore drill, cloudflared production profile + tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, CI pipeline.
 
@@ -828,6 +857,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 | F-10 / F-10b / F-11 | Post-close admin corrective events beside immutable settled total; deactivate-not-delete; guest as actor_role not stored role | §5.3, §6.7, §3.7, §8.2 |
 | F-13 / F-14 / F-15 | No Redis v1 (broadcaster interface); compose canonical / Aspire optional; OTLP-generic (`UPTRACE_DSN` translated in run.sh only) | §9, §12, §14 · ADR-0006, ADR-0004 |
 | F-16 / F-17 | Backups pg_dump -Fc + retention + keys volume; run.sh defined | §15, §14.4 |
+| F-36 | All instants rendered in `RESTAURANT_TIME_ZONE` for every reader, through one type; `RESTAURANT_CLOCK_FORMAT` settles the 12-vs-24 question; ticking footer clock states the convention on every page | §8.1, §11.7, §13, §19 |
 | F-18 / F-19 | Menu item event log; lockout 5/5min, username 3–64 citext, currency/timezone defaults | §7, §3.1, §13, §8.2 |
 | F-20 | Hand-written fakes; NSubstitute ok; no Moq | §16.1 |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
