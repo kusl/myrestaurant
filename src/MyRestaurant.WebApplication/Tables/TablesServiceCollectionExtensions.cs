@@ -1,10 +1,11 @@
 using MyRestaurant.DataAccess.Sittings;
 using MyRestaurant.DataAccess.Tables;
+using MyRestaurant.WebApplication.Sittings;
 
 namespace MyRestaurant.WebApplication.Tables;
 
 /// <summary>
-/// Wires the table and sitting services (TECHNICAL_SPECIFICATION §4, §5). Four groups:
+/// Wires the table and sitting services (TECHNICAL_SPECIFICATION §4, §5). Five groups:
 ///
 /// <list type="bullet">
 ///   <item><description><b>Management (§4.1)</b> — the read-only <see cref="ITableDirectory"/> the
@@ -20,6 +21,13 @@ namespace MyRestaurant.WebApplication.Tables;
 ///   surface asks "is this person already a member here, and who else is?", and the transactional
 ///   <see cref="ISittingMembership"/> that opens a sitting and inserts membership atomically when a
 ///   grant is consumed.</description></item>
+///   <item><description><b>Settlement (§5.3, §11.3)</b> — <see cref="ICounterBoardReads"/>, the counter's
+///   roll-up of open and recently-closed sittings; <see cref="ISittingSettlement"/>, the one transaction
+///   that stamps <c>closed_at</c> and the settled total under <c>FOR UPDATE</c>; and
+///   <see cref="ISittingWorkflow"/>, the post-commit shell that counts and announces the close.
+///   Surfaces take the workflow, never the settlement directly — a close nobody hears about leaves a
+///   settled table still taking orders on every phone that already had the page open
+///   (§9, §11.1).</description></item>
 ///   <item><description><b>The join grant (§4.4)</b> — <see cref="JoinGrantProtector"/>, which
 ///   encrypts and verifies the short-lived cookie that carries proof-of-scan across the detour through
 ///   sign-in or registration.</description></item>
@@ -30,9 +38,10 @@ namespace MyRestaurant.WebApplication.Tables;
 /// matching the identity services' lifetime — they hold no state and open their own connection per call
 /// from the singleton <see cref="MyRestaurant.DataAccess.IDatabaseConnectionFactory"/>; their other
 /// dependencies (<see cref="MyRestaurant.Domain.Time.IClock"/>,
-/// <see cref="MyRestaurant.Domain.Identifiers.IIdentifierFactory"/>, the options, and the metrics) are
-/// singletons registered before this call. The grant protector is a singleton: it wraps one
-/// <c>IDataProtector</c> derived once from the singleton provider, and holds nothing per request.</para>
+/// <see cref="MyRestaurant.Domain.Identifiers.IIdentifierFactory"/>, the options, the metrics, and the
+/// broadcaster) are singletons registered before this call. The grant protector is a singleton: it wraps
+/// one <c>IDataProtector</c> derived once from the singleton provider, and holds nothing per
+/// request.</para>
 /// </summary>
 public static class TablesServiceCollectionExtensions
 {
@@ -54,6 +63,13 @@ public static class TablesServiceCollectionExtensions
         // rule turns on; the membership service is the single write path a consumed grant flows into.
         services.AddScoped<ISittingDirectory, DapperSittingDirectory>();
         services.AddScoped<ISittingMembership, DapperSittingMembership>();
+
+        // Settlement (§5.3, §5.4, §11.3). The reads roll money and line counts across whole sittings for
+        // the counter's screens; the settlement service is the only thing in the system that writes
+        // closed_at, and it does so under the FOR UPDATE that §6.6's FOR SHARE conflicts with.
+        services.AddScoped<ICounterBoardReads, DapperCounterBoardReads>();
+        services.AddScoped<ISittingSettlement, DapperSittingSettlement>();
+        services.AddScoped<ISittingWorkflow, SittingWorkflow>();
 
         // The join grant (§4.4). Depends only on the Data Protection provider registered in Program.cs
         // before this call, so a singleton is safe and avoids re-deriving the protector per request.

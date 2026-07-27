@@ -42,6 +42,28 @@ public interface IOrderWorkflow
         Guid guestOrderIdentifier,
         ProposedOrderEvent proposed,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A staff-authored event against the living order of a named <em>person</em> in a named sitting,
+    /// creating that order inside the transaction if it does not exist yet (§6.1, §11.3).
+    ///
+    /// <para>This is the counter adding an item for somebody who has joined the table but never pressed
+    /// Send — the guest who orders by talking to a person instead of to a phone, which is most of them.
+    /// <see cref="AppendStaffEventAsync"/> cannot serve that case: there is no order identifier to name
+    /// until the first write creates one, and inventing one on the surface would put the §6.1 lazy
+    /// creation race outside the transaction that is supposed to own it.</para>
+    ///
+    /// <para>The actor is whoever <see cref="ProposedOrderEvent.ActorPersonIdentifier"/> says; the order
+    /// belongs to <paramref name="orderOwnerPersonIdentifier"/>. Those are different people here, which
+    /// is exactly the difference between this and <see cref="SubmitGuestBatchAsync"/> — and why the
+    /// event is recorded as a <c>staff_edit</c> by the counter rather than as the guest's own
+    /// submission. It is on the bill either way; the log says who put it there.</para>
+    /// </summary>
+    Task<AppendOrderEventResult> AppendStaffEventToLivingOrderAsync(
+        Guid sittingIdentifier,
+        Guid orderOwnerPersonIdentifier,
+        ProposedOrderEvent proposed,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -103,6 +125,22 @@ public sealed class OrderWorkflow : IOrderWorkflow
 
         AppendOrderEventResult result = await _mutations
             .AppendToOrderAsync(guestOrderIdentifier, proposed, cancellationToken)
+            .ConfigureAwait(false);
+
+        AfterCommit(result);
+        return result;
+    }
+
+    public async Task<AppendOrderEventResult> AppendStaffEventToLivingOrderAsync(
+        Guid sittingIdentifier,
+        Guid orderOwnerPersonIdentifier,
+        ProposedOrderEvent proposed,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(proposed);
+
+        AppendOrderEventResult result = await _mutations
+            .AppendToLivingOrderAsync(sittingIdentifier, orderOwnerPersonIdentifier, proposed, cancellationToken)
             .ConfigureAwait(false);
 
         AfterCommit(result);

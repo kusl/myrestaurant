@@ -1,0 +1,455 @@
+@page "/counter"
+@attribute [Authorize(Policy = AuthorizationPolicies.Counter)]
+@using MyRestaurant.DataAccess.Sittings
+@using MyRestaurant.Domain.LiveUpdates
+@using MyRestaurant.Domain.Time
+@using MyRestaurant.WebApplication.Orders
+@implements IDisposable
+@inject ICounterBoardReads CounterReads
+@inject IDomainEventBroadcaster Broadcaster
+@inject IClock Clock
+@inject RestaurantOptions Options
+@inject RestaurantTime RestaurantClock
+
+@* The counter's landing board (TECHNICAL_SPECIFICATION §11.3, §5.3, §5.4).
+
+   Every open sitting with what is on it, plus the tables settled in the last few hours so a receipt can
+   be checked against the record. Interactive server and subscribed to the broadcaster, because §9 lists
+   the counter as a consumer of OrderLinesChanged: a table's total moving while somebody is standing at
+   the till reading it is the entire point.
+
+   No money is decided here. This screen reads two queries and links; the bill, the adjustments, and
+   Close & settle all live one click in, on the sitting page, which is where the §5.3 transaction is
+   reachable from. *@
+
+<PageTitle>Counter</PageTitle>
+
+<section class="panel counter-board">
+    <div class="counter-header">
+        <div>
+            <p class="eyebrow">@Options.RestaurantName</p>
+            <h1>Counter</h1>
+        </div>
+        @if (_loaded)
+        {
+            <div class="counter-header-total">
+                <span class="counter-header-total-label">On the floor</span>
+                <span class="counter-header-total-amount">@Money(_openTotal)</span>
+            </div>
+        }
+    </div>
+
+    @if (!_loaded)
+    {
+        <p class="lede">Loading the floor…</p>
+    }
+    else
+    {
+        <p class="lede">
+            @if (_openSittings.Count == 0)
+            {
+                <text>No table is open. A sitting starts the moment a guest scans a table and joins.</text>
+            }
+            else
+            {
+                <text>
+                    @_openSittings.Count open @(_openSittings.Count == 1 ? "table" : "tables"),
+                    @_openPendingLines @(_openPendingLines == 1 ? "line" : "lines") still with the kitchen.
+                </text>
+            }
+        </p>
+
+        @* ---- open sittings (§11.3) ------------------------------------------------------------- *@
+        @foreach (CounterSittingSummary sitting in _openSittings)
+        {
+            <article class="counter-sitting" @key="sitting.SittingIdentifier">
+                <header class="counter-sitting-header">
+                    <div>
+                        <h2>@sitting.TableLabel</h2>
+                        <p class="counter-sitting-meta">
+                            open @Elapsed(sitting.OpenedAt) ·
+                            @sitting.MemberCount @(sitting.MemberCount == 1 ? "guest" : "guests") ·
+                            @if (sitting.LastEventAt is { } lastEventAt)
+                            {
+                                <text>last change @RestaurantClock.Time(lastEventAt)</text>
+                            }
+                            else
+                            {
+                                <text>nothing ordered yet</text>
+                            }
+                        </p>
+                    </div>
+                    <div class="counter-sitting-amount">@Money(sitting.CurrentTotalAmount)</div>
+                </header>
+
+                <div class="counter-sitting-chips">
+                    @if (sitting.HasPendingLines)
+                    {
+                        <span class="chip chip-warn">
+                            @sitting.PendingLineCount with the kitchen
+                        </span>
+                    }
+                    else if (sitting.FulfilledLineCount > 0)
+                    {
+                        <span class="chip chip-ok">everything delivered</span>
+                    }
+
+                    @if (sitting.FulfilledLineCount > 0)
+                    {
+                        <span class="chip">@sitting.FulfilledLineCount delivered</span>
+                    }
+
+                    @if (sitting.OrderCount < sitting.MemberCount)
+                    {
+                        <span class="chip">
+                            @(sitting.MemberCount - sitting.OrderCount) yet to order
+                        </span>
+                    }
+                </div>
+
+                <div class="counter-sitting-actions">
+                    <a class="button-primary" href="@SittingPath(sitting.SittingIdentifier)">Bill &amp; settle</a>
+                    @* §4.5, §11.3: the same rotating QR the table's display shows — the fallback for
+                       when that display is dead. Static SSR, so a plain link rather than a handler. *@
+                    <a class="button-secondary" href="@JoinCodePath(sitting.TableIdentifier)">Show join code</a>
+                </div>
+            </article>
+        }
+
+        @* ---- recently settled (§11.3, read-only) ------------------------------------------------ *@
+        <section class="counter-settled">
+            <h2 class="counter-settled-heading">Settled today</h2>
+            <p class="muted">
+                Tables closed in the last @((int)RecentlySettledWindow.TotalHours) hours. Read-only: a
+                settled total is never rewritten, and corrections after a close are an administrator's
+                (§5.3, §6.7).
+            </p>
+
+            @if (_recentlySettled.Count == 0)
+            {
+                <p class="muted">Nothing has been settled in that time.</p>
+            }
+            else
+            {
+                <ul class="counter-settled-list">
+                    @foreach (CounterSittingSummary sitting in _recentlySettled)
+                    {
+                        <li class="counter-settled-row" @key="sitting.SittingIdentifier">
+                            <div class="counter-settled-main">
+                                <a class="counter-settled-name" href="@SittingPath(sitting.SittingIdentifier)">
+                                    @sitting.TableLabel
+                                </a>
+                                <span class="counter-settled-when">
+                                    @if (sitting.ClosedAt is { } closedAt)
+                                    {
+                                        <text>@RestaurantClock.Time(closedAt)</text>
+                                    }
+                                    @if (sitting.ClosedByName is { } closedByName)
+                                    {
+                                        <text> · @closedByName</text>
+                                    }
+                                </span>
+                            </div>
+                            <div class="counter-settled-amount">
+                                @Money(sitting.SettledTotalAmount ?? 0m)
+                                @if (sitting.HasPostCloseCorrections)
+                                {
+                                    @* §5.3: "the UI shows both the stamped settled total and, when
+                                       corrective events exist, the current corrected total". *@
+                                    <span class="counter-settled-corrected">
+                                        now @Money(sitting.CurrentTotalAmount)
+                                    </span>
+                                }
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    }
+</section>
+
+<style>
+    /* Component-local, like KitchenBoard's and TableDisplay's: every .counter-* class below is read by
+       this file and CounterSitting.razor only, and the shared vocabulary it leans on — .panel, .chip,
+       .lede, .muted, .button-primary — is app.css's and is only consumed here. */
+
+    .counter-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+
+    .counter-header-total {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+    }
+
+    .counter-header-total-label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .counter-header-total-amount {
+        font-size: 1.6rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .counter-sitting {
+        margin-top: 1rem;
+        padding: 0.75rem 0.9rem 0.9rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.75rem;
+    }
+
+    .counter-sitting-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .counter-sitting-header h2 {
+        margin: 0;
+        font-size: 1.25rem;
+    }
+
+    .counter-sitting-meta {
+        margin: 0.15rem 0 0;
+        font-size: 0.85rem;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .counter-sitting-amount {
+        font-size: 1.35rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .counter-sitting-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.5rem;
+    }
+
+    .counter-sitting-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+    }
+
+    .counter-settled {
+        margin-top: 1.75rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--hairline, #e2e6ec);
+    }
+
+    .counter-settled-heading {
+        margin: 0 0 0.25rem;
+        font-size: 1.15rem;
+    }
+
+    .counter-settled-list {
+        list-style: none;
+        margin: 0.6rem 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+    }
+
+    .counter-settled-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.45rem 0.6rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.5rem;
+    }
+
+    .counter-settled-main {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .counter-settled-name {
+        font-weight: 700;
+    }
+
+    .counter-settled-when {
+        font-size: 0.85rem;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .counter-settled-amount {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .counter-settled-corrected {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #b45309;
+    }
+</style>
+
+@code {
+    /// <summary>
+    /// How far back "settled today" reaches. Long enough to cover a whole service and the shift change
+    /// either side of it, short enough that this stays a working list rather than an archive — the
+    /// archive is administration's (§11.4). Not configuration: §13 does not name it, and a setting
+    /// nobody would change is only another way to be wrong.
+    /// </summary>
+    private static readonly TimeSpan RecentlySettledWindow = TimeSpan.FromHours(12);
+
+    /// <summary>A hard cap alongside the window, so one absurd day cannot render a thousand rows.</summary>
+    private const int RecentlySettledLimit = 25;
+
+    // Captured once, so nothing touches _lifetime.Token after Dispose — the shape KitchenBoard,
+    // TableDisplay, and TableOrderSurface all use.
+    private readonly CancellationTokenSource _lifetime = new();
+    private CancellationToken _stopping;
+    private IDisposable? _subscription;
+    private bool _disposed;
+
+    private bool _loaded;
+    private IReadOnlyList<CounterSittingSummary> _openSittings = [];
+    private IReadOnlyList<CounterSittingSummary> _recentlySettled = [];
+
+    private decimal _openTotal;
+    private int _openPendingLines;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _stopping = _lifetime.Token;
+        await LoadAsync();
+        _loaded = true;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Only on the circuit: OnAfterRender does not run during prerendering, so no subscription is
+            // created for a render about to be thrown away.
+            _subscription = Broadcaster.Subscribe(OnDomainNotification);
+        }
+    }
+
+    /// <summary>Both queries, one pass. Small and indexed; a counter is not a hot path.</summary>
+    private async Task LoadAsync()
+    {
+        _openSittings = await CounterReads.ListOpenSittingsAsync(_stopping);
+
+        _recentlySettled = await CounterReads.ListRecentlyClosedSittingsAsync(
+            Clock.UtcNow - RecentlySettledWindow,
+            RecentlySettledLimit,
+            _stopping);
+
+        _openTotal = _openSittings.Sum(sitting => sitting.CurrentTotalAmount);
+        _openPendingLines = _openSittings.Sum(sitting => sitting.PendingLineCount);
+    }
+
+    /// <summary>
+    /// §9 lists the counter as a consumer of OrderLinesChanged; a close and a join both change what this
+    /// list says too, so all four are handled with one re-read. Nothing is filtered by identifier: this
+    /// board is the whole floor by definition, so every one of these events is its business.
+    /// </summary>
+    private void OnDomainNotification(DomainNotification notification)
+    {
+        bool concernsTheFloor = notification
+            is OrderLinesChanged
+            or LineFulfillmentChanged
+            or SittingClosed
+            or SittingMemberJoined;
+
+        if (!concernsTheFloor)
+        {
+            return;
+        }
+
+        _ = InvokeAsync(async () =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            try
+            {
+                await LoadAsync();
+                StateHasChanged();
+            }
+            catch (OperationCanceledException)
+            {
+                // Disposed between the broadcast and the query; nothing to update.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Same, one layer down.
+            }
+        });
+    }
+
+    private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
+
+    private static string SittingPath(Guid sittingIdentifier) => $"/counter/sittings/{sittingIdentifier}";
+
+    private static string JoinCodePath(Guid tableIdentifier) => $"/counter/tables/{tableIdentifier}/join-code";
+
+    /// <summary>
+    /// How long a table has been sitting, rendered coarsely — a duration, not an instant, so it does not
+    /// go through <see cref="RestaurantTime"/>: there is no zone to render an elapsed span in.
+    /// </summary>
+    private string Elapsed(DateTimeOffset since)
+    {
+        TimeSpan elapsed = Clock.UtcNow - since;
+
+        if (elapsed < TimeSpan.Zero)
+        {
+            elapsed = TimeSpan.Zero;
+        }
+
+        if (elapsed < TimeSpan.FromMinutes(1))
+        {
+            return "under a minute";
+        }
+
+        int minutes = (int)elapsed.TotalMinutes;
+        if (minutes < 60)
+        {
+            return $"{minutes}m";
+        }
+
+        int hours = minutes / 60;
+        return $"{hours}h {minutes % 60:D2}m";
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _subscription?.Dispose();
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

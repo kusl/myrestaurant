@@ -1,0 +1,1154 @@
+@page "/counter/sittings/{SittingId:guid}"
+@attribute [Authorize(Policy = AuthorizationPolicies.Counter)]
+@using System.Globalization
+@using MyRestaurant.DataAccess.Menu
+@using MyRestaurant.DataAccess.Orders
+@using MyRestaurant.DataAccess.Sittings
+@using MyRestaurant.Domain.Identifiers
+@using MyRestaurant.Domain.LiveUpdates
+@using MyRestaurant.Domain.Orders
+@using MyRestaurant.WebApplication.Orders
+@using MyRestaurant.WebApplication.Sittings
+@implements IDisposable
+@inject ICounterBoardReads CounterReads
+@inject IOrderReadModel OrderReads
+@inject ISittingDirectory SittingDirectory
+@inject IMenuDirectory MenuDirectory
+@inject IOrderWorkflow Workflow
+@inject ISittingWorkflow Settlement
+@inject IIdentifierFactory Identifiers
+@inject IDomainEventBroadcaster Broadcaster
+@inject RestaurantOptions Options
+@inject RestaurantTime RestaurantClock
+
+@* One sitting, at the till (TECHNICAL_SPECIFICATION §11.3, §5.3, §6.7).
+
+   Everything §11.3 asks for on this screen: per-person and table totals from sitting_bill, the lines
+   with their states, a price-adjustment dialog that demands a reason, staff add and remove, the
+   pending-lines warning, and Close & settle.
+
+   Nothing here enforces §6.5 or §5.3. Every button goes through IOrderWorkflow or ISittingWorkflow to
+   the one transaction, which re-decides under the lock (§6.6) — so a guest sending while the counter
+   presses Close produces one winner and one plainly-reported refusal, rather than a total computed over
+   a half-written order. What this surface refuses on its own it refuses only to make the answer
+   immediate.
+
+   Once the sitting is closed the controls disappear, and that is §11.3's "closed-sitting lookup
+   (read-only)" rather than a second page: §6.5.8 admits nothing but an administrator's corrective events
+   after a close, so a counter's Adjust button there would be a door that only ever answers no. Both the
+   stamped settled total and — when §6.7 corrections exist — the current corrected total are shown, which
+   is what §5.3 requires. *@
+
+<PageTitle>@(_sitting is null ? "Sitting" : $"Counter — {_sitting.TableLabel}")</PageTitle>
+
+<section class="panel counter-sitting-page">
+    <p class="eyebrow">Counter</p>
+
+    @if (!_loaded)
+    {
+        <h1>Loading…</h1>
+    }
+    else if (_sitting is null)
+    {
+        <h1>Sitting not found</h1>
+        <p class="lede">No sitting exists with that identifier. It may have never existed, or the link is stale.</p>
+        <p><a href="/counter">Back to the counter</a></p>
+    }
+    else
+    {
+        <div class="counter-detail-header">
+            <div>
+                <h1>@_sitting.TableLabel</h1>
+                <p class="counter-detail-meta">
+                    opened @RestaurantClock.DateAndTime(_sitting.OpenedAt) ·
+                    @_sitting.MemberCount @(_sitting.MemberCount == 1 ? "guest" : "guests")@SettledSuffix
+                </p>
+            </div>
+            <div class="counter-detail-total">
+                <span class="counter-detail-total-label">
+                    @(_sitting.IsOpen ? "Running total" : "Settled total")
+                </span>
+                <span class="counter-detail-total-amount">@Money(_sitting.AmountToShow)</span>
+                @if (_sitting.HasPostCloseCorrections)
+                {
+                    @* §5.3: the stamped total is never rewritten; when §6.7 corrections exist both
+                       numbers are shown, because they answer two different questions — what was charged,
+                       and what the record now says is owed. *@
+                    <span class="counter-detail-corrected">
+                        corrected to @Money(_sitting.CurrentTotalAmount)
+                    </span>
+                }
+            </div>
+        </div>
+
+        @if (_notice is { } notice)
+        {
+            <p class="status-success" role="status">@notice</p>
+        }
+
+        @if (_problem is { } problem)
+        {
+            <p class="status-error" role="alert">@problem</p>
+        }
+
+        @if (_rejectionReasons.Count > 0)
+        {
+            @* §6.5.9 is all-or-nothing at the granularity of the event, so a refusal names every reason
+               rather than only the first. *@
+            <ul class="counter-rejection">
+                @foreach (string reason in _rejectionReasons)
+                {
+                    <li>@reason</li>
+                }
+            </ul>
+        }
+
+        @if (!_sitting.IsOpen)
+        {
+            <p class="counter-readonly" role="note">
+                This sitting is settled, so nothing more can be recorded against it from here. Corrections
+                after a close are an administrator's, and appear beside the settled total rather than
+                changing it (§5.3, §6.7).
+            </p>
+        }
+
+        @* ---- the bill, person by person (§8.3, §11.3) -------------------------------------------- *@
+        @if (_bill.Count == 0)
+        {
+            <p class="lede">Nobody at this table has ordered anything yet.</p>
+        }
+
+        @foreach (SittingBillEntry entry in _bill)
+        {
+            <article class="counter-person" @key="entry.GuestOrderIdentifier">
+                <header class="counter-person-header">
+                    <h2>@entry.BillName</h2>
+                    <span class="counter-person-total">@Money(entry.PersonTotalAmount)</span>
+                </header>
+
+                @if (LinesFor(entry.GuestOrderIdentifier).Count == 0)
+                {
+                    <p class="muted">Nothing on this order right now.</p>
+                }
+                else
+                {
+                    <ul class="counter-lines">
+                        @foreach (OrderLineView line in LinesFor(entry.GuestOrderIdentifier))
+                        {
+                            <li class="counter-line" @key="line.OrderLineIdentifier">
+                                <div class="counter-line-main">
+                                    <span class="counter-line-quantity">@line.Quantity×</span>
+                                    <span class="counter-line-name">@line.MenuItemName</span>
+                                    <span class="counter-line-price">
+                                        @Money(line.LineTotalAmount)
+                                        <span class="counter-line-unit">@Money(line.CurrentUnitPriceAmount) each</span>
+                                    </span>
+                                </div>
+
+                                <div class="counter-line-badges">
+                                    <span class="chip @(line.IsFulfilled ? "chip-ok" : "chip-warn")">
+                                        @(line.IsFulfilled ? "delivered" : "with the kitchen")
+                                    </span>
+                                    <span class="counter-line-when">added @RestaurantClock.Time(line.AddedAt)</span>
+                                </div>
+
+                                @if (line.CustomizationNote is { } note)
+                                {
+                                    <p class="counter-line-note">@note</p>
+                                }
+
+                                @if (_sitting.IsOpen)
+                                {
+                                    <div class="counter-line-actions">
+                                        <button type="button" class="link-button" disabled="@_busy"
+                                                @onclick="() => StartAdjust(line)">
+                                            Adjust price
+                                        </button>
+                                        <button type="button" class="link-button" disabled="@_busy"
+                                                @onclick="() => StartRemove(line)">
+                                            Remove
+                                        </button>
+                                    </div>
+                                }
+
+                                @if (_adjustingLine == line.OrderLineIdentifier)
+                                {
+                                    @* §11.3's "price adjustment dialog (new price + required reason)". The
+                                       reason is required by §6.5.7 and by the table's own CHECK, so it is
+                                       demanded here rather than discovered on refusal. *@
+                                    <div class="counter-editor">
+                                        <p class="counter-editor-heading">Adjust the unit price</p>
+                                        <label class="form-field">
+                                            <span>New unit price (@Options.CurrencyCode)</span>
+                                            <input type="text" inputmode="decimal" disabled="@_busy"
+                                                   @bind="_adjustPriceText" @bind:event="oninput" />
+                                        </label>
+                                        <label class="form-field">
+                                            <span>Reason (shown on the bill)</span>
+                                            <input type="text" maxlength="200" disabled="@_busy"
+                                                   @bind="_adjustReason" @bind:event="oninput" />
+                                        </label>
+                                        <div class="form-actions">
+                                            <button type="button" class="button-primary" disabled="@_busy"
+                                                    @onclick="() => AdjustPriceAsync(line)">
+                                                Adjust
+                                            </button>
+                                            <button type="button" class="button-secondary" disabled="@_busy"
+                                                    @onclick="CancelEditors">
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+
+                                @if (_removingLine == line.OrderLineIdentifier)
+                                {
+                                    <div class="counter-editor">
+                                        <p class="counter-editor-heading">Take this line off the bill</p>
+                                        <label class="form-field">
+                                            <span>Reason (optional)</span>
+                                            <input type="text" maxlength="200" disabled="@_busy"
+                                                   @bind="_removeReason" @bind:event="oninput" />
+                                        </label>
+                                        <p class="form-footnote">
+                                            Removal is terminal. The line stays in the record with whoever
+                                            removed it and why; it simply stops being on the bill.
+                                        </p>
+                                        <div class="form-actions">
+                                            <button type="button" class="button-primary" disabled="@_busy"
+                                                    @onclick="() => RemoveLineAsync(line)">
+                                                Remove the line
+                                            </button>
+                                            <button type="button" class="button-secondary" disabled="@_busy"
+                                                    @onclick="CancelEditors">
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            </article>
+        }
+
+        @* ---- people at the table who have not ordered (§5.1, §11.3) ------------------------------ *@
+        @if (MembersWithoutAnOrder.Count > 0)
+        {
+            <section class="counter-yet-to-order">
+                <h2 class="counter-section-heading">At the table, nothing ordered</h2>
+                <ul class="counter-name-list">
+                    @foreach (SittingMemberSummary member in MembersWithoutAnOrder)
+                    {
+                        <li @key="member.PersonIdentifier">@member.RosterName</li>
+                    }
+                </ul>
+            </section>
+        }
+
+        @* ---- staff add (§6.3, §11.3) ------------------------------------------------------------- *@
+        @if (_sitting.IsOpen)
+        {
+            <section class="counter-add">
+                <h2 class="counter-section-heading">Add an item</h2>
+                <p class="muted">
+                    For the guest who orders by talking to a person instead of to a phone. It goes on their
+                    bill, the kitchen is alerted exactly as it would be for their own send (§10.1), and the
+                    log records the counter as the actor.
+                </p>
+
+                <label class="form-field">
+                    <span>For</span>
+                    <select disabled="@_busy" @bind="_addPersonText">
+                        <option value="">Choose a guest…</option>
+                        @foreach (BillablePerson person in PeopleAtTheTable)
+                        {
+                            <option value="@person.PersonIdentifier">@person.Name</option>
+                        }
+                    </select>
+                </label>
+
+                <label class="form-field">
+                    <span>Item</span>
+                    <select disabled="@_busy" @bind="_addMenuItemText">
+                        <option value="">Choose an item…</option>
+                        @foreach (MenuItemSummary item in _menu)
+                        {
+                            <option value="@item.MenuItemIdentifier" disabled="@(!item.IsActive)">
+                                @ItemOptionLabel(item)
+                            </option>
+                        }
+                    </select>
+                </label>
+
+                <label class="form-field">
+                    <span>Quantity</span>
+                    <input type="number" min="1" max="100" disabled="@_busy" @bind="_addQuantity" />
+                </label>
+
+                <label class="form-field">
+                    <span>Note for the kitchen (optional)</span>
+                    <input type="text" maxlength="500" disabled="@_busy"
+                           @bind="_addNote" @bind:event="oninput" />
+                </label>
+
+                <p class="form-footnote">
+                    The price comes from the menu at the moment this is written, not from this screen
+                    (§6.5.4). To charge something else, add it and then adjust the price with a reason.
+                </p>
+
+                <div class="form-actions">
+                    <button type="button" class="button-primary" disabled="@_busy" @onclick="AddLineAsync">
+                        Add to the bill
+                    </button>
+                </div>
+            </section>
+        }
+
+        @* ---- close and settle (§5.3) ------------------------------------------------------------- *@
+        <section class="counter-settle">
+            <div class="counter-settle-total">
+                <span>Table total</span>
+                <strong>@Money(TableTotal)</strong>
+            </div>
+
+            @if (_sitting.IsOpen)
+            {
+                @if (_sitting.HasPendingLines)
+                {
+                    @* §5.3: "The counter UI must surface still-pending lines prominently before offering
+                       Close (remove with reason, or knowingly charge)." *@
+                    <p class="counter-pending-warning" role="alert">
+                        <strong>
+                            @_sitting.PendingLineCount @(_sitting.PendingLineCount == 1 ? "line is" : "lines are")
+                            still with the kitchen.
+                        </strong>
+                        Settle anyway and the table is charged for them. To take one off instead, use
+                        <em>Remove</em> on the line above — a reason is optional, but is worth writing.
+                    </p>
+                }
+
+                @if (_confirmingClose)
+                {
+                    <p class="counter-settle-confirm" role="alert">
+                        Settle @_sitting.TableLabel at <strong>@Money(_sitting.CurrentTotalAmount)</strong>?
+                        This stamps the total and stops the table ordering. It cannot be undone from here.
+                    </p>
+                    <div class="form-actions">
+                        <button type="button" class="button-primary" disabled="@_busy"
+                                @onclick="CloseAndSettleAsync">
+                            Yes — close &amp; settle
+                        </button>
+                        <button type="button" class="button-secondary" disabled="@_busy"
+                                @onclick="AbandonClose">
+                            Not yet
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="form-actions">
+                        <button type="button" class="button-primary" disabled="@_busy" @onclick="BeginClose">
+                            Close &amp; settle
+                        </button>
+                        <a class="button-secondary" href="@JoinCodePath">Show join code</a>
+                    </div>
+                }
+            }
+        </section>
+
+        <p class="counter-back"><a href="/counter">Back to the counter</a></p>
+    }
+</section>
+
+<style>
+    /* Component-local, like KitchenBoard's. Shared vocabulary — .panel, .chip, .form-field,
+       .form-actions, .status-error, .link-button — is app.css's and is only consumed here. */
+
+    .counter-detail-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+
+    .counter-detail-header h1 {
+        margin: 0;
+    }
+
+    .counter-detail-meta {
+        margin: 0.2rem 0 0;
+        font-size: 0.85rem;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .counter-detail-total {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+    }
+
+    .counter-detail-total-label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .counter-detail-total-amount {
+        font-size: 1.6rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .counter-detail-corrected {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #b45309;
+    }
+
+    .counter-readonly {
+        margin: 0.75rem 0 0;
+        padding: 0.6rem 0.85rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        background: var(--surface, #f7f8fa);
+        color: var(--ink-soft, #55636f);
+    }
+
+    .counter-rejection {
+        margin: 0.4rem 0 0;
+        padding-left: 1.1rem;
+        color: #b91c1c;
+        font-weight: 600;
+    }
+
+    .counter-person {
+        margin-top: 1.1rem;
+        padding: 0.7rem 0.85rem 0.85rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.75rem;
+    }
+
+    .counter-person-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .counter-person-header h2 {
+        margin: 0;
+        font-size: 1.15rem;
+    }
+
+    .counter-person-total {
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .counter-lines {
+        list-style: none;
+        margin: 0.6rem 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .counter-line {
+        padding: 0.5rem 0.6rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.5rem;
+    }
+
+    .counter-line-main {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.5rem;
+    }
+
+    .counter-line-quantity {
+        font-variant-numeric: tabular-nums;
+        font-weight: 800;
+        min-width: 2.2rem;
+    }
+
+    .counter-line-name {
+        flex: 1 1 8rem;
+        font-weight: 600;
+    }
+
+    .counter-line-price {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .counter-line-unit {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .counter-line-badges {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.4rem;
+        margin-top: 0.3rem;
+    }
+
+    .counter-line-when {
+        font-size: 0.8rem;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .counter-line-note {
+        margin: 0.3rem 0 0;
+        padding: 0.3rem 0.55rem;
+        border-radius: 0.4rem;
+        background: #fff7ed;
+        color: #7c2d12;
+        font-weight: 600;
+    }
+
+    .counter-line-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-top: 0.35rem;
+    }
+
+    .counter-editor {
+        margin-top: 0.5rem;
+        padding: 0.6rem 0.7rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.5rem;
+        background: var(--surface, #f7f8fa);
+    }
+
+    .counter-editor-heading {
+        margin: 0 0 0.4rem;
+        font-weight: 700;
+    }
+
+    .counter-yet-to-order,
+    .counter-add,
+    .counter-settle {
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--hairline, #e2e6ec);
+    }
+
+    .counter-section-heading {
+        margin: 0 0 0.25rem;
+        font-size: 1.1rem;
+    }
+
+    .counter-name-list {
+        list-style: none;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin: 0.4rem 0 0;
+        padding: 0;
+    }
+
+    .counter-name-list li {
+        padding: 0.2rem 0.6rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 999px;
+        font-size: 0.9rem;
+    }
+
+    .counter-settle-total {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.5rem;
+        font-size: 1.2rem;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .counter-pending-warning {
+        margin: 0.75rem 0 0;
+        padding: 0.6rem 0.85rem;
+        border-radius: 0.5rem;
+        border: 2px solid #b45309;
+        background: #fff7ed;
+        color: #7c2d12;
+    }
+
+    .counter-settle-confirm {
+        margin: 0.75rem 0 0.5rem;
+        padding: 0.6rem 0.85rem;
+        border-radius: 0.5rem;
+        border: 2px solid #b91c1c;
+        background: #fef2f2;
+        color: #7f1d1d;
+    }
+
+    .counter-back {
+        margin-top: 1.5rem;
+    }
+</style>
+
+@code {
+    /// <summary>Somebody the counter can put a line against: a member, or anyone who already has an order.</summary>
+    private sealed record BillablePerson(Guid PersonIdentifier, string Name);
+
+    // Captured once, so nothing touches _lifetime.Token after Dispose.
+    private readonly CancellationTokenSource _lifetime = new();
+    private CancellationToken _stopping;
+    private IDisposable? _subscription;
+    private bool _disposed;
+
+    private Guid? _person;
+    private OrderActorRole _actorRole = OrderActorRole.Counter;
+    private bool _loaded;
+    private bool _busy;
+
+    private CounterSittingSummary? _sitting;
+    private IReadOnlyList<SittingBillEntry> _bill = [];
+    private IReadOnlyList<OrderLineView> _lines = [];
+    private IReadOnlyList<SittingMemberSummary> _members = [];
+    private IReadOnlyList<MenuItemSummary> _menu = [];
+
+    private string? _notice;
+    private string? _problem;
+    private IReadOnlyList<string> _rejectionReasons = [];
+
+    private Guid? _adjustingLine;
+    private string _adjustPriceText = string.Empty;
+    private string _adjustReason = string.Empty;
+
+    private Guid? _removingLine;
+    private string _removeReason = string.Empty;
+
+    private string _addPersonText = string.Empty;
+    private string _addMenuItemText = string.Empty;
+    private int _addQuantity = 1;
+    private string _addNote = string.Empty;
+
+    private bool _confirmingClose;
+
+    /// <summary>The sitting this screen bills. Every query is scoped by it, never by the table.</summary>
+    [Parameter]
+    [EditorRequired]
+    public Guid SittingId { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private decimal TableTotal => _bill.Sum(entry => entry.PersonTotalAmount);
+
+    /// <summary>
+    /// People who joined the sitting (§5.1) but have no living order yet (§6.1) — and so no
+    /// <c>sitting_bill</c> row, because that view is built from <c>guest_order</c>.
+    /// </summary>
+    private IReadOnlyList<SittingMemberSummary> MembersWithoutAnOrder
+        => _members
+            .Where(member => !_bill.Any(entry => entry.PersonIdentifier == member.PersonIdentifier))
+            .ToArray();
+
+    /// <summary>
+    /// Everyone a line can be added for: the roster, plus anyone who somehow has an order without a
+    /// membership row. The union rather than the roster alone, because the picker must never be unable
+    /// to name somebody whose bill is on the screen directly above it.
+    /// </summary>
+    private IReadOnlyList<BillablePerson> PeopleAtTheTable
+    {
+        get
+        {
+            List<BillablePerson> people = _members
+                .Select(member => new BillablePerson(member.PersonIdentifier, member.RosterName))
+                .ToList();
+
+            foreach (SittingBillEntry entry in _bill)
+            {
+                if (!people.Any(person => person.PersonIdentifier == entry.PersonIdentifier))
+                {
+                    people.Add(new BillablePerson(entry.PersonIdentifier, entry.BillName));
+                }
+            }
+
+            return people;
+        }
+    }
+
+    /// <summary>
+    /// The " · settled 3:04 PM by Cass" tail of the header line, built here rather than as nested
+    /// conditionals in the markup — it is one sentence, and it reads like one in the source too.
+    /// </summary>
+    private string SettledSuffix
+    {
+        get
+        {
+            if (_sitting is not { ClosedAt: { } closedAt })
+            {
+                return string.Empty;
+            }
+
+            string by = string.IsNullOrWhiteSpace(_sitting.ClosedByName)
+                ? string.Empty
+                : $" by {_sitting.ClosedByName}";
+
+            return $" · settled {RestaurantClock.DateAndTime(closedAt)}{by}";
+        }
+    }
+
+    private string JoinCodePath
+        => _sitting is null ? "/counter" : $"/counter/tables/{_sitting.TableIdentifier}/join-code";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _stopping = _lifetime.Token;
+
+        if (AuthenticationStateTask is not null)
+        {
+            AuthenticationState state = await AuthenticationStateTask;
+            _person = PersonPrincipal.IdentifierFor(state.User);
+
+            // §6.2: a staff_edit or price_adjustment may be authored by counter or administrator.
+            // Record what the person actually is — counter wins when they hold both, because that is
+            // the capacity they are standing at this screen in.
+            _actorRole = state.User.IsInRole(RestaurantRoles.Counter)
+                ? OrderActorRole.Counter
+                : OrderActorRole.Administrator;
+        }
+
+        await LoadAsync();
+        _loaded = true;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Only on the circuit: OnAfterRender does not run during prerendering, so no subscription is
+            // created for a render about to be thrown away.
+            _subscription = Broadcaster.Subscribe(OnDomainNotification);
+        }
+    }
+
+    /// <summary>Everything the screen shows, re-read in one pass. Small, indexed queries.</summary>
+    private async Task LoadAsync()
+    {
+        _sitting = await CounterReads.GetSittingAsync(SittingId, _stopping);
+
+        if (_sitting is null)
+        {
+            _bill = [];
+            _lines = [];
+            _members = [];
+            return;
+        }
+
+        _bill = await OrderReads.ListSittingBillAsync(SittingId, _stopping);
+        _lines = await OrderReads.ListLinesForSittingAsync(SittingId, _stopping);
+        _members = await SittingDirectory.ListMembersAsync(SittingId, _stopping);
+        _menu = await MenuDirectory.ListAsync(_stopping);
+    }
+
+    private IReadOnlyList<OrderLineView> LinesFor(Guid guestOrderIdentifier)
+        => _lines.Where(line => line.GuestOrderIdentifier == guestOrderIdentifier).ToArray();
+
+    private string ItemOptionLabel(MenuItemSummary item)
+        => item.IsActive
+            ? $"{item.Name} — {Money(item.PriceAmount)}"
+            : $"{item.Name} — {Money(item.PriceAmount)} (currently unavailable)";
+
+    private void StartAdjust(OrderLineView line)
+    {
+        CancelEditors();
+        _adjustingLine = line.OrderLineIdentifier;
+        _adjustPriceText = line.CurrentUnitPriceAmount.ToString("0.00", CultureInfo.InvariantCulture);
+        _adjustReason = string.Empty;
+    }
+
+    private void StartRemove(OrderLineView line)
+    {
+        CancelEditors();
+        _removingLine = line.OrderLineIdentifier;
+        _removeReason = string.Empty;
+    }
+
+    private void CancelEditors()
+    {
+        _adjustingLine = null;
+        _removingLine = null;
+        _confirmingClose = false;
+    }
+
+    private void BeginClose()
+    {
+        CancelEditors();
+        _confirmingClose = true;
+    }
+
+    private void AbandonClose()
+    {
+        _confirmingClose = false;
+    }
+
+    /// <summary>§11.3: "price adjustment dialog (new price + required reason)".</summary>
+    private async Task AdjustPriceAsync(OrderLineView line)
+    {
+        ClearMessages();
+
+        // Parsed invariantly for the reason MoneyText formats invariantly: the amount is a
+        // numeric(10,2), and which separator the container's locale happens to use is not a decision
+        // anybody made about this restaurant.
+        if (!decimal.TryParse(
+                _adjustPriceText,
+                NumberStyles.Number,
+                CultureInfo.InvariantCulture,
+                out decimal newUnitPrice)
+            || newUnitPrice < 0m)
+        {
+            _problem = "Enter the new unit price as a plain number, for example 12.50.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_adjustReason))
+        {
+            _problem = "A price adjustment needs a reason — it is shown beside the change on the bill.";
+            return;
+        }
+
+        newUnitPrice = Math.Round(newUnitPrice, 2, MidpointRounding.AwayFromZero);
+
+        bool appended = await AppendToOrderAsync(
+            line.GuestOrderIdentifier,
+            OrderEventType.PriceAdjustment,
+            [new LinePriceAdjustedOperation(line.OrderLineIdentifier, newUnitPrice, _adjustReason.Trim())],
+            $"{line.MenuItemName} is now {Money(newUnitPrice)} each.");
+
+        if (appended)
+        {
+            CancelEditors();
+        }
+    }
+
+    /// <summary>§11.3: "add/remove line (staff edit, optional reason on removal)".</summary>
+    private async Task RemoveLineAsync(OrderLineView line)
+    {
+        bool appended = await AppendToOrderAsync(
+            line.GuestOrderIdentifier,
+            OrderEventType.StaffEdit,
+            [new LineRemovedOperation(line.OrderLineIdentifier, Blank(_removeReason))],
+            $"{line.Quantity} × {line.MenuItemName} is off the bill.");
+
+        if (appended)
+        {
+            CancelEditors();
+        }
+    }
+
+    /// <summary>
+    /// §11.3's staff add, through the living-order path so it works for a member who has never sent
+    /// anything — their order is created inside the same transaction (§6.1).
+    /// </summary>
+    private async Task AddLineAsync()
+    {
+        ClearMessages();
+
+        if (!Guid.TryParse(_addPersonText, out Guid personIdentifier))
+        {
+            _problem = "Choose which guest this is for.";
+            return;
+        }
+
+        BillablePerson? recipient = PeopleAtTheTable
+            .FirstOrDefault(person => person.PersonIdentifier == personIdentifier);
+
+        if (recipient is null)
+        {
+            _problem = "That guest is no longer at this table.";
+            return;
+        }
+
+        if (!Guid.TryParse(_addMenuItemText, out Guid menuItemIdentifier))
+        {
+            _problem = "Choose an item to add.";
+            return;
+        }
+
+        MenuItemSummary? item = _menu
+            .FirstOrDefault(candidate => candidate.MenuItemIdentifier == menuItemIdentifier);
+
+        if (item is null)
+        {
+            _problem = "That item is no longer on the menu.";
+            return;
+        }
+
+        // §7 keeps a deactivated item visible and unorderable; the transaction re-checks the flag under
+        // its own lock (§6.5.4), so this only makes the answer immediate.
+        if (!item.IsActive)
+        {
+            _problem = $"{item.Name} is currently unavailable, so it cannot be added.";
+            return;
+        }
+
+        if (_addQuantity is < 1 or > 100)
+        {
+            _problem = "Quantity must be between 1 and 100.";
+            return;
+        }
+
+        // The line's own identity, UUIDv7 like every other key (ADR-0011). The unit price sent here is
+        // ignored: the transaction prices the line from the menu row it reads under the lock (§6.5.4).
+        LineAddedOperation added = new(
+            Identifiers.Create(),
+            menuItemIdentifier,
+            _addQuantity,
+            item.PriceAmount,
+            Blank(_addNote));
+
+        bool appended = await AppendToLivingOrderAsync(
+            personIdentifier,
+            OrderEventType.StaffEdit,
+            [added],
+            $"{_addQuantity} × {item.Name} added to {recipient.Name}'s order.");
+
+        if (appended)
+        {
+            _addMenuItemText = string.Empty;
+            _addQuantity = 1;
+            _addNote = string.Empty;
+        }
+    }
+
+    /// <summary>§5.3, through the workflow so the close is counted (§12) and announced (§9).</summary>
+    private async Task CloseAndSettleAsync()
+    {
+        if (_person is not { } person || _busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        ClearMessages();
+
+        try
+        {
+            CloseSittingResult result = await Settlement.CloseAndSettleAsync(SittingId, person, _stopping);
+
+            _confirmingClose = false;
+
+            switch (result.Outcome)
+            {
+                case CloseSittingOutcome.Closed when result.PendingLineCountAtClose > 0:
+                    _notice =
+                        $"Settled at {Money(result.SettledTotalAmount ?? 0m)} — with " +
+                        $"{result.PendingLineCountAtClose} " +
+                        $"{(result.PendingLineCountAtClose == 1 ? "line" : "lines")} still with the kitchen.";
+                    break;
+
+                case CloseSittingOutcome.Closed:
+                    _notice = $"Settled at {Money(result.SettledTotalAmount ?? 0m)}.";
+                    break;
+
+                case CloseSittingOutcome.AlreadyClosed:
+                    _notice = $"This table had already been settled at {Money(result.SettledTotalAmount ?? 0m)}.";
+                    break;
+
+                default:
+                    _problem = "That sitting no longer exists.";
+                    break;
+            }
+
+            await LoadAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // The circuit went away mid-write. The transaction either committed or did not; either way
+            // there is nobody left to tell.
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task<bool> AppendToOrderAsync(
+        Guid guestOrderIdentifier,
+        OrderEventType eventType,
+        IReadOnlyList<OrderOperation> operations,
+        string successMessage)
+    {
+        if (_person is not { } person || _busy)
+        {
+            return false;
+        }
+
+        _busy = true;
+        ClearMessages();
+
+        try
+        {
+            AppendOrderEventResult result = await Workflow.AppendStaffEventAsync(
+                guestOrderIdentifier,
+                new ProposedOrderEvent(eventType, person, _actorRole, operations),
+                _stopping);
+
+            return await ReportAsync(result, successMessage);
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task<bool> AppendToLivingOrderAsync(
+        Guid orderOwnerPersonIdentifier,
+        OrderEventType eventType,
+        IReadOnlyList<OrderOperation> operations,
+        string successMessage)
+    {
+        if (_person is not { } person || _busy)
+        {
+            return false;
+        }
+
+        _busy = true;
+
+        try
+        {
+            AppendOrderEventResult result = await Workflow.AppendStaffEventToLivingOrderAsync(
+                SittingId,
+                orderOwnerPersonIdentifier,
+                new ProposedOrderEvent(eventType, person, _actorRole, operations),
+                _stopping);
+
+            return await ReportAsync(result, successMessage);
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task<bool> ReportAsync(AppendOrderEventResult result, string successMessage)
+    {
+        if (result.IsAppended)
+        {
+            _notice = successMessage;
+        }
+        else
+        {
+            _problem = DescribeRefusal(result);
+            _rejectionReasons = result.Errors.Select(error => error.Reason).ToArray();
+        }
+
+        await LoadAsync();
+        return result.IsAppended;
+    }
+
+    /// <summary>
+    /// A refusal in plain words. The likely causes here are races — a guest sending, the kitchen
+    /// fulfilling, or somebody else closing a second earlier — so the message says what happened rather
+    /// than reading like a fault, and the bill has already been refreshed by the time it is shown.
+    /// </summary>
+    private static string DescribeRefusal(AppendOrderEventResult result)
+    {
+        if (result.Outcome is AppendOrderEventOutcome.SittingNotFound)
+        {
+            return "That sitting no longer exists. Nothing was changed.";
+        }
+
+        if (result.Outcome is AppendOrderEventOutcome.OrderNotFound)
+        {
+            return "There is no order to change here — the table may have been settled. Nothing was changed.";
+        }
+
+        return "Nothing was changed. The bill below has been refreshed.";
+    }
+
+    private void ClearMessages()
+    {
+        _notice = null;
+        _problem = null;
+        _rejectionReasons = [];
+    }
+
+    /// <summary>
+    /// §9 scopes every relevant notification by sitting, so this filters rather than re-reading on every
+    /// event anywhere in the restaurant. <c>MenuChanged</c> is unscoped by construction and matters here
+    /// because the add-an-item picker lists the menu (§7).
+    /// </summary>
+    private void OnDomainNotification(DomainNotification notification)
+    {
+        bool concernsThisSitting = notification switch
+        {
+            OrderLinesChanged changed => changed.SittingIdentifier == SittingId,
+            LineFulfillmentChanged fulfilled => fulfilled.SittingIdentifier == SittingId,
+            SittingMemberJoined joined => joined.SittingIdentifier == SittingId,
+            SittingClosed closed => closed.SittingIdentifier == SittingId,
+            MenuChanged => true,
+            _ => false,
+        };
+
+        if (!concernsThisSitting)
+        {
+            return;
+        }
+
+        _ = InvokeAsync(async () =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            try
+            {
+                await LoadAsync();
+                StateHasChanged();
+            }
+            catch (OperationCanceledException)
+            {
+                // Disposed between the broadcast and the query; nothing to update.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Same, one layer down.
+            }
+        });
+    }
+
+    private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
+
+    private static string? Blank(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _subscription?.Dispose();
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}
