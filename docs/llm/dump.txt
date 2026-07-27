@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-26T19:53:45-04:00
+  Generated at   : 2026-07-26T22:40:05-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 3c5bcce6c4723c2053d5bc49df7d0e180d602844
-  Commit (short) : 3c5bcce
-  Commit date    : 2026-07-26 19:53:28 -0400
-  Commit message : add prompt
+  Commit (full)  : d04dd08900733a7a1df7b09dd80eb028999adee6
+  Commit (short) : d04dd08
+  Commit date    : 2026-07-26 22:39:57 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 218
+  Files included : 224
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (218 included files)
+# FILE TREE  (224 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -556,7 +556,8 @@ cat "$OUTPUT_FILE"
 │   ├── REQUIREMENTS.md
 │   ├── TECHNICAL_SPECIFICATION.md
 │   ├── _append
-│   │   └── BUILD_PROGRESS-m4-slice-2.md
+│   │   ├── BUILD_PROGRESS-m4-slice-2.md
+│   │   └── BUILD_PROGRESS-m4-slice-3.md
 │   └── adr
 │       ├── 0001-single-application-with-areas.md
 │       ├── 0002-relational-append-only-event-logs.md
@@ -664,7 +665,8 @@ cat "$OUTPUT_FILE"
 │       │   ├── App.razor
 │       │   ├── Layout
 │       │   │   ├── DisplayLayout.razor
-│       │   │   └── MainLayout.razor
+│       │   │   ├── MainLayout.razor
+│       │   │   └── RestaurantClockFooter.razor
 │       │   ├── Pages
 │       │   │   ├── Administration
 │       │   │   │   ├── AdministrationHome.razor
@@ -726,11 +728,15 @@ cat "$OUTPUT_FILE"
 │       │   ├── JoinGrant.cs
 │       │   ├── TableJoinTokens.cs
 │       │   └── TablesServiceCollectionExtensions.cs
+│       ├── Time
+│       │   ├── RestaurantClockEndpoints.cs
+│       │   └── RestaurantTime.cs
 │       ├── appsettings.Development.json
 │       ├── appsettings.json
 │       └── wwwroot
 │           ├── app.css
 │           └── js
+│               ├── clock.js
 │               ├── display.js
 │               └── passkey.js
 └── tests
@@ -805,10 +811,12 @@ cat "$OUTPUT_FILE"
         │   ├── OrderWorkflowTests.cs
         │   └── OrdersWiringTests.cs
         ├── RestaurantOptionsTests.cs
-        └── Tables
-            ├── JoinGrantTests.cs
-            ├── TableJoinTokensTests.cs
-            └── TablesWiringTests.cs
+        ├── Tables
+        │   ├── JoinGrantTests.cs
+        │   ├── TableJoinTokensTests.cs
+        │   └── TablesWiringTests.cs
+        └── Time
+            └── RestaurantTimeTests.cs
 
 
 ################################################################################
@@ -871,15 +879,15 @@ indent_size = 2
   File name:             .env.example
   Relative path:         .env.example
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/.env.example
-  Size:                  3.8 KiB (3870 bytes)
-  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Size:                  4.4 KiB (4464 bytes)
+  Last modified:         2026-07-26 20:40:23.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25103631
+  Inode:                 25951184
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               d3105ad0cfa212801dc88299fd75a62fe13501b3c6237713a598885e03aae4f1
-  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+  SHA-256:               96a90bfbb20e515d62f209ea0c805a9d41b0a20388c5bfebd76e81f27596a6e3
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 # Copy to `.env` and adjust. `.env` is git-ignored; never commit a populated one.
@@ -900,7 +908,14 @@ RESTAURANT_PUBLIC_ORIGIN=https://localhost:8443
 # tunnels so `scripts/quick_tunnel.sh` demos work with passkeys out of the box; clear it (set to a
 # single space) to lock passkeys to RESTAURANT_PUBLIC_ORIGIN only.
 RESTAURANT_TRUSTED_ORIGIN_PATTERNS=https://*.trycloudflare.com
+# The restaurant's IANA zone. EVERY instant the application renders — order times, the footer clock,
+# an administrator's audit column — is shown in this zone, for every viewer, wherever they are (§8.1).
+# A guest abroad checking last week's bill sees the times the meal actually happened at.
 RESTAURANT_TIME_ZONE=America/New_York
+# How those times are written: "12-hour" (3:04 PM) or "24-hour" (15:04). Display only; it decides
+# nothing about what is stored. Before this existed the choice came from whatever locale the container
+# image happened to carry, which is to say from nobody (F-36).
+RESTAURANT_CLOCK_FORMAT=12-hour
 RESTAURANT_CURRENCY_CODE=USD
 
 # --- Database ------------------------------------------------------------------------------------
@@ -2356,15 +2371,15 @@ builder.Services.AddRestaurantOrders();
   File name:             compose.yaml
   Relative path:         compose.yaml
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/compose.yaml
-  Size:                  4.7 KiB (4852 bytes)
-  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Size:                  4.8 KiB (4919 bytes)
+  Last modified:         2026-07-26 20:40:23.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25103621
+  Inode:                 25951185
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               4e380c34a8bcfab6aea265577bfdfb0647155956d7c751db006cbe9ec1078306
-  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+  SHA-256:               ab2df7626b9019d8d3c7c7d7b7627ac8a2d9772017b8402476402496ff08cb18
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 # Canonical stack (TECHNICAL_SPECIFICATION §14.1), rootless Podman-first.
@@ -2412,6 +2427,7 @@ services:
       # works with passkeys; scripts/quick_tunnel.sh also exports RESTAURANT_PUBLIC_ORIGIN per run.
       RESTAURANT_TRUSTED_ORIGIN_PATTERNS: ${RESTAURANT_TRUSTED_ORIGIN_PATTERNS:-https://*.trycloudflare.com}
       RESTAURANT_TIME_ZONE: ${RESTAURANT_TIME_ZONE:-America/New_York}
+      RESTAURANT_CLOCK_FORMAT: ${RESTAURANT_CLOCK_FORMAT:-12-hour}
       RESTAURANT_CURRENCY_CODE: ${RESTAURANT_CURRENCY_CODE:-USD}
       RESTAURANT_DATABASE_CONNECTION_STRING: >-
         Host=postgres;Port=5432;Database=${POSTGRES_DB:-myrestaurant};Username=${POSTGRES_USER:-myrestaurant};Password=${POSTGRES_PASSWORD:-myrestaurant}
@@ -3894,20 +3910,20 @@ item on the menu except an `INSERT`.
   File name:             DOCUMENTATION_REVIEW.md
   Relative path:         docs/DOCUMENTATION_REVIEW.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/DOCUMENTATION_REVIEW.md
-  Size:                  16.6 KiB (17022 bytes)
-  Last modified:         2026-07-26 19:13:15.000000000 -0400
+  Size:                  17.4 KiB (17768 bytes)
+  Last modified:         2026-07-26 20:41:49.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25836163
+  Inode:                 25951186
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               cafb33f25a0c7f443fc8fe81231ae89cb799c1e8c297d91aa6a3a758d615ff0c
-  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
+  SHA-256:               c0ae5e1d900d1a5c68fe4a6c971824d7b9f65b12038aaf9b10cefce6ddea4c71
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
 
-**Status:** One finding open — **F-36** (timestamps ignore `RESTAURANT_TIME_ZONE`), recorded with its ruling and scheduled before M5. Everything else is resolved.
+**Status:** All findings resolved. **F-36** (timestamps ignored `RESTAURANT_TIME_ZONE`) closed in the M4 close-out slice, on the schedule its row recorded.
 **Scope of the original review (2026-07-16):** `REQUIREMENTS.md` rev 1 (commit `af51017`) and the `dump.txt` produced by `export.sh`.
 **Rulings:** the owner ruled on every finding on 2026-07-17 — F-01–05, F-09–11, F-13–19, F-21–24 accepted as raised; F-06, F-07 (Q1), F-08 (Q2/Q3), and F-12 (Q4/Q5) resolved with the defaults proposed in the ruling exchange ("all of this is fine").
 
@@ -3979,15 +3995,16 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 |---|---|---|---|
 | F-34 | §8.2's `passkey_credential` was specified before ASP.NET Core Identity's .NET 10 passkey API was verified against source. That API's `UserPasskeyInfo` credential record carries WebAuthn state the table did not model (user-verified, backup-eligible, backed-up), and assertion **reads** the stored backup-eligible bit and fails the ceremony on a mismatch — so it cannot be dropped and reconstructed. | Additive migration `0002_passkey_credential_webauthn_state.sql` adds `is_user_verified` / `is_backup_eligible` / `is_backed_up` (all `NOT NULL DEFAULT false`); `0001` is left untouched (DbUp journals per script). The raw attestation object and client-data JSON `UserPasskeyInfo` also exposes are deliberately not stored (attestation is `none`, §3.3; nothing re-reads them) and are reconstructed as empty on read. This is the framework gap §3.3 anticipated — no fallback library was needed, only the columns. | S§8.2 (schema-evolution note), S§3.3 · `0002_*.sql`, `DapperUserStore` passkey region · BUILD_PROGRESS Slice 5 |
 | F-35 | The profile page is specified twice — R§4.6 ("every person has a profile page") and S§11.1 (in the `/table` surface list) — but §19's build order never named it, so no milestone claimed it. M2 shipped the individual credential pages (`/account/enroll-totp`, `/account/passkeys`) with no hub and no way to edit the three self-owned fields, and the gap was only noticed in use, after M3: two freshly created staff accounts could not set their own display names. Compounding it, §11.2 groups the kitchen queue by *person display name*, so M4 would have inherited tickets reading `betty`. | The profile page ships as an M2 close-out slice before M4 opens: `/account` (display name, email, phone, plus the credential status hub) and `/account/change-password` (voluntary change, and add-a-password for a passkey-only account). R§4.6 now states display-name editing and username immutability explicitly; S§11.1 points at a new S§11.6 that specifies the surface; S§19's M2 line names it and records that it landed late. Addresses stay unsurfaced, with the reason recorded in S§11.6. | R§4.6 · S§11.1, S§11.6, S§19 · `ProfileDetails.cs`, `Profile.razor`, `ChangePassword.razor` · BUILD_PROGRESS M2 close-out |
-| F-36 | Every surface renders instants with `DateTimeOffset.ToLocalTime()`, which is the **server process's** zone — not `RESTAURANT_TIME_ZONE`. S§8.1 says instants are "stored `timestamptz` UTC; rendered in `RESTAURANT_TIME_ZONE`", and S§13 lists the variable as "rendering only", but nothing reads it: `RestaurantOptions.ResolveTimeZone()` exists and has no caller. The runtime container sets no `TZ`, so a deployed instance renders UTC. Harmless while the only timestamps were on administration pages read by staff who could infer it; not harmless from M4 Slice 2 onward, where a guest sees "sent 19:04" for an order placed at 3:04 PM. A second, unspecified question is entangled with it: S§13 has no locale setting, so nothing decides 12- versus 24-hour or the separator, and `ToString("t")` currently takes those from the container's culture too. | Recorded, not fixed in the slice that found it — deliberately. The fix is a rendering helper bound to `RESTAURANT_TIME_ZONE` plus a decision on the locale question, applied to **every** surface in one slice; doing it piecemeal would leave two time conventions inside a single page (the static `/table/{id}` header and its interactive island are one screen) and make the inconsistency harder to see, not easier. M4 Slice 2 therefore matches the existing `ToLocalTime()` convention everywhere and changes nothing. Scheduled ahead of M5, whose counter surface stamps settled totals — a wrong time on a bill is a different order of problem from a wrong time on a roster. | S§8.1, S§13 (both already correct — the code is what deviates) · `RestaurantOptions.ResolveTimeZone` (currently uncalled) · every `.ToLocalTime()` call site |
+| F-36 | Every surface rendered instants with `DateTimeOffset.ToLocalTime()`, which is the **server process's** zone — not `RESTAURANT_TIME_ZONE`. S§8.1 says instants are "stored `timestamptz` UTC; rendered in `RESTAURANT_TIME_ZONE`", and S§13 listed the variable as "rendering only", but nothing read it: `RestaurantOptions.ResolveTimeZone()` existed with no caller, and the runtime container sets no `TZ`, so a deployed instance rendered UTC. Harmless while the only timestamps were on administration pages read by staff who could infer the offset; not harmless from M4 Slice 2 onward, where a guest sees "sent 19:04" for an order placed at 3:04 PM. A second, unspecified question was entangled with it: S§13 had no locale setting, so nothing decided 12- versus 24-hour or the separator, and `ToString("t")` took those from the container's culture too. | **Closed in the M4 close-out slice**, on the schedule the original row recorded — deliberately not folded into the slice that found it, because doing it piecemeal would have left two time conventions inside a single page (the static `/table/{id}` header and its interactive island are one screen). Three parts. (1) **The rule made explicit and enforceable:** all instants render in `RESTAURANT_TIME_ZONE` for **every** reader — the viewer's own zone is irrelevant, because a restaurant is a physical place in one zone and a guest abroad wants the times the meal actually happened at. One type, `WebApplication/Time/RestaurantTime`, performs the conversion; all eighteen `ToLocalTime()` call sites now go through it and nothing else may call it. (2) **The locale question answered:** `RESTAURANT_CLOCK_FORMAT` (`12-hour` default / `24-hour`), validated at startup; every other pattern is explicit and invariant-cultured, so the base image's locale decides nothing. (3) **The convention stated where readers are:** a footer clock on every page in both layouts, ticking to the second, server-anchored and client-driven — no server-side timer, nothing running while the tab is hidden, one wake per visible second, and a rare `GET /restaurant-clock` re-anchor for the surfaces that outlive a page load. | S§8.1, S§11.7 (new), S§13, S§19 · R§8 · `Time/RestaurantTime.cs`, `Time/RestaurantClockEndpoints.cs`, `Components/Layout/RestaurantClockFooter.razor`, `wwwroot/js/clock.js` · BUILD_PROGRESS M4 close-out |
 
 ---
 
 ## Going forward
 
-**F-36 is open** — recorded with its ruling and its schedule (before M5), which is the ledger working as
-intended: a finding is entered the moment it is understood, not the moment it is fixed, and the row carries
-the reason the fix was not folded into the slice that found it. New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodiment — landed in the **same commit** as the change they describe, together with the matching `REQUIREMENTS.md`, specification, and ADR edits (atomic documentation, R§10 · S§18).
+**F-36 is closed**, which completes a round trip worth naming: it was entered the moment it was understood,
+carried the reason its fix was *not* folded into the slice that found it, named the milestone it would land
+before, and landed there. That is the ledger working as intended — a finding is recorded when it is seen, not
+when it is convenient. New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodiment — landed in the **same commit** as the change they describe, together with the matching `REQUIREMENTS.md`, specification, and ADR edits (atomic documentation, R§10 · S§18).
 
 ################################################################################
 # FILE: docs/OPERATIONS.md
@@ -4157,15 +4174,15 @@ Migrations are append-only and roll forward only — the same philosophy as the 
   File name:             REQUIREMENTS.md
   Relative path:         docs/REQUIREMENTS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/REQUIREMENTS.md
-  Size:                  22.4 KiB (22891 bytes)
-  Last modified:         2026-07-26 08:54:54.000000000 -0400
+  Size:                  22.9 KiB (23463 bytes)
+  Last modified:         2026-07-26 20:41:28.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25661731
+  Inode:                 25951187
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               cc720bf6d17eb57cfae346781ab637bf504bbad2000060d770e899b5e4c741b4
-  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
+  SHA-256:               b7845e33963b1dd1ed2caeaddda8c8465a6f6d883b32e3a14ec75c022227e35c
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Requirements
@@ -4340,7 +4357,7 @@ If, `KITCHEN_SUBMISSION_REMINDER_SECONDS` (default 60) after a guest send contai
 - **Naming:** long, unabbreviated, snake_case database names (`{table}_identifier` primary keys); no abbreviations anywhere in schema or code identifiers. **Carve-out:** industry-standard initialisms that are *more* recognizable than their expansions — TOTP, HMAC, QR, URL, SQL, TLS, API — are permitted and preferred over awkward expansions.
 - **Identifiers:** application-generated UUIDv7 everywhere (ADR-0011).
 - **Money:** `numeric(10,2)`; a single restaurant-wide currency code (`RESTAURANT_CURRENCY_CODE`, default `USD`) used for display only.
-- **Time:** everything stored `timestamptz` UTC; rendered in `RESTAURANT_TIME_ZONE` (default `America/New_York`).
+- **Time:** everything stored `timestamptz` UTC; rendered in `RESTAURANT_TIME_ZONE` (default `America/New_York`) — **always, for every reader, wherever they are**. A restaurant is a physical place in one zone, so the viewer's own zone is deliberately irrelevant: a guest in New York reading the history of a meal they ate in Tokyo sees Tokyo times, and every screen in the building agrees to the minute. Because that convention is invisible until stated, a footer on every page shows the restaurant's current date and time, ticking to the second (technical specification §11.7). Whether times read `3:04 PM` or `15:04` is `RESTAURANT_CLOCK_FORMAT` (default `12-hour`), display only.
 - **Configuration:** environment variables only, all prefixed and long-named (technical specification §13); sensible defaults for development; the app fails fast on invalid security-relevant configuration.
 - **Observability:** OpenTelemetry everywhere; metrics named in full snake_case words (technical specification §12).
 - **Honesty in UI:** removed lines render struck-through with actor and reason, price adjustments show old → new with reason, reversals stay visible. The interface never pretends history didn't happen.
@@ -4377,15 +4394,15 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
   File name:             TECHNICAL_SPECIFICATION.md
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/TECHNICAL_SPECIFICATION.md
-  Size:                  72.4 KiB (74123 bytes)
-  Last modified:         2026-07-26 08:55:00.000000000 -0400
+  Size:                  77.7 KiB (79594 bytes)
+  Last modified:         2026-07-26 20:41:13.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25661729
+  Inode:                 25951188
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               203947bed025ca177b7944a6298874402d0468e67d81a93dcaab9d8e3c1a2604
-  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
+  SHA-256:               65bc1e8550117ef30b14843064ec94bf41a314bbcf80072d087e5c0d34f591a4
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
@@ -4604,7 +4621,7 @@ Administrator-only appended events per §6.5(8), fully visible in history views 
 
 ### 8.1 Conventions
 
-PostgreSQL, current major. Extension: `citext`. All identifiers snake_case, unabbreviated (carve-out per requirements §8: TOTP/HMAC/QR/URL/SQL/TLS). Primary keys `uuid` named `{table}_identifier`, application-generated UUIDv7 (ADR-0011) — **no database defaults for identifiers**. Timestamps `timestamptz`, UTC, named `…_at`. Money `numeric(10,2)`. The DDL below ships verbatim as `src/MyRestaurant.DataAccess/Migrations/0001_initial_schema.sql` (plus `CREATE EXTENSION IF NOT EXISTS citext;` at top).
+PostgreSQL, current major. Extension: `citext`. All identifiers snake_case, unabbreviated (carve-out per requirements §8: TOTP/HMAC/QR/URL/SQL/TLS). Primary keys `uuid` named `{table}_identifier`, application-generated UUIDv7 (ADR-0011) — **no database defaults for identifiers**. Timestamps `timestamptz`, UTC, named `…_at`; **rendered in `RESTAURANT_TIME_ZONE` — never in the reader's zone, and never in the server process's.** A restaurant is a physical place in one IANA zone: a guest abroad reading last week's bill wants the times the meal happened at, and a kitchen ticket must agree with the counter's bill to the minute on every screen in the building. One type performs that conversion — `WebApplication/Time/RestaurantTime` — and nothing else may call `ToLocalTime()`, whose answer is the container's `TZ` (unset, therefore UTC). Its formats are explicit and invariant-cultured for the same reason `MoneyText` refuses `"C"`; the one real choice, 12- versus 24-hour, is `RESTAURANT_CLOCK_FORMAT` (§13) rather than an accident of the base image. Money `numeric(10,2)`. The DDL below ships verbatim as `src/MyRestaurant.DataAccess/Migrations/0001_initial_schema.sql` (plus `CREATE EXTENSION IF NOT EXISTS citext;` at top).
 
 ### 8.2 Tables (DDL)
 
@@ -5115,6 +5132,33 @@ Two things live here. **Your details** — display name, email address, phone nu
 
 Address management (§4.6's free-text-labelled postal addresses) is **not surfaced**: nothing in version 1 consumes an address, and a form for data no reader exists for would be scaffolding pretending to be a feature. The table and columns stay as specified.
 
+### 11.7 The wall clock (every page, both layouts)
+
+§8.1's rule — every instant in `RESTAURANT_TIME_ZONE`, for every reader — is correct and invisible. "Sent 3:04 PM" tells someone on another continent nothing unless the page says whose three o'clock that is. A footer therefore appears on **every** page in both layouts (`MainLayout` and, deliberately, `DisplayLayout`), reading `Restaurant time · Sun 26 Jul 2026, 3:04:05 PM · New York`, ticking to the second. It is the restaurant's own clock, and it is as useful to the counter and the kitchen as it is to a remote guest.
+
+**Server-anchored, client-driven.** There is **no server-side timer**: a Blazor timer would tick only on the interactive surfaces (half of these pages are static SSR), and would cost one render plus one circuit message per second per open tab — on phones, indefinitely. Instead `RestaurantClockFooter` renders one anchor and never re-renders (`ShouldRender() => false`; the script owns that text node thereafter):
+
+| Attribute | Meaning |
+|---|---|
+| `data-epoch-milliseconds` | the server's instant, UTC |
+| `data-utc-offset-minutes` | the zone's offset at that instant |
+| `data-next-transition-epoch-milliseconds` | when that offset next changes, if within ~800 days |
+| `data-next-utc-offset-minutes` | the offset that takes over then |
+| `data-twelve-hour-clock` | the §13 format decision |
+| `data-snapshot-url` | where to re-anchor |
+
+`wwwroot/js/clock.js` — a classic script alongside `passkey.js` and `display.js`, so it works on static SSR too — advances that anchor locally and formats it by reproducing `RestaurantTime`'s invariant patterns character for character. `Intl` is **forbidden here**: it formats in the *reader's* locale and zone, the exact thing §8.1 rules out. Precomputing the next transition is what lets a page left open across the first Sunday in November stop rendering EDT without a reload.
+
+**Handheld budget** (most readers are on a phone; the browser and the OS will both try to save battery, and this must not fight them):
+
+1. **Nothing runs while hidden.** `visibilitychange` clears the timer rather than letting it fire and be ignored. A backgrounded tab costs zero.
+2. **One wake per visible second.** `setTimeout` aimed at the coming second boundary, not `setInterval` (drift accumulates into double-fires) and never `requestAnimationFrame` (sixty wakes for one visible change).
+3. **No DOM write unless the text changed**, guarded by one string comparison; `tabular-nums` and `contain: content` keep the tick from reflowing the page around it.
+
+**Which clock is believed.** Elapsed time comes from `performance.now()` — monotonic, so an NTP step cannot move it. But it stops advancing during device suspend on several platforms, so a phone that spends an hour in a pocket would wake an hour behind; `Date.now()` is therefore read alongside it every tick, and a divergence past two seconds is treated as the signal it is (prefer the wall clock, which alone saw the suspend, and re-anchor).
+
+**`GET /restaurant-clock`** returns the same anchor as JSON: anonymous, `no-store`, and exempt from the §3.5 obligations pipeline (it carries no user action, and the obligation pages render this footer too). The page markup is the anchor for a short-lived page; the endpoint exists for the ones that are not — a `/display/{table}` tablet holds one URL for days on a cheap oscillator, and a guest's circuit lasts a meal. It is asked: every ten minutes while visible, on returning from a minute or more hidden, and on detected clock divergence. Never while hidden, never more than once a minute, and a failed request is ignored rather than allowed to blank the clock — half the round trip is subtracted as the usual symmetric-latency estimate.
+
 ## 12. Observability
 
 OpenTelemetry traces (ASP.NET Core + Npgsql instrumentation), logs, and metrics via OTLP (`OTEL_EXPORTER_OTLP_ENDPOINT` etc.; `run.sh` translates a legacy `UPTRACE_DSN` if present — any OTLP collector works). Custom meters (full snake_case):
@@ -5128,7 +5172,8 @@ OpenTelemetry traces (ASP.NET Core + Npgsql instrumentation), logs, and metrics 
 | `RESTAURANT_NAME` | `My Restaurant` | display + TOTP issuer |
 | `RESTAURANT_PUBLIC_ORIGIN` | `https://localhost:8443` (dev) | canonical origin: QR URLs, RP-ID fallback; production = stable named-tunnel domain (so passkeys persist) |
 | `RESTAURANT_TRUSTED_ORIGIN_PATTERNS` | `https://*.trycloudflare.com` | extra wildcard origins allowed as the WebAuthn RP besides the origin above + loopback (§3.3, ADR-0005); comma/space/newline separated, each `scheme://host`, https, optional single leading `*.`, no path/port |
-| `RESTAURANT_TIME_ZONE` | `America/New_York` | rendering only |
+| `RESTAURANT_TIME_ZONE` | `America/New_York` | rendering only — **all** instants, for **all** readers (§8.1, §11.7) |
+| `RESTAURANT_CLOCK_FORMAT` | `12-hour` | `12-hour` (3:04 PM) or `24-hour` (15:04); display only. Accepts `12`/`12h`/`12 hour` and the `24` equivalents; anything else fails startup |
 | `RESTAURANT_CURRENCY_CODE` | `USD` | display only |
 | `RESTAURANT_DATABASE_CONNECTION_STRING` | compose-internal default | Npgsql string |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | dev defaults | consumed by the postgres container; **must** be overridden in production |
@@ -5201,6 +5246,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 - **M2 — identity:** Dapper Identity stores, Argon2id hasher (+floor guard, semaphore), passkeys, TOTP + recovery codes, lockout, obligations pipeline, `/setup` bootstrap, roles/policies, security events, admin user management + reset, and the person's own profile page (§11.6: display name, contact details, voluntary password change). The profile page belongs to this milestone but was not listed here originally and landed after M3 — see F-35.
 - **M3 — tables & joining:** table CRUD + join secrets + rotation, display pairing + device auth + `/display`, token generate/validate + metrics, grant cookie, join flow, sittings + membership.
 - **M4 — ordering:** living order + locking protocol, staging UI, batch send + validation, staff edits, fulfillment/reversal, projections + fold + equivalence tests, kitchen surface + alerts + reminder service.
+- **M4 close-out — restaurant time:** the §8.1 rendering rule actually honoured on every surface (`RestaurantTime`, replacing eighteen `ToLocalTime()` call sites), the §13 clock-format decision, and the §11.7 footer clock. Scheduled here rather than inside a feature slice because a half-applied time convention is worse than a uniformly wrong one, and ahead of M5 because a wrong time on a settled bill is a different order of problem from a wrong time on a roster — see F-36.
 - **M5 — counter & administration:** bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu management + events, event explorer, hide/unhide, post-close corrections.
 - **M6 — hardening & production:** full E2E suite (§16.3), backups + restore drill, cloudflared production profile + tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, CI pipeline.
 
@@ -5218,6 +5264,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 | F-10 / F-10b / F-11 | Post-close admin corrective events beside immutable settled total; deactivate-not-delete; guest as actor_role not stored role | §5.3, §6.7, §3.7, §8.2 |
 | F-13 / F-14 / F-15 | No Redis v1 (broadcaster interface); compose canonical / Aspire optional; OTLP-generic (`UPTRACE_DSN` translated in run.sh only) | §9, §12, §14 · ADR-0006, ADR-0004 |
 | F-16 / F-17 | Backups pg_dump -Fc + retention + keys volume; run.sh defined | §15, §14.4 |
+| F-36 | All instants rendered in `RESTAURANT_TIME_ZONE` for every reader, through one type; `RESTAURANT_CLOCK_FORMAT` settles the 12-vs-24 question; ticking footer clock states the convention on every page | §8.1, §11.7, §13, §19 |
 | F-18 / F-19 | Menu item event log; lockout 5/5min, username 3–64 citext, currency/timezone defaults | §7, §3.1, §13, §8.2 |
 | F-20 | Hand-written fakes; NSubstitute ok; no Moq | §16.1 |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
@@ -5417,6 +5464,193 @@ self-registration on the join path (§11.1) is still outstanding from M2: an ano
    - `UPDATE table_sitting SET closed_at = now() WHERE closed_at IS NULL;` then refresh the table page →
      the surface flips to **This sitting has been settled**, the picker and Send are gone, and the bill
      renders read-only.
+
+################################################################################
+# FILE: docs/_append/BUILD_PROGRESS-m4-slice-3.md
+################################################################################
+
+--- METADATA ---
+  File name:             BUILD_PROGRESS-m4-slice-3.md
+  Relative path:         docs/_append/BUILD_PROGRESS-m4-slice-3.md
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/_append/BUILD_PROGRESS-m4-slice-3.md
+  Size:                  11.4 KiB (11677 bytes)
+  Last modified:         2026-07-26 20:42:54.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25951168
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               730ae64e0072d0fca50d89a48469494801309ed02ed8c0d98492151cbfdf55fe
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
+
+--- CONTENT ---
+### M4 close-out — restaurant time everywhere, and a clock that says so (landed)
+
+Two things landed together because they are one decision. The first is a build fix: `TableOrderSurface.razor`
+called `LinesFor(...)` in its render tree and the method was never written — `_partyLines` was loaded in
+`LoadAsync` and then read by nothing, so the sitting-wide line query had no consumer and the web project did
+not compile. The second is **F-36**, the open row in `DOCUMENTATION_REVIEW.md`: S§8.1 has always said instants
+are "stored `timestamptz` UTC; rendered in `RESTAURANT_TIME_ZONE`", and no code did that. Eighteen call sites
+across ten Razor files called `.ToLocalTime()`, which reads the **server process's** zone;
+`RestaurantOptions.ResolveTimeZone()` existed with no caller; the runtime container sets no `TZ`. A deployed
+instance rendered UTC and said nothing about it.
+
+---
+
+#### The ruling, and why it is stronger than the specification was
+
+The owner's ruling settles a question S§8.1 had left implicit: **the reader's zone is irrelevant.** Not "prefer
+the restaurant's zone" — *always* the restaurant's, for every viewer, wherever they are. A restaurant is a
+physical place in one IANA zone. A guest in New York opening the history of a meal they ate in Tokyo wants the
+times the meal actually happened at, not the times it would have been on their own wristwatch; and inside the
+building, a kitchen ticket, the counter's bill, and the tablet on table four must agree to the minute or the
+staff cannot talk to each other. Rendering in the viewer's zone would make all four screens disagree about the
+same event, which is the one thing an append-only history is supposed to prevent (ADR-0002).
+
+So S§8.1 is now normative about it rather than merely descriptive, R§8 states the rule and its reason, and one
+type is the only thing allowed to perform the conversion.
+
+#### `RestaurantTime` — one type, invariant formats, and no `ToLocalTime()` anywhere
+
+`src/MyRestaurant.WebApplication/Time/RestaurantTime.cs` is a singleton over the configured
+`TimeZoneInfo`, exposing `Time`, `TimeWithSeconds`, `Date`, `DateAndTime`, `DateAndTimeWithSeconds`,
+`MachineReadable`, and `Snapshot`. Every call site moved onto it; the only surviving mention of `ToLocalTime`
+in the tree is the doc comment forbidding it.
+
+The formats are explicit and `InvariantCulture`, for exactly the reason `MoneyText` already documents for
+`"C"`: `ToString("t")` takes the 12-versus-24 choice, the separator, and the month names from the *server's*
+culture, which in this deployment is whatever locale the base image happens to carry. That is a decision made
+by nobody, and it changes silently when the image is rebuilt. F-36's row named this entanglement and left it
+open; it is now settled as configuration — `RESTAURANT_CLOCK_FORMAT`, `12-hour` (default) or `24-hour`,
+validated at startup so a typo fails the process instead of quietly showing the wrong clock on every screen in
+the building. It is deliberately **not** a `required` property, so every existing `RestaurantOptions`
+construction (including the wiring tests') keeps compiling on the documented default.
+
+`Snapshot` additionally computes **when the offset next changes** — a day-by-day walk to the bracketing day,
+then a bisection to the second, memoized until the transition it found has passed. That is what lets a page
+left open across the first Sunday in November stop rendering EDT without anybody reloading it.
+
+#### §11.7 — a footer clock, because the convention is invisible until stated
+
+"Sent 3:04 PM" tells a reader on another continent nothing at all unless the page says whose three o'clock that
+is. A new `RestaurantClockFooter` therefore appears on **every** page in **both** layouts — including
+`DisplayLayout`, whose whole existing rationale is that it carries no chrome, because a clock is the one piece
+of chrome that means something on a screen a whole table looks at. `DisplayLayout`'s shell became a column with
+the card centred in a `.display-main`, so the footer sits below it rather than beside it.
+
+**There is no server-side timer, on purpose.** A Blazor timer would tick only on the interactive surfaces —
+half the pages here are static SSR — and would cost one render plus one circuit message per second per open
+tab, indefinitely, on phones. Instead the component renders one anchor and never renders again
+(`ShouldRender() => false`, since the script owns that text node afterwards and a framework re-render would
+overwrite a correct ticking reading with a stale one). `wwwroot/js/clock.js` advances it: a classic script
+alongside `passkey.js` and `display.js`, so it works on the static-SSR account pages too, and a no-op on any
+document without the footer.
+
+`Intl` is forbidden in that script and the comment says why: it formats in the **reader's** locale and zone,
+the exact thing the ruling rules out. The invariant abbreviated day and month names are hardcoded so the
+ticking text and the server-painted text it takes over from are byte-identical — otherwise the handover at
+page load is visible as a flicker.
+
+**The handheld budget.** Most readers are on a phone, and the browser and OS will both try to save battery;
+this must cooperate rather than fight:
+
+1. **Nothing runs while hidden.** `visibilitychange` *clears* the timer rather than letting it fire and be
+   ignored. A backgrounded tab costs zero.
+2. **One wake per visible second.** `setTimeout` aimed at the coming second boundary — not `setInterval`
+   (drift accumulates into double-fires) and never `requestAnimationFrame` (sixty wakes for one visible
+   change).
+3. **No DOM write unless the text changed**, guarded by one string comparison. `tabular-nums` stops the digits
+   changing width as they tick, and `contain: content` on the footer keeps the repaint from inviting a layout
+   pass over the page around it.
+
+**Which clock is believed.** Elapsed time comes from `performance.now()` — monotonic, so an NTP step cannot
+move it, which `Date.now()` alone cannot promise. But `performance.now()` stops advancing during device
+suspend on several platforms, so a phone that spends an hour in a pocket would wake an hour behind. Both are
+therefore read every tick and their divergence is treated as the signal it is: past two seconds, prefer the
+wall clock (only it saw the suspend) and re-anchor from the server. A wall clock stepped *backwards* under us
+prefers the monotonic reading and re-anchors anyway.
+
+#### `GET /restaurant-clock`
+
+The markup anchor is the whole story for a short-lived page. Two surfaces here are not short-lived: a
+`/display/{table}` tablet holds one URL for days on a cheap oscillator, and a guest's circuit lasts a meal.
+Rather than reload either, the script re-asks — every ten minutes while visible, on returning from a minute or
+more hidden, and on detected divergence. Never while hidden, never more than once a minute, and a failed
+request is *ignored* rather than allowed to blank the clock: a wall clock a second off beats a blank one. Half
+the measured round trip is subtracted as the usual symmetric-latency estimate; the initial markup anchor uses
+Navigation Timing's `responseStart` for the same reason, since anchoring at script-run time would leave the
+clock permanently a fraction of a second slow.
+
+The endpoint is anonymous (`credentials: 'omit'` from the script), `no-store`, and **added to
+`ObligationsEnforcement.IsExemptPath`** alongside `/healthz`. That last one is not incidental: the §3.5
+obligation pages render this footer too, and a redirect to HTML would leave the one page a locked-out user is
+allowed to see with a dead clock.
+
+#### `LinesFor` — the build fix, done as the read it should always have been
+
+Rather than reinstate a `_partyLines.Where(...)` scan per bill entry, `LoadAsync` now groups the one
+sitting-wide read into `_partyLinesByOrder` and `LinesFor` is a dictionary lookup. §11.1 renders a row per
+person at the table, so the alternative — a query inside that loop — would turn a six-person table into six
+extra round trips on every §9 notification. An order with nothing on it is absent from the grouping rather
+than present and empty, so the empty list is the ordinary answer and not an error.
+
+---
+
+#### Files
+
+**New**
+
+- `src/MyRestaurant.WebApplication/Time/RestaurantTime.cs`
+- `src/MyRestaurant.WebApplication/Time/RestaurantClockEndpoints.cs`
+- `src/MyRestaurant.WebApplication/Components/Layout/RestaurantClockFooter.razor`
+- `src/MyRestaurant.WebApplication/wwwroot/js/clock.js`
+- `tests/MyRestaurant.WebApplication.Tests/Time/RestaurantTimeTests.cs`
+
+**Changed**
+
+- `Configuration/RestaurantOptions.cs` — `ClockFormat`, `UsesTwelveHourClock`, validation
+- `Program.cs` — `RestaurantTime` singleton, `MapRestaurantClock()`
+- `Identity/ObligationsEnforcement.cs` — exempt `/restaurant-clock`
+- `Components/_Imports.razor`, `Components/App.razor`, both layouts, `wwwroot/app.css`
+- Ten Razor pages, eighteen call sites: `Account/Pages/Passkeys`, `Administration/{AdministrationHome,
+  AdministrationTables, ManagePerson, ManageTable, TableDisplays, TableJoinCode}`, `Setup`,
+  `Table/{TableArea, TableOrderSurface}`
+- `tests/.../RestaurantOptionsTests.cs`, `tests/.../Identity/ObligationsEnforcementTests.cs`
+- `.env.example`, `compose.yaml`, `run.sh`
+- `docs/REQUIREMENTS.md` (R§8), `docs/TECHNICAL_SPECIFICATION.md` (S§8.1, new S§11.7, S§13, S§19,
+  Appendix A), `docs/DOCUMENTATION_REVIEW.md` (F-36 closed)
+
+**Deleted** — none.
+
+---
+
+#### Verification
+
+1. `dotnet build` — the `CS0103: LinesFor` error is gone; the web project compiles.
+2. `dotnet test` — `RestaurantTimeTests` covers: the same instant rendering differently for a New York and a
+   Tokyo restaurant; the date rolling forward when the restaurant zone has passed midnight and the reader's
+   has not; a 45-minute offset (`Asia/Kathmandu`) not rounded to the hour; midnight as `12:00 AM` not
+   `0:00 AM`; both clock formats; **format stability under `de-DE` and `ja-JP` ambient cultures**, which is
+   the property F-36 was really about; the November 2026 transition found at the second, cross-checked
+   against `TimeZoneInfo` on both sides of it; a no-DST zone reporting no transition; and the memo expiring
+   after the transition it named.
+3. `grep -rn "ToLocalTime" --include=*.razor --include=*.cs src/` → only the doc comment forbidding it.
+4. Manual, on a quick tunnel with a phone:
+   - Set `RESTAURANT_TIME_ZONE=Asia/Tokyo` and reload. Every timestamp on `/administration/tables`,
+     `/account/passkeys`, and the table surface moves together; the footer reads **Tokyo**.
+   - Set `RESTAURANT_CLOCK_FORMAT=24-hour`. The footer and every page timestamp switch together — no page
+     is left on the other convention.
+   - Set `RESTAURANT_CLOCK_FORMAT=military`. The process refuses to start and names the variable.
+   - Watch the footer tick for a minute. It advances once a second and does not visibly reflow the page.
+   - Background the tab for two minutes, then return: the reading is correct immediately, not two minutes
+     behind and catching up.
+   - Lock the phone for ten minutes, unlock: same.
+   - `curl -s http://127.0.0.1:8080/restaurant-clock` returns the snapshot JSON with
+     `cache-control: no-store`.
+   - Reach `/account/change-password-required` with an outstanding obligation: the footer clock still ticks
+     (the exemption), and the page is otherwise unreachable as before.
+5. Manual, the display: open `/display/{table}` on a tablet. The card is still centred; the clock sits under
+   it at display type size; the rotating QR and the staleness curtain behave exactly as before.
 
 ################################################################################
 # FILE: docs/adr/0001-single-application-with-areas.md
@@ -6109,15 +6343,15 @@ Use **DbUp** (MIT) with plain `.sql` scripts:
   File name:             run.sh
   Relative path:         run.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/run.sh
-  Size:                  15.5 KiB (15846 bytes)
-  Last modified:         2026-07-23 01:23:14.000000000 -0400
-  Permissions:           -rwxr-xr-x
+  Size:                  15.5 KiB (15915 bytes)
+  Last modified:         2026-07-26 20:40:23.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25103619
+  Inode:                 25951189
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               91286c1579d52dec053aa9cfad127bd11e4cf2910fb2fc92c3f27701ea899d3e
-  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+  SHA-256:               541d1dd2fa64d037f55fdcdcaad3df99e165e96cac182d7e468a5157903475b2
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 #!/usr/bin/env bash
@@ -6318,6 +6552,7 @@ wait_for_postgres
 export ASPNETCORE_ENVIRONMENT="Development"
 export RESTAURANT_PUBLIC_ORIGIN="${RESTAURANT_PUBLIC_ORIGIN:-https://localhost:8443}"
 export RESTAURANT_TIME_ZONE="${RESTAURANT_TIME_ZONE:-America/New_York}"
+export RESTAURANT_CLOCK_FORMAT="${RESTAURANT_CLOCK_FORMAT:-12-hour}"
 export RESTAURANT_CURRENCY_CODE="${RESTAURANT_CURRENCY_CODE:-USD}"
 export RESTAURANT_DATABASE_CONNECTION_STRING="${RESTAURANT_DATABASE_CONNECTION_STRING:-Host=localhost;Port=5432;Database=${POSTGRES_DB:-myrestaurant};Username=${POSTGRES_USER:-myrestaurant};Password=${POSTGRES_PASSWORD:-myrestaurant}}"
 export DATA_PROTECTION_KEYS_DIRECTORY="${DATA_PROTECTION_KEYS_DIRECTORY:-$PWD/.dataprotection}"
@@ -17286,15 +17521,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             Passkeys.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/Passkeys.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Account/Pages/Passkeys.razor
-  Size:                  9.1 KiB (9339 bytes)
-  Last modified:         2026-07-20 16:43:07.000000000 -0400
+  Size:                  9.1 KiB (9360 bytes)
+  Last modified:         2026-07-26 20:21:36.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21956031
+  Inode:                 25951192
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               c87b5cf479058d22838a9a779fc56658d23c6f745f515981b91ce159fed645e2
-  Last git commit:       6f20423 2026-07-21 00:34:59 -0400 add claude response
+  SHA-256:               bfd86e14f5c3b6c624abbd13ba0a66087440f9855bf405781b06a2bf476f8133
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @page "/account/passkeys"
@@ -17306,6 +17541,7 @@ public static class AuthorizationServiceCollectionExtensions
 @inject SignInManager<Person> SignInManager
 @inject ISecurityEventLog SecurityEventLog
 @inject NavigationManager Navigation
+@inject RestaurantTime RestaurantClock
 
 @* The voluntary passkey-management page (TECHNICAL_SPECIFICATION §3.3): any signed-in user can add a
    passkey, rename it, or remove it. Static SSR, like every account page — registering a passkey writes
@@ -17349,7 +17585,7 @@ public static class AuthorizationServiceCollectionExtensions
                 <li class="passkey-row">
                     <div class="passkey-meta">
                         <span class="passkey-name">@(string.IsNullOrWhiteSpace(passkey.Name) ? "Unnamed passkey" : passkey.Name)</span>
-                        <span class="passkey-date">Added @passkey.CreatedAt.ToLocalTime().ToString("d MMM yyyy")</span>
+                        <span class="passkey-date">Added @RestaurantClock.Date(passkey.CreatedAt)</span>
                     </div>
                     <form class="passkey-actions" @formname="@($"passkey-{credentialId}")" method="post" @onsubmit="UpdatePasskeyAsync">
                         <AntiforgeryToken />
@@ -17446,7 +17682,7 @@ public static class AuthorizationServiceCollectionExtensions
 
         // The authenticator does not supply a name; give it a readable default the user can change.
         UserPasskeyInfo passkey = attestation.Passkey;
-        passkey.Name = $"Passkey added {DateTimeOffset.UtcNow.ToLocalTime():d MMM yyyy}";
+        passkey.Name = $"Passkey added {RestaurantClock.Date(DateTimeOffset.UtcNow)}";
 
         IdentityResult added = await UserManager.AddOrUpdatePasskeyAsync(user, passkey);
         if (!added.Succeeded)
@@ -18433,15 +18669,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             App.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/App.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/App.razor
-  Size:                  1.9 KiB (1958 bytes)
-  Last modified:         2026-07-26 06:22:10.000000000 -0400
+  Size:                  2.3 KiB (2307 bytes)
+  Last modified:         2026-07-26 20:20:04.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25563945
+  Inode:                 25951193
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               5870ada480854e549805d56d3cf8324eba2cc09fd89cfb04e875795fd8cdbab8
-  Last git commit:       3694369 2026-07-26 07:22:00 -0400 add changes
+  SHA-256:               0c7bf69e8496569b6d6dc3896fe68167157e629b3c4c52fb0695a666652b027c
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @* The root HTML document. Interactive-server rendering is the default for the whole app (ADR-0004),
@@ -18465,6 +18701,10 @@ public static class AuthorizationServiceCollectionExtensions
        the same reason: a classic script, registered once. It is inert on every page that does not
        contain the display surface, so it costs one element lookup a second and nothing else. *@
     <script src="js/display.js" defer></script>
+    @* The footer wall clock (§11.7). Same shape again — a classic script rather than anything that
+       needs a circuit, because the clock must tick on the static-SSR account pages too, and because a
+       per-second server round trip is the last thing a phone on a table for two hours needs. *@
+    <script src="js/clock.js" defer></script>
     <HeadOutlet @rendermode="RenderModeForPage" />
 </head>
 
@@ -18495,15 +18735,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             DisplayLayout.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Layout/DisplayLayout.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Layout/DisplayLayout.razor
-  Size:                  1.8 KiB (1891 bytes)
-  Last modified:         2026-07-26 06:18:33.000000000 -0400
+  Size:                  2.6 KiB (2706 bytes)
+  Last modified:         2026-07-26 20:20:16.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25563954
+  Inode:                 25951194
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               177a98f2d4f0fbedbe00cc38c9df247b2da33c8afb778c7fc90fb6032367b3a8
-  Last git commit:       3694369 2026-07-26 07:22:00 -0400 add changes
+  SHA-256:               7e54b47904868930cbaf86af4e50c47455fbb64cd5e0018d3d351ae19d7cee2c
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @inherits LayoutComponentBase
@@ -18516,20 +18756,44 @@ public static class AuthorizationServiceCollectionExtensions
 
    Full-bleed and centred, with the type scaled off the viewport so the same markup is legible on a 7"
    tablet and on a spare monitor. Styles are inline for the same reason every other page here keeps them
-   inline: App.razor links the static stylesheet, so component CSS isolation is not active. *@
+   inline: App.razor links the static stylesheet, so component CSS isolation is not active.
+
+   It does carry the wall clock (§11.7), which is the one piece of shared chrome that means something
+   here: a display is the screen a whole table looks at, and it is the natural place for the restaurant's
+   own time to live. The card therefore centres inside a column rather than inside the shell itself. *@
 
 <div class="display-shell">
-    @Body
+    <div class="display-main">
+        @Body
+    </div>
+
+    <RestaurantClockFooter />
 </div>
 
 <style>
     .display-shell {
         min-height: 100dvh;
         display: flex;
+        flex-direction: column;
+        background: var(--surface, #f7f8fa);
+    }
+
+    .display-main {
+        flex: 1 1 auto;
+        display: flex;
         align-items: center;
         justify-content: center;
         padding: clamp(0.75rem, 2.5vw, 2rem);
-        background: var(--surface, #f7f8fa);
+    }
+
+    /* Bigger than the app footer's: this one is read from across a table, not from a hand. */
+    .display-shell .app-footer {
+        background: transparent;
+        border-top: 1px solid var(--hairline, #e2e6ec);
+    }
+
+    .display-shell .restaurant-clock {
+        font-size: clamp(0.85rem, 2.2vw, 1.05rem);
     }
 
     .display-card {
@@ -18573,15 +18837,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             MainLayout.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
-  Size:                  2.0 KiB (2064 bytes)
-  Last modified:         2026-07-26 08:56:12.000000000 -0400
+  Size:                  2.2 KiB (2298 bytes)
+  Last modified:         2026-07-26 20:20:04.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25661718
+  Inode:                 25951195
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               546a459ee2f8d4b15ef920d5743db93de714f1db949161ef062a054c2f7d7053
-  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
+  SHA-256:               bdd113a8654d48de8808187ad12eca332873fc3f1c528fd2272c9a5a0ab5e05c
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @inherits LayoutComponentBase
@@ -18622,7 +18886,117 @@ public static class AuthorizationServiceCollectionExtensions
     <main class="app-main">
         @Body
     </main>
+
+    @* Every instant on every surface is rendered in RESTAURANT_TIME_ZONE, never the reader's own
+       (§8.1). This says so, and keeps saying what time it is there. On every page, in both layouts. *@
+    <RestaurantClockFooter />
 </div>
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Components/Layout/RestaurantClockFooter.razor
+################################################################################
+
+--- METADATA ---
+  File name:             RestaurantClockFooter.razor
+  Relative path:         src/MyRestaurant.WebApplication/Components/Layout/RestaurantClockFooter.razor
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Layout/RestaurantClockFooter.razor
+  Size:                  4.7 KiB (4809 bytes)
+  Last modified:         2026-07-26 20:18:35.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25951173
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               f0a10f40057d09183e67390707a38dcbff5025702ccd8eba85b0051b263fdf6d
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
+
+--- CONTENT ---
+@using System.Globalization
+@using MyRestaurant.Domain.Time
+@inject IClock Clock
+@inject RestaurantTime RestaurantClock
+
+@* The restaurant wall clock (TECHNICAL_SPECIFICATION §11.7). On every page, in both layouts.
+
+   Every instant this application shows is rendered in RESTAURANT_TIME_ZONE and never in the reader's
+   own zone (§8.1) — which is the right rule and an invisible one. A guest reading "sent 3:04 PM" from
+   another continent has no way to know whose three o'clock that is unless the page says so, standing
+   somewhere they will look. This footer is that statement, and it earns its place by also being useful
+   to the people in the building: one authoritative clock, the same on the counter's screen, the
+   kitchen's, and the tablet on table four.
+
+   TICKING WITHOUT A TIMER. There is deliberately no server-side timer here. A Blazor timer would tick
+   only on interactive pages (half the surfaces here are static SSR), would cost one render and one
+   circuit message per second per open tab, and would keep a phone's radio awake to do it. Instead the
+   component renders one anchor — the instant, the zone offset that applies to it, and when that offset
+   next changes — and js/clock.js advances it locally against a monotonic clock, pausing entirely while
+   the tab is hidden. The server is asked again on a page load, and thereafter only rarely (§11.7).
+
+   ShouldRender is pinned false for the same reason: once the anchor is in the DOM the script owns that
+   text node, and a re-render from the framework would fight it. Nothing about this component depends on
+   state that changes, so there is nothing to lose by never rendering twice. *@
+
+<footer class="app-footer">
+    <p class="restaurant-clock"
+       id="@ElementId"
+       data-epoch-milliseconds="@_epochMilliseconds"
+       data-utc-offset-minutes="@_utcOffsetMinutes"
+       data-next-transition-epoch-milliseconds="@_nextTransitionEpochMilliseconds"
+       data-next-utc-offset-minutes="@_nextUtcOffsetMinutes"
+       data-twelve-hour-clock="@_twelveHourClock"
+       data-snapshot-url="@RestaurantClockRoutes.Snapshot">
+        <span class="restaurant-clock-label">Restaurant time</span>
+        <time class="restaurant-clock-reading"
+              data-restaurant-clock-reading="true"
+              datetime="@_machineReadable">@_reading</time>
+        <span class="restaurant-clock-zone" title="@_zoneIdentifier">@_zoneLabel</span>
+    </p>
+</footer>
+
+@code {
+    /// <summary>The element js/clock.js looks for. Exactly one per document.</summary>
+    public const string ElementId = "restaurant-clock";
+
+    private string _epochMilliseconds = string.Empty;
+    private string _utcOffsetMinutes = string.Empty;
+    private string _nextTransitionEpochMilliseconds = string.Empty;
+    private string _nextUtcOffsetMinutes = string.Empty;
+    private string _twelveHourClock = "true";
+    private string _machineReadable = string.Empty;
+    private string _reading = string.Empty;
+    private string _zoneLabel = string.Empty;
+    private string _zoneIdentifier = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        // One instant for the whole component, so the rendered text and the anchor the script starts
+        // from cannot disagree by the microseconds between two reads of the clock.
+        DateTimeOffset now = Clock.UtcNow;
+        RestaurantClockSnapshot snapshot = RestaurantClock.Snapshot(now);
+
+        // Every attribute is formatted invariantly rather than left to the ambient culture: these are
+        // numbers a script parses, not text a person reads, and a culture that groups digits or writes
+        // a different minus sign would hand js/clock.js something it cannot parse.
+        _epochMilliseconds = snapshot.EpochMilliseconds.ToString(CultureInfo.InvariantCulture);
+        _utcOffsetMinutes = snapshot.UtcOffsetMinutes.ToString(CultureInfo.InvariantCulture);
+        _nextTransitionEpochMilliseconds =
+            snapshot.NextTransitionEpochMilliseconds?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        _nextUtcOffsetMinutes =
+            snapshot.NextUtcOffsetMinutes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        _twelveHourClock = snapshot.UsesTwelveHourClock ? "true" : "false";
+
+        _reading = RestaurantClock.DateAndTimeWithSeconds(now);
+        _machineReadable = RestaurantClock.MachineReadable(now);
+        _zoneLabel = snapshot.ZoneLabel;
+        _zoneIdentifier = snapshot.ZoneIdentifier;
+    }
+
+    /// <summary>
+    /// Never re-render. The script owns this subtree after the first paint; a framework re-render would
+    /// overwrite a correct ticking reading with a stale one and reset the script's anchor for nothing.
+    /// </summary>
+    protected override bool ShouldRender() => false;
+}
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor
@@ -18632,15 +19006,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             AdministrationHome.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor
-  Size:                  8.4 KiB (8633 bytes)
-  Last modified:         2026-07-22 20:31:04.000000000 -0400
+  Size:                  8.5 KiB (8671 bytes)
+  Last modified:         2026-07-26 20:21:36.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 23931057
+  Inode:                 25951198
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               48c009f8bfbad6006a884273ec537365d150bfab255c68ac6a1aee68328715cd
-  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+  SHA-256:               9a0de0a88dfc6c37382e989f5b9dcc8b11d9fff19d3a1a18705b0f7d8479f1e6
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @page "/administration"
@@ -18649,6 +19023,7 @@ public static class AuthorizationServiceCollectionExtensions
 @using MyRestaurant.Domain.Time
 @inject IPersonDirectory People
 @inject IClock Clock
+@inject RestaurantTime RestaurantClock
 
 @* The administration landing (TECHNICAL_SPECIFICATION §3.6/§3.7 — `area.administration`: the
    administrator role). It lists every account with its roles and status, links each to its management
@@ -18745,7 +19120,7 @@ public static class AuthorizationServiceCollectionExtensions
                                 }
                                 else if (IsLockedOut(person))
                                 {
-                                    <span class="chip chip-warn">Locked until @(person.LockoutEndAt!.Value.ToLocalTime().ToString("g"))</span>
+                                    <span class="chip chip-warn">Locked until @RestaurantClock.DateAndTime(person.LockoutEndAt!.Value)</span>
                                 }
                                 else
                                 {
@@ -18899,15 +19274,15 @@ public static class AuthorizationServiceCollectionExtensions
   File name:             AdministrationTables.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationTables.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationTables.razor
-  Size:                  6.2 KiB (6362 bytes)
-  Last modified:         2026-07-22 20:26:52.000000000 -0400
+  Size:                  6.3 KiB (6403 bytes)
+  Last modified:         2026-07-26 20:21:36.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 23931058
+  Inode:                 25951199
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               7cba3a627bd3e462952ceb9c6a3d7b5d94f28ce6b9df6fafd1c61e51fd3c24e5
-  Last git commit:       5a0f5c5 2026-07-22 21:00:20 -0400 add claude response
+  SHA-256:               fc05aea32d208628ac916d4ed759bba9395823a98f2f0463df4b14b0725572db
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @page "/administration/tables"
@@ -18915,6 +19290,7 @@ public static class AuthorizationServiceCollectionExtensions
 @attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
 @using MyRestaurant.DataAccess.Tables
 @inject ITableDirectory Tables
+@inject RestaurantTime RestaurantClock
 
 @* The administration tables list (TECHNICAL_SPECIFICATION §4.1, §11.4 — `area.administration`). It
    lists every table with its status and when its join secret was last rotated, links each to its
@@ -18982,14 +19358,14 @@ public static class AuthorizationServiceCollectionExtensions
                             <td>
                                 @if (table.JoinSecretRotatedAt is { } rotatedAt)
                                 {
-                                    <span>@rotatedAt.ToLocalTime().ToString("g")</span>
+                                    <span>@RestaurantClock.DateAndTime(rotatedAt)</span>
                                 }
                                 else
                                 {
                                     <span class="muted">Never</span>
                                 }
                             </td>
-                            <td>@table.CreatedAt.ToLocalTime().ToString("g")</td>
+                            <td>@RestaurantClock.DateAndTime(table.CreatedAt)</td>
                             <td class="admin-row-actions">
                                 <a href="@($"/administration/tables/{table.TableIdentifier}")">Manage</a>
                             </td>
@@ -19499,15 +19875,15 @@ else
   File name:             ManagePerson.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/ManagePerson.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/ManagePerson.razor
-  Size:                  18.4 KiB (18822 bytes)
-  Last modified:         2026-07-22 09:29:44.000000000 -0400
+  Size:                  18.4 KiB (18860 bytes)
+  Last modified:         2026-07-26 20:21:36.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 23579608
+  Inode:                 25951200
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               e72215d3d01baadd01c25d31dc29de9c139733697c2ea4bd291dd9c15185ce9b
-  Last git commit:       2477e46 2026-07-22 09:51:13 -0400 add claude response
+  SHA-256:               24d6d3451bb290f61e4be683c374c84624a52262d46928cf19552df7bb0546df
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @page "/administration/people/{PersonId:guid}"
@@ -19521,6 +19897,7 @@ else
 @inject IPasswordHasher<Person> PasswordHasher
 @inject IClock Clock
 @inject NavigationManager Navigation
+@inject RestaurantTime RestaurantClock
 
 @* Manage one account (TECHNICAL_SPECIFICATION §3.7). Administrator only (endpoint authorization).
    Static SSR: grant/revoke, reset, and deactivate/reactivate are full-page form posts, and the reset's
@@ -19599,7 +19976,7 @@ else
                 }
                 else if (IsLockedOut(_person))
                 {
-                    <span class="chip chip-warn">Locked until @(_person.LockoutEndAt!.Value.ToLocalTime().ToString("g"))</span>
+                    <span class="chip chip-warn">Locked until @RestaurantClock.DateAndTime(_person.LockoutEndAt!.Value)</span>
                 }
                 else
                 {
@@ -20059,15 +20436,15 @@ else
   File name:             ManageTable.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageTable.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageTable.razor
-  Size:                  12.7 KiB (12978 bytes)
-  Last modified:         2026-07-26 06:22:54.000000000 -0400
+  Size:                  12.7 KiB (13019 bytes)
+  Last modified:         2026-07-26 20:21:36.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25563952
+  Inode:                 25951201
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               a74c79e869d7d375e0aff209c4c297d61ed07eac5bd7035f0e12af0d88d6cc71
-  Last git commit:       3694369 2026-07-26 07:22:00 -0400 add changes
+  SHA-256:               f811a59feeb88456e2494974e8715f3105d6466d379e141d11e71648ba70b99c
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @page "/administration/tables/{TableId:guid}"
@@ -20077,6 +20454,7 @@ else
 @inject ITableDirectory TableDirectory
 @inject ITableAdministration Tables
 @inject NavigationManager Navigation
+@inject RestaurantTime RestaurantClock
 
 @* Manage one table (TECHNICAL_SPECIFICATION §4.1). Administrator only (endpoint authorization).
    Static SSR: rename, rotate-secret, and deactivate/reactivate are full-page form posts. Successful
@@ -20127,7 +20505,7 @@ else
                 <span class="manage-label">Join secret rotated</span>
                 @if (_table.JoinSecretRotatedAt is { } rotatedAt)
                 {
-                    <span>@rotatedAt.ToLocalTime().ToString("g")</span>
+                    <span>@RestaurantClock.DateAndTime(rotatedAt)</span>
                 }
                 else
                 {
@@ -20136,7 +20514,7 @@ else
             </div>
             <div>
                 <span class="manage-label">Created</span>
-                <span>@_table.CreatedAt.ToLocalTime().ToString("g")</span>
+                <span>@RestaurantClock.DateAndTime(_table.CreatedAt)</span>
             </div>
         </div>
 
@@ -20462,15 +20840,15 @@ else
   File name:             TableDisplays.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/TableDisplays.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/TableDisplays.razor
-  Size:                  15.9 KiB (16285 bytes)
-  Last modified:         2026-07-26 06:29:57.000000000 -0400
+  Size:                  15.9 KiB (16332 bytes)
+  Last modified:         2026-07-26 20:21:36.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25563951
+  Inode:                 25951202
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               2fba28eae22720bc3bf69d6db1939c5cb6a6a2d118959a77c6607b8d7ebdba83
-  Last git commit:       3694369 2026-07-26 07:22:00 -0400 add changes
+  SHA-256:               7fe064d00af8c0fc8076d08d2e7ecd898989dafa8f51db1d1066baf5affdd73d
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @page "/administration/tables/{TableId:guid}/displays"
@@ -20484,6 +20862,7 @@ else
 @inject IDisplayDevicePairing Pairing
 @inject RestaurantOptions Options
 @inject NavigationManager Navigation
+@inject RestaurantTime RestaurantClock
 
 @* Display devices for one table (TECHNICAL_SPECIFICATION §4.2, §11.4 — `area.administration`).
    Static SSR, like every administration surface.
@@ -20532,7 +20911,7 @@ else
                     Shown once — it is stored hashed, so it cannot be read back. Works once, and expires
                     @if (_issuedExpiresAt is { } expiresAt)
                     {
-                        <text>at <strong>@expiresAt.ToLocalTime().ToString("T")</strong>.</text>
+                        <text>at <strong>@RestaurantClock.TimeWithSeconds(expiresAt)</strong>.</text>
                     }
                     else
                     {
@@ -20602,14 +20981,14 @@ else
                                     }
                                 </td>
                                 <td>
-                                    @device.PairedAt.ToLocalTime().ToString("g")
+                                    @RestaurantClock.DateAndTime(device.PairedAt)
                                     <span class="muted">by @device.PairedByUsername</span>
                                 </td>
                                 <td>
                                     @if (device.IsRevoked && device.RevokedAt is { } revokedAt)
                                     {
                                         <span class="muted">
-                                            revoked @revokedAt.ToLocalTime().ToString("g")
+                                            revoked @RestaurantClock.DateAndTime(revokedAt)
                                             @if (device.RevokedByUsername is { } revokedBy)
                                             {
                                                 <text> by @revokedBy</text>
@@ -20618,7 +20997,7 @@ else
                                     }
                                     else if (device.LastSeenAt is { } lastSeenAt)
                                     {
-                                        <span>@lastSeenAt.ToLocalTime().ToString("g")</span>
+                                        <span>@RestaurantClock.DateAndTime(lastSeenAt)</span>
                                     }
                                     else
                                     {
@@ -20922,15 +21301,15 @@ else
   File name:             TableJoinCode.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/TableJoinCode.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/TableJoinCode.razor
-  Size:                  5.9 KiB (6075 bytes)
-  Last modified:         2026-07-23 09:57:25.000000000 -0400
+  Size:                  6.0 KiB (6119 bytes)
+  Last modified:         2026-07-26 20:21:36.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25243973
+  Inode:                 25951203
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               70b220584c8e3c5067e69cfa81bfc0a9a7b8edfe7b3e38a176eea1a18329b0de
-  Last git commit:       e0e95f9 2026-07-23 10:23:48 -0400 add claude response
+  SHA-256:               9a2bb068a05c551724f84e48b04dab4fb2aa1a3b1ce83894d399eb0ce80dccae
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @page "/administration/tables/{TableId:guid}/join-code"
@@ -20941,6 +21320,7 @@ else
 @inject ITableDirectory TableDirectory
 @inject ITableJoinTokens JoinTokens
 @inject RestaurantOptions Options
+@inject RestaurantTime RestaurantClock
 
 @* The administrator/counter join-code fallback (TECHNICAL_SPECIFICATION §4.5, §11.4). When a table's
    display device is dead, staff can render the *same* rotating QR here on demand; the guest scans this
@@ -21007,7 +21387,7 @@ else
 
         <p class="join-code-rotation">
             Rotates every @Options.TableJoinTokenRotationSeconds seconds — next at
-            <strong>@_qr.NextRotationAt.ToLocalTime().ToString("T")</strong>
+            <strong>@RestaurantClock.TimeWithSeconds(_qr.NextRotationAt)</strong>
             (about @SecondsUntilRotation second@(SecondsUntilRotation == 1 ? "" : "s") from now). A code
             that has just been scanned keeps working for up to about @(Options.TableJoinTokenRotationSeconds * 2)
             seconds, so it will not stop working in a guest's hand.
@@ -21857,15 +22237,15 @@ else
   File name:             Setup.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Setup.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Setup.razor
-  Size:                  21.4 KiB (21964 bytes)
-  Last modified:         2026-07-21 08:35:27.006918620 -0400
-  Permissions:           -rw-------
+  Size:                  21.5 KiB (22000 bytes)
+  Last modified:         2026-07-26 20:21:36.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 22331449
+  Inode:                 25951204
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               bc11417abcafea5ce298430e96be95f2fe9b47b2181e8f906632c7f1f453bef1
-  Last git commit:       a09613f 2026-07-21 08:35:59 -0400 remove reserved keyword @code
+  SHA-256:               05a103b34d93786bb143314c7f0e7decf2c1ac8deff4f587088641191cdf01c8
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @page "/setup"
@@ -21884,6 +22264,7 @@ else
 @inject IDataProtectionProvider DataProtection
 @inject RestaurantOptions Options
 @inject NavigationManager Navigation
+@inject RestaurantTime RestaurantClock
 
 @* The first-administrator bootstrap wizard (TECHNICAL_SPECIFICATION §3.6). Reachable only while ZERO
    administrators exist; the moment one does, this page returns 404. Anonymous by design — there is no
@@ -22239,7 +22620,7 @@ else
             info.PublicKey,
             (long)info.SignCount,
             info.Transports,
-            Name: $"Passkey added {Clock.UtcNow.ToLocalTime():d MMM yyyy}",
+            Name: $"Passkey added {RestaurantClock.Date(Clock.UtcNow)}",
             info.IsUserVerified,
             info.IsBackupEligible,
             info.IsBackedUp);
@@ -22441,21 +22822,22 @@ else
   File name:             TableArea.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor
-  Size:                  4.1 KiB (4188 bytes)
-  Last modified:         2026-07-26 19:09:06.000000000 -0400
+  Size:                  4.1 KiB (4221 bytes)
+  Last modified:         2026-07-26 20:21:36.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25836150
+  Inode:                 25951206
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               716ebd2ed4fd634397f25a9c66c642ef155b4218295c674a954c0ee86ec72ad0
-  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
+  SHA-256:               cc68ce82537d47439cfe77fdf5556bcf1fa3308c04c6287188251d132963e2ea
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @page "/table"
 @attribute [Authorize(Policy = AuthorizationPolicies.Table)]
 @using MyRestaurant.DataAccess.Sittings
 @inject ISittingDirectory Sittings
+@inject RestaurantTime RestaurantClock
 
 @* The table index (TECHNICAL_SPECIFICATION §5.1, §11.1). A person may hold memberships in several
    open sittings at once — §5.1 says so explicitly, and "the UI scopes to the sitting behind the
@@ -22502,7 +22884,7 @@ else
                     <a class="sitting-link" href="@($"/table/{sitting.TableIdentifier}")">
                         <span class="sitting-label">@sitting.TableLabel</span>
                         <span class="sitting-meta">
-                            open since @sitting.OpenedAt.ToLocalTime().ToString("t") ·
+                            open since @RestaurantClock.Time(sitting.OpenedAt) ·
                             @sitting.MemberCount @(sitting.MemberCount == 1 ? "person" : "people")
                         </span>
                     </a>
@@ -22913,15 +23295,15 @@ else
   File name:             TableOrderSurface.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
-  Size:                  31.2 KiB (31932 bytes)
-  Last modified:         2026-07-26 19:16:49.000000000 -0400
+  Size:                  32.5 KiB (33307 bytes)
+  Last modified:         2026-07-26 20:22:14.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25836151
+  Inode:                 25951207
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               714d4d2e31c4917ff93f2af20ecb7713bf7c27fdb56572ba7ad3e66373e14a00
-  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
+  SHA-256:               e4599e8fe741be88b28e37d264d4eaee9625999033161eaecd8d75b5b9ede826
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @using System.Globalization
@@ -22941,6 +23323,7 @@ else
 @inject IDomainEventBroadcaster Broadcaster
 @inject IIdentifierFactory Identifiers
 @inject RestaurantOptions Options
+@inject RestaurantTime RestaurantClock
 
 @* The guest ordering surface (TECHNICAL_SPECIFICATION §6, §7, §9, §11.1).
 
@@ -22981,7 +23364,7 @@ else
     @if (_sitting is not null)
     {
         <p class="lede">
-            Open since @_sitting.OpenedAt.ToLocalTime().ToString("t") —
+            Open since @RestaurantClock.Time(_sitting.OpenedAt) —
             @_roster.Count @(_roster.Count == 1 ? "person" : "people") at the table.
         </p>
     }
@@ -22995,7 +23378,7 @@ else
                 {
                     <span class="chip">you</span>
                 }
-                <span class="table-roster-joined">joined @member.JoinedAt.ToLocalTime().ToString("t")</span>
+                <span class="table-roster-joined">joined @RestaurantClock.Time(member.JoinedAt)</span>
             </li>
         }
     </ul>
@@ -23206,7 +23589,7 @@ else
                         {
                             <span class="chip">With the kitchen</span>
                         }
-                        <span class="order-line-when">sent @line.AddedAt.ToLocalTime().ToString("t")</span>
+                        <span class="order-line-when">sent @RestaurantClock.Time(line.AddedAt)</span>
                     </p>
 
                     @if (line.IsRemoved)
@@ -23328,7 +23711,7 @@ else
     private Guid? _myOrderIdentifier;
     private IReadOnlyList<NarratedOrderLine> _myLines = [];
     private IReadOnlyList<SittingBillEntry> _bill = [];
-    private IReadOnlyList<OrderLineView> _partyLines = [];
+    private Dictionary<Guid, IReadOnlyList<OrderLineView>> _partyLinesByOrder = new();
 
     private string _pickedMenuItemId = string.Empty;
     private int _pickedQuantity = OrderStaging.MinimumQuantity;
@@ -23441,7 +23824,16 @@ else
             : [];
 
         _bill = await OrderReads.ListSittingBillAsync(SittingId, _stopping);
-        _partyLines = await OrderReads.ListLinesForSittingAsync(SittingId, _stopping);
+
+        // One read for the whole sitting, grouped once, rather than a query per person in the render
+        // loop below: §11.1 shows a row for everyone at the table, and a round trip inside that loop
+        // would turn a six-person table into six extra queries on every notification.
+        IReadOnlyList<OrderLineView> partyLines = await OrderReads.ListLinesForSittingAsync(SittingId, _stopping);
+        _partyLinesByOrder = partyLines
+            .GroupBy(line => line.GuestOrderIdentifier)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<OrderLineView>)group.ToArray());
 
         // A tick that has gone stale — the kitchen fulfilled the line, or staff took it off — would
         // sink every subsequent send, because §6.5.9 refuses the whole event on one bad operation.
@@ -23676,6 +24068,18 @@ else
         => _menuById.TryGetValue(menuItemIdentifier, out MenuItemSummary? item) ? item : null;
 
     /// <summary>
+    /// One other person's lines, out of the single sitting-wide read <see cref="LoadAsync"/> already
+    /// did. §11.1 shows the rest of the table as names and their items, and this is the second half of
+    /// that: <see cref="_bill"/> supplies the name and the total, this supplies the items underneath.
+    /// An order with nothing on it — someone who joined and has not sent yet — is absent from the
+    /// grouping rather than present and empty, so the empty list is the normal answer, not an error.
+    /// </summary>
+    private IReadOnlyList<OrderLineView> LinesFor(Guid guestOrderIdentifier)
+        => _partyLinesByOrder.TryGetValue(guestOrderIdentifier, out IReadOnlyList<OrderLineView>? lines)
+            ? lines
+            : [];
+
+    /// <summary>
     /// The item's <em>current</em> name, which is what <c>order_current_line</c> joins too (§8.3), so a
     /// rename reads the same here as on the counter's bill.
     /// </summary>
@@ -23778,15 +24182,15 @@ else
   File name:             _Imports.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/_Imports.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/_Imports.razor
-  Size:                  832 B (832 bytes)
-  Last modified:         2026-07-19 08:46:20.000000000 -0400
+  Size:                  872 B (872 bytes)
+  Last modified:         2026-07-26 20:20:04.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21654804
+  Inode:                 25951208
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               976578830e4a5867dc5742f6c55f53b7d3df7d0a3b93ef8b93048dc37fe3740d
-  Last git commit:       56e1018 2026-07-19 16:39:47 -0400 add all files
+  SHA-256:               5e7312c437d9a8b820831dfedc202ffe791a15976cb68dd2af546d306178d452
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 @using System.Net.Http
@@ -23808,6 +24212,7 @@ else
 @using MyRestaurant.WebApplication.Components.Layout
 @using MyRestaurant.WebApplication.Configuration
 @using MyRestaurant.WebApplication.Identity
+@using MyRestaurant.WebApplication.Time
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs
@@ -23817,15 +24222,15 @@ else
   File name:             RestaurantOptions.cs
   Relative path:         src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs
-  Size:                  11.3 KiB (11607 bytes)
-  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Size:                  14.1 KiB (14444 bytes)
+  Last modified:         2026-07-26 20:20:53.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25103618
+  Inode:                 25951210
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               e2a64616111da273fb67a2156ee64f53e1440d0b5217919184e486d2d3afc30e
-  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+  SHA-256:               1e078f71bb8b5d47caca0b69eac1c294968e318d1374f2f46a43a6a2bdf93527
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 using System.Globalization;
@@ -23858,6 +24263,28 @@ public sealed class RestaurantOptions
     /// </summary>
     public static readonly IReadOnlyList<string> DefaultTrustedOriginPatterns = ["https://*.trycloudflare.com"];
 
+    /// <summary>Canonical value of <c>RESTAURANT_CLOCK_FORMAT</c> for <c>3:04 PM</c>.</summary>
+    public const string TwelveHourClockFormat = "12-hour";
+
+    /// <summary>Canonical value of <c>RESTAURANT_CLOCK_FORMAT</c> for <c>15:04</c>.</summary>
+    public const string TwentyFourHourClockFormat = "24-hour";
+
+    /// <summary>
+    /// The default clock format (§13). Twelve-hour, matching the other US-shaped defaults on this
+    /// type (<c>America/New_York</c>, <c>USD</c>) — and, unlike them, a choice that had to be made
+    /// explicitly rather than inherited: before this it came from whatever culture the container image
+    /// happened to carry, which is to say from nobody (F-36).
+    /// </summary>
+    public const string DefaultClockFormat = TwelveHourClockFormat;
+
+    /// <summary>Everything accepted as "twelve-hour", lower-cased. Spelling should not be a trap.</summary>
+    private static readonly HashSet<string> TwelveHourSpellings =
+        new(StringComparer.OrdinalIgnoreCase) { "12", "12h", "12-hour", "12 hour", "12hour" };
+
+    /// <summary>Everything accepted as "twenty-four-hour", lower-cased.</summary>
+    private static readonly HashSet<string> TwentyFourHourSpellings =
+        new(StringComparer.OrdinalIgnoreCase) { "24", "24h", "24-hour", "24 hour", "24hour" };
+
     public required string RestaurantName { get; init; }
     public required string PublicOrigin { get; init; }
 
@@ -23871,6 +24298,14 @@ public sealed class RestaurantOptions
     public IReadOnlyList<string> TrustedOriginPatterns { get; init; } = DefaultTrustedOriginPatterns;
 
     public required string TimeZoneId { get; init; }
+
+    /// <summary>
+    /// Whether times render as <c>3:04 PM</c> or <c>15:04</c> (<c>RESTAURANT_CLOCK_FORMAT</c>, §13).
+    /// Not <c>required</c>, so a construction that predates it keeps the documented default; the whole
+    /// point of the setting is that this decision belongs to the restaurant rather than to the image.
+    /// </summary>
+    public string ClockFormat { get; init; } = DefaultClockFormat;
+
     public required string CurrencyCode { get; init; }
     public required string DatabaseConnectionString { get; init; }
     public required string DataProtectionKeysDirectory { get; init; }
@@ -23893,6 +24328,7 @@ public sealed class RestaurantOptions
             PublicOrigin = ReadString(configuration, "RESTAURANT_PUBLIC_ORIGIN", "https://localhost:8443"),
             TrustedOriginPatterns = ReadOriginPatterns(configuration, "RESTAURANT_TRUSTED_ORIGIN_PATTERNS", DefaultTrustedOriginPatterns),
             TimeZoneId = ReadString(configuration, "RESTAURANT_TIME_ZONE", "America/New_York"),
+            ClockFormat = ReadString(configuration, "RESTAURANT_CLOCK_FORMAT", DefaultClockFormat),
             CurrencyCode = ReadString(configuration, "RESTAURANT_CURRENCY_CODE", "USD"),
             DatabaseConnectionString = ReadString(
                 configuration,
@@ -23929,6 +24365,12 @@ public sealed class RestaurantOptions
         if (!TryResolveTimeZone(TimeZoneId))
         {
             errors.Add($"RESTAURANT_TIME_ZONE '{TimeZoneId}' is not a resolvable time zone on this host.");
+        }
+
+        if (!IsKnownClockFormat(ClockFormat))
+        {
+            errors.Add(
+                $"RESTAURANT_CLOCK_FORMAT must be '{TwelveHourClockFormat}' or '{TwentyFourHourClockFormat}' (was '{ClockFormat}').");
         }
 
         if (CurrencyCode.Length != 3 || !CurrencyCode.All(char.IsAsciiLetter))
@@ -23995,8 +24437,24 @@ public sealed class RestaurantOptions
     /// </summary>
     public string ResolveWebAuthnRelyingPartyId() => new Uri(PublicOrigin).Host;
 
-    /// <summary>The configured display time zone (validated at startup).</summary>
+    /// <summary>
+    /// The configured display time zone (validated at startup). Every instant the application renders
+    /// goes through this zone — see <see cref="Time.RestaurantTime"/>, which is the only caller and the
+    /// only place allowed to turn a stored UTC instant into text (§8.1).
+    /// </summary>
     public TimeZoneInfo ResolveTimeZone() => TimeZoneInfo.FindSystemTimeZoneById(TimeZoneId);
+
+    /// <summary>
+    /// The <see cref="ClockFormat"/> decision as a boolean. An unrecognized value reads as twelve-hour
+    /// (the default), but never silently: <see cref="Validate"/> has already refused to start.
+    /// </summary>
+    public bool UsesTwelveHourClock => !TwentyFourHourSpellings.Contains(ClockFormat.Trim());
+
+    private static bool IsKnownClockFormat(string clockFormat)
+    {
+        string value = clockFormat.Trim();
+        return TwelveHourSpellings.Contains(value) || TwentyFourHourSpellings.Contains(value);
+    }
 
     private static bool TryResolveTimeZone(string timeZoneId)
     {
@@ -25076,19 +25534,20 @@ public static class IdentityServiceCollectionExtensions
   File name:             ObligationsEnforcement.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
-  Size:                  7.9 KiB (8091 bytes)
-  Last modified:         2026-07-26 08:53:31.000000000 -0400
+  Size:                  8.1 KiB (8345 bytes)
+  Last modified:         2026-07-26 20:21:11.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25661710
+  Inode:                 25951212
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               b846423c69d95e6be1f0df0cc86276897cb61f69abab4300a42f20d7f8dd063e
-  Last git commit:       0a2923f 2026-07-26 13:37:18 -0400 add claude response
+  SHA-256:               e9f10b602efd0b868cf73bcec84b347cd29ada205de2c9f9db9273bc7316789d
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 using System.Security.Claims;
 using MyRestaurant.Domain.Authentication;
+using MyRestaurant.WebApplication.Time;
 
 namespace MyRestaurant.WebApplication.Identity;
 
@@ -25182,16 +25641,19 @@ public static class ObligationsEnforcement
 
     /// <summary>
     /// True when <paramref name="path"/> stays reachable while an obligation is outstanding (§3.5:
-    /// "no authenticated endpoint except sign-out and the pipeline pages themselves"). Health probes
-    /// and framework static assets are also exempt — they carry no user action. The Blazor circuit
-    /// endpoint (<c>/_blazor</c>) is deliberately <b>not</b> exempt: while a flag is set, interactive
-    /// circuits are refused too, so an already-open tab cannot keep acting.
+    /// "no authenticated endpoint except sign-out and the pipeline pages themselves"). Health probes,
+    /// framework static assets, and the wall clock's anchor (§11.7) are also exempt — none of them
+    /// carries a user action, and the obligation pages themselves render the footer that asks for the
+    /// last of those. The Blazor circuit endpoint (<c>/_blazor</c>) is deliberately <b>not</b> exempt:
+    /// while a flag is set, interactive circuits are refused too, so an already-open tab cannot keep
+    /// acting.
     /// </summary>
     public static bool IsExemptPath(PathString path)
         => path.StartsWithSegments(AccountRoutes.ForcedPasswordChange)
         || path.StartsWithSegments(AccountRoutes.ForcedTotpEnrollment)
         || path.StartsWithSegments(AccountRoutes.SignOut)
         || path.StartsWithSegments(AccountRoutes.AccessDenied)
+        || path.StartsWithSegments(RestaurantClockRoutes.Snapshot)
         || path.StartsWithSegments("/healthz")
         || path.StartsWithSegments("/_framework");
 
@@ -27972,15 +28434,15 @@ public static class OrdersServiceCollectionExtensions
   File name:             Program.cs
   Relative path:         src/MyRestaurant.WebApplication/Program.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Program.cs
-  Size:                  11.4 KiB (11656 bytes)
-  Last modified:         2026-07-25 20:00:00.000000000 -0400
+  Size:                  12.0 KiB (12269 bytes)
+  Last modified:         2026-07-26 20:21:11.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25723941
+  Inode:                 25951213
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               b030e6d2eec54d0298cfa889d734f9271b9984ac304017db09da84990c87f20b
-  Last git commit:       abcb0c0 2026-07-26 15:08:35 -0400 add claude changes
+  SHA-256:               c8b2b300eccfc59b55a49a9ea751ba5dc72762280d61bb1bc634743c71e2e27f
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -27998,6 +28460,7 @@ using MyRestaurant.WebApplication.LiveUpdates;
 using MyRestaurant.WebApplication.Observability;
 using MyRestaurant.WebApplication.Orders;
 using MyRestaurant.WebApplication.Tables;
+using MyRestaurant.WebApplication.Time;
 using Npgsql;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -28070,6 +28533,10 @@ if (otlpExporterConfigured)
 builder.Services.AddMetrics();
 builder.Services.AddSingleton(options);
 builder.Services.AddSingleton<IClock, SystemClock>();
+// The only thing allowed to turn a stored UTC instant into text (§8.1, §11.7). Registered by factory
+// rather than by type because RestaurantTime also has a (zone, identifier, format) constructor for
+// tests, and the container should never have to guess which one was meant.
+builder.Services.AddSingleton(_ => new RestaurantTime(options));
 builder.Services.AddSingleton<IIdentifierFactory, UuidV7IdentifierFactory>();
 builder.Services.AddSingleton<IDatabaseConnectionFactory>(
     _ => new NpgsqlDatabaseConnectionFactory(options.DatabaseConnectionString));
@@ -28197,6 +28664,10 @@ app.MapGet(
             return Results.Text("not ready", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
         }
     });
+
+// The footer clock's anchor (§11.7). Anonymous, no-store, and exempt from the obligations pipeline —
+// it carries no user action and every page's footer, signed in or not, asks the same question.
+app.MapRestaurantClock();
 
 // The POST /sign-out endpoint (antiforgery-protected; exempt from the obligations pipeline).
 app.MapRestaurantAccountEndpoints();
@@ -28721,6 +29192,350 @@ public static class TablesServiceCollectionExtensions
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.WebApplication/Time/RestaurantClockEndpoints.cs
+################################################################################
+
+--- METADATA ---
+  File name:             RestaurantClockEndpoints.cs
+  Relative path:         src/MyRestaurant.WebApplication/Time/RestaurantClockEndpoints.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Time/RestaurantClockEndpoints.cs
+  Size:                  2.3 KiB (2370 bytes)
+  Last modified:         2026-07-26 20:17:58.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25951175
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               96b44a27e47d008b3a6dfb3699813b3dd8ff143df092280c1fbcfed840367f58
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
+
+--- CONTENT ---
+using MyRestaurant.Domain.Time;
+
+namespace MyRestaurant.WebApplication.Time;
+
+/// <summary>The route the footer clock re-anchors from. One place, so the page, the script, and the obligations exemption cannot drift apart.</summary>
+public static class RestaurantClockRoutes
+{
+    /// <summary>
+    /// <c>GET</c>, anonymous, returns a <see cref="RestaurantClockSnapshot"/> as JSON (§11.7). Anonymous
+    /// because a display device, a signed-out sign-in page, and a guest mid-order all carry the same
+    /// footer and all need the same answer; the response contains nothing that is not already printed
+    /// on the page that asked for it.
+    /// </summary>
+    public const string Snapshot = "/restaurant-clock";
+}
+
+/// <summary>
+/// Serves the footer clock's anchor (TECHNICAL_SPECIFICATION §11.7).
+///
+/// <para><b>Why an endpoint at all.</b> The page already ships an anchor in its markup, and for a
+/// short-lived page that is the whole story. But two surfaces here are not short-lived: a table display
+/// is a tablet that stays on the same URL for days (§11.5), and a guest's ordering surface holds one
+/// circuit for the length of a meal. A clock anchored once and then driven by a cheap tablet's
+/// oscillator drifts; a phone that suspends may stop advancing <c>performance.now()</c> while it sleeps;
+/// and a page open across a daylight-saving boundary needs the new offset. Rather than reload the page
+/// for any of that, <c>js/clock.js</c> re-asks here — rarely, and never while the tab is hidden.</para>
+/// </summary>
+public static class RestaurantClockEndpoints
+{
+    public static IEndpointRouteBuilder MapRestaurantClock(this IEndpointRouteBuilder endpoints)
+    {
+        ArgumentNullException.ThrowIfNull(endpoints);
+
+        endpoints.MapGet(
+            RestaurantClockRoutes.Snapshot,
+            (RestaurantTime restaurantTime, IClock clock, HttpContext context) =>
+            {
+                // A cached wall clock is a wrong wall clock. Also keeps a shared proxy from handing one
+                // table's anchor to another table twenty minutes later.
+                context.Response.Headers.CacheControl = "no-store";
+
+                return Results.Json(restaurantTime.Snapshot(clock.UtcNow));
+            })
+            .AllowAnonymous()
+            .WithName("RestaurantClockSnapshot");
+
+        return endpoints;
+    }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Time/RestaurantTime.cs
+################################################################################
+
+--- METADATA ---
+  File name:             RestaurantTime.cs
+  Relative path:         src/MyRestaurant.WebApplication/Time/RestaurantTime.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Time/RestaurantTime.cs
+  Size:                  12.1 KiB (12436 bytes)
+  Last modified:         2026-07-26 20:43:45.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25951176
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               c9bfb8e14354f2ac56a152a883fc5fa8bccdba7fc4c0ec4c0a60613a00a813f8
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
+
+--- CONTENT ---
+using System.Globalization;
+using MyRestaurant.WebApplication.Configuration;
+
+namespace MyRestaurant.WebApplication.Time;
+
+/// <summary>
+/// Renders a stored instant for a screen (TECHNICAL_SPECIFICATION §8.1: instants are "stored
+/// <c>timestamptz</c> UTC; rendered in <c>RESTAURANT_TIME_ZONE</c>"; §13, F-36). This is the single
+/// place the configured zone is honoured — nothing outside this class may call
+/// <see cref="DateTimeOffset.ToLocalTime"/>, which reads the <em>server process's</em> zone and
+/// therefore renders UTC in a container that sets no <c>TZ</c>.
+///
+/// <para><b>Restaurant time, always — never the reader's.</b> A restaurant is a physical place in one
+/// IANA zone. A guest in New York reading the history of a meal they ate in Tokyo wants the times the
+/// meal actually happened at, not the times it would have been on their own wristwatch; a kitchen
+/// ticket and the bill it becomes must agree to the minute across every screen in the building. So the
+/// reader's zone is deliberately irrelevant: every instant on every surface, for every viewer, is
+/// rendered in <c>RESTAURANT_TIME_ZONE</c>, and the footer clock (§11.7) says so out loud.</para>
+///
+/// <para><b>Why not <see cref="CultureInfo"/>'s <c>"t"</c>/<c>"g"</c> patterns.</b> They take the
+/// 12- versus 24-hour choice, the separator, and the month names from the <em>server's</em> culture,
+/// which in this deployment is whatever locale the container image happens to carry — the same trap
+/// <see cref="Orders.MoneyText"/> documents for <c>"C"</c>. Every pattern below is explicit and
+/// formatted with <see cref="CultureInfo.InvariantCulture"/>; the one genuine choice, 12- versus
+/// 24-hour, is configuration (<c>RESTAURANT_CLOCK_FORMAT</c>, §13) rather than an accident of the
+/// image. <c>js/clock.js</c> reproduces these patterns character for character so the ticking footer
+/// never disagrees with the server-rendered text beside it.</para>
+/// </summary>
+public sealed class RestaurantTime
+{
+    /// <summary>
+    /// How far ahead <see cref="Snapshot"/> looks for the next UTC-offset change. Long enough to cover
+    /// both edges of an annual daylight-saving cycle from any starting point, so a page left open for a
+    /// week still knows when the clocks move; short enough that the scan below stays trivial.
+    /// </summary>
+    private const int TransitionSearchDays = 800;
+
+    private const string DatePattern = "d MMM yyyy";
+    private const string WeekdayDatePattern = "ddd d MMM yyyy";
+    private const string TwelveHourTimePattern = "h:mm tt";
+    private const string TwentyFourHourTimePattern = "HH:mm";
+    private const string TwelveHourTimeWithSecondsPattern = "h:mm:ss tt";
+    private const string TwentyFourHourTimeWithSecondsPattern = "HH:mm:ss";
+    // Separators and the literal T are quoted: in a custom format string ":" means "the culture's
+    // time separator" and an unquoted letter is asking to be reinterpreted. Invariant culture makes
+    // both harmless today, but this one string has to be ISO 8601 for a machine, not for a reader.
+    private const string MachineReadablePattern = "yyyy'-'MM'-'dd'T'HH':'mm':'sszzz";
+
+    private readonly object _transitionGate = new();
+    private readonly TimeZoneInfo _zone;
+
+    private CachedTransition? _cachedTransition;
+
+    public RestaurantTime(RestaurantOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        _zone = options.ResolveTimeZone();
+        ZoneIdentifier = options.TimeZoneId;
+        UsesTwelveHourClock = options.UsesTwelveHourClock;
+        ZoneLabel = LabelFor(options.TimeZoneId);
+    }
+
+    /// <summary>
+    /// Direct construction, for tests and for any caller that already holds a resolved zone. The
+    /// identifier is carried separately rather than read from <see cref="TimeZoneInfo.Id"/> so the
+    /// label shown to a guest is the string an operator actually configured.
+    /// </summary>
+    public RestaurantTime(TimeZoneInfo zone, string zoneIdentifier, bool usesTwelveHourClock)
+    {
+        ArgumentNullException.ThrowIfNull(zone);
+        ArgumentException.ThrowIfNullOrWhiteSpace(zoneIdentifier);
+
+        _zone = zone;
+        ZoneIdentifier = zoneIdentifier;
+        UsesTwelveHourClock = usesTwelveHourClock;
+        ZoneLabel = LabelFor(zoneIdentifier);
+    }
+
+    /// <summary>The configured zone identifier, e.g. <c>America/New_York</c>.</summary>
+    public string ZoneIdentifier { get; }
+
+    /// <summary>
+    /// The short, human half of <see cref="ZoneIdentifier"/> — <c>New York</c>, <c>Tokyo</c>,
+    /// <c>Buenos Aires</c>. Shown in the footer, where the full identifier would swamp a phone; the
+    /// full identifier stays available as the element's title.
+    /// </summary>
+    public string ZoneLabel { get; }
+
+    /// <summary>Whether times render as <c>3:04 PM</c> (true) or <c>15:04</c> (false); §13.</summary>
+    public bool UsesTwelveHourClock { get; }
+
+    /// <summary>The instant, shifted into the restaurant's zone. The absolute moment is unchanged.</summary>
+    public DateTimeOffset ToRestaurantTime(DateTimeOffset instant)
+        => TimeZoneInfo.ConvertTime(instant, _zone);
+
+    /// <summary>Time of day only — <c>3:04 PM</c> or <c>15:04</c>.</summary>
+    public string Time(DateTimeOffset instant)
+        => Render(instant, UsesTwelveHourClock ? TwelveHourTimePattern : TwentyFourHourTimePattern);
+
+    /// <summary>Time of day to the second — <c>3:04:05 PM</c> or <c>15:04:05</c>.</summary>
+    public string TimeWithSeconds(DateTimeOffset instant)
+        => Render(instant, UsesTwelveHourClock ? TwelveHourTimeWithSecondsPattern : TwentyFourHourTimeWithSecondsPattern);
+
+    /// <summary>Date only — <c>26 Jul 2026</c>.</summary>
+    public string Date(DateTimeOffset instant) => Render(instant, DatePattern);
+
+    /// <summary>Date and time of day — <c>26 Jul 2026, 3:04 PM</c>.</summary>
+    public string DateAndTime(DateTimeOffset instant)
+        => $"{Date(instant)}, {Time(instant)}";
+
+    /// <summary>
+    /// The footer clock's reading — <c>Sun 26 Jul 2026, 3:04:05 PM</c>. The weekday earns its place
+    /// here and nowhere else: this is the one line on the page whose job is to tell a reader what
+    /// "now" is at the restaurant, and a bare date cannot do that across a time-zone boundary.
+    /// <c>js/clock.js</c> formats identically.
+    /// </summary>
+    public string DateAndTimeWithSeconds(DateTimeOffset instant)
+        => $"{Render(instant, WeekdayDatePattern)}, {TimeWithSeconds(instant)}";
+
+    /// <summary>
+    /// The <c>datetime</c> attribute value for a <c>&lt;time&gt;</c> element —
+    /// <c>2026-07-26T15:04:05-04:00</c>. Machine-readable, and carries the offset so the markup is
+    /// unambiguous even though the text beside it is not annotated.
+    /// </summary>
+    public string MachineReadable(DateTimeOffset instant) => Render(instant, MachineReadablePattern);
+
+    /// <summary>
+    /// Everything <c>js/clock.js</c> needs to keep ticking without the server: the anchoring instant,
+    /// the offset that applies to it, and — because a page can outlive a daylight-saving boundary — the
+    /// next instant at which that offset changes, with the offset that takes over. Also served as JSON
+    /// by <see cref="RestaurantClockEndpoints"/> so a long-lived surface can re-anchor without a reload.
+    /// </summary>
+    public RestaurantClockSnapshot Snapshot(DateTimeOffset utcNow)
+    {
+        CachedTransition transition = TransitionAfter(utcNow);
+
+        return new RestaurantClockSnapshot(
+            EpochMilliseconds: utcNow.ToUnixTimeMilliseconds(),
+            UtcOffsetMinutes: (int)_zone.GetUtcOffset(utcNow).TotalMinutes,
+            NextTransitionEpochMilliseconds: transition.Instant?.ToUnixTimeMilliseconds(),
+            NextUtcOffsetMinutes: transition.OffsetMinutes,
+            ZoneIdentifier: ZoneIdentifier,
+            ZoneLabel: ZoneLabel,
+            UsesTwelveHourClock: UsesTwelveHourClock);
+    }
+
+    private string Render(DateTimeOffset instant, string pattern)
+        => ToRestaurantTime(instant).ToString(pattern, CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// <c>America/Argentina/Buenos_Aires</c> → <c>Buenos Aires</c>; <c>UTC</c> → <c>UTC</c>. A Windows
+    /// identifier ("Eastern Standard Time") has no separator and is returned unchanged.
+    /// </summary>
+    private static string LabelFor(string zoneIdentifier)
+    {
+        int lastSeparator = zoneIdentifier.LastIndexOf('/');
+        string tail = lastSeparator >= 0 && lastSeparator < zoneIdentifier.Length - 1
+            ? zoneIdentifier[(lastSeparator + 1)..]
+            : zoneIdentifier;
+
+        return tail.Replace('_', ' ');
+    }
+
+    /// <summary>
+    /// The next offset change at or after <paramref name="utcNow"/>, memoized. The scan is a day-by-day
+    /// walk to find the bracketing day, then a bisection to the second — a few hundred
+    /// <see cref="TimeZoneInfo.GetUtcOffset(DateTimeOffset)"/> calls, run at most once per transition
+    /// (or once per <see cref="TransitionSearchDays"/> in a zone that never moves) rather than once per
+    /// page render.
+    /// </summary>
+    private CachedTransition TransitionAfter(DateTimeOffset utcNow)
+    {
+        lock (_transitionGate)
+        {
+            if (_cachedTransition is { } cached && utcNow < cached.RecomputeAfter)
+            {
+                return cached;
+            }
+
+            CachedTransition computed = ComputeTransitionAfter(utcNow);
+            _cachedTransition = computed;
+            return computed;
+        }
+    }
+
+    private CachedTransition ComputeTransitionAfter(DateTimeOffset utcNow)
+    {
+        TimeSpan currentOffset = _zone.GetUtcOffset(utcNow);
+        DateTimeOffset horizon = utcNow.AddDays(TransitionSearchDays);
+
+        DateTimeOffset low = utcNow;
+        DateTimeOffset? bracket = null;
+
+        for (DateTimeOffset probe = utcNow.AddDays(1); probe <= horizon; probe = probe.AddDays(1))
+        {
+            if (_zone.GetUtcOffset(probe) != currentOffset)
+            {
+                bracket = probe;
+                break;
+            }
+
+            low = probe;
+        }
+
+        if (bracket is not { } high)
+        {
+            // No change within the horizon. Re-ask then rather than never: the tz database is updated
+            // in place under a running container, and a zone can acquire a rule it did not have.
+            return new CachedTransition(Instant: null, OffsetMinutes: null, RecomputeAfter: horizon);
+        }
+
+        while (high - low > TimeSpan.FromSeconds(1))
+        {
+            DateTimeOffset middle = low + TimeSpan.FromTicks((high - low).Ticks / 2);
+            if (_zone.GetUtcOffset(middle) == currentOffset)
+            {
+                low = middle;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        return new CachedTransition(
+            Instant: high,
+            OffsetMinutes: (int)_zone.GetUtcOffset(high).TotalMinutes,
+            RecomputeAfter: high);
+    }
+
+    private sealed record CachedTransition(DateTimeOffset? Instant, int? OffsetMinutes, DateTimeOffset RecomputeAfter);
+}
+
+/// <summary>
+/// The wire shape of the footer clock's anchor (§11.7). Serialized camelCase by the minimal-API JSON
+/// defaults, which is what <c>js/clock.js</c> reads.
+/// </summary>
+/// <param name="EpochMilliseconds">The server's instant, milliseconds since the Unix epoch, UTC.</param>
+/// <param name="UtcOffsetMinutes">The restaurant zone's offset from UTC at that instant, in minutes.</param>
+/// <param name="NextTransitionEpochMilliseconds">
+/// When the offset next changes, or <c>null</c> if it does not within the search horizon.
+/// </param>
+/// <param name="NextUtcOffsetMinutes">The offset that takes over at that transition, or <c>null</c>.</param>
+/// <param name="ZoneIdentifier">The configured IANA identifier, e.g. <c>America/New_York</c>.</param>
+/// <param name="ZoneLabel">Its short human form, e.g. <c>New York</c>.</param>
+/// <param name="UsesTwelveHourClock">Whether to render <c>3:04:05 PM</c> rather than <c>15:04:05</c>.</param>
+public sealed record RestaurantClockSnapshot(
+    long EpochMilliseconds,
+    int UtcOffsetMinutes,
+    long? NextTransitionEpochMilliseconds,
+    int? NextUtcOffsetMinutes,
+    string ZoneIdentifier,
+    string ZoneLabel,
+    bool UsesTwelveHourClock);
+
+################################################################################
 # FILE: src/MyRestaurant.WebApplication/appsettings.Development.json
 ################################################################################
 
@@ -28787,15 +29602,15 @@ public static class TablesServiceCollectionExtensions
   File name:             app.css
   Relative path:         src/MyRestaurant.WebApplication/wwwroot/app.css
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/wwwroot/app.css
-  Size:                  23.8 KiB (24409 bytes)
-  Last modified:         2026-07-26 19:09:33.000000000 -0400
+  Size:                  25.3 KiB (25954 bytes)
+  Last modified:         2026-07-26 20:20:29.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25836142
+  Inode:                 25951214
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               d193e7c5c3c23b13e269a2db2d4c429946e7c19dc9ae1cd92a7eba41b1aaec0e
-  Last git commit:       adcc681 2026-07-26 19:26:02 -0400 add claude response
+  SHA-256:               da71e5fd732f0ff9a0de176f922483511bcece0eb943bc2b7dbf3c46357957eb
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 /*
@@ -28911,6 +29726,58 @@ body {
 
 .link-button:hover {
     color: var(--accent);
+}
+
+/* --- Restaurant wall clock (footer, §11.7) ----------------------------------------------------- */
+
+/*
+ * On every page, in both layouts. `contain: content` is not decoration: the reading below changes
+ * once a second forever, and containment keeps that repaint and its layout inside the footer instead
+ * of inviting the browser to re-lay-out the page around it sixty times a minute on a phone.
+ * env(safe-area-inset-bottom) keeps it clear of the home indicator on a notched handset.
+ */
+.app-footer {
+    flex: 0 0 auto;
+    contain: content;
+    padding: 0.55rem clamp(1rem, 3vw, 2rem);
+    padding-bottom: calc(0.55rem + env(safe-area-inset-bottom, 0px));
+    background-color: var(--surface-raised);
+    border-top: 1px solid var(--hairline);
+}
+
+.restaurant-clock {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.1rem 0.6rem;
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+}
+
+.restaurant-clock-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+/*
+ * Tabular figures so the digits do not change width as they tick — without them every second is a
+ * reflow of the whole footer line, and on a narrow screen the wrap point can flicker.
+ */
+.restaurant-clock-reading {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--ink);
+    white-space: nowrap;
+}
+
+.restaurant-clock-zone {
+    font-weight: 600;
+    color: var(--accent-strong);
+    white-space: nowrap;
 }
 
 /* --- Main content ----------------------------------------------------------------------------- */
@@ -29907,6 +30774,418 @@ a:focus-visible,
     display: grid;
     gap: 0.2rem;
 }
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/wwwroot/js/clock.js
+################################################################################
+
+--- METADATA ---
+  File name:             clock.js
+  Relative path:         src/MyRestaurant.WebApplication/wwwroot/js/clock.js
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/wwwroot/js/clock.js
+  Size:                  15.6 KiB (15969 bytes)
+  Last modified:         2026-07-26 20:19:53.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25951179
+  Hard links:            1
+  MIME type:             application/javascript
+  SHA-256:               44a0ce3f77201294154aea8eb98af0f23a70d7eaff10416901846e9ca34a14e5
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
+
+--- CONTENT ---
+/*
+ * The restaurant wall clock (TECHNICAL_SPECIFICATION §11.7, §8.1).
+ *
+ * The footer carries one server-rendered anchor — an instant, the RESTAURANT_TIME_ZONE offset that
+ * applies to it, and when that offset next changes — and this script advances it once a second. All of
+ * it is deliberately local: a per-second round trip to the server, on every open tab, would be the most
+ * expensive thing on a page whose whole point is that a phone can hold it through a meal.
+ *
+ * WHAT IT MUST NOT DO, because most readers are on a handheld:
+ *
+ *   1. Tick while nobody is looking. Everything stops on visibilitychange; the timer is cleared, not
+ *      merely ignored. A backgrounded tab costs nothing at all.
+ *   2. Wake more than once a second. Each tick schedules the next one AT the coming second boundary
+ *      (setTimeout, not setInterval, so drift cannot accumulate into a double-fire) — never
+ *      requestAnimationFrame, which would run this sixty times for one visible change.
+ *   3. Touch the DOM when nothing changed. One string comparison guards the write.
+ *
+ * WHICH CLOCK IT TRUSTS. Elapsed time comes from performance.now(), a monotonic counter that an NTP
+ * step cannot move — Date.now() can jump in either direction while a page is open. But performance.now()
+ * has its own failure: on several platforms it stops advancing while the device is suspended, so a phone
+ * that spends an hour in a pocket wakes up an hour behind. Both are therefore read every tick, and a
+ * divergence between them is treated as the signal it is: prefer the wall clock (only it saw the
+ * suspend), and ask the server for a fresh anchor.
+ *
+ * WHEN IT ASKS THE SERVER. On page load, implicitly, because the anchor is in the markup. After that,
+ * only: every ten minutes while visible; on returning from a minute or more hidden; and when the two
+ * local clocks disagree. Never while hidden, never more than once a minute, and a failed request is
+ * ignored rather than allowed to break the clock — a wall clock that is a second off beats a blank one.
+ *
+ * The formatting below reproduces RestaurantTime's invariant-culture patterns character for character.
+ * Intl is deliberately unused: it would format in the READER's locale and zone, which is exactly the
+ * thing §8.1 rules out.
+ *
+ * A classic script, loaded once for the whole app like passkey.js and display.js. It is a no-op on any
+ * document without the footer, and re-anchors by itself when Blazor replaces the DOM — whether that is
+ * enhanced navigation on a static page or a circuit reconciling its prerender.
+ */
+(function () {
+    'use strict';
+
+    var ELEMENT_ID = 'restaurant-clock';
+    var READING_SELECTOR = '[data-restaurant-clock-reading]';
+
+    var ABSENT_RECHECK_MILLISECONDS = 2000;
+    var RESYNC_INTERVAL_MILLISECONDS = 600000;
+    var RESYNC_AFTER_HIDDEN_MILLISECONDS = 60000;
+    var RESYNC_MINIMUM_SPACING_MILLISECONDS = 60000;
+    var DIVERGENCE_TOLERANCE_MILLISECONDS = 2000;
+
+    // CultureInfo.InvariantCulture's abbreviated names, hardcoded so the ticking text and the
+    // server-rendered text it replaces are byte-identical.
+    var DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    var anchor = null;
+    var lastRenderedText = '';
+    var pendingTimeout = null;
+    var hiddenSinceMilliseconds = 0;
+    var lastResyncMilliseconds = Date.now();
+    var lastResyncAttemptMilliseconds = 0;
+    var resyncInFlight = false;
+
+    function monotonicNow() {
+        return (typeof performance !== 'undefined' && typeof performance.now === 'function')
+            ? performance.now()
+            : Date.now();
+    }
+
+    /*
+     * The best available estimate of when the server stamped the anchor that is already in the markup.
+     * responseStart is when the first byte of that document arrived, which is far closer to the truth
+     * than "whenever this script got around to reading the DOM" — the difference is the parse and the
+     * deferred-script wait, and getting it wrong shows up as a clock permanently a second slow.
+     * Only meaningful for the FIRST anchor; a later one came from a live circuit or a navigation.
+     */
+    function initialAnchorMonotonic() {
+        try {
+            if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') {
+                return monotonicNow();
+            }
+
+            var entries = performance.getEntriesByType('navigation');
+            if (entries && entries.length > 0 && entries[0].responseStart > 0) {
+                return entries[0].responseStart;
+            }
+        } catch (ignored) {
+            // Navigation Timing is unavailable or blocked; the script-run instant is a fine fallback.
+        }
+
+        return monotonicNow();
+    }
+
+    function readNumber(element, attributeName) {
+        var raw = element.getAttribute(attributeName);
+        if (raw === null || raw === '') {
+            return null;
+        }
+
+        var parsed = Number(raw);
+        return isFinite(parsed) ? parsed : null;
+    }
+
+    function twoDigits(value) {
+        return value < 10 ? '0' + value : '' + value;
+    }
+
+    function offsetForEpoch(epochMilliseconds) {
+        if (anchor.nextTransitionEpochMilliseconds !== null
+            && anchor.nextUtcOffsetMinutes !== null
+            && epochMilliseconds >= anchor.nextTransitionEpochMilliseconds) {
+            return anchor.nextUtcOffsetMinutes;
+        }
+
+        return anchor.utcOffsetMinutes;
+    }
+
+    /*
+     * Shift the instant by the restaurant's offset and then read it back with the UTC getters. The
+     * browser's own zone never enters the calculation — which is the entire point.
+     */
+    function shiftedDate(epochMilliseconds, utcOffsetMinutes) {
+        return new Date(Math.round(epochMilliseconds) + (utcOffsetMinutes * 60000));
+    }
+
+    function formatReading(epochMilliseconds, utcOffsetMinutes, usesTwelveHourClock) {
+        var shifted = shiftedDate(epochMilliseconds, utcOffsetMinutes);
+        var hours = shifted.getUTCHours();
+        var suffix = '';
+        var renderedHours;
+
+        if (usesTwelveHourClock) {
+            suffix = hours < 12 ? ' AM' : ' PM';
+            hours = hours % 12;
+            renderedHours = '' + (hours === 0 ? 12 : hours);
+        } else {
+            renderedHours = twoDigits(hours);
+        }
+
+        return DAY_NAMES[shifted.getUTCDay()]
+            + ' ' + shifted.getUTCDate()
+            + ' ' + MONTH_NAMES[shifted.getUTCMonth()]
+            + ' ' + shifted.getUTCFullYear()
+            + ', ' + renderedHours
+            + ':' + twoDigits(shifted.getUTCMinutes())
+            + ':' + twoDigits(shifted.getUTCSeconds())
+            + suffix;
+    }
+
+    function formatMachineReadable(epochMilliseconds, utcOffsetMinutes) {
+        var shifted = shiftedDate(epochMilliseconds, utcOffsetMinutes);
+        var absolute = Math.abs(utcOffsetMinutes);
+
+        return shifted.getUTCFullYear()
+            + '-' + twoDigits(shifted.getUTCMonth() + 1)
+            + '-' + twoDigits(shifted.getUTCDate())
+            + 'T' + twoDigits(shifted.getUTCHours())
+            + ':' + twoDigits(shifted.getUTCMinutes())
+            + ':' + twoDigits(shifted.getUTCSeconds())
+            + (utcOffsetMinutes < 0 ? '-' : '+')
+            + twoDigits(Math.floor(absolute / 60))
+            + ':' + twoDigits(absolute % 60);
+    }
+
+    function adoptAnchorFrom(element) {
+        var epochMilliseconds = readNumber(element, 'data-epoch-milliseconds');
+        var utcOffsetMinutes = readNumber(element, 'data-utc-offset-minutes');
+        if (epochMilliseconds === null || utcOffsetMinutes === null) {
+            anchor = null;
+            return;
+        }
+
+        var key = 'markup:' + epochMilliseconds;
+        if (anchor !== null && anchor.key === key) {
+            return;
+        }
+
+        var firstAnchor = anchor === null;
+        anchor = {
+            key: key,
+            epochMilliseconds: epochMilliseconds,
+            monotonicMilliseconds: firstAnchor ? initialAnchorMonotonic() : monotonicNow(),
+            wallClockMilliseconds: Date.now(),
+            utcOffsetMinutes: utcOffsetMinutes,
+            nextTransitionEpochMilliseconds: readNumber(element, 'data-next-transition-epoch-milliseconds'),
+            nextUtcOffsetMinutes: readNumber(element, 'data-next-utc-offset-minutes'),
+            usesTwelveHourClock: element.getAttribute('data-twelve-hour-clock') !== 'false',
+            snapshotUrl: element.getAttribute('data-snapshot-url')
+        };
+
+        // The server just repainted the text; anything remembered about it is stale.
+        lastRenderedText = '';
+    }
+
+    function currentEpochMilliseconds() {
+        var byMonotonic = anchor.epochMilliseconds + (monotonicNow() - anchor.monotonicMilliseconds);
+        var byWallClock = anchor.epochMilliseconds + (Date.now() - anchor.wallClockMilliseconds);
+        var divergence = byWallClock - byMonotonic;
+
+        if (divergence > DIVERGENCE_TOLERANCE_MILLISECONDS) {
+            // The monotonic counter stalled — almost always a device suspend. Only the wall clock saw
+            // that time pass, so believe it, and confirm with the server at the next opportunity.
+            requestResync();
+            return byWallClock;
+        }
+
+        if (divergence < -DIVERGENCE_TOLERANCE_MILLISECONDS) {
+            // The wall clock was stepped backwards under us (an NTP correction, or someone editing the
+            // device's date). The monotonic reading is the trustworthy one; still worth re-anchoring.
+            requestResync();
+        }
+
+        return byMonotonic;
+    }
+
+    function render(element, epochMilliseconds) {
+        var reading = element.querySelector(READING_SELECTOR);
+        if (!reading) {
+            return;
+        }
+
+        var utcOffsetMinutes = offsetForEpoch(epochMilliseconds);
+        var text = formatReading(epochMilliseconds, utcOffsetMinutes, anchor.usesTwelveHourClock);
+        if (text === lastRenderedText) {
+            return;
+        }
+
+        lastRenderedText = text;
+        reading.textContent = text;
+        reading.setAttribute('datetime', formatMachineReadable(epochMilliseconds, utcOffsetMinutes));
+    }
+
+    function applySnapshot(snapshot, sentAtMonotonic, receivedAtMonotonic) {
+        // The reply can outlive the page that asked: a navigation away from the footer drops the
+        // anchor, and there is then nothing to correct.
+        if (anchor === null || !snapshot || typeof snapshot.epochMilliseconds !== 'number') {
+            return;
+        }
+
+        // Half the round trip is the usual symmetric-latency assumption; over a tunnel it is worth a
+        // few tens of milliseconds, and it is strictly better than ignoring the trip entirely.
+        var serverInstant = snapshot.epochMilliseconds + ((receivedAtMonotonic - sentAtMonotonic) / 2);
+
+        anchor = {
+            key: 'snapshot:' + snapshot.epochMilliseconds,
+            epochMilliseconds: serverInstant,
+            monotonicMilliseconds: receivedAtMonotonic,
+            wallClockMilliseconds: Date.now(),
+            utcOffsetMinutes: typeof snapshot.utcOffsetMinutes === 'number'
+                ? snapshot.utcOffsetMinutes
+                : anchor.utcOffsetMinutes,
+            nextTransitionEpochMilliseconds: typeof snapshot.nextTransitionEpochMilliseconds === 'number'
+                ? snapshot.nextTransitionEpochMilliseconds
+                : null,
+            nextUtcOffsetMinutes: typeof snapshot.nextUtcOffsetMinutes === 'number'
+                ? snapshot.nextUtcOffsetMinutes
+                : null,
+            usesTwelveHourClock: snapshot.usesTwelveHourClock !== false,
+            snapshotUrl: anchor.snapshotUrl
+        };
+
+        lastResyncMilliseconds = Date.now();
+    }
+
+    function requestResync() {
+        if (resyncInFlight
+            || anchor === null
+            || !anchor.snapshotUrl
+            || document.hidden
+            || typeof window.fetch !== 'function') {
+            return;
+        }
+
+        if ((Date.now() - lastResyncAttemptMilliseconds) < RESYNC_MINIMUM_SPACING_MILLISECONDS) {
+            return;
+        }
+
+        resyncInFlight = true;
+        lastResyncAttemptMilliseconds = Date.now();
+
+        var sentAtMonotonic = monotonicNow();
+        // credentials omitted on purpose: the answer is the same for everyone, so there is no reason to
+        // send a session cookie — or to let this request be caught by anything that inspects one.
+        window.fetch(anchor.snapshotUrl, { cache: 'no-store', credentials: 'omit' })
+            .then(function (response) {
+                return response.ok ? response.json() : null;
+            })
+            .then(function (snapshot) {
+                resyncInFlight = false;
+                applySnapshot(snapshot, sentAtMonotonic, monotonicNow());
+                tick();
+            })
+            .catch(function () {
+                // Offline, tunnel down, or the page is going away. Keep ticking on the local anchor.
+                resyncInFlight = false;
+            });
+    }
+
+    function clearPending() {
+        if (pendingTimeout !== null) {
+            window.clearTimeout(pendingTimeout);
+            pendingTimeout = null;
+        }
+    }
+
+    function scheduleAfter(delayMilliseconds) {
+        clearPending();
+        if (document.hidden) {
+            return;
+        }
+
+        pendingTimeout = window.setTimeout(tick, delayMilliseconds);
+    }
+
+    /* Aim at the next second boundary, so exactly one wake produces exactly one visible change. */
+    function scheduleNextSecond(epochMilliseconds) {
+        var untilBoundary = 1000 - (Math.round(epochMilliseconds) % 1000) + 8;
+        if (untilBoundary < 60) {
+            untilBoundary = 60;
+        }
+
+        if (untilBoundary > 1000) {
+            untilBoundary = 1000;
+        }
+
+        scheduleAfter(untilBoundary);
+    }
+
+    function tick() {
+        clearPending();
+        if (document.hidden) {
+            return;
+        }
+
+        var element = document.getElementById(ELEMENT_ID);
+        if (!element) {
+            // No footer on this document (or it has not been rendered yet). Forget the anchor so a
+            // later arrival re-anchors from the server rather than inheriting a stale reading.
+            anchor = null;
+            lastRenderedText = '';
+            scheduleAfter(ABSENT_RECHECK_MILLISECONDS);
+            return;
+        }
+
+        adoptAnchorFrom(element);
+        if (anchor === null) {
+            scheduleAfter(ABSENT_RECHECK_MILLISECONDS);
+            return;
+        }
+
+        var epochMilliseconds = currentEpochMilliseconds();
+        render(element, epochMilliseconds);
+
+        if ((Date.now() - lastResyncMilliseconds) >= RESYNC_INTERVAL_MILLISECONDS) {
+            requestResync();
+        }
+
+        scheduleNextSecond(epochMilliseconds);
+    }
+
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+            hiddenSinceMilliseconds = Date.now();
+            clearPending();
+            return;
+        }
+
+        var hiddenFor = hiddenSinceMilliseconds === 0 ? 0 : (Date.now() - hiddenSinceMilliseconds);
+        hiddenSinceMilliseconds = 0;
+
+        if (hiddenFor >= RESYNC_AFTER_HIDDEN_MILLISECONDS) {
+            // Long enough that the device may well have slept. Let the resync jump the spacing guard.
+            lastResyncAttemptMilliseconds = 0;
+            requestResync();
+        }
+
+        tick();
+    });
+
+    // Restored from the back/forward cache: the document is intact but arbitrarily old.
+    window.addEventListener('pageshow', function (event) {
+        if (event && event.persisted) {
+            lastResyncAttemptMilliseconds = 0;
+            requestResync();
+        }
+
+        tick();
+    });
+
+    window.addEventListener('pagehide', clearPending);
+
+    tick();
+})();
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/wwwroot/js/display.js
@@ -39232,21 +40511,22 @@ public sealed class IdentityWiringTests
   File name:             ObligationsEnforcementTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/ObligationsEnforcementTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/ObligationsEnforcementTests.cs
-  Size:                  6.2 KiB (6331 bytes)
-  Last modified:         2026-07-20 08:04:38.000000000 -0400
+  Size:                  6.5 KiB (6622 bytes)
+  Last modified:         2026-07-26 20:39:34.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21843837
+  Inode:                 25951216
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               0a44a58800a6d63fae418504a4712ee1327f7ea100d84c092c12c8b56ba4010c
-  Last git commit:       e1ce9b3 2026-07-20 15:30:13 -0400 add claude response
+  SHA-256:               825ca611a212b015206ce46c8b26cb9bc16d037ed044b28c4a7c230524b3485f
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using MyRestaurant.Domain.Authentication;
 using MyRestaurant.WebApplication.Identity;
+using MyRestaurant.WebApplication.Time;
 using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Identity;
@@ -39312,6 +40592,9 @@ public sealed class ObligationsEnforcementTests
     [InlineData("/healthz/live")]
     [InlineData("/healthz/ready")]
     [InlineData("/_framework/blazor.web.js")]
+    // The footer wall clock's anchor (§11.7): the obligation pages render the footer too, and a
+    // redirect to HTML would leave the one page a locked-out user is allowed to see with a dead clock.
+    [InlineData(RestaurantClockRoutes.Snapshot)]
     public void IsExemptPath_PipelinePagesSignOutHealthAndFrameworkAssets_AreExempt(string path)
     {
         Assert.True(ObligationsEnforcement.IsExemptPath(new PathString(path)));
@@ -41547,15 +42830,15 @@ public sealed class OrdersWiringTests
   File name:             RestaurantOptionsTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/RestaurantOptionsTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/RestaurantOptionsTests.cs
-  Size:                  7.7 KiB (7915 bytes)
-  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Size:                  9.9 KiB (10187 bytes)
+  Last modified:         2026-07-26 20:39:34.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25103629
+  Inode:                 25951217
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               40d9af6a7de4a9e76c46ef21f172bf1e6a5bd2b8d27ca2f16b880840917bbd1b
-  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+  SHA-256:               c2e58057f92374b179a9e4973aa4895859754833d5252a37cb108e6804e87fd7
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
 
 --- CONTENT ---
 using Microsoft.Extensions.Configuration;
@@ -41579,6 +42862,8 @@ public sealed class RestaurantOptionsTests
         Assert.Equal("My Restaurant", options.RestaurantName);
         Assert.Equal("https://localhost:8443", options.PublicOrigin);
         Assert.Equal("America/New_York", options.TimeZoneId);
+        Assert.Equal(RestaurantOptions.TwelveHourClockFormat, options.ClockFormat);
+        Assert.True(options.UsesTwelveHourClock);
         Assert.Equal("USD", options.CurrencyCode);
         Assert.Equal(65536, options.Argon2MemoryKibibytes);
         Assert.Equal(3, options.Argon2Iterations);
@@ -41717,6 +43002,64 @@ public sealed class RestaurantOptionsTests
         Assert.NotNull(zone);
     }
 
+    // --- RESTAURANT_CLOCK_FORMAT (§13, F-36) -----------------------------------------------------
+    //
+    // The 12-versus-24 question the specification never answered. It is configuration rather than a
+    // constant because the same code runs in restaurants on both conventions — and it is validated
+    // rather than merely parsed because a typo that silently fell back to the default would show the
+    // wrong clock on every screen in the building with nothing to say why.
+
+    [Theory]
+    [InlineData("12")]
+    [InlineData("12h")]
+    [InlineData("12-hour")]
+    [InlineData("12 hour")]
+    [InlineData("12hour")]
+    [InlineData("  12-HOUR  ")]
+    public void UsesTwelveHourClock_TwelveHourSpellings_AreAccepted(string clockFormat)
+    {
+        RestaurantOptions options = Build(clockFormat: clockFormat);
+
+        Assert.True(options.UsesTwelveHourClock);
+        Assert.Empty(options.Validate());
+    }
+
+    [Theory]
+    [InlineData("24")]
+    [InlineData("24h")]
+    [InlineData("24-hour")]
+    [InlineData("24 hour")]
+    [InlineData("24hour")]
+    [InlineData("  24-Hour  ")]
+    public void UsesTwelveHourClock_TwentyFourHourSpellings_AreAccepted(string clockFormat)
+    {
+        RestaurantOptions options = Build(clockFormat: clockFormat);
+
+        Assert.False(options.UsesTwelveHourClock);
+        Assert.Empty(options.Validate());
+    }
+
+    [Theory]
+    [InlineData("military")]
+    [InlineData("HH:mm")]
+    [InlineData("13")]
+    [InlineData("")]
+    public void Validate_UnknownClockFormat_IsRejected(string clockFormat)
+        => Assert.NotEmpty(Build(clockFormat: clockFormat).Validate());
+
+    [Fact]
+    public void FromConfiguration_ReadsTheClockFormat()
+    {
+        RestaurantOptions options = RestaurantOptions.FromConfiguration(ConfigurationWith(new()
+        {
+            ["RESTAURANT_CLOCK_FORMAT"] = "24-hour",
+        }));
+
+        Assert.Equal("24-hour", options.ClockFormat);
+        Assert.False(options.UsesTwelveHourClock);
+        Assert.Empty(options.Validate());
+    }
+
     private static IConfiguration EmptyConfiguration() => new ConfigurationBuilder().Build();
 
     private static IConfiguration ConfigurationWith(Dictionary<string, string?> values)
@@ -41725,6 +43068,7 @@ public sealed class RestaurantOptionsTests
     private static RestaurantOptions Build(
         string publicOrigin = "https://localhost:8443",
         string timeZoneId = "America/New_York",
+        string clockFormat = RestaurantOptions.DefaultClockFormat,
         string currencyCode = "USD",
         string databaseConnectionString = "Host=localhost;Database=x;Username=u;Password=p",
         int kitchenReminderSeconds = 60,
@@ -41742,6 +43086,7 @@ public sealed class RestaurantOptionsTests
             PublicOrigin = publicOrigin,
             TrustedOriginPatterns = trustedOriginPatterns ?? RestaurantOptions.DefaultTrustedOriginPatterns,
             TimeZoneId = timeZoneId,
+            ClockFormat = clockFormat,
             CurrencyCode = currencyCode,
             DatabaseConnectionString = databaseConnectionString,
             DataProtectionKeysDirectory = "/tmp/myrestaurant-keys",
@@ -42249,12 +43594,358 @@ public sealed class TablesWiringTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Time/RestaurantTimeTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             RestaurantTimeTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Time/RestaurantTimeTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Time/RestaurantTimeTests.cs
+  Size:                  13.9 KiB (14274 bytes)
+  Last modified:         2026-07-26 20:39:12.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 25951183
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               a378f355cbe0d7dc1c9f3b4f5b7a4a35a5dd830f0ef224b8cc07a179e811b5d9
+  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
+
+--- CONTENT ---
+using System.Globalization;
+using MyRestaurant.WebApplication.Configuration;
+using MyRestaurant.WebApplication.Time;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests.Time;
+
+/// <summary>
+/// The rendering half of F-36 (TECHNICAL_SPECIFICATION §8.1: instants are "stored <c>timestamptz</c>
+/// UTC; rendered in <c>RESTAURANT_TIME_ZONE</c>"; §13, §11.7).
+///
+/// <para>Two properties matter more than any individual format string, and both are asserted directly
+/// rather than left to inspection. First, the <em>reader's</em> zone never enters: the same instant
+/// renders differently for a Tokyo restaurant than for a New York one, and identically for every
+/// viewer of either. Second, the text is culture-independent — a container image that ships a
+/// different default locale must not change what a guest sees, which is exactly the failure mode
+/// <c>ToString("t")</c> had.</para>
+///
+/// <para>The literal expectations below double as the specification <c>js/clock.js</c> is written
+/// against: the footer's ticking text must be byte-identical to what the server painted, or the
+/// handover at page load is visible as a flicker.</para>
+/// </summary>
+public sealed class RestaurantTimeTests
+{
+    /// <summary>
+    /// Sunday 26 July 2026, 19:04:05 UTC. Chosen so that every zone below lands somewhere interesting:
+    /// New York is in daylight saving (UTC−4), Tokyo has already rolled into Monday, and Kathmandu sits
+    /// on a 45-minute offset — the case a naive "offset is a whole number of hours" assumption breaks.
+    /// </summary>
+    private static readonly DateTimeOffset Instant = new(2026, 7, 26, 19, 4, 5, TimeSpan.Zero);
+
+    // --- the reader's zone is irrelevant; the restaurant's is everything -------------------------
+
+    [Fact]
+    public void Time_RendersInTheRestaurantZone_NotUtc()
+        => Assert.Equal("3:04 PM", NewYork().Time(Instant));
+
+    [Fact]
+    public void Time_ADifferentRestaurantZone_RendersADifferentReadingForTheSameInstant()
+        => Assert.Equal("4:04 AM", Tokyo().Time(Instant));
+
+    [Fact]
+    public void Time_AZoneWithAFractionalOffset_IsNotRoundedToTheHour()
+        => Assert.Equal("12:49 AM", Build("Asia/Kathmandu").Time(Instant));
+
+    [Fact]
+    public void Date_RollsForwardWhenTheRestaurantZoneHasAlreadyPassedMidnight()
+    {
+        // The instant is still the 26th in UTC and in New York, and already the 27th in Tokyo. A guest
+        // reading their history from abroad must see the restaurant's date, not their own.
+        Assert.Equal("26 Jul 2026", NewYork().Date(Instant));
+        Assert.Equal("27 Jul 2026", Tokyo().Date(Instant));
+    }
+
+    // --- the individual formats -------------------------------------------------------------------
+
+    [Fact]
+    public void TimeWithSeconds_IsTheTimeToTheSecond()
+        => Assert.Equal("3:04:05 PM", NewYork().TimeWithSeconds(Instant));
+
+    [Fact]
+    public void DateAndTime_IsTheDateThenTheTime()
+        => Assert.Equal("26 Jul 2026, 3:04 PM", NewYork().DateAndTime(Instant));
+
+    [Fact]
+    public void DateAndTimeWithSeconds_CarriesTheWeekday_ForTheFooterClock()
+        => Assert.Equal("Sun 26 Jul 2026, 3:04:05 PM", NewYork().DateAndTimeWithSeconds(Instant));
+
+    [Fact]
+    public void DateAndTimeWithSeconds_WeekdayFollowsTheRestaurantZone()
+        => Assert.Equal("Mon 27 Jul 2026, 4:04:05 AM", Tokyo().DateAndTimeWithSeconds(Instant));
+
+    [Fact]
+    public void MachineReadable_IsAnIso8601StringCarryingTheRestaurantOffset()
+        => Assert.Equal("2026-07-26T15:04:05-04:00", NewYork().MachineReadable(Instant));
+
+    [Fact]
+    public void MachineReadable_APositiveOffsetIsSigned()
+        => Assert.Equal("2026-07-27T04:04:05+09:00", Tokyo().MachineReadable(Instant));
+
+    // --- the 12-versus-24 decision (§13) ----------------------------------------------------------
+
+    [Fact]
+    public void Time_TwentyFourHourClock_PadsAndDropsTheMeridiem()
+        => Assert.Equal("15:04", NewYork(usesTwelveHourClock: false).Time(Instant));
+
+    [Fact]
+    public void TimeWithSeconds_TwentyFourHourClock_PadsAndDropsTheMeridiem()
+        => Assert.Equal("15:04:05", NewYork(usesTwelveHourClock: false).TimeWithSeconds(Instant));
+
+    [Fact]
+    public void DateAndTimeWithSeconds_TwentyFourHourClock_MatchesTheScriptsPattern()
+        => Assert.Equal(
+            "Sun 26 Jul 2026, 15:04:05",
+            NewYork(usesTwelveHourClock: false).DateAndTimeWithSeconds(Instant));
+
+    [Fact]
+    public void Time_Midnight_RendersAsTwelveAmNotZeroAm()
+    {
+        // 04:00 UTC is 00:00 in New York on the same day — the hour a modulo-12 that forgets to remap
+        // zero gets wrong, and the one js/clock.js has to remap the same way.
+        DateTimeOffset midnightInNewYork = new(2026, 7, 26, 4, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal("12:00 AM", NewYork().Time(midnightInNewYork));
+        Assert.Equal("00:00", NewYork(usesTwelveHourClock: false).Time(midnightInNewYork));
+    }
+
+    [Fact]
+    public void Time_Noon_RendersAsTwelvePm()
+    {
+        DateTimeOffset noonInNewYork = new(2026, 7, 26, 16, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal("12:00 PM", NewYork().Time(noonInNewYork));
+        Assert.Equal("12:00", NewYork(usesTwelveHourClock: false).Time(noonInNewYork));
+    }
+
+    // --- the culture independence that F-36 was really about --------------------------------------
+
+    [Fact]
+    public void EveryFormat_IsUnaffectedByTheAmbientCulture()
+    {
+        // The deployed container's locale is whatever its base image carries. Before this class, that
+        // decided 12- versus 24-hour, the separator, and the month names. It must now decide nothing.
+        RestaurantTime restaurantTime = NewYork();
+
+        string time = restaurantTime.Time(Instant);
+        string dateAndTime = restaurantTime.DateAndTime(Instant);
+        string machineReadable = restaurantTime.MachineReadable(Instant);
+
+        using (new CultureScope("de-DE"))
+        {
+            Assert.Equal(time, restaurantTime.Time(Instant));
+            Assert.Equal(dateAndTime, restaurantTime.DateAndTime(Instant));
+            Assert.Equal(machineReadable, restaurantTime.MachineReadable(Instant));
+        }
+
+        using (new CultureScope("ja-JP"))
+        {
+            Assert.Equal(time, restaurantTime.Time(Instant));
+            Assert.Equal(dateAndTime, restaurantTime.DateAndTime(Instant));
+            Assert.Equal(machineReadable, restaurantTime.MachineReadable(Instant));
+        }
+    }
+
+    // --- the zone label the footer shows ----------------------------------------------------------
+
+    [Theory]
+    [InlineData("America/New_York", "New York")]
+    [InlineData("Asia/Tokyo", "Tokyo")]
+    [InlineData("America/Argentina/Buenos_Aires", "Buenos Aires")]
+    [InlineData("UTC", "UTC")]
+    public void ZoneLabel_IsTheHumanTailOfTheIdentifier(string zoneIdentifier, string expectedLabel)
+        => Assert.Equal(expectedLabel, Build(zoneIdentifier).ZoneLabel);
+
+    [Fact]
+    public void ZoneIdentifier_IsTheConfiguredString_NotWhateverTheHostNormalizedItTo()
+        => Assert.Equal("America/New_York", NewYork().ZoneIdentifier);
+
+    // --- the snapshot js/clock.js anchors from ----------------------------------------------------
+
+    [Fact]
+    public void Snapshot_CarriesTheInstantAndTheOffsetThatAppliesToIt()
+    {
+        RestaurantClockSnapshot snapshot = NewYork().Snapshot(Instant);
+
+        Assert.Equal(Instant.ToUnixTimeMilliseconds(), snapshot.EpochMilliseconds);
+        Assert.Equal(-240, snapshot.UtcOffsetMinutes);   // EDT
+        Assert.Equal("America/New_York", snapshot.ZoneIdentifier);
+        Assert.Equal("New York", snapshot.ZoneLabel);
+        Assert.True(snapshot.UsesTwelveHourClock);
+    }
+
+    [Fact]
+    public void Snapshot_TwentyFourHourClock_SaysSo()
+        => Assert.False(NewYork(usesTwelveHourClock: false).Snapshot(Instant).UsesTwelveHourClock);
+
+    [Fact]
+    public void Snapshot_FindsTheNextDaylightSavingTransition()
+    {
+        // A page left open across the first Sunday in November must not keep rendering EDT. The clocks
+        // go back at 02:00 EDT = 06:00 UTC on 2026-11-01.
+        RestaurantClockSnapshot snapshot = NewYork().Snapshot(Instant);
+
+        Assert.NotNull(snapshot.NextTransitionEpochMilliseconds);
+        Assert.Equal(-300, snapshot.NextUtcOffsetMinutes);   // EST
+
+        DateTimeOffset transition =
+            DateTimeOffset.FromUnixTimeMilliseconds(snapshot.NextTransitionEpochMilliseconds!.Value);
+
+        // Bisection stops at one-second precision, so assert the second rather than the millisecond.
+        Assert.True(
+            (transition - new DateTimeOffset(2026, 11, 1, 6, 0, 0, TimeSpan.Zero)).Duration()
+                <= TimeSpan.FromSeconds(1),
+            $"Expected the transition near 2026-11-01T06:00:00Z but found {transition:O}.");
+    }
+
+    [Fact]
+    public void Snapshot_TheReportedTransitionIsWhereTheOffsetActuallyChanges()
+    {
+        // Guards the bisection against an off-by-one that would have the script switch offsets an hour
+        // early or late — a bug nobody would see until the day it happened.
+        TimeZoneInfo zone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+        RestaurantClockSnapshot snapshot = NewYork().Snapshot(Instant);
+
+        DateTimeOffset transition =
+            DateTimeOffset.FromUnixTimeMilliseconds(snapshot.NextTransitionEpochMilliseconds!.Value);
+
+        Assert.Equal(
+            snapshot.NextUtcOffsetMinutes,
+            (int)zone.GetUtcOffset(transition).TotalMinutes);
+        Assert.Equal(
+            snapshot.UtcOffsetMinutes,
+            (int)zone.GetUtcOffset(transition.AddSeconds(-2)).TotalMinutes);
+    }
+
+    [Fact]
+    public void Snapshot_AZoneThatNeverMovesItsClocks_ReportsNoTransition()
+    {
+        RestaurantClockSnapshot snapshot = Tokyo().Snapshot(Instant);
+
+        Assert.Null(snapshot.NextTransitionEpochMilliseconds);
+        Assert.Null(snapshot.NextUtcOffsetMinutes);
+        Assert.Equal(540, snapshot.UtcOffsetMinutes);
+    }
+
+    [Fact]
+    public void Snapshot_IsStableAcrossRepeatedCalls_TheTransitionScanIsMemoized()
+    {
+        RestaurantTime restaurantTime = NewYork();
+
+        RestaurantClockSnapshot first = restaurantTime.Snapshot(Instant);
+        RestaurantClockSnapshot second = restaurantTime.Snapshot(Instant.AddMinutes(1));
+
+        Assert.Equal(first.NextTransitionEpochMilliseconds, second.NextTransitionEpochMilliseconds);
+        Assert.Equal(first.NextUtcOffsetMinutes, second.NextUtcOffsetMinutes);
+        Assert.Equal(first.EpochMilliseconds + 60000, second.EpochMilliseconds);
+    }
+
+    [Fact]
+    public void Snapshot_AfterTheCachedTransition_ReportsTheFollowingOne()
+    {
+        // The memo must expire at the transition it named, or a display left running through November
+        // would keep insisting the change is still ahead of it.
+        RestaurantTime restaurantTime = NewYork();
+        _ = restaurantTime.Snapshot(Instant);
+
+        DateTimeOffset afterTheChange = new(2026, 11, 2, 12, 0, 0, TimeSpan.Zero);
+        RestaurantClockSnapshot snapshot = restaurantTime.Snapshot(afterTheChange);
+
+        Assert.Equal(-300, snapshot.UtcOffsetMinutes);
+        Assert.Equal(-240, snapshot.NextUtcOffsetMinutes);   // the following March
+    }
+
+    // --- construction from configuration ----------------------------------------------------------
+
+    [Fact]
+    public void ConstructedFromOptions_TakesTheZoneAndTheClockFormat()
+    {
+        RestaurantTime restaurantTime = new(Options("Asia/Tokyo", RestaurantOptions.TwentyFourHourClockFormat));
+
+        Assert.Equal("Asia/Tokyo", restaurantTime.ZoneIdentifier);
+        Assert.False(restaurantTime.UsesTwelveHourClock);
+        Assert.Equal("04:04", restaurantTime.Time(Instant));
+    }
+
+    [Fact]
+    public void ConstructedFromOptions_DefaultsToTheTwelveHourClock()
+        => Assert.True(new RestaurantTime(Options("America/New_York", RestaurantOptions.DefaultClockFormat))
+            .UsesTwelveHourClock);
+
+    // --- helpers ------------------------------------------------------------------------------------
+
+    private static RestaurantTime NewYork(bool usesTwelveHourClock = true)
+        => Build("America/New_York", usesTwelveHourClock);
+
+    private static RestaurantTime Tokyo(bool usesTwelveHourClock = true)
+        => Build("Asia/Tokyo", usesTwelveHourClock);
+
+    private static RestaurantTime Build(string zoneIdentifier, bool usesTwelveHourClock = true)
+        => new(TimeZoneInfo.FindSystemTimeZoneById(zoneIdentifier), zoneIdentifier, usesTwelveHourClock);
+
+    private static RestaurantOptions Options(string zoneIdentifier, string clockFormat) => new()
+    {
+        RestaurantName = "Test Bistro",
+        PublicOrigin = "https://localhost:8443",
+        TimeZoneId = zoneIdentifier,
+        ClockFormat = clockFormat,
+        CurrencyCode = "USD",
+        DatabaseConnectionString = "Host=localhost;Database=x;Username=u;Password=p",
+        DataProtectionKeysDirectory = "/tmp/myrestaurant-keys",
+        KitchenSubmissionReminderSeconds = 60,
+        TableJoinTokenRotationSeconds = 60,
+        TableJoinGrantMinutes = 10,
+        TableDisplayPairingCodeMinutes = 10,
+        Argon2MemoryKibibytes = 65536,
+        Argon2Iterations = 3,
+        Argon2Parallelism = 1,
+        Argon2MaxConcurrentHashes = 4,
+    };
+
+    /// <summary>
+    /// Swaps the ambient culture for the duration of a block and puts it back. Hand-written rather than
+    /// reached for from a package, in the spirit of §16.1's preference for fakes over machinery.
+    /// </summary>
+    private sealed class CultureScope : IDisposable
+    {
+        private readonly CultureInfo _previousCulture;
+        private readonly CultureInfo _previousUiCulture;
+
+        public CultureScope(string cultureName)
+        {
+            _previousCulture = CultureInfo.CurrentCulture;
+            _previousUiCulture = CultureInfo.CurrentUICulture;
+
+            CultureInfo culture = new(cultureName);
+            CultureInfo.CurrentCulture = culture;
+            CultureInfo.CurrentUICulture = culture;
+        }
+
+        public void Dispose()
+        {
+            CultureInfo.CurrentCulture = _previousCulture;
+            CultureInfo.CurrentUICulture = _previousUiCulture;
+        }
+    }
+}
+
+################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 218
-  Total size     : 1.7 MiB (1760055 bytes)
+  Files dumped   : 224
+  Total size     : 1.8 MiB (1840073 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-26T19:53:52-04:00
+  Completed at   : 2026-07-26T22:40:13-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
