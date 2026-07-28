@@ -137,7 +137,8 @@ public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, I
         SkipIfNoContainer();
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
 
-        Guid second = await World().AddPersonAsync("bo", "Bo", cancellationToken);
+        // Three characters minimum: person.username carries CHECK (char_length BETWEEN 3 AND 64) (§8.2).
+        Guid second = await World().AddPersonAsync("bode", "Bo", cancellationToken);
         await World().JoinAsync(_sittingIdentifier, second, cancellationToken);
 
         await SendAsync(_guestIdentifier, _soupIdentifier, quantity: 1, cancellationToken);
@@ -173,7 +174,12 @@ public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, I
             .CloseAndSettleAsync(_sittingIdentifier, _counterIdentifier, cancellationToken);
 
         Assert.Equal(6.00m, result.SettledTotalAmount);
-        Assert.Equal(0, result.PendingLineCountAtClose);
+
+        // One, not zero. A removal takes its line out of order_current_line entirely, so the steak is
+        // neither charged for nor counted — but the soup was only repriced, and nothing fulfilled it, so
+        // it is still outstanding at the moment the total is stamped. Adjusting a price is not the same
+        // act as passing the plate, and the count says what was actually still with the kitchen.
+        Assert.Equal(1, result.PendingLineCountAtClose);
     }
 
     /// <summary>

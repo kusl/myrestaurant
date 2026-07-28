@@ -1,0 +1,287 @@
+@page "/administration/menu"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.DataAccess.Menu
+@using MyRestaurant.WebApplication.Orders
+@inject IMenuDirectory MenuItems
+@inject IMenuEventLog MenuEvents
+@inject RestaurantOptions Options
+@inject RestaurantTime RestaurantClock
+
+@* The administration menu list (TECHNICAL_SPECIFICATION §7, §11.4 — `area.administration`: "Menu (CRUD
+   + activity, event history per item)"). It lists every item with its price and availability, links each
+   to its management page, offers creation, and shows the recent activity feed that answers "what changed
+   today" without opening an item.
+
+   Static SSR, like every administration surface. Deactivated items are listed, not filtered: §7 is
+   explicit that an 86'd item stays on the menu marked "currently unavailable", and a page that hid them
+   from the administrator would hide exactly the rows somebody is looking for. Ordered by name, which is
+   also why duplicate names — permitted, since `menu_item.name` carries no UNIQUE constraint — end up
+   adjacent and visible. *@
+
+<PageTitle>Administration — menu</PageTitle>
+
+<section class="panel">
+    <div class="admin-header">
+        <div>
+            <p class="eyebrow">Administration</p>
+            <h1>Menu</h1>
+        </div>
+        <div class="admin-header-actions">
+            <a class="button-secondary" href="/administration">People</a>
+            <a class="button-secondary" href="/administration/tables">Tables</a>
+            <a class="button-primary" href="/administration/menu/new">Create menu item</a>
+        </div>
+    </div>
+
+    <p class="lede">
+        Every menu item, by name. Prices here are what the <em>next</em> order line costs — anything
+        already on a bill keeps the price it was added at. Open an item to rename it, reprice it, mark it
+        unavailable, or read everything that has ever happened to it.
+    </p>
+
+    @if (_items is null)
+    {
+        <p class="lede">Loading…</p>
+    }
+    else if (_items.Count == 0)
+    {
+        <p class="lede">No menu items yet. Create the first one — guests cannot order until there is something to order.</p>
+    }
+    else
+    {
+        <div class="admin-menu">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">Item</th>
+                        <th scope="col">Price</th>
+                        <th scope="col">Availability</th>
+                        <th scope="col">Created</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (MenuItemSummary item in _items)
+                    {
+                        <tr>
+                            <td><span class="item-name">@item.Name</span></td>
+                            <td class="numeric">@Money(item.PriceAmount)</td>
+                            <td>
+                                @if (item.IsActive)
+                                {
+                                    <span class="chip chip-ok">Available</span>
+                                }
+                                else
+                                {
+                                    <span class="chip chip-warn">Currently unavailable</span>
+                                }
+                            </td>
+                            <td>@RestaurantClock.DateAndTime(item.CreatedAt)</td>
+                            <td class="admin-row-actions">
+                                <a href="@($"/administration/menu/{item.MenuItemIdentifier}")">Manage</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <p class="form-footnote">
+            @_activeCount of @_items.Count available. An unavailable item stays on the guest's menu marked
+            unavailable and cannot be added to a send — it is never hidden and never deleted, so past
+            orders keep the item they were placed against.
+        </p>
+    }
+
+    <hr class="menu-rule" />
+
+    <h2 class="menu-heading">Recent activity</h2>
+    <p class="lede">
+        The last @RecentActivityCount changes across the whole menu, newest first. Each item's complete
+        history is on its own page.
+    </p>
+
+    @if (_recent is null)
+    {
+        <p class="lede">Loading…</p>
+    }
+    else if (_recent.Count == 0)
+    {
+        <p class="lede">Nothing has changed yet.</p>
+    }
+    else
+    {
+        <div class="admin-menu">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">When</th>
+                        <th scope="col">Item</th>
+                        <th scope="col">Change</th>
+                        <th scope="col">By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (MenuItemEventEntry entry in _recent)
+                    {
+                        <tr>
+                            <td>@RestaurantClock.DateAndTime(entry.OccurredAt)</td>
+                            <td>
+                                <a href="@($"/administration/menu/{entry.MenuItemIdentifier}")">@entry.MenuItemName</a>
+                            </td>
+                            <td>@Describe(entry)</td>
+                            <td>@entry.ActorName</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <p><a href="/administration">Back to administration</a></p>
+</section>
+
+@* Table rules namespaced under .admin-menu, inline for the same reason AdministrationHome and
+   AdministrationTables keep their own: App.razor links the static stylesheet, so component CSS isolation
+   is not active here. *@
+<style>
+    .admin-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-start;
+        justify-content: space-between;
+    }
+
+    .admin-header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .admin-menu {
+        overflow-x: auto;
+    }
+
+    .admin-menu table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+    }
+
+    .admin-menu th,
+    .admin-menu td {
+        text-align: left;
+        padding: 0.6rem 0.75rem;
+        border-bottom: 1px solid var(--rule, #e5e5e5);
+        vertical-align: top;
+    }
+
+    .admin-menu thead th {
+        font-weight: 600;
+        color: var(--muted-foreground, #666);
+        border-bottom-width: 2px;
+    }
+
+    .admin-menu .item-name {
+        display: block;
+        font-weight: 600;
+    }
+
+    .admin-menu .numeric {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+
+    .admin-menu .chip {
+        display: inline-block;
+        margin: 0.1rem 0.2rem 0.1rem 0;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        background: var(--chip-background, #f0f0f0);
+        color: var(--chip-foreground, #333);
+        white-space: nowrap;
+    }
+
+    .admin-menu .chip-ok {
+        background: #e6f4ea;
+        color: #1e7a37;
+    }
+
+    .admin-menu .chip-warn {
+        background: #fdecea;
+        color: #a3261c;
+    }
+
+    .admin-menu .admin-row-actions {
+        white-space: nowrap;
+        text-align: right;
+    }
+
+    .menu-heading {
+        font-size: 1.05rem;
+        margin: 0 0 0.35rem;
+    }
+
+    .menu-rule {
+        border: 0;
+        border-top: 1px solid var(--rule, #e5e5e5);
+        margin: 1.5rem 0;
+    }
+
+    .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+</style>
+
+@code {
+    /// <summary>
+    /// Enough to cover a service's worth of 86s without turning the index into the archive. §11.4's
+    /// "filters narrow only on explicit request" governs the per-item history, which is uncapped; this
+    /// panel is a glance, and its cap is the explicit request.
+    /// </summary>
+    private const int RecentActivityCount = 20;
+
+    private IReadOnlyList<MenuItemSummary>? _items;
+    private IReadOnlyList<MenuItemEventEntry>? _recent;
+    private int _activeCount;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _items = await MenuItems.ListAsync(HttpContext.RequestAborted);
+        _activeCount = _items.Count(item => item.IsActive);
+        _recent = await MenuEvents.ListRecentAsync(RecentActivityCount, HttpContext.RequestAborted);
+    }
+
+    private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
+
+    /// <summary>
+    /// A friendly label for the five event types §8.2's CHECK admits, falling back to the stored string
+    /// for anything else — §11.4 renders the record, so an unrecognised type must show as itself rather
+    /// than be swallowed.
+    /// </summary>
+    private string Describe(MenuItemEventEntry entry) => entry.EventType switch
+    {
+        "created" => $"Created at {Money(entry.NewPriceAmount ?? 0m)}",
+        "name_changed" => $"Renamed to {entry.NewName}",
+        "price_changed" => $"Repriced to {Money(entry.NewPriceAmount ?? 0m)}",
+        "activated" => "Marked available",
+        "deactivated" => "Marked unavailable",
+        _ => entry.EventType,
+    };
+}

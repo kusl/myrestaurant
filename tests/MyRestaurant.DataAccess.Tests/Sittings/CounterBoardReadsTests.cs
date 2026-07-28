@@ -85,7 +85,8 @@ public sealed class CounterBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
 
         await World().JoinAsync(sittingIdentifier, _guestIdentifier, cancellationToken);
 
-        Guid second = await World().AddPersonAsync("bo", "Bo", cancellationToken);
+        // Three characters minimum: person.username carries CHECK (char_length BETWEEN 3 AND 64) (§8.2).
+        Guid second = await World().AddPersonAsync("bode", "Bo", cancellationToken);
         await World().JoinAsync(sittingIdentifier, second, cancellationToken);
 
         _clock.UtcNow = _clock.UtcNow.AddMinutes(4);

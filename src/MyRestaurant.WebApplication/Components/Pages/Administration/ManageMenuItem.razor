@@ -1,0 +1,490 @@
+@page "/administration/menu/{MenuItemId:guid}"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.DataAccess.Menu
+@using MyRestaurant.WebApplication.Menu
+@using MyRestaurant.WebApplication.Orders
+@inject IMenuDirectory MenuItems
+@inject IMenuEventLog MenuEvents
+@inject IMenuWorkflow MenuChanges
+@inject RestaurantOptions Options
+@inject NavigationManager Navigation
+@inject RestaurantTime RestaurantClock
+
+@* Manage one menu item (TECHNICAL_SPECIFICATION §7, §11.4). Administrator only (endpoint
+   authorization). Static SSR: rename, reprice, and the availability toggle are full-page form posts.
+   Successful changes redirect back here (post/redirect/get) carrying a one-word outcome so a refresh does
+   not re-post; the shape ManageTable established.
+
+   Rename and reprice are two forms rather than one "save", because §7's event vocabulary has
+   `name_changed` and `price_changed` as separate types with mutually exclusive payload columns — a
+   combined save would write two events anyway and would then have to decide what to do when one half
+   changed nothing.
+
+   The history below is complete and uncapped, oldest first. §11.4: administration renders "the complete
+   stored record everywhere — full event streams … never projected or truncated for the administrator". A
+   price argument is settled by reading forward from `created`, so that is the direction it renders. *@
+
+<PageTitle>@(_item is null ? "Manage menu item" : $"Manage {_item.Name}")</PageTitle>
+
+@if (_item is null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Menu item not found</h1>
+        <p class="lede">No menu item exists with that identifier. It may have never existed, or the link is stale.</p>
+        <p><a href="/administration/menu">Back to the menu</a></p>
+    </section>
+}
+else
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration — menu</p>
+        <h1>@_item.Name</h1>
+
+        @if (_flashMessage is not null)
+        {
+            <p class="status-success" role="status">@_flashMessage</p>
+        }
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <div class="manage-facts">
+            <div>
+                <span class="manage-label">Availability</span>
+                @if (_item.IsActive)
+                {
+                    <span class="chip chip-ok">Available</span>
+                }
+                else
+                {
+                    <span class="chip chip-warn">Currently unavailable</span>
+                }
+            </div>
+            <div>
+                <span class="manage-label">Price</span>
+                <span class="numeric">@Money(_item.PriceAmount)</span>
+            </div>
+            <div>
+                <span class="manage-label">Created</span>
+                <span>@RestaurantClock.DateAndTime(_item.CreatedAt)</span>
+            </div>
+        </div>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Name</h2>
+        <p class="lede">
+            Renaming shows through everywhere immediately, including on lines already sent and on closed
+            bills — the name is read at display time, not captured (§8.3). Rename to correct a spelling;
+            create a second item if it is a different dish.
+        </p>
+        <EditForm Model="RenameInput" method="post" OnValidSubmit="RenameAsync" FormName="menu-item-rename" class="manage-inline-form">
+            <DataAnnotationsValidator />
+            <label class="visually-hidden" for="rename-name">New name</label>
+            <InputText id="rename-name" @bind-Value="RenameInput.Name" autocomplete="off" />
+            <button type="submit" class="button-primary">Rename</button>
+            <ValidationMessage For="@(() => RenameInput.Name)" />
+        </EditForm>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Price</h2>
+        <p class="lede">
+            A new price applies to lines added <strong>from now on</strong>. Anything already on an order
+            keeps the price it was added at, including on open tables — that is the capture rule (§6.5.4),
+            and it is why a guest who ordered before the change is not surprised at the till.
+        </p>
+        <EditForm Model="RepriceInput" method="post" OnValidSubmit="RepriceAsync" FormName="menu-item-reprice" class="manage-inline-form">
+            <DataAnnotationsValidator />
+            <label class="visually-hidden" for="reprice-price">New price</label>
+            <span class="manage-currency">@Options.CurrencyCode</span>
+            <InputNumber id="reprice-price" @bind-Value="RepriceInput.PriceAmount" step="0.01" min="0" inputmode="decimal" />
+            <button type="submit" class="button-primary">Reprice</button>
+            <ValidationMessage For="@(() => RepriceInput.PriceAmount)" />
+        </EditForm>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Availability</h2>
+        @if (_item.IsActive)
+        {
+            <p class="lede">
+                Marking this unavailable is the "86". It stays on the guest's menu, labelled unavailable,
+                and cannot be added to a send; nothing is hidden and nothing is deleted. The kitchen and
+                the counter can do this too, from their own screens.
+            </p>
+            <form method="post" @formname="menu-item-set-active" @onsubmit="ToggleAvailabilityAsync">
+                <AntiforgeryToken />
+                <div class="form-actions">
+                    <button type="submit" class="button-secondary">Mark unavailable</button>
+                </div>
+            </form>
+        }
+        else
+        {
+            <p class="lede">
+                This item is on the menu marked unavailable and cannot be ordered. Bring it back when it
+                is on again.
+            </p>
+            <form method="post" @formname="menu-item-set-active" @onsubmit="ToggleAvailabilityAsync">
+                <AntiforgeryToken />
+                <div class="form-actions">
+                    <button type="submit" class="button-primary">Mark available</button>
+                </div>
+            </form>
+        }
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">History</h2>
+        @if (_history is null || _history.Count == 0)
+        {
+            <p class="lede">No recorded changes. That is only possible for an item created before this log existed.</p>
+        }
+        else
+        {
+            <p class="lede">
+                Everything that has ever happened to this item, oldest first — @_history.Count
+                @(_history.Count == 1 ? "entry" : "entries"), complete and untruncated.
+            </p>
+            <div class="manage-history">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">When</th>
+                            <th scope="col">Change</th>
+                            <th scope="col">By</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (MenuItemEventEntry entry in _history)
+                        {
+                            <tr>
+                                <td>@RestaurantClock.DateAndTime(entry.OccurredAt)</td>
+                                <td>@Describe(entry)</td>
+                                <td>@entry.ActorName</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <p class="manage-back"><a href="/administration/menu">Back to the menu</a></p>
+    </section>
+}
+
+<style>
+    .manage-facts {
+        display: grid;
+        gap: 0.75rem;
+        margin: 1rem 0;
+    }
+
+    .manage-label {
+        display: block;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted-foreground, #666);
+        margin-bottom: 0.25rem;
+    }
+
+    .manage-heading {
+        font-size: 1.05rem;
+        margin: 0 0 0.35rem;
+    }
+
+    .manage-rule {
+        border: 0;
+        border-top: 1px solid var(--rule, #e5e5e5);
+        margin: 1.5rem 0;
+    }
+
+    .manage-inline-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        align-items: center;
+        margin: 0.5rem 0;
+    }
+
+    .manage-inline-form input {
+        padding: 0.45rem 0.6rem;
+        border: 1px solid var(--rule, #ccc);
+        border-radius: 0.4rem;
+        min-width: 8rem;
+    }
+
+    .manage-currency {
+        font-size: 0.85rem;
+        color: var(--muted-foreground, #666);
+    }
+
+    .manage-history {
+        overflow-x: auto;
+        margin: 0.5rem 0;
+    }
+
+    .manage-history table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+    }
+
+    .manage-history th,
+    .manage-history td {
+        text-align: left;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--rule, #e5e5e5);
+        vertical-align: top;
+    }
+
+    .manage-history thead th {
+        font-weight: 600;
+        color: var(--muted-foreground, #666);
+        border-bottom-width: 2px;
+    }
+
+    .manage-back {
+        margin-top: 1.5rem;
+    }
+
+    .numeric {
+        font-variant-numeric: tabular-nums;
+    }
+
+    .chip {
+        display: inline-block;
+        margin: 0.1rem 0.2rem 0.1rem 0;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        background: var(--chip-background, #f0f0f0);
+        color: var(--chip-foreground, #333);
+        white-space: nowrap;
+    }
+
+    .chip-ok {
+        background: #e6f4ea;
+        color: #1e7a37;
+    }
+
+    .chip-warn {
+        background: #fdecea;
+        color: #a3261c;
+    }
+
+    .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+</style>
+
+@code {
+    private MenuItemSummary? _item;
+    private IReadOnlyList<MenuItemEventEntry>? _history;
+    private string? _flashMessage;
+    private string? _errorMessage;
+
+    [Parameter]
+    public Guid MenuItemId { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "menu-item-rename")]
+    private RenameInputModel RenameInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "menu-item-reprice")]
+    private RepriceInputModel RepriceInput { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? Done { get; set; }
+
+    private string ManagePath => $"/administration/menu/{MenuItemId}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form POST binds these itself and may assign null, so the defaults live here.
+        RenameInput ??= new();
+        RepriceInput ??= new();
+
+        _item = await MenuItems.GetAsync(MenuItemId, HttpContext.RequestAborted);
+        if (_item is null)
+        {
+            return;
+        }
+
+        _history = await MenuEvents.ListForItemAsync(MenuItemId, HttpContext.RequestAborted);
+
+        // On GET, pre-fill both editors with what is stored and render any post/redirect flash. On POST
+        // the submitted values are already bound, so they must not be overwritten.
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            if (string.IsNullOrEmpty(RenameInput.Name))
+            {
+                RenameInput.Name = _item.Name;
+            }
+
+            RepriceInput.PriceAmount = _item.PriceAmount;
+            _flashMessage = FlashFor(Done);
+        }
+    }
+
+    private async Task RenameAsync()
+    {
+        if (!TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        RenameMenuItemResult result = await MenuChanges.RenameMenuItemAsync(
+            MenuItemId, RenameInput.Name.Trim(), administrator, HttpContext.RequestAborted);
+
+        switch (result.Outcome)
+        {
+            case RenameMenuItemOutcome.Renamed:
+                RedirectWithOutcome("renamed");
+                break;
+            case RenameMenuItemOutcome.NoChange:
+                RedirectWithOutcome("rename-no-change");
+                break;
+            case RenameMenuItemOutcome.MenuItemNotFound:
+                Navigation.NavigateTo("/administration/menu");
+                break;
+        }
+    }
+
+    private async Task RepriceAsync()
+    {
+        if (!TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        RepriceMenuItemResult result = await MenuChanges.RepriceMenuItemAsync(
+            MenuItemId, RepriceInput.PriceAmount, administrator, HttpContext.RequestAborted);
+
+        switch (result.Outcome)
+        {
+            case RepriceMenuItemOutcome.Repriced:
+                RedirectWithOutcome("repriced");
+                break;
+            case RepriceMenuItemOutcome.NoChange:
+                RedirectWithOutcome("reprice-no-change");
+                break;
+            case RepriceMenuItemOutcome.MenuItemNotFound:
+                Navigation.NavigateTo("/administration/menu");
+                break;
+        }
+    }
+
+    private async Task ToggleAvailabilityAsync()
+    {
+        if (_item is null || !TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        bool target = !_item.IsActive;
+        SetMenuItemAvailabilityResult result = await MenuChanges.SetMenuItemActiveAsync(
+            MenuItemId, target, administrator, HttpContext.RequestAborted);
+
+        switch (result.Outcome)
+        {
+            case SetMenuItemAvailabilityOutcome.Changed:
+                RedirectWithOutcome(target ? "made-available" : "made-unavailable");
+                break;
+            case SetMenuItemAvailabilityOutcome.AlreadyInThatState:
+                // Somebody in the kitchen got there first between this page rendering and the button
+                // being pressed. Nothing changed and nothing is wrong; re-render on the truth.
+                Navigation.NavigateTo(ManagePath);
+                break;
+            case SetMenuItemAvailabilityOutcome.MenuItemNotFound:
+                Navigation.NavigateTo("/administration/menu");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The two things every write on this page needs first: the item must still exist, and the acting
+    /// administrator must be identifiable — <c>menu_item_event.actor_person_identifier</c> is NOT NULL and
+    /// §7 requires every change to name somebody. Endpoint authorization already guarantees the second;
+    /// this is the belt to that brace.
+    /// </summary>
+    private bool TryBegin(out Guid administrator)
+    {
+        administrator = Guid.Empty;
+
+        if (_item is null)
+        {
+            Navigation.NavigateTo("/administration/menu");
+            return false;
+        }
+
+        if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } identifier)
+        {
+            _errorMessage = "Your session could not be identified. Sign in again and retry.";
+            return false;
+        }
+
+        administrator = identifier;
+        return true;
+    }
+
+    private void RedirectWithOutcome(string outcome)
+        => Navigation.NavigateTo($"{ManagePath}?done={outcome}");
+
+    private static string? FlashFor(string? outcome) => outcome switch
+    {
+        "renamed" => "Renamed. The new name shows everywhere immediately, including on past orders.",
+        "rename-no-change" => "That was already the name — nothing changed.",
+        "repriced" => "Repriced. Lines already on an order keep the price they were added at.",
+        "reprice-no-change" => "That was already the price — nothing changed.",
+        "made-unavailable" => "Marked unavailable. It stays on the guest's menu, labelled unavailable, and cannot be ordered.",
+        "made-available" => "Marked available. It can be ordered again.",
+        _ => null,
+    };
+
+    private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
+
+    /// <summary>
+    /// A friendly label for the five event types §8.2's CHECK admits, falling back to the stored string
+    /// for anything else — §11.4 renders the record, so an unrecognised type must show as itself rather
+    /// than be swallowed.
+    /// </summary>
+    private string Describe(MenuItemEventEntry entry) => entry.EventType switch
+    {
+        "created" => $"Created as “{entry.NewName}” at {Money(entry.NewPriceAmount ?? 0m)}",
+        "name_changed" => $"Renamed to “{entry.NewName}”",
+        "price_changed" => $"Repriced to {Money(entry.NewPriceAmount ?? 0m)}",
+        "activated" => "Marked available",
+        "deactivated" => "Marked unavailable",
+        _ => entry.EventType,
+    };
+
+    private sealed class RenameInputModel
+    {
+        [Required(ErrorMessage = "Enter a name.")]
+        [StringLength(120, MinimumLength = 1, ErrorMessage = "The name must be 1–120 characters.")]
+        public string Name { get; set; } = string.Empty;
+    }
+
+    private sealed class RepriceInputModel
+    {
+        [Range(0, 99999999.99, ErrorMessage = "The price must be between 0 and 99,999,999.99.")]
+        public decimal PriceAmount { get; set; }
+    }
+}

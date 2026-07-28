@@ -60,7 +60,9 @@ public sealed class KitchenWiringTests
     /// <summary>
     /// Surfaces take the workflow, never the raw write: an 86 that skipped the §9 broadcast would leave
     /// the item selectable in every open guest picker until that page happened to reload, and the guest
-    /// would then have a whole send refused for it (§6.5.9).
+    /// would then have a whole send refused for it (§6.5.9). The registered implementation is
+    /// <see cref="MenuWorkflow"/> — renamed from <c>MenuAvailabilityWorkflow</c> when the M5 menu
+    /// administration slice gave it create, rename, and reprice alongside the 86 toggle.
     /// </summary>
     [Fact]
     public void MenuWorkflow_IsResolvableInAScope_AndIsTheServiceSurfacesShouldTake()
@@ -68,7 +70,7 @@ public sealed class KitchenWiringTests
         using ServiceProvider provider = BuildProvider();
         using IServiceScope scope = provider.CreateScope();
 
-        Assert.IsType<MenuAvailabilityWorkflow>(scope.ServiceProvider.GetRequiredService<IMenuWorkflow>());
+        Assert.IsType<MenuWorkflow>(scope.ServiceProvider.GetRequiredService<IMenuWorkflow>());
         Assert.IsType<DapperMenuAvailability>(scope.ServiceProvider.GetRequiredService<IMenuAvailability>());
     }
 

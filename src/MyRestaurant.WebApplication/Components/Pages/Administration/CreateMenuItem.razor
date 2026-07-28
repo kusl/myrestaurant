@@ -1,0 +1,128 @@
+@page "/administration/menu/new"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.DataAccess.Menu
+@using MyRestaurant.Domain.Identifiers
+@using MyRestaurant.WebApplication.Menu
+@using MyRestaurant.WebApplication.Orders
+@inject IMenuWorkflow MenuChanges
+@inject IIdentifierFactory IdentifierFactory
+@inject RestaurantOptions Options
+
+@* Create a menu item (TECHNICAL_SPECIFICATION §7, §11.4). Administrator only (endpoint authorization,
+   like every administration surface). Static SSR: a full-page form post. The item is created active, and
+   the workflow announces it so every open guest picker and kitchen panel gains it without a reload (§9).
+   Nothing is written until the form is submitted; the identifier is minted here so the success screen can
+   link straight to the new item's management page — the same shape CreateTable uses. *@
+
+<PageTitle>Create menu item</PageTitle>
+
+@if (_created is not null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Menu item created</p>
+        <h1>@_created.Name is on the menu</h1>
+
+        <p class="status-success" role="status">
+            <strong>@_created.Name</strong> was created at <strong>@Money(_created.PriceAmount)</strong>
+            and is available now. Every open menu has already picked it up.
+        </p>
+
+        <div class="form-actions">
+            <a class="button-primary" href="@($"/administration/menu/{_created.MenuItemIdentifier}")">Manage this item</a>
+            <a class="button-secondary" href="/administration/menu">Back to the menu</a>
+        </div>
+    </section>
+}
+else
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Create a menu item</h1>
+        <p class="lede">
+            The name is what guests, the kitchen queue, and the bill all read, so write it the way it
+            should appear on a receipt. The price is in @Options.CurrencyCode and can be zero.
+        </p>
+
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <EditForm Model="Input" method="post" OnValidSubmit="CreateAsync" FormName="create-menu-item">
+            <DataAnnotationsValidator />
+
+            <div class="form-field">
+                <label for="name">Name</label>
+                <InputText id="name" @bind-Value="Input.Name" autocomplete="off" autofocus />
+                <ValidationMessage For="@(() => Input.Name)" />
+            </div>
+
+            <div class="form-field">
+                <label for="price">Price (@Options.CurrencyCode)</label>
+                <InputNumber id="price" @bind-Value="Input.PriceAmount" step="0.01" min="0" inputmode="decimal" />
+                <ValidationMessage For="@(() => Input.PriceAmount)" />
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Create item</button>
+                <a class="button-secondary" href="/administration/menu">Cancel</a>
+            </div>
+        </EditForm>
+
+        <p class="form-footnote">
+            Names do not have to be unique — a kitchen running a rotating special will want two rows
+            called the same thing eventually. Prices are stored to two decimals and rounded if you type
+            more. You can rename, reprice, or mark the item unavailable at any time; every one of those is
+            recorded with your name against it.
+        </p>
+    </section>
+}
+
+@code {
+    private CreateMenuItemResult? _created;
+    private string? _errorMessage;
+
+    [SupplyParameterFromForm(FormName = "create-menu-item")]
+    private CreateMenuItemInputModel Input { get; set; } = default!;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    protected override void OnInitialized()
+        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
+        => Input ??= new();
+
+    private async Task CreateAsync()
+    {
+        if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } administrator)
+        {
+            // Endpoint authorization already guarantees an administrator; this is the belt to that
+            // brace, because menu_item_event.actor_person_identifier is NOT NULL and §7 requires every
+            // change to name somebody.
+            _errorMessage = "Your session could not be identified. Sign in again and retry.";
+            return;
+        }
+
+        _created = await MenuChanges.CreateMenuItemAsync(
+            IdentifierFactory.Create(),
+            Input.Name.Trim(),
+            Input.PriceAmount,
+            administrator,
+            HttpContext.RequestAborted);
+    }
+
+    private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
+
+    private sealed class CreateMenuItemInputModel
+    {
+        [Required(ErrorMessage = "Give the item a name.")]
+        [StringLength(120, MinimumLength = 1, ErrorMessage = "The name must be 1–120 characters.")]
+        public string Name { get; set; } = string.Empty;
+
+        // The upper bound is numeric(10,2)'s: eight digits before the point. Bounded here so the form
+        // says so, and again in DapperMenuAdministration so no other caller can get past it.
+        [Range(0, 99999999.99, ErrorMessage = "The price must be between 0 and 99,999,999.99.")]
+        public decimal PriceAmount { get; set; }
+    }
+}

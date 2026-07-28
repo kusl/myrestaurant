@@ -8,11 +8,12 @@ namespace MyRestaurant.WebApplication.Orders;
 /// Wires the ordering services (TECHNICAL_SPECIFICATION §6, §7, §8.3, §8.4, §9, §10, §12). Five groups:
 ///
 /// <list type="bullet">
-///   <item><description><b>Menu (§7)</b> — <see cref="IMenuDirectory"/>, which the guest staging area
-///   picks from and the kitchen "86" panel lists; and <see cref="IMenuAvailability"/> with its
-///   post-commit shell <see cref="IMenuWorkflow"/>, which is the "86" toggle itself (§11.2). The rest of
-///   §11.4's menu CRUD — create, rename, reprice, per-item event history — is M5 and will grow from
-///   these rather than replace them.</description></item>
+///   <item><description><b>Menu (§7, §11.4)</b> — <see cref="IMenuDirectory"/>, which the guest staging
+///   area picks from and the kitchen "86" panel lists; <see cref="IMenuAvailability"/>, the 86 toggle
+///   itself (§11.2); <see cref="IMenuAdministration"/>, the administrator's create/rename/reprice
+///   (§11.4); <see cref="IMenuEventLog"/>, which reads the append-only history both writes leave behind;
+///   and <see cref="IMenuWorkflow"/>, the one post-commit shell over both write services, which is what
+///   every surface takes.</description></item>
 ///   <item><description><b>The order write path (§6.6)</b> — <see cref="IOrderMutations"/>, the single
 ///   transaction every order event goes through.</description></item>
 ///   <item><description><b>The order read side (§8.3, §11.2)</b> — <see cref="IOrderReadModel"/> over
@@ -35,6 +36,14 @@ namespace MyRestaurant.WebApplication.Orders;
 /// <see cref="Observability.RestaurantMetrics"/>, both of which <c>Program.cs</c> registers before this
 /// call.</para>
 ///
+/// <para><b>Yes, menu administration is registered from the orders extension.</b> The menu is not an
+/// ordering concern, but it is not a table or an identity concern either, and it has been wired here
+/// since M4 for the reason the guest picker exists: an order prices itself from the menu (§6.5.4), so
+/// nothing that can take an order can be wired without it. Adding a fifth <c>AddRestaurantMenu()</c>
+/// would mean a host could register ordering and get a system whose staging area cannot list anything —
+/// the same class of half-wired failure as the reminder loop above. <c>Program.cs</c> therefore needs no
+/// edit for the M5 menu slice.</para>
+///
 /// <para>Registered from <c>Program.cs</c> after <c>AddRestaurantTables()</c>: an order belongs to a
 /// sitting, and the surfaces that consume these services resolve the sitting directory alongside them.
 /// Every data service is scoped, matching the identity, table, and display services — they hold no state
@@ -49,13 +58,18 @@ public static class OrdersServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // Menu (§7). The directory returns deactivated items too — §7 shows them "currently
-        // unavailable" rather than letting them vanish. The availability write is the kitchen's "86"
-        // (§11.2); surfaces take the workflow, never the raw write, or an 86'd item would stay
-        // selectable in every open guest picker until its page happened to reload (§9).
+        // Menu (§7, §11.4). The directory returns deactivated items too — §7 shows them "currently
+        // unavailable" rather than letting them vanish. Two write services, split by audience rather
+        // than by table: availability is the kitchen's and the counter's 86 (§11.2), while create,
+        // rename, and reprice are administrator-only (§11.4). Surfaces take the workflow, never either
+        // raw write, or a changed menu would stay stale in every open guest picker until its page
+        // happened to reload (§9) — and a guest would then be quoted a price nobody charges, or have a
+        // whole send refused for an item that vanished under them (§6.5.9).
         services.AddScoped<IMenuDirectory, DapperMenuDirectory>();
         services.AddScoped<IMenuAvailability, DapperMenuAvailability>();
-        services.AddScoped<IMenuWorkflow, MenuAvailabilityWorkflow>();
+        services.AddScoped<IMenuAdministration, DapperMenuAdministration>();
+        services.AddScoped<IMenuEventLog, DapperMenuEventLog>();
+        services.AddScoped<IMenuWorkflow, MenuWorkflow>();
 
         // Orders (§6.6, §8.3, §8.5, §11.2).
         services.AddScoped<IOrderMutations, DapperOrderMutations>();
