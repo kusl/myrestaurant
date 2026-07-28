@@ -5,7 +5,7 @@ using MyRestaurant.WebApplication.Menu;
 namespace MyRestaurant.WebApplication.Orders;
 
 /// <summary>
-/// Wires the ordering services (TECHNICAL_SPECIFICATION §6, §7, §8.3, §8.4, §9, §10, §12). Five groups:
+/// Wires the ordering services (TECHNICAL_SPECIFICATION §6, §7, §8.3, §8.4, §9, §10, §12). Six groups:
 ///
 /// <list type="bullet">
 ///   <item><description><b>Menu (§7, §11.4)</b> — <see cref="IMenuDirectory"/>, which the guest staging
@@ -23,6 +23,12 @@ namespace MyRestaurant.WebApplication.Orders;
 ///   <item><description><b>The post-commit shell (§9, §12)</b> — <see cref="IOrderWorkflow"/>, which
 ///   surfaces call instead of <see cref="IOrderMutations"/> so every committed event is both counted and
 ///   broadcast.</description></item>
+///   <item><description><b>Visibility (§6.8, §11.1, §11.4)</b> — <see cref="IOrderHistoryReads"/>, which
+///   answers the two person-scoped questions no other reader can ("which of my past orders may I still
+///   see", "what has been hidden") plus the visibility log behind both;
+///   <see cref="IOrderVisibility"/>, the owner-hide and administrator-unhide transaction; and
+///   <see cref="IOrderVisibilityWorkflow"/>, the post-commit shell that announces the change, which is
+///   what both surfaces take.</description></item>
 ///   <item><description><b>Kitchen alerting (§8.4, §10.2)</b> — <see cref="IKitchenNotifications"/> and
 ///   the <see cref="KitchenReminderService"/> hosted service that drives it.</description></item>
 /// </list>
@@ -79,6 +85,15 @@ public static class OrdersServiceCollectionExtensions
 
         // The post-commit shell surfaces actually call (§9, §12).
         services.AddScoped<IOrderWorkflow, OrderWorkflow>();
+
+        // Visibility (§6.8). The reads enforce hiding in SQL for every person-scoped query, so no surface
+        // can forget the filter; the write service is the only path to an order_visibility_event row, and
+        // the workflow above it is what the guest's history page and the administration hidden-records
+        // page take — a hide nobody announced (§9) leaves the row on every other phone the guest has the
+        // page open on, which is precisely the moment they are watching for it to disappear.
+        services.AddScoped<IOrderHistoryReads, DapperOrderHistoryReads>();
+        services.AddScoped<IOrderVisibility, DapperOrderVisibility>();
+        services.AddScoped<IOrderVisibilityWorkflow, OrderVisibilityWorkflow>();
 
         // Kitchen alerting, reminder half (§8.4, §10.2). The initial alert is not here: §10.1 requires
         // its row to be written inside the order transaction, so it lives in DapperOrderMutations.

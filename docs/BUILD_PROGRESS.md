@@ -1728,3 +1728,959 @@ Hide/unhide (§6.8) with the hidden-records view, and the cross-cutting event ex
 order, and menu events filtered by subject, actor, type, and time). `ISittingRecordReads` is the order half
 of that explorer's engine; `IMenuEventLog` is the menu half; `ISecurityEventLog` reads the third. What is
 missing is `order_visibility_event`'s write path and one screen that queries all three.
+### M4 Slice 2 — the guest ordering surface: menu, staging, batch send, and the living order (landed)
+
+M4 Slice 1 landed an order engine with no user interface at all. This slice is the first consumer: the
+member view of `/table/{id}` grows a menu picker, a staging area, a Send that reports per-operation
+reasons, the committed living order with its removals and price adjustments intact, the rest of the
+party's orders read-only, running personal and table totals, and the §11.1 flip to a settled bill when
+the counter closes the sitting. No data-access code changed and no SQL was written — every query this
+surface makes already existed and, until now, had no caller.
+
+**The structural decision: an interactive island inside a static page.** `/table/{id}` is
+`[ExcludeFromInteractiveRouting]` because the join flow writes the grant cookie and issues redirects,
+and a Blazor circuit can do neither. But everything §11.1 asks for below the join is live — a basket
+that survives a mis-tap, lines that re-badge when the kitchen fulfills them, a party total that moves
+when someone else orders, the flip on `SittingClosed`. Rather than compromise one for the other,
+`TableJoin.razor` keeps the cookie work and renders the new `TableOrderSurface` with
+`@rendermode="InteractiveServer"`. The parameters that cross the boundary are two `Guid`s, which the
+framework protects with the data-protection key ring like any other server component marker; the person
+is **not** among them, and is read from the cascading authentication state inside the island so the
+component is correct on its own terms rather than merely correct because its caller was careful. The
+roster moved into the island for the same reason: §9 sends `SittingMemberJoined` to table members, and a
+statically rendered list cannot hear it. `TableJoin.razor`'s inline `<style>` block is gone; the
+`.table-*` vocabulary moved to `app.css`, because an inline style in one component silently styling
+another component's markup is a dependency nobody can see.
+
+**Scoping every read by the sitting, not the table.** The island is handed the sitting the parent
+resolved and re-derives everything else, and every query is keyed by that identifier. The one query
+keyed by the table — `GetOpenSittingForMemberAsync`, which answers "am I still a member of something
+open here?" — has its answer **discarded unless it names this sitting**. That is not defensive
+programming; it is the difference between two behaviours. A sitting that is closed and followed by a new
+one on the same table would otherwise silently swap the order under the reader's feet mid-session,
+showing a guest somebody else's table as though it were theirs. Comparing the identifier makes the same
+event do what §11.1 asks instead: flip to the read-only settled bill.
+
+**Two new pure types, because a Razor component is not testable here.** `OrderNarrative` (Domain) folds
+an order's event log into a per-line story that **keeps removed lines** — the opposite of
+`order_current_line`, and deliberately so: §11.1 wants "removed lines struck-through with actor +
+reason, price adjustments shown old → new with reason", and an append-only log exists so history
+survives state (ADR-0002). The "old" side of that arrow is stored nowhere, which is precisely why it
+cannot come from a view: it is the price the fold was holding when the adjustment arrived.
+`OrderNarrative` also states §6.5.3's guest-removal rule once, as `GuestMayRemove`, so the surface can
+grey out what the transaction would refuse rather than offering a control that always fails.
+`OrderStaging` (WebApplication) is the basket: stage, unstage, change a quantity, tick a committed line
+for removal, and `Build` into the operations of one `guest_submission` with a parallel description per
+operation so a rejection's `OperationIndex` becomes "2 × Soup — the menu item is currently unavailable"
+rather than "operation 3 failed". Both live outside the component for the reason `ProfileDetails`,
+`ObligationsEnforcement`, and `PairingCode.Normalize` do (§16.1 — no bUnit).
+
+**There are now two folds over the same log, and that is a risk with a test against it.**
+`OrderProjection` answers the bill's question and §8.5 pins it against the SQL views;
+`OrderNarrative` answers the guest's. Nothing structural stops them drifting, and the first person to
+notice would be a customer being charged something the app never showed them. So
+`OrderNarrativeTests.NonRemovedLines_AgreeWithOrderProjectionOnARandomisedSequence` closes the triangle:
+on a seeded 120-event sequence — sends, removals, fulfillments, reversals, price adjustments, and one
+operation aimed at a line that does not exist — the narrative's non-removed lines equal the projection's
+lines field for field, in the same order, and the totals match. The sequence opens with a fixed prologue
+that guarantees a removed line, a fulfilled line, and an adjusted line, so the coverage assertions hold
+by construction rather than by the seed happening to be kind.
+
+**Three behaviours worth naming.**
+
+*Staged lines carry no price.* §6.5.4 prices every added line server-side from the menu read inside the
+send transaction, so a price captured at staging time would be a second, older authority — and the one
+moment it disagreed with the charge is the moment a guest would notice. The surface renders the current
+menu price beside each staged line instead, which is correct by construction and re-reads itself on
+`MenuChanged`. For the same reason `Build` proposes every added line at **zero**: the transaction
+overwrites it, and sending zero rather than a plausible-looking number means a regression in that
+overwrite shows up as a free lunch on the first order instead of as a stale price nobody spots.
+
+*Stale removal ticks are pruned on every re-read.* A guest ticks a pending line; the kitchen fulfills it
+before they press Send. §6.5.9 refuses the **whole** event on one bad operation, so that one leftover
+tick would make the Send button permanently useless with no explanation. `PruneRemovals` drops marks for
+lines that are no longer the guest's to remove and the surface says so in a sentence. The transaction
+re-decides all of it under the lock regardless; this only moves the answer to the moment of the tap.
+
+*Notes are not validated, at any length.* §7 is explicit that customization notes are free text and are
+"never validated against any rules engine", so `OrderStaging` trims and collapses a blank to `null` —
+exactly what the transaction does — and refuses nothing. The input carries `maxlength="200"` as a
+courtesy against a pasted novel, and the circuit's own message-size limit is the real backstop.
+
+**Live updates.** The island subscribes on `OnAfterRender(firstRender)` — never during prerendering, so
+no subscription is created for a render about to be thrown away — and handles the four §9 notifications
+that can change what is on the screen, filtered on the sitting identifier: `OrderLinesChanged`,
+`LineFulfillmentChanged`, `SittingMemberJoined`, `SittingClosed`, plus `MenuChanged`, which additionally
+re-reads the menu so a staged item picks up its "currently unavailable" mark (§7). One re-read per
+notification, unconditionally: the queries are small, scoped to one sitting, and a restaurant table is
+not a hot path. Nothing publishes `MenuChanged` yet — menu administration is M5 — and the handler is
+wired now because writing it later means remembering to.
+
+**`MoneyText`.** New, and the reason it is not `amount.ToString("C")` is that the framework's currency
+formatting reads the *server's* culture and ignores `RESTAURANT_CURRENCY_CODE` entirely, printing
+dollars for a restaurant configured in euros and doing it silently. A short ISO 4217 → symbol table with
+the code itself as the fallback (`ISK 1200.00`), and the digits always invariant with two decimals,
+because prices are `numeric(10,2)` and a guest checking a bill against a menu board wants them to line
+up.
+
+No migration, no packages, no DI change (every service the island resolves was registered by
+`AddRestaurantOrders()` in Slice 1), and no specification edit — this realizes behaviour §6, §7, §9,
+and §11.1 already specify. Tests: `OrderNarrativeTests` (16 facts including the drift guard, no
+container), `OrderStagingTests` (22 facts and theories, no container), `MoneyTextTests` (10 facts and
+theories, no container).
+
+**Known consequence — a basket dies with the circuit.** Staging is circuit state and is not persisted, so
+a refresh, a phone locking for long enough to drop the WebSocket, or a tab restore empties it. That is
+deliberate: §6 gives an order exactly one persistence mechanism, the append-only event log, and a
+half-composed basket is not an order event. Persisting drafts would mean a second write path, a second
+projection, and a new question — "whose draft is on this table?" — that §11.1 never asks. If it proves
+annoying in real use, the cheap fix is `sessionStorage` on the client, not a table.
+
+**Known consequence — prerendering reads the order twice.** The island prerenders inside the static page
+and then loads again when the circuit starts, so the first paint costs two rounds of the same six
+queries. `TableDisplay` has carried the same cost since M3. Disabling prerender would trade it for a
+visibly empty panel on a phone over a tunnel, which is the worse deal.
+
+**Known consequence — times render in the server's zone, not `RESTAURANT_TIME_ZONE`.** Found while
+building this surface and recorded as **F-36**, not fixed here. Every surface in the tree uses
+`ToLocalTime()`, `RestaurantOptions.ResolveTimeZone()` has no caller, and the runtime container sets no
+`TZ`, so a deployed instance shows a guest UTC. This slice matches the existing convention rather than
+introducing a second one inside a single screen — the static header and the interactive island are one
+page — and the fix, together with the locale question §13 never settles (12- versus 24-hour), lands as
+its own slice before M5.
+
+**Deferred, and why.** §11.1's per-order **Hide** control and the guest's own **history** of past orders
+need `order_visibility_event` writes and a closed-sitting query that reads across sittings; both are
+§6.8 work and belong with the §11.4 hidden-records view that is their only unhide path (M5). The
+committed order renders removals and price adjustments the guest can actually cause today; the surfaces
+that *produce* staff removals and price adjustments — the counter (§11.3) — arrive in M5, so those
+branches are written and tested but cannot yet be exercised through the interface. Guest
+self-registration on the join path (§11.1) is still outstanding from M2: an anonymous scanner is sent to
+`/sign-in` and needs an account already.
+
+### Build/test checklist for this slice
+
+1. `dotnet restore` — **no new packages**, no migration, no schema change, no DI change.
+2. `dotnet build` — `TableOrderSurface.razor` is where a compiler catch would live: it is the first
+   interactive island in the tree (as opposed to a whole interactive page), and the first component with
+   a `<select>`, lambda-bound `@onchange` handlers inside a `@foreach`, and a nested `record` in its
+   `@code` block. `TableJoin.razor` is the second-likeliest, having lost its `<style>` block and gained
+   a child component with `@rendermode`.
+3. `dotnet test` — the previous green set plus three pure suites; none needs a container engine, so
+   none skips.
+4. `./run.sh --smoke` — boots once, verifies `/healthz/ready`, exits.
+5. Manual verification **needs a menu**, and there is still no surface for one until M5. Two rows is
+   enough, and add an inactive one to see §7's rule work:
+
+   ```sql
+   INSERT INTO menu_item (menu_item_identifier, name, price_amount, is_active, created_at)
+   VALUES (gen_random_uuid(), 'Soup',   4.50, true,  now()),
+          (gen_random_uuid(), 'Salad',  6.00, true,  now()),
+          (gen_random_uuid(), 'Salmon', 18.00, false, now());
+   ```
+
+6. Manual, the happy path, on a quick tunnel (`bash scripts/quick_tunnel.sh`) with a phone:
+   - Scan a table's display, sign in, join. The table page now shows **Who is here**, a picker, and an
+     empty basket.
+   - **Salmon** appears in the picker greyed out and reading *(currently unavailable)*, and cannot be
+     selected — §7's "the guest sees that the salmon exists and is out".
+   - Add two Soups with a note and one Salad. The basket shows both with the running amount; **Send**
+     is enabled and names the count.
+   - Send. The status line says what went; the basket empties; the lines appear below badged **With the
+     kitchen**, with the note under each.
+   - Tick **Take this off my order on the next send** on one line, then Send again. It renders
+     struck-through and badged **Removed**, with "Taken off by you".
+7. Manual, live updates — open the same table as a **second** guest in another browser profile:
+   - The first guest's roster gains the second person **without a refresh** (`SittingMemberJoined`).
+   - The second guest orders; the first guest's **the rest of the table** panel and the **table total**
+     move without a refresh (`OrderLinesChanged`).
+8. Manual, refusals and edges:
+   - Set a quantity to `0` or `101` in the basket → refused in place, the row keeps its old quantity.
+   - Deactivate an item in SQL (`UPDATE menu_item SET is_active = false WHERE name = 'Soup';`) **after**
+     staging it, refresh, and Send → the whole batch is refused, the panel names the offending line by
+     description, and **the basket is untouched** (§6.5.9 all-or-nothing).
+   - `UPDATE table_sitting SET closed_at = now() WHERE closed_at IS NULL;` then refresh the table page →
+     the surface flips to **This sitting has been settled**, the picker and Send are gone, and the bill
+     renders read-only.
+### M4 close-out — restaurant time everywhere, and a clock that says so (landed)
+
+Two things landed together because they are one decision. The first is a build fix: `TableOrderSurface.razor`
+called `LinesFor(...)` in its render tree and the method was never written — `_partyLines` was loaded in
+`LoadAsync` and then read by nothing, so the sitting-wide line query had no consumer and the web project did
+not compile. The second is **F-36**, the open row in `DOCUMENTATION_REVIEW.md`: S§8.1 has always said instants
+are "stored `timestamptz` UTC; rendered in `RESTAURANT_TIME_ZONE`", and no code did that. Eighteen call sites
+across ten Razor files called `.ToLocalTime()`, which reads the **server process's** zone;
+`RestaurantOptions.ResolveTimeZone()` existed with no caller; the runtime container sets no `TZ`. A deployed
+instance rendered UTC and said nothing about it.
+
+---
+
+#### The ruling, and why it is stronger than the specification was
+
+The owner's ruling settles a question S§8.1 had left implicit: **the reader's zone is irrelevant.** Not "prefer
+the restaurant's zone" — *always* the restaurant's, for every viewer, wherever they are. A restaurant is a
+physical place in one IANA zone. A guest in New York opening the history of a meal they ate in Tokyo wants the
+times the meal actually happened at, not the times it would have been on their own wristwatch; and inside the
+building, a kitchen ticket, the counter's bill, and the tablet on table four must agree to the minute or the
+staff cannot talk to each other. Rendering in the viewer's zone would make all four screens disagree about the
+same event, which is the one thing an append-only history is supposed to prevent (ADR-0002).
+
+So S§8.1 is now normative about it rather than merely descriptive, R§8 states the rule and its reason, and one
+type is the only thing allowed to perform the conversion.
+
+#### `RestaurantTime` — one type, invariant formats, and no `ToLocalTime()` anywhere
+
+`src/MyRestaurant.WebApplication/Time/RestaurantTime.cs` is a singleton over the configured
+`TimeZoneInfo`, exposing `Time`, `TimeWithSeconds`, `Date`, `DateAndTime`, `DateAndTimeWithSeconds`,
+`MachineReadable`, and `Snapshot`. Every call site moved onto it; the only surviving mention of `ToLocalTime`
+in the tree is the doc comment forbidding it.
+
+The formats are explicit and `InvariantCulture`, for exactly the reason `MoneyText` already documents for
+`"C"`: `ToString("t")` takes the 12-versus-24 choice, the separator, and the month names from the *server's*
+culture, which in this deployment is whatever locale the base image happens to carry. That is a decision made
+by nobody, and it changes silently when the image is rebuilt. F-36's row named this entanglement and left it
+open; it is now settled as configuration — `RESTAURANT_CLOCK_FORMAT`, `12-hour` (default) or `24-hour`,
+validated at startup so a typo fails the process instead of quietly showing the wrong clock on every screen in
+the building. It is deliberately **not** a `required` property, so every existing `RestaurantOptions`
+construction (including the wiring tests') keeps compiling on the documented default.
+
+`Snapshot` additionally computes **when the offset next changes** — a day-by-day walk to the bracketing day,
+then a bisection to the second, memoized until the transition it found has passed. That is what lets a page
+left open across the first Sunday in November stop rendering EDT without anybody reloading it.
+
+#### §11.7 — a footer clock, because the convention is invisible until stated
+
+"Sent 3:04 PM" tells a reader on another continent nothing at all unless the page says whose three o'clock that
+is. A new `RestaurantClockFooter` therefore appears on **every** page in **both** layouts — including
+`DisplayLayout`, whose whole existing rationale is that it carries no chrome, because a clock is the one piece
+of chrome that means something on a screen a whole table looks at. `DisplayLayout`'s shell became a column with
+the card centred in a `.display-main`, so the footer sits below it rather than beside it.
+
+**There is no server-side timer, on purpose.** A Blazor timer would tick only on the interactive surfaces —
+half the pages here are static SSR — and would cost one render plus one circuit message per second per open
+tab, indefinitely, on phones. Instead the component renders one anchor and never renders again
+(`ShouldRender() => false`, since the script owns that text node afterwards and a framework re-render would
+overwrite a correct ticking reading with a stale one). `wwwroot/js/clock.js` advances it: a classic script
+alongside `passkey.js` and `display.js`, so it works on the static-SSR account pages too, and a no-op on any
+document without the footer.
+
+`Intl` is forbidden in that script and the comment says why: it formats in the **reader's** locale and zone,
+the exact thing the ruling rules out. The invariant abbreviated day and month names are hardcoded so the
+ticking text and the server-painted text it takes over from are byte-identical — otherwise the handover at
+page load is visible as a flicker.
+
+**The handheld budget.** Most readers are on a phone, and the browser and OS will both try to save battery;
+this must cooperate rather than fight:
+
+1. **Nothing runs while hidden.** `visibilitychange` *clears* the timer rather than letting it fire and be
+   ignored. A backgrounded tab costs zero.
+2. **One wake per visible second.** `setTimeout` aimed at the coming second boundary — not `setInterval`
+   (drift accumulates into double-fires) and never `requestAnimationFrame` (sixty wakes for one visible
+   change).
+3. **No DOM write unless the text changed**, guarded by one string comparison. `tabular-nums` stops the digits
+   changing width as they tick, and `contain: content` on the footer keeps the repaint from inviting a layout
+   pass over the page around it.
+
+**Which clock is believed.** Elapsed time comes from `performance.now()` — monotonic, so an NTP step cannot
+move it, which `Date.now()` alone cannot promise. But `performance.now()` stops advancing during device
+suspend on several platforms, so a phone that spends an hour in a pocket would wake an hour behind. Both are
+therefore read every tick and their divergence is treated as the signal it is: past two seconds, prefer the
+wall clock (only it saw the suspend) and re-anchor from the server. A wall clock stepped *backwards* under us
+prefers the monotonic reading and re-anchors anyway.
+
+#### `GET /restaurant-clock`
+
+The markup anchor is the whole story for a short-lived page. Two surfaces here are not short-lived: a
+`/display/{table}` tablet holds one URL for days on a cheap oscillator, and a guest's circuit lasts a meal.
+Rather than reload either, the script re-asks — every ten minutes while visible, on returning from a minute or
+more hidden, and on detected divergence. Never while hidden, never more than once a minute, and a failed
+request is *ignored* rather than allowed to blank the clock: a wall clock a second off beats a blank one. Half
+the measured round trip is subtracted as the usual symmetric-latency estimate; the initial markup anchor uses
+Navigation Timing's `responseStart` for the same reason, since anchoring at script-run time would leave the
+clock permanently a fraction of a second slow.
+
+The endpoint is anonymous (`credentials: 'omit'` from the script), `no-store`, and **added to
+`ObligationsEnforcement.IsExemptPath`** alongside `/healthz`. That last one is not incidental: the §3.5
+obligation pages render this footer too, and a redirect to HTML would leave the one page a locked-out user is
+allowed to see with a dead clock.
+
+#### `LinesFor` — the build fix, done as the read it should always have been
+
+Rather than reinstate a `_partyLines.Where(...)` scan per bill entry, `LoadAsync` now groups the one
+sitting-wide read into `_partyLinesByOrder` and `LinesFor` is a dictionary lookup. §11.1 renders a row per
+person at the table, so the alternative — a query inside that loop — would turn a six-person table into six
+extra round trips on every §9 notification. An order with nothing on it is absent from the grouping rather
+than present and empty, so the empty list is the ordinary answer and not an error.
+
+---
+
+#### Files
+
+**New**
+
+- `src/MyRestaurant.WebApplication/Time/RestaurantTime.cs`
+- `src/MyRestaurant.WebApplication/Time/RestaurantClockEndpoints.cs`
+- `src/MyRestaurant.WebApplication/Components/Layout/RestaurantClockFooter.razor`
+- `src/MyRestaurant.WebApplication/wwwroot/js/clock.js`
+- `tests/MyRestaurant.WebApplication.Tests/Time/RestaurantTimeTests.cs`
+
+**Changed**
+
+- `Configuration/RestaurantOptions.cs` — `ClockFormat`, `UsesTwelveHourClock`, validation
+- `Program.cs` — `RestaurantTime` singleton, `MapRestaurantClock()`
+- `Identity/ObligationsEnforcement.cs` — exempt `/restaurant-clock`
+- `Components/_Imports.razor`, `Components/App.razor`, both layouts, `wwwroot/app.css`
+- Ten Razor pages, eighteen call sites: `Account/Pages/Passkeys`, `Administration/{AdministrationHome,
+  AdministrationTables, ManagePerson, ManageTable, TableDisplays, TableJoinCode}`, `Setup`,
+  `Table/{TableArea, TableOrderSurface}`
+- `tests/.../RestaurantOptionsTests.cs`, `tests/.../Identity/ObligationsEnforcementTests.cs`
+- `.env.example`, `compose.yaml`, `run.sh`
+- `docs/REQUIREMENTS.md` (R§8), `docs/TECHNICAL_SPECIFICATION.md` (S§8.1, new S§11.7, S§13, S§19,
+  Appendix A), `docs/DOCUMENTATION_REVIEW.md` (F-36 closed)
+
+**Deleted** — none.
+
+---
+
+#### Verification
+
+1. `dotnet build` — the `CS0103: LinesFor` error is gone; the web project compiles.
+2. `dotnet test` — `RestaurantTimeTests` covers: the same instant rendering differently for a New York and a
+   Tokyo restaurant; the date rolling forward when the restaurant zone has passed midnight and the reader's
+   has not; a 45-minute offset (`Asia/Kathmandu`) not rounded to the hour; midnight as `12:00 AM` not
+   `0:00 AM`; both clock formats; **format stability under `de-DE` and `ja-JP` ambient cultures**, which is
+   the property F-36 was really about; the November 2026 transition found at the second, cross-checked
+   against `TimeZoneInfo` on both sides of it; a no-DST zone reporting no transition; and the memo expiring
+   after the transition it named.
+3. `grep -rn "ToLocalTime" --include=*.razor --include=*.cs src/` → only the doc comment forbidding it.
+4. Manual, on a quick tunnel with a phone:
+   - Set `RESTAURANT_TIME_ZONE=Asia/Tokyo` and reload. Every timestamp on `/administration/tables`,
+     `/account/passkeys`, and the table surface moves together; the footer reads **Tokyo**.
+   - Set `RESTAURANT_CLOCK_FORMAT=24-hour`. The footer and every page timestamp switch together — no page
+     is left on the other convention.
+   - Set `RESTAURANT_CLOCK_FORMAT=military`. The process refuses to start and names the variable.
+   - Watch the footer tick for a minute. It advances once a second and does not visibly reflow the page.
+   - Background the tab for two minutes, then return: the reading is correct immediately, not two minutes
+     behind and catching up.
+   - Lock the phone for ten minutes, unlock: same.
+   - `curl -s http://127.0.0.1:8080/restaurant-clock` returns the snapshot JSON with
+     `cache-control: no-store`.
+   - Reach `/account/change-password-required` with an outstanding obligation: the footer clock still ticks
+     (the exemption), and the page is otherwise unreachable as before.
+5. Manual, the display: open `/display/{table}` on a tablet. The card is still centred; the clock sits under
+   it at display type size; the rotating QR and the staleness curtain behave exactly as before.
+### M4 Slice 4 — the kitchen board: the queue, fulfillment, the "86" panel, and the reminder that nobody triggers (landed)
+
+M4's build-order line (§19) reads "living order + locking protocol, staging UI, batch send + validation,
+staff edits, fulfillment/reversal, projections + fold + equivalence tests, **kitchen surface + alerts +
+reminder service**". Slice 1 landed the engine, Slice 2 the guest half, the close-out the time
+convention. This is the clause that was still outstanding, and with it M4 is complete: a send now
+reaches a screen a cook is standing at, and a send that is ignored says so by itself.
+
+No migration, no packages, no schema change. Every table, view, and constraint this slice needs shipped
+in `0001_initial_schema.sql` — including, crucially, `kitchen_notification`'s
+`UNIQUE (order_event_identifier, kind)`, which is what makes the whole reminder mechanism safe rather
+than merely careful.
+
+---
+
+#### The reminder is the load-bearing part, and it is the only thing here whose bug is silence
+
+Everything else on this screen fails loudly. A queue in the wrong order looks wrong; a fulfil button that
+does not work is pressed twice. The reminder is different: if it never fires, the application starts
+cleanly, serves every page, alerts correctly on every send, and simply never mentions the ticket that
+has been sitting for four minutes. Nothing in the logs, nothing on a dashboard, nothing a test that
+checks "does it work" would catch — because it does work, right up until the moment nobody did anything.
+
+So the design puts as little of it as possible in C#. §8.4's scan is a single SELECT, run every five
+seconds; the "exactly one reminder per send" guarantee is the unique constraint, not a flag in memory;
+and "broadcast only if the insert took" is a `RETURNING` clause, not a rowcount the caller interprets. A
+restart mid-scan, two overlapping ticks, or (if there is ever one) a second web replica cannot
+double-alert, and none of that depends on this process remembering anything between ticks.
+
+**One documented deviation from §8.4's literal SQL.** The specification writes
+`submission.occurred_at < now() - make_interval(secs => :reminder_seconds)`.
+`DapperKitchenNotifications` computes the same threshold from `IClock.UtcNow` and binds it as
+`@DueBefore` instead. `occurred_at` was stamped by the *application's* clock, so comparing it against the
+*database's* `now()` compares two clocks — invisible while both containers share a host clock, wrong the
+first time they do not. It also makes the rule testable at all: against `now()` there is no way to place
+a send precisely either side of the threshold, and every clause of §10.2 would go unasserted. The four
+EXISTS/NOT EXISTS clauses, the open-sitting filter, and the ordering are §8.4 verbatim.
+
+`KitchenReminderService` is a `BackgroundService` on a `PeriodicTimer`, one DI scope per tick, and a
+deliberately broad `catch` around each tick: a transient database blip must not stop the loop for the
+life of the process. It is registered by `AddRestaurantOrders()` rather than by `Program.cs` — see below.
+
+#### Why a hosted service is registered from `AddRestaurantOrders()`
+
+Because §10 is one rule with two halves and they must not be separable. §10.1's initial alert is written
+*inside* the order transaction (it has to be — a committed alert must never point at an event that rolled
+back), so it already lives in `DapperOrderMutations`. If §10.2's half were wired somewhere else, it would
+be possible to compose ordering into a host and get a system that alerts but never reminds. Registering
+both from the same call means you cannot have one without the other. The extension's doc comment says so
+at length, because a hosted service appearing from an `AddX()` is otherwise spooky.
+
+#### The queue: `KitchenQueue`, pure, and ordered oldest-first at both levels
+
+§11.2: "grouped by (table label → person display name → order), ordered by the group's oldest
+`added_at`". The grouping is a pure function over the `kitchen_pending_line` read, outside the component
+for the same reason `OrderStaging` and `OrderNarrative` are (§16.1 — no bUnit): the ordering rule *is*
+the behaviour of the screen, and a rule that can only be checked by rendering a Razor component is a rule
+nobody checks.
+
+The word doing the work is **oldest**. Sorting a board by its most recent send is the obvious mistake and
+looks fine in a demo; what it does in service is push a forgotten order further down the screen every
+time somebody at that table asks for another drink — which is precisely the failure §10.2's reminder
+exists to catch, arriving by a second route.
+
+Every comparison falls through to a label and then to an identifier, so a re-read of unchanged data
+produces a byte-identical board. Lines added by one send share an `occurred_at` to the microsecond and
+two tables can be sent to in the same instant; a queue whose rows shuffle under a cook's hand on every
+live update is worse than one in a slightly wrong order.
+
+#### Undo needs a question the §8.3 views cannot answer
+
+§11.2 wants "an Undo affordance on recently-fulfilled lines". `order_current_line.is_fulfilled` is the
+latest flip's *direction* with its instant thrown away, so "fulfilled in the last quarter of an hour" is
+not a question the projection views can answer. Rather than add a timestamp column to a schema-of-record
+view to serve one button, `IKitchenBoardReads` asks the operation tables directly — a lateral pick of the
+highest-sequence `order_operation_line_fulfilled` for each currently-fulfilled line. Hence a separate
+interface rather than a sixth method on `IOrderReadModel`: that type is "the four §8.3 views", and this
+is honestly a different question.
+
+A line fulfilled, undone, and fulfilled again reports the second fulfillment. A line whose latest flip is
+a reversal is absent — it is pending again and belongs in the queue, and offering a second Undo for it
+would produce a refusal (§6.5.6) with no way for the cook to know why. Window: fifteen minutes, a
+constant rather than configuration, since §13 does not name it and a setting nobody would change is only
+a new way to be wrong.
+
+#### `IMenuAvailability` — the one piece of M5 that could not wait
+
+§11.2 puts the "86" toggle on the kitchen board, and the kitchen is the surface that knows the salmon has
+run out. So availability, and only availability, ships now: `SetActiveAsync` flips `menu_item.is_active`
+and appends the matching `menu_item_event` in one transaction, under `FOR UPDATE`. Create, rename,
+reprice, and §11.4's per-item history stay in M5 and will grow from this rather than replace it — keeping
+the write this narrow is what stops the kitchen board becoming an accidental menu editor.
+
+Two behaviours are deliberate. **A no-op flip writes no event**: an append-only log of "somebody pressed
+a button that changed nothing" is noise, and §11.4's history is meant to be read by a person. **The row
+is locked before it is compared**: without that, two staff toggling at once could both read "active",
+both write "inactive", and log two `deactivated` events for one deactivation — the flag would be right
+and the history would be a lie, which is the worse failure in an append-only system (ADR-0002).
+
+Surfaces take `IMenuWorkflow`, never the raw write, so the §9 `MenuChanged` always goes out. An 86 that
+skipped the broadcast would leave the item selectable in every open guest picker until that page happened
+to reload, and the guest would then have a whole send refused for it (§6.5.9).
+
+#### §10.3's alert, and why the sound is synthesised
+
+"Browsers block autoplay: the kitchen surface shows a one-tap 'enable sound' arm control per session;
+until armed (and whenever playback fails) a persistent, high-contrast visual badge with unseen-alert
+count is the fallback." Three facts are load-bearing there — armed, playback-failed, and the count — and
+`KitchenAlertState` states the sentence that combines them once, in a pure type, rather than
+re-deriving it in markup.
+
+Arming is circuit state, deliberately. It is a browser-audio permission that lives exactly as long as the
+page does, so "per session" means per circuit; persisting it would be a lie, since a fresh tab has not
+been armed no matter what a database says.
+
+`wwwroot/js/kitchen.js` owns the noise, because an `AudioContext` will only start inside a real user
+gesture and a Blazor circuit is not one. **It synthesises two square-wave beeps rather than shipping an
+audio file.** An `.mp3` would be a binary asset to ship, cache, license, and get wrong at 3 kHz on a
+cheap tablet speaker; Web Audio needs no file, cannot 404, and starts with zero network latency. The two
+patterns differ on purpose — a rising two-note chime for a new send (§10.1), a flatter insistent triple
+for a reminder (§10.2) — because "somebody just ordered" and "you have not touched this in a minute" are
+different news. The gain ramps are not decoration: an oscillator started at full amplitude clicks, and on
+a small speaker the click is most of what you hear.
+
+`arm()` proves itself with a short quiet tone rather than trusting `state === 'running'`, and returns a
+boolean. `alert()` returns false rather than throwing when it cannot play, and the component treats that
+as §10.3's "whenever playback fails" and raises the badge. The wake lock follows `display.js`'s dance,
+keyed on `#kitchen-board-surface`, on a two-second tick — half as busy as `display.js`, which has an
+actual per-second job.
+
+#### One threading detail worth naming
+
+`KitchenAlertState` is a plain counter and `IDomainEventBroadcaster` fans out from whichever thread
+committed the event, so two sends landing together could lose an increment. The board therefore records
+the alert *inside* `InvokeAsync`, on the renderer's dispatcher, which serializes every mutation of it —
+and records it **before** the re-read, so an alert still counts if the queries fail. A board that missed
+a query is recoverable; a board that missed an alert is silent.
+
+The alert token is a monotonic sequence, not a count, and acknowledging does not rewind it. Resetting it
+would make the next alert's token equal to one already announced, and the board would go quiet with no
+error anywhere. `KitchenAlertStateTests` pins both.
+
+#### Two small things that came with it
+
+`Pages/Home.razor`'s lede still said Milestone 2 was under way and that "the kitchen and counter boards
+arrive in later milestones", which stopped being true two slices ago. It now describes what actually
+works and carries role-gated area links — `<AuthorizeView Roles="…">` matching the §3.7 policies, because
+showing somebody a door that answers "access denied" is worse than not showing it.
+
+`MainLayout` gains a Kitchen link for the **kitchen role only**, not for administrators, even though
+`area.kitchen` admits both. An administrator already carries an Administration link, and a fifth item
+would put the header back into the three-row wrap at 375px that the single-Account-link change fixed.
+Administrators reach the board from the landing page instead.
+
+---
+
+#### Files
+
+**New (13)**
+
+- `src/MyRestaurant.DataAccess/Orders/KitchenBoardReads.cs`
+- `src/MyRestaurant.DataAccess/Orders/KitchenNotifications.cs`
+- `src/MyRestaurant.DataAccess/Menu/MenuAvailability.cs`
+- `src/MyRestaurant.WebApplication/Menu/MenuAvailabilityWorkflow.cs`
+- `src/MyRestaurant.WebApplication/Orders/KitchenQueue.cs`
+- `src/MyRestaurant.WebApplication/Orders/KitchenAlertState.cs`
+- `src/MyRestaurant.WebApplication/Orders/KitchenReminderService.cs`
+- `src/MyRestaurant.WebApplication/Components/Pages/Kitchen/KitchenBoard.razor`
+- `src/MyRestaurant.WebApplication/wwwroot/js/kitchen.js`
+- `tests/MyRestaurant.DataAccess.Tests/Orders/KitchenNotificationsTests.cs` (Testcontainers, 9 facts)
+- `tests/MyRestaurant.DataAccess.Tests/Orders/KitchenBoardReadsTests.cs` (Testcontainers, 9 facts)
+- `tests/MyRestaurant.DataAccess.Tests/Menu/MenuAvailabilityTests.cs` (Testcontainers, 7 facts)
+- `tests/MyRestaurant.WebApplication.Tests/Orders/KitchenQueueTests.cs` (12 facts/theories, no container)
+- `tests/MyRestaurant.WebApplication.Tests/Orders/KitchenAlertStateTests.cs` (13 facts, no container)
+- `tests/MyRestaurant.WebApplication.Tests/Orders/KitchenWiringTests.cs` (6 facts, no container)
+
+**Changed (4)**
+
+- `src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs` — four services and the hosted reminder loop
+- `src/MyRestaurant.WebApplication/Components/App.razor` — loads `js/kitchen.js`
+- `src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor` — Kitchen link for the kitchen role
+- `src/MyRestaurant.WebApplication/Components/Pages/Home.razor` — accurate lede, role-gated area links
+
+**Deleted** — none. `Program.cs` is untouched.
+
+No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, or ADR edit: this realizes behaviour §7,
+§8.4, §9, §10, §11.2, and §12 already specify.
+
+---
+
+#### Build/test checklist for this slice
+
+1. `dotnet restore` — no new packages, no migration, no schema change.
+2. `dotnet build` — `KitchenBoard.razor` is where a compiler catch would live: it is the first component
+   with lambda-bound `@onclick` handlers inside nested `@foreach` loops, the first to call
+   `IJSRuntime.InvokeAsync<bool>` from `OnAfterRenderAsync`, and the first with a component-local
+   `<style>` block since `TableDisplay.razor`.
+3. `dotnet test` — the previous green set plus six suites. Three need a container engine and skip
+   without one; three do not.
+4. `./run.sh --smoke` — boots once, verifies `/healthz/ready`, exits. Watch the log for
+   `Kitchen reminder service started`, which is the registration this slice most wants confirmed.
+5. Manual verification **needs a menu** (M5 still owns menu creation) and two browser profiles:
+
+   ```sql
+   INSERT INTO menu_item (menu_item_identifier, name, price_amount, is_active, created_at)
+   VALUES (gen_random_uuid(), 'Soup',   4.50, true, now()),
+          (gen_random_uuid(), 'Salad',  6.00, true, now()),
+          (gen_random_uuid(), 'Salmon', 18.00, true, now());
+   ```
+
+   Grant an account the `kitchen` role from `/administration`, then open `/kitchen` as that account.
+6. Manual, the happy path:
+   - As a guest on a phone, scan a table and send two Soups with a note and one Salad.
+   - The kitchen board gains the ticket **without a refresh**, grouped under the table label, with the
+     note in an orange block and the send time on the ticket header.
+   - Tap **Enable sound**. A short quiet two-note confirmation plays and the chip reads **Sound on**.
+   - Send again from the phone: a rising chime plays and the red badge counts one alert.
+   - Tap a line. It leaves the queue, appears under **Just fulfilled**, and the guest's phone re-badges
+     that line to **At your table** without a refresh.
+   - Tap **Undo**. It returns to the queue and the guest's badge goes back to **With the kitchen**.
+   - Tap **Fulfill all** on a ticket: one event, the whole ticket clears.
+7. Manual, the reminder (§10.2) — the point of the slice:
+   - `KITCHEN_SUBMISSION_REMINDER_SECONDS=20` in `.env` makes this bearable to watch.
+   - Send from the phone and touch nothing. Within ~25 seconds the board plays the **three-note** pattern
+     and the badge reads `2 new alerts (1 overdue)`.
+   - Wait two more minutes: **nothing further happens**. One reminder per send, ever.
+   - `SELECT kind, count(*) FROM kitchen_notification GROUP BY kind;` → one `initial`, one `reminder`.
+   - Send again, fulfil one of its lines within the window, and wait: **no reminder** — §8.4's last
+     NOT EXISTS, and the clause most likely to be got wrong.
+8. Manual, the "86" panel:
+   - Turn **Salmon** off on the board. The guest's picker greys it out and marks it *(currently
+     unavailable)* **without a refresh** (`MenuChanged`).
+   - `SELECT event_type FROM menu_item_event;` → one `deactivated`.
+   - Press **Turn off** again on a reloaded board → the status line says it was already set that way and
+     no second event is written.
+9. Manual, the sound fallback: open `/kitchen` and do **not** arm it. Send from the phone. The
+   high-contrast badge counts the alert and the orange notice explains why it is silent.
+10. Manual, the wake lock: leave the board open on a tablet for longer than its screen timeout.
+
+---
+
+#### Known consequences and deliberate limits
+
+**The board re-reads everything on every notification.** Three small indexed queries per event, restaurant
+wide. A table surface can scope its re-read to one sitting; the kitchen board is the whole restaurant by
+definition, so there is nothing to scope by. Fine at the size of restaurant this application is for
+(ADR-0006); a hundred-cover service would want the queue diffed rather than re-fetched, and that is a
+different program.
+
+**Playback failure is detected per alert, not continuously.** The board learns that sound is broken the
+next time it tries to play something. Continuous detection would mean a `DotNetObjectReference` callback
+and a disposal path on the one surface that must never break, to gain nothing: the badge is already up by
+the time anybody could act on the information.
+
+**"Waiting 12m" is coarse and does not tick.** A per-second counter on twenty rows is a re-render per
+second per row and tells a cook nothing "12m" does not. It refreshes on every live update, which in a
+working service is often.
+
+**A reminder that fires while no board is open is lost as a sound.** The row is written and the ticket is
+still on the queue with its age showing, but nothing replays the alert when a board later connects.
+Replaying stored alerts on connect would mean a board opened at the end of service screaming through the
+whole evening's history; the queue itself is the durable record.
+
+**Staff line-adds do not alert from this screen.** §10.1 gives an initial alert to "every `staff_edit` by
+counter or administrator that adds or removes lines" — the transaction already writes that row and
+`OrderWorkflow` already broadcasts it. There is simply no surface that produces such an edit yet; the
+counter (§11.3) arrives in M5, at which point the behaviour is exercised without a line of new code here.
+
+**Post-close corrections are invisible here, correctly.** §6.7 corrections belong to an administrator on
+a settled sitting, and every query on this board filters `closed_at IS NULL`.
+### M5 Slice 1 — the counter: the bill, the corrections, and the one number that is never rewritten (landed)
+
+M5's build-order line (§19) reads "**bills, price adjustment, close & settle, end-of-day, counter
+fallback QR**, menu management + events, event explorer, hide/unhide, post-close corrections". This slice
+is the emphasised half — everything §11.3 puts on the counter's two screens — and it closes the last
+place in the system where a guest could order something and nobody could take payment for it.
+
+No migration, no packages, no schema change, and `Program.cs` is untouched. Every table, view, and CHECK
+this needs shipped in `0001_initial_schema.sql`: `table_sitting`'s three paired columns, the
+`sitting_bill` view, and the two `CHECK ((closed_at IS NULL) = (…))` biconditionals that make a partial
+close impossible to write.
+
+---
+
+#### The lock is the feature
+
+§5.3 is four sentences and one of them is load-bearing: "`SELECT … FOR UPDATE` the sitting row … compute
+the settled total as the sum over `sitting_bill` for the sitting **under that lock**". §6.6 already has
+every order-mutating transaction take `FOR SHARE` on the same row first. Those two modes conflict, and
+that conflict is the entire guarantee — no event slips in after the total is computed, and no total is
+computed over a half-written order.
+
+`DapperSittingSettlement` is therefore the narrowest service in the data layer: one method, one
+transaction, no identifier factory (closing completes a row rather than creating one). It locks, checks
+`closed_at IS NULL`, counts what is still pending, sums `sitting_bill`, and stamps all three columns
+together. Take a weaker lock and the failure mode is a bill that is quietly wrong, which is the worst
+shape of bug this system can have — it does not throw, it does not log, and the person it happens to has
+already left.
+
+`COALESCE(sum(...), 0)::numeric(10,2)` rather than a bare `sum`: `sitting_bill` is built *from*
+`guest_order`, so a table where everybody joined and nobody ordered has no rows at all, and `sum()` over
+no rows is NULL. The column is NOT NULL whenever `closed_at` is set, so a party that ordered nothing would
+otherwise fail its own close.
+
+**A losing race reports the winner's close, not a failure.** Two counters pressing Close together produce
+one `Closed` and one `AlreadyClosed`, and the second carries the stamped total, instant, and actor of the
+first. The person at the till wants to know the table is settled and for how much; "that didn't work" is
+both untrue and unhelpful.
+
+#### `PendingLineCountAtClose` is a record, not a warning
+
+§5.3 puts the warning *before* the button — "the counter UI must surface still-pending lines prominently
+before offering Close (remove with reason, or knowingly charge)" — and the surface does exactly that,
+with a bordered panel that names the count. By the time the transaction returns, the decision has been
+made and committed. The count comes back anyway so the confirmation can say "settled at $41.50 — with 2
+lines still with the kitchen" instead of implying a clean close. §8.3 is explicit that the bill *includes*
+pending lines by design; this is the sentence that admits it out loud.
+
+#### Both totals, forever
+
+§5.3: `settled_total_amount` "is **never rewritten**; post-close corrections (§6.7) live beside it, and
+the UI shows both the stamped settled total and, when corrective events exist, the current corrected
+total". `CounterSittingSummary` carries both and computes `HasPostCloseCorrections` once, so no surface
+has to remember to make that comparison. `AmountToShow` is the stamped total once closed and the live one
+while open — what was charged, versus what is owed, and the two are different questions.
+
+#### The counter reads are not a §8.3 view, and not `ISittingDirectory` either
+
+All four projection views are scoped to an order or a sitting the caller already knows. The counter's
+questions are "which tables are open right now" and "which have just been settled", which no view
+answers. `ICounterBoardReads` rolls `order_current_state` across a whole sitting through a LATERAL —
+money, order count, pending and fulfilled line counts, and §5.4's last-activity instant — so twenty open
+tables are one query rather than twenty-one.
+
+It is kept apart from `ISittingDirectory` on the pattern `IKitchenBoardReads` set: the directory answers
+the join flow's membership question and is consumed by the *guest* surface, and widening its record would
+put a billing projection into the type a phone renders a roster from.
+
+Every aggregate is cast in SQL rather than converted in C#. `count(*)` is `bigint`, and `sum()` over a
+`bigint` widens to `numeric`; Dapper's constructor binding will feed neither into an `int` parameter. The
+casts sit where the intent is visible. The LATERAL is an aggregate with no `GROUP BY`, which returns one
+row even over nothing — that is what makes a table where nobody has ordered appear with zeroes rather
+than vanish, and a table missing from the counter's list is a table nobody bills.
+
+#### `AppendStaffEventToLivingOrderAsync`, and why `IOrderWorkflow` grew a third method
+
+§11.3 wants the counter to be able to add a line. Most guests order by talking to a person, so the common
+case is adding for somebody who joined the table and never pressed Send — and that person has no
+`guest_order` row yet (§6.1 creates it lazily inside the first write). `AppendStaffEventAsync` takes an
+order identifier, so it cannot serve that case, and minting one on the surface would put §6.1's lazy
+creation race outside the transaction that owns it.
+
+The new method routes to `IOrderMutations.AppendToLivingOrderAsync` with the *actor* and the *order owner*
+as different people, which is precisely the difference between a counter's staff edit and a guest's own
+submission. It is on the bill either way; the log says who put it there, and §10.1 alerts the kitchen
+because a counter's line-changing staff edit is one of the two things that does.
+
+#### The surfaces
+
+`/counter` lists open sittings oldest-first — the table that has been sitting longest is the one most
+likely to be asking for its bill — with the money, the chips, and a per-table "Show join code". Below it,
+tables settled in the last twelve hours, read-only, so a receipt can be checked against the record. It
+subscribes to the broadcaster because §9 lists the counter as a consumer of `OrderLinesChanged`: a total
+moving while somebody is standing at the till reading it is the point.
+
+`/counter/sittings/{id}` is the bill. Per-person totals from `sitting_bill`, every current line with its
+state badge and note, price adjustment (new price + required reason), staff remove (optional reason),
+staff add, the pending warning, and Close & settle behind a confirm step.
+
+**A closed sitting is the same page with the controls gone, and that is §11.3's "closed-sitting lookup
+(read-only)" rather than a second page.** §6.5.8 admits nothing after a close but an administrator's
+corrective events, so a counter's Adjust button there would be a door that only ever answers no.
+
+**One picker at the bottom rather than a panel per person.** The obvious layout puts "Add an item for
+Ada" under Ada's lines, which needs a `RenderFragment`-returning method to avoid duplicating the markup
+five times. One picker with a "For" select is fewer moving parts, and it is the only control on the page
+that can name somebody who has no lines to sit under.
+
+Nothing on either surface enforces §6.5 or §5.3. Every button goes through `IOrderWorkflow` or
+`ISittingWorkflow` to the one transaction, which re-decides under the lock — so a guest sending while the
+counter presses Close produces one winner and one plainly-reported refusal. What the surfaces refuse on
+their own they refuse only to make the answer immediate.
+
+`/counter/tables/{id}/join-code` is §4.5's fallback, deliberately a sibling of the administration page
+rather than a shared component: they differ in policy (§3.7 gives the counter its own), in where "back"
+goes, and in how large the code is drawn — a counter holds this up across a pass. What they must not
+differ in is the code itself, and they do not: both call `ITableJoinTokens.DescribeCurrentAsync` and
+render what comes back. Static SSR, so it is a snapshot; §4.3's two-window acceptance means a scanned code
+cannot die in a guest's hand, and "Show a fresh code" is the manual refresh. The window-aligned automatic
+refresh belongs to the paired display, which has a circuit to run a timer on.
+
+#### `sittings_closed_total` finally has a caller
+
+The meter has existed since M1 and `RecordSittingClosed()` was, until now, dead code — there was nothing
+in the system that could close a sitting. `SittingWorkflow` calls it, and only on the call that actually
+closed: a losing race would otherwise double-count one close and tell every subscriber to re-query for a
+change it did not make. Metrics before the broadcast, matching `OrderWorkflow`, so a subscriber that
+re-queries synchronously cannot observe a state change that has not been counted.
+
+The broadcast is not cosmetic. §11.1 flips the guest's table surface to a read-only settled-bill view
+**on** `SittingClosed`, and the kitchen drops the table from its queue on the same notification. A close
+that committed without announcing itself would leave a settled table still taking orders on every phone
+that already had the page open — and those sends would then be refused one by one, with nobody able to
+say why. `TableOrderSurface` and `KitchenBoard` already handle the notification; this is the first thing
+that publishes it.
+
+#### Header arithmetic
+
+`MainLayout` now shows a Counter link to the `counter` role only, on the same reasoning as the Kitchen
+link: an administrator already carries Administration, and six items in a header that wrapped onto three
+rows at 375px with four is not a trade worth making. Administrators reach both boards from the landing
+page's role-gated area links, which is the one place every door is listed.
+
+#### Tests
+
+- `SittingSettlementTests` (Testcontainers, 9 facts) — the stamp lands as three columns or none; pending
+  lines are charged for and counted; adjustments and removals reach the total; every member's order is in
+  it; a sitting nobody ordered in settles at zero; a second close writes nothing and reports the first;
+  an unknown sitting is untouched; a guest send after close is rejected and the stamp does not move; an
+  administrator's §6.7 correction leaves it alone.
+- `CounterBoardReadsTests` (Testcontainers, 10 facts) — the roll-up, the all-zeroes case, pending versus
+  fulfilled counted separately, closed sittings excluded and open ones oldest-first, the stamped total
+  and closer's name (with the username fallback), the window and the cap, a non-positive cap, an unknown
+  identifier, and both totals after a post-close correction.
+- `CounterWiringTests` (5 facts, no container) — the three registrations resolve, and the workflow
+  announces exactly the closes that happened: once for a close, never for a losing race, never for an
+  unknown sitting, and yes for a sitting that settles at zero.
+
+#### What is left in M5
+
+End-of-day batch close (§5.4) and the administration sittings list; menu management with its event log
+(§7, §11.4); the event explorer; hide/unhide (§6.8) and the hidden-records view; and the administrator's
+post-close corrective surface. The engine for that last one already exists and is tested here — what is
+missing is the screen.
+### M5 Slice 3 — administration sittings: end-of-day, the complete stored record, and the corrections that live beside a settled total (landed)
+
+M5's build-order line (§19) reads "bills, price adjustment, close & settle, **end-of-day**, counter
+fallback QR, menu management + events, event explorer, hide/unhide, **post-close corrections**". This
+slice is the emphasised part, plus the §11.4 Sittings section that houses both: `/administration/sittings`
+and `/administration/sittings/{id}`.
+
+No migration, no packages, no schema change, `Program.cs` untouched, and nothing deleted. Every table and
+view this needs shipped in `0001_initial_schema.sql`.
+
+---
+
+#### What was actually missing
+
+Slice 1 built the close transaction and the counter's two screens. It left three holes, all of them the
+same shape: the *engine* existed and had no *screen*.
+
+- §5.4's end-of-day pass. `ICounterBoardReads.ListOpenSittingsAsync` has carried `LastEventAt` — "§5.4's
+  last-activity timestamps" — since Slice 1, and nothing read it.
+- §6.7's post-close corrections. `OrderMutationValidator` has admitted an administrator's corrective
+  event on a closed sitting since M4, and `SittingSettlementTests` asserted it there; there was no way to
+  author one outside a test.
+- §11.4's "complete stored record". `IOrderEventLog` reads one order's log, but for the fold and the
+  validator — it maps to domain enums and carries no names, which is right for its two callers and unusable
+  on a screen.
+
+#### `ISittingRecordReads` — the third reader of the same tables, on purpose
+
+`DapperSittingRecordReads` is the answer to "what has ever happened at this table", and it is deliberately
+not `IOrderEventLog` with extra columns.
+
+§11.4: "Administration renders the **complete stored record** everywhere — full event streams, visibility
+logs, security events — never projected or truncated for the administrator; filters narrow only on explicit
+request." Two consequences.
+
+**`EventType`, `ActorRole`, and `OperationKind` are the stored strings, not enums.** `IOrderEventLog` maps
+to `OrderEventType` and throws on a word it does not recognise, and that is correct there: its callers are
+the §6.5 validator and the §8.5 fold, and both must refuse to proceed rather than guess. A screen must do
+the opposite. An enum on this path is a projection with a failure mode — a value this build does not know
+would either throw and blank the one page whose job is to show what is stored, or be silently mapped to
+something wrong. Both surfaces label the values §8.2's CHECKs admit and fall back to the raw string. Same
+decision `MenuItemEventEntry` made in Slice 2, for the same reason.
+
+**Nothing is capped or paged.** A removed line, an undone fulfillment, and a superseded price are all in
+the answer, because the history outliving the state is the entire point of ADR-0002. A sitting holds a
+party's worth of orders and a service's worth of events; the honest read is the complete one.
+
+#### The join that makes the record legible
+
+`order_operation_line_removed`, `_price_adjusted`, `_fulfilled`, and `_fulfillment_reverted` store an
+`order_line_identifier` and nothing else about the dish. Rendered as stored, a removal reads "removed
+0192f0…" — technically complete and useless to the one person the page exists for.
+
+So every branch of the reader's `UNION ALL` joins back to `order_operation_line_added` on
+`order_line_identifier` and on to `menu_item`, and carries the name and quantity on all five operation
+kinds. **That join is exact and total rather than a guess**: the column is `NOT NULL UNIQUE` on the adding
+table ("the line's identity", §8.2) and is the declared FK target of all four other tables, so exactly one
+origin row exists for every operation PostgreSQL will accept. `INNER JOIN`, not `LEFT` — a `LEFT` would only
+invite a nullable member for a row that cannot exist.
+
+What is **not** joined is the price. `UnitPriceAmount` stays null off `line_added` and
+`NewUnitPriceAmount` stays null off `line_price_adjusted`, because a price is the thing arguments are about
+and this record must not synthesise one. An adjustment says what it set; the capture it superseded is on the
+`line_added` operation above it, which is where somebody settling the argument reads it from anyway.
+
+Three queries — the orders, then every event across all of them, then every operation across all of them —
+grouped in memory. A party of six with a long service is three round trips rather than thirteen, and the
+query count does not move with the size of the party.
+
+#### `CloseManyAsync`: one transaction per sitting, and that is normative
+
+§5.4 says "close each via the same §5.3 transaction". That is not phrasing, it is the design.
+
+§5.3's guarantee is that a sitting's total is summed under a `FOR UPDATE` that conflicts with the
+`FOR SHARE` every order writer holds (§6.6). One long transaction spanning twelve tables would hold twelve
+of those locks until the last one committed — so a guest still ordering at table 1 would block the closing
+of table 12, and an error on table 12 would roll back eleven closures that were correct. Twelve short
+transactions can do neither.
+
+The loop therefore goes through `CloseAndSettleAsync`, not through `ISittingSettlement` directly, so **each
+close is counted and announced at the moment it happens**. Batching the §9 broadcasts to the end of the pass
+would leave a settled table taking orders on every phone that had it open for as long as the rest of the
+pass took — and those sends would then be refused one by one with nobody able to say why.
+
+**Repeated identifiers are collapsed before anything is attempted.** Not hypothetical: a form can post one,
+and the first attempt would then close the sitting while the second found it closed, reporting one table as
+both settled by this pass and previously settled by somebody else.
+
+**`EndOfDayResult.SettledTotalAmount` deliberately excludes `AlreadyClosed`.** That total belongs to
+somebody else's close; adding it here would report a day that took more than it did.
+
+If the token trips part-way the exception propagates and the sittings already closed **stay** closed. They
+were separate committed transactions and there is no undo for a close (§5.3). The surface re-reads and shows
+what is still open, which is the truth.
+
+#### `/administration/sittings` — no select-all, nothing pre-ticked
+
+Static SSR, like every administration surface. Open sittings oldest-first with §5.4's last-activity column
+(and a coarse "4 hours ago" beside the instant, because the question being asked is "has this table gone
+home"), a checkbox per row, and one button.
+
+**There is no select-all and nothing starts ticked.** Closing twelve tables costs twelve deliberate ticks,
+and that *is* the confirmation step rather than a second page. The counter's single close has a confirm
+because it happens mid-service with a guest waiting; an end-of-day pass is deliberate by nature, and a
+select-all next to an irreversible action at the end of a long shift is the wrong affordance to build.
+
+§5.3's pending-lines warning is repeated above the button, summed across every open table. An end-of-day
+pass is the most likely moment in the system for somebody to charge for a plate nobody carried.
+
+**This is the one form in the tree that reads its own POST values** —
+`await HttpContext.Request.ReadFormAsync(...)` — rather than binding a `[SupplyParameterFromForm]` model. A
+checkbox set whose length is however many tables happen to be open has no static model to bind to, and the
+alternative already used elsewhere (a select-one picker, as on `ManageTable` and `TableDisplays`) is not what
+§5.4 describes. It is not a second read of the body: the Blazor endpoint has already parsed the form to find
+which handler to invoke, and `HttpRequest` caches the parsed collection, so this returns the same instance
+the framework used. Awaiting the cached path rather than touching `Request.Form` synchronously keeps the
+cancellation token honoured.
+
+Post/redirect/get afterwards, with three counts in the query string — closed, already settled, gone. The
+money does **not** travel in the URL: the settled list below re-renders from the database and shows every
+stamped total in the restaurant's own currency rather than one reconstructed from a query parameter.
+
+#### `/administration/sittings/{id}` — corrections appear only once it is settled
+
+The record renders for an open sitting too; reading history is not a write. The corrective forms do not.
+
+§6.7 is titled "post-close corrections" and §3.7's matrix gives "post-close corrective events" to the
+administrator alone. While a table is still eating, the screen built for it is the counter's — and an
+administrator already holds the counter role's capabilities (§3.7), so this page links to
+`/counter/sittings/{id}` instead of growing a second copy of the counter's controls. `TryBegin` refuses on an
+open sitting anyway, for the replayed post the markup does not offer.
+
+**One picker rather than a panel per line.** A per-line correction panel in static SSR needs a distinct form
+name per row and a model to bind a dynamic set of them to, which is exactly the shape §5.4's checkboxes had
+to escape. `CounterSitting` and `TableDisplays` already settled this: one picker at the bottom that can name
+any row above it. Two forms, because §6.2's `staff_edit` and `price_adjustment` are two event types with two
+operation subtypes and mutually exclusive payload columns.
+
+The price is rounded once, in C#, away from zero — matching `numeric(10,2)`'s own rule — before it reaches
+the transaction, so the operation row, the projection, and the number reported back are the same value
+rather than three independent roundings of one input. The same decision `MenuAdministration` made for
+reprice in Slice 2.
+
+A refusal renders **in place** rather than redirecting: §6.5.9's per-operation reasons are the whole value of
+the message and do not survive a query string. A success redirects, so a refresh cannot re-append.
+
+Adding a line goes through `AppendStaffEventToLivingOrderAsync`, so it works for somebody who joined and
+never sent anything — their order row is created inside the same transaction (§6.1), which the surface cannot
+do for itself. An item currently marked unavailable is refused, by the surface immediately and by §6.5.4
+under the lock regardless. That is deliberate: the alternative is a bill naming a dish the kitchen has said it
+cannot make.
+
+#### Both totals, again
+
+`CounterSittingSummary.HasPostCloseCorrections` was built in Slice 1 and had one consumer. Now the settled
+list and the record header both use it, because §5.3 requires the stamped total and the corrected total to be
+shown together the moment they differ — "what was charged" and "what the record now says is owed" are two
+questions, and after this slice an administrator can actually cause them to diverge.
+
+#### Tests
+
+- `SittingRecordReadsTests` (Testcontainers, 13 facts) — one record per order oldest-first with the owner's
+  name; every event in sequence with its stored type and role; the actor-name username fallback; a
+  `line_added`'s item, quantity, captured price and note; a removal's reason and the item it took off; a
+  removed line **gone from the projection and still in the record**; an adjustment's new price and required
+  reason with the capture untouched beside it; a fulfillment and its reversal both surviving; one event's
+  several operations all staying on that event; orders in other sittings excluded; an unknown sitting empty;
+  a sitting nobody ordered in empty; and an administrator's post-close correction in the record with the
+  stamped total unmoved.
+- `EndOfDayTests` (7 facts, no container) — the registration resolves; three closes are announced
+  separately and in order; only the ones actually closed are counted and totalled while all three are still
+  attempted; repeated identifiers collapse before anything is attempted; an empty selection touches nothing;
+  a sitting settling at zero is still counted and announced; every individual result is carried in the order
+  asked; and a null selection throws.
+
+#### What is left in M5
+
+Hide/unhide (§6.8) with the hidden-records view, and the cross-cutting event explorer (§11.4: security,
+order, and menu events filtered by subject, actor, type, and time). `ISittingRecordReads` is the order half
+of that explorer's engine; `IMenuEventLog` is the menu half; `ISecurityEventLog` reads the third. What is
+missing is `order_visibility_event`'s write path and one screen that queries all three.

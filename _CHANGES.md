@@ -1,11 +1,11 @@
-# M5 Slice 3 — end-of-day, the complete stored record, and the corrections that live beside a settled total
+# M5 Slice 4 — hide and unhide: the guest's own history, and the only way back
 
-Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root and
-the contents drop straight over your working tree. `git status` will show exactly these 12 files as
+Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
+and the contents drop straight over your working tree. `git status` will show exactly these 20 files as
 modified/added, and **no deletions**.
 
 ```bash
-tar -xzf m5-slice3-sittings.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m5-slice4-hide-unhide.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
@@ -15,14 +15,18 @@ tar -xzf m5-slice3-sittings.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 
 ## The tree you exported was green
 
-`dotnet test` reported **819 total, 0 failed, 804 passed, 15 skipped**; `run.sh --smoke` got a 200 from
+`dotnet test` reported **840 total, 0 failed, 825 passed, 15 skipped**; `run.sh --smoke` got a 200 from
 `/healthz/ready`; the container stack and the quick tunnel both came up. Nothing in here is a fix — this is
 the next slice.
 
-One housekeeping note, unrelated to this change: `docs/BUILD_PROGRESS.md` has the M5 Slice 2 section
-appended, but the appends for **M4 slices 2–4 and M5 slice 1** are still sitting unmerged in
-`docs/_append/`. The headings jump from "M4 Slice 1" straight to "M5 Slice 2". Four `cat` commands fix it
-whenever you want; nothing depends on it.
+One pre-existing warning, untouched and unrelated:
+`tests/MyRestaurant.DataAccess.Tests/Sittings/SittingRecordReadsTests.cs(354,9): warning xUnit2031` — a
+`.Where(…)` before `Assert.Single`. Both new test files avoid that shape.
+
+Two housekeeping notes, neither blocking:
+
+**`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2".** Five appends are unmerged in
+`docs/_append/`, including this slice's:
 
 ```bash
 cat docs/_append/BUILD_PROGRESS-m4-slice-2.md >> docs/BUILD_PROGRESS.md
@@ -30,142 +34,186 @@ cat docs/_append/BUILD_PROGRESS-m4-slice-3.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m4-slice-4.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m5-slice-1.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m5-slice-3.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m5-slice-4.md >> docs/BUILD_PROGRESS.md
 ```
+
+**`/account/enroll-totp` no longer 500s.** The route was the open blocker in the previous session's notes
+and the log you exported shows it clean — nothing in this slice touched it.
 
 ## What this closes
 
-§19's M5 line reads "bills, price adjustment, close & settle, **end-of-day**, counter fallback QR, menu
-management + events, event explorer, hide/unhide, **post-close corrections**". This is the emphasised part,
-plus the §11.4 Sittings section that houses both.
+§19's M5 line reads "bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu
+management + events, event explorer, **hide/unhide**, post-close corrections". This is the emphasised word,
+both halves: §11.1's guest history with its per-order Hide, and §11.4's hidden-records view with the
+per-record Unhide that is the only undo for it.
 
-Three holes, all the same shape — the engine existed, the screen did not:
+M4 Slice 2 recorded the deferral in as many words: "§11.1's per-order **Hide** control and the guest's own
+**history** of past orders need `order_visibility_event` writes and a closed-sitting query that reads
+across sittings; both are §6.8 work and belong with the §11.4 hidden-records view that is their only
+unhide path (M5)." `order_visibility_event` and the `order_visibility_current` view have been in
+`0001_initial_schema.sql` since M1 with no writer and no reader. They have both now.
 
-- **§5.4's end-of-day pass.** `ICounterBoardReads` has carried `LastEventAt` ("§5.4's last-activity
-  timestamps") since Slice 1 and nothing read it.
-- **§6.7's post-close corrections.** `OrderMutationValidator` has admitted an administrator's corrective
-  event on a closed sitting since M4, and `SittingSettlementTests` asserted it there. There was no way to
-  author one outside a test.
-- **§11.4's "complete stored record".** `IOrderEventLog` reads one order's log for the fold and the
-  validator — domain enums, no names. Right for its two callers, unusable on a screen.
+## New files (9)
 
-## New files (6)
+### Code — DataAccess (2)
 
-### Code — DataAccess (1)
+- `src/MyRestaurant.DataAccess/Orders/OrderVisibility.cs`
+  `HideOrderOutcome`, `UnhideOrderOutcome`, `HideOrderResult`, `UnhideOrderResult`,
+  `IOrderVisibility`/`DapperOrderVisibility` — the owner hide and the administrator unhide, one
+  transaction each, `FOR UPDATE OF guest_order` and nothing else.
+- `src/MyRestaurant.DataAccess/Orders/OrderHistoryReads.cs`
+  `PersonOrderHistoryEntry`, `HiddenOrderFilter`, `HiddenOrderSummary`, `OrderVisibilityEntry`,
+  `IOrderHistoryReads`/`DapperOrderHistoryReads` — the guest's own visible history (two queries), the
+  filtered hidden-records list (one), and the visibility log.
 
-- `src/MyRestaurant.DataAccess/Sittings/SittingRecordReads.cs`
-  `StoredOrderOperation`, `StoredOrderEvent`, `SittingOrderRecord`,
-  `ISittingRecordReads`/`DapperSittingRecordReads` — every order in a sitting with its complete,
-  uncapped event log, actors named, operations legible. Three queries regardless of party size.
+### Code — WebApplication (1)
+
+- `src/MyRestaurant.WebApplication/Orders/OrderVisibilityWorkflow.cs`
+  `IOrderVisibilityWorkflow`/`OrderVisibilityWorkflow` — the post-commit shell that publishes §9's
+  `VisibilityChanged`. No metric: §12's meter list is closed and correctly contains no visibility counter.
 
 ### Surfaces (2)
 
-- `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationSittings.razor` —
-  `/administration/sittings`
-- `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageSitting.razor` —
-  `/administration/sittings/{SittingId:guid}`
+- `src/MyRestaurant.WebApplication/Components/Pages/Table/TableHistory.razor` — `/table/history`
+- `src/MyRestaurant.WebApplication/Components/Pages/Administration/HiddenRecords.razor` —
+  `/administration/hidden-records`
 
-### Tests (2)
+### Tests (3)
 
-- `tests/MyRestaurant.DataAccess.Tests/Sittings/SittingRecordReadsTests.cs` (Testcontainers, 13 facts)
-- `tests/MyRestaurant.WebApplication.Tests/Sittings/EndOfDayTests.cs` (7 facts, no container)
+- `tests/MyRestaurant.DataAccess.Tests/Orders/OrderVisibilityTests.cs` (Testcontainers, 11 facts)
+- `tests/MyRestaurant.DataAccess.Tests/Orders/OrderHistoryReadsTests.cs` (Testcontainers, 16 facts)
+- `tests/MyRestaurant.WebApplication.Tests/Orders/OrderVisibilityWorkflowTests.cs` (10 facts, no container)
 
 ### Docs (1, append-then-keep)
 
 `docs/BUILD_PROGRESS.md` is large and is not regenerated. The new section ships as
-`docs/_append/BUILD_PROGRESS-m5-slice-3.md`, matching the sections already in that folder.
+`docs/_append/BUILD_PROGRESS-m5-slice-4.md`, matching the sections already in that folder.
 
-## Edited (5)
+## Edited (11)
 
-- `src/MyRestaurant.WebApplication/Sittings/SittingWorkflow.cs`
-  `EndOfDayResult` and `ISittingWorkflow.CloseManyAsync`. `CloseAndSettleAsync` is byte-for-byte
-  unchanged.
-- `src/MyRestaurant.WebApplication/Tables/TablesServiceCollectionExtensions.cs`
-  One registration (`ISittingRecordReads`) and two doc-comment paragraphs. Chosen over a new
-  `AddRestaurantSittings()` so `Program.cs` needs no edit — this extension has owned §5 since M3.
+- `src/MyRestaurant.DataAccess/Orders/OrderEventVocabulary.cs`
+  Two constants — `hidden` and `unhidden`, §8.2's second closed vocabulary. Nothing else moves.
+- `src/MyRestaurant.DataAccess/Sittings/SittingRecordReads.cs`
+  `GetOrderRecordAsync(guestOrderIdentifier)`, and the three statements refactored into templates
+  parameterised by one `const` WHERE fragment. `ListOrderRecordsForSittingAsync` answers exactly as it did;
+  its SQL is character-for-character the same once the fragment is substituted.
+- `src/MyRestaurant.WebApplication/Time/RestaurantTime.cs`
+  `StartOfDay(DateOnly)` and `StartOfNextDay(DateOnly)`, both UTC-normalised. Nothing existing changes.
+- `src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs`
+  Three registrations and one doc-comment bullet. Chosen over a new `AddRestaurantVisibility()` so
+  `Program.cs` needs no edit — this extension has owned §6 since M4.
+- `src/MyRestaurant.WebApplication/Components/Pages/Home.razor`
+  A history link in the area list, and the lede's stale "Menu management … arrives next" corrected —
+  menu management landed in M5 Slice 2.
+- `src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor`
+  A history link in the footer and in the "not seated" branch, which until now offered somebody with no
+  open table nothing to do.
+- `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor`
+  One `<a>`: the settled view already said the order "stays on your history" and can now point at it.
+  Nothing else in this file changes.
 - `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor`
-- `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationMenu.razor`
 - `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationTables.razor`
-  One `<a>` each: a Sittings link in the header actions. Nothing else changes in any of the three.
+- `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationMenu.razor`
+- `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationSittings.razor`
+  One `<a>` each: a Hidden records link in the header actions. Nothing else changes in any of the four.
+- `tests/MyRestaurant.DataAccess.Tests/Orders/OrderTestWorld.cs`
+  `AddVisibilityEventAsync` plus its statement.
+- `tests/MyRestaurant.WebApplication.Tests/Orders/OrdersWiringTests.cs`
+  Two facts and three doc-comment sentences.
 
-No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, or ADR edit: this realizes behaviour §5.4,
-§6.7, and §11.4 already specify.
+No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, or ADR edit: this realizes behaviour §6.8,
+§11.1 and §11.4 already specify, in the words they already use.
 
 ## Six decisions worth knowing before you read the diff
 
-**One transaction per sitting, and §5.4 says so on purpose.** "Close each via the same §5.3 transaction" is
-the design, not the phrasing. §5.3's guarantee is a total summed under a `FOR UPDATE` that conflicts with
-the `FOR SHARE` every order writer holds (§6.6). One long transaction over twelve tables would hold twelve
-of those locks until the last committed — a guest still ordering at table 1 would block the close of table
-12 — and an error on table 12 would roll back eleven correct closures. The loop goes through the public
-`CloseAndSettleAsync`, so each close is counted (§12) and announced (§9) *when it happens*; batching the
-broadcasts to the end would leave settled tables taking orders on every phone that had them open for the
-rest of the pass.
+**Hiding is enforced in SQL, once.** §6.8's guarantee is that a hidden order is gone from "the owner's own
+views", and a guarantee that depends on every future page remembering a `Where` clause is not one. Both
+person-scoped queries carry `AND NOT COALESCE(visibility.is_hidden, false)`. The `COALESCE` is
+load-bearing: "never had a visibility event" and "explicitly unhidden" have to read the same, because §6.8
+defines the current flag as the latest event and no events means not hidden.
 
-**No select-all, nothing pre-ticked.** Closing twelve tables costs twelve deliberate ticks, and that is the
-confirmation step rather than a second page. The counter's single close has a confirm because a guest is
-standing there; an end-of-day pass is deliberate by nature, and a select-all beside an irreversible action
-at the end of a long shift is the wrong affordance to build.
+**The lock is on `guest_order` and nothing else.** Both writes take `FOR UPDATE OF guest_order` before
+reading the current flag, so two taps on Hide cannot both see "not hidden" and both append. They
+deliberately do not lock `table_sitting`: §6.6 locks the sitting first and the order second, and a
+transaction that only ever waits on the order can never be the other half of a deadlock with it. The
+sitting's `closed_at` is read unlocked in the same statement, which is sound because a close is one-way —
+§5.3 stamps it and nothing clears it.
 
-**The record's `EventType`, `ActorRole`, and `OperationKind` are stored strings, not enums.**
-`IOrderEventLog` maps to `OrderEventType` and throws on an unknown word, which is right for the validator
-and the fold — both must refuse rather than guess. A screen must do the opposite: an enum here is a
-projection with a failure mode, where an unrecognised value either throws and blanks the one page whose job
-is to show what is stored, or is silently mapped to something wrong. Both surfaces label the values §8.2
-admits and fall back to the raw string. Same decision `MenuItemEventEntry` made in Slice 2.
+**A visibility event is not an order event, so it does not go through `IOrderMutations`.** No
+`sequence_number`, no operations, no line, no total, nothing in §8.5's fold. Routing it through the §6.6
+transaction would take a `FOR SHARE` on a sitting that is closed by definition and imply, wrongly, that a
+bill could move because somebody tidied their history.
 
-**The four non-adding operation tables get their dish from a join, and the join is exact.** They store an
-`order_line_identifier` and nothing else, so rendered as stored a removal reads "removed 0192f0…". Every
-`UNION ALL` branch joins back to `order_operation_line_added` on `order_line_identifier` — `NOT NULL UNIQUE`
-on that table and the declared FK target of all four others, so exactly one origin row exists for every
-operation PostgreSQL will accept. `INNER JOIN`, not `LEFT`. What is *not* joined is the price:
-`UnitPriceAmount` stays null off `line_added` and `NewUnitPriceAmount` off `line_price_adjusted`, because a
-price is what arguments are about and the record must not synthesise one.
+**The confirmation is a step, not a `confirm()`.** §6.8 requires it to state "plainly that this cannot be
+undone from the guest's account". A browser dialog cannot be read, cannot be styled, and does not exist
+without JavaScript, while this page works with none. Tapping Hide navigates to `?hide={order}` and the
+warning renders inline above the row with two things to do next: confirm, or go back.
 
-**Corrections appear only once the sitting is settled.** §6.7 is titled "post-close corrections" and §3.7's
-matrix gives them to the administrator alone. While a table is still eating, the screen built for it is the
-counter's — and an administrator already holds the counter capabilities (§3.7), so `ManageSitting` links to
-`/counter/sittings/{id}` rather than growing a second copy of those controls. `TryBegin` refuses on an open
-sitting anyway, for the replayed post the markup does not offer. The *record* renders either way; reading
-history is not a write.
+**Expansion in the hidden-records view is one row at a time, by URL.** §11.4 wants the complete record
+"never projected or truncated", and a complete record is three queries. A hundred of them to draw a list
+would be three hundred round trips for a page somebody is skimming. `?record={order}` *is* §6.8's
+"expandable": the list is always complete, and the row an administrator actually opened is fetched in full.
 
-**`EndOfDayResult.SettledTotalAmount` excludes `AlreadyClosed`.** That total belongs to somebody else's
-close. Adding it would report a day that took more than it did.
+**The hidden list is not filtered to closed sittings.** `HideAsync` refuses an open one, so such a row
+cannot arise from the application — and if one ever does, this is the one screen that must show it rather
+than tidy the anomaly away (§11.4). Hence a nullable `ClosedAt` on the summary and markup that says "this
+sitting is still open" in bold.
 
 ## The one-line why
 
-A restaurant that cannot be closed at the end of the night is a restaurant with twelve tables permanently
-mid-meal — and because the one number nobody may rewrite is the settled total, the only honest way to fix a
-mistake on a bill is to append a row saying who fixed it, when, and what it was before.
+A guest who wants last Tuesday off their phone should be able to take it off their phone without anybody's
+permission — and because the restaurant's record is not theirs to edit, the honest way to do that is a row
+saying they hid it, which a manager can answer with a row saying they put it back.
 
 ## Where to look if the build breaks
 
-**`AdministrationSittings.razor`, and specifically `await HttpContext.Request.ReadFormAsync(...)`.** This is
-the one form in the tree that reads its own POST values instead of binding a `[SupplyParameterFromForm]`
-model — a checkbox set whose length is however many tables are open has no static model to bind to, and the
-select-one picker used on `ManageTable` and `TableDisplays` is not what §5.4 describes. It is not a second
-read of the body: the Blazor endpoint has already parsed the form to find the handler, and `HttpRequest`
-caches the parsed collection. `IFormCollection` and `HttpMethods` come from `Microsoft.AspNetCore.Http`,
-which the Web SDK's implicit usings already supply — the same way `HttpContext` and `HttpMethods.IsGet`
-work in `ManageMenuItem.razor` today. If the enumeration over `form[SelectedSittingField]` does not infer
-`string?`, the fix is `foreach (string? posted in form[SelectedSittingField].ToArray())`.
+**`HiddenRecords.razor`**, and specifically its two `<text>` blocks and the `class="hidden-record @(…)"`
+ternary. Both idioms already exist in the tree — `<text>` in nineteen places, the nested-quote class
+ternary in `CounterSitting.razor` and `KitchenBoard.razor` — so neither is new ground, but this is the
+first file to use them in the same markup. It deliberately declares no locals inside a markup `@foreach`:
+nothing else in the tree does that, so `IsExpanded(summary)` and `CountSentence(count)` are methods.
 
-Then `ManageSitting.razor`'s two `InputNumber` bindings — `decimal` for the price and `int` for the
-quantity. `ManageMenuItem.razor` established that inference works for `decimal`; the `int` one is new. If
-either misbehaves the fix is to write the generic argument out:
-`<InputNumber TValue="decimal" @bind-Value="CorrectInput.NewUnitPriceAmount" … />` and
-`<InputNumber TValue="int" @bind-Value="AddInput.Quantity" … />`.
+Then `SittingRecordReads.cs`. `OrdersTemplate`, `EventsTemplate` and `OperationsTemplate` are
+`private static string` methods returning raw interpolated strings, consumed by six `static readonly`
+fields declared after them; both scope fragments are `const`, so there is no initialisation-order hazard.
+`ListOrderRecordsForSittingAsync` is now an expression-bodied `async` method
+(`=> await ReadRecordsAsync(…).ConfigureAwait(false)`) — legal, and the one shape here with no precedent
+in the tree.
 
-Two things I could not check without a compiler, both deliberate:
+Three things I could not check without a compiler, each deliberate:
 
-1. `SittingRecordReads.cs` takes `using MyRestaurant.DataAccess.Orders;` for `OrderEventVocabulary`'s
-   operation-kind discriminators (internal, same assembly). `MyRestaurant.DataAccess.Sittings` and
-   `MyRestaurant.DataAccess.Orders` declare no colliding simple names today, and `CounterBoardReads.cs`
-   already references the latter by prefix — but this is the first file in `Sittings` to import it
-   wholesale.
-2. `ManageSitting.razor` imports both `MyRestaurant.DataAccess.Orders` and `MyRestaurant.Domain.Orders`.
-   `CounterSitting.razor` already does exactly that and is green, so there is no ambiguity to find; noted
-   only because it is the sort of thing that bites once.
+1. `form[OrderField]` is read out to a `string?` local before `Guid.TryParse` in both new surfaces.
+   `StringValues` converts implicitly to `string?` and `Guid.TryParse` has both a `string?` and a
+   `ReadOnlySpan<char>` overload; being explicit keeps overload resolution off that question entirely.
+2. `= ANY(@GuestOrderIdentifiers)` binds a `Guid[]` as one `uuid[]` parameter. `DapperMenuDirectory`
+   already does this, so the shape is proven — but this is its first use in `Orders`.
+3. `ESCAPE '\'` inside a C# raw string literal is one literal backslash on both sides: raw strings do not
+   process escapes, and `standard_conforming_strings` (on by default since PostgreSQL 9.1) makes the SQL
+   string a single backslash rather than the start of an escape sequence.
 
-Everything else is ordinary C# and SQL in the shapes the surrounding files already use — the reader is
-`OrderEventReader`'s `UNION ALL` with two more joins per branch, and both surfaces are the static-SSR
-post/redirect/get shape `ManageTable` established and `ManageMenuItem` repeated.
+Everything else is ordinary C# and SQL in shapes the surrounding files already use — the readers are
+`DapperCounterBoardReads`'s aliased-column, internal-row-type pattern plus a
+`CROSS JOIN LATERAL … LIMIT 1` for the latest visibility event, and both surfaces are the static-SSR
+post/redirect/get shape `ManageTable` established and `AdministrationSittings` repeated, `ReadFormAsync`
+note included.
+
+## Build/test checklist for this slice
+
+1. `dotnet restore` — **no new packages**, no migration, no schema change, no `Program.cs` edit.
+2. `dotnet build` — the two Razor pages are the likely compiler-catch home, as always.
+3. `dotnet test` — expect **+37 facts** (11 + 16 + 10, plus 2 wiring, less nothing removed): 877 total,
+   825 + 37 passing, 15 still skipped.
+4. `bash run.sh --smoke` — should be unaffected; nothing touched startup, config, or migrations.
+5. `bash run.sh --containers-only`, then:
+   - `/table/history` as a guest with a settled meal — the row, its lines, its total.
+   - Hide it: the confirmation step, then the row gone and the flash message.
+   - `/administration/hidden-records` — the row, the four filters, "Open the complete record", the
+     visibility log, the event log, then Unhide.
+   - `/table/history` again — the row is back.
+
+## What is left in M5
+
+The cross-cutting **event explorer** (§11.4: security, order, and menu events filtered by subject, actor,
+type, and time). All three engines exist — `ISittingRecordReads`, `IMenuEventLog`, `ISecurityEventLog` —
+and what is missing is one screen over them with a shared filter. After that M5 is closed and M6 is
+hardening: the Playwright matrix, the restore drill, and CI.

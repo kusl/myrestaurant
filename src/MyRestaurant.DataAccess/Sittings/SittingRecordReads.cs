@@ -131,6 +131,25 @@ public interface ISittingRecordReads
     Task<IReadOnlyList<SittingOrderRecord>> ListOrderRecordsForSittingAsync(
         Guid sittingIdentifier,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One order's complete record, or <c>null</c> when no order has that identifier — the same answer
+    /// <see cref="ListOrderRecordsForSittingAsync"/> gives, asked one order at a time.
+    ///
+    /// <para>It exists for §6.8's hidden-records view (§11.4), which lists orders from many different
+    /// sittings and expands one of them. Reading the whole sitting to render one order would show an
+    /// administrator the rest of that party's orders as a side effect of opening a row about one person's
+    /// hidden meal — which is not what they asked for, and §11.4 is explicit that filters narrow "only on
+    /// explicit request" in <em>both</em> directions.</para>
+    ///
+    /// <para>Unlike the sitting-scoped question, "no such order" is distinguishable from "an order with
+    /// no events" here: the first returns <c>null</c>, the second a record whose <c>Events</c> is empty.
+    /// The caller has an identifier it got from somewhere, so a page that finds nothing can say the link
+    /// is stale rather than that the meal was never eaten.</para>
+    /// </summary>
+    Task<SittingOrderRecord?> GetOrderRecordAsync(
+        Guid guestOrderIdentifier,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -151,7 +170,22 @@ public interface ISittingRecordReads
 /// </summary>
 public sealed class DapperSittingRecordReads : ISittingRecordReads
 {
-    private const string OrdersSql = """
+    /// <summary>
+    /// The two questions the three queries below are asked, as WHERE fragments. Both are applied to a
+    /// <c>guest_order</c> row — either the alias <c>guest_order</c> itself (the first two queries) or the
+    /// per-branch alias the operations union gives it — so one set of SQL serves both scopes and neither
+    /// can drift from the other.
+    ///
+    /// <para>Fragments rather than a composed string: nothing here is derived from input, both are
+    /// <c>const</c>, and the parameter placeholders stay parameters. The point is not to build SQL
+    /// dynamically but to stop the same 180 lines of union existing twice, which is how a reader ends up
+    /// fixed in one copy and wrong in the other.</para>
+    /// </summary>
+    private const string SittingScopeColumn = "table_sitting_identifier = @SittingIdentifier";
+
+    private const string OrderScopeColumn = "guest_order_identifier = @GuestOrderIdentifier";
+
+    private static string OrdersTemplate(string scope) => $"""
         SELECT guest_order.guest_order_identifier   AS GuestOrderIdentifier,
                guest_order.table_sitting_identifier AS SittingIdentifier,
                guest_order.person_identifier        AS PersonIdentifier,
@@ -161,13 +195,13 @@ public sealed class DapperSittingRecordReads : ISittingRecordReads
         FROM guest_order
         INNER JOIN person AS owner
                 ON owner.person_identifier = guest_order.person_identifier
-        WHERE guest_order.table_sitting_identifier = @SittingIdentifier
+        WHERE guest_order.{scope}
         ORDER BY guest_order.created_at, guest_order.guest_order_identifier;
         """;
 
     // The actor-name expression is the one DapperCounterBoardReads and DapperMenuEventLog already use;
     // both joins are INNER because both foreign keys are NOT NULL.
-    private const string EventsSql = """
+    private static string EventsTemplate(string scope) => $"""
         SELECT order_event.order_event_identifier  AS OrderEventIdentifier,
                order_event.guest_order_identifier  AS GuestOrderIdentifier,
                order_event.sequence_number         AS SequenceNumber,
@@ -182,7 +216,7 @@ public sealed class DapperSittingRecordReads : ISittingRecordReads
                 ON guest_order.guest_order_identifier = order_event.guest_order_identifier
         INNER JOIN person AS actor
                 ON actor.person_identifier = order_event.actor_person_identifier
-        WHERE guest_order.table_sitting_identifier = @SittingIdentifier
+        WHERE guest_order.{scope}
         ORDER BY order_event.guest_order_identifier, order_event.sequence_number;
         """;
 
@@ -205,7 +239,7 @@ public sealed class DapperSittingRecordReads : ISittingRecordReads
     /// differ only in their random bits. The schema records no ordinal within an event and nothing needs
     /// one — §6.5.5 forbids the one intra-event ordering that could change an outcome.</para>
     /// </summary>
-    private static readonly string OperationsSql = $"""
+    private static string OperationsTemplate(string scope) => $"""
         SELECT added.order_operation_line_added_identifier  AS OperationIdentifier,
                added.order_event_identifier                 AS OrderEventIdentifier,
                '{OrderEventVocabulary.LineAddedKind}'::text AS OperationKind,
@@ -224,7 +258,7 @@ public sealed class DapperSittingRecordReads : ISittingRecordReads
                 ON added_order.guest_order_identifier = added_event.guest_order_identifier
         INNER JOIN menu_item AS added_item
                 ON added_item.menu_item_identifier = added.menu_item_identifier
-        WHERE added_order.table_sitting_identifier = @SittingIdentifier
+        WHERE added_order.{scope}
 
         UNION ALL
 
@@ -248,7 +282,7 @@ public sealed class DapperSittingRecordReads : ISittingRecordReads
                 ON removed_origin.order_line_identifier = removed.order_line_identifier
         INNER JOIN menu_item AS removed_item
                 ON removed_item.menu_item_identifier = removed_origin.menu_item_identifier
-        WHERE removed_order.table_sitting_identifier = @SittingIdentifier
+        WHERE removed_order.{scope}
 
         UNION ALL
 
@@ -272,7 +306,7 @@ public sealed class DapperSittingRecordReads : ISittingRecordReads
                 ON adjusted_origin.order_line_identifier = adjusted.order_line_identifier
         INNER JOIN menu_item AS adjusted_item
                 ON adjusted_item.menu_item_identifier = adjusted_origin.menu_item_identifier
-        WHERE adjusted_order.table_sitting_identifier = @SittingIdentifier
+        WHERE adjusted_order.{scope}
 
         UNION ALL
 
@@ -296,7 +330,7 @@ public sealed class DapperSittingRecordReads : ISittingRecordReads
                 ON fulfilled_origin.order_line_identifier = fulfilled.order_line_identifier
         INNER JOIN menu_item AS fulfilled_item
                 ON fulfilled_item.menu_item_identifier = fulfilled_origin.menu_item_identifier
-        WHERE fulfilled_order.table_sitting_identifier = @SittingIdentifier
+        WHERE fulfilled_order.{scope}
 
         UNION ALL
 
@@ -320,10 +354,24 @@ public sealed class DapperSittingRecordReads : ISittingRecordReads
                 ON reverted_origin.order_line_identifier = reverted.order_line_identifier
         INNER JOIN menu_item AS reverted_item
                 ON reverted_item.menu_item_identifier = reverted_origin.menu_item_identifier
-        WHERE reverted_order.table_sitting_identifier = @SittingIdentifier
+        WHERE reverted_order.{scope}
 
         ORDER BY OperationIdentifier;
         """;
+
+    // Composed once at type initialisation, in textual order; both scope fragments are `const`, so there
+    // is no initialisation-order hazard to reason about.
+    private static readonly string OrdersBySittingSql = OrdersTemplate(SittingScopeColumn);
+
+    private static readonly string EventsBySittingSql = EventsTemplate(SittingScopeColumn);
+
+    private static readonly string OperationsBySittingSql = OperationsTemplate(SittingScopeColumn);
+
+    private static readonly string OrdersByOrderSql = OrdersTemplate(OrderScopeColumn);
+
+    private static readonly string EventsByOrderSql = EventsTemplate(OrderScopeColumn);
+
+    private static readonly string OperationsByOrderSql = OperationsTemplate(OrderScopeColumn);
 
     private readonly IDatabaseConnectionFactory _connectionFactory;
 
@@ -336,15 +384,45 @@ public sealed class DapperSittingRecordReads : ISittingRecordReads
     public async Task<IReadOnlyList<SittingOrderRecord>> ListOrderRecordsForSittingAsync(
         Guid sittingIdentifier,
         CancellationToken cancellationToken = default)
-    {
-        object parameters = new { SittingIdentifier = sittingIdentifier };
+        => await ReadRecordsAsync(
+            OrdersBySittingSql,
+            EventsBySittingSql,
+            OperationsBySittingSql,
+            new { SittingIdentifier = sittingIdentifier },
+            cancellationToken).ConfigureAwait(false);
 
+    public async Task<SittingOrderRecord?> GetOrderRecordAsync(
+        Guid guestOrderIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<SittingOrderRecord> records = await ReadRecordsAsync(
+            OrdersByOrderSql,
+            EventsByOrderSql,
+            OperationsByOrderSql,
+            new { GuestOrderIdentifier = guestOrderIdentifier },
+            cancellationToken).ConfigureAwait(false);
+
+        // guest_order_identifier is the primary key, so the orders query returned at most one row.
+        return records.Count == 0 ? null : records[0];
+    }
+
+    /// <summary>
+    /// The three queries and the in-memory grouping, once. The only thing that varies between the two
+    /// public questions is which WHERE fragment the statements carry and which parameter satisfies it.
+    /// </summary>
+    private async Task<IReadOnlyList<SittingOrderRecord>> ReadRecordsAsync(
+        string ordersSql,
+        string eventsSql,
+        string operationsSql,
+        object parameters,
+        CancellationToken cancellationToken)
+    {
         await using DbConnection connection = await _connectionFactory
             .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
         IEnumerable<OrderRow> orderRows = await connection
             .QueryAsync<OrderRow>(new CommandDefinition(
-                OrdersSql, parameters, cancellationToken: cancellationToken))
+                ordersSql, parameters, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         List<OrderRow> orders = orderRows.ToList();
@@ -357,12 +435,12 @@ public sealed class DapperSittingRecordReads : ISittingRecordReads
 
         IEnumerable<EventRow> eventRows = await connection
             .QueryAsync<EventRow>(new CommandDefinition(
-                EventsSql, parameters, cancellationToken: cancellationToken))
+                eventsSql, parameters, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         IEnumerable<OperationRow> operationRows = await connection
             .QueryAsync<OperationRow>(new CommandDefinition(
-                OperationsSql, parameters, cancellationToken: cancellationToken))
+                operationsSql, parameters, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         Dictionary<Guid, List<StoredOrderOperation>> operationsByEvent = [];

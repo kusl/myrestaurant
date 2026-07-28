@@ -32,6 +32,16 @@ internal static class OrderEventVocabulary
     public const string InitialNotification = "initial";
     public const string ReminderNotification = "reminder";
 
+    // order_visibility_event.event_type (§6.8, §8.2). A second closed two-word vocabulary, kept here
+    // rather than in its own file for the reason this file exists at all: the writer and the reader of a
+    // CHECK-constrained column must agree on the spelling, and a disagreement is a constraint violation
+    // on one side and a silent mis-read on the other. §6.8 calls the administrator's unhide
+    // "unhidden_by_administrator" in prose; the stored word is `unhidden`, and who did it is
+    // `actor_person_identifier` — there is no guest unhide path to distinguish it from (§6.8: "there is
+    // no user-facing unhide").
+    public const string HiddenVisibility = "hidden";
+    public const string UnhiddenVisibility = "unhidden";
+
     // Discriminators for the UNION ALL that reads the five typed operation tables as one flat set.
     // They are query-local labels, not stored anywhere, but they live here for the same reason.
     public const string LineAddedKind = "line_added";

@@ -76,6 +76,15 @@ internal sealed class OrderTestWorld
         VALUES (@MenuItemIdentifier, @Name, @PriceAmount, @IsActive, @CreatedAt);
         """;
 
+    private const string InsertVisibilityEventSql = """
+        INSERT INTO order_visibility_event (
+            order_visibility_event_identifier, guest_order_identifier,
+            actor_person_identifier, event_type, occurred_at)
+        VALUES (
+            @VisibilityEventIdentifier, @GuestOrderIdentifier,
+            @ActorPersonIdentifier, @EventType, @OccurredAt);
+        """;
+
     private const string UpdateMenuItemSql = """
         UPDATE menu_item
         SET price_amount = @PriceAmount,
@@ -219,6 +228,33 @@ internal sealed class OrderTestWorld
         => await ExecuteAsync(
             UpdateMenuItemSql,
             new { MenuItemIdentifier = menuItemIdentifier, PriceAmount = priceAmount, IsActive = isActive },
+            cancellationToken);
+
+    /// <summary>
+    /// Appends an <c>order_visibility_event</c> row directly (§6.8), stamped with the current
+    /// <see cref="FixedClock"/> instant.
+    ///
+    /// <para>Plain SQL rather than <c>DapperOrderVisibility</c>, for the reason this whole class prefers
+    /// SQL: the readers under test in <c>OrderHistoryReadsTests</c> are about which rows they select, and
+    /// arranging them through the write service would make a bug in that service look like a bug in the
+    /// reader. It also reaches states the service deliberately refuses to create — a hide on an open
+    /// sitting — which is the only way to assert what the readers do when they meet one.</para>
+    /// </summary>
+    public async Task AddVisibilityEventAsync(
+        Guid guestOrderIdentifier,
+        Guid actorPersonIdentifier,
+        string eventType,
+        CancellationToken cancellationToken)
+        => await ExecuteAsync(
+            InsertVisibilityEventSql,
+            new
+            {
+                VisibilityEventIdentifier = _identifierFactory.Create(),
+                GuestOrderIdentifier = guestOrderIdentifier,
+                ActorPersonIdentifier = actorPersonIdentifier,
+                EventType = eventType,
+                OccurredAt = _clock.UtcNow,
+            },
             cancellationToken);
 
     /// <summary>A raw count, for the "nothing was written" assertions §6.5.9 lives on.</summary>

@@ -1,0 +1,438 @@
+@page "/table/history"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Table)]
+@using MyRestaurant.DataAccess.Orders
+@using MyRestaurant.WebApplication.Orders
+@inject IOrderHistoryReads History
+@inject IOrderVisibilityWorkflow Visibility
+@inject RestaurantOptions Options
+@inject RestaurantTime RestaurantClock
+@inject NavigationManager Navigation
+
+@* The guest's own order history, and §6.8's Hide (TECHNICAL_SPECIFICATION §6.8, §11.1).
+
+   §11.1 puts two things on the guest's side of this feature: "history (the guest's **own** past orders at
+   this restaurant — cross-member history is never shown)" and "a per-order **Hide** control on closed
+   orders, confirmed as irreversible from the guest's account (§6.8)". This is both, and it is a route of
+   its own rather than a panel on /table/{id} because a history spans sittings while that page is scoped
+   to one — §5.1 is explicit that "the UI scopes to the sitting behind the current /table/{id} route", and
+   a list of last month's meals is not part of the sitting somebody is currently eating.
+
+   Static SSR, not an interactive island. The two things this page does are read a list and post a
+   confirmed write that then redirects (post/redirect/get, so a refresh cannot re-hide), and neither needs
+   a circuit. The live surface next door is interactive because a party total moves while you watch it; a
+   settled bill from three weeks ago does not.
+
+   The confirmation is a step, not a dialog. §6.8 requires it to state "plainly that this cannot be undone
+   from the guest's account", and a browser confirm() cannot be read, cannot be styled, and does not exist
+   without JavaScript — while this page works with none. Tapping Hide navigates to ?hide={order}, which
+   renders the warning inline above the row with the only two things to do next: confirm, or go back. *@
+
+<PageTitle>Your order history</PageTitle>
+
+<section class="panel">
+    <div class="history-header">
+        <div>
+            <p class="eyebrow">Your account</p>
+            <h1>Your order history</h1>
+        </div>
+        <div class="history-header-actions">
+            <a class="button-secondary" href="/table">Your tables</a>
+            <a class="button-secondary" href="@AccountRoutes.Profile">Account</a>
+        </div>
+    </div>
+
+    <p class="lede">
+        Every meal of yours that has been settled, most recent first. Only your own orders appear here —
+        what other people at your table ordered is never shown to you, and yours is never shown to them.
+    </p>
+
+    @if (_flashMessage is not null)
+    {
+        <p class="status-success" role="status">@_flashMessage</p>
+    }
+    @if (_errorMessage is not null)
+    {
+        <p class="status-error" role="alert">@_errorMessage</p>
+    }
+
+    @if (_entries is null)
+    {
+        <p class="lede">Loading your history…</p>
+    }
+    else if (_entries.Count == 0)
+    {
+        <p class="lede">
+            Nothing here yet. An order joins your history once the counter has settled the table — while a
+            meal is still going, it lives on <a href="/table">your table</a> instead.
+        </p>
+    }
+    else
+    {
+        @foreach (PersonOrderHistoryEntry entry in _entries)
+        {
+            <article class="history-order">
+                <header class="history-order-header">
+                    <div>
+                        <h2 class="history-order-title">@entry.TableLabel</h2>
+                        <p class="history-order-when">
+                            @RestaurantClock.Date(entry.OpenedAt) ·
+                            @RestaurantClock.Time(entry.OpenedAt) to @RestaurantClock.Time(entry.ClosedAt)
+                        </p>
+                    </div>
+                    <div class="history-order-total">
+                        <span class="history-amount">@Money(entry.PersonTotalAmount)</span>
+                        <span class="history-order-count">
+                            @entry.LineCount @(entry.LineCount == 1 ? "item" : "items")
+                        </span>
+                    </div>
+                </header>
+
+                @if (Hide == entry.GuestOrderIdentifier)
+                {
+                    @* §6.8's confirmation, stated the way §6.8 requires. *@
+                    <div class="history-confirm" role="alert">
+                        <p class="history-confirm-title"><strong>Hide this from your history?</strong></p>
+                        <p>
+                            It will stop appearing here. <strong>You will not be able to put it back</strong>
+                            — there is no undo on your account. If you need it again afterwards you will have
+                            to ask a manager, who can restore it.
+                        </p>
+                        <p class="history-confirm-note">
+                            The restaurant's own records are unchanged: what you ordered, what it cost, and
+                            what was settled all stay exactly as they are. This only controls whether the
+                            order shows up on this page.
+                        </p>
+
+                        <form method="post" @formname="hide-order" @onsubmit="HideAsync">
+                            <AntiforgeryToken />
+                            <input type="hidden" name="@OrderField" value="@entry.GuestOrderIdentifier" />
+
+                            <div class="form-actions">
+                                <button type="submit" class="button-primary">
+                                    Yes, hide it permanently
+                                </button>
+                                <a class="button-secondary" href="/table/history">Keep it</a>
+                            </div>
+                        </form>
+                    </div>
+                }
+
+                @if (entry.Lines.Count == 0)
+                {
+                    <p class="history-empty">
+                        Nothing was left on this order by the end — every line had been taken off.
+                    </p>
+                }
+                else
+                {
+                    <ul class="history-lines">
+                        @foreach (OrderLineView line in entry.Lines)
+                        {
+                            <li>
+                                <span class="history-line-quantity">@line.Quantity ×</span>
+                                <span class="history-line-item">@line.MenuItemName</span>
+                                @if (!string.IsNullOrWhiteSpace(line.CustomizationNote))
+                                {
+                                    <span class="history-line-note">“@line.CustomizationNote.Trim()”</span>
+                                }
+                                <span class="history-line-amount">@Money(line.LineTotalAmount)</span>
+                            </li>
+                        }
+                    </ul>
+                }
+
+                @if (Hide != entry.GuestOrderIdentifier)
+                {
+                    <p class="history-order-actions">
+                        <a class="history-hide-link" href="@HidePath(entry)">Hide this from my history</a>
+                    </p>
+                }
+            </article>
+        }
+
+        <p class="form-footnote">
+            The newest @_entries.Count, capped at @HistoryCap. Times are the restaurant's own, as they are
+            everywhere here — the footer below says which clock that is.
+        </p>
+    }
+
+    <p><a href="/table">Back to your tables</a></p>
+</section>
+
+@* Namespaced under .history-*. App.razor links the static wwwroot/app.css rather than the
+   component-scoped bundle, so component CSS isolation is not active here; these live inline to avoid
+   editing the shared stylesheet for one screen, matching every other page that has done so. *@
+<style>
+    .history-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-start;
+        justify-content: space-between;
+    }
+
+    .history-header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .history-order {
+        margin: 1rem 0 0;
+        padding: 0.85rem 0.95rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.6rem;
+        background: var(--surface-raised, #ffffff);
+    }
+
+    .history-order-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1rem;
+        align-items: baseline;
+        justify-content: space-between;
+    }
+
+    .history-order-title {
+        margin: 0;
+        font-size: 1.05rem;
+    }
+
+    .history-order-when {
+        margin: 0.1rem 0 0;
+        font-size: 0.85rem;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .history-order-total {
+        text-align: right;
+    }
+
+    .history-amount {
+        display: block;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .history-order-count {
+        display: block;
+        font-size: 0.8rem;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .history-lines {
+        list-style: none;
+        margin: 0.7rem 0 0;
+        padding: 0;
+        display: grid;
+        gap: 0.25rem;
+    }
+
+    .history-lines li {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        align-items: baseline;
+        font-size: 0.95rem;
+    }
+
+    .history-line-quantity {
+        font-variant-numeric: tabular-nums;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .history-line-item {
+        font-weight: 600;
+    }
+
+    .history-line-note {
+        color: var(--ink-soft, #55636f);
+        font-size: 0.85rem;
+    }
+
+    /* Pushes the money to the right edge on a wide screen and lets it wrap under on a narrow one. */
+    .history-line-amount {
+        margin-left: auto;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .history-empty {
+        margin: 0.7rem 0 0;
+        font-size: 0.9rem;
+        color: var(--ink-soft, #55636f);
+    }
+
+    .history-order-actions {
+        margin: 0.85rem 0 0;
+    }
+
+    .history-hide-link {
+        font-size: 0.9rem;
+    }
+
+    .history-confirm {
+        margin: 0.85rem 0 0;
+        padding: 0.75rem 0.9rem;
+        border-radius: 0.5rem;
+        border: 1px solid #f5c2c0;
+        background: #fdecea;
+        color: #7f1d1d;
+    }
+
+    .history-confirm p {
+        margin: 0 0 0.5rem;
+    }
+
+    .history-confirm-title {
+        font-size: 1rem;
+    }
+
+    .history-confirm-note {
+        font-size: 0.85rem;
+    }
+</style>
+
+@code {
+    /// <summary>
+    /// How far back the list goes. Bounded because this is a phone screen and a regular's history is
+    /// unbounded; newest-first because the order somebody is looking for is nearly always the last one.
+    /// </summary>
+    private const int HistoryCap = 50;
+
+    /// <summary>
+    /// The one field the POST handler reads. The order identifier travels in a hidden input rather than
+    /// being re-read from the <c>?hide=</c> query string, so the write does not depend on the browser
+    /// preserving a query on a form whose action is the current document.
+    /// </summary>
+    private const string OrderField = "order";
+
+    private IReadOnlyList<PersonOrderHistoryEntry>? _entries;
+    private string? _flashMessage;
+    private string? _errorMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    /// <summary>
+    /// Which order the confirmation step is open for, if any. A value that names an order not in the list
+    /// below — a stale link, or somebody else's identifier — opens no panel and says so.
+    /// </summary>
+    [SupplyParameterFromQuery]
+    private Guid? Hide { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? Done { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            _flashMessage = FlashFor(Done);
+
+            if (Hide is { } requested && _entries is not null
+                && !_entries.Any(entry => entry.GuestOrderIdentifier == requested))
+            {
+                _errorMessage =
+                    "That order is not in your history — it may already be hidden, or the link may be from " +
+                    "an older page. Everything you can still see is below.";
+            }
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } person)
+        {
+            // Only reachable if the cookie expired between the request being authorized and this render.
+            _entries = [];
+            _errorMessage = "Your session could not be identified. Sign in again to see your history.";
+            return;
+        }
+
+        _entries = await History.ListVisibleHistoryForPersonAsync(
+            person, HistoryCap, HttpContext.RequestAborted);
+    }
+
+    /// <summary>
+    /// §6.8's owner hide, through the workflow so the change is announced (§9). The service re-checks
+    /// everything this page believes — that the order is this person's, that its sitting is closed, that
+    /// it is not already hidden — under its own lock, because a page's belief about who owns a row is not
+    /// a permission.
+    /// </summary>
+    private async Task HideAsync()
+    {
+        if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } person)
+        {
+            _errorMessage = "Your session could not be identified. Sign in again and retry.";
+            await LoadAsync();
+            return;
+        }
+
+        IFormCollection form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+
+        // Not a second read of the body: the Blazor endpoint has already parsed the form to find this
+        // handler, and HttpRequest caches the parsed collection, so this is the same instance the
+        // framework used. Awaiting the cached path rather than touching Request.Form synchronously keeps
+        // the cancellation token honoured. Same shape as AdministrationSittings.
+        // Read out to string? first: form[key] is a StringValues, and being explicit about the conversion
+        // keeps overload resolution on Guid.TryParse(string?, out Guid) rather than leaving it to an
+        // implicit conversion to pick between that and the span overload.
+        string? postedOrder = form[OrderField];
+
+        if (!Guid.TryParse(postedOrder, out Guid guestOrderIdentifier))
+        {
+            _errorMessage = "That request did not name an order, so nothing was hidden.";
+            await LoadAsync();
+            return;
+        }
+
+        HideOrderResult result = await Visibility.HideAsync(
+            guestOrderIdentifier, person, HttpContext.RequestAborted);
+
+        if (result.Outcome is HideOrderOutcome.Hidden or HideOrderOutcome.AlreadyHidden)
+        {
+            // Post/redirect/get: a refresh must not re-post. AlreadyHidden redirects too — the order is in
+            // the state the person asked for, and telling them it "failed" would be both untrue and
+            // alarming about a record they were trying to tidy.
+            Navigation.NavigateTo("/table/history?done=hidden");
+            return;
+        }
+
+        _errorMessage = DescribeRefusal(result.Outcome);
+        await LoadAsync();
+    }
+
+    /// <summary>
+    /// The three refusals, in the guest's words rather than the service's. None of them is reachable from
+    /// the markup above — the list only offers Hide on the person's own settled, visible orders — so each
+    /// means either a replayed post or a page that has gone stale under somebody, and the sentence says
+    /// what to do about that rather than naming an outcome.
+    /// </summary>
+    private static string DescribeRefusal(HideOrderOutcome outcome) => outcome switch
+    {
+        HideOrderOutcome.OrderNotFound =>
+            "That order no longer exists, so there was nothing to hide.",
+        HideOrderOutcome.NotTheOwner =>
+            "That is not your order, so it was not hidden. Only your own orders appear on this page.",
+        HideOrderOutcome.SittingStillOpen =>
+            "That table is still open, so its order is not history yet — you can see it live on your " +
+            "table's page. It can be hidden once the counter settles the bill.",
+        _ =>
+            "Nothing was hidden. Reload the page and try again.",
+    };
+
+    private static string? FlashFor(string? done) => done switch
+    {
+        "hidden" =>
+            "Hidden. It is off this page for good — a manager can restore it if you ever need it back.",
+        _ => null,
+    };
+
+    private static string HidePath(PersonOrderHistoryEntry entry)
+        => $"/table/history?hide={entry.GuestOrderIdentifier}";
+
+    private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
+}

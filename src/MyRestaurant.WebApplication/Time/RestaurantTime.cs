@@ -126,6 +126,50 @@ public sealed class RestaurantTime
     public string MachineReadable(DateTimeOffset instant) => Render(instant, MachineReadablePattern);
 
     /// <summary>
+    /// The UTC instant at which a calendar day <em>in the restaurant's zone</em> begins — the lower bound
+    /// of a date filter (§6.8's hidden-records view, §11.4).
+    ///
+    /// <para>This is the same rule as every other method here, applied in the other direction. A person
+    /// typing "26 Jul" into a filter means the restaurant's 26 July, not UTC's and not their own: they are
+    /// looking for a meal that happened at a place. Converting the boundary here rather than in SQL keeps
+    /// §8.1's "one type performs that conversion" true — a <c>… AT TIME ZONE …</c> in a query would be a
+    /// second place the configured zone is honoured, and the second place is where the two drift.</para>
+    ///
+    /// <para>The returned value is normalised to UTC (offset zero) rather than carried in the restaurant's
+    /// offset. That is not cosmetic: Npgsql refuses to write a <see cref="DateTimeOffset"/> whose offset is
+    /// not zero to a <c>timestamptz</c> parameter, so a boundary handed straight to a query must already
+    /// be UTC.</para>
+    ///
+    /// <para><b>Daylight saving.</b> In a zone whose clocks move at midnight — Cuba's do — the local
+    /// midnight of a spring-forward day does not exist, and <see cref="TimeZoneInfo.GetUtcOffset(DateTime)"/>
+    /// answers with the zone's standard offset for such a time. The boundary is then out by the size of
+    /// the shift for that one day a year. That is deliberately preferred over
+    /// <see cref="TimeZoneInfo.ConvertTimeToUtc(DateTime, TimeZoneInfo)"/>, which throws on an invalid
+    /// local time: a filter that returns a range an hour wide at one edge is a filter, and a filter that
+    /// throws is a blank page.</para>
+    /// </summary>
+    public DateTimeOffset StartOfDay(DateOnly day)
+    {
+        // Unspecified on purpose: TimeZoneInfo.GetUtcOffset(DateTime) reads an Unspecified value as a
+        // local time in *this* zone, which is exactly the question being asked. A Utc or Local Kind would
+        // silently mean something else.
+        DateTime localMidnight = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+
+        return new DateTimeOffset(localMidnight, _zone.GetUtcOffset(localMidnight)).ToUniversalTime();
+    }
+
+    /// <summary>
+    /// The UTC instant at which the day <em>after</em> <paramref name="day"/> begins in the restaurant's
+    /// zone — the exclusive upper bound that pairs with <see cref="StartOfDay"/>.
+    ///
+    /// <para>Half-open ranges (<c>&gt;= start</c>, <c>&lt; end</c>) rather than inclusive ones, so no
+    /// caller ever has to decide whether 23:59:59.999999 is inside a day. <c>timestamptz</c> has
+    /// microsecond resolution and an inclusive upper bound written as "the last microsecond" is a bug
+    /// waiting for the first row that lands on it.</para>
+    /// </summary>
+    public DateTimeOffset StartOfNextDay(DateOnly day) => StartOfDay(day.AddDays(1));
+
+    /// <summary>
     /// Everything <c>js/clock.js</c> needs to keep ticking without the server: the anchoring instant,
     /// the offset that applies to it, and — because a page can outlive a daylight-saving boundary — the
     /// next instant at which that offset changes, with the offset that takes over. Also served as JSON
