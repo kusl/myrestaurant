@@ -5,7 +5,7 @@ using MyRestaurant.WebApplication.Sittings;
 namespace MyRestaurant.WebApplication.Tables;
 
 /// <summary>
-/// Wires the table and sitting services (TECHNICAL_SPECIFICATION §4, §5). Five groups:
+/// Wires the table and sitting services (TECHNICAL_SPECIFICATION §4, §5). Six groups:
 ///
 /// <list type="bullet">
 ///   <item><description><b>Management (§4.1)</b> — the read-only <see cref="ITableDirectory"/> the
@@ -21,13 +21,21 @@ namespace MyRestaurant.WebApplication.Tables;
 ///   surface asks "is this person already a member here, and who else is?", and the transactional
 ///   <see cref="ISittingMembership"/> that opens a sitting and inserts membership atomically when a
 ///   grant is consumed.</description></item>
-///   <item><description><b>Settlement (§5.3, §11.3)</b> — <see cref="ICounterBoardReads"/>, the counter's
-///   roll-up of open and recently-closed sittings; <see cref="ISittingSettlement"/>, the one transaction
-///   that stamps <c>closed_at</c> and the settled total under <c>FOR UPDATE</c>; and
-///   <see cref="ISittingWorkflow"/>, the post-commit shell that counts and announces the close.
-///   Surfaces take the workflow, never the settlement directly — a close nobody hears about leaves a
-///   settled table still taking orders on every phone that already had the page open
-///   (§9, §11.1).</description></item>
+///   <item><description><b>Settlement (§5.3, §5.4, §11.3)</b> — <see cref="ICounterBoardReads"/>, the
+///   counter's roll-up of open and recently-closed sittings, which is also the list §5.4's end-of-day
+///   pass works from; <see cref="ISittingSettlement"/>, the one transaction that stamps
+///   <c>closed_at</c> and the settled total under <c>FOR UPDATE</c>; and
+///   <see cref="ISittingWorkflow"/>, the post-commit shell that counts and announces each close, one at
+///   a time, whether it was asked for singly or as an end-of-day batch. Surfaces take the workflow,
+///   never the settlement directly — a close nobody hears about leaves a settled table still taking
+///   orders on every phone that already had the page open (§9, §11.1).</description></item>
+///   <item><description><b>The stored record (§6.7, §11.4)</b> — <see cref="ISittingRecordReads"/>, the
+///   complete unprojected event history of every order in a sitting, which is what administration
+///   renders and what an administrator reads before appending a post-close correction. It is a third
+///   reader of the order tables beside <see cref="MyRestaurant.DataAccess.Orders.IOrderReadModel"/> (the
+///   projection views) and <see cref="MyRestaurant.DataAccess.Orders.IOrderEventLog"/> (the domain fold's
+///   input), because §11.4's audience needs names and words where those two need identifiers and
+///   enums.</description></item>
 ///   <item><description><b>The join grant (§4.4)</b> — <see cref="JoinGrantProtector"/>, which
 ///   encrypts and verifies the short-lived cookie that carries proof-of-scan across the detour through
 ///   sign-in or registration.</description></item>
@@ -65,11 +73,17 @@ public static class TablesServiceCollectionExtensions
         services.AddScoped<ISittingMembership, DapperSittingMembership>();
 
         // Settlement (§5.3, §5.4, §11.3). The reads roll money and line counts across whole sittings for
-        // the counter's screens; the settlement service is the only thing in the system that writes
-        // closed_at, and it does so under the FOR UPDATE that §6.6's FOR SHARE conflicts with.
+        // the counter's screens and administration's end-of-day list; the settlement service is the only
+        // thing in the system that writes closed_at, and it does so under the FOR UPDATE that §6.6's FOR
+        // SHARE conflicts with.
         services.AddScoped<ICounterBoardReads, DapperCounterBoardReads>();
         services.AddScoped<ISittingSettlement, DapperSittingSettlement>();
         services.AddScoped<ISittingWorkflow, SittingWorkflow>();
+
+        // The stored record (§6.7, §11.4). Read-only, and separate from every write service here for the
+        // same reason ITableDirectory is separate from ITableAdministration: a page that only renders
+        // history should not be able to append to it.
+        services.AddScoped<ISittingRecordReads, DapperSittingRecordReads>();
 
         // The join grant (§4.4). Depends only on the Data Protection provider registered in Program.cs
         // before this call, so a singleton is safe and avoids re-deriving the protector per request.

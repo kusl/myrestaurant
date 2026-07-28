@@ -1,159 +1,171 @@
-# M5 Slice 2 — the menu: create, rename, reprice, and the history that explains a price
+# M5 Slice 3 — end-of-day, the complete stored record, and the corrections that live beside a settled total
 
-Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
-and the contents drop straight over your working tree. `git status` will show exactly these 17 files as
-modified/added, plus one deletion.
+Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root and
+the contents drop straight over your working tree. `git status` will show exactly these 12 files as
+modified/added, and **no deletions**.
 
 ```bash
-tar -xzf m5-slice2-menu.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m5-slice3-sittings.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
-**One.** `MenuAvailabilityWorkflow` is renamed to `MenuWorkflow`, so its old file must go or the build will
-see two classes registering for the same interface:
+**None.** Nothing is renamed and nothing is superseded. No migration ships, no package changes,
+`Program.cs` is untouched.
+
+## The tree you exported was green
+
+`dotnet test` reported **819 total, 0 failed, 804 passed, 15 skipped**; `run.sh --smoke` got a 200 from
+`/healthz/ready`; the container stack and the quick tunnel both came up. Nothing in here is a fix — this is
+the next slice.
+
+One housekeeping note, unrelated to this change: `docs/BUILD_PROGRESS.md` has the M5 Slice 2 section
+appended, but the appends for **M4 slices 2–4 and M5 slice 1** are still sitting unmerged in
+`docs/_append/`. The headings jump from "M4 Slice 1" straight to "M5 Slice 2". Four `cat` commands fix it
+whenever you want; nothing depends on it.
 
 ```bash
-git rm src/MyRestaurant.WebApplication/Menu/MenuAvailabilityWorkflow.cs
+cat docs/_append/BUILD_PROGRESS-m4-slice-2.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m4-slice-3.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m4-slice-4.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m5-slice-1.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m5-slice-3.md >> docs/BUILD_PROGRESS.md
 ```
-
-`Program.cs` is untouched, no migration ships, and nothing else is superseded.
-
-## Slice 1's three failing tests are fixed in here
-
-`dotnet test` on the tree as exported reported **787 total, 3 failed, 769 passed, 15 skipped**. All three
-were in Slice 1's new tests, not in the code they cover, so per the fix-vs-continue policy they are folded
-in rather than shipped separately:
-
-| Test | Was | Now |
-|---|---|---|
-| `CounterBoardReadsTests.ListOpenSittings_RollsUpTheTableTheGuestsTheLinesAndTheMoney` | `AddPersonAsync("bo", …)` — 2 chars, against `person.username`'s `CHECK (char_length BETWEEN 3 AND 64)` | `"bode"` |
-| `SittingSettlementTests.CloseAndSettle_TotalsEveryMembersOrderNotJustTheFirst` | same `"bo"` | `"bode"` |
-| `SittingSettlementTests.CloseAndSettle_HonoursPriceAdjustmentsAndDropsRemovedLines` | asserts `PendingLineCountAtClose == 0` | asserts `1` |
-
-That third one is worth a sentence, because the implementation is right and the test was wrong. The removed
-steak leaves `order_current_line` entirely, so it is neither charged for nor counted. The soup was only
-**repriced** — nothing fulfilled it — so it was still with the kitchen at the instant the total was stamped.
-Adjusting a price is not the same act as passing the plate, and `PendingLineCountAtClose` reports what was
-actually outstanding. The assertion moved; `DapperSittingSettlement` did not.
 
 ## What this closes
 
-§19's M5 line reads "bills, price adjustment, close & settle, end-of-day, counter fallback QR, **menu
-management + events**, event explorer, hide/unhide, post-close corrections". This is the emphasised part.
+§19's M5 line reads "bills, price adjustment, close & settle, **end-of-day**, counter fallback QR, menu
+management + events, event explorer, hide/unhide, **post-close corrections**". This is the emphasised part,
+plus the §11.4 Sittings section that houses both.
 
-Until now the only menu *write* in the system was the kitchen's 86 toggle — an administrator could not put
-a dish on the menu at all, and every demo's two items were inserted by hand.
+Three holes, all the same shape — the engine existed, the screen did not:
 
-## New files (10)
+- **§5.4's end-of-day pass.** `ICounterBoardReads` has carried `LastEventAt` ("§5.4's last-activity
+  timestamps") since Slice 1 and nothing read it.
+- **§6.7's post-close corrections.** `OrderMutationValidator` has admitted an administrator's corrective
+  event on a closed sitting since M4, and `SittingSettlementTests` asserted it there. There was no way to
+  author one outside a test.
+- **§11.4's "complete stored record".** `IOrderEventLog` reads one order's log for the fold and the
+  validator — domain enums, no names. Right for its two callers, unusable on a screen.
 
-### Code — DataAccess (2)
+## New files (6)
 
-- `src/MyRestaurant.DataAccess/Menu/MenuAdministration.cs`
-  `RenameMenuItemOutcome`, `RepriceMenuItemOutcome`, `CreateMenuItemResult`, `RenameMenuItemResult`,
-  `RepriceMenuItemResult`, `IMenuAdministration`/`DapperMenuAdministration` — §7's create, rename, and
-  reprice. One connection and transaction per operation, the row taken `FOR UPDATE` before it is compared,
-  the `menu_item` change and its `menu_item_event` written together.
-- `src/MyRestaurant.DataAccess/Menu/MenuEventLog.cs`
-  `MenuItemEventEntry`, `IMenuEventLog`/`DapperMenuEventLog` — the complete per-item history (uncapped,
-  oldest first) and a capped cross-item activity feed.
+### Code — DataAccess (1)
 
-### Code — WebApplication (1)
+- `src/MyRestaurant.DataAccess/Sittings/SittingRecordReads.cs`
+  `StoredOrderOperation`, `StoredOrderEvent`, `SittingOrderRecord`,
+  `ISittingRecordReads`/`DapperSittingRecordReads` — every order in a sitting with its complete,
+  uncapped event log, actors named, operations legible. Three queries regardless of party size.
 
-- `src/MyRestaurant.WebApplication/Menu/MenuWorkflow.cs`
-  `IMenuWorkflow` grows create/rename/reprice beside the existing 86; `MenuWorkflow` replaces
-  `MenuAvailabilityWorkflow` (delete that file). One post-commit shell over both write services.
+### Surfaces (2)
 
-### Surfaces (3)
+- `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationSittings.razor` —
+  `/administration/sittings`
+- `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageSitting.razor` —
+  `/administration/sittings/{SittingId:guid}`
 
-- `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationMenu.razor` — `/administration/menu`
-- `src/MyRestaurant.WebApplication/Components/Pages/Administration/CreateMenuItem.razor` — `/administration/menu/new`
-- `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuItem.razor` — `/administration/menu/{MenuItemId:guid}`
+### Tests (2)
 
-### Tests (3)
-
-- `tests/MyRestaurant.DataAccess.Tests/Menu/MenuAdministrationTests.cs`  (Testcontainers, 15 facts)
-- `tests/MyRestaurant.DataAccess.Tests/Menu/MenuEventLogTests.cs`        (Testcontainers, 9 facts)
-- `tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs`      (8 facts, no container)
+- `tests/MyRestaurant.DataAccess.Tests/Sittings/SittingRecordReadsTests.cs` (Testcontainers, 13 facts)
+- `tests/MyRestaurant.WebApplication.Tests/Sittings/EndOfDayTests.cs` (7 facts, no container)
 
 ### Docs (1, append-then-keep)
 
 `docs/BUILD_PROGRESS.md` is large and is not regenerated. The new section ships as
-`docs/_append/BUILD_PROGRESS-m5-slice-2.md`, matching the sections already in that folder:
+`docs/_append/BUILD_PROGRESS-m5-slice-3.md`, matching the sections already in that folder.
 
-```bash
-cat docs/_append/BUILD_PROGRESS-m5-slice-2.md >> docs/BUILD_PROGRESS.md
-```
+## Edited (5)
 
-## Edited (6)
-
-- `src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs`
-  Two new registrations (`IMenuAdministration`, `IMenuEventLog`) and the workflow's new type. Chosen over a
-  new `AddRestaurantMenu()` so `Program.cs` needs no edit — the extension has wired the menu since M4,
-  because an order prices itself from it (§6.5.4).
+- `src/MyRestaurant.WebApplication/Sittings/SittingWorkflow.cs`
+  `EndOfDayResult` and `ISittingWorkflow.CloseManyAsync`. `CloseAndSettleAsync` is byte-for-byte
+  unchanged.
+- `src/MyRestaurant.WebApplication/Tables/TablesServiceCollectionExtensions.cs`
+  One registration (`ISittingRecordReads`) and two doc-comment paragraphs. Chosen over a new
+  `AddRestaurantSittings()` so `Program.cs` needs no edit — this extension has owned §5 since M3.
 - `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor`
-  A Menu link in the header actions. Nothing else changes.
+- `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationMenu.razor`
 - `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationTables.razor`
-  The same, from the other side.
-- `tests/MyRestaurant.WebApplication.Tests/Orders/KitchenWiringTests.cs`
-  `Assert.IsType<MenuAvailabilityWorkflow>` → `Assert.IsType<MenuWorkflow>`, plus a line of doc explaining
-  the rename. This is the only file that names the old class.
-- `tests/MyRestaurant.DataAccess.Tests/Sittings/CounterBoardReadsTests.cs`  — the `"bo"` fix.
-- `tests/MyRestaurant.DataAccess.Tests/Sittings/SittingSettlementTests.cs`  — the `"bo"` fix and the
-  pending-count assertion.
+  One `<a>` each: a Sittings link in the header actions. Nothing else changes in any of the three.
 
-No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, or ADR edit: this realizes behaviour §7 and
-§11.4 already specify. No migration, no new packages.
+No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, or ADR edit: this realizes behaviour §5.4,
+§6.7, and §11.4 already specify.
 
-## Five decisions worth knowing before you read the diff
+## Six decisions worth knowing before you read the diff
 
-**Rename and reprice are two forms, not one Save.** §7's event vocabulary has `name_changed` and
-`price_changed` as separate types whose payload columns are mutually exclusive, enforced by §8.2's paired
-CHECKs. A combined save would write two events anyway and would then need a policy for what to do when one
-half changed nothing. Two forms make the log read the way somebody settling a price argument needs it to.
+**One transaction per sitting, and §5.4 says so on purpose.** "Close each via the same §5.3 transaction" is
+the design, not the phrasing. §5.3's guarantee is a total summed under a `FOR UPDATE` that conflicts with
+the `FOR SHARE` every order writer holds (§6.6). One long transaction over twelve tables would hold twelve
+of those locks until the last committed — a guest still ordering at table 1 would block the close of table
+12 — and an error on table 12 would roll back eleven correct closures. The loop goes through the public
+`CloseAndSettleAsync`, so each close is counted (§12) and announced (§9) *when it happens*; batching the
+broadcasts to the end would leave settled tables taking orders on every phone that had them open for the
+rest of the pass.
 
-**The price is rounded once, in C#, before either row is written.** `price_amount` and `new_price_amount`
-are both `numeric(10,2)` and are written by two separate statements — hand PostgreSQL 4.567 and it rounds
-quietly and independently for each. Rounding once (away from zero, matching `numeric`'s own rule) guarantees
-the row, the event, and the value returned to the caller are the same number. The no-op comparison happens
-after rounding too, so a form that posts 4.500 against a stored 4.50 writes nothing instead of writing an
-event that records nothing.
+**No select-all, nothing pre-ticked.** Closing twelve tables costs twelve deliberate ticks, and that is the
+confirmation step rather than a second page. The counter's single close has a confirm because a guest is
+standing there; an end-of-day pass is deliberate by nature, and a select-all beside an irreversible action
+at the end of a long shift is the wrong affordance to build.
 
-**`EventType` is the stored string, not an enum.** §11.4 requires administration to render the complete
-stored record; an enum is a projection with a failure mode, where an unknown type either throws or is
-silently mapped to something wrong. Both surfaces label the five types §8.2 admits and fall back to the raw
-string.
+**The record's `EventType`, `ActorRole`, and `OperationKind` are stored strings, not enums.**
+`IOrderEventLog` maps to `OrderEventType` and throws on an unknown word, which is right for the validator
+and the fold — both must refuse rather than guess. A screen must do the opposite: an enum here is a
+projection with a failure mode, where an unrecognised value either throws and blanks the one page whose job
+is to show what is stored, or is silently mapped to something wrong. Both surfaces label the values §8.2
+admits and fall back to the raw string. Same decision `MenuItemEventEntry` made in Slice 2.
 
-**Duplicate item names are allowed.** `menu_item.name` carries no UNIQUE constraint, unlike
-`restaurant_table.label`. A kitchen running a rotating special wants two rows called the same thing, and
-this layer does not get to invent a constraint the schema of record does not have. The index orders by name,
-so duplicates sit adjacent where somebody will notice them.
+**The four non-adding operation tables get their dish from a join, and the join is exact.** They store an
+`order_line_identifier` and nothing else, so rendered as stored a removal reads "removed 0192f0…". Every
+`UNION ALL` branch joins back to `order_operation_line_added` on `order_line_identifier` — `NOT NULL UNIQUE`
+on that table and the declared FK target of all four others, so exactly one origin row exists for every
+operation PostgreSQL will accept. `INNER JOIN`, not `LEFT`. What is *not* joined is the price:
+`UnitPriceAmount` stays null off `line_added` and `NewUnitPriceAmount` off `line_price_adjusted`, because a
+price is what arguments are about and the record must not synthesise one.
 
-**`Program.cs` is untouched.** Five scoped registrations went into `AddRestaurantOrders()`, whose doc comment
-already claimed the menu. Nothing to merge by hand.
+**Corrections appear only once the sitting is settled.** §6.7 is titled "post-close corrections" and §3.7's
+matrix gives them to the administrator alone. While a table is still eating, the screen built for it is the
+counter's — and an administrator already holds the counter capabilities (§3.7), so `ManageSitting` links to
+`/counter/sittings/{id}` rather than growing a second copy of those controls. `TryBegin` refuses on an open
+sitting anyway, for the replayed post the markup does not offer. The *record* renders either way; reading
+history is not a write.
+
+**`EndOfDayResult.SettledTotalAmount` excludes `AlreadyClosed`.** That total belongs to somebody else's
+close. Adding it would report a day that took more than it did.
 
 ## The one-line why
 
-A restaurant whose menu can only be edited with `psql` is a database with a waiter attached — and because a
-price that moves is the thing guests argue about, every change has to leave a row saying who moved it, when,
-and what it was before.
+A restaurant that cannot be closed at the end of the night is a restaurant with twelve tables permanently
+mid-meal — and because the one number nobody may rewrite is the settled total, the only honest way to fix a
+mistake on a bill is to append a row saying who fixed it, when, and what it was before.
 
 ## Where to look if the build breaks
 
-`ManageMenuItem.razor`, and specifically `InputNumber<decimal>`. It is the first `InputNumber` in the tree —
-every other form here is `InputText` — and the generic argument is inferred from the bound property's type
-rather than written out. If the inference does not go the way I expect, the fix is
-`<InputNumber TValue="decimal" @bind-Value="RepriceInput.PriceAmount" … />` in both that file and
-`CreateMenuItem.razor`.
+**`AdministrationSittings.razor`, and specifically `await HttpContext.Request.ReadFormAsync(...)`.** This is
+the one form in the tree that reads its own POST values instead of binding a `[SupplyParameterFromForm]`
+model — a checkbox set whose length is however many tables are open has no static model to bind to, and the
+select-one picker used on `ManageTable` and `TableDisplays` is not what §5.4 describes. It is not a second
+read of the body: the Blazor endpoint has already parsed the form to find the handler, and `HttpRequest`
+caches the parsed collection. `IFormCollection` and `HttpMethods` come from `Microsoft.AspNetCore.Http`,
+which the Web SDK's implicit usings already supply — the same way `HttpContext` and `HttpMethods.IsGet`
+work in `ManageMenuItem.razor` today. If the enumeration over `form[SelectedSittingField]` does not infer
+`string?`, the fix is `foreach (string? posted in form[SelectedSittingField].ToArray())`.
 
-After it, one thing I could not check without a compiler: the renamed `MenuWorkflow` type now shares its
-simple name with `KitchenBoard.razor`'s injected `@inject IMenuWorkflow MenuWorkflow` property, and that
-file has `@using MyRestaurant.WebApplication.Menu`. C# simple-name lookup finds members of the enclosing
-type before types in imported namespaces, so `MenuWorkflow.SetMenuItemActiveAsync(…)` at line 733 resolves
-to the property and this is fine — but it is the one place the rename could bite, and if it does the fix is
-to rename that injected property rather than the class.
+Then `ManageSitting.razor`'s two `InputNumber` bindings — `decimal` for the price and `int` for the
+quantity. `ManageMenuItem.razor` established that inference works for `decimal`; the `int` one is new. If
+either misbehaves the fix is to write the generic argument out:
+`<InputNumber TValue="decimal" @bind-Value="CorrectInput.NewUnitPriceAmount" … />` and
+`<InputNumber TValue="int" @bind-Value="AddInput.Quantity" … />`.
 
-Then `MenuEventLog.cs`: the `COALESCE(NULLIF(btrim(actor.display_name), ''), actor.username)` actor-name
-expression is copied verbatim from `DapperCounterBoardReads`, where it is already green, and the two INNER
-JOINs are over NOT NULL foreign keys. Everything else is ordinary C# in the shapes the surrounding files
-already use.
+Two things I could not check without a compiler, both deliberate:
+
+1. `SittingRecordReads.cs` takes `using MyRestaurant.DataAccess.Orders;` for `OrderEventVocabulary`'s
+   operation-kind discriminators (internal, same assembly). `MyRestaurant.DataAccess.Sittings` and
+   `MyRestaurant.DataAccess.Orders` declare no colliding simple names today, and `CounterBoardReads.cs`
+   already references the latter by prefix — but this is the first file in `Sittings` to import it
+   wholesale.
+2. `ManageSitting.razor` imports both `MyRestaurant.DataAccess.Orders` and `MyRestaurant.Domain.Orders`.
+   `CounterSitting.razor` already does exactly that and is green, so there is no ambiguity to find; noted
+   only because it is the sort of thing that bites once.
+
+Everything else is ordinary C# and SQL in the shapes the surrounding files already use — the reader is
+`OrderEventReader`'s `UNION ALL` with two more joins per branch, and both surfaces are the static-SSR
+post/redirect/get shape `ManageTable` established and `ManageMenuItem` repeated.

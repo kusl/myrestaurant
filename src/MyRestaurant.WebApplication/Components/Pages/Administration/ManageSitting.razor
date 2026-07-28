@@ -1,0 +1,1123 @@
+@page "/administration/sittings/{SittingId:guid}"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.DataAccess.Menu
+@using MyRestaurant.DataAccess.Orders
+@using MyRestaurant.DataAccess.Sittings
+@using MyRestaurant.Domain.Identifiers
+@using MyRestaurant.Domain.Orders
+@using MyRestaurant.WebApplication.Orders
+@inject ICounterBoardReads CounterReads
+@inject ISittingRecordReads SittingRecords
+@inject IOrderReadModel OrderReads
+@inject ISittingDirectory SittingDirectory
+@inject IMenuDirectory MenuItems
+@inject IOrderWorkflow Workflow
+@inject IIdentifierFactory Identifiers
+@inject RestaurantOptions Options
+@inject RestaurantTime RestaurantClock
+@inject NavigationManager Navigation
+
+@* One sitting's complete stored record, and the corrections an administrator may append to it
+   (TECHNICAL_SPECIFICATION §5.3, §6.7, §11.4).
+
+   §11.4 is emphatic about what this page owes its reader: "Administration renders the complete stored
+   record everywhere — full event streams, visibility logs, security events — never projected or truncated
+   for the administrator; filters narrow only on explicit request." So the history below is every event on
+   every order in the sitting, oldest first, uncapped, including the removals, the reverted fulfillments,
+   and the prices that were superseded. A settled bill is the thing people argue about, and an argument is
+   settled by reading forward from the first send.
+
+   Static SSR, like every administration surface. Corrections are full-page form posts that redirect back
+   here (post/redirect/get) carrying a one-word outcome, so a refresh cannot re-append.
+
+   **The corrective controls appear only once the sitting is settled.** §6.7 is titled "post-close
+   corrections" and §3.7's matrix gives "post-close corrective events" to the administrator alone; while a
+   table is still eating, the screen built for it is the counter's, and an administrator already holds the
+   counter role's capabilities (§3.7), so this page links there instead of growing a second copy of it.
+   The record itself renders either way — an administrator reading an open table's history is not a write. *@
+
+<PageTitle>@(_sitting is null ? "Sitting record" : $"Sitting — {_sitting.TableLabel}")</PageTitle>
+
+@if (_sitting is null)
+{
+    <section class="panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Sitting not found</h1>
+        <p class="lede">No sitting exists with that identifier. It may have never existed, or the link is stale.</p>
+        <p><a href="/administration/sittings">Back to sittings</a></p>
+    </section>
+}
+else
+{
+    <section class="panel sitting-record">
+        <p class="eyebrow">Administration — sittings</p>
+
+        <div class="admin-header">
+            <div>
+                <h1>@_sitting.TableLabel</h1>
+                <p class="sitting-meta">
+                    opened @RestaurantClock.DateAndTime(_sitting.OpenedAt) ·
+                    @_sitting.MemberCount @(_sitting.MemberCount == 1 ? "guest" : "guests") ·
+                    @_sitting.OrderCount @(_sitting.OrderCount == 1 ? "order" : "orders")@SettledSuffix
+                </p>
+            </div>
+            <div class="sitting-total">
+                <span class="sitting-total-label">@(_sitting.IsOpen ? "Running total" : "Settled total")</span>
+                <span class="sitting-total-amount">@Money(_sitting.AmountToShow)</span>
+                @if (_sitting.HasPostCloseCorrections)
+                {
+                    @* §5.3: settled_total_amount is never rewritten. When §6.7 corrections exist both
+                       numbers are shown, because they answer two different questions — what was charged,
+                       and what the record now says is owed. *@
+                    <span class="sitting-corrected">corrected to @Money(_sitting.CurrentTotalAmount)</span>
+                }
+            </div>
+        </div>
+
+        @if (_flashMessage is not null)
+        {
+            <p class="status-success" role="status">@_flashMessage</p>
+        }
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+        @if (_rejectionReasons.Count > 0)
+        {
+            @* §6.5.9 is all-or-nothing at the granularity of the event, so a refusal names every reason
+               rather than only the first. *@
+            <ul class="sitting-rejection">
+                @foreach (string reason in _rejectionReasons)
+                {
+                    <li>@reason</li>
+                }
+            </ul>
+        }
+
+        @if (_sitting.IsOpen)
+        {
+            <p class="sitting-note" role="note">
+                This table is still open, so there is nothing to correct yet — a correction is what happens
+                <em>after</em> a close (§6.7). To adjust a price, take a line off, or settle the bill while
+                the table is still here, use the counter screen; you already hold that capability.
+            </p>
+            <div class="form-actions">
+                <a class="button-primary" href="@CounterPath">Open at the counter</a>
+            </div>
+        }
+
+        @* ---- who was at the table (§5.1, §5.2) -------------------------------------------------- *@
+        <hr class="sitting-rule" />
+
+        <h2 class="sitting-heading">At the table</h2>
+        @if (_members.Count == 0)
+        {
+            <p class="lede">Nobody is recorded as having joined this sitting.</p>
+        }
+        else
+        {
+            <ul class="sitting-roster">
+                @foreach (SittingMemberSummary member in _members)
+                {
+                    <li>
+                        <span class="sitting-roster-name">@member.RosterName</span>
+                        <span class="muted">
+                            joined @RestaurantClock.DateAndTime(member.JoinedAt)
+                            @if (!HasAnOrder(member.PersonIdentifier))
+                            {
+                                <text> · never ordered</text>
+                            }
+                        </span>
+                    </li>
+                }
+            </ul>
+        }
+
+        @* ---- the bill, person by person (§8.3) --------------------------------------------------- *@
+        <h2 class="sitting-heading">The bill</h2>
+        @if (_bill.Count == 0)
+        {
+            <p class="lede">Nothing was ordered on this table.</p>
+        }
+        else
+        {
+            <div class="admin-sitting-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Guest</th>
+                            <th scope="col">Current lines</th>
+                            <th scope="col">Total now</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (SittingBillEntry entry in _bill)
+                        {
+                            <tr>
+                                <td><span class="sitting-roster-name">@entry.BillName</span></td>
+                                <td>
+                                    @if (LinesFor(entry.GuestOrderIdentifier).Count == 0)
+                                    {
+                                        <span class="muted">Every line was removed</span>
+                                    }
+                                    else
+                                    {
+                                        <ul class="sitting-lines">
+                                            @foreach (OrderLineView line in LinesFor(entry.GuestOrderIdentifier))
+                                            {
+                                                <li>
+                                                    @line.Quantity × @line.MenuItemName
+                                                    <span class="muted">
+                                                        @Money(line.CurrentUnitPriceAmount) each ·
+                                                        @(line.IsFulfilled ? "delivered" : "still with the kitchen")
+                                                        @if (line.CustomizationNote is { } note)
+                                                        {
+                                                            <text> · “@note”</text>
+                                                        }
+                                                    </span>
+                                                </li>
+                                            }
+                                        </ul>
+                                    }
+                                </td>
+                                <td class="numeric">@Money(entry.PersonTotalAmount)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <p class="sitting-tally">
+                <span>Current total across the table</span>
+                <strong class="numeric">@Money(TableTotal)</strong>
+            </p>
+        }
+
+        @* ---- post-close corrections (§6.7) ------------------------------------------------------- *@
+        @if (!_sitting.IsOpen)
+        {
+            <hr class="sitting-rule" />
+
+            <h2 class="sitting-heading">Corrections</h2>
+            <p class="lede">
+                Appended events, never edits. The settled total above stays exactly as it was stamped;
+                everything written here lives beside it and shows as the corrected total (§5.3, §6.7).
+                Every correction records you as the actor and is permanent — a mistaken correction is
+                undone by appending another, not by removing this one.
+            </p>
+
+            @if (_lines.Count == 0)
+            {
+                <p class="lede">There is no line on this bill to correct.</p>
+            }
+            else
+            {
+                <h3 class="sitting-subheading">Correct a line</h3>
+                <EditForm Model="CorrectInput" method="post" OnValidSubmit="CorrectLineAsync"
+                          FormName="sitting-correct-line">
+                    <DataAnnotationsValidator />
+
+                    <div class="form-field">
+                        <label for="correct-line">Line</label>
+                        <InputSelect id="correct-line" @bind-Value="CorrectInput.OrderLineIdentifier">
+                            <option value="">Choose a line…</option>
+                            @foreach (OrderLineView line in _lines)
+                            {
+                                <option value="@line.OrderLineIdentifier">@LineOptionLabel(line)</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="@(() => CorrectInput.OrderLineIdentifier)" />
+                    </div>
+
+                    <div class="form-field">
+                        <label for="correct-action">What to do</label>
+                        <InputSelect id="correct-action" @bind-Value="CorrectInput.Action">
+                            <option value="@AdjustAction">Change the price</option>
+                            <option value="@RemoveAction">Take it off the bill</option>
+                        </InputSelect>
+                        <ValidationMessage For="@(() => CorrectInput.Action)" />
+                    </div>
+
+                    <div class="form-field">
+                        <label for="correct-price">
+                            New unit price <span class="optional">(@Options.CurrencyCode — price changes only)</span>
+                        </label>
+                        <InputNumber id="correct-price" @bind-Value="CorrectInput.NewUnitPriceAmount"
+                                     step="0.01" min="0" inputmode="decimal" />
+                        <ValidationMessage For="@(() => CorrectInput.NewUnitPriceAmount)" />
+                    </div>
+
+                    <div class="form-field">
+                        <label for="correct-reason">
+                            Reason
+                            <span class="optional">(required for a price change, optional for a removal)</span>
+                        </label>
+                        <InputText id="correct-reason" @bind-Value="CorrectInput.Reason" autocomplete="off" />
+                        <ValidationMessage For="@(() => CorrectInput.Reason)" />
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="button-primary">Append the correction</button>
+                    </div>
+                </EditForm>
+
+                <p class="form-footnote">
+                    A price change needs a reason because <c>order_operation_line_price_adjusted.reason</c>
+                    is NOT NULL and CHECK-constrained against blanks (§8.2) — it is the sentence somebody
+                    reads back in six months. A removal's reason is optional, and is still worth writing.
+                </p>
+            }
+
+            <h3 class="sitting-subheading">Add a line that was missed</h3>
+            <p class="lede">
+                For the plate that went out and never reached a bill. It joins the order of whoever you
+                name — creating that order if they never sent anything themselves (§6.1) — and is priced
+                from the menu at the moment it is written, not from this screen (§6.5.4). To charge
+                something else, add it and then change its price with a reason.
+            </p>
+
+            @if (_peopleAtTheTable.Count == 0)
+            {
+                <p class="lede">Nobody is recorded at this table, so there is nobody to bill.</p>
+            }
+            else
+            {
+                <EditForm Model="AddInput" method="post" OnValidSubmit="AddLineAsync" FormName="sitting-add-line">
+                    <DataAnnotationsValidator />
+
+                    <div class="form-field">
+                        <label for="add-person">For</label>
+                        <InputSelect id="add-person" @bind-Value="AddInput.PersonIdentifier">
+                            <option value="">Choose a guest…</option>
+                            @foreach (BillablePerson person in _peopleAtTheTable)
+                            {
+                                <option value="@person.PersonIdentifier">@person.Name</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="@(() => AddInput.PersonIdentifier)" />
+                    </div>
+
+                    <div class="form-field">
+                        <label for="add-item">Item</label>
+                        <InputSelect id="add-item" @bind-Value="AddInput.MenuItemIdentifier">
+                            <option value="">Choose an item…</option>
+                            @foreach (MenuItemSummary item in _menu)
+                            {
+                                <option value="@item.MenuItemIdentifier" disabled="@(!item.IsActive)">
+                                    @ItemOptionLabel(item)
+                                </option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="@(() => AddInput.MenuItemIdentifier)" />
+                    </div>
+
+                    <div class="form-field">
+                        <label for="add-quantity">Quantity</label>
+                        <InputNumber id="add-quantity" @bind-Value="AddInput.Quantity" min="1" max="100" />
+                        <ValidationMessage For="@(() => AddInput.Quantity)" />
+                    </div>
+
+                    <div class="form-field">
+                        <label for="add-note">Note <span class="optional">(optional)</span></label>
+                        <InputText id="add-note" @bind-Value="AddInput.Note" autocomplete="off" />
+                        <ValidationMessage For="@(() => AddInput.Note)" />
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="button-primary">Add the line</button>
+                    </div>
+                </EditForm>
+
+                <p class="form-footnote">
+                    An item currently marked unavailable cannot be added — the order transaction re-checks
+                    the flag under its own lock (§6.5.4), so making it available again is the only way
+                    through. That is deliberate: the alternative is a bill naming a dish the kitchen has
+                    said it cannot make.
+                </p>
+            }
+        }
+
+        @* ---- the complete stored record (§11.4) -------------------------------------------------- *@
+        <hr class="sitting-rule" />
+
+        <h2 class="sitting-heading">The record</h2>
+
+        @if (_records.Count == 0)
+        {
+            <p class="lede">
+                No order was ever created on this sitting, so there is no event history. People can join a
+                table without ordering; the order row is created by the first send (§6.1).
+            </p>
+        }
+        else
+        {
+            <p class="lede">
+                Every event on every order, oldest first and complete — @_eventCount in total. Removed
+                lines, undone fulfillments, and superseded prices are all still here, because the history
+                outliving the state is the point of the log (ADR-0002).
+            </p>
+
+            @foreach (SittingOrderRecord orderRecord in _records)
+            {
+                <article class="sitting-order">
+                    <header class="sitting-order-header">
+                        <h3>@orderRecord.OwnerName</h3>
+                        <span class="muted">
+                            order opened @RestaurantClock.DateAndTime(orderRecord.CreatedAt) ·
+                            @orderRecord.Events.Count @(orderRecord.Events.Count == 1 ? "event" : "events")
+                        </span>
+                    </header>
+
+                    @if (orderRecord.Events.Count == 0)
+                    {
+                        <p class="muted">
+                            The order row exists with no events on it. Only reachable if a write created it
+                            and then rolled back its event, which the transaction does not do — worth
+                            reporting if you are seeing it.
+                        </p>
+                    }
+                    else
+                    {
+                        <ol class="sitting-events">
+                            @foreach (StoredOrderEvent stored in orderRecord.Events)
+                            {
+                                <li class="sitting-event">
+                                    <div class="sitting-event-head">
+                                        <span class="sitting-event-sequence">#@stored.SequenceNumber</span>
+                                        <span class="sitting-event-type">@DescribeEventType(stored.EventType)</span>
+                                        <span class="muted">
+                                            @stored.ActorName as @DescribeActorRole(stored.ActorRole) ·
+                                            @RestaurantClock.DateAndTimeWithSeconds(stored.OccurredAt)
+                                        </span>
+                                    </div>
+
+                                    @if (stored.Operations.Count == 0)
+                                    {
+                                        <p class="muted">
+                                            No operations recorded, which §6.5.1 forbids — worth reporting.
+                                        </p>
+                                    }
+                                    else
+                                    {
+                                        <ul class="sitting-operations">
+                                            @foreach (StoredOrderOperation operation in stored.Operations)
+                                            {
+                                                <li>@DescribeOperation(operation)</li>
+                                            }
+                                        </ul>
+                                    }
+                                </li>
+                            }
+                        </ol>
+                    }
+                </article>
+            }
+        }
+
+        <p><a href="/administration/sittings">Back to sittings</a></p>
+    </section>
+}
+
+@* Namespaced under .sitting-* and .admin-sitting-table. App.razor links the static wwwroot/app.css rather
+   than the component-scoped bundle, so component CSS isolation is not active here; these live inline to
+   avoid editing the shared stylesheet for one screen. *@
+<style>
+    .admin-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-start;
+        justify-content: space-between;
+    }
+
+    .admin-header h1 {
+        margin: 0;
+    }
+
+    .sitting-meta {
+        margin: 0.2rem 0 0;
+        font-size: 0.85rem;
+        color: var(--muted-foreground, #666);
+    }
+
+    .sitting-total {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+    }
+
+    .sitting-total-label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted-foreground, #666);
+    }
+
+    .sitting-total-amount {
+        font-size: 1.6rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .sitting-corrected {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #b45309;
+    }
+
+    .sitting-heading {
+        margin: 1.4rem 0 0.3rem;
+        font-size: 1.15rem;
+    }
+
+    .sitting-subheading {
+        margin: 1.2rem 0 0.3rem;
+        font-size: 1rem;
+    }
+
+    .sitting-rule {
+        margin: 1.6rem 0 0;
+        border: 0;
+        border-top: 1px solid var(--rule, #e5e5e5);
+    }
+
+    .sitting-note {
+        margin: 0.9rem 0 0;
+        padding: 0.6rem 0.85rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--rule, #e5e5e5);
+        background: var(--surface, #f7f8fa);
+        color: var(--muted-foreground, #555);
+    }
+
+    .sitting-rejection {
+        margin: 0.4rem 0 0;
+        padding-left: 1.1rem;
+        color: #b91c1c;
+        font-weight: 600;
+    }
+
+    .sitting-roster {
+        list-style: none;
+        margin: 0.4rem 0 0;
+        padding: 0;
+    }
+
+    .sitting-roster li {
+        padding: 0.3rem 0;
+        border-bottom: 1px solid var(--rule, #eee);
+    }
+
+    .sitting-roster-name {
+        font-weight: 600;
+    }
+
+    .sitting-record .muted {
+        color: var(--muted-foreground, #777);
+        font-size: 0.85rem;
+    }
+
+    .admin-sitting-table {
+        overflow-x: auto;
+    }
+
+    .admin-sitting-table table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+    }
+
+    .admin-sitting-table th,
+    .admin-sitting-table td {
+        text-align: left;
+        padding: 0.6rem 0.75rem;
+        border-bottom: 1px solid var(--rule, #e5e5e5);
+        vertical-align: top;
+    }
+
+    .admin-sitting-table thead th {
+        font-weight: 600;
+        color: var(--muted-foreground, #666);
+        border-bottom-width: 2px;
+    }
+
+    .sitting-record .numeric {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+
+    .sitting-lines {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .sitting-lines li {
+        padding: 0.15rem 0;
+    }
+
+    .sitting-tally {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        margin: 0.7rem 0 0;
+        padding-top: 0.5rem;
+        border-top: 2px solid var(--rule, #e5e5e5);
+        font-weight: 700;
+    }
+
+    .sitting-order {
+        margin-top: 1rem;
+        padding: 0.7rem 0.85rem 0.85rem;
+        border: 1px solid var(--rule, #e5e5e5);
+        border-radius: 0.75rem;
+    }
+
+    .sitting-order-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .sitting-order-header h3 {
+        margin: 0;
+        font-size: 1.05rem;
+    }
+
+    .sitting-events {
+        margin: 0.6rem 0 0;
+        padding-left: 0;
+        list-style: none;
+        counter-reset: none;
+    }
+
+    .sitting-event {
+        padding: 0.45rem 0.55rem;
+        margin-bottom: 0.4rem;
+        border-left: 3px solid var(--rule, #e5e5e5);
+        background: var(--surface, #fafbfc);
+    }
+
+    .sitting-event-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.5rem;
+    }
+
+    .sitting-event-sequence {
+        font-variant-numeric: tabular-nums;
+        font-weight: 800;
+        color: var(--muted-foreground, #666);
+    }
+
+    .sitting-event-type {
+        font-weight: 700;
+    }
+
+    .sitting-operations {
+        margin: 0.3rem 0 0;
+        padding-left: 1.1rem;
+    }
+
+    .sitting-operations li {
+        padding: 0.1rem 0;
+    }
+
+    .sitting-record .optional {
+        font-weight: 400;
+        color: var(--muted-foreground, #777);
+    }
+</style>
+
+@code {
+    /// <summary>Somebody a correction can be billed to: a member, or anyone who already has an order here.</summary>
+    private sealed record BillablePerson(Guid PersonIdentifier, string Name);
+
+    /// <summary>
+    /// The two things the one correction form can do. They are two different §6.2 event types with two
+    /// different operation subtypes, so they cannot be one Save — but they are one form, because a
+    /// per-line panel would need a distinct form name per row and static SSR has no model to bind
+    /// a dynamic set of them to. This is the shape TableDisplays and CounterSitting already use: one
+    /// picker, at the bottom, that can name any row above it.
+    /// </summary>
+    private const string AdjustAction = "adjust";
+
+    private const string RemoveAction = "remove";
+
+    private CounterSittingSummary? _sitting;
+    private IReadOnlyList<SittingMemberSummary> _members = [];
+    private IReadOnlyList<SittingBillEntry> _bill = [];
+    private IReadOnlyList<OrderLineView> _lines = [];
+    private IReadOnlyList<SittingOrderRecord> _records = [];
+    private IReadOnlyList<MenuItemSummary> _menu = [];
+    private IReadOnlyList<BillablePerson> _peopleAtTheTable = [];
+    private int _eventCount;
+
+    private string? _flashMessage;
+    private string? _errorMessage;
+    private IReadOnlyList<string> _rejectionReasons = [];
+
+    /// <summary>The sitting this page reports on. Every query is scoped by it, never by the table.</summary>
+    [Parameter]
+    public Guid SittingId { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "sitting-correct-line")]
+    private CorrectLineInputModel CorrectInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "sitting-add-line")]
+    private AddLineInputModel AddInput { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? Done { get; set; }
+
+    private string RecordPath => $"/administration/sittings/{SittingId}";
+
+    private string CounterPath => $"/counter/sittings/{SittingId}";
+
+    private decimal TableTotal => _bill.Sum(entry => entry.PersonTotalAmount);
+
+    /// <summary>The " · settled 9:14 PM by Cass" tail of the header line, built here because it reads as one sentence.</summary>
+    private string SettledSuffix
+    {
+        get
+        {
+            if (_sitting is not { ClosedAt: { } closedAt })
+            {
+                return string.Empty;
+            }
+
+            string by = string.IsNullOrWhiteSpace(_sitting.ClosedByName)
+                ? string.Empty
+                : $" by {_sitting.ClosedByName}";
+
+            return $" · settled {RestaurantClock.DateAndTime(closedAt)}{by}";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form POST binds these itself and may assign null, so the defaults live here.
+        CorrectInput ??= new();
+        AddInput ??= new();
+
+        await LoadAsync();
+
+        if (_sitting is null)
+        {
+            return;
+        }
+
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            CorrectInput.Action = AdjustAction;
+            AddInput.Quantity = 1;
+            _flashMessage = FlashFor(Done);
+        }
+    }
+
+    /// <summary>Everything the page shows, re-read in one pass. Small, indexed queries.</summary>
+    private async Task LoadAsync()
+    {
+        CancellationToken cancellationToken = HttpContext.RequestAborted;
+
+        _sitting = await CounterReads.GetSittingAsync(SittingId, cancellationToken);
+
+        if (_sitting is null)
+        {
+            _members = [];
+            _bill = [];
+            _lines = [];
+            _records = [];
+            _menu = [];
+            _peopleAtTheTable = [];
+            _eventCount = 0;
+            return;
+        }
+
+        _members = await SittingDirectory.ListMembersAsync(SittingId, cancellationToken);
+        _bill = await OrderReads.ListSittingBillAsync(SittingId, cancellationToken);
+        _lines = await OrderReads.ListLinesForSittingAsync(SittingId, cancellationToken);
+        _records = await SittingRecords.ListOrderRecordsForSittingAsync(SittingId, cancellationToken);
+        _menu = await MenuItems.ListAsync(cancellationToken);
+
+        _eventCount = _records.Sum(order => order.Events.Count);
+        _peopleAtTheTable = BuildPeopleAtTheTable();
+    }
+
+    /// <summary>
+    /// The roster, plus anybody who has an order without a membership row. The union rather than the
+    /// roster alone, because the picker must never be unable to name somebody whose bill is on the screen
+    /// directly above it.
+    /// </summary>
+    private IReadOnlyList<BillablePerson> BuildPeopleAtTheTable()
+    {
+        List<BillablePerson> people = _members
+            .Select(member => new BillablePerson(member.PersonIdentifier, member.RosterName))
+            .ToList();
+
+        foreach (SittingBillEntry entry in _bill)
+        {
+            if (!people.Any(person => person.PersonIdentifier == entry.PersonIdentifier))
+            {
+                people.Add(new BillablePerson(entry.PersonIdentifier, entry.BillName));
+            }
+        }
+
+        return people;
+    }
+
+    /// <summary>§6.7 through §6.5.8: an administrator's corrective price change or removal on a settled bill.</summary>
+    private async Task CorrectLineAsync()
+    {
+        if (!TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        if (!Guid.TryParse(CorrectInput.OrderLineIdentifier, out Guid orderLineIdentifier))
+        {
+            _errorMessage = "Choose which line to correct.";
+            return;
+        }
+
+        OrderLineView? line = _lines
+            .FirstOrDefault(candidate => candidate.OrderLineIdentifier == orderLineIdentifier);
+
+        if (line is null)
+        {
+            // Somebody corrected it between this page rendering and the button being pressed. Re-read and
+            // say so rather than sending an operation the transaction would refuse anyway.
+            _errorMessage = "That line is no longer on the bill. The record below has been refreshed.";
+            await LoadAsync();
+            return;
+        }
+
+        if (CorrectInput.Action == RemoveAction)
+        {
+            await AppendAsync(
+                administrator,
+                line.GuestOrderIdentifier,
+                OrderEventType.StaffEdit,
+                [new LineRemovedOperation(orderLineIdentifier, Blank(CorrectInput.Reason))],
+                "line-removed");
+            return;
+        }
+
+        if (CorrectInput.Action != AdjustAction)
+        {
+            _errorMessage = "Choose whether to change the price or take the line off the bill.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(CorrectInput.Reason))
+        {
+            _errorMessage = "A price change needs a reason — it is the sentence somebody reads back later.";
+            return;
+        }
+
+        if (CorrectInput.NewUnitPriceAmount < 0m)
+        {
+            _errorMessage = "A price cannot be negative.";
+            return;
+        }
+
+        // Rounded once, here, away from zero — matching numeric(10,2)'s own rule — so the operation row,
+        // the projection, and the number reported back are the same value rather than three independent
+        // roundings of the same input. The same decision MenuAdministration made for reprice.
+        decimal newUnitPrice = Math.Round(CorrectInput.NewUnitPriceAmount, 2, MidpointRounding.AwayFromZero);
+
+        await AppendAsync(
+            administrator,
+            line.GuestOrderIdentifier,
+            OrderEventType.PriceAdjustment,
+            [new LinePriceAdjustedOperation(orderLineIdentifier, newUnitPrice, CorrectInput.Reason.Trim())],
+            "line-repriced");
+    }
+
+    /// <summary>
+    /// §6.7's other half: a plate that went out and was never billed. Routed through the living-order path
+    /// so it works for somebody who joined and never sent anything — their order row is created inside the
+    /// same transaction (§6.1), which is not something this surface can do for itself.
+    /// </summary>
+    private async Task AddLineAsync()
+    {
+        if (!TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        if (!Guid.TryParse(AddInput.PersonIdentifier, out Guid personIdentifier)
+            || _peopleAtTheTable.All(person => person.PersonIdentifier != personIdentifier))
+        {
+            _errorMessage = "Choose which guest this line belongs to.";
+            return;
+        }
+
+        if (!Guid.TryParse(AddInput.MenuItemIdentifier, out Guid menuItemIdentifier))
+        {
+            _errorMessage = "Choose an item to add.";
+            return;
+        }
+
+        MenuItemSummary? item = _menu
+            .FirstOrDefault(candidate => candidate.MenuItemIdentifier == menuItemIdentifier);
+
+        if (item is null)
+        {
+            _errorMessage = "That item is no longer on the menu.";
+            return;
+        }
+
+        // §7 keeps a deactivated item visible and unorderable; the transaction re-checks the flag under
+        // its own lock (§6.5.4), so this only makes the answer immediate.
+        if (!item.IsActive)
+        {
+            _errorMessage =
+                $"{item.Name} is currently marked unavailable, so it cannot be added. Make it available first.";
+            return;
+        }
+
+        if (AddInput.Quantity is < 1 or > 100)
+        {
+            _errorMessage = "Quantity must be between 1 and 100.";
+            return;
+        }
+
+        // The line's own identity, UUIDv7 like every other key (ADR-0011). The unit price passed here is
+        // ignored: the transaction prices the line from the menu row it reads under the lock (§6.5.4).
+        LineAddedOperation added = new(
+            Identifiers.Create(),
+            menuItemIdentifier,
+            AddInput.Quantity,
+            item.PriceAmount,
+            Blank(AddInput.Note));
+
+        AppendOrderEventResult result = await Workflow.AppendStaffEventToLivingOrderAsync(
+            SittingId,
+            personIdentifier,
+            new ProposedOrderEvent(
+                OrderEventType.StaffEdit,
+                administrator,
+                OrderActorRole.Administrator,
+                [added]),
+            HttpContext.RequestAborted);
+
+        await ReportAsync(result, "line-added");
+    }
+
+    private async Task AppendAsync(
+        Guid administrator,
+        Guid guestOrderIdentifier,
+        OrderEventType eventType,
+        IReadOnlyList<OrderOperation> operations,
+        string outcome)
+    {
+        AppendOrderEventResult result = await Workflow.AppendStaffEventAsync(
+            guestOrderIdentifier,
+            new ProposedOrderEvent(eventType, administrator, OrderActorRole.Administrator, operations),
+            HttpContext.RequestAborted);
+
+        await ReportAsync(result, outcome);
+    }
+
+    /// <summary>
+    /// Redirect on success so a refresh cannot re-append; render the refusal in place on failure, because
+    /// the per-operation reasons §6.5.9 produces do not survive a query string and are the whole value of
+    /// the message.
+    /// </summary>
+    private async Task ReportAsync(AppendOrderEventResult result, string outcome)
+    {
+        if (result.IsAppended)
+        {
+            Navigation.NavigateTo($"{RecordPath}?done={outcome}");
+            return;
+        }
+
+        _errorMessage = DescribeRefusal(result);
+        _rejectionReasons = result.Errors.Select(error => error.Reason).ToArray();
+        await LoadAsync();
+    }
+
+    private static string DescribeRefusal(AppendOrderEventResult result) => result.Outcome switch
+    {
+        AppendOrderEventOutcome.SittingNotFound => "That sitting no longer exists. Nothing was written.",
+        AppendOrderEventOutcome.OrderNotFound => "There is no order here to append to. Nothing was written.",
+        _ => "Nothing was written. The record below has been refreshed.",
+    };
+
+    /// <summary>
+    /// The sitting must still exist and the acting administrator must be identifiable —
+    /// <c>order_event.actor_person_identifier</c> is NOT NULL and §6.2 requires every event to name
+    /// somebody. Endpoint authorization already guarantees the second; this is the belt to that brace.
+    /// Also refuses on an open sitting, which the markup does not offer but a replayed post could.
+    /// </summary>
+    private bool TryBegin(out Guid administrator)
+    {
+        administrator = Guid.Empty;
+
+        if (_sitting is null)
+        {
+            Navigation.NavigateTo("/administration/sittings");
+            return false;
+        }
+
+        if (_sitting.IsOpen)
+        {
+            _errorMessage =
+                "This table is still open, so there is nothing to correct. Settle it at the counter first.";
+            return false;
+        }
+
+        if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } identifier)
+        {
+            _errorMessage = "Your session could not be identified. Sign in again and retry.";
+            return false;
+        }
+
+        administrator = identifier;
+        return true;
+    }
+
+    private bool HasAnOrder(Guid personIdentifier)
+        => _bill.Any(entry => entry.PersonIdentifier == personIdentifier);
+
+    private IReadOnlyList<OrderLineView> LinesFor(Guid guestOrderIdentifier)
+        => _lines.Where(line => line.GuestOrderIdentifier == guestOrderIdentifier).ToArray();
+
+    private string LineOptionLabel(OrderLineView line)
+        => $"{OwnerNameFor(line.GuestOrderIdentifier)} — {line.Quantity} × {line.MenuItemName} " +
+           $"at {Money(line.CurrentUnitPriceAmount)}";
+
+    private string OwnerNameFor(Guid guestOrderIdentifier)
+    {
+        SittingBillEntry? entry = _bill
+            .FirstOrDefault(candidate => candidate.GuestOrderIdentifier == guestOrderIdentifier);
+
+        if (entry is not null)
+        {
+            return entry.BillName;
+        }
+
+        SittingOrderRecord? orderRecord = _records
+            .FirstOrDefault(candidate => candidate.GuestOrderIdentifier == guestOrderIdentifier);
+
+        return orderRecord?.OwnerName ?? "Unknown guest";
+    }
+
+    private string ItemOptionLabel(MenuItemSummary item)
+        => item.IsActive
+            ? $"{item.Name} — {Money(item.PriceAmount)}"
+            : $"{item.Name} — {Money(item.PriceAmount)} (currently unavailable)";
+
+    /// <summary>
+    /// A friendly label for the five <c>order_event.event_type</c> values §8.2's CHECK admits, falling
+    /// back to the stored string for anything else. The words are spelled out here rather than taken from
+    /// <c>OrderEventVocabulary</c>, which is internal to the data-access assembly on purpose — a display
+    /// label is not the writer's business, and a reader that threw on an unrecognised word would blank the
+    /// one page whose job is to show what is actually stored. Same shape as ManageMenuItem's.
+    /// </summary>
+    private static string DescribeEventType(string eventType) => eventType switch
+    {
+        "guest_submission" => "Guest send",
+        "staff_edit" => "Staff edit",
+        "price_adjustment" => "Price change",
+        "fulfillment" => "Delivered",
+        "fulfillment_reversal" => "Delivery undone",
+        _ => eventType,
+    };
+
+    /// <summary>
+    /// The four <c>order_event.actor_role</c> values, on the same terms. <c>guest</c> is a capacity rather
+    /// than a stored role (§0, §3.7) — an administrator eating lunch appears here as a guest, and that is
+    /// correct.
+    /// </summary>
+    private static string DescribeActorRole(string actorRole) => actorRole switch
+    {
+        "guest" => "a guest",
+        "kitchen" => "the kitchen",
+        "counter" => "the counter",
+        "administrator" => "an administrator",
+        _ => actorRole,
+    };
+
+    /// <summary>
+    /// One stored operation in a sentence. The five kinds are the discriminators the reader's UNION
+    /// projects; an unknown one renders as itself beside the line it names, so nothing is ever swallowed.
+    /// </summary>
+    private string DescribeOperation(StoredOrderOperation operation) => operation.OperationKind switch
+    {
+        "line_added" =>
+            $"Added {operation.Quantity} × {operation.MenuItemName} at " +
+            $"{Money(operation.UnitPriceAmount ?? 0m)} each{NoteSuffix(operation.CustomizationNote)}",
+        "line_removed" =>
+            $"Removed {operation.Quantity} × {operation.MenuItemName}{ReasonSuffix(operation.Reason)}",
+        "line_price_adjusted" =>
+            $"{operation.Quantity} × {operation.MenuItemName} repriced to " +
+            $"{Money(operation.NewUnitPriceAmount ?? 0m)} each{ReasonSuffix(operation.Reason)}",
+        "line_fulfilled" =>
+            $"{operation.Quantity} × {operation.MenuItemName} delivered",
+        "line_fulfillment_reverted" =>
+            $"{operation.Quantity} × {operation.MenuItemName} put back with the kitchen",
+        _ => $"{operation.OperationKind} on {operation.Quantity} × {operation.MenuItemName}",
+    };
+
+    private static string NoteSuffix(string? note)
+        => string.IsNullOrWhiteSpace(note) ? string.Empty : $" — “{note.Trim()}”";
+
+    private static string ReasonSuffix(string? reason)
+        => string.IsNullOrWhiteSpace(reason) ? string.Empty : $" — {reason.Trim()}";
+
+    private static string? FlashFor(string? outcome) => outcome switch
+    {
+        "line-repriced" =>
+            "Price changed. The settled total above is unchanged — the correction shows beside it.",
+        "line-removed" =>
+            "Line taken off the bill. It stays in the record with your name and the reason; it simply stops being charged.",
+        "line-added" =>
+            "Line added. It appears in the corrected total, not in the settled one, which is never rewritten.",
+        _ => null,
+    };
+
+    private static string? Blank(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
+
+    private sealed class CorrectLineInputModel
+    {
+        [Required(ErrorMessage = "Choose which line to correct.")]
+        public string OrderLineIdentifier { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Choose what to do.")]
+        public string Action { get; set; } = string.Empty;
+
+        [Range(0, 99999999.99, ErrorMessage = "The price must be between 0 and 99,999,999.99.")]
+        public decimal NewUnitPriceAmount { get; set; }
+
+        [StringLength(200, ErrorMessage = "A reason must be 200 characters or fewer.")]
+        public string? Reason { get; set; }
+    }
+
+    private sealed class AddLineInputModel
+    {
+        [Required(ErrorMessage = "Choose which guest this line belongs to.")]
+        public string PersonIdentifier { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Choose an item to add.")]
+        public string MenuItemIdentifier { get; set; } = string.Empty;
+
+        [Range(1, 100, ErrorMessage = "Quantity must be between 1 and 100.")]
+        public int Quantity { get; set; } = 1;
+
+        [StringLength(500, ErrorMessage = "A note must be 500 characters or fewer.")]
+        public string? Note { get; set; }
+    }
+}

@@ -1,0 +1,589 @@
+@page "/administration/sittings"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.DataAccess.Sittings
+@using MyRestaurant.Domain.Time
+@using MyRestaurant.WebApplication.Orders
+@using MyRestaurant.WebApplication.Sittings
+@inject ICounterBoardReads CounterReads
+@inject ISittingWorkflow Settlement
+@inject IClock Clock
+@inject RestaurantOptions Options
+@inject RestaurantTime RestaurantClock
+@inject NavigationManager Navigation
+
+@* Administration sittings (TECHNICAL_SPECIFICATION §5.4, §11.4 — "Sittings (open + recent, end-of-day
+   batch close, post-close corrective actions per §6.7)"). Two lists and one button.
+
+   §5.4 is one sentence: "Administration provides batch close: list open sittings with last-activity
+   timestamps, select, close each via the same §5.3 transaction." The last-activity column is why the
+   page exists — a table whose last event was four hours ago is a table that has gone home, and it is the
+   only signal in the system that distinguishes it from a table still eating.
+
+   Static SSR, like every administration surface. Nothing is ticked by default and there is no select-all:
+   closing twelve tables costs twelve deliberate ticks, and that is the confirmation step rather than a
+   second page. This is the one form in the tree that reads its own POST values instead of binding a
+   [SupplyParameterFromForm] model — a checkbox per row over a list whose length is however many tables
+   are open has no static model to bind to, and the alternative (a select-one picker, as on ManageTable
+   and TableDisplays) is not what §5.4 describes.
+
+   The counter reaches the same §5.3 transaction from /counter, one table at a time, with a guest standing
+   in front of it. This is the deliberate end-of-service pass over what is left. *@
+
+<PageTitle>Administration — sittings</PageTitle>
+
+<section class="panel">
+    <div class="admin-header">
+        <div>
+            <p class="eyebrow">Administration</p>
+            <h1>Sittings</h1>
+        </div>
+        <div class="admin-header-actions">
+            <a class="button-secondary" href="/administration">People</a>
+            <a class="button-secondary" href="/administration/tables">Tables</a>
+            <a class="button-secondary" href="/administration/menu">Menu</a>
+        </div>
+    </div>
+
+    <p class="lede">
+        Every table currently open, oldest first, with the moment something last happened on it. Tick the
+        ones that have finished and close them; each is settled in its own transaction, exactly as the
+        counter would settle it. Below, everything settled in the last @RecentWindowDays days — open a
+        sitting to read its complete record or to append a correction.
+    </p>
+
+    @if (_flashMessage is not null)
+    {
+        <p class="status-success" role="status">@_flashMessage</p>
+    }
+    @if (_errorMessage is not null)
+    {
+        <p class="status-error" role="alert">@_errorMessage</p>
+    }
+
+    @* ---- open sittings: §5.4's end-of-day pass ---------------------------------------------------- *@
+    <h2 class="sittings-heading">Open</h2>
+
+    @if (_open is null)
+    {
+        <p class="lede">Loading…</p>
+    }
+    else if (_open.Count == 0)
+    {
+        <p class="lede">No table is open. The floor is clear.</p>
+    }
+    else
+    {
+        <form method="post" @formname="end-of-day" @onsubmit="CloseSelectedAsync">
+            <AntiforgeryToken />
+
+            <div class="admin-sittings">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col"><span class="visually-hidden">Close</span></th>
+                            <th scope="col">Table</th>
+                            <th scope="col">Opened</th>
+                            <th scope="col">Last activity</th>
+                            <th scope="col">At the table</th>
+                            <th scope="col">Lines</th>
+                            <th scope="col">Running total</th>
+                            <th scope="col"><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (CounterSittingSummary sitting in _open)
+                        {
+                            <tr>
+                                <td class="sittings-tick">
+                                    @* A plain input, not InputCheckbox: every row shares one field name
+                                       and the handler reads the posted values directly. The id/label pair
+                                       keeps the box reachable without a mouse. *@
+                                    <input type="checkbox"
+                                           id="@CheckboxId(sitting)"
+                                           name="@SelectedSittingField"
+                                           value="@sitting.SittingIdentifier" />
+                                    <label class="visually-hidden" for="@CheckboxId(sitting)">
+                                        Close @sitting.TableLabel
+                                    </label>
+                                </td>
+                                <td><span class="sitting-label">@sitting.TableLabel</span></td>
+                                <td>@RestaurantClock.DateAndTime(sitting.OpenedAt)</td>
+                                <td>
+                                    @if (sitting.LastEventAt is { } lastEventAt)
+                                    {
+                                        <span>@RestaurantClock.DateAndTime(lastEventAt)</span>
+                                        <span class="muted">@AgeOf(lastEventAt)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">Nothing ordered yet</span>
+                                    }
+                                </td>
+                                <td class="numeric">
+                                    @sitting.MemberCount
+                                    <span class="muted">
+                                        @sitting.OrderCount @(sitting.OrderCount == 1 ? "order" : "orders")
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (sitting.PendingLineCount > 0)
+                                    {
+                                        <span class="chip chip-warn">@sitting.PendingLineCount with the kitchen</span>
+                                    }
+                                    @if (sitting.FulfilledLineCount > 0)
+                                    {
+                                        <span class="chip chip-ok">@sitting.FulfilledLineCount delivered</span>
+                                    }
+                                    @if (sitting.PendingLineCount == 0 && sitting.FulfilledLineCount == 0)
+                                    {
+                                        <span class="muted">—</span>
+                                    }
+                                </td>
+                                <td class="numeric">@Money(sitting.CurrentTotalAmount)</td>
+                                <td class="admin-row-actions">
+                                    <a href="@RecordPath(sitting)">Record</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (_pendingAcrossOpenSittings > 0)
+            {
+                @* §5.3 puts this warning before the button, and it belongs here too: an end-of-day pass
+                   is the most likely moment for somebody to charge for a plate nobody carried. *@
+                <p class="sittings-warning" role="alert">
+                    <strong>
+                        @_pendingAcrossOpenSittings
+                        @(_pendingAcrossOpenSittings == 1 ? "line is" : "lines are")
+                        still with the kitchen across these tables.
+                    </strong>
+                    Closing charges for them. To take one off first, open the sitting's record — or settle
+                    that table from the counter, where the lines are listed one by one.
+                </p>
+            }
+
+            <p class="form-footnote">
+                A close stamps the total, stops the table ordering, and cannot be undone (§5.3). What can
+                be done afterwards is append a correction, which sits beside the stamped total rather than
+                replacing it (§6.7).
+            </p>
+
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Close the ticked sittings</button>
+            </div>
+        </form>
+    }
+
+    @* ---- recently settled -------------------------------------------------------------------------- *@
+    <hr class="sittings-rule" />
+
+    <h2 class="sittings-heading">Settled recently</h2>
+
+    @if (_closed is null)
+    {
+        <p class="lede">Loading…</p>
+    }
+    else if (_closed.Count == 0)
+    {
+        <p class="lede">Nothing has been settled in the last @RecentWindowDays days.</p>
+    }
+    else
+    {
+        <div class="admin-sittings">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">Table</th>
+                        <th scope="col">Settled</th>
+                        <th scope="col">By</th>
+                        <th scope="col">At the table</th>
+                        <th scope="col">Settled total</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (CounterSittingSummary sitting in _closed)
+                    {
+                        <tr>
+                            <td><span class="sitting-label">@sitting.TableLabel</span></td>
+                            <td>
+                                @if (sitting.ClosedAt is { } closedAt)
+                                {
+                                    <span>@RestaurantClock.DateAndTime(closedAt)</span>
+                                }
+                            </td>
+                            <td>
+                                @if (string.IsNullOrWhiteSpace(sitting.ClosedByName))
+                                {
+                                    <span class="muted">—</span>
+                                }
+                                else
+                                {
+                                    <span>@sitting.ClosedByName</span>
+                                }
+                            </td>
+                            <td class="numeric">@sitting.MemberCount</td>
+                            <td class="numeric">
+                                @Money(sitting.SettledTotalAmount ?? 0m)
+                                @if (sitting.HasPostCloseCorrections)
+                                {
+                                    @* §5.3: the stamped total is never rewritten, so when §6.7
+                                       corrections exist both numbers are shown — they answer two
+                                       different questions. *@
+                                    <span class="sitting-corrected">
+                                        corrected to @Money(sitting.CurrentTotalAmount)
+                                    </span>
+                                }
+                            </td>
+                            <td class="admin-row-actions">
+                                <a href="@RecordPath(sitting)">Record</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <p class="form-footnote">
+            The newest @_closed.Count, capped — this is the end-of-service check, not the archive. A
+            sitting's own record is permanent and is reached from its Record link.
+        </p>
+    }
+
+    <p><a href="/administration">Back to people</a></p>
+</section>
+
+@* Table rules namespaced under .admin-sittings, matching .admin-people and .admin-menu. App.razor links
+   the static wwwroot/app.css rather than the component-scoped bundle, so component CSS isolation is not
+   active here; these live inline to avoid editing the shared stylesheet for one screen. *@
+<style>
+    .admin-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-start;
+        justify-content: space-between;
+    }
+
+    .admin-header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .sittings-heading {
+        margin: 1.4rem 0 0.3rem;
+        font-size: 1.15rem;
+    }
+
+    .sittings-rule {
+        margin: 1.6rem 0 0;
+        border: 0;
+        border-top: 1px solid var(--rule, #e5e5e5);
+    }
+
+    .admin-sittings {
+        overflow-x: auto;
+    }
+
+    .admin-sittings table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+    }
+
+    .admin-sittings th,
+    .admin-sittings td {
+        text-align: left;
+        padding: 0.6rem 0.75rem;
+        border-bottom: 1px solid var(--rule, #e5e5e5);
+        vertical-align: top;
+    }
+
+    .admin-sittings thead th {
+        font-weight: 600;
+        color: var(--muted-foreground, #666);
+        border-bottom-width: 2px;
+    }
+
+    .admin-sittings .sitting-label {
+        display: block;
+        font-weight: 600;
+    }
+
+    .admin-sittings .muted {
+        display: block;
+        color: var(--muted-foreground, #999);
+        font-size: 0.85rem;
+    }
+
+    .admin-sittings .numeric {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+
+    .admin-sittings .sitting-corrected {
+        display: block;
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #b45309;
+    }
+
+    /* The tick column is deliberately generous: this is the one control on the page that closes a
+       bill, and it is pressed with a thumb on a phone as often as with a mouse. */
+    .admin-sittings .sittings-tick {
+        width: 2.75rem;
+    }
+
+    .admin-sittings .sittings-tick input {
+        width: 1.35rem;
+        height: 1.35rem;
+    }
+
+    .admin-sittings .chip {
+        display: inline-block;
+        margin: 0.1rem 0.2rem 0.1rem 0;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        background: var(--chip-background, #f0f0f0);
+        color: var(--chip-foreground, #333);
+        white-space: nowrap;
+    }
+
+    .admin-sittings .chip-ok {
+        background: #e6f4ea;
+        color: #1e7a37;
+    }
+
+    .admin-sittings .chip-warn {
+        background: #fdecea;
+        color: #a3261c;
+    }
+
+    .admin-sittings .admin-row-actions {
+        white-space: nowrap;
+        text-align: right;
+    }
+
+    .sittings-warning {
+        margin: 0.9rem 0 0;
+        padding: 0.6rem 0.85rem;
+        border-radius: 0.5rem;
+        border: 1px solid #f5c2c0;
+        background: #fdecea;
+        color: #7f1d1d;
+    }
+
+    .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+</style>
+
+@code {
+    /// <summary>
+    /// The one POST field this page reads. Every checkbox shares it, so the browser posts one value per
+    /// ticked row — the standard HTML idiom for "which of these". It must not collide with Blazor's own
+    /// reserved <c>_handler</c> field, and it does not.
+    /// </summary>
+    private const string SelectedSittingField = "sitting";
+
+    /// <summary>
+    /// How far back the settled list looks, and how many rows it will draw. Both bounded on purpose:
+    /// §11.4 gives administration the complete record <em>per sitting</em>, not an unbounded index of
+    /// every sitting the restaurant has ever had. This list answers "what did we settle today".
+    /// </summary>
+    private const int RecentWindowDays = 7;
+
+    private const int RecentCap = 60;
+
+    private IReadOnlyList<CounterSittingSummary>? _open;
+    private IReadOnlyList<CounterSittingSummary>? _closed;
+    private int _pendingAcrossOpenSittings;
+    private string? _flashMessage;
+    private string? _errorMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private int? Closed { get; set; }
+
+    [SupplyParameterFromQuery]
+    private int? Already { get; set; }
+
+    [SupplyParameterFromQuery]
+    private int? Missing { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            _flashMessage = FlashFor(Closed, Already, Missing);
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _open = await CounterReads.ListOpenSittingsAsync(HttpContext.RequestAborted);
+        _pendingAcrossOpenSittings = _open.Sum(sitting => sitting.PendingLineCount);
+
+        _closed = await CounterReads.ListRecentlyClosedSittingsAsync(
+            Clock.UtcNow.AddDays(-RecentWindowDays),
+            RecentCap,
+            HttpContext.RequestAborted);
+    }
+
+    /// <summary>
+    /// §5.4's batch close. The chosen identifiers come from the posted form rather than from a bound
+    /// model, because the set of rows is whatever is open right now.
+    ///
+    /// <para><c>ReadFormAsync</c> is not a second read of the request body: the Blazor endpoint has
+    /// already parsed the form to find which handler to invoke, and <c>HttpRequest</c> caches the parsed
+    /// collection, so this returns the same instance the framework used. Awaiting the cached path rather
+    /// than touching <c>Request.Form</c> synchronously keeps the cancellation token honoured.</para>
+    /// </summary>
+    private async Task CloseSelectedAsync()
+    {
+        if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } administrator)
+        {
+            // Endpoint authorization already guarantees an administrator; this is the belt to that brace,
+            // because table_sitting.closed_by_person_identifier is NOT NULL whenever closed_at is set and
+            // has no anonymous option.
+            _errorMessage = "Your session could not be identified. Sign in again and retry.";
+            await LoadAsync();
+            return;
+        }
+
+        IFormCollection form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+
+        List<Guid> chosen = [];
+        foreach (string? posted in form[SelectedSittingField])
+        {
+            // A value that will not parse is discarded rather than reported: the only way to post one is
+            // to hand-edit the form, and the honest answer to "close sitting 'banana'" is that no such
+            // sitting was closed, which the counts already say.
+            if (Guid.TryParse(posted, out Guid sittingIdentifier))
+            {
+                chosen.Add(sittingIdentifier);
+            }
+        }
+
+        if (chosen.Count == 0)
+        {
+            _errorMessage = "Nothing was ticked, so nothing was closed. Tick the tables that have finished.";
+            await LoadAsync();
+            return;
+        }
+
+        EndOfDayResult result = await Settlement.CloseManyAsync(
+            chosen, administrator, HttpContext.RequestAborted);
+
+        // Post/redirect/get, so a refresh does not re-post a close. The counts travel in the query string;
+        // the money does not, because the settled list below re-renders from the database and shows every
+        // stamped total in the restaurant's own currency rather than one reconstructed from a URL.
+        Navigation.NavigateTo(
+            $"/administration/sittings?closed={result.ClosedCount}" +
+            $"&already={result.AlreadyClosedCount}" +
+            $"&missing={result.NotFoundCount}");
+    }
+
+    /// <summary>
+    /// The sentence after a redirect. Three numbers because three things can happen to a ticked table:
+    /// it closed, somebody had already closed it, or it is not there any more. The second is not a
+    /// failure — a counter settling a table while an administrator was reading this page is the system
+    /// working — so it is reported as fact rather than as a warning.
+    /// </summary>
+    private static string? FlashFor(int? closed, int? already, int? missing)
+    {
+        if (closed is null && already is null && missing is null)
+        {
+            return null;
+        }
+
+        int closedCount = closed ?? 0;
+        int alreadyCount = already ?? 0;
+        int missingCount = missing ?? 0;
+
+        List<string> parts = [];
+
+        parts.Add(closedCount == 1
+            ? "Settled 1 sitting."
+            : $"Settled {closedCount} sittings.");
+
+        if (alreadyCount > 0)
+        {
+            parts.Add(alreadyCount == 1
+                ? "1 had already been settled at the counter — nothing changed on it."
+                : $"{alreadyCount} had already been settled at the counter — nothing changed on those.");
+        }
+
+        if (missingCount > 0)
+        {
+            parts.Add(missingCount == 1
+                ? "1 no longer exists."
+                : $"{missingCount} no longer exist.");
+        }
+
+        return string.Join(" ", parts);
+    }
+
+    /// <summary>
+    /// How long ago, in words, so the last-activity column can be read at a glance. Deliberately coarse:
+    /// the question §5.4 is asking is "has this table gone home", and the exact instant is in the cell
+    /// beside it.
+    /// </summary>
+    private string AgeOf(DateTimeOffset instant)
+    {
+        TimeSpan elapsed = Clock.UtcNow - instant;
+
+        if (elapsed < TimeSpan.Zero)
+        {
+            // Only reachable if the database clock is ahead of this process's. Say nothing rather than
+            // "-3 minutes ago".
+            return string.Empty;
+        }
+
+        if (elapsed < TimeSpan.FromMinutes(1))
+        {
+            return "just now";
+        }
+
+        if (elapsed < TimeSpan.FromHours(1))
+        {
+            int minutes = (int)elapsed.TotalMinutes;
+            return $"{minutes} {(minutes == 1 ? "minute" : "minutes")} ago";
+        }
+
+        if (elapsed < TimeSpan.FromDays(1))
+        {
+            int hours = (int)elapsed.TotalHours;
+            return $"{hours} {(hours == 1 ? "hour" : "hours")} ago";
+        }
+
+        int days = (int)elapsed.TotalDays;
+        return $"{days} {(days == 1 ? "day" : "days")} ago";
+    }
+
+    private static string CheckboxId(CounterSittingSummary sitting)
+        => $"close-{sitting.SittingIdentifier}";
+
+    private static string RecordPath(CounterSittingSummary sitting)
+        => $"/administration/sittings/{sitting.SittingIdentifier}";
+
+    private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
+}
