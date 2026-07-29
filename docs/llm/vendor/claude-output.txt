@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-29T05:42:44-04:00
+  Generated at   : 2026-07-29T05:45:52-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,10 +17,10 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 08309ffcb3bf62e8fdc094eeb665d49622817d82
-  Commit (short) : 08309ff
-  Commit date    : 2026-07-29 05:41:23 -0400
-  Commit message : run scripts
+  Commit (full)  : 78cef2fac994355dc626edee4cfbdd0f264c8f2b
+  Commit (short) : 78cef2f
+  Commit date    : 2026-07-29 05:45:43 -0400
+  Commit message : fix build
   Remote origin  : git@github.com:kusl/myrestaurant.git
   Files included : 294
   Excluded path  : docs/llm/
@@ -29,7 +29,6 @@ REPOSITORY METADATA
 GIT WORKING TREE STATUS (first 20 lines)
 ═════════════════════════════════════════════════════════════════════════════════
  M docs/llm/vendor/claude-output.txt
- M tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj
 
 ################################################################################
 # FILE: export.sh  [THIS SCRIPT — included for full context]
@@ -65030,18 +65029,42 @@ internal static class WebApplicationLocator
   File name:             MyRestaurant.EndToEnd.Tests.csproj
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj
-  Size:                  2.6 KiB (2707 bytes)
-  Last modified:         2026-07-29 05:42:33.991546225 -0400
+  Size:                  2.7 KiB (2751 bytes)
+  Last modified:         2026-07-29 05:45:31.875215579 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 27205635
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               36ad5352788e2fe0f6205169e3f8b20d8dbc10d80d57b7895acfec125ba57a96
-  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
+  SHA-256:               711529821c40638a679d19ce4c6443bb3506d2eec6960b84cd77511e00d2179d
+  Last git commit:       78cef2f 2026-07-29 05:45:43 -0400 fix build
 
 --- CONTENT ---
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Playwright end-to-end scenarios covering the §16.3 matrix. The harness arrived at M6 Slice 2:
+    each implemented scenario creates its own database on a shared PostgreSQL 17 container
+    (Testcontainers), boots the already-built web application as a child process on a free loopback
+    port, and drives it through Chromium with a CDP virtual authenticator.
+
+    The scenarios are OPT-IN — they skip unless MYRESTAURANT_E2E=1 — because the first run downloads
+    Chromium (~150 MB) into ~/.cache/ms-playwright, and `dotnet test` should not do that by surprise.
+    See Harness/RestaurantHarness.cs and `scripts/ci_local.sh - - with-e2e`. (remove space between the two dashes)
+
+    References, in the same explicit spirit as MyRestaurant.WebApplication.Tests:
+      • Microsoft.AspNetCore.App, because the WebApplication project reference below is a Web SDK
+        project and the tests name AccountRoutes from it (framework-reference propagation across a
+        Web SDK reference is not something to lean on);
+      • MyRestaurant.WebApplication, for AccountRoutes — the tests assert on the very route
+        constants the app routes on, rather than on string literals that can drift. The reference
+        also makes the web application a BUILD dependency of this project, which is what lets the
+        harness expect its binaries to exist on disk;
+      • MyRestaurant.Domain, for the real JoinTokenService / Rfc6238Totp / Base32Text. The harness
+        computes tokens and authenticator codes with the same code the server validates them with;
+      • Npgsql, to create a per-scenario database and to arrange fixtures (§4.1 rows) directly;
+      • Testcontainers.PostgreSql, for the shared PostgreSQL 17 container.
+  -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
@@ -65069,28 +65092,6 @@ internal static class WebApplicationLocator
   </ItemGroup>
 
 </Project>
-
-    <!-- Playwright end-to-end scenarios covering the §16.3 matrix. The harness arrived at M6 Slice 2:
-    each implemented scenario creates its own database on a shared PostgreSQL 17 container
-    (Testcontainers), boots the already-built web application as a child process on a free loopback
-    port, and drives it through Chromium with a CDP virtual authenticator.
-
-    The scenarios are OPT-IN — they skip unless MYRESTAURANT_E2E=1 — because the first run downloads
-    Chromium (~150 MB) into ~/.cache/ms-playwright, and `dotnet test` should not do that by surprise.
-    See Harness/RestaurantHarness.cs and `scripts/ci_local.sh --with-e2e`.
-
-    References, in the same explicit spirit as MyRestaurant.WebApplication.Tests:
-      • Microsoft.AspNetCore.App, because the WebApplication project reference below is a Web SDK
-        project and the tests name AccountRoutes from it (framework-reference propagation across a
-        Web SDK reference is not something to lean on);
-      • MyRestaurant.WebApplication, for AccountRoutes — the tests assert on the very route
-        constants the app routes on, rather than on string literals that can drift. The reference
-        also makes the web application a BUILD dependency of this project, which is what lets the
-        harness expect its binaries to exist on disk;
-      • MyRestaurant.Domain, for the real JoinTokenService / Rfc6238Totp / Base32Text. The harness
-        computes tokens and authenticator codes with the same code the server validates them with;
-      • Npgsql, to create a per-scenario database and to arrange fixtures (§4.1 rows) directly;
-      • Testcontainers.PostgreSql, for the shared PostgreSQL 17 container. -->
 
 ################################################################################
 # FILE: tests/MyRestaurant.WebApplication.Tests/Displays/DisplayDeviceCookieTests.cs
@@ -71781,9 +71782,9 @@ public sealed class RestaurantTimeTests
 # DUMP SUMMARY
 ################################################################################
   Files dumped   : 294
-  Total size     : 2.9 MiB (3071141 bytes)
+  Total size     : 2.9 MiB (3071185 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-29T05:42:54-04:00
+  Completed at   : 2026-07-29T05:46:02-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
