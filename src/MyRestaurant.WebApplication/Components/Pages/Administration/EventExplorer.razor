@@ -1,0 +1,570 @@
+@page "/administration/events"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.DataAccess.Events
+@using MyRestaurant.WebApplication.Events
+@using MyRestaurant.WebApplication.Orders
+@inject IEventExplorerReads Explorer
+@inject RestaurantOptions Options
+@inject RestaurantTime RestaurantClock
+
+@* The event explorer (TECHNICAL_SPECIFICATION §11.4).
+
+   §11.4's list of administration sections ends with it, in these words: "Event explorer (filter
+   security/order/menu events by subject, actor, type, and time)". It is the last thing M5 owes, and the
+   only screen in the system that reads across subsystems: every other page answers a question about one
+   account, one table, one sitting, or one item, and this one answers "what happened".
+
+   Read-only, and deliberately so. There is no control on this page that changes anything — no unhide, no
+   close, no reset. Every row links to the screen that owns the thing it is about, and that screen has
+   the buttons. An audit log with edit affordances on it is a different and much worse object.
+
+   Static SSR, like every administration surface. The filter is a plain GET form, because a filter is a
+   bookmarkable question rather than a mutation: no antiforgery token, no handler, no POST, and every
+   narrowing affordance on a row is an ordinary link that works with no JavaScript. The parsing and the
+   URL-building live in EventExplorerQuery rather than here, which is what lets both be tested without a
+   browser or a container — the thing HiddenRecords' identical inline logic cannot be.
+
+   §6.8's order_visibility_event is deliberately not a fourth stream: §11.4 names three, and gives
+   visibility its own screen at /administration/hidden-records, where its log sits beside the order it is
+   about and next to the Unhide button that is its only counterpart. *@
+
+<PageTitle>Administration — events</PageTitle>
+
+<section class="panel">
+    <div class="admin-header">
+        <div>
+            <p class="eyebrow">Administration</p>
+            <h1>Events</h1>
+        </div>
+        <div class="admin-header-actions">
+            <a class="button-secondary" href="/administration">People</a>
+            <a class="button-secondary" href="/administration/tables">Tables</a>
+            <a class="button-secondary" href="/administration/menu">Menu</a>
+            <a class="button-secondary" href="/administration/sittings">Sittings</a>
+            <a class="button-secondary" href="/administration/hidden-records">Hidden records</a>
+        </div>
+    </div>
+
+    <p class="lede">
+        Everything the three append-only logs have recorded, newest first: sign-ins, resets, grants and
+        lockouts; every send, edit, reprice and delivery on every order; every menu item created, renamed,
+        repriced or 86'd. Nothing here can be changed from here — each row links to the screen that owns
+        what it is about.
+    </p>
+
+    @foreach (string problem in _query.Problems)
+    {
+        <p class="status-error" role="alert">@problem</p>
+    }
+
+    @* ---- the filter (§11.4: subject, actor, type, time) --------------------------------------------- *@
+    <form class="event-filter" method="get" action="@EventExplorerQuery.BasePath">
+        <fieldset class="event-streams">
+            <legend>Streams</legend>
+
+            <label class="event-stream-choice">
+                <input type="checkbox" name="@EventExplorerQuery.StreamField"
+                       value="@EventStream.Security" checked="@_query.IncludeSecurityEvents" />
+                Security
+            </label>
+
+            <label class="event-stream-choice">
+                <input type="checkbox" name="@EventExplorerQuery.StreamField"
+                       value="@EventStream.Order" checked="@_query.IncludeOrderEvents" />
+                Orders
+            </label>
+
+            <label class="event-stream-choice">
+                <input type="checkbox" name="@EventExplorerQuery.StreamField"
+                       value="@EventStream.Menu" checked="@_query.IncludeMenuEvents" />
+                Menu
+            </label>
+        </fieldset>
+
+        <div class="form-field">
+            <label for="filter-subject">Subject</label>
+            <input id="filter-subject" name="@EventExplorerQuery.SubjectField" type="search"
+                   autocomplete="off" value="@_query.Subject" placeholder="person, table or item" />
+        </div>
+
+        <div class="form-field">
+            <label for="filter-actor">Actor</label>
+            <input id="filter-actor" name="@EventExplorerQuery.ActorField" type="search"
+                   autocomplete="off" value="@_query.Actor" placeholder="who did it" />
+        </div>
+
+        <div class="form-field">
+            <label for="filter-type">Type</label>
+            <select id="filter-type" name="@EventExplorerQuery.TypeField">
+                <option value="">Any type</option>
+
+                <optgroup label="Security">
+                    @foreach (string eventType in EventTypeCatalogue.SecurityEventTypes)
+                    {
+                        <option value="@eventType" selected="@(_query.EventType == eventType)">
+                            @DescribeSecurityEventType(eventType)
+                        </option>
+                    }
+                </optgroup>
+
+                <optgroup label="Orders">
+                    @foreach (string eventType in EventTypeCatalogue.OrderEventTypes)
+                    {
+                        <option value="@eventType" selected="@(_query.EventType == eventType)">
+                            @DescribeOrderEventType(eventType)
+                        </option>
+                    }
+                </optgroup>
+
+                <optgroup label="Menu">
+                    @foreach (string eventType in EventTypeCatalogue.MenuEventTypes)
+                    {
+                        <option value="@eventType" selected="@(_query.EventType == eventType)">
+                            @DescribeMenuEventType(eventType)
+                        </option>
+                    }
+                </optgroup>
+            </select>
+        </div>
+
+        <div class="form-field">
+            <label for="filter-from">On or after</label>
+            <input id="filter-from" name="@EventExplorerQuery.FromField" type="date" value="@_query.From" />
+        </div>
+
+        <div class="form-field">
+            <label for="filter-to">On or before</label>
+            <input id="filter-to" name="@EventExplorerQuery.ToField" type="date" value="@_query.To" />
+        </div>
+
+        <div class="event-filter-actions">
+            <button type="submit" class="button-primary">Narrow the list</button>
+            @if (_query.IsNarrowed)
+            {
+                <a class="button-secondary" href="@EventExplorerQuery.BasePath">Show everything</a>
+            }
+        </div>
+    </form>
+
+    @* ---- the list ------------------------------------------------------------------------------------ *@
+    @if (_events is null)
+    {
+        <p class="lede">Loading…</p>
+    }
+    else if (_events.Count == 0)
+    {
+        <p class="lede">
+            @(_query.IsNarrowed
+                ? "Nothing matches that. Widen the filter, or show everything."
+                : "Nothing has happened yet — no sign-ins, no orders, no menu changes.")
+        </p>
+    }
+    else
+    {
+        <p class="event-count">@CountSentence(_events.Count)</p>
+
+        <ol class="event-list">
+            @foreach (ExplorerEvent entry in _events)
+            {
+                <li class="event-row">
+                    <p class="event-headline">
+                        <a class="event-stream-badge event-stream-@entry.Stream"
+                           href="@OnlyThisStreamPath(entry)"
+                           title="Show only this stream">@StreamLabel(entry.Stream)</a>
+                        <span class="event-type">@DescribeEvent(entry)</span>
+                        <time class="event-when" datetime="@RestaurantClock.MachineReadable(entry.OccurredAt)">
+                            @RestaurantClock.DateAndTimeWithSeconds(entry.OccurredAt)
+                        </time>
+                    </p>
+
+                    <p class="event-meta">
+                        @if (SubjectPath(entry) is { } subjectPath)
+                        {
+                            <a href="@subjectPath">@entry.SubjectLabel</a>
+                        }
+                        else
+                        {
+                            <span>@entry.SubjectLabel</span>
+                        }
+
+                        @if (entry.SubjectDetail is { Length: > 0 } subjectDetail)
+                        {
+                            <text> · </text><span class="event-subject-detail">@subjectDetail</span>
+                        }
+
+                        @if (entry.SequenceNumber is { } sequenceNumber)
+                        {
+                            @* §6.6's per-order position. Two events on one order are only comparable by
+                               this, never by their timestamps, which can tie. *@
+                            <text> · event #@sequenceNumber</text>
+                        }
+
+                        <span class="event-separator">·</span>
+                        <a class="event-narrow" href="@_query.PathWithSubject(entry.SubjectLabel)">
+                            only this subject
+                        </a>
+                    </p>
+
+                    <p class="event-meta">
+                        @if (entry.ActorName is { Length: > 0 } actorName)
+                        {
+                            <text>by </text>
+                            <a href="@_query.PathWithActor(actorName)">@actorName</a>
+
+                            @if (entry.ActorRole is { Length: > 0 } actorRole)
+                            {
+                                <text> as @DescribeActorRole(actorRole)</text>
+                            }
+                        }
+                        else
+                        {
+                            @* security_event.actor_person_identifier is the one nullable actor column in
+                               the three tables (§8.2): NULL means the subject acted on themselves, or
+                               nobody did — a lockout, a failed sign-in. *@
+                            <span class="event-muted">
+                                no actor recorded — the subject acted on themselves, or the system did
+                            </span>
+                        }
+                    </p>
+
+                    @if (entry.NewName is { Length: > 0 } newName)
+                    {
+                        <p class="event-payload">Name set to <strong>@newName</strong></p>
+                    }
+
+                    @if (entry.NewPriceAmount is { } newPrice)
+                    {
+                        <p class="event-payload">Price set to <strong>@Money(newPrice)</strong></p>
+                    }
+                </li>
+            }
+        </ol>
+    }
+
+    <p><a href="/administration">Back to people</a></p>
+</section>
+
+@* Namespaced under .event-*, matching .admin-people, .admin-menu, .admin-sittings and .hidden-*.
+   App.razor links the static wwwroot/app.css rather than the component-scoped bundle, so component CSS
+   isolation is not active here; these live inline to avoid editing the shared stylesheet for one screen. *@
+<style>
+    .admin-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-start;
+        justify-content: space-between;
+    }
+
+    .admin-header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .event-filter {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: flex-end;
+        margin: 1.1rem 0 0;
+        padding: 0.75rem 0.85rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.5rem;
+    }
+
+    .event-filter .form-field {
+        margin: 0;
+    }
+
+    .event-streams {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.15rem 0.9rem;
+        margin: 0;
+        padding: 0.35rem 0.6rem 0.5rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.4rem;
+    }
+
+    .event-streams legend {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted-foreground, #666);
+    }
+
+    .event-stream-choice {
+        display: inline-flex;
+        gap: 0.3rem;
+        align-items: center;
+        font-size: 0.9rem;
+    }
+
+    .event-filter-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .event-count {
+        margin: 1rem 0 0;
+        font-size: 0.9rem;
+        color: var(--muted-foreground, #666);
+    }
+
+    .event-list {
+        list-style: none;
+        margin: 0.5rem 0 0;
+        padding: 0;
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .event-row {
+        padding: 0.6rem 0.75rem;
+        border: 1px solid var(--hairline, #e2e6ec);
+        border-radius: 0.5rem;
+    }
+
+    .event-headline {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem 0.6rem;
+        align-items: baseline;
+        margin: 0;
+    }
+
+    .event-stream-badge {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 700;
+        padding: 0.1rem 0.4rem;
+        border-radius: 0.25rem;
+        text-decoration: none;
+        color: #1f2937;
+        background: #e5e7eb;
+    }
+
+    .event-stream-security {
+        background: #fde8e8;
+    }
+
+    .event-stream-order {
+        background: #e0f2f1;
+    }
+
+    .event-stream-menu {
+        background: #fef3c7;
+    }
+
+    .event-type {
+        font-weight: 600;
+    }
+
+    .event-when {
+        margin-left: auto;
+        font-size: 0.8rem;
+        font-variant-numeric: tabular-nums;
+        color: var(--muted-foreground, #666);
+    }
+
+    .event-meta {
+        margin: 0.2rem 0 0;
+        font-size: 0.85rem;
+        color: var(--muted-foreground, #666);
+    }
+
+    .event-subject-detail {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .event-separator {
+        margin: 0 0.15rem;
+        color: var(--muted-foreground, #999);
+    }
+
+    .event-narrow {
+        font-size: 0.8rem;
+    }
+
+    .event-payload {
+        margin: 0.2rem 0 0;
+        font-size: 0.85rem;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .event-muted {
+        font-style: italic;
+    }
+</style>
+
+@code {
+    /// <summary>
+    /// How many events the list will draw. §11.4's rule is that administration sees everything and
+    /// narrows "only on explicit request", so this is a rendering bound rather than a filter: when it is
+    /// reached the page says so and points at the filter, instead of quietly answering a smaller
+    /// question. Larger than the hidden-records cap because these three logs are the busiest tables in
+    /// the database and a day's worth of one service can pass a hundred rows before lunch.
+    /// </summary>
+    private const int ListCap = 200;
+
+    private EventExplorerQuery _query = default!;
+    private IReadOnlyList<ExplorerEvent>? _events;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery(Name = EventExplorerQuery.StreamField)]
+    private string[]? Streams { get; set; }
+
+    [SupplyParameterFromQuery(Name = EventExplorerQuery.SubjectField)]
+    private string? Subject { get; set; }
+
+    [SupplyParameterFromQuery(Name = EventExplorerQuery.ActorField)]
+    private string? Actor { get; set; }
+
+    [SupplyParameterFromQuery(Name = EventExplorerQuery.TypeField)]
+    private string? EventTypeChoice { get; set; }
+
+    [SupplyParameterFromQuery(Name = EventExplorerQuery.FromField)]
+    private string? From { get; set; }
+
+    [SupplyParameterFromQuery(Name = EventExplorerQuery.ToField)]
+    private string? To { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _query = EventExplorerQuery.Parse(
+            Streams, Subject, Actor, EventTypeChoice, From, To, RestaurantClock);
+
+        _events = await Explorer.ListAsync(_query.Filter, ListCap, HttpContext.RequestAborted);
+    }
+
+    /// <summary>
+    /// The line above the list. It says whether the count is the whole truth: at <see cref="ListCap"/>
+    /// there may be more, and §11.4 means the page has to admit that rather than let a round number look
+    /// like an answer.
+    /// </summary>
+    private string CountSentence(int count)
+    {
+        string noun = count == 1 ? "event" : "events";
+        string scope = _query.IsNarrowed ? "matching the filter" : "in total";
+
+        return count == ListCap
+            ? $"{count} {noun} {scope} — capped at {ListCap}; narrow the filter to see past it."
+            : $"{count} {noun} {scope}.";
+    }
+
+    /// <summary>The badge link: this same view, restricted to the row's own stream.</summary>
+    private string OnlyThisStreamPath(ExplorerEvent entry) => _query.PathWithStreams(
+        entry.Stream == EventStream.Security,
+        entry.Stream == EventStream.Order,
+        entry.Stream == EventStream.Menu);
+
+    /// <summary>
+    /// Where the row's subject lives. Security and menu events name their subject directly; an order
+    /// event's subject is one guest's order, and the screen that renders an order in full is its
+    /// sitting's (§11.4), so that is where it points. A stream this build does not know about gets no
+    /// link rather than a guessed one.
+    /// </summary>
+    private static string? SubjectPath(ExplorerEvent entry) => entry.Stream switch
+    {
+        EventStream.Security => $"/administration/people/{entry.SubjectIdentifier}",
+        EventStream.Menu => $"/administration/menu/{entry.SubjectIdentifier}",
+        EventStream.Order => entry.ContextIdentifier is { } sittingIdentifier
+            ? $"/administration/sittings/{sittingIdentifier}"
+            : null,
+        _ => null,
+    };
+
+    private static string StreamLabel(string stream) => stream switch
+    {
+        EventStream.Security => "Security",
+        EventStream.Order => "Order",
+        EventStream.Menu => "Menu",
+        _ => stream,
+    };
+
+    /// <summary>
+    /// A friendly label for the row, chosen by stream. Every branch falls back to the stored string, and
+    /// so does the stream switch itself: §11.4 requires this screen to render what is actually in the
+    /// tables, and a word this build has not caught up with must appear as itself rather than as a lie or
+    /// a crash. The same rule, and mostly the same words, as ManageSitting's and HiddenRecords'.
+    /// </summary>
+    private static string DescribeEvent(ExplorerEvent entry) => entry.Stream switch
+    {
+        EventStream.Security => DescribeSecurityEventType(entry.EventType),
+        EventStream.Order => DescribeOrderEventType(entry.EventType),
+        EventStream.Menu => DescribeMenuEventType(entry.EventType),
+        _ => entry.EventType,
+    };
+
+    /// <summary>
+    /// The nineteen <c>security_event.event_type</c> values §8.2's CHECK admits (§3.4–§3.7). "TOTP" is
+    /// spelled "authenticator" here for the same reason the enrollment pages spell it that way: the
+    /// person reading this screen manages a restaurant, and the acronym is a protocol name.
+    /// </summary>
+    private static string DescribeSecurityEventType(string eventType) => eventType switch
+    {
+        "account_created" => "Account created",
+        "account_deactivated" => "Account deactivated",
+        "account_reactivated" => "Account reactivated",
+        "password_changed" => "Password changed",
+        "password_reset_by_administrator" => "Password reset by an administrator",
+        "forced_password_change_completed" => "Forced password change completed",
+        "totp_enrolled" => "Authenticator enrolled",
+        "totp_removed" => "Authenticator removed",
+        "totp_cleared_by_administrator" => "Authenticator cleared by an administrator",
+        "forced_totp_enrollment_completed" => "Forced authenticator enrollment completed",
+        "recovery_code_used" => "Recovery code used",
+        "recovery_codes_regenerated" => "Recovery codes regenerated",
+        "passkey_registered" => "Passkey registered",
+        "passkey_removed" => "Passkey removed",
+        "role_granted" => "Role granted",
+        "role_revoked" => "Role revoked",
+        "sign_in_succeeded" => "Signed in",
+        "sign_in_failed" => "Sign-in failed",
+        "account_locked_out" => "Account locked out",
+        _ => eventType,
+    };
+
+    /// <summary>The five <c>order_event.event_type</c> values, in HiddenRecords' words.</summary>
+    private static string DescribeOrderEventType(string eventType) => eventType switch
+    {
+        "guest_submission" => "Guest send",
+        "staff_edit" => "Staff edit",
+        "price_adjustment" => "Price change",
+        "fulfillment" => "Delivered",
+        "fulfillment_reversal" => "Delivery undone",
+        _ => eventType,
+    };
+
+    /// <summary>The five <c>menu_item_event.event_type</c> values (§7, §8.2).</summary>
+    private static string DescribeMenuEventType(string eventType) => eventType switch
+    {
+        "created" => "Item created",
+        "name_changed" => "Renamed",
+        "price_changed" => "Repriced",
+        "activated" => "Back on the menu",
+        "deactivated" => "Off the menu (86'd)",
+        _ => eventType,
+    };
+
+    /// <summary>
+    /// The four <c>order_event.actor_role</c> values. <c>guest</c> is a capacity rather than a stored
+    /// role (§0, §3.7) — an administrator eating lunch appears here as a guest, and that is correct.
+    /// </summary>
+    private static string DescribeActorRole(string actorRole) => actorRole switch
+    {
+        "guest" => "a guest",
+        "kitchen" => "the kitchen",
+        "counter" => "the counter",
+        "administrator" => "an administrator",
+        _ => actorRole,
+    };
+
+    private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
+}

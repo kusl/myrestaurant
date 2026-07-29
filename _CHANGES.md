@@ -1,31 +1,198 @@
-# M5 Slice 4 — hide and unhide: the guest's own history, and the only way back
+# M5 Slice 5 — the event explorer: three logs, one question
 
 Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
-and the contents drop straight over your working tree. `git status` will show exactly these 20 files as
+and the contents drop straight over your working tree. `git status` will show exactly these 15 files as
 modified/added, and **no deletions**.
 
 ```bash
-tar -xzf m5-slice4-hide-unhide.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m5-slice5-event-explorer.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
-**None.** Nothing is renamed and nothing is superseded. No migration ships, no package changes,
-`Program.cs` is untouched.
+**None.** Nothing is renamed and nothing is superseded. No migration ships, no package changes, no schema
+change.
 
-## The tree you exported was green
+## What this closes
 
-`dotnet test` reported **840 total, 0 failed, 825 passed, 15 skipped**; `run.sh --smoke` got a 200 from
-`/healthz/ready`; the container stack and the quick tunnel both came up. Nothing in here is a fix — this is
-the next slice.
+§19's M5 line reads "bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu
+management + events, **event explorer**, hide/unhide, post-close corrections". This is the emphasised
+phrase, and it was the last thing M5 owed. §11.4 states it in one clause: "Event explorer (filter
+security/order/menu events by subject, actor, type, and time)."
 
-One pre-existing warning, untouched and unrelated:
-`tests/MyRestaurant.DataAccess.Tests/Sittings/SittingRecordReadsTests.cs(354,9): warning xUnit2031` — a
-`.Where(…)` before `Assert.Single`. Both new test files avoid that shape.
+**With this, M5 is closed.** M6 is hardening: the Playwright matrix, the backup/restore drill, and CI.
 
-Two housekeeping notes, neither blocking:
+## What was actually missing
 
-**`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2".** Five appends are unmerged in
+Three append-only logs, three readers, and no way to ask a question of all three at once.
+
+`ISecurityEventLog` writes `security_event` and has never had a read side at all. `IMenuEventLog` reads
+`menu_item_event`, scoped to one item or capped to a recent-activity panel. `ISittingRecordReads` reads
+`order_event`, scoped to one sitting or one order. Each takes a subject the caller already names — correct
+for the screens they serve, useless for §11.4's question, which is the opposite shape: *what happened,
+anywhere, in this window*. Answering it by calling all three and merging in memory would mean fetching
+every event in the restaurant to render the fifty most recent, so the interleaving, the ordering and the
+cap have to happen in one statement.
+
+## New files (7)
+
+### Code — DataAccess (1)
+
+- `src/MyRestaurant.DataAccess/Events/EventExplorerReads.cs`
+  `EventStream` (three query-local discriminators), `EventTypeCatalogue` (the 29 words the filter's
+  dropdown offers, grouped), `ExplorerEvent`, `EventExplorerFilter`, and
+  `IEventExplorerReads`/`DapperEventExplorerReads` — one `UNION ALL` over the three tables, filtered,
+  ordered and capped once.
+
+### Code — WebApplication (2)
+
+- `src/MyRestaurant.WebApplication/Events/EventExplorerQuery.cs`
+  Query string ↔ filter ↔ canonical URL, immutable, with the date parsing and the reversed-range and
+  unknown-word reporting. Container-free and fully tested — the thing `HiddenRecords`' identical inline
+  logic is not.
+- `src/MyRestaurant.WebApplication/Events/EventsServiceCollectionExtensions.cs`
+  `AddRestaurantEventExplorer()`. One scoped registration.
+
+### Surface (1)
+
+- `src/MyRestaurant.WebApplication/Components/Pages/Administration/EventExplorer.razor` —
+  `/administration/events`
+
+### Tests (3)
+
+- `tests/MyRestaurant.DataAccess.Tests/Events/EventExplorerReadsTests.cs` (21 facts — 19 Testcontainers,
+  2 pure)
+- `tests/MyRestaurant.WebApplication.Tests/Events/EventExplorerQueryTests.cs` (25 facts, no container)
+- `tests/MyRestaurant.WebApplication.Tests/Events/EventsWiringTests.cs` (3 facts, no container)
+
+### Docs (1, append-then-keep)
+
+`docs/BUILD_PROGRESS.md` is large and is not regenerated. The new section ships as
+`docs/_append/BUILD_PROGRESS-m5-slice-5.md`, matching the sections already in that folder.
+
+## Edited (8)
+
+- `src/MyRestaurant.WebApplication/Program.cs`
+  One `using` and one `AddRestaurantEventExplorer()`. **The first startup edit since M4 Slice 1** — see
+  "Why Program.cs was edited this time" below.
+- `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor`
+- `…/AdministrationTables.razor`
+- `…/AdministrationMenu.razor`
+- `…/AdministrationSittings.razor`
+- `…/HiddenRecords.razor`
+  One `<a>` each: an **Events** link in the header actions. Nothing else changes in any of the five.
+- `tests/MyRestaurant.DataAccess.Tests/Orders/OrderTestWorld.cs`
+  `AddSecurityEventAsync` and `AddMenuItemEventAsync`, plus their two statements. Same shape as the
+  `AddVisibilityEventAsync` the last slice added, and for the same reason.
+- `_CHANGES.md` (this file)
+
+No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, or ADR edit: this realizes behaviour §11.4
+already specifies, in the words it already uses.
+
+## Seven decisions worth knowing before you read the diff
+
+**The security branch's `LEFT JOIN` is the load-bearing line.**
+`security_event.actor_person_identifier` is the only nullable actor column in the three tables (§8.2: NULL
+means the subject acted on themselves, or the system did). An `INNER` join there would compile, run,
+return rows, and silently hide every lockout and every failed sign-in from the one screen an administrator
+opens to look for them. It does not throw and it does not look wrong.
+`Security_WithNoActor_KeepsTheRowAndReportsNoActor` is the test that notices.
+
+**The type filter is exact, and that is only sound because the three vocabularies do not overlap.**
+`created` is the menu's word; `account_created` is security's, and contains it. A substring match would
+answer "when was this item created" with a list of accounts. One flat `event_type = @EventType` across the
+union works because no word appears in two streams — a property of the schema rather than a coincidence,
+so two facts assert it directly, including pinning the security list to `SecurityEventType.All`.
+
+**Three streams, not four.** §6.8's `order_visibility_event` is deliberately absent. §11.4 names security,
+order and menu, and gives visibility its own screen — the hidden-records view, where its log sits beside
+the order it is about and next to the Unhide button that is its only counterpart.
+
+**Every column is aliased in every branch**, which `DapperSittingRecordReads`' five-way union deliberately
+does not do. PostgreSQL takes the names from the first branch and ignores the rest, so the aliases below
+the first are documentation — and with sixteen columns from three unrelated tables, documentation is
+exactly what stops a future edit inserting a column into one branch and shifting five others.
+
+**The stream flags sit inside the branches; the other four bounds sit outside.** A switched-off stream is
+not scanned at all, and the rest of the WHERE clause exists once rather than three times — PostgreSQL
+pushes those qualifiers down through a `UNION ALL` on its own, and three copies is how one copy ends up
+fixed and the other two wrong.
+
+**The page is read-only, and that is a constraint rather than a stage.** Nothing on
+`/administration/events` changes anything. Every row links to the screen that owns the thing it is about,
+and that screen has the buttons. An audit log with edit affordances on it is a different and much worse
+object.
+
+**Nothing is ever refused.** An unreadable date, a reversed range, a misspelled stream name, a type this
+build does not know: each is ignored or passed straight through, and each adds a plain sentence the page
+prints. A filter returning a wider answer is still a filter; a filter that throws is a blank page in front
+of somebody trying to find out what happened.
+
+## Why `Program.cs` was edited this time
+
+The four existing extensions each resisted being split for a real reason: a host that wired ordering
+without the reminder loop would alert and never remind; one that wired ordering without the menu would
+have a staging area that could list nothing. Both are silent half-failures, which is why M5 Slices 2 and 4
+both went out of their way to avoid a startup edit.
+
+The explorer is not like that. It reads identity's audit log, ordering's event log and the menu's, and
+belongs to none of them — putting it in `AddRestaurantOrders()` would make the ordering extension the
+registrar of a reader of `security_event`. And its failure mode if omitted is not silent: one
+administration route throws on resolve, loudly, in front of the person who asked for it.
+`EventsWiringTests` asserts that its only dependency is the connection factory, because a registration
+that grew a clock, an identifier factory, a broadcaster or a metric would mean the explorer had acquired a
+write path or a notification, and it must never have either.
+
+## Where to look if the build breaks
+
+**`EventExplorer.razor`**, as always. Three things in it have no exact precedent in the tree:
+
+1. `[SupplyParameterFromQuery(Name = …)] private string[]? Streams { get; set; }` — the first array-valued
+   query parameter in the project. Repeated `?stream=a&stream=b` binds to it; the attribute's `Name` is a
+   `const` on `EventExplorerQuery`, so the form field and the parser cannot drift.
+2. `<fieldset>`/`<legend>` and `<optgroup>` — ordinary HTML, but the first of each here.
+3. `class="event-stream-badge event-stream-@entry.Stream"` — an implicit expression finishing an attribute
+   value. Common Razor, first use in this tree.
+
+Deliberately avoided: no locals are declared directly inside a markup `@foreach`, matching `HiddenRecords`;
+and every `<text>` block sits inside an `@if` body (code context), never in markup context — the one
+separator that needed to live in markup is a `<span class="event-separator">`, mirroring
+`HiddenRecords`' `.hidden-record-separator`.
+
+Then `EventExplorerReads.cs`. Two things I could not check without a compiler, both deliberate:
+
+1. `WHERE @IncludeSecurityEvents::boolean` as an entire WHERE clause — a bare boolean parameter, cast for
+   the same belt-and-braces reason `DapperSecurityEventLog` casts `@ActorPersonIdentifier::uuid`.
+2. `concat_ws(' ', subject.username::text, subject.display_name)` — first use of `concat_ws` in the tree.
+   It returns `text`, skips NULLs, and yields `''` (not NULL) when every argument is NULL, which is the
+   behaviour the actorless-security-event case depends on. `||` would have been wrong twice over: it
+   annihilates on NULL, so a person with no display name would be unfindable by username.
+
+`ESCAPE '\'` inside a C# raw interpolated string is one literal backslash on both sides — raw strings do
+not process escapes, and `standard_conforming_strings` makes the SQL string a single backslash. Same as
+`DapperOrderHistoryReads`, whose escaping this copies character for character so two search boxes on two
+administration screens cannot behave differently.
+
+## Build/test checklist for this slice
+
+1. `dotnet restore` — no new packages, no migration, no schema change.
+2. `dotnet build` — the Razor page is the likely compiler-catch home, as always.
+3. `dotnet test` — expect **+49 facts** (21 + 25 + 3). Taking the last slice's projected 877 as the
+   baseline: 926 total, 911 passing, 15 still skipped with a container engine present. Without one, the
+   19 container-dependent facts here skip as well.
+4. `bash run.sh --smoke` — `Program.cs` changed, so this one is not a formality this time.
+5. `bash run.sh --containers-only`, then as an administrator:
+   - `/administration/events` — three streams interleaved, newest first.
+   - Untick Orders and Menu — only security events; the URL says `?stream=security`.
+   - Type a username into Subject; then the same word into Actor — different answers.
+   - Pick a type from each of the three optgroups.
+   - Set a date range, then reverse it — the range is dropped and the page says why.
+   - Click a stream badge, then "only this subject" — the other bounds survive.
+   - Follow a security row to its person, an order row to its sitting, a menu row to its item.
+
+## Housekeeping carried over
+
+`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Six appends are now unmerged in
 `docs/_append/`, including this slice's:
 
 ```bash
@@ -35,185 +202,11 @@ cat docs/_append/BUILD_PROGRESS-m4-slice-4.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m5-slice-1.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m5-slice-3.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m5-slice-4.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m5-slice-5.md >> docs/BUILD_PROGRESS.md
 ```
-
-**`/account/enroll-totp` no longer 500s.** The route was the open blocker in the previous session's notes
-and the log you exported shows it clean — nothing in this slice touched it.
-
-## What this closes
-
-§19's M5 line reads "bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu
-management + events, event explorer, **hide/unhide**, post-close corrections". This is the emphasised word,
-both halves: §11.1's guest history with its per-order Hide, and §11.4's hidden-records view with the
-per-record Unhide that is the only undo for it.
-
-M4 Slice 2 recorded the deferral in as many words: "§11.1's per-order **Hide** control and the guest's own
-**history** of past orders need `order_visibility_event` writes and a closed-sitting query that reads
-across sittings; both are §6.8 work and belong with the §11.4 hidden-records view that is their only
-unhide path (M5)." `order_visibility_event` and the `order_visibility_current` view have been in
-`0001_initial_schema.sql` since M1 with no writer and no reader. They have both now.
-
-## New files (9)
-
-### Code — DataAccess (2)
-
-- `src/MyRestaurant.DataAccess/Orders/OrderVisibility.cs`
-  `HideOrderOutcome`, `UnhideOrderOutcome`, `HideOrderResult`, `UnhideOrderResult`,
-  `IOrderVisibility`/`DapperOrderVisibility` — the owner hide and the administrator unhide, one
-  transaction each, `FOR UPDATE OF guest_order` and nothing else.
-- `src/MyRestaurant.DataAccess/Orders/OrderHistoryReads.cs`
-  `PersonOrderHistoryEntry`, `HiddenOrderFilter`, `HiddenOrderSummary`, `OrderVisibilityEntry`,
-  `IOrderHistoryReads`/`DapperOrderHistoryReads` — the guest's own visible history (two queries), the
-  filtered hidden-records list (one), and the visibility log.
-
-### Code — WebApplication (1)
-
-- `src/MyRestaurant.WebApplication/Orders/OrderVisibilityWorkflow.cs`
-  `IOrderVisibilityWorkflow`/`OrderVisibilityWorkflow` — the post-commit shell that publishes §9's
-  `VisibilityChanged`. No metric: §12's meter list is closed and correctly contains no visibility counter.
-
-### Surfaces (2)
-
-- `src/MyRestaurant.WebApplication/Components/Pages/Table/TableHistory.razor` — `/table/history`
-- `src/MyRestaurant.WebApplication/Components/Pages/Administration/HiddenRecords.razor` —
-  `/administration/hidden-records`
-
-### Tests (3)
-
-- `tests/MyRestaurant.DataAccess.Tests/Orders/OrderVisibilityTests.cs` (Testcontainers, 11 facts)
-- `tests/MyRestaurant.DataAccess.Tests/Orders/OrderHistoryReadsTests.cs` (Testcontainers, 16 facts)
-- `tests/MyRestaurant.WebApplication.Tests/Orders/OrderVisibilityWorkflowTests.cs` (10 facts, no container)
-
-### Docs (1, append-then-keep)
-
-`docs/BUILD_PROGRESS.md` is large and is not regenerated. The new section ships as
-`docs/_append/BUILD_PROGRESS-m5-slice-4.md`, matching the sections already in that folder.
-
-## Edited (11)
-
-- `src/MyRestaurant.DataAccess/Orders/OrderEventVocabulary.cs`
-  Two constants — `hidden` and `unhidden`, §8.2's second closed vocabulary. Nothing else moves.
-- `src/MyRestaurant.DataAccess/Sittings/SittingRecordReads.cs`
-  `GetOrderRecordAsync(guestOrderIdentifier)`, and the three statements refactored into templates
-  parameterised by one `const` WHERE fragment. `ListOrderRecordsForSittingAsync` answers exactly as it did;
-  its SQL is character-for-character the same once the fragment is substituted.
-- `src/MyRestaurant.WebApplication/Time/RestaurantTime.cs`
-  `StartOfDay(DateOnly)` and `StartOfNextDay(DateOnly)`, both UTC-normalised. Nothing existing changes.
-- `src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs`
-  Three registrations and one doc-comment bullet. Chosen over a new `AddRestaurantVisibility()` so
-  `Program.cs` needs no edit — this extension has owned §6 since M4.
-- `src/MyRestaurant.WebApplication/Components/Pages/Home.razor`
-  A history link in the area list, and the lede's stale "Menu management … arrives next" corrected —
-  menu management landed in M5 Slice 2.
-- `src/MyRestaurant.WebApplication/Components/Pages/Table/TableArea.razor`
-  A history link in the footer and in the "not seated" branch, which until now offered somebody with no
-  open table nothing to do.
-- `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor`
-  One `<a>`: the settled view already said the order "stays on your history" and can now point at it.
-  Nothing else in this file changes.
-- `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor`
-- `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationTables.razor`
-- `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationMenu.razor`
-- `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationSittings.razor`
-  One `<a>` each: a Hidden records link in the header actions. Nothing else changes in any of the four.
-- `tests/MyRestaurant.DataAccess.Tests/Orders/OrderTestWorld.cs`
-  `AddVisibilityEventAsync` plus its statement.
-- `tests/MyRestaurant.WebApplication.Tests/Orders/OrdersWiringTests.cs`
-  Two facts and three doc-comment sentences.
-
-No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, or ADR edit: this realizes behaviour §6.8,
-§11.1 and §11.4 already specify, in the words they already use.
-
-## Six decisions worth knowing before you read the diff
-
-**Hiding is enforced in SQL, once.** §6.8's guarantee is that a hidden order is gone from "the owner's own
-views", and a guarantee that depends on every future page remembering a `Where` clause is not one. Both
-person-scoped queries carry `AND NOT COALESCE(visibility.is_hidden, false)`. The `COALESCE` is
-load-bearing: "never had a visibility event" and "explicitly unhidden" have to read the same, because §6.8
-defines the current flag as the latest event and no events means not hidden.
-
-**The lock is on `guest_order` and nothing else.** Both writes take `FOR UPDATE OF guest_order` before
-reading the current flag, so two taps on Hide cannot both see "not hidden" and both append. They
-deliberately do not lock `table_sitting`: §6.6 locks the sitting first and the order second, and a
-transaction that only ever waits on the order can never be the other half of a deadlock with it. The
-sitting's `closed_at` is read unlocked in the same statement, which is sound because a close is one-way —
-§5.3 stamps it and nothing clears it.
-
-**A visibility event is not an order event, so it does not go through `IOrderMutations`.** No
-`sequence_number`, no operations, no line, no total, nothing in §8.5's fold. Routing it through the §6.6
-transaction would take a `FOR SHARE` on a sitting that is closed by definition and imply, wrongly, that a
-bill could move because somebody tidied their history.
-
-**The confirmation is a step, not a `confirm()`.** §6.8 requires it to state "plainly that this cannot be
-undone from the guest's account". A browser dialog cannot be read, cannot be styled, and does not exist
-without JavaScript, while this page works with none. Tapping Hide navigates to `?hide={order}` and the
-warning renders inline above the row with two things to do next: confirm, or go back.
-
-**Expansion in the hidden-records view is one row at a time, by URL.** §11.4 wants the complete record
-"never projected or truncated", and a complete record is three queries. A hundred of them to draw a list
-would be three hundred round trips for a page somebody is skimming. `?record={order}` *is* §6.8's
-"expandable": the list is always complete, and the row an administrator actually opened is fetched in full.
-
-**The hidden list is not filtered to closed sittings.** `HideAsync` refuses an open one, so such a row
-cannot arise from the application — and if one ever does, this is the one screen that must show it rather
-than tidy the anomaly away (§11.4). Hence a nullable `ClosedAt` on the summary and markup that says "this
-sitting is still open" in bold.
 
 ## The one-line why
 
-A guest who wants last Tuesday off their phone should be able to take it off their phone without anybody's
-permission — and because the restaurant's record is not theirs to edit, the honest way to do that is a row
-saying they hid it, which a manager can answer with a row saying they put it back.
-
-## Where to look if the build breaks
-
-**`HiddenRecords.razor`**, and specifically its two `<text>` blocks and the `class="hidden-record @(…)"`
-ternary. Both idioms already exist in the tree — `<text>` in nineteen places, the nested-quote class
-ternary in `CounterSitting.razor` and `KitchenBoard.razor` — so neither is new ground, but this is the
-first file to use them in the same markup. It deliberately declares no locals inside a markup `@foreach`:
-nothing else in the tree does that, so `IsExpanded(summary)` and `CountSentence(count)` are methods.
-
-Then `SittingRecordReads.cs`. `OrdersTemplate`, `EventsTemplate` and `OperationsTemplate` are
-`private static string` methods returning raw interpolated strings, consumed by six `static readonly`
-fields declared after them; both scope fragments are `const`, so there is no initialisation-order hazard.
-`ListOrderRecordsForSittingAsync` is now an expression-bodied `async` method
-(`=> await ReadRecordsAsync(…).ConfigureAwait(false)`) — legal, and the one shape here with no precedent
-in the tree.
-
-Three things I could not check without a compiler, each deliberate:
-
-1. `form[OrderField]` is read out to a `string?` local before `Guid.TryParse` in both new surfaces.
-   `StringValues` converts implicitly to `string?` and `Guid.TryParse` has both a `string?` and a
-   `ReadOnlySpan<char>` overload; being explicit keeps overload resolution off that question entirely.
-2. `= ANY(@GuestOrderIdentifiers)` binds a `Guid[]` as one `uuid[]` parameter. `DapperMenuDirectory`
-   already does this, so the shape is proven — but this is its first use in `Orders`.
-3. `ESCAPE '\'` inside a C# raw string literal is one literal backslash on both sides: raw strings do not
-   process escapes, and `standard_conforming_strings` (on by default since PostgreSQL 9.1) makes the SQL
-   string a single backslash rather than the start of an escape sequence.
-
-Everything else is ordinary C# and SQL in shapes the surrounding files already use — the readers are
-`DapperCounterBoardReads`'s aliased-column, internal-row-type pattern plus a
-`CROSS JOIN LATERAL … LIMIT 1` for the latest visibility event, and both surfaces are the static-SSR
-post/redirect/get shape `ManageTable` established and `AdministrationSittings` repeated, `ReadFormAsync`
-note included.
-
-## Build/test checklist for this slice
-
-1. `dotnet restore` — **no new packages**, no migration, no schema change, no `Program.cs` edit.
-2. `dotnet build` — the two Razor pages are the likely compiler-catch home, as always.
-3. `dotnet test` — expect **+37 facts** (11 + 16 + 10, plus 2 wiring, less nothing removed): 877 total,
-   825 + 37 passing, 15 still skipped.
-4. `bash run.sh --smoke` — should be unaffected; nothing touched startup, config, or migrations.
-5. `bash run.sh --containers-only`, then:
-   - `/table/history` as a guest with a settled meal — the row, its lines, its total.
-   - Hide it: the confirmation step, then the row gone and the flash message.
-   - `/administration/hidden-records` — the row, the four filters, "Open the complete record", the
-     visibility log, the event log, then Unhide.
-   - `/table/history` again — the row is back.
-
-## What is left in M5
-
-The cross-cutting **event explorer** (§11.4: security, order, and menu events filtered by subject, actor,
-type, and time). All three engines exist — `ISittingRecordReads`, `IMenuEventLog`, `ISecurityEventLog` —
-and what is missing is one screen over them with a shared filter. After that M5 is closed and M6 is
-hardening: the Playwright matrix, the restore drill, and CI.
+Every screen in this system answers a question about one account, one table, one sitting or one item —
+and the question somebody actually asks at nine in the evening is "what just happened", which until now
+nothing could answer.

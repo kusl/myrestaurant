@@ -85,6 +85,24 @@ internal sealed class OrderTestWorld
             @ActorPersonIdentifier, @EventType, @OccurredAt);
         """;
 
+    private const string InsertSecurityEventSql = """
+        INSERT INTO security_event (
+            security_event_identifier, subject_person_identifier, actor_person_identifier,
+            event_type, occurred_at)
+        VALUES (
+            @SecurityEventIdentifier, @SubjectPersonIdentifier, @ActorPersonIdentifier::uuid,
+            @EventType, @OccurredAt);
+        """;
+
+    private const string InsertMenuItemEventSql = """
+        INSERT INTO menu_item_event (
+            menu_item_event_identifier, menu_item_identifier, actor_person_identifier,
+            event_type, new_name, new_price_amount, occurred_at)
+        VALUES (
+            @MenuItemEventIdentifier, @MenuItemIdentifier, @ActorPersonIdentifier,
+            @EventType, @NewName::text, @NewPriceAmount::numeric(10,2), @OccurredAt);
+        """;
+
     private const string UpdateMenuItemSql = """
         UPDATE menu_item
         SET price_amount = @PriceAmount,
@@ -256,6 +274,77 @@ internal sealed class OrderTestWorld
                 OccurredAt = _clock.UtcNow,
             },
             cancellationToken);
+
+    /// <summary>
+    /// Appends a <c>security_event</c> row directly (§8.2), stamped with the current
+    /// <see cref="FixedClock"/> instant and returning its identifier.
+    ///
+    /// <para>Plain SQL rather than <c>DapperSecurityEventLog</c>, for the reason this whole class prefers
+    /// SQL: the reader under test in <c>EventExplorerReadsTests</c> is about which rows it selects and how
+    /// it joins them, and arranging through the writer would make a bug there look like a bug here. It
+    /// also mints the identifier locally so a test can assert on the exact row it wrote — the writer keeps
+    /// its identifier to itself.</para>
+    ///
+    /// <para><paramref name="actorPersonIdentifier"/> may be <c>null</c>:
+    /// <c>security_event.actor_person_identifier</c> is the one nullable actor column in the three event
+    /// tables (§8.2), and the explorer has to render that case rather than drop the row.</para>
+    /// </summary>
+    public async Task<Guid> AddSecurityEventAsync(
+        Guid subjectPersonIdentifier,
+        Guid? actorPersonIdentifier,
+        string eventType,
+        CancellationToken cancellationToken)
+    {
+        Guid securityEventIdentifier = _identifierFactory.Create();
+        await ExecuteAsync(
+            InsertSecurityEventSql,
+            new
+            {
+                SecurityEventIdentifier = securityEventIdentifier,
+                SubjectPersonIdentifier = subjectPersonIdentifier,
+                ActorPersonIdentifier = actorPersonIdentifier,
+                EventType = eventType,
+                OccurredAt = _clock.UtcNow,
+            },
+            cancellationToken);
+
+        return securityEventIdentifier;
+    }
+
+    /// <summary>
+    /// Appends a <c>menu_item_event</c> row directly (§7, §8.2), on the same terms.
+    ///
+    /// <para>The two payload columns are passed through rather than derived from the type, because §8.2's
+    /// paired CHECKs already enforce which types carry which — <c>created</c> both, <c>name_changed</c>
+    /// the name, <c>price_changed</c> the price, the two availability types neither — and a helper that
+    /// second-guessed them would make it impossible to write the row that proves the reader carries a
+    /// payload through untouched.</para>
+    /// </summary>
+    public async Task<Guid> AddMenuItemEventAsync(
+        Guid menuItemIdentifier,
+        Guid actorPersonIdentifier,
+        string eventType,
+        string? newName,
+        decimal? newPriceAmount,
+        CancellationToken cancellationToken)
+    {
+        Guid menuItemEventIdentifier = _identifierFactory.Create();
+        await ExecuteAsync(
+            InsertMenuItemEventSql,
+            new
+            {
+                MenuItemEventIdentifier = menuItemEventIdentifier,
+                MenuItemIdentifier = menuItemIdentifier,
+                ActorPersonIdentifier = actorPersonIdentifier,
+                EventType = eventType,
+                NewName = newName,
+                NewPriceAmount = newPriceAmount,
+                OccurredAt = _clock.UtcNow,
+            },
+            cancellationToken);
+
+        return menuItemEventIdentifier;
+    }
 
     /// <summary>A raw count, for the "nothing was written" assertions §6.5.9 lives on.</summary>
     public async Task<int> CountAsync(string sql, CancellationToken cancellationToken)

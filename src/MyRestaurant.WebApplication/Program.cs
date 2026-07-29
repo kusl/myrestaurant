@@ -8,6 +8,7 @@ using MyRestaurant.Domain.Time;
 using MyRestaurant.WebApplication.Components;
 using MyRestaurant.WebApplication.Configuration;
 using MyRestaurant.WebApplication.Displays;
+using MyRestaurant.WebApplication.Events;
 using MyRestaurant.WebApplication.Identity;
 using MyRestaurant.WebApplication.LiveUpdates;
 using MyRestaurant.WebApplication.Observability;
@@ -140,6 +141,13 @@ builder.Services.AddRestaurantDisplays();
 // — surfaces call that, never IOrderMutations directly, or a send would never reach the kitchen. Last of
 // the four groups because an order hangs off a sitting, which AddRestaurantTables registered above.
 builder.Services.AddRestaurantOrders();
+
+// The §11.4 event explorer: one reader across security_event, order_event and menu_item_event. Its own
+// call rather than a line inside one of the four above, because it belongs to none of them — the orders
+// extension registering a reader of identity's audit log would be a quiet mis-filing, and unlike the
+// reminder loop or the menu directory, leaving this out fails loudly on one administration route rather
+// than half-working everywhere. Last, because it reads what all of them write.
+builder.Services.AddRestaurantEventExplorer();
 
 // The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
 // so honour its X-Forwarded-* headers. KnownIPNetworks/KnownProxies are cleared deliberately — safe
