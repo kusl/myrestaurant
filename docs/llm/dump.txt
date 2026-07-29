@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-28T20:54:45-04:00
+  Generated at   : 2026-07-29T03:41:31-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : d1c35667b3955efca9d959ceefb86d6a24dc6e6c
-  Commit (short) : d1c3566
-  Commit date    : 2026-07-28 20:54:09 -0400
-  Commit message : add claude changes
+  Commit (full)  : 73114256758e2b0c5c0ca35dc683a3681a4e8225
+  Commit (short) : 7311425
+  Commit date    : 2026-07-29 03:41:15 -0400
+  Commit message : append build progress
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 282
+  Files included : 287
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,11 +533,16 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (282 included files)
+# FILE TREE  (287 included files)
 ################################################################################
 .
 ├── .editorconfig
 ├── .env.example
+├── .github
+│   ├── dependabot.yml
+│   └── workflows
+│       ├── ci.yml
+│       └── release.yml
 ├── .gitignore
 ├── CONTRIBUTING.md
 ├── Caddyfile
@@ -563,7 +568,8 @@ cat "$OUTPUT_FILE"
 │   │   ├── BUILD_PROGRESS-m5-slice-2.md
 │   │   ├── BUILD_PROGRESS-m5-slice-3.md
 │   │   ├── BUILD_PROGRESS-m5-slice-4.md
-│   │   └── BUILD_PROGRESS-m5-slice-5.md
+│   │   ├── BUILD_PROGRESS-m5-slice-5.md
+│   │   └── BUILD_PROGRESS-m6-slice-1.md
 │   └── adr
 │       ├── 0001-single-application-with-areas.md
 │       ├── 0002-relational-append-only-event-logs.md
@@ -581,6 +587,7 @@ cat "$OUTPUT_FILE"
 ├── run.sh
 ├── scripts
 │   ├── backup.sh
+│   ├── ci_local.sh
 │   ├── quick_tunnel.sh
 │   └── restore.sh
 ├── src
@@ -1030,6 +1037,450 @@ OTEL_SERVICE_NAME=myrestaurant
 # CLOUDFLARE_TUNNEL_TOKEN=
 
 ################################################################################
+# FILE: .github/dependabot.yml
+################################################################################
+
+--- METADATA ---
+  File name:             dependabot.yml
+  Relative path:         .github/dependabot.yml
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/.github/dependabot.yml
+  Size:                  1.4 KiB (1422 bytes)
+  Last modified:         2026-07-28 21:08:24.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 26974662
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               050bd58f3bba7ac491107c287cc9797ef21d56af240ad38afc0a525c268ce152
+  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
+
+--- CONTENT ---
+# Dependency updates.
+#
+# Two ecosystems, both weekly, both opening pull requests that CI then judges — which is the point:
+# a bump is only interesting if the suite still passes with it, and until this slice there was
+# nothing to ask.
+#
+# NuGet reads Directory.Packages.props (central package management, REQUIREMENTS §2), so every bump
+# lands in the one file that pins versions. Dependabot never proposes a prerelease for a dependency
+# that is currently on a stable version, which is exactly the project's rule (no prerelease
+# packages) without needing to say so.
+
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    # Grouped so a coordinated family arrives as one pull request rather than six that only build
+    # together. These four move in lockstep by design.
+    groups:
+      opentelemetry:
+        patterns:
+          - "OpenTelemetry*"
+      xunit:
+        patterns:
+          - "xunit*"
+      npgsql:
+        patterns:
+          - "Npgsql"
+          - "Npgsql.*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+
+################################################################################
+# FILE: .github/workflows/ci.yml
+################################################################################
+
+--- METADATA ---
+  File name:             ci.yml
+  Relative path:         .github/workflows/ci.yml
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/.github/workflows/ci.yml
+  Size:                  9.8 KiB (10048 bytes)
+  Last modified:         2026-07-28 21:07:59.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 26974664
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               effb2f8d9ddabc251c7002c0ab3193bb6d5a97f9ab8b5116bd705f12dbd668e6
+  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
+
+--- CONTENT ---
+# Continuous integration (TECHNICAL_SPECIFICATION §16.4).
+#
+# Three gates. None of them can be satisfied by a tree that merely looks right:
+#
+#   shell-scripts   Every tracked *.sh parses (`bash -n`) and passes shellcheck. This is the
+#                   project's own pre-delivery discipline, enforced instead of remembered.
+#
+#   build-and-test  Restore, a Release build with warnings escalated to errors, then the whole
+#                   xUnit suite. The data-access tests start real PostgreSQL 17 containers through
+#                   Testcontainers; a GitHub runner has a Docker socket, so those tests RUN here
+#                   rather than skipping the way they do on a machine with no container engine.
+#
+#   boot-smoke      The production Containerfile is built and the resulting image is booted against
+#                   a real PostgreSQL, and /healthz/ready must answer 200. This is the only gate
+#                   that proves DbUp migrations apply and the composition root resolves — a class of
+#                   failure no unit test sees, because it happens exactly once, at startup, and
+#                   presents as a 500 on some route hours later.
+#
+# The workflow is also callable (`workflow_call`) so the release pipeline runs precisely these
+# gates before it publishes an image, rather than a copy of them that can drift.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A second push to the same ref makes the first answer irrelevant, so cancel it. Keyed on the ref
+# rather than the workflow so a tag build and a branch build never cancel each other.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  # -----------------------------------------------------------------------------------------------
+  # 1. Shell scripts. Cheapest gate, so it runs alongside everything else and fails in ~30 seconds.
+  # -----------------------------------------------------------------------------------------------
+  shell-scripts:
+    name: shell scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: check out
+        uses: actions/checkout@v7
+
+      - name: parse every tracked script
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(git ls-files '*.sh')
+          printf 'checking %d script(s)\n' "${#scripts[@]}"
+          for script in "${scripts[@]}"; do
+              printf '  bash -n %s\n' "$script"
+              bash -n "$script"
+          done
+
+      - name: install shellcheck
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends shellcheck
+          shellcheck --version
+
+      # Blocking at `warning`. Every script in the tree is clean at `style` today, but the gate sits
+      # one notch lower on purpose: a shellcheck upgrade that adds a new style check would otherwise
+      # turn a build red on a day nobody touched the repository, and that is how people learn to
+      # ignore a red build. The stricter pass runs below, advisory only.
+      - name: shellcheck (blocking, severity=warning)
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(git ls-files '*.sh')
+          shellcheck --severity=warning --color=always "${scripts[@]}"
+
+      - name: shellcheck (advisory, severity=style)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(git ls-files '*.sh')
+          shellcheck --severity=style --color=always "${scripts[@]}"
+
+  # -----------------------------------------------------------------------------------------------
+  # 2. Build and the full test suite, with warnings as errors.
+  # -----------------------------------------------------------------------------------------------
+  build-and-test:
+    name: build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: check out
+        uses: actions/checkout@v7
+
+      # 10.0.x rather than global.json's exact pin: global.json says 10.0.100 with
+      # rollForward=latestMinor, so any 10.0 SDK satisfies it, and asking for an exact patch that
+      # has since been delisted is a needless way to fail.
+      - name: set up the .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # There are no packages.lock.json files, so setup-dotnet's own cache input cannot be used;
+      # key the global-packages folder on the only files that can change a restore graph.
+      - name: cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json', '**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: dotnet --info
+        run: dotnet --info
+
+      - name: restore
+        run: dotnet restore MyRestaurant.slnx
+
+      # ContinuousIntegrationBuild=true flips TreatWarningsAsErrors in Directory.Build.props (and
+      # makes the build deterministic). A plain `dotnet build` on a developer's clone stays lenient.
+      - name: build (Release, warnings as errors)
+        run: |
+          dotnet build MyRestaurant.slnx \
+              --configuration Release \
+              --no-restore \
+              -p:ContinuousIntegrationBuild=true
+
+      # Testcontainers finds /var/run/docker.sock on the runner, so the ~190 data-access integration
+      # facts execute here. The 15 Playwright placeholders still skip until the M6 harness lands.
+      - name: test
+        run: |
+          dotnet test MyRestaurant.slnx \
+              --configuration Release \
+              --no-build \
+              -p:ContinuousIntegrationBuild=true \
+              --logger "trx" \
+              --logger "console;verbosity=normal" \
+              --results-directory "${{ github.workspace }}/TestResults"
+
+      - name: upload test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: TestResults/**/*.trx
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Advisory. A published advisory against a package we already depend on is real news, but it
+      # arrives without a commit, so it reports rather than blocks (see Directory.Build.props).
+      - name: vulnerable package audit (advisory)
+        continue-on-error: true
+        run: dotnet list MyRestaurant.slnx package --vulnerable --include-transitive
+
+  # -----------------------------------------------------------------------------------------------
+  # 3. Boot the actual production image against an actual PostgreSQL.
+  # -----------------------------------------------------------------------------------------------
+  boot-smoke:
+    name: boot smoke (container image)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # compose.yaml is deliberately not used here: its data-protection volume carries Podman's ':U'
+    # suffix (ADR-0004 — rootless Podman is canonical), which Docker Compose rejects outright. A
+    # service container plus one `docker run` is the same topology with none of that argument.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: myrestaurant
+          POSTGRES_PASSWORD: myrestaurant
+          POSTGRES_DB: myrestaurant
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U myrestaurant -d myrestaurant"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: check out
+        uses: actions/checkout@v7
+
+      - name: build the runtime image
+        run: docker build --file Containerfile --tag myrestaurant_web:ci .
+
+      # --network host so the container reaches the service database on the runner's published
+      # 127.0.0.1:5432 and publishes its own 8080 back to the runner for the probe below.
+      - name: start it against the service database
+        run: |
+          docker run --detach --name myrestaurant_web_ci --network host \
+              --env RESTAURANT_NAME="CI Restaurant" \
+              --env RESTAURANT_PUBLIC_ORIGIN="https://localhost:8443" \
+              --env RESTAURANT_TIME_ZONE="America/New_York" \
+              --env RESTAURANT_CLOCK_FORMAT="12-hour" \
+              --env RESTAURANT_CURRENCY_CODE="USD" \
+              --env RESTAURANT_DATABASE_CONNECTION_STRING="Host=127.0.0.1;Port=5432;Database=myrestaurant;Username=myrestaurant;Password=myrestaurant" \
+              --env DATA_PROTECTION_KEYS_DIRECTORY="/var/lib/myrestaurant/dataprotection" \
+              myrestaurant_web:ci
+
+      - name: wait for /healthz/ready
+        run: |
+          set -euo pipefail
+          deadline=$(( SECONDS + 180 ))
+          while (( SECONDS < deadline )); do
+              if ! docker inspect --format '{{.State.Running}}' myrestaurant_web_ci | grep --quiet true; then
+                  echo "the web container exited before it became ready" >&2
+                  exit 1
+              fi
+              if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/healthz/ready; then
+                  echo
+                  echo "ready: config bound, migrations applied, database reachable."
+                  curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/healthz/live
+                  echo
+                  exit 0
+              fi
+              sleep 3
+          done
+          echo "/healthz/ready did not answer 200 within 180s" >&2
+          exit 1
+
+      - name: container logs
+        if: ${{ failure() }}
+        run: docker logs myrestaurant_web_ci
+
+      - name: stop the container
+        if: ${{ always() }}
+        run: docker rm --force myrestaurant_web_ci || true
+
+################################################################################
+# FILE: .github/workflows/release.yml
+################################################################################
+
+--- METADATA ---
+  File name:             release.yml
+  Relative path:         .github/workflows/release.yml
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/.github/workflows/release.yml
+  Size:                  3.1 KiB (3157 bytes)
+  Last modified:         2026-07-28 21:08:15.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 26974665
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               b5c89ab20d7a3cf35d29a5c5a909251306535e67c60af61857510227642d5483
+  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
+
+--- CONTENT ---
+# Publish the container image on a tag (TECHNICAL_SPECIFICATION §16.4: "publish image on tag").
+#
+# The gates are not re-declared here. `verify` calls .github/workflows/ci.yml, so a release runs the
+# same shell lint, the same strict build, the same test suite and the same boot smoke that every
+# push runs — a second copy of them would be a second copy to keep correct.
+#
+# Tagging:
+#     git tag --annotate v0.6.0 --message 'M6 slice 1'
+#     git push origin v0.6.0
+#
+# Result: ghcr.io/<owner>/<repository>:0.6.0, :0.6, and :sha-<commit>. See docs/OPERATIONS.md §14
+# for how to deploy from the registry instead of building on the box.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a release in flight: a half-pushed manifest is worse than a slow one.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verify
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  image:
+    name: publish image
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: check out the tag
+        uses: actions/checkout@v7
+
+      - name: set up buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: sign in to ghcr.io
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: derive tags and labels
+        id: metadata
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+          labels: |
+            org.opencontainers.image.title=MyRestaurant
+            org.opencontainers.image.description=Self-hosted, single-restaurant ordering system
+            org.opencontainers.image.licenses=AGPL-3.0-only
+
+      # linux/amd64 only, deliberately. The Containerfile runs a full `dotnet publish` inside the
+      # build stage, and doing that for arm64 under QEMU emulation takes long enough to time out.
+      # An arm64 image wants a cross-compiled publish (-r linux-arm64 from an amd64 SDK) rather than
+      # an emulated one; that is a Containerfile change, not a workflow line, so it is not here.
+      - name: build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Containerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+
+      - name: summarize
+        run: |
+          set -euo pipefail
+          {
+              echo "### Published"
+              echo
+              echo '```'
+              printf '%s\n' "${{ steps.metadata.outputs.tags }}"
+              echo '```'
+              echo
+              echo "Pull with: \`podman pull ghcr.io/${{ github.repository }}:\${TAG}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+################################################################################
 # FILE: .gitignore
 ################################################################################
 
@@ -1225,15 +1676,15 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
   File name:             Directory.Build.props
   Relative path:         Directory.Build.props
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/Directory.Build.props
-  Size:                  1.5 KiB (1511 bytes)
-  Last modified:         2026-07-17 19:58:03.000000000 -0400
+  Size:                  2.7 KiB (2771 bytes)
+  Last modified:         2026-07-29 02:37:33.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258236
+  Inode:                 26974666
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               8d610efb5ef1979e688b27adf7bfe7a421c096d8eb3ca0d145064794ae197a93
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               12d18da82e19609e533bf841c6293b03c59be36ea471c852d51f6adc35286dfa
+  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
 
 --- CONTENT ---
 <Project>
@@ -1261,11 +1712,30 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
     <AnalysisLevel>latest</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <!--
-      Warnings are NOT errors yet: a fresh clone must build through analyzer drift on a
-      newer SDK. Flip to true once the first green build is established (BUILD_PROGRESS).
+      Warnings are not errors for a plain `dotnet build`: a fresh clone on a newer SDK must build
+      through analyzer drift rather than refusing at the door (README: known caveats).
     -->
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!--
+    ...and they ARE errors in CI, which passes -p:ContinuousIntegrationBuild=true
+    (.github/workflows/ci.yml, TECHNICAL_SPECIFICATION §16.4). This is the answer to the note this
+    file carried from M1 — "flip to true once the first green build is established". The first green
+    build is long established; what stayed unresolved is that flipping it globally would make a
+    fresh clone on tomorrow's SDK fail at the door, which is a worse outcome than a warning nobody
+    read. Conditioning on the property CI already sets gets the strictness where it belongs and
+    leaves `dotnet build` on a workstation lenient.
+
+    NuGet audit findings (NU1901-NU1904) stay warnings even there. They appear when an advisory is
+    published against a package this tree already depends on — real news, but news that arrives on a
+    day nobody touched the repository, and a pipeline that turns red without a commit is a pipeline
+    people learn to ignore. CI reports them in a dedicated non-blocking step instead.
+  -->
+  <PropertyGroup Condition="'$(ContinuousIntegrationBuild)' == 'true'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -2084,30 +2554,33 @@ For more information on this, and how to apply and follow the GNU AGPL, see
   File name:             README.md
   Relative path:         README.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/README.md
-  Size:                  10.3 KiB (10525 bytes)
-  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Size:                  14.2 KiB (14521 bytes)
+  Last modified:         2026-07-29 02:40:51.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25103620
+  Inode:                 26974667
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               763b5d7e220cfb37fa5b3632b8b745f899647eacb7f956de47fa087e2cd5c245
-  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+  SHA-256:               fe341d0c73a585ecaed086aa785fa6be82aee1702ef3603448d4c0597117f90c
+  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
 
 --- CONTENT ---
 # MyRestaurant
+
+[![ci](https://github.com/kusl/myrestaurant/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kusl/myrestaurant/actions/workflows/ci.yml)
+[![license: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
 
 A self-hosted, single-restaurant ordering system: guests order from their table on their own phones,
 the kitchen and counter work from live boards, and everything runs on one small box behind a
 Cloudflare tunnel. Blazor Server over PostgreSQL, no external runtime dependencies beyond the
 database and the tunnel.
 
-This repository has completed **Milestone 1 (the skeleton)** and is partway through **Milestone 2
-(identity & accounts)**: password sign-in with the TOTP/recovery-code challenge, lockout, sign-out,
-the forced-password-change pipeline, and the first authorization-gated area all work. Passkeys, TOTP
-enrollment, the `/setup` bootstrap, and account administration are the remaining M2 slices; the
-guest, kitchen, counter, administrator, and table-display experiences arrive in later milestones
-(see *Roadmap* and `docs/BUILD_PROGRESS.md`).
+**Milestones 1 through 5 are complete**, which means the product is feature-whole: identity and
+accounts, table administration and rotating join QR codes, paired table displays, the living order
+with its locking protocol, the kitchen and counter boards, billing and settlement, menu management,
+and the administration surfaces including the cross-log event explorer. **Milestone 6 (hardening)**
+is in progress — continuous integration has landed; the Playwright end-to-end matrix and an
+executable backup/restore drill are what remain. See *Roadmap* and `docs/BUILD_PROGRESS.md`.
 
 ## Layout
 
@@ -2125,13 +2598,16 @@ the web layer depends on data-access and the domain; the domain depends on nothi
   validation, OpenTelemetry wiring, the in-process live-update broadcaster, cookie authentication
   with the auditing sign-in manager, the §3.5 obligations middleware, the account pages (static SSR),
   and the Blazor shell.
-- `tests/` — pure domain tests, Testcontainers integration tests for migrations and the Identity
-  stores, web-layer configuration/wiring/enforcement tests, and the version-controlled end-to-end
-  scenario matrix (skipped until Milestone 6).
+- `tests/` — pure domain tests, Testcontainers integration tests for migrations, the Identity stores
+  and every reader/mutation over real PostgreSQL, web-layer configuration/wiring/enforcement tests,
+  and the version-controlled end-to-end scenario matrix (still skipped — the harness is the next M6
+  slice).
+- `.github/workflows/` — the CI and release pipelines (see *Continuous integration*).
 
 ## Prerequisites
 
-- The .NET SDK pinned in `global.json` (10.0.302 or a newer 10.0 feature band).
+- The .NET SDK pinned in `global.json` — `10.0.100` with `rollForward: latestMinor`, so any 10.0
+  feature band satisfies it.
 - A container engine — rootless **Podman** is the primary target; Docker works too.
 - For integration tests, the container engine's API socket must be reachable (see *Testing*). For
   end-to-end tests (later), Playwright browsers as well.
@@ -2199,6 +2675,38 @@ configuration still wins: `DOCKER_HOST` or `~/.testcontainers.properties`, if se
 The end-to-end project lists the required scenarios as skipped placeholders and is implemented at
 Milestone 6.
 
+## Continuous integration
+
+Every push and pull request against `main` runs three gates (`.github/workflows/ci.yml`):
+
+| Gate | What it proves |
+| --- | --- |
+| `shell-scripts` | every tracked `*.sh` parses under `bash -n` and passes shellcheck |
+| `build-and-test` | a Release build with **warnings escalated to errors**, then all ~934 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
+| `boot-smoke` | the production `Containerfile` builds, and the resulting image boots against a real PostgreSQL until `/healthz/ready` answers 200 |
+
+That third gate is the one worth understanding. `/healthz/ready` returns 200 only once DbUp has
+applied every migration and the composition root has resolved, so it catches the class of failure no
+unit test sees: a missing DI registration, a migration that conflicts against a genuinely empty
+database, a configuration default the validator rejects. Those do not break a build — they break a
+deployment.
+
+Run the same gates locally before pushing:
+
+```bash
+scripts/ci_local.sh                # shell lint, restore, strict build, full suite
+scripts/ci_local.sh --with-smoke   # ...and boot once against the dev database
+```
+
+Note that `dotnet build` on a workstation is deliberately *more* forgiving than CI:
+`TreatWarningsAsErrors` is switched on only when `ContinuousIntegrationBuild=true`
+(`Directory.Build.props`), so a fresh clone on a newer SDK still builds through analyzer drift.
+`scripts/ci_local.sh` passes that property, which is the whole reason it exists.
+
+Pushing a `v*` tag runs the same gates and then publishes `ghcr.io/kusl/myrestaurant` at
+`:<version>`, `:<major>.<minor>` and `:sha-<commit>` (`.github/workflows/release.yml`). Deploying
+from the registry instead of building on the box is `docs/OPERATIONS.md` §14.
+
 ## Deployment
 
 The stack is defined in `compose.yaml` with two profiles:
@@ -2255,10 +2763,18 @@ environment (no toolchain or package feed there). On a networked machine:
    container engine socket (see *Testing*).
 4. `./run.sh --smoke` — confirm migrations apply and `/healthz/ready` returns 200.
 
+Or, in one command that mirrors what CI will say about the same tree:
+
+```bash
+scripts/ci_local.sh --with-smoke
+```
+
 ## Known caveats and deliberate decisions
 
-- **Warnings are not errors yet.** `TreatWarningsAsErrors=false` lets a fresh clone build through
-  analyzer drift on a newer SDK; tighten to `true` once the first build is green.
+- **Warnings are errors in CI, not on your workstation.** `TreatWarningsAsErrors` is switched on only
+  under `ContinuousIntegrationBuild=true` (`Directory.Build.props`), so a fresh clone on a newer SDK
+  builds through analyzer drift while a pull request does not. `scripts/ci_local.sh` asks the strict
+  question locally.
 - **Not `InvariantGlobalization`.** The app resolves `RESTAURANT_TIME_ZONE` through `TimeZoneInfo`,
   so globalization stays on and the runtime image installs `tzdata`.
 - **DbUp logging** uses `LogToConsole()` rather than a custom `IUpgradeLog`, whose interface shape
@@ -2273,20 +2789,36 @@ environment (no toolchain or package feed there). On a networked machine:
   chowns it to the container user. On Docker, drop the `:U` suffix if it objects.
 - **Account pages are static SSR by design.** Sign-in and the forced-change pages write cookies on
   the response, which a Blazor circuit cannot do; do not convert them to interactive components.
-- **No registration or `/setup` page yet.** Guests register at the moment of joining a table (M3)
-  and staff are created by an administrator (later M2 slice), so until the bootstrap slice lands
-  there is no in-app way to create the first account.
+- **The first account is created at `/setup`, once.** On a fresh database only that route is
+  reachable; from the moment an administrator exists it is 404 forever. Do the bootstrap on the
+  production origin, never through a quick tunnel — the passkey binds to the origin it was
+  registered on (`docs/OPERATIONS.md` §3).
+- **Container images are `linux/amd64` only.** The release pipeline does not emulate arm64: the
+  `Containerfile` runs `dotnet publish` in its build stage, and doing that under QEMU is slow enough
+  to risk a timeout. An arm64 image wants a cross-compiled publish rather than an emulated one
+  (`docs/OPERATIONS.md` §14).
 
 ## Roadmap
 
-- **M2** — identity & accounts *(in progress)*: ✔ custom Dapper Identity stores, ✔ Argon2id hashing
-  with the floor guard and concurrency semaphore, ✔ lockout, ✔ password sign-in with the
-  TOTP/recovery challenge, ✔ the obligations middleware with forced password change, ✔ roles →
-  policies → the first gated area, ✔ security-event logging; still to come: TOTP enrollment,
-  passkeys, `/setup` first-admin bootstrap, and account administration (which is what starts
-  setting the obligation flags).
-- **M3–M5** — guest ordering, kitchen and counter boards, table displays, administration.
-- **M6** — the Playwright end-to-end matrix and CI publishing.
+- ✔ **M1** — skeleton: solution layout, `Containerfile`, compose dev profile, DbUp with the initial
+  schema, health endpoints, OpenTelemetry wiring, `run.sh`.
+- ✔ **M2** — identity & accounts: Dapper Identity stores, Argon2id with the floor guard and
+  concurrency semaphore, WebAuthn passkeys, TOTP + recovery codes, lockout, the obligations pipeline,
+  the `/setup` first-administrator bootstrap, roles → policies → gated areas, security events,
+  account administration, and the person's own profile page.
+- ✔ **M3** — tables & joining: table CRUD, per-table join secrets and rotation, display pairing and
+  device auth, the `/display` surface, rotating token generation/validation with metrics, the join
+  grant cookie, sittings and membership.
+- ✔ **M4** — ordering: the living order and its row-level locking protocol, client staging, batch
+  send with all-or-nothing validation, staff edits, fulfillment and reversal, the projection fold
+  with equivalence tests, and the kitchen surface with alerts and the reminder loop. Plus the
+  close-out that made `RESTAURANT_TIME_ZONE` actually true on every surface.
+- ✔ **M5** — counter & administration: bills, price adjustment with reason, close & settle,
+  end-of-day, the counter fallback QR, menu management with its event log, the cross-log event
+  explorer, hide/unhide, and post-close corrective events.
+- **M6** — hardening *(in progress)*: ✔ the CI pipeline and publish-on-tag; still to come, the
+  Playwright end-to-end matrix (§16.3 — fifteen scenarios, currently version-controlled as skipped
+  placeholders) and an executable backup/restore drill.
 
 ################################################################################
 # FILE: _CHANGES.md
@@ -2296,212 +2828,276 @@ environment (no toolchain or package feed there). On a networked machine:
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  12.2 KiB (12456 bytes)
-  Last modified:         2026-07-28 20:37:45.000000000 -0400
+  Size:                  16.9 KiB (17295 bytes)
+  Last modified:         2026-07-29 02:42:35.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 26814462
+  Inode:                 26974668
   Hard links:            1
-  MIME type:             text/x-c
-  SHA-256:               f587fd0005352625f350886b57c04dd7eacad3ab37dc76efccca02234224fc0a
-  Last git commit:       d1c3566 2026-07-28 20:54:09 -0400 add claude changes
+  MIME type:             text/plain
+  SHA-256:               2b28031d4abcf676ec4f7e6e600c8842fce22d56a63535cf71f46a90108efacc
+  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
 
 --- CONTENT ---
-# M5 Slice 5 — the event explorer: three logs, one question
+# M6 Slice 1 — continuous integration: the machine that compiles what I cannot
 
 Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
-and the contents drop straight over your working tree. `git status` will show exactly these 15 files as
+and the contents drop straight over your working tree. `git status` will show exactly these 10 files as
 modified/added, and **no deletions**.
 
 ```bash
-tar -xzf m5-slice5-event-explorer.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice1-continuous-integration.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
 **None.** Nothing is renamed and nothing is superseded. No migration ships, no package changes, no schema
-change.
+change, and nothing in `src/` is touched at all.
+
+## Before anything else: two corrections to my notes
+
+**M5 is closed and the tree is green.** Your last sweep reported `total: 934, failed: 0, succeeded: 919,
+skipped: 15`, a clean `run.sh --smoke`, and a healthy `--containers-only`. §19's M5 line is fully
+discharged.
+
+**The `/account/enroll-totp` 500 appears to be resolved.** `EnrollTotp.razor` is in the tree, the suite is
+green, and nothing in the terminal log reproduces it. I have treated it as closed rather than re-opening a
+diagnosis with no symptom. If it is still there, say so and it becomes the next slice.
 
 ## What this closes
 
-§19's M5 line reads "bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu
-management + events, **event explorer**, hide/unhide, post-close corrections". This is the emphasised
-phrase, and it was the last thing M5 owed. §11.4 states it in one clause: "Event explorer (filter
-security/order/menu events by subject, actor, type, and time)."
+§19's M6 line reads "full E2E suite (§16.3), backups + restore drill, cloudflared production profile +
+tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, **CI pipeline**". This is the
+emphasised phrase. §16.4 states it in one clause: "GitHub Actions — build, unit, integration (service
+container PostgreSQL), E2E (compose), publish image on tag."
 
-**With this, M5 is closed.** M6 is hardening: the Playwright matrix, the backup/restore drill, and CI.
+Three of that line's six items — the cloudflared production profile, the quick-tunnel script, and the
+OPERATIONS runbooks — were delivered inside earlier milestones. After this slice, M6 is down to **two**:
+the E2E harness and an executable backup/restore drill.
 
-## What was actually missing
+## Why CI first, and not the E2E suite
 
-Three append-only logs, three readers, and no way to ask a question of all three at once.
+§19 lists the E2E matrix first, and every milestone so far has walked its line roughly in order. This one
+does not, for a reason specific to how this repository gets built.
 
-`ISecurityEventLog` writes `security_event` and has never had a read side at all. `IMenuEventLog` reads
-`menu_item_event`, scoped to one item or capped to a recent-activity panel. `ISittingRecordReads` reads
-`order_event`, scoped to one sitting or one order. Each takes a subject the caller already names — correct
-for the screens they serve, useless for §11.4's question, which is the opposite shape: *what happened,
-anywhere, in this window*. Answering it by calling all three and merging in memory would mean fetching
-every event in the restaurant to render the fifty most recent, so the interleaving, the ordering and the
-cap have to happen in one statement.
+Every slice from M1 to M5 was written without a compiler. Each went out on a "where to look if the build
+breaks" note and was compiled for the first time on your workstation. That loop works — 934 facts say so —
+but it has exactly one participant, it runs only when you run it, and its results live in a terminal
+scrollback that has to be pasted into a conversation before anyone else can see them.
 
-## New files (7)
+The E2E matrix does not change that. It adds fifteen facts to the same loop. CI moves the loop off one
+machine: a push compiles the tree, runs all 934 facts against real PostgreSQL, and boots the actual
+production image — on every commit, without anybody remembering to ask.
 
-### Code — DataAccess (1)
+The narrower reason: `boot-smoke` below is the gate that catches "the app starts but one route throws",
+which is precisely what cost a slice's worth of back-and-forth at the end of M2, diagnosed by reading
+container logs by hand. That gate is worth more, sooner, than any single E2E scenario.
 
-- `src/MyRestaurant.DataAccess/Events/EventExplorerReads.cs`
-  `EventStream` (three query-local discriminators), `EventTypeCatalogue` (the 29 words the filter's
-  dropdown offers, grouped), `ExplorerEvent`, `EventExplorerFilter`, and
-  `IEventExplorerReads`/`DapperEventExplorerReads` — one `UNION ALL` over the three tables, filtered,
-  ordered and capped once.
+## New files (5)
 
-### Code — WebApplication (2)
+### Pipelines (3)
 
-- `src/MyRestaurant.WebApplication/Events/EventExplorerQuery.cs`
-  Query string ↔ filter ↔ canonical URL, immutable, with the date parsing and the reversed-range and
-  unknown-word reporting. Container-free and fully tested — the thing `HiddenRecords`' identical inline
-  logic is not.
-- `src/MyRestaurant.WebApplication/Events/EventsServiceCollectionExtensions.cs`
-  `AddRestaurantEventExplorer()`. One scoped registration.
+- `.github/workflows/ci.yml` — three jobs, described below. Also declares `workflow_call:` so the release
+  pipeline can reuse it.
+- `.github/workflows/release.yml` — on a `v*` tag: calls `ci.yml`, then publishes to
+  `ghcr.io/kusl/myrestaurant`.
+- `.github/dependabot.yml` — weekly NuGet (via `Directory.Packages.props`) and `github-actions` updates,
+  with OpenTelemetry, xunit and Npgsql grouped so lockstep families arrive as one pull request.
 
-### Surface (1)
+### Tooling (1)
 
-- `src/MyRestaurant.WebApplication/Components/Pages/Administration/EventExplorer.razor` —
-  `/administration/events`
-
-### Tests (3)
-
-- `tests/MyRestaurant.DataAccess.Tests/Events/EventExplorerReadsTests.cs` (21 facts — 19 Testcontainers,
-  2 pure)
-- `tests/MyRestaurant.WebApplication.Tests/Events/EventExplorerQueryTests.cs` (25 facts, no container)
-- `tests/MyRestaurant.WebApplication.Tests/Events/EventsWiringTests.cs` (3 facts, no container)
+- `scripts/ci_local.sh` — the same gates, locally, in the same order and with the same flags.
+  `--with-smoke` appends `./run.sh --smoke`. Clean under `bash -n` and `shellcheck --severity=style` as
+  delivered.
 
 ### Docs (1, append-then-keep)
 
 `docs/BUILD_PROGRESS.md` is large and is not regenerated. The new section ships as
-`docs/_append/BUILD_PROGRESS-m5-slice-5.md`, matching the sections already in that folder.
+`docs/_append/BUILD_PROGRESS-m6-slice-1.md`, matching the sections already in that folder.
 
-## Edited (8)
+## Edited (5)
 
-- `src/MyRestaurant.WebApplication/Program.cs`
-  One `using` and one `AddRestaurantEventExplorer()`. **The first startup edit since M4 Slice 1** — see
-  "Why Program.cs was edited this time" below.
-- `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor`
-- `…/AdministrationTables.razor`
-- `…/AdministrationMenu.razor`
-- `…/AdministrationSittings.razor`
-- `…/HiddenRecords.razor`
-  One `<a>` each: an **Events** link in the header actions. Nothing else changes in any of the five.
-- `tests/MyRestaurant.DataAccess.Tests/Orders/OrderTestWorld.cs`
-  `AddSecurityEventAsync` and `AddMenuItemEventAsync`, plus their two statements. Same shape as the
-  `AddVisibilityEventAsync` the last slice added, and for the same reason.
+- `Directory.Build.props` — `TreatWarningsAsErrors` becomes `true` under `ContinuousIntegrationBuild`, with
+  `WarningsNotAsErrors` exempting NU1901-NU1904. See "the note finally discharged" below.
+- `tests/MyRestaurant.DataAccess.Tests/Sittings/SittingRecordReadsTests.cs` — **one line**, at 354.
+- `README.md` — status (M1-M5 closed, M6 in progress), a new *Continuous integration* section, a CI badge,
+  the SDK pin corrected, and four stale caveats retired.
+- `docs/OPERATIONS.md` — new §14: what CI checks, how to cut a release, how to deploy from the registry
+  instead of building on the box, and how to verify what is actually running.
 - `_CHANGES.md` (this file)
 
-No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, or ADR edit: this realizes behaviour §11.4
-already specifies, in the words it already uses.
+No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, `docs/DOCUMENTATION_REVIEW.md`, or ADR edit:
+this realizes behaviour §16.4 already specifies, in the words it already uses.
 
-## Seven decisions worth knowing before you read the diff
+One deviation from the spec's phrasing, recorded in the BUILD_PROGRESS section rather than by editing §16.4:
+that clause says "integration (service container PostgreSQL)", written before Testcontainers landed in M1.
+The integration tests bring up their own PostgreSQL 17 container and need no service container. `boot-smoke`
+is where a service container actually earns its place.
 
-**The security branch's `LEFT JOIN` is the load-bearing line.**
-`security_event.actor_person_identifier` is the only nullable actor column in the three tables (§8.2: NULL
-means the subject acted on themselves, or the system did). An `INNER` join there would compile, run,
-return rows, and silently hide every lockout and every failed sign-in from the one screen an administrator
-opens to look for them. It does not throw and it does not look wrong.
-`Security_WithNoActor_KeepsTheRowAndReportsNoActor` is the test that notices.
+## The three gates
 
-**The type filter is exact, and that is only sound because the three vocabularies do not overlap.**
-`created` is the menu's word; `account_created` is security's, and contains it. A substring match would
-answer "when was this item created" with a list of accounts. One flat `event_type = @EventType` across the
-union works because no word appears in two streams — a property of the schema rather than a coincidence,
-so two facts assert it directly, including pinning the security list to `SecurityEventType.All`.
+**`shell-scripts`** — every tracked `*.sh` parses under `bash -n` and passes shellcheck. Not a new standard:
+this is the project's existing pre-delivery discipline, moved out of an instruction and into the tree. All
+five existing scripts plus this slice's new one are clean at shellcheck's strictest practical level,
+`--severity=style`.
 
-**Three streams, not four.** §6.8's `order_visibility_event` is deliberately absent. §11.4 names security,
-order and menu, and gives visibility its own screen — the hidden-records view, where its log sits beside
-the order it is about and next to the Unhide button that is its only counterpart.
+The gate nonetheless *blocks* at `--severity=warning`, one notch lower, with `style` running right after as
+`continue-on-error: true`. That is about drift, not doubt: `ubuntu-latest`'s shellcheck moves on its own
+schedule, and a new style check would turn the build red on a day nobody touched the repository. A red build
+with no commit behind it is how people learn to stop reading the build.
 
-**Every column is aliased in every branch**, which `DapperSittingRecordReads`' five-way union deliberately
-does not do. PostgreSQL takes the names from the first branch and ignores the rest, so the aliases below
-the first are documentation — and with sixteen columns from three unrelated tables, documentation is
-exactly what stops a future edit inserting a column into one branch and shifting five others.
+**`build-and-test`** — restore, a Release build with warnings as errors, then the whole suite. Two details.
 
-**The stream flags sit inside the branches; the other four bounds sit outside.** A switched-off stream is
-not scanned at all, and the rest of the WHERE clause exists once rather than three times — PostgreSQL
-pushes those qualifiers down through a `UNION ALL` on its own, and three copies is how one copy ends up
-fixed and the other two wrong.
+The SDK is requested as `10.0.x` rather than `global.json`'s exact `10.0.100`, because that pin carries
+`rollForward: latestMinor` — any 10.0 SDK satisfies it, and asking a runner for an exact patch that has
+since been delisted is a way to fail that has nothing to do with the code.
 
-**The page is read-only, and that is a constraint rather than a stage.** Nothing on
-`/administration/events` changes anything. Every row links to the screen that owns the thing it is about,
-and that screen has the buttons. An audit log with edit affordances on it is a different and much worse
-object.
+And the data-access tests *run* here. On your Fedora box, Testcontainers needs the rootless Podman user
+socket activated by hand or roughly 190 integration facts skip — quietly, with a green summary. A GitHub
+runner has `/var/run/docker.sock`, so `ContainerEngineDiscovery` returns early and those facts execute on
+every push whether or not anybody remembered `systemctl --user enable --now podman.socket`. That is a real
+change in what "the tests pass" means.
 
-**Nothing is ever refused.** An unreadable date, a reversed range, a misspelled stream name, a type this
-build does not know: each is ignored or passed straight through, and each adds a plain sentence the page
-prints. A filter returning a wider answer is still a filter; a filter that throws is a blank page in front
-of somebody trying to find out what happened.
+**`boot-smoke`** — the `Containerfile` is built and the resulting image is started against a real
+PostgreSQL, and `/healthz/ready` must answer 200 within 180 seconds.
 
-## Why `Program.cs` was edited this time
+Nothing else in the suite covers this. `/healthz/ready` returns 200 only after DbUp has applied every
+migration and reported the schema current, and it can only be *reached* if the composition root resolved —
+meaning every `Add…()` in `Program.cs` produced a satisfiable graph. A missing registration, a migration
+that parses in a test but conflicts against a fresh database, a `RestaurantOptions.Validate()` rejection
+from a new setting with no default: each is invisible to unit tests, each kills a deployment, and each now
+fails a pull request instead of a service.
 
-The four existing extensions each resisted being split for a real reason: a host that wired ordering
-without the reminder loop would alert and never remind; one that wired ordering without the menu would
-have a staging area that could list nothing. Both are silent half-failures, which is why M5 Slices 2 and 4
-both went out of their way to avoid a startup edit.
+## Why CI does not use `compose.yaml`
 
-The explorer is not like that. It reads identity's audit log, ordering's event log and the menu's, and
-belongs to none of them — putting it in `AddRestaurantOrders()` would make the ordering extension the
-registrar of a reader of `security_event`. And its failure mode if omitted is not silent: one
-administration route throws on resolve, loudly, in front of the person who asked for it.
-`EventsWiringTests` asserts that its only dependency is the connection factory, because a registration
-that grew a clock, an identifier factory, a broadcaster or a metric would mean the explorer had acquired a
-write path or a notification, and it must never have either.
+The obvious implementation of `boot-smoke` is `docker compose --profile dev up --build`, and it does not
+work. `compose.yaml` mounts the data-protection volume as `…/dataprotection:U` — the `:U` asks Podman to
+chown the volume to the container user, correct for the canonical rootless engine (ADR-0004) and rejected by
+Docker Compose as an invalid mount mode. The file's own comment already says so.
 
-## Where to look if the build breaks
+Editing `compose.yaml` to suit CI would mean changing the canonical dev stack to accommodate the one
+environment that is not the target; shipping a `compose.ci.yaml` would mean a second file that can drift
+from the first. A job-level `services:` PostgreSQL plus one `docker run --network host` is the same topology
+— same image, same environment variables, same readiness probe — and leaves the canonical stack the only
+compose file in the tree.
 
-**`EventExplorer.razor`**, as always. Three things in it have no exact precedent in the tree:
+`--network host` is what keeps it to one command: the container reaches the service database on the
+runner's published `127.0.0.1:5432` and publishes its own `8080` back for the probe.
 
-1. `[SupplyParameterFromQuery(Name = …)] private string[]? Streams { get; set; }` — the first array-valued
-   query parameter in the project. Repeated `?stream=a&stream=b` binds to it; the attribute's `Name` is a
-   `const` on `EventExplorerQuery`, so the form field and the parser cannot drift.
-2. `<fieldset>`/`<legend>` and `<optgroup>` — ordinary HTML, but the first of each here.
-3. `class="event-stream-badge event-stream-@entry.Stream"` — an implicit expression finishing an attribute
-   value. Common Razor, first use in this tree.
+## `TreatWarningsAsErrors` — the note finally discharged
 
-Deliberately avoided: no locals are declared directly inside a markup `@foreach`, matching `HiddenRecords`;
-and every `<text>` block sits inside an `@if` body (code context), never in markup context — the one
-separator that needed to live in markup is a `<span class="event-separator">`, mirroring
-`HiddenRecords`' `.hidden-record-separator`.
+`Directory.Build.props` has carried this since M1:
 
-Then `EventExplorerReads.cs`. Two things I could not check without a compiler, both deliberate:
+> Warnings are NOT errors yet: a fresh clone must build through analyzer drift on a newer SDK. Flip to true
+> once the first green build is established (BUILD_PROGRESS).
 
-1. `WHERE @IncludeSecurityEvents::boolean` as an entire WHERE clause — a bare boolean parameter, cast for
-   the same belt-and-braces reason `DapperSecurityEventLog` casts `@ActorPersonIdentifier::uuid`.
-2. `concat_ws(' ', subject.username::text, subject.display_name)` — first use of `concat_ws` in the tree.
-   It returns `text`, skips NULLs, and yields `''` (not NULL) when every argument is NULL, which is the
-   behaviour the actorless-security-event case depends on. `||` would have been wrong twice over: it
-   annihilates on NULL, so a person with no display name would be unfindable by username.
+The first green build was established four milestones ago; the note stayed because both halves are true at
+once. Warnings *should* be errors — the alternative is a log nobody reads. And a fresh clone on tomorrow's
+SDK *should not* refuse at the door over an analyzer that did not exist when the code was written.
 
-`ESCAPE '\'` inside a C# raw interpolated string is one literal backslash on both sides — raw strings do
-not process escapes, and `standard_conforming_strings` makes the SQL string a single backslash. Same as
-`DapperOrderHistoryReads`, whose escaping this copies character for character so two search boxes on two
-administration screens cannot behave differently.
+Conditioning on `ContinuousIntegrationBuild` resolves it without picking a side. CI passes
+`-p:ContinuousIntegrationBuild=true`, which is where strictness belongs — a machine, with a commit to point
+at, on a tree somebody just changed. `dotnet build` on your workstation stays lenient. The property is
+MSBuild's own, and setting it also makes the build deterministic, which is what it is for.
+
+`NU1901`-`NU1904` stay warnings even under CI. Those are NuGet audit findings, raised when an advisory is
+published against a package this tree already depends on — real news, but news that arrives without a
+commit. It surfaces in a `continue-on-error` step running `dotnet list package --vulnerable
+--include-transitive` instead of turning a pull request red for something the pull request did not do.
+
+**The one warning in the tree had to go first.** `SittingRecordReadsTests.cs:354` was:
+
+```csharp
+Assert.Single(record.Events.Where(stored => stored.EventType == "fulfillment"));
+```
+
+which xUnit's own analyzer flags as **xUnit2031** — "do not use a Where clause to filter before calling
+`Assert.Single`". It is now:
+
+```csharp
+Assert.Single(record.Events, stored => stored.EventType == "fulfillment");
+```
+
+the overload the analyzer recommends. I verified the signature against `xunit/assert.xunit`:
+`public static T Single<T>(IEnumerable<T> collection, Predicate<T> predicate)`. Same assertion, better
+failure message (the predicate overload reports how many matched and where), and it was the only line in
+the repository standing between the tree and a strict build.
+
+## `release.yml` calls `ci.yml` rather than repeating it
+
+A publish pipeline that does not verify ships an image nobody tested; one that verifies with its own copy of
+the gates is two sets of gates to keep identical. So `ci.yml` declares `workflow_call:` alongside its push
+and pull-request triggers, and `release.yml`'s first job is `uses: ./.github/workflows/ci.yml`.
+
+Tags land as `:<version>`, `:<major>.<minor>` and `:sha-<commit>`. There is no `latest`, on purpose — a tag
+that silently changes what it points at is the reason people cannot answer "what is running".
+`concurrency.cancel-in-progress` is `false` here, the opposite of `ci.yml`: a superseded push should be
+abandoned, but a half-pushed manifest is worse than a slow one.
+
+**`linux/amd64` only, deliberately.** The `Containerfile` runs a full `dotnet publish` in its build stage,
+and doing that for arm64 through QEMU is slow enough to risk the job timeout. The right fix is not a longer
+timeout — it is a cross-compiled publish (`-r linux-arm64` from an amd64 SDK), which is a `Containerfile`
+change rather than a workflow line. Noted in OPERATIONS §14 for an SBC deployment.
+
+## What I verified rather than guessed
+
+Since a wrong action version fails the whole pipeline on the first run with "Unable to resolve action", none
+of these were recalled from memory:
+
+- **Action majors**, resolved through `github.com/<repo>/releases/latest` redirects at authoring time:
+  `actions/checkout@v7` (v7.0.1), `actions/setup-dotnet@v6` (v6.0.0), `actions/upload-artifact@v7` (v7.0.1),
+  `actions/cache@v6` (v6.1.0), `docker/metadata-action@v6` (v6.2.0), `docker/setup-buildx-action@v4`
+  (v4.2.0), `docker/login-action@v4` (v4.5.2), `docker/build-push-action@v7` (v7.3.0).
+- **`setup-dotnet` v6's inputs**, read from its `action.yml` — `dotnet-version` and `global-json-file` are
+  both still there, and its `cache` input needs `packages.lock.json` files this repo does not have, which is
+  why NuGet caching goes through `actions/cache` keyed on `Directory.Packages.props` + `global.json` +
+  `**/*.csproj` instead.
+- **shellcheck 0.11.0 against all five existing scripts** — clean at `--severity=style`, which is what made
+  a `warning`-level blocking gate a safe thing to ship rather than a hope.
+- **`Assert.Single`'s predicate overload**, read from `xunit/assert.xunit` source.
+- **All three YAML files parse**, and `scripts/ci_local.sh` passes `bash -n` plus shellcheck at every
+  severity; I also exercised its `--help` and bad-argument paths.
+
+One thing I could not verify: whether a Release build with warnings-as-errors on the runner's SDK surfaces
+warnings your Debug builds never showed. That is the gate doing its job rather than a defect — see the
+checklist.
+
+## Where to look if this breaks
+
+Unusually for this project: **not the code**. Nothing in `src/` changed, and the only test-project change is
+one line inside one assertion.
+
+1. **`build-and-test` fails on a warning.** That is the gate working; the log names the file, line and code.
+   Fix it, or add the code to `WarningsNotAsErrors` with a comment saying why. This can happen on a commit
+   that touched nothing relevant, because the runner's SDK is newer than your 10.0.110 — the tradeoff the
+   CI-only condition accepts.
+2. **`boot-smoke` fails at "the web container exited before it became ready".** Read the `container logs`
+   step, which runs on failure. Three candidates in order of likelihood: a migration that conflicts against
+   a genuinely empty database, a `RestaurantOptions.Validate()` rejection, a DI registration added without
+   its dependency.
+3. **`shell-scripts` fails.** Reproduce exactly with `scripts/ci_local.sh` — same two passes, same two
+   severities.
+4. **`release.yml` cannot push.** `packages: write` is declared on the `image` job. The first push to a new
+   GHCR package also needs the repository allowed to create it — a one-time settings step, not a workflow
+   bug.
 
 ## Build/test checklist for this slice
 
 1. `dotnet restore` — no new packages, no migration, no schema change.
-2. `dotnet build` — the Razor page is the likely compiler-catch home, as always.
-3. `dotnet test` — expect **+49 facts** (21 + 25 + 3). Taking the last slice's projected 877 as the
-   baseline: 926 total, 911 passing, 15 still skipped with a container engine present. Without one, the
-   19 container-dependent facts here skip as well.
-4. `bash run.sh --smoke` — `Program.cs` changed, so this one is not a formality this time.
-5. `bash run.sh --containers-only`, then as an administrator:
-   - `/administration/events` — three streams interleaved, newest first.
-   - Untick Orders and Menu — only security events; the URL says `?stream=security`.
-   - Type a username into Subject; then the same word into Actor — different answers.
-   - Pick a type from each of the three optgroups.
-   - Set a date range, then reverse it — the range is dropped and the page says why.
-   - Click a stream badge, then "only this subject" — the other bounds survive.
-   - Follow a security row to its person, an order row to its sitting, a menu row to its item.
+2. `dotnet build` — unchanged from the last green sweep; no Razor page was touched.
+3. `dotnet test` — **still 934 total, 919 passing, 15 skipped.** The xUnit2031 fix changes an assertion's
+   form, not its meaning or its count. If the total moved, something else moved with it.
+4. `bash scripts/ci_local.sh` — the real check for this slice, because it is the first thing in this
+   repository's history to run the strict build. Then `bash scripts/ci_local.sh --with-smoke` once.
+5. `git add .github scripts/ci_local.sh && git commit && git push` — then watch the Actions tab, which is
+   the actual deliverable. Expect roughly: `shell-scripts` under a minute, `build-and-test` five to eight
+   (the first run has no NuGet cache), `boot-smoke` four to seven.
+6. Worth doing once while the pipeline is fresh, to prove the release path before it matters:
+   `git tag --annotate v0.6.0 --message 'M6 slice 1' && git push origin v0.6.0`.
 
 ## Housekeeping carried over
 
-`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Six appends are now unmerged in
+`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Seven appends are now unmerged in
 `docs/_append/`, including this slice's:
 
 ```bash
@@ -2512,13 +3108,21 @@ cat docs/_append/BUILD_PROGRESS-m5-slice-1.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m5-slice-3.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m5-slice-4.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m5-slice-5.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m6-slice-1.md >> docs/BUILD_PROGRESS.md
 ```
+
+## What is next
+
+The E2E harness. The fifteen §16.3 scenarios have been version-controlled as skipped placeholders since M1
+and none of them can run, because there is no fixture that brings up a stack, no browser context, no
+virtual authenticator and no controllable clock. That plumbing is one slice; scenarios 1, 13 and 14 come
+with it, because the passkey and token-window machinery they need is what every other scenario is waiting
+on.
 
 ## The one-line why
 
-Every screen in this system answers a question about one account, one table, one sitting or one item —
-and the question somebody actually asks at nine in the evening is "what just happened", which until now
-nothing could answer.
+For five milestones the only thing standing between a slice I could not compile and a working restaurant was
+you, at a terminal, at night — and that was never a system, it was a person being reliable.
 
 ################################################################################
 # FILE: compose.yaml
@@ -2657,15 +3261,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  194.0 KiB (198651 bytes)
-  Last modified:         2026-07-28 16:05:42.810963923 -0400
+  Size:                  210.2 KiB (215256 bytes)
+  Last modified:         2026-07-29 03:40:54.722748889 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 25661728
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               d6f68ec6f91785329ff0ec88eb24cfd68962959a7c3907a2ab1116be33ab7d49
-  Last git commit:       35d7749 2026-07-28 16:07:14 -0400 add claude changes
+  SHA-256:               ebdd54d839f90f5908a157b5cf6ba43a40b4f652a3f607997b93f764deb1e86b
+  Last git commit:       7311425 2026-07-29 03:41:15 -0400 append build progress
 
 --- CONTENT ---
 # Build progress
@@ -5355,6 +5959,275 @@ order, and menu events filtered by subject, actor, type, and time). `ISittingRec
 of that explorer's engine; `IMenuEventLog` is the menu half; `ISecurityEventLog` reads the third. What is
 missing is `order_visibility_event`'s write path and one screen that queries all three.
 
+### M6 Slice 1 — continuous integration: the machine that compiles what I cannot (landed)
+
+M6's build-order line (§19) reads "full E2E suite (§16.3), backups + restore drill, cloudflared production
+profile + tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, **CI pipeline**". This
+slice is the emphasised phrase, taken out of order on purpose — see below. §16.4 states it in one clause:
+"GitHub Actions — build, unit, integration (service container PostgreSQL), E2E (compose), publish image on
+tag."
+
+No migration, no packages, no schema change, no new C# file, and nothing deleted. One analyzer warning is
+fixed and `Directory.Build.props` finally answers a question it has carried since M1.
+
+---
+
+#### Why this is M6 Slice 1 rather than M6 Slice 4
+
+§19 lists the E2E suite first, and every previous milestone has walked its line roughly in order. This one
+does not, for a reason that is specific to how this repository gets built.
+
+Every slice from M1 to M5 was written without a compiler. The authoring environment has no .NET SDK and no
+package feed, so each slice's Razor pages and SQL went out on a "where to look if the build breaks" note
+and were compiled for the first time on the owner's workstation. That loop worked — 934 facts and a green
+sweep say so — but it has exactly one participant, it runs only when he runs it, and its results live in a
+terminal scrollback that has to be copied into a conversation before anyone else can see them.
+
+The E2E matrix does not fix that. It adds fifteen more facts to the same loop. CI moves the loop off one
+workstation: a push compiles the tree, runs all 934 facts against real PostgreSQL, and boots the actual
+production image — and says so in public, on every commit, without anybody remembering to ask. Sequencing
+the pipeline ahead of the suite it will eventually run is the difference between hardening the project and
+hardening one person's habits.
+
+The second reason is narrower and concrete. `boot-smoke` (below) is the gate that catches "the app starts
+but one route throws" — which is precisely the failure mode that cost this project a slice's worth of
+back-and-forth at the end of M2, diagnosed by reading container logs by hand. That gate is worth more,
+sooner, than any single E2E scenario.
+
+---
+
+#### Three gates, and what each one can prove that the others cannot
+
+**`shell-scripts`.** Every tracked `*.sh` must parse under `bash -n` and pass shellcheck. This is not a new
+standard — it is the project's existing pre-delivery discipline, which until now lived in an instruction
+rather than in the tree. Five scripts (`export.sh`, `run.sh`, `scripts/backup.sh`, `scripts/quick_tunnel.sh`,
+`scripts/restore.sh`) plus this slice's `scripts/ci_local.sh` are clean at shellcheck's *strictest* practical
+level, `--severity=style`.
+
+The gate nonetheless blocks at `--severity=warning`, one notch lower, with `style` running immediately after
+as `continue-on-error: true`. The reason is drift rather than doubt: `ubuntu-latest`'s shellcheck moves on
+its own schedule, and a new style check would turn the build red on a day nobody touched the repository. A
+red build with no commit behind it is how people learn to stop reading the build.
+
+**`build-and-test`.** Restore, a **Release** build with warnings escalated to errors, then the whole suite.
+Two details matter.
+
+The SDK is requested as `10.0.x`, not as `global.json`'s exact `10.0.100`. `global.json` pins that version
+with `rollForward: latestMinor`, so any 10.0 SDK satisfies it; asking a runner for an exact patch that has
+since been delisted is a way to fail that has nothing to do with the code.
+
+And the data-access tests *run* here. On the owner's Fedora box, Testcontainers needs the rootless Podman
+user socket activated by hand (`systemctl --user enable --now podman.socket`) or roughly 190 integration
+facts skip — quietly, with a green summary. A GitHub runner has `/var/run/docker.sock`, so
+`ContainerEngineDiscovery` returns early, Testcontainers uses the default endpoint, and those facts execute
+on every push whether or not anybody remembered the socket. That is a real change in what "the tests pass"
+means.
+
+**`boot-smoke`.** The `Containerfile` is built and the resulting image is started against a real
+PostgreSQL, and `/healthz/ready` must answer 200 within 180 seconds.
+
+Nothing else in the suite covers this. `/healthz/ready` returns 200 only after DbUp has applied every
+migration and reported the schema current, and it can only be *reached* if the composition root resolved —
+which means every `Add…()` extension in `Program.cs` produced a satisfiable graph. A missing registration,
+a migration that parses in a test but conflicts against a fresh database, a `RestaurantOptions.Validate()`
+rejection from a bad default: each is invisible to unit tests, each kills a production deployment, and each
+now fails a pull request instead of a service.
+
+---
+
+#### Why `compose.yaml` is not used in CI
+
+The obvious implementation of `boot-smoke` is `docker compose --profile dev up --build`, and it does not
+work. `compose.yaml` mounts the data-protection volume as
+`dataprotection-keys:/var/lib/myrestaurant/dataprotection:U` — the `:U` asks Podman to chown the volume to
+the container user, which is correct for the canonical rootless engine (ADR-0004) and which Docker Compose
+rejects as an invalid mount mode. The file's own comment already says so: "if you are on Docker and it
+complains, drop the ':U'".
+
+Editing `compose.yaml` to suit CI would mean changing the canonical dev stack to accommodate the one
+environment that is not the target, and shipping a second `compose.ci.yaml` would mean a second file that
+can drift from the first. A job-level `services:` PostgreSQL plus one `docker run --network host` is the
+same topology — same image, same environment variables, same readiness probe — with none of that argument,
+and it leaves the canonical stack the only compose file in the tree.
+
+`--network host` is what makes it one command: the container reaches the service database on the runner's
+published `127.0.0.1:5432` and publishes its own `8080` back for the probe, so no user-defined network,
+no container-to-container DNS, and no port-mapping arithmetic.
+
+---
+
+#### `TreatWarningsAsErrors`, and a note finally discharged
+
+`Directory.Build.props` has carried this since M1:
+
+> Warnings are NOT errors yet: a fresh clone must build through analyzer drift on a newer SDK. Flip to
+> true once the first green build is established (BUILD_PROGRESS).
+
+The first green build was established four milestones ago; the note stayed anyway, because both of its
+halves are true at once. Warnings *should* be errors — the alternative is a build log nobody reads. And a
+fresh clone on tomorrow's SDK *should not* refuse at the door over an analyzer that did not exist when the
+code was written, because a clone that will not build is worse than a warning that was not read.
+
+Conditioning on `ContinuousIntegrationBuild` resolves it without choosing a side. CI passes
+`-p:ContinuousIntegrationBuild=true`, which is where strictness belongs — a machine, with a commit to point
+at, on a tree somebody just changed. A `dotnet build` on a workstation stays lenient. The property is not
+invented for this: it is MSBuild's own, and setting it also makes the build deterministic, which is what it
+is for.
+
+`NU1901`–`NU1904` are exempted through `WarningsNotAsErrors` even under CI. Those are NuGet audit findings,
+raised when an advisory is published against a package this tree already depends on. That is real news and
+worth surfacing, but it arrives without a commit — so it surfaces in a `continue-on-error` step running
+`dotnet list package --vulnerable --include-transitive`, and it does not turn a pull request red for
+something the pull request did not do.
+
+The one warning in the tree had to go first: `SittingRecordReadsTests.cs:354` used
+`Assert.Single(record.Events.Where(…))`, which xUnit's own analyzer flags as **xUnit2031** ("do not use a
+Where clause to filter before calling Assert.Single"). It is now
+`Assert.Single(record.Events, stored => stored.EventType == "fulfillment")` — the overload the analyzer
+recommends, `Assert.Single<T>(IEnumerable<T>, Predicate<T>)`, verified against `xunit/assert.xunit`. Same
+assertion, better failure message (the predicate overload reports how many matched and where), and the only
+line in the repository standing between the tree and a strict build.
+
+---
+
+#### `release.yml` calls `ci.yml` rather than repeating it
+
+§16.4 asks for "publish image on tag". A publish pipeline that does not first verify is a way to ship an
+image nobody tested, and a publish pipeline that verifies with *its own copy* of the gates is two sets of
+gates to keep identical. So `ci.yml` declares `workflow_call:` alongside its push and pull-request
+triggers, and `release.yml`'s first job is `uses: ./.github/workflows/ci.yml`. A tag runs exactly the gates
+a push runs, because they are the same file.
+
+Tags land as `ghcr.io/<owner>/<repository>:<version>`, `:<major>.<minor>`, and `:sha-<commit>`, from
+`docker/metadata-action`'s semver patterns. `concurrency.cancel-in-progress` is `false` here — the opposite
+of `ci.yml`, where a superseded push should be abandoned. A half-pushed manifest is worse than a slow one.
+
+**`linux/amd64` only, deliberately.** The `Containerfile` runs a full `dotnet publish` inside its build
+stage. Doing that for arm64 through QEMU emulation is slow enough to risk the job timeout, and the right
+fix is not a longer timeout — it is a cross-compiled publish (`-r linux-arm64` from an amd64 SDK), which is
+a `Containerfile` change rather than a workflow line. Noted in `docs/OPERATIONS.md` §14 for whoever wants
+to run this on an SBC.
+
+---
+
+#### `scripts/ci_local.sh`
+
+CI's build is strict; a workstation's is not. That makes "it builds here" and "it builds in CI" two
+different questions, and nothing in the tree asked the second one. This script asks it: the same shell
+lint, the same `dotnet restore`, the same `--configuration Release -p:ContinuousIntegrationBuild=true`
+build, the same test invocation, in the same order, with each gate announcing itself so a failure is
+attributable at a glance.
+
+`--with-smoke` appends `./run.sh --smoke`. That is the closest local equivalent of the `boot-smoke` job and
+not the same thing: same migrations and same readiness probe, but the app runs on the host rather than
+inside the image, so it does not prove the `Containerfile` builds. `./run.sh --containers-only` is the real
+local analogue; the script says so rather than implying otherwise.
+
+`--help` prints the header comment block by walking it with awk until the first line of code, rather than
+by a hard-coded `sed` range — a range is a second place to maintain, and the kind that goes stale silently.
+
+---
+
+#### `dependabot.yml`
+
+Weekly, two ecosystems. NuGet reads `Directory.Packages.props`, so every bump lands in the one file that
+pins versions (REQUIREMENTS §2) rather than scattered across csproj files. OpenTelemetry, xunit and Npgsql
+are grouped, because those families move in lockstep and six pull requests that only build together are six
+red pull requests.
+
+Worth stating because it is a project rule that needs no configuration: Dependabot does not propose a
+prerelease for a dependency currently on a stable version. "No prerelease packages" is satisfied by
+default.
+
+---
+
+#### Files
+
+**New (5)**
+
+| Path | What |
+| --- | --- |
+| `.github/workflows/ci.yml` | `shell-scripts`, `build-and-test`, `boot-smoke`; also `workflow_call`-able |
+| `.github/workflows/release.yml` | calls `ci.yml`, then pushes to GHCR on `v*` |
+| `.github/dependabot.yml` | weekly NuGet + github-actions updates, grouped |
+| `scripts/ci_local.sh` | the same gates, locally |
+| `docs/_append/BUILD_PROGRESS-m6-slice-1.md` | this section |
+
+**Edited (5)**
+
+| Path | What |
+| --- | --- |
+| `Directory.Build.props` | `TreatWarningsAsErrors` under `ContinuousIntegrationBuild`; `WarningsNotAsErrors` for NU1901-1904 |
+| `tests/…/Sittings/SittingRecordReadsTests.cs` | one line — the xUnit2031 fix at 354 |
+| `README.md` | status (M1-M5 closed), a CI section and badge, SDK pin corrected, four stale caveats retired |
+| `docs/OPERATIONS.md` | new §14 — CI, cutting a release, deploying from the registry |
+| `_CHANGES.md` | this slice's delivery note |
+
+No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, `docs/DOCUMENTATION_REVIEW.md`, or ADR edit:
+this realizes behaviour §16.4 already specifies, in the words it already uses. The one substantive
+deviation from the spec's phrasing is recorded here rather than there — §16.4 says "integration (service
+container PostgreSQL)", written before Testcontainers landed in M1; the integration tests bring up their
+own PostgreSQL 17 container and need no service container, and `boot-smoke` is where a service container
+actually earns its place.
+
+---
+
+#### Where to look if this breaks
+
+Unusually for this project: **not the code**. Nothing in `src/` changed, and the only test-project change is
+one line inside one assertion.
+
+1. **`build-and-test` fails on a warning.** That is the gate working. The build log names the file, the
+   line and the code. Fix it, or — if it is genuinely not actionable — add the code to
+   `WarningsNotAsErrors` in `Directory.Build.props` with a comment saying why. Note this can happen on a
+   commit that touched nothing relevant, because the runner's SDK is newer than 10.0.110; that is the
+   tradeoff the CI-only condition accepts.
+2. **`boot-smoke` fails at "the web container exited before it became ready".** Read the `container logs`
+   step that runs on failure. Three candidates, in order of likelihood: a migration that conflicts against
+   a genuinely empty database, a `RestaurantOptions.Validate()` rejection (the job sets `RESTAURANT_*`
+   explicitly, so a new required setting with no default would land here), and a DI registration added
+   without its dependency.
+3. **`shell-scripts` fails.** Reproduce exactly with `scripts/ci_local.sh`, which runs the same two
+   shellcheck passes at the same two severities.
+4. **`release.yml` cannot push.** `packages: write` is declared on the `image` job. The first push to a new
+   GHCR package also needs the repository to be allowed to create it — a one-time settings step, not a
+   workflow bug.
+5. **An action version is rejected** ("Unable to resolve action"). The pinned majors were resolved at
+   authoring time: `checkout@v7`, `setup-dotnet@v6`, `upload-artifact@v7`, `cache@v6`,
+   `docker/metadata-action@v6`, `docker/setup-buildx-action@v4`, `docker/login-action@v4`,
+   `docker/build-push-action@v7`. Dependabot's `github-actions` ecosystem now keeps them current.
+
+---
+
+#### Build/test checklist for this slice
+
+1. `dotnet restore` — no new packages, no migration, no schema change.
+2. `dotnet build` — unchanged from the last green sweep; no Razor page was touched.
+3. `dotnet test` — **still 934 total, 919 passing, 15 skipped.** The xUnit2031 fix changes an assertion's
+   form, not its meaning or its count. If the total moved, something else moved with it.
+4. `bash -n scripts/ci_local.sh && shellcheck --severity=style scripts/ci_local.sh` — both clean as
+   delivered.
+5. `bash scripts/ci_local.sh` — the real check for this slice. It must pass, including the strict build.
+   Then `bash scripts/ci_local.sh --with-smoke` once.
+6. `git add .github scripts/ci_local.sh && git commit && git push` — and then watch the Actions tab, which
+   is the actual deliverable. Expect roughly: `shell-scripts` under a minute, `build-and-test` five to
+   eight (first run has no NuGet cache), `boot-smoke` four to seven.
+7. Optional, and worth doing once while the pipeline is fresh: `git tag --annotate v0.6.0 --message 'M6
+   slice 1'` and push it, to prove the release path end to end before it matters.
+
+---
+
+#### What is left in M6
+
+The E2E matrix (§16.3 — fifteen skipped facts and no harness), and the backup/restore drill as something
+executable rather than a runbook §6 describes in prose. The cloudflared production profile, the
+quick-tunnel script and the OPERATIONS runbooks were all delivered inside earlier milestones, so §19's M6
+line is down to two items.
+
+Next slice is the E2E harness: a fixture that brings up a stack, a Playwright browser context, and the
+first scenarios from §16.3 — starting with 1, 13 and 14, because the virtual authenticator and the
+controllable-clock plumbing they need are what every other scenario is waiting on.
+
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
 ################################################################################
@@ -5467,15 +6340,15 @@ when it is convenient. New issues enter this ledger as fresh `F-nn` rows — fin
   File name:             OPERATIONS.md
   Relative path:         docs/OPERATIONS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/OPERATIONS.md
-  Size:                  15.7 KiB (16076 bytes)
-  Last modified:         2026-07-23 01:23:14.000000000 -0400
+  Size:                  20.0 KiB (20452 bytes)
+  Last modified:         2026-07-29 02:41:19.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25103635
+  Inode:                 26974670
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               51dcdb75206e716c4df53d52a5b4e7c12c37721c7aa259b333e8bda5bd349792
-  Last git commit:       da06152 2026-07-23 01:33:53 -0400 add claude response
+  SHA-256:               81d3f6ced2a1db1f661ac51cd0a3d61b95d4149f440e7a7ea33f3418e291cad9
+  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
 
 --- CONTENT ---
 # myrestaurant — Operations
@@ -5618,6 +6491,56 @@ Migrations are append-only and roll forward only — the same philosophy as the 
 | Suspected join-token abuse | Rotate the affected table's join secret — in-flight tokens die instantly; watch the `table_join_tokens_validated_total{result}` metric |
 | Administrator's authenticator lost | Another administrator resets them (same flow as any user; TOTP re-enrollment is forced — administrators cannot exist unenrolled). Single-admin instances: this is why the bootstrap made you save **recovery codes** |
 | Lockout complaints | 5 failed attempts locks 5 minutes, automatically clears; no admin action needed |
+
+## 14. Continuous integration and releases
+
+CI is not an operations concern until the day you need to know *which build* is on the box and whether anyone verified it. This section is that day.
+
+**What every push is checked against.** `.github/workflows/ci.yml` runs three gates on every push and pull request against `main`: `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), and `boot-smoke` (the production `Containerfile` is built and the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200).
+
+`boot-smoke` is the gate that matters operationally, because it is the only one that exercises what a deployment exercises: DbUp applying every migration to an empty database, `RestaurantOptions.Validate()` accepting the configuration, and the composition root resolving. A green `boot-smoke` is the machine saying "this commit starts". Nothing else in the suite says that.
+
+CI deliberately does **not** use `compose.yaml`. The data-protection volume carries Podman's `:U` suffix — correct for the canonical rootless engine (ADR-0004) and rejected outright by Docker Compose — so the job uses a service-container PostgreSQL plus one `docker run --network host` instead. Same image, same environment variables, same readiness probe; the canonical stack stays the only compose file in the tree.
+
+**Cutting a release.**
+
+```bash
+scripts/ci_local.sh --with-smoke          # optional, but cheaper than a failed tag
+git tag --annotate v0.6.0 --message 'M6 slice 1'
+git push origin v0.6.0
+```
+
+`.github/workflows/release.yml` re-runs the full CI workflow (it calls `ci.yml` rather than repeating it, so a tag is verified by exactly the gates a push is), and only then publishes to GitHub Container Registry:
+
+- `ghcr.io/kusl/myrestaurant:0.6.0` — the exact version. **Use this in production.**
+- `ghcr.io/kusl/myrestaurant:0.6` — moves with each patch on that minor.
+- `ghcr.io/kusl/myrestaurant:sha-<commit>` — for when you need to name a build rather than a version.
+
+There is no `latest`, on purpose. A tag that silently changes what it points at is the reason people cannot answer "what is running".
+
+**Images are `linux/amd64` only.** The `Containerfile` runs a full `dotnet publish` inside its build stage, and doing that for arm64 through QEMU emulation is slow enough to risk the job timeout. If you want to run this on an ARM single-board machine, build on the box (`podman-compose --profile production up -d --build`, which is the default deployment anyway) or teach the `Containerfile` a cross-compiled publish (`-r linux-arm64` from an amd64 SDK). Emulation is the wrong fix.
+
+**Deploying from the registry instead of building on the box.** The default production flow builds locally — `git pull` then `--build` (§12) — which needs the SDK image and a few minutes of CPU on the host. To deploy a published image instead, add a `compose.override.yaml` beside `compose.yaml`; Podman and Docker both merge it automatically, and it stays untracked so it cannot follow a `git pull`:
+
+```yaml
+services:
+  web:
+    build: !reset null
+    image: ghcr.io/kusl/myrestaurant:0.6.0
+```
+
+Then the upgrade in §12 becomes: back up, edit the pinned version in that one file, `podman-compose --profile production up -d`. Everything else about §12 still holds — `web` applies new migrations at startup and exits non-zero on failure, and there is no schema downgrade path, ever.
+
+If your compose implementation does not support `!reset`, delete the `build:` block by writing the whole `web` service out in the override instead. The images are public, so no registry login is needed to pull.
+
+**Verifying what is actually running.**
+
+```bash
+podman inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' myrestaurant_web_1
+podman inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' myrestaurant_web_1
+```
+
+Those labels are stamped by `docker/metadata-action` at publish time, so they are trustworthy on a registry image and absent on one you built locally — which is itself a useful signal about where a container came from.
 
 ################################################################################
 # FILE: docs/REQUIREMENTS.md
@@ -8486,6 +9409,294 @@ QR, menu management + events, event explorer, hide/unhide, post-close correction
 M6 is hardening: the Playwright matrix (fifteen skips today), the backup/restore drill, and CI.
 
 ################################################################################
+# FILE: docs/_append/BUILD_PROGRESS-m6-slice-1.md
+################################################################################
+
+--- METADATA ---
+  File name:             BUILD_PROGRESS-m6-slice-1.md
+  Relative path:         docs/_append/BUILD_PROGRESS-m6-slice-1.md
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/_append/BUILD_PROGRESS-m6-slice-1.md
+  Size:                  16.2 KiB (16604 bytes)
+  Last modified:         2026-07-29 02:39:45.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 26974672
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               e31559124ab83711ce7e7e226f48123e2cd35de1ab73f8997bb2183808743cf2
+  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
+
+--- CONTENT ---
+### M6 Slice 1 — continuous integration: the machine that compiles what I cannot (landed)
+
+M6's build-order line (§19) reads "full E2E suite (§16.3), backups + restore drill, cloudflared production
+profile + tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, **CI pipeline**". This
+slice is the emphasised phrase, taken out of order on purpose — see below. §16.4 states it in one clause:
+"GitHub Actions — build, unit, integration (service container PostgreSQL), E2E (compose), publish image on
+tag."
+
+No migration, no packages, no schema change, no new C# file, and nothing deleted. One analyzer warning is
+fixed and `Directory.Build.props` finally answers a question it has carried since M1.
+
+---
+
+#### Why this is M6 Slice 1 rather than M6 Slice 4
+
+§19 lists the E2E suite first, and every previous milestone has walked its line roughly in order. This one
+does not, for a reason that is specific to how this repository gets built.
+
+Every slice from M1 to M5 was written without a compiler. The authoring environment has no .NET SDK and no
+package feed, so each slice's Razor pages and SQL went out on a "where to look if the build breaks" note
+and were compiled for the first time on the owner's workstation. That loop worked — 934 facts and a green
+sweep say so — but it has exactly one participant, it runs only when he runs it, and its results live in a
+terminal scrollback that has to be copied into a conversation before anyone else can see them.
+
+The E2E matrix does not fix that. It adds fifteen more facts to the same loop. CI moves the loop off one
+workstation: a push compiles the tree, runs all 934 facts against real PostgreSQL, and boots the actual
+production image — and says so in public, on every commit, without anybody remembering to ask. Sequencing
+the pipeline ahead of the suite it will eventually run is the difference between hardening the project and
+hardening one person's habits.
+
+The second reason is narrower and concrete. `boot-smoke` (below) is the gate that catches "the app starts
+but one route throws" — which is precisely the failure mode that cost this project a slice's worth of
+back-and-forth at the end of M2, diagnosed by reading container logs by hand. That gate is worth more,
+sooner, than any single E2E scenario.
+
+---
+
+#### Three gates, and what each one can prove that the others cannot
+
+**`shell-scripts`.** Every tracked `*.sh` must parse under `bash -n` and pass shellcheck. This is not a new
+standard — it is the project's existing pre-delivery discipline, which until now lived in an instruction
+rather than in the tree. Five scripts (`export.sh`, `run.sh`, `scripts/backup.sh`, `scripts/quick_tunnel.sh`,
+`scripts/restore.sh`) plus this slice's `scripts/ci_local.sh` are clean at shellcheck's *strictest* practical
+level, `--severity=style`.
+
+The gate nonetheless blocks at `--severity=warning`, one notch lower, with `style` running immediately after
+as `continue-on-error: true`. The reason is drift rather than doubt: `ubuntu-latest`'s shellcheck moves on
+its own schedule, and a new style check would turn the build red on a day nobody touched the repository. A
+red build with no commit behind it is how people learn to stop reading the build.
+
+**`build-and-test`.** Restore, a **Release** build with warnings escalated to errors, then the whole suite.
+Two details matter.
+
+The SDK is requested as `10.0.x`, not as `global.json`'s exact `10.0.100`. `global.json` pins that version
+with `rollForward: latestMinor`, so any 10.0 SDK satisfies it; asking a runner for an exact patch that has
+since been delisted is a way to fail that has nothing to do with the code.
+
+And the data-access tests *run* here. On the owner's Fedora box, Testcontainers needs the rootless Podman
+user socket activated by hand (`systemctl --user enable --now podman.socket`) or roughly 190 integration
+facts skip — quietly, with a green summary. A GitHub runner has `/var/run/docker.sock`, so
+`ContainerEngineDiscovery` returns early, Testcontainers uses the default endpoint, and those facts execute
+on every push whether or not anybody remembered the socket. That is a real change in what "the tests pass"
+means.
+
+**`boot-smoke`.** The `Containerfile` is built and the resulting image is started against a real
+PostgreSQL, and `/healthz/ready` must answer 200 within 180 seconds.
+
+Nothing else in the suite covers this. `/healthz/ready` returns 200 only after DbUp has applied every
+migration and reported the schema current, and it can only be *reached* if the composition root resolved —
+which means every `Add…()` extension in `Program.cs` produced a satisfiable graph. A missing registration,
+a migration that parses in a test but conflicts against a fresh database, a `RestaurantOptions.Validate()`
+rejection from a bad default: each is invisible to unit tests, each kills a production deployment, and each
+now fails a pull request instead of a service.
+
+---
+
+#### Why `compose.yaml` is not used in CI
+
+The obvious implementation of `boot-smoke` is `docker compose --profile dev up --build`, and it does not
+work. `compose.yaml` mounts the data-protection volume as
+`dataprotection-keys:/var/lib/myrestaurant/dataprotection:U` — the `:U` asks Podman to chown the volume to
+the container user, which is correct for the canonical rootless engine (ADR-0004) and which Docker Compose
+rejects as an invalid mount mode. The file's own comment already says so: "if you are on Docker and it
+complains, drop the ':U'".
+
+Editing `compose.yaml` to suit CI would mean changing the canonical dev stack to accommodate the one
+environment that is not the target, and shipping a second `compose.ci.yaml` would mean a second file that
+can drift from the first. A job-level `services:` PostgreSQL plus one `docker run --network host` is the
+same topology — same image, same environment variables, same readiness probe — with none of that argument,
+and it leaves the canonical stack the only compose file in the tree.
+
+`--network host` is what makes it one command: the container reaches the service database on the runner's
+published `127.0.0.1:5432` and publishes its own `8080` back for the probe, so no user-defined network,
+no container-to-container DNS, and no port-mapping arithmetic.
+
+---
+
+#### `TreatWarningsAsErrors`, and a note finally discharged
+
+`Directory.Build.props` has carried this since M1:
+
+> Warnings are NOT errors yet: a fresh clone must build through analyzer drift on a newer SDK. Flip to
+> true once the first green build is established (BUILD_PROGRESS).
+
+The first green build was established four milestones ago; the note stayed anyway, because both of its
+halves are true at once. Warnings *should* be errors — the alternative is a build log nobody reads. And a
+fresh clone on tomorrow's SDK *should not* refuse at the door over an analyzer that did not exist when the
+code was written, because a clone that will not build is worse than a warning that was not read.
+
+Conditioning on `ContinuousIntegrationBuild` resolves it without choosing a side. CI passes
+`-p:ContinuousIntegrationBuild=true`, which is where strictness belongs — a machine, with a commit to point
+at, on a tree somebody just changed. A `dotnet build` on a workstation stays lenient. The property is not
+invented for this: it is MSBuild's own, and setting it also makes the build deterministic, which is what it
+is for.
+
+`NU1901`–`NU1904` are exempted through `WarningsNotAsErrors` even under CI. Those are NuGet audit findings,
+raised when an advisory is published against a package this tree already depends on. That is real news and
+worth surfacing, but it arrives without a commit — so it surfaces in a `continue-on-error` step running
+`dotnet list package --vulnerable --include-transitive`, and it does not turn a pull request red for
+something the pull request did not do.
+
+The one warning in the tree had to go first: `SittingRecordReadsTests.cs:354` used
+`Assert.Single(record.Events.Where(…))`, which xUnit's own analyzer flags as **xUnit2031** ("do not use a
+Where clause to filter before calling Assert.Single"). It is now
+`Assert.Single(record.Events, stored => stored.EventType == "fulfillment")` — the overload the analyzer
+recommends, `Assert.Single<T>(IEnumerable<T>, Predicate<T>)`, verified against `xunit/assert.xunit`. Same
+assertion, better failure message (the predicate overload reports how many matched and where), and the only
+line in the repository standing between the tree and a strict build.
+
+---
+
+#### `release.yml` calls `ci.yml` rather than repeating it
+
+§16.4 asks for "publish image on tag". A publish pipeline that does not first verify is a way to ship an
+image nobody tested, and a publish pipeline that verifies with *its own copy* of the gates is two sets of
+gates to keep identical. So `ci.yml` declares `workflow_call:` alongside its push and pull-request
+triggers, and `release.yml`'s first job is `uses: ./.github/workflows/ci.yml`. A tag runs exactly the gates
+a push runs, because they are the same file.
+
+Tags land as `ghcr.io/<owner>/<repository>:<version>`, `:<major>.<minor>`, and `:sha-<commit>`, from
+`docker/metadata-action`'s semver patterns. `concurrency.cancel-in-progress` is `false` here — the opposite
+of `ci.yml`, where a superseded push should be abandoned. A half-pushed manifest is worse than a slow one.
+
+**`linux/amd64` only, deliberately.** The `Containerfile` runs a full `dotnet publish` inside its build
+stage. Doing that for arm64 through QEMU emulation is slow enough to risk the job timeout, and the right
+fix is not a longer timeout — it is a cross-compiled publish (`-r linux-arm64` from an amd64 SDK), which is
+a `Containerfile` change rather than a workflow line. Noted in `docs/OPERATIONS.md` §14 for whoever wants
+to run this on an SBC.
+
+---
+
+#### `scripts/ci_local.sh`
+
+CI's build is strict; a workstation's is not. That makes "it builds here" and "it builds in CI" two
+different questions, and nothing in the tree asked the second one. This script asks it: the same shell
+lint, the same `dotnet restore`, the same `--configuration Release -p:ContinuousIntegrationBuild=true`
+build, the same test invocation, in the same order, with each gate announcing itself so a failure is
+attributable at a glance.
+
+`--with-smoke` appends `./run.sh --smoke`. That is the closest local equivalent of the `boot-smoke` job and
+not the same thing: same migrations and same readiness probe, but the app runs on the host rather than
+inside the image, so it does not prove the `Containerfile` builds. `./run.sh --containers-only` is the real
+local analogue; the script says so rather than implying otherwise.
+
+`--help` prints the header comment block by walking it with awk until the first line of code, rather than
+by a hard-coded `sed` range — a range is a second place to maintain, and the kind that goes stale silently.
+
+---
+
+#### `dependabot.yml`
+
+Weekly, two ecosystems. NuGet reads `Directory.Packages.props`, so every bump lands in the one file that
+pins versions (REQUIREMENTS §2) rather than scattered across csproj files. OpenTelemetry, xunit and Npgsql
+are grouped, because those families move in lockstep and six pull requests that only build together are six
+red pull requests.
+
+Worth stating because it is a project rule that needs no configuration: Dependabot does not propose a
+prerelease for a dependency currently on a stable version. "No prerelease packages" is satisfied by
+default.
+
+---
+
+#### Files
+
+**New (5)**
+
+| Path | What |
+| --- | --- |
+| `.github/workflows/ci.yml` | `shell-scripts`, `build-and-test`, `boot-smoke`; also `workflow_call`-able |
+| `.github/workflows/release.yml` | calls `ci.yml`, then pushes to GHCR on `v*` |
+| `.github/dependabot.yml` | weekly NuGet + github-actions updates, grouped |
+| `scripts/ci_local.sh` | the same gates, locally |
+| `docs/_append/BUILD_PROGRESS-m6-slice-1.md` | this section |
+
+**Edited (5)**
+
+| Path | What |
+| --- | --- |
+| `Directory.Build.props` | `TreatWarningsAsErrors` under `ContinuousIntegrationBuild`; `WarningsNotAsErrors` for NU1901-1904 |
+| `tests/…/Sittings/SittingRecordReadsTests.cs` | one line — the xUnit2031 fix at 354 |
+| `README.md` | status (M1-M5 closed), a CI section and badge, SDK pin corrected, four stale caveats retired |
+| `docs/OPERATIONS.md` | new §14 — CI, cutting a release, deploying from the registry |
+| `_CHANGES.md` | this slice's delivery note |
+
+No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, `docs/DOCUMENTATION_REVIEW.md`, or ADR edit:
+this realizes behaviour §16.4 already specifies, in the words it already uses. The one substantive
+deviation from the spec's phrasing is recorded here rather than there — §16.4 says "integration (service
+container PostgreSQL)", written before Testcontainers landed in M1; the integration tests bring up their
+own PostgreSQL 17 container and need no service container, and `boot-smoke` is where a service container
+actually earns its place.
+
+---
+
+#### Where to look if this breaks
+
+Unusually for this project: **not the code**. Nothing in `src/` changed, and the only test-project change is
+one line inside one assertion.
+
+1. **`build-and-test` fails on a warning.** That is the gate working. The build log names the file, the
+   line and the code. Fix it, or — if it is genuinely not actionable — add the code to
+   `WarningsNotAsErrors` in `Directory.Build.props` with a comment saying why. Note this can happen on a
+   commit that touched nothing relevant, because the runner's SDK is newer than 10.0.110; that is the
+   tradeoff the CI-only condition accepts.
+2. **`boot-smoke` fails at "the web container exited before it became ready".** Read the `container logs`
+   step that runs on failure. Three candidates, in order of likelihood: a migration that conflicts against
+   a genuinely empty database, a `RestaurantOptions.Validate()` rejection (the job sets `RESTAURANT_*`
+   explicitly, so a new required setting with no default would land here), and a DI registration added
+   without its dependency.
+3. **`shell-scripts` fails.** Reproduce exactly with `scripts/ci_local.sh`, which runs the same two
+   shellcheck passes at the same two severities.
+4. **`release.yml` cannot push.** `packages: write` is declared on the `image` job. The first push to a new
+   GHCR package also needs the repository to be allowed to create it — a one-time settings step, not a
+   workflow bug.
+5. **An action version is rejected** ("Unable to resolve action"). The pinned majors were resolved at
+   authoring time: `checkout@v7`, `setup-dotnet@v6`, `upload-artifact@v7`, `cache@v6`,
+   `docker/metadata-action@v6`, `docker/setup-buildx-action@v4`, `docker/login-action@v4`,
+   `docker/build-push-action@v7`. Dependabot's `github-actions` ecosystem now keeps them current.
+
+---
+
+#### Build/test checklist for this slice
+
+1. `dotnet restore` — no new packages, no migration, no schema change.
+2. `dotnet build` — unchanged from the last green sweep; no Razor page was touched.
+3. `dotnet test` — **still 934 total, 919 passing, 15 skipped.** The xUnit2031 fix changes an assertion's
+   form, not its meaning or its count. If the total moved, something else moved with it.
+4. `bash -n scripts/ci_local.sh && shellcheck --severity=style scripts/ci_local.sh` — both clean as
+   delivered.
+5. `bash scripts/ci_local.sh` — the real check for this slice. It must pass, including the strict build.
+   Then `bash scripts/ci_local.sh --with-smoke` once.
+6. `git add .github scripts/ci_local.sh && git commit && git push` — and then watch the Actions tab, which
+   is the actual deliverable. Expect roughly: `shell-scripts` under a minute, `build-and-test` five to
+   eight (first run has no NuGet cache), `boot-smoke` four to seven.
+7. Optional, and worth doing once while the pipeline is fresh: `git tag --annotate v0.6.0 --message 'M6
+   slice 1'` and push it, to prove the release path end to end before it matters.
+
+---
+
+#### What is left in M6
+
+The E2E matrix (§16.3 — fifteen skipped facts and no harness), and the backup/restore drill as something
+executable rather than a runbook §6 describes in prose. The cloudflared production profile, the
+quick-tunnel script and the OPERATIONS runbooks were all delivered inside earlier milestones, so §19's M6
+line is down to two items.
+
+Next slice is the E2E harness: a fixture that brings up a stack, a Playwright browser context, and the
+first scenarios from §16.3 — starting with 1, 13 and 14, because the virtual authenticator and the
+controllable-clock plumbing they need are what every other scenario is waiting on.
+
+################################################################################
 # FILE: docs/adr/0001-single-application-with-areas.md
 ################################################################################
 
@@ -9558,6 +10769,159 @@ if (( ${#dumps[@]} > BACKUP_RETENTION_COUNT )); then
 fi
 
 echo "info: backup complete. Remember to back up the Data Protection keys volume too (§3.4)."
+
+################################################################################
+# FILE: scripts/ci_local.sh
+################################################################################
+
+--- METADATA ---
+  File name:             ci_local.sh
+  Relative path:         scripts/ci_local.sh
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/ci_local.sh
+  Size:                  5.7 KiB (5867 bytes)
+  Last modified:         2026-07-28 21:09:08.000000000 -0400
+  Permissions:           -rwxr-xr-x
+  Owner:                 kushal:kushal
+  Inode:                 26974674
+  Hard links:            1
+  MIME type:             text/x-shellscript
+  SHA-256:               9dad29cb2f20389eade8b53c5b68b3b5bd03270557f21323d43b2db6e97987a0
+  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
+
+--- CONTENT ---
+#!/usr/bin/env bash
+#
+# Run the CI gates locally (TECHNICAL_SPECIFICATION §16.4). Idempotent, and it changes nothing in
+# the working tree.
+#
+#   scripts/ci_local.sh              shell lint, restore, strict Release build, full test suite
+#   scripts/ci_local.sh --with-smoke ...and then ./run.sh --smoke (boots the app once, checks health)
+#   scripts/ci_local.sh --help       this text
+#
+# Why this exists: .github/workflows/ci.yml builds with -p:ContinuousIntegrationBuild=true, which
+# flips TreatWarningsAsErrors in Directory.Build.props. A plain `dotnet build` is deliberately more
+# forgiving than that, so "it builds here" and "it builds in CI" are two different questions unless
+# something asks the second one on purpose. This asks it.
+#
+# The one gate this cannot reproduce is CI's boot-smoke job, which builds the Containerfile and
+# boots the resulting image against a real PostgreSQL. `--with-smoke` is the closest local
+# equivalent: same migrations, same readiness probe, but the app runs on the host rather than in the
+# image. For the real thing, `./run.sh --containers-only`.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+WITH_SMOKE=0
+
+case "${1:-}" in
+    "")
+        ;;
+    --with-smoke)
+        WITH_SMOKE=1
+        ;;
+    --help | -h)
+        # Print the header comment block and stop at the first line of real code, so the help text
+        # cannot drift out of step with a hard-coded line range.
+        awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
+        exit 0
+        ;;
+    *)
+        echo "error: unknown argument '$1' (expected --with-smoke, --help, or nothing)." >&2
+        exit 1
+        ;;
+esac
+
+# ---------------------------------------------------------------------------------------------------
+# Reporting helpers. Every gate announces itself, so a failure is attributable at a glance.
+# ---------------------------------------------------------------------------------------------------
+STEP_NUMBER=0
+
+announce() {
+    STEP_NUMBER=$(( STEP_NUMBER + 1 ))
+    echo
+    echo "────────────────────────────────────────────────────────────────────────────"
+    echo "  ${STEP_NUMBER}. $1"
+    echo "────────────────────────────────────────────────────────────────────────────"
+}
+
+fail() {
+    echo "error: $1" >&2
+    exit 1
+}
+
+# ---------------------------------------------------------------------------------------------------
+# 1. Shell scripts: every tracked *.sh must parse, and pass shellcheck when it is installed.
+# ---------------------------------------------------------------------------------------------------
+announce "shell scripts"
+
+if ! command -v git >/dev/null 2>&1; then
+    fail "git is required (the script list comes from 'git ls-files')."
+fi
+
+script_paths=()
+while IFS= read -r script_path; do
+    [[ -n "$script_path" ]] && script_paths+=("$script_path")
+done < <(git ls-files '*.sh')
+
+if (( ${#script_paths[@]} == 0 )); then
+    fail "no tracked *.sh files found; is this the repository root?"
+fi
+
+printf 'checking %d script(s)\n' "${#script_paths[@]}"
+for script_path in "${script_paths[@]}"; do
+    printf '  bash -n %s\n' "$script_path"
+    bash -n "$script_path"
+done
+
+if command -v shellcheck >/dev/null 2>&1; then
+    echo "  shellcheck --severity=warning (blocking, as in CI)"
+    shellcheck --severity=warning "${script_paths[@]}"
+    echo "  shellcheck --severity=style (advisory)"
+    shellcheck --severity=style "${script_paths[@]}" || true
+else
+    echo "warning: shellcheck is not installed, so only the parse check ran here." >&2
+    echo "         CI runs it regardless; install it with 'sudo dnf install ShellCheck'." >&2
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# 2. Restore, build strictly, test. Same flags CI uses, in the same order.
+# ---------------------------------------------------------------------------------------------------
+if ! command -v dotnet >/dev/null 2>&1; then
+    fail "the .NET SDK is required for the build and test gates."
+fi
+
+announce "restore"
+dotnet restore MyRestaurant.slnx
+
+announce "build (Release, warnings as errors)"
+dotnet build MyRestaurant.slnx \
+    --configuration Release \
+    --no-restore \
+    -p:ContinuousIntegrationBuild=true
+
+announce "test"
+# The data-access tests need a reachable container engine and skip without one. On rootless Podman
+# that means the user API socket must be active: systemctl --user enable --now podman.socket
+dotnet test MyRestaurant.slnx \
+    --configuration Release \
+    --no-build \
+    -p:ContinuousIntegrationBuild=true
+
+# ---------------------------------------------------------------------------------------------------
+# 3. Optional: boot once and probe /healthz/ready.
+# ---------------------------------------------------------------------------------------------------
+if (( WITH_SMOKE )); then
+    announce "boot smoke (./run.sh --smoke)"
+    ./run.sh --smoke
+fi
+
+echo
+echo "────────────────────────────────────────────────────────────────────────────"
+echo "  all local CI gates passed."
+if (( ! WITH_SMOKE )); then
+    echo "  (not run: the boot smoke — add --with-smoke, or ./run.sh --containers-only)"
+fi
+echo "────────────────────────────────────────────────────────────────────────────"
 
 ################################################################################
 # FILE: scripts/quick_tunnel.sh
@@ -57712,15 +59076,15 @@ public sealed class SittingMembershipTests : IClassFixture<PostgreSqlFixture>, I
   File name:             SittingRecordReadsTests.cs
   Relative path:         tests/MyRestaurant.DataAccess.Tests/Sittings/SittingRecordReadsTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/Sittings/SittingRecordReadsTests.cs
-  Size:                  27.5 KiB (28195 bytes)
-  Last modified:         2026-07-28 07:37:53.000000000 -0400
+  Size:                  27.5 KiB (28189 bytes)
+  Last modified:         2026-07-29 02:37:39.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 26534138
+  Inode:                 26974678
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               91a5f8b99cd9c1a677eaf1abc7319939916e88802441592ce297d59f4163d9ad
-  Last git commit:       ea19b07 2026-07-28 08:08:39 -0400 add claude response
+  SHA-256:               e3e8e4a589268d5dcb6e7301d77c1a775ca503016576ef8de822fc4bde10651e
+  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
 
 --- CONTENT ---
 using MyRestaurant.DataAccess.Orders;
@@ -58076,7 +59440,7 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
 
         // The undo does not erase the fulfillment; both are events, and §6.4's line lifecycle is read off
         // the pair rather than off a flag somebody overwrote.
-        Assert.Single(record.Events.Where(stored => stored.EventType == "fulfillment"));
+        Assert.Single(record.Events, stored => stored.EventType == "fulfillment");
     }
 
     /// <summary>
@@ -68571,10 +69935,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 282
-  Total size     : 2.8 MiB (2919617 bytes)
+  Files dumped   : 287
+  Total size     : 2.8 MiB (2987785 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-28T20:54:54-04:00
+  Completed at   : 2026-07-29T03:41:41-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
