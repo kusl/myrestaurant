@@ -110,12 +110,14 @@ internal static class DisplayJourneys
             throw new InvalidOperationException(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    ref $"The table display surface never became interactive within {timeout.TotalSeconds:F0}s;"
-                    + $" it is still the prerendered markup ({surface}). Nothing on this page will ever"
-                    + " change — the QR cannot advance across a rotation boundary and the party-size chip"
-                    + " cannot move — because no Blazor circuit was established. Check that"
-                    + " /_framework/blazor.web.js is served (RestaurantInstance probes it at startup) and"
-                    + " that the browser reached /_blazor."),
+                    $"""
+                    The table display surface never became interactive within {timeout.TotalSeconds:F0}s; \
+                    it is still the prerendered markup ({surface}). Nothing on this page will ever \
+                    change — the QR cannot advance across a rotation boundary and the party-size chip \
+                    cannot move — because no Blazor circuit was established. Check that \
+                    /_framework/blazor.web.js is served (RestaurantInstance probes it at startup) and \
+                    that the browser reached /_blazor.
+                    """),
                 exception);
         }
     }
