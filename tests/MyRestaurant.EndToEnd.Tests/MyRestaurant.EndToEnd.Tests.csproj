@@ -1,28 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
-  <!--
-    Playwright end-to-end scenarios covering the §16.3 matrix. The harness arrived at M6 Slice 2:
-    each implemented scenario creates its own database on a shared PostgreSQL 17 container
-    (Testcontainers), boots the already-built web application as a child process on a free loopback
-    port, and drives it through Chromium with a CDP virtual authenticator.
-
-    The scenarios are OPT-IN — they skip unless MYRESTAURANT_E2E=1 — because the first run downloads
-    Chromium (~150 MB) into ~/.cache/ms-playwright, and `dotnet test` should not do that by surprise.
-    See Harness/RestaurantHarness.cs and `scripts/ci_local.sh --with-e2e`.
-
-    References, in the same explicit spirit as MyRestaurant.WebApplication.Tests:
-      • Microsoft.AspNetCore.App, because the WebApplication project reference below is a Web SDK
-        project and the tests name AccountRoutes from it (framework-reference propagation across a
-        Web SDK reference is not something to lean on);
-      • MyRestaurant.WebApplication, for AccountRoutes — the tests assert on the very route
-        constants the app routes on, rather than on string literals that can drift. The reference
-        also makes the web application a BUILD dependency of this project, which is what lets the
-        harness expect its binaries to exist on disk;
-      • MyRestaurant.Domain, for the real JoinTokenService / Rfc6238Totp / Base32Text. The harness
-        computes tokens and authenticator codes with the same code the server validates them with;
-      • Npgsql, to create a per-scenario database and to arrange fixtures (§4.1 rows) directly;
-      • Testcontainers.PostgreSql, for the shared PostgreSQL 17 container.
-  -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
@@ -50,3 +26,25 @@
   </ItemGroup>
 
 </Project>
+
+    <!-- Playwright end-to-end scenarios covering the §16.3 matrix. The harness arrived at M6 Slice 2:
+    each implemented scenario creates its own database on a shared PostgreSQL 17 container
+    (Testcontainers), boots the already-built web application as a child process on a free loopback
+    port, and drives it through Chromium with a CDP virtual authenticator.
+
+    The scenarios are OPT-IN — they skip unless MYRESTAURANT_E2E=1 — because the first run downloads
+    Chromium (~150 MB) into ~/.cache/ms-playwright, and `dotnet test` should not do that by surprise.
+    See Harness/RestaurantHarness.cs and `scripts/ci_local.sh --with-e2e`.
+
+    References, in the same explicit spirit as MyRestaurant.WebApplication.Tests:
+      • Microsoft.AspNetCore.App, because the WebApplication project reference below is a Web SDK
+        project and the tests name AccountRoutes from it (framework-reference propagation across a
+        Web SDK reference is not something to lean on);
+      • MyRestaurant.WebApplication, for AccountRoutes — the tests assert on the very route
+        constants the app routes on, rather than on string literals that can drift. The reference
+        also makes the web application a BUILD dependency of this project, which is what lets the
+        harness expect its binaries to exist on disk;
+      • MyRestaurant.Domain, for the real JoinTokenService / Rfc6238Totp / Base32Text. The harness
+        computes tokens and authenticator codes with the same code the server validates them with;
+      • Npgsql, to create a per-scenario database and to arrange fixtures (§4.1 rows) directly;
+      • Testcontainers.PostgreSql, for the shared PostgreSQL 17 container. -->
