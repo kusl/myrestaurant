@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-29T03:58:35-04:00
+  Generated at   : 2026-07-29T05:39:14-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 46deaa20b36fd3aab497067b91c046ca0a141bb8
-  Commit (short) : 46deaa2
-  Commit date    : 2026-07-29 03:57:51 -0400
-  Commit message : run scripts
+  Commit (full)  : a8f40f5dc526349c7100b85176ff86e513efe54a
+  Commit (short) : a8f40f5
+  Commit date    : 2026-07-29 05:39:06 -0400
+  Commit message : append build progress
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 287
+  Files included : 294
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (287 included files)
+# FILE TREE  (294 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -569,7 +569,8 @@ cat "$OUTPUT_FILE"
 │   │   ├── BUILD_PROGRESS-m5-slice-3.md
 │   │   ├── BUILD_PROGRESS-m5-slice-4.md
 │   │   ├── BUILD_PROGRESS-m5-slice-5.md
-│   │   └── BUILD_PROGRESS-m6-slice-1.md
+│   │   ├── BUILD_PROGRESS-m6-slice-1.md
+│   │   └── BUILD_PROGRESS-m6-slice-2.md
 │   └── adr
 │       ├── 0001-single-application-with-areas.md
 │       ├── 0002-relational-append-only-event-logs.md
@@ -851,6 +852,13 @@ cat "$OUTPUT_FILE"
     │   └── UuidV7IdentifierFactoryTests.cs
     ├── MyRestaurant.EndToEnd.Tests
     │   ├── EndToEndScenarios.cs
+    │   ├── Harness
+    │   │   ├── AccountJourneys.cs
+    │   │   ├── ContainerEngineDiscovery.cs
+    │   │   ├── RestaurantHarness.cs
+    │   │   ├── RestaurantInstance.cs
+    │   │   ├── VirtualAuthenticator.cs
+    │   │   └── WebApplicationLocator.cs
     │   └── MyRestaurant.EndToEnd.Tests.csproj
     └── MyRestaurant.WebApplication.Tests
         ├── Displays
@@ -1112,20 +1120,20 @@ updates:
   File name:             ci.yml
   Relative path:         .github/workflows/ci.yml
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/.github/workflows/ci.yml
-  Size:                  9.8 KiB (10048 bytes)
-  Last modified:         2026-07-28 21:07:59.000000000 -0400
+  Size:                  13.5 KiB (13816 bytes)
+  Last modified:         2026-07-29 05:06:51.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 26974664
+  Inode:                 27205621
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               effb2f8d9ddabc251c7002c0ab3193bb6d5a97f9ab8b5116bd705f12dbd668e6
-  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
+  SHA-256:               63dead15769b36f905802645950f89d43dab6d7123f0277c7f1c0adcdf47c241
+  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
 
 --- CONTENT ---
 # Continuous integration (TECHNICAL_SPECIFICATION §16.4).
 #
-# Three gates. None of them can be satisfied by a tree that merely looks right:
+# Four gates. None of them can be satisfied by a tree that merely looks right:
 #
 #   shell-scripts   Every tracked *.sh parses (`bash -n`) and passes shellcheck. This is the
 #                   project's own pre-delivery discipline, enforced instead of remembered.
@@ -1140,6 +1148,12 @@ updates:
 #                   that proves DbUp migrations apply and the composition root resolves — a class of
 #                   failure no unit test sees, because it happens exactly once, at startup, and
 #                   presents as a 500 on some route hours later.
+#
+#   end-to-end      The §16.3 Playwright scenarios, in Chromium, against the built application. Its
+#                   own job rather than part of build-and-test, for two reasons: the scenarios are
+#                   opt-in (MYRESTAURANT_E2E) so a workstation `dotnet test` never downloads a
+#                   browser by surprise, and a browser-driven flake should be attributable at a
+#                   glance instead of hiding inside a nine-hundred-fact summary.
 #
 # The workflow is also callable (`workflow_call`) so the release pipeline runs precisely these
 # gates before it publishes an image, rather than a copy of them that can drift.
@@ -1260,7 +1274,8 @@ jobs:
               -p:ContinuousIntegrationBuild=true
 
       # Testcontainers finds /var/run/docker.sock on the runner, so the ~190 data-access integration
-      # facts execute here. The 15 Playwright placeholders still skip until the M6 harness lands.
+      # facts execute here. MYRESTAURANT_E2E is deliberately NOT set: the §16.3 scenarios have their
+      # own job below, and running them twice would double the browser time for one answer.
       - name: test
         run: |
           dotnet test MyRestaurant.slnx \
@@ -1361,6 +1376,84 @@ jobs:
       - name: stop the container
         if: ${{ always() }}
         run: docker rm --force myrestaurant_web_ci || true
+
+  # -----------------------------------------------------------------------------------------------
+  # 4. The §16.3 end-to-end scenarios, in a real browser.
+  # -----------------------------------------------------------------------------------------------
+  end-to-end:
+    name: end to end (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: check out
+        uses: actions/checkout@v7
+
+      - name: set up the .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json', '**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: restore
+        run: dotnet restore MyRestaurant.slnx
+
+      # The harness boots the web application from its own build output, so this build is not merely
+      # a prerequisite for the test assembly — it produces the binary under test.
+      - name: build (Release, warnings as errors)
+        run: |
+          dotnet build MyRestaurant.slnx \
+              --configuration Release \
+              --no-restore \
+              -p:ContinuousIntegrationBuild=true
+
+      # The harness calls `playwright install chromium` itself, which downloads the browser but not
+      # its system libraries. --with-deps needs apt and therefore root, which a test process has no
+      # business asking for — so it happens here, once, through the wrapper the build produced.
+      # pwsh is preinstalled on GitHub's Ubuntu runners.
+      - name: cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('Directory.Packages.props') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: install Chromium and its dependencies
+        run: |
+          set -euo pipefail
+          pwsh tests/MyRestaurant.EndToEnd.Tests/bin/Release/net10.0/playwright.ps1 \
+              install --with-deps chromium
+
+      # MYRESTAURANT_E2E is what turns the fifteen placeholders into real scenarios. Testcontainers
+      # reaches the runner's Docker socket for the shared PostgreSQL 17 container; each scenario then
+      # creates its own database on it and boots the application on its own loopback port.
+      - name: run the §16.3 scenarios
+        env:
+          MYRESTAURANT_E2E: "1"
+        run: |
+          dotnet test tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj \
+              --configuration Release \
+              --no-build \
+              -p:ContinuousIntegrationBuild=true \
+              --logger "trx" \
+              --logger "console;verbosity=normal" \
+              --results-directory "${{ github.workspace }}/TestResults"
+
+      - name: upload end-to-end results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: end-to-end-results
+          path: TestResults/**/*.trx
+          if-no-files-found: warn
+          retention-days: 14
 
 ################################################################################
 # FILE: .github/workflows/release.yml
@@ -2554,15 +2647,15 @@ For more information on this, and how to apply and follow the GNU AGPL, see
   File name:             README.md
   Relative path:         README.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/README.md
-  Size:                  14.2 KiB (14521 bytes)
-  Last modified:         2026-07-29 02:40:51.000000000 -0400
+  Size:                  16.2 KiB (16574 bytes)
+  Last modified:         2026-07-29 05:08:50.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 26974667
+  Inode:                 27205622
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               fe341d0c73a585ecaed086aa785fa6be82aee1702ef3603448d4c0597117f90c
-  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
+  SHA-256:               a580d4d3c13212979781f1801ee4f78655d373a583bd8fbab1d92e9d6b2e4a8c
+  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
 
 --- CONTENT ---
 # MyRestaurant
@@ -2579,8 +2672,9 @@ database and the tunnel.
 accounts, table administration and rotating join QR codes, paired table displays, the living order
 with its locking protocol, the kitchen and counter boards, billing and settlement, menu management,
 and the administration surfaces including the cross-log event explorer. **Milestone 6 (hardening)**
-is in progress — continuous integration has landed; the Playwright end-to-end matrix and an
-executable backup/restore drill are what remain. See *Roadmap* and `docs/BUILD_PROGRESS.md`.
+is in progress — continuous integration has landed, and so has the Playwright end-to-end harness
+with the first three scenarios of the §16.3 matrix; the remaining twelve scenarios and an executable
+backup/restore drill are what is left. See *Roadmap* and `docs/BUILD_PROGRESS.md`.
 
 ## Layout
 
@@ -2600,8 +2694,7 @@ the web layer depends on data-access and the domain; the domain depends on nothi
   and the Blazor shell.
 - `tests/` — pure domain tests, Testcontainers integration tests for migrations, the Identity stores
   and every reader/mutation over real PostgreSQL, web-layer configuration/wiring/enforcement tests,
-  and the version-controlled end-to-end scenario matrix (still skipped — the harness is the next M6
-  slice).
+  and the end-to-end scenario matrix with its Playwright harness (see *End-to-end scenarios*).
 - `.github/workflows/` — the CI and release pipelines (see *Continuous integration*).
 
 ## Prerequisites
@@ -2610,7 +2703,7 @@ the web layer depends on data-access and the domain; the domain depends on nothi
   feature band satisfies it.
 - A container engine — rootless **Podman** is the primary target; Docker works too.
 - For integration tests, the container engine's API socket must be reachable (see *Testing*). For
-  end-to-end tests (later), Playwright browsers as well.
+  the end-to-end scenarios, a Chromium build as well (see *End-to-end scenarios*).
 
 ## Quick start
 
@@ -2672,18 +2765,48 @@ The test suite then discovers `unix://$XDG_RUNTIME_DIR/podman/podman.sock` autom
 disables Ryuk, which is unreliable rootless — every fixture disposes its own container). Explicit
 configuration still wins: `DOCKER_HOST` or `~/.testcontainers.properties`, if set, are respected.
 
-The end-to-end project lists the required scenarios as skipped placeholders and is implemented at
-Milestone 6.
+## End-to-end scenarios
+
+The §16.3 matrix lives in `tests/MyRestaurant.EndToEnd.Tests`. It is **opt-in** — a plain
+`dotnet test` skips it — because the first run downloads a Chromium build of roughly 150 MB. Run it
+with either of:
+
+```bash
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+scripts/ci_local.sh --with-e2e
+```
+
+Each scenario gets its own stack: a fresh database on a shared PostgreSQL 17 container, a fresh
+Data Protection key directory, the **built** web application as a child process on a free loopback
+port, and a browser context with a CDP WebAuthn virtual authenticator. Nothing is shared between
+scenarios, so they can run in any order — which matters, because scenario 1 needs a database with no
+administrator and scenario 13 needs one with an administrator who has both a passkey and TOTP.
+
+The app is served at `http://localhost:{port}` while `RESTAURANT_PUBLIC_ORIGIN` says
+`https://localhost:{port}`. The mismatch is deliberate: §13 refuses to start on a non-https origin,
+and Chromium treats `localhost` as a secure context regardless of scheme, so WebAuthn ceremonies run
+and the `Secure` authentication cookie is accepted. Only the host is ever compared.
+
+On a minimal Linux host Chromium's shared libraries may be missing. Install them once — this needs
+root, which is why the harness never attempts it:
+
+```bash
+pwsh tests/MyRestaurant.EndToEnd.Tests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+```
+
+Every unavailability is a skip with the fix in its message: not opted in, no container engine, no
+browser, no build output. A missing tool is not a broken product.
 
 ## Continuous integration
 
-Every push and pull request against `main` runs three gates (`.github/workflows/ci.yml`):
+Every push and pull request against `main` runs four gates (`.github/workflows/ci.yml`):
 
 | Gate | What it proves |
 | --- | --- |
 | `shell-scripts` | every tracked `*.sh` parses under `bash -n` and passes shellcheck |
 | `build-and-test` | a Release build with **warnings escalated to errors**, then all ~934 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
 | `boot-smoke` | the production `Containerfile` builds, and the resulting image boots against a real PostgreSQL until `/healthz/ready` answers 200 |
+| `end-to-end` | the §16.3 scenarios in Chromium against the built application, with `MYRESTAURANT_E2E=1` |
 
 That third gate is the one worth understanding. `/healthz/ready` returns 200 only once DbUp has
 applied every migration and the composition root has resolved, so it catches the class of failure no
@@ -2695,7 +2818,9 @@ Run the same gates locally before pushing:
 
 ```bash
 scripts/ci_local.sh                # shell lint, restore, strict build, full suite
+scripts/ci_local.sh --with-e2e     # ...and the §16.3 scenarios in a real browser
 scripts/ci_local.sh --with-smoke   # ...and boot once against the dev database
+scripts/ci_local.sh --with-all     # both of the optional gates
 ```
 
 Note that `dotnet build` on a workstation is deliberately *more* forgiving than CI:
@@ -2766,7 +2891,7 @@ environment (no toolchain or package feed there). On a networked machine:
 Or, in one command that mirrors what CI will say about the same tree:
 
 ```bash
-scripts/ci_local.sh --with-smoke
+scripts/ci_local.sh --with-all
 ```
 
 ## Known caveats and deliberate decisions
@@ -2775,6 +2900,8 @@ scripts/ci_local.sh --with-smoke
   under `ContinuousIntegrationBuild=true` (`Directory.Build.props`), so a fresh clone on a newer SDK
   builds through analyzer drift while a pull request does not. `scripts/ci_local.sh` asks the strict
   question locally.
+- **The end-to-end scenarios are opt-in.** `MYRESTAURANT_E2E=1` is the switch. Without it they skip,
+  and a green `dotnet test` says nothing about them — read the `end-to-end` CI job instead.
 - **Not `InvariantGlobalization`.** The app resolves `RESTAURANT_TIME_ZONE` through `TimeZoneInfo`,
   so globalization stays on and the runtime image installs `tzdata`.
 - **DbUp logging** uses `LogToConsole()` rather than a custom `IUpgradeLog`, whose interface shape
@@ -2816,9 +2943,9 @@ scripts/ci_local.sh --with-smoke
 - ✔ **M5** — counter & administration: bills, price adjustment with reason, close & settle,
   end-of-day, the counter fallback QR, menu management with its event log, the cross-log event
   explorer, hide/unhide, and post-close corrective events.
-- **M6** — hardening *(in progress)*: ✔ the CI pipeline and publish-on-tag; still to come, the
-  Playwright end-to-end matrix (§16.3 — fifteen scenarios, currently version-controlled as skipped
-  placeholders) and an executable backup/restore drill.
+- **M6** — hardening *(in progress)*: ✔ the CI pipeline and publish-on-tag; ✔ the Playwright
+  harness and §16.3 scenarios 1, 13 and 14; still to come, the other twelve scenarios and an
+  executable backup/restore drill.
 
 ################################################################################
 # FILE: _CHANGES.md
@@ -2828,276 +2955,169 @@ scripts/ci_local.sh --with-smoke
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  16.9 KiB (17295 bytes)
-  Last modified:         2026-07-29 02:42:35.000000000 -0400
+  Size:                  11.1 KiB (11362 bytes)
+  Last modified:         2026-07-29 05:10:49.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 26974668
+  Inode:                 27205636
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               2b28031d4abcf676ec4f7e6e600c8842fce22d56a63535cf71f46a90108efacc
-  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
+  SHA-256:               a2b14d9a7c8b958e139d439356a40bc83be17538ee98976e318d278c88c561cc
+  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
 
 --- CONTENT ---
-# M6 Slice 1 — continuous integration: the machine that compiles what I cannot
+# M6 Slice 2 — the end-to-end harness, and the first three scenarios
 
 Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
-and the contents drop straight over your working tree. `git status` will show exactly these 10 files as
+and the contents drop straight over your working tree. `git status` will show exactly these 12 files as
 modified/added, and **no deletions**.
 
 ```bash
-tar -xzf m6-slice1-continuous-integration.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice2-end-to-end-harness.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
-**None.** Nothing is renamed and nothing is superseded. No migration ships, no package changes, no schema
-change, and nothing in `src/` is touched at all.
+**None.** Nothing is renamed and nothing is superseded. No migration ships, no schema change, no
+`Directory.Packages.props` edit, and nothing in `src/` is touched at all.
 
-## Before anything else: two corrections to my notes
+## The state I found
 
-**M5 is closed and the tree is green.** Your last sweep reported `total: 934, failed: 0, succeeded: 919,
-skipped: 15`, a clean `run.sh --smoke`, and a healthy `--containers-only`. §19's M5 line is fully
-discharged.
+Green, on every gate: `total: 934, failed: 0, succeeded: 919, skipped: 15`, a clean `run.sh --smoke`, a
+healthy `--containers-only`, and `scripts/ci_local.sh` passing all local gates including the strict
+Release build. M6 Slice 1's own checklist is fully discharged. So this is the slice its closing note
+promised: the E2E harness plus §16.3 scenarios 1, 13 and 14.
 
-**The `/account/enroll-totp` 500 appears to be resolved.** `EnrollTotp.razor` is in the tree, the suite is
-green, and nothing in the terminal log reproduces it. I have treated it as closed rather than re-opening a
-diagnosis with no symptom. If it is still there, say so and it becomes the next slice.
+## New files (6)
 
-## What this closes
+All under `tests/MyRestaurant.EndToEnd.Tests/Harness/`:
 
-§19's M6 line reads "full E2E suite (§16.3), backups + restore drill, cloudflared production profile +
-tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, **CI pipeline**". This is the
-emphasised phrase. §16.4 states it in one clause: "GitHub Actions — build, unit, integration (service
-container PostgreSQL), E2E (compose), publish image on tag."
+- `RestaurantHarness.cs` — the class fixture. The opt-in gate, Chromium, the shared PostgreSQL 17
+  container, and the factory that hands out instances. Every unavailability sets a `SkipReason`.
+- `RestaurantInstance.cs` — one scenario's private stack: its own database, its own Data Protection key
+  directory, the built application as a child process on its own loopback port, one browser context, one
+  page, one virtual authenticator. Captures the app's stdout/stderr so a failure has the server's side of
+  the story.
+- `VirtualAuthenticator.cs` — the CDP `WebAuthn` domain, wrapped.
+- `AccountJourneys.cs` — the page objects more than one scenario walks: the four-step `/setup` wizard
+  (real attestation, real TOTP), sign-out, passkey sign-in.
+- `WebApplicationLocator.cs` — finds the built application by walking up to `MyRestaurant.slnx` and
+  mirroring this test assembly's own configuration and target framework.
+- `ContainerEngineDiscovery.cs` — the rootless-Podman module initializer. Duplicated from
+  `MyRestaurant.DataAccess.Tests` on purpose; the file says why.
 
-Three of that line's six items — the cloudflared production profile, the quick-tunnel script, and the
-OPERATIONS runbooks — were delivered inside earlier milestones. After this slice, M6 is down to **two**:
-the E2E harness and an executable backup/restore drill.
+Plus one docs append: `docs/_append/BUILD_PROGRESS-m6-slice-2.md`.
 
-## Why CI first, and not the E2E suite
+## Edited (6)
 
-§19 lists the E2E matrix first, and every milestone so far has walked its line roughly in order. This one
-does not, for a reason specific to how this repository gets built.
-
-Every slice from M1 to M5 was written without a compiler. Each went out on a "where to look if the build
-breaks" note and was compiled for the first time on your workstation. That loop works — 934 facts say so —
-but it has exactly one participant, it runs only when you run it, and its results live in a terminal
-scrollback that has to be pasted into a conversation before anyone else can see them.
-
-The E2E matrix does not change that. It adds fifteen facts to the same loop. CI moves the loop off one
-machine: a push compiles the tree, runs all 934 facts against real PostgreSQL, and boots the actual
-production image — on every commit, without anybody remembering to ask.
-
-The narrower reason: `boot-smoke` below is the gate that catches "the app starts but one route throws",
-which is precisely what cost a slice's worth of back-and-forth at the end of M2, diagnosed by reading
-container logs by hand. That gate is worth more, sooner, than any single E2E scenario.
-
-## New files (5)
-
-### Pipelines (3)
-
-- `.github/workflows/ci.yml` — three jobs, described below. Also declares `workflow_call:` so the release
-  pipeline can reuse it.
-- `.github/workflows/release.yml` — on a `v*` tag: calls `ci.yml`, then publishes to
-  `ghcr.io/kusl/myrestaurant`.
-- `.github/dependabot.yml` — weekly NuGet (via `Directory.Packages.props`) and `github-actions` updates,
-  with OpenTelemetry, xunit and Npgsql grouped so lockstep families arrive as one pull request.
-
-### Tooling (1)
-
-- `scripts/ci_local.sh` — the same gates, locally, in the same order and with the same flags.
-  `--with-smoke` appends `./run.sh --smoke`. Clean under `bash -n` and `shellcheck --severity=style` as
-  delivered.
-
-### Docs (1, append-then-keep)
-
-`docs/BUILD_PROGRESS.md` is large and is not regenerated. The new section ships as
-`docs/_append/BUILD_PROGRESS-m6-slice-1.md`, matching the sections already in that folder.
-
-## Edited (5)
-
-- `Directory.Build.props` — `TreatWarningsAsErrors` becomes `true` under `ContinuousIntegrationBuild`, with
-  `WarningsNotAsErrors` exempting NU1901-NU1904. See "the note finally discharged" below.
-- `tests/MyRestaurant.DataAccess.Tests/Sittings/SittingRecordReadsTests.cs` — **one line**, at 354.
-- `README.md` — status (M1-M5 closed, M6 in progress), a new *Continuous integration* section, a CI badge,
-  the SDK pin corrected, and four stale caveats retired.
-- `docs/OPERATIONS.md` — new §14: what CI checks, how to cut a release, how to deploy from the registry
-  instead of building on the box, and how to verify what is actually running.
+- `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` — scenarios 1, 13 and 14 implemented; the
+  other twelve stay as named placeholders with a skip reason that now says what each is waiting on.
+- `tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj` — `Npgsql` and
+  `Testcontainers.PostgreSql` (both already pinned centrally), a `Microsoft.AspNetCore.App` framework
+  reference, and project references to `MyRestaurant.WebApplication` (for `AccountRoutes`, and to make
+  the app a build dependency) and `MyRestaurant.Domain` (for the real `JoinTokenService`,
+  `Rfc6238Totp` and `Base32Text`).
+- `.github/workflows/ci.yml` — a fourth gate, `end-to-end`.
+- `scripts/ci_local.sh` — `--with-e2e`, and `--with-all`. Clean under `bash -n` as delivered.
+- `README.md` — a new *End-to-end scenarios* section, the CI table's fourth row, status and roadmap.
 - `_CHANGES.md` (this file)
 
-No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, `docs/DOCUMENTATION_REVIEW.md`, or ADR edit:
-this realizes behaviour §16.4 already specifies, in the words it already uses.
+No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, `docs/DOCUMENTATION_REVIEW.md`, or ADR
+edit: this realizes behaviour §16.3 already specifies, in the words it already uses.
 
-One deviation from the spec's phrasing, recorded in the BUILD_PROGRESS section rather than by editing §16.4:
-that clause says "integration (service container PostgreSQL)", written before Testcontainers landed in M1.
-The integration tests bring up their own PostgreSQL 17 container and need no service container. `boot-smoke`
-is where a service container actually earns its place.
+## The four decisions worth arguing about
 
-## The three gates
+**A child process, not `WebApplicationFactory`.** A real browser cannot connect to an in-memory
+`TestServer`, and `Program.cs` is top-level statements returning `int`, so its generated `Program` is
+internal and not available as a `TEntryPoint`. Booting the built binary sidesteps both and is the more
+honest test: same composition root, same DbUp pass, same fail-fast `Validate()`. A scenario that reaches
+its first assertion has already proved what `boot-smoke` proves.
 
-**`shell-scripts`** — every tracked `*.sh` parses under `bash -n` and passes shellcheck. Not a new standard:
-this is the project's existing pre-delivery discipline, moved out of an instruction and into the tree. All
-five existing scripts plus this slice's new one are clean at shellcheck's strictest practical level,
-`--severity=style`.
+Two details carry it. `ASPNETCORE_CONTENTROOT` points at the **source** directory, because `Program.cs`
+serves assets with `UseStaticFiles()` and `wwwroot` is not copied into `bin` — get this wrong and
+`js/passkey.js` 404s and every passkey ceremony fails with nothing in the browser to explain it. And the
+configuration and TFM come from the *test assembly's own* output path, so a Debug run boots a Debug app
+and a Release run boots a Release one.
 
-The gate nonetheless *blocks* at `--severity=warning`, one notch lower, with `style` running right after as
-`continue-on-error: true`. That is about drift, not doubt: `ubuntu-latest`'s shellcheck moves on its own
-schedule, and a new style check would turn the build red on a day nobody touched the repository. A red build
-with no commit behind it is how people learn to stop reading the build.
+**`http://localhost:{port}` served, `https://localhost:{port}` configured.** The mismatch is load-bearing
+in three directions at once: §13 refuses to start on a non-https public origin; Chromium treats
+`localhost` as a secure context regardless of scheme, so WebAuthn works *and* the `Secure` §3.1
+authentication cookie is accepted over plain HTTP; and only the host is ever compared, so
+`WebAuthnOriginPolicy` matches and the §3.3 RP ID comes out `localhost` at both registration and sign-in
+(ADR-0005 — `ServerDomain` is null by design). None of that is true of an IP address, which is why the
+harness insists on the hostname.
 
-**`build-and-test`** — restore, a Release build with warnings as errors, then the whole suite. Two details.
+**Scenario 14 needs no clock control.** §4.3's token is a pure function of `(secret, table, window)`, and
+`JoinTokenService` lives in the Domain — so the harness inserts a table with a secret it chose and
+computes tokens for `window − 4` and `window − 1` directly. The only hazard is the boundary rolling over
+mid-assertion, a one-in-sixty flake at the app's default, so `TABLE_JOIN_TOKEN_ROTATION_SECONDS` is
+per-instance and defaults to 3600. §4.3 accepts current-or-previous whatever their width, so nothing the
+assertion depends on changes. Scenario 2 will ask the same knob for a *short* window, because crossing a
+boundary is what it tests.
 
-The SDK is requested as `10.0.x` rather than `global.json`'s exact `10.0.100`, because that pin carries
-`rollForward: latestMinor` — any 10.0 SDK satisfies it, and asking a runner for an exact patch that has
-since been delisted is a way to fail that has nothing to do with the code.
+The acceptance assertion is the redirect: an anonymous scanner with a valid token gets a grant and is sent
+to `/sign-in?ReturnUrl=/table/{id}` (§4.4 step 3). That is what "accepted" looks like from the guest's
+side, and it needs no account at all.
 
-And the data-access tests *run* here. On your Fedora box, Testcontainers needs the rootless Podman user
-socket activated by hand or roughly 190 integration facts skip — quietly, with a green summary. A GitHub
-runner has `/var/run/docker.sock`, so `ContainerEngineDiscovery` returns early and those facts execute on
-every push whether or not anybody remembered `systemctl --user enable --now podman.socket`. That is a real
-change in what "the tests pass" means.
+**Opt-in, gated in CI rather than by hope.** The scenarios skip unless `MYRESTAURANT_E2E` is set, because
+the first run downloads ~150 MB of Chromium and the rest of this suite is offline once packages are
+restored. The coverage does not live behind the switch: the new `end-to-end` CI job sets it on every push,
+and `--with-e2e` sets it locally. It is its own job so `build-and-test` does not pay for a browser to
+answer a different question, and so a browser flake is attributable at a glance rather than buried in a
+nine-hundred-fact summary. The job runs `playwright install --with-deps chromium` through the generated
+`playwright.ps1`, because `--with-deps` needs root and a test process should never ask for that.
 
-**`boot-smoke`** — the `Containerfile` is built and the resulting image is started against a real
-PostgreSQL, and `/healthz/ready` must answer 200 within 180 seconds.
+## Two things about driving the passkey UI
 
-Nothing else in the suite covers this. `/healthz/ready` returns 200 only after DbUp has applied every
-migration and reported the schema current, and it can only be *reached* if the composition root resolved —
-meaning every `Add…()` in `Program.cs` produced a satisfiable graph. A missing registration, a migration
-that parses in a test but conflicts against a fresh database, a `RestaurantOptions.Validate()` rejection
-from a new setting with no default: each is invisible to unit tests, each kills a deployment, and each now
-fails a pull request instead of a service.
+`passkey.js` starts a conditional-mediation request on page load, and a virtual authenticator that
+simulates presence can satisfy it with no gesture — so by the time you look for the button, the form may
+already have been submitted. `SignInWithPasskeyAsync` waits to see whether the page leaves on its own and
+only drives the button when it has not. Clicking mid-flight is safe; the element aborts its own pending
+request first.
 
-## Why CI does not use `compose.yaml`
-
-The obvious implementation of `boot-smoke` is `docker compose --profile dev up --build`, and it does not
-work. `compose.yaml` mounts the data-protection volume as `…/dataprotection:U` — the `:U` asks Podman to
-chown the volume to the container user, correct for the canonical rootless engine (ADR-0004) and rejected by
-Docker Compose as an invalid mount mode. The file's own comment already says so.
-
-Editing `compose.yaml` to suit CI would mean changing the canonical dev stack to accommodate the one
-environment that is not the target; shipping a `compose.ci.yaml` would mean a second file that can drift
-from the first. A job-level `services:` PostgreSQL plus one `docker run --network host` is the same topology
-— same image, same environment variables, same readiness probe — and leaves the canonical stack the only
-compose file in the tree.
-
-`--network host` is what keeps it to one command: the container reaches the service database on the
-runner's published `127.0.0.1:5432` and publishes its own `8080` back for the probe.
-
-## `TreatWarningsAsErrors` — the note finally discharged
-
-`Directory.Build.props` has carried this since M1:
-
-> Warnings are NOT errors yet: a fresh clone must build through analyzer drift on a newer SDK. Flip to true
-> once the first green build is established (BUILD_PROGRESS).
-
-The first green build was established four milestones ago; the note stayed because both halves are true at
-once. Warnings *should* be errors — the alternative is a log nobody reads. And a fresh clone on tomorrow's
-SDK *should not* refuse at the door over an analyzer that did not exist when the code was written.
-
-Conditioning on `ContinuousIntegrationBuild` resolves it without picking a side. CI passes
-`-p:ContinuousIntegrationBuild=true`, which is where strictness belongs — a machine, with a commit to point
-at, on a tree somebody just changed. `dotnet build` on your workstation stays lenient. The property is
-MSBuild's own, and setting it also makes the build deterministic, which is what it is for.
-
-`NU1901`-`NU1904` stay warnings even under CI. Those are NuGet audit findings, raised when an advisory is
-published against a package this tree already depends on — real news, but news that arrives without a
-commit. It surfaces in a `continue-on-error` step running `dotnet list package --vulnerable
---include-transitive` instead of turning a pull request red for something the pull request did not do.
-
-**The one warning in the tree had to go first.** `SittingRecordReadsTests.cs:354` was:
-
-```csharp
-Assert.Single(record.Events.Where(stored => stored.EventType == "fulfillment"));
-```
-
-which xUnit's own analyzer flags as **xUnit2031** — "do not use a Where clause to filter before calling
-`Assert.Single`". It is now:
-
-```csharp
-Assert.Single(record.Events, stored => stored.EventType == "fulfillment");
-```
-
-the overload the analyzer recommends. I verified the signature against `xunit/assert.xunit`:
-`public static T Single<T>(IEnumerable<T> collection, Predicate<T> predicate)`. Same assertion, better
-failure message (the predicate overload reports how many matched and where), and it was the only line in
-the repository standing between the tree and a strict build.
-
-## `release.yml` calls `ci.yml` rather than repeating it
-
-A publish pipeline that does not verify ships an image nobody tested; one that verifies with its own copy of
-the gates is two sets of gates to keep identical. So `ci.yml` declares `workflow_call:` alongside its push
-and pull-request triggers, and `release.yml`'s first job is `uses: ./.github/workflows/ci.yml`.
-
-Tags land as `:<version>`, `:<major>.<minor>` and `:sha-<commit>`. There is no `latest`, on purpose — a tag
-that silently changes what it points at is the reason people cannot answer "what is running".
-`concurrency.cancel-in-progress` is `false` here, the opposite of `ci.yml`: a superseded push should be
-abandoned, but a half-pushed manifest is worse than a slow one.
-
-**`linux/amd64` only, deliberately.** The `Containerfile` runs a full `dotnet publish` in its build stage,
-and doing that for arm64 through QEMU is slow enough to risk the job timeout. The right fix is not a longer
-timeout — it is a cross-compiled publish (`-r linux-arm64` from an amd64 SDK), which is a `Containerfile`
-change rather than a workflow line. Noted in OPERATIONS §14 for an SBC deployment.
+And "left the sign-in page" compares the path **exactly**, not by prefix, so `/sign-in/two-factor` counts
+as *left*. That is what makes scenario 13 fail with "landed on /sign-in/two-factor" instead of an
+unexplained timeout — which is the entire value of that scenario.
 
 ## What I verified rather than guessed
 
-Since a wrong action version fails the whole pipeline on the first run with "Unable to resolve action", none
-of these were recalled from memory:
+The authoring environment has no SDK, so anything I could get wrong silently was checked against source:
 
-- **Action majors**, resolved through `github.com/<repo>/releases/latest` redirects at authoring time:
-  `actions/checkout@v7` (v7.0.1), `actions/setup-dotnet@v6` (v6.0.0), `actions/upload-artifact@v7` (v7.0.1),
-  `actions/cache@v6` (v6.1.0), `docker/metadata-action@v6` (v6.2.0), `docker/setup-buildx-action@v4`
-  (v4.2.0), `docker/login-action@v4` (v4.5.2), `docker/build-push-action@v7` (v7.3.0).
-- **`setup-dotnet` v6's inputs**, read from its `action.yml` — `dotnet-version` and `global-json-file` are
-  both still there, and its `cache` input needs `packages.lock.json` files this repo does not have, which is
-  why NuGet caching goes through `actions/cache` keyed on `Directory.Packages.props` + `global.json` +
-  `**/*.csproj` instead.
-- **shellcheck 0.11.0 against all five existing scripts** — clean at `--severity=style`, which is what made
-  a `warning`-level blocking gate a safe thing to ship rather than a hope.
-- **`Assert.Single`'s predicate overload**, read from `xunit/assert.xunit` source.
-- **All three YAML files parse**, and `scripts/ci_local.sh` passes `bash -n` plus shellcheck at every
-  severity; I also exercised its `--help` and bad-argument paths.
+- **Playwright 1.61.0** (`microsoft/playwright-dotnet` at `v1.61.0`): `ICDPSession.SendAsync(string,
+  Dictionary<string, object>?) → Task<JsonElement?>` and that `args` is forwarded verbatim as CDP
+  `params`; `IBrowserContext.NewCDPSessionAsync(IPage)`; `ICDPSession : IAsyncDisposable`;
+  `IPlaywright : IDisposable`; `Program.Main(string[]) → int`; and every `IPage` / `ILocator` /
+  `BrowserTypeLaunchOptions` / `BrowserNewContextOptions` member used here. There is **no**
+  `TimeoutException` type in that tree, only `PlaywrightException`, which is what the waits catch.
+- **Testcontainers 4.13.0**: `PostgreSqlBuilder(string image)` is current and the parameterless ctor is
+  `[Obsolete]` — which matters under warnings-as-errors, and matches what `PostgreSqlFixture` already does.
+- **xunit.analyzers**: `xUnit2013` returns early unless the expected size is 0 or 1, so
+  `Assert.Equal(10, recoveryCodes.Count)` is clean.
+- **`.editorconfig`**: `csharp_style_namespace_declarations = file_scoped:warning` and
+  `csharp_prefer_braces = true:warning` are the only severity overrides, both honoured throughout.
+- **Chromium's virtual-authenticator parameters**, and the 13x change that made two of them required —
+  hence the attempt-then-retry.
 
-One thing I could not verify: whether a Release build with warnings-as-errors on the runner's SDK surfaces
-warnings your Debug builds never showed. That is the gate doing its job rather than a defect — see the
-checklist.
-
-## Where to look if this breaks
-
-Unusually for this project: **not the code**. Nothing in `src/` changed, and the only test-project change is
-one line inside one assertion.
-
-1. **`build-and-test` fails on a warning.** That is the gate working; the log names the file, line and code.
-   Fix it, or add the code to `WarningsNotAsErrors` with a comment saying why. This can happen on a commit
-   that touched nothing relevant, because the runner's SDK is newer than your 10.0.110 — the tradeoff the
-   CI-only condition accepts.
-2. **`boot-smoke` fails at "the web container exited before it became ready".** Read the `container logs`
-   step, which runs on failure. Three candidates in order of likelihood: a migration that conflicts against
-   a genuinely empty database, a `RestaurantOptions.Validate()` rejection, a DI registration added without
-   its dependency.
-3. **`shell-scripts` fails.** Reproduce exactly with `scripts/ci_local.sh` — same two passes, same two
-   severities.
-4. **`release.yml` cannot push.** `packages: write` is declared on the `image` job. The first push to a new
-   GHCR package also needs the repository allowed to create it — a one-time settings step, not a workflow
-   bug.
+One thing I could not verify: whether a headless Chromium on your Fedora box has every shared library it
+wants. If it does not, that is a skip with the one-line fix in its message, not a failure.
 
 ## Build/test checklist for this slice
 
-1. `dotnet restore` — no new packages, no migration, no schema change.
-2. `dotnet build` — unchanged from the last green sweep; no Razor page was touched.
-3. `dotnet test` — **still 934 total, 919 passing, 15 skipped.** The xUnit2031 fix changes an assertion's
-   form, not its meaning or its count. If the total moved, something else moved with it.
-4. `bash scripts/ci_local.sh` — the real check for this slice, because it is the first thing in this
-   repository's history to run the strict build. Then `bash scripts/ci_local.sh --with-smoke` once.
-5. `git add .github scripts/ci_local.sh && git commit && git push` — then watch the Actions tab, which is
-   the actual deliverable. Expect roughly: `shell-scripts` under a minute, `build-and-test` five to eight
-   (the first run has no NuGet cache), `boot-smoke` four to seven.
-6. Worth doing once while the pipeline is fresh, to prove the release path before it matters:
-   `git tag --annotate v0.6.0 --message 'M6 slice 1' && git push origin v0.6.0`.
+1. `dotnet restore` — two new package *references*, no new versions.
+2. `dotnet build` — seven C# files in one test project; nothing in `src/` changed.
+3. `dotnet test` — **still 934 total, 919 passing, 15 skipped.** Three facts moved from a discovery-time
+   skip to a runtime one, which the summary counts identically.
+4. `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` — the real check for this slice.
+   Expect **3 passed, 12 skipped**. First run also downloads Chromium; if it complains about shared
+   libraries, run
+   `pwsh tests/MyRestaurant.EndToEnd.Tests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium`
+   once and retry.
+5. `bash -n scripts/ci_local.sh` (clean as delivered), then `bash scripts/ci_local.sh --with-e2e`.
+6. Push, and watch the new `end-to-end` job.
 
 ## Housekeeping carried over
 
-`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Seven appends are now unmerged in
+`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Nine appends are now unmerged in
 `docs/_append/`, including this slice's:
 
 ```bash
@@ -3105,24 +3125,26 @@ cat docs/_append/BUILD_PROGRESS-m4-slice-2.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m4-slice-3.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m4-slice-4.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m5-slice-1.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m5-slice-2.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m5-slice-3.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m5-slice-4.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m5-slice-5.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m6-slice-1.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m6-slice-2.md >> docs/BUILD_PROGRESS.md
 ```
 
 ## What is next
 
-The E2E harness. The fifteen §16.3 scenarios have been version-controlled as skipped placeholders since M1
-and none of them can run, because there is no fixture that brings up a stack, no browser context, no
-virtual authenticator and no controllable clock. That plumbing is one slice; scenarios 1, 13 and 14 come
-with it, because the passkey and token-window machinery they need is what every other scenario is waiting
-on.
+The other twelve §16.3 scenarios, and the backup/restore drill as something executable. The scenarios are
+incremental work now rather than a plumbing project — 2 wants a short rotation window and a second
+browser context for the display device's principal; 3 through 11 want the guest registration journey and
+two live circuits at once; 12 wants the obligations pipeline walked end to end.
 
 ## The one-line why
 
-For five milestones the only thing standing between a slice I could not compile and a working restaurant was
-you, at a terminal, at night — and that was never a system, it was a person being reliable.
+For five milestones the only thing that could tell you whether a guest could actually order dinner was
+you, opening the app on a phone; there is now a machine that scans the code, presses the buttons, and
+says so on every push.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3261,15 +3283,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  210.2 KiB (215256 bytes)
-  Last modified:         2026-07-29 03:40:54.722748889 -0400
+  Size:                  222.0 KiB (227374 bytes)
+  Last modified:         2026-07-29 05:38:53.804800440 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 25661728
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               ebdd54d839f90f5908a157b5cf6ba43a40b4f652a3f607997b93f764deb1e86b
-  Last git commit:       7311425 2026-07-29 03:41:15 -0400 append build progress
+  SHA-256:               ad39280934d979d991d0ea97a3c7f1fa20d0bb14af4a716370264865fc2da370
+  Last git commit:       a8f40f5 2026-07-29 05:39:06 -0400 append build progress
 
 --- CONTENT ---
 # Build progress
@@ -6227,6 +6249,193 @@ line is down to two items.
 Next slice is the E2E harness: a fixture that brings up a stack, a Playwright browser context, and the
 first scenarios from §16.3 — starting with 1, 13 and 14, because the virtual authenticator and the
 controllable-clock plumbing they need are what every other scenario is waiting on.
+### M6 Slice 2 — the end-to-end harness, and the first three scenarios (landed)
+
+§16.3 has listed fifteen required end-to-end scenarios since M1, and since M1 all fifteen have been
+`[Fact(Skip = ...)]` — a version-controlled promise with nothing behind it. The skip reason said what was
+missing: "needs Playwright browsers and a live instance". This slice supplies both, plus the two pieces
+the reason did not mention (a WebAuthn virtual authenticator and a way to reason about token windows),
+and then spends them on scenarios **1**, **13** and **14**.
+
+No migration, no schema change, no `Directory.Packages.props` edit, nothing deleted, and nothing in
+`src/` touched at all.
+
+---
+
+#### What a "live instance" turned out to mean
+
+Six things, none of which existed:
+
+1. **A database per scenario.** A shared PostgreSQL 17 container (Testcontainers, as the data-access
+   tests already use) with a `CREATE DATABASE` per scenario.
+2. **The application, actually running.** Booted from its own build output as a child process, on a
+   loopback port reserved by binding port 0.
+3. **A browser.** Chromium, launched once for the class, with a fresh context per scenario so cookies
+   never leak between them.
+4. **A software authenticator.** A CDP virtual authenticator, which is what §16.3 means by "passkey via
+   virtual authenticator".
+5. **An origin the app will accept and the browser will trust.** See below — this was the subtle one.
+6. **A way to see why a scenario failed.** The browser only ever sees a 500; the server has the stack.
+   The harness captures the child process's stdout and stderr and puts the tail in the exception message.
+
+---
+
+#### Why a child process rather than `WebApplicationFactory`
+
+`WebApplicationFactory` hosts the app on an in-memory `TestServer`, and a real browser cannot connect to
+an in-memory anything. The documented workaround — subclass it and start a second, Kestrel-backed host
+alongside — additionally needs the entry point as a type argument, and `Program.cs` here is top-level
+statements that `return 1` on invalid configuration, so its generated `Program` is internal.
+
+Booting the built binary avoids both problems and is the more honest test besides. It runs the same
+composition root, the same DbUp pass, and the same fail-fast `RestaurantOptions.Validate()` a deployment
+runs. A scenario that reaches its first assertion has already proved what `boot-smoke` proves.
+
+Two details make it work. `ASPNETCORE_CONTENTROOT` points at the web application's **source** directory,
+because `Program.cs` serves assets with `UseStaticFiles()` and `wwwroot` is not copied into `bin` —
+without it, `js/passkey.js` 404s and every passkey ceremony fails with nothing in the browser to say
+why. And the configuration and target framework are read from the *test assembly's own* output path, so
+a Debug run boots a Debug application and a Release run boots a Release one; a hard-coded either would
+have silently tested a stale binary on one of the two.
+
+---
+
+#### The origin, which is where this could have quietly not worked
+
+The app is served at `http://localhost:{port}` while `RESTAURANT_PUBLIC_ORIGIN` is set to
+`https://localhost:{port}`. That mismatch is deliberate and it is doing three jobs at once:
+
+- §13 **refuses to start** on a non-https public origin, so the configured value has to say https.
+- Chromium treats `localhost` as a **secure context regardless of scheme**, so `navigator.credentials`
+  is available and the §3.1 authentication cookie — `CookieSecurePolicy.Always`, i.e. `Secure` — is
+  accepted over plain HTTP. Neither is true of `http://192.168.x.x`, which is why the harness insists on
+  the hostname rather than an address.
+- Only the **host** is ever compared. `WebAuthnOriginPolicy` matches `localhost:{port}` exactly and
+  separately treats loopback as trusted for either scheme; the §3.3 relying-party ID is
+  `ServerDomain ?? Request.Host.Host` and `ServerDomain` is null by design (ADR-0005), so it comes out
+  `localhost` at registration and `localhost` again at sign-in. A passkey registered in scenario 13's
+  setup pass is therefore usable by its sign-in pass, on the same instance, same port.
+
+`PublicOriginMiddleware` leaves the host alone here, because it already matches the configured origin —
+which is the branch that says "keep it".
+
+---
+
+#### Scenario 14 needs no clock control, and that is the point
+
+The obvious reading of "expired token URL; token from the previous window" is that it wants a
+controllable server clock. It does not. §4.3's token is a pure function of `(join_secret, table_uuid,
+window_index)`, and `JoinTokenService` is in the Domain, so the harness can compute a token for *any*
+window from the secret it chose. Scenario 14 inserts a table with a known 32-byte secret, asks for
+`window − 4` (inside the bounded lookback, so `Expired` rather than `Invalid`) and then `window − 1`.
+
+The one real hazard is the boundary rolling over between computing a token and the server validating it,
+which at the app's 60-second default would be a one-in-sixty flake. The harness therefore takes
+`TABLE_JOIN_TOKEN_ROTATION_SECONDS` per instance and defaults it to **3600**. §4.3 accepts the current
+and previous window whatever their width, so nothing the assertion depends on changes — the race simply
+stops existing. Scenario 2, when it lands, will ask the same harness for a *short* window, because
+crossing a boundary is the thing it is testing.
+
+The table is inserted by direct SQL rather than through `/administration/tables/new`, also deliberately:
+a token-window assertion that first has to sign in, pass a role check and submit a form can fail for six
+reasons that have nothing to do with token windows. Scenario 2 *is* about that flow and will use the UI.
+
+And the acceptance assertion is the redirect. An anonymous scanner presenting a valid token gets a grant
+cookie and is sent to `/sign-in?ReturnUrl=/table/{id}` — §4.4 step (3). That redirect is what "accepted"
+looks like from the guest's side, and it needs no account, no password, and no second page object.
+
+---
+
+#### Two things about driving the passkey UI that are not obvious
+
+**Conditional mediation races the button.** `passkey.js` starts a `mediation: 'conditional'` request the
+moment the sign-in page loads, and a virtual authenticator with `automaticPresenceSimulation` can satisfy
+it with no gesture at all — at which point the form has already been submitted and there is no button
+left to click. `SignInWithPasskeyAsync` therefore waits a few seconds to see whether the page leaves on
+its own and only drives the button when it has not. Clicking during an in-flight conditional request is
+safe: the element aborts its own pending request before starting a new one.
+
+**The "left the sign-in page" predicate compares the path exactly**, not by prefix. `/sign-in/two-factor`
+has to count as *left*, so that scenario 13 fails with "landed on /sign-in/two-factor" rather than with
+an unexplained thirty-second timeout. The failure message is the whole reason that scenario exists.
+
+Two smaller notes. `defaultBackupEligibility` and `defaultBackupState` arrived in Chromium's 13x line and
+became **required** in the same change, so a single fixed argument list to
+`WebAuthn.addVirtualAuthenticator` is wrong on one side of that boundary; the call is attempted with them
+and retried without. They are not merely tolerated either — the §3.3 store persists `is_backup_eligible`
+and `is_backed_up` and the assertion handler reads them back, so exercising credentials that carry the
+bits set is the more faithful test. And the wizard's every step posts to `/setup` and redirects to
+`/setup`, so the URL never changes and cannot be waited on; each step is identified by the element that
+only exists on it.
+
+---
+
+#### Opt-in, and why that is not a cop-out
+
+The scenarios skip unless `MYRESTAURANT_E2E` is set. The first run downloads roughly 150 MB of Chromium
+into `~/.cache/ms-playwright`, and the rest of this suite is entirely offline once packages are restored;
+a `dotnet test` that silently starts a 150 MB download is a `dotnet test` people stop trusting.
+
+The switch is not where the coverage lives, though. CI's new **`end-to-end`** job sets it on every push,
+and `scripts/ci_local.sh --with-e2e` sets it locally. It is its own job rather than part of
+`build-and-test` for two reasons: `build-and-test` would otherwise pay for a browser on every run to
+answer a different question, and a browser-driven flake should be attributable at a glance instead of
+hiding inside a nine-hundred-fact summary. The job also runs
+`playwright install --with-deps chromium` through the generated `playwright.ps1`, because `--with-deps`
+needs apt and therefore root, which a test process has no business asking for.
+
+Everything else that can be absent is also a skip with the fix in its message: no container engine, no
+browser, no build output, no `MyRestaurant.slnx` above the test assembly. A missing tool is not a broken
+product, and a suite that cannot tell the two apart is a suite nobody reads.
+
+`ContainerEngineDiscovery` is duplicated from `MyRestaurant.DataAccess.Tests` rather than shared. A
+`[ModuleInitializer]` runs once per *assembly* load and Testcontainers snapshots its environment into
+static singletons on first touch, so a helper living in the other test project cannot run in this one's
+process. The alternative was a fourth project in the solution for thirty lines that must not have a
+public API.
+
+---
+
+#### Where to look if this breaks
+
+1. **Everything skips with "opt-in".** Working as intended. `scripts/ci_local.sh --with-e2e`.
+2. **"The built web application could not be found."** The message names the exact path it wanted. Build
+   the solution in the same configuration you are testing in.
+3. **"Chromium could not be started."** Almost always missing shared libraries on a minimal host. Run
+   `pwsh tests/MyRestaurant.EndToEnd.Tests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium`
+   once.
+4. **"exited with code 1 before it became ready."** The captured output is in the message and it will be
+   a `Configuration error:` line — `RestaurantOptions.Validate()` refusing something the harness set.
+5. **A passkey step times out waiting for `p.totp-secret`.** The attestation failed. Check the captured
+   output for the ceremony, and check that `js/passkey.js` was served — a wrong content root turns this
+   into a silent no-op.
+6. **Scenario 14's second navigation shows the expired page.** The token was computed for a window the
+   server no longer accepts. Confirm the instance really got `TABLE_JOIN_TOKEN_ROTATION_SECONDS=3600`.
+
+---
+
+#### Build/test checklist for this slice
+
+1. `dotnet restore` — two package references are added to the end-to-end project (`Npgsql`,
+   `Testcontainers.PostgreSql`), both already pinned centrally, so no version resolution is new.
+2. `dotnet build` — the new code is seven C# files in one test project. Nothing in `src/` changed, so a
+   break here is in the harness, not the product.
+3. `dotnet test` — **still 934 total, 919 passing, 15 skipped.** Three facts changed from
+   `[Fact(Skip)]` to `[Fact]` and now skip at runtime instead of at discovery, which the summary counts
+   the same way. If the total moved, something else moved with it.
+4. `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` — the real check. Expect
+   **12 skipped, 3 passed**, and roughly a minute per scenario the first time (Chromium download aside).
+5. `bash scripts/ci_local.sh` unchanged, then `bash scripts/ci_local.sh --with-e2e` once.
+6. Push, and watch the new `end-to-end` job.
+
+---
+
+#### What is left in M6
+
+The other twelve §16.3 scenarios, and the backup/restore drill as something executable rather than a
+runbook prose section. The scenarios are now incremental work rather than a plumbing project: 2 wants a
+short rotation window and a second context for the display device's principal, 3–11 want the guest
+registration journey and two live circuits at once, 12 wants the obligations pipeline walked end to end.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -9697,6 +9906,213 @@ first scenarios from §16.3 — starting with 1, 13 and 14, because the virtual 
 controllable-clock plumbing they need are what every other scenario is waiting on.
 
 ################################################################################
+# FILE: docs/_append/BUILD_PROGRESS-m6-slice-2.md
+################################################################################
+
+--- METADATA ---
+  File name:             BUILD_PROGRESS-m6-slice-2.md
+  Relative path:         docs/_append/BUILD_PROGRESS-m6-slice-2.md
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/_append/BUILD_PROGRESS-m6-slice-2.md
+  Size:                  11.8 KiB (12118 bytes)
+  Last modified:         2026-07-29 05:09:56.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 27205639
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               cfd6a1674c8457faaba38ca4be65db524b5c7792636c77e9092e322a1795aa0f
+  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
+
+--- CONTENT ---
+### M6 Slice 2 — the end-to-end harness, and the first three scenarios (landed)
+
+§16.3 has listed fifteen required end-to-end scenarios since M1, and since M1 all fifteen have been
+`[Fact(Skip = ...)]` — a version-controlled promise with nothing behind it. The skip reason said what was
+missing: "needs Playwright browsers and a live instance". This slice supplies both, plus the two pieces
+the reason did not mention (a WebAuthn virtual authenticator and a way to reason about token windows),
+and then spends them on scenarios **1**, **13** and **14**.
+
+No migration, no schema change, no `Directory.Packages.props` edit, nothing deleted, and nothing in
+`src/` touched at all.
+
+---
+
+#### What a "live instance" turned out to mean
+
+Six things, none of which existed:
+
+1. **A database per scenario.** A shared PostgreSQL 17 container (Testcontainers, as the data-access
+   tests already use) with a `CREATE DATABASE` per scenario.
+2. **The application, actually running.** Booted from its own build output as a child process, on a
+   loopback port reserved by binding port 0.
+3. **A browser.** Chromium, launched once for the class, with a fresh context per scenario so cookies
+   never leak between them.
+4. **A software authenticator.** A CDP virtual authenticator, which is what §16.3 means by "passkey via
+   virtual authenticator".
+5. **An origin the app will accept and the browser will trust.** See below — this was the subtle one.
+6. **A way to see why a scenario failed.** The browser only ever sees a 500; the server has the stack.
+   The harness captures the child process's stdout and stderr and puts the tail in the exception message.
+
+---
+
+#### Why a child process rather than `WebApplicationFactory`
+
+`WebApplicationFactory` hosts the app on an in-memory `TestServer`, and a real browser cannot connect to
+an in-memory anything. The documented workaround — subclass it and start a second, Kestrel-backed host
+alongside — additionally needs the entry point as a type argument, and `Program.cs` here is top-level
+statements that `return 1` on invalid configuration, so its generated `Program` is internal.
+
+Booting the built binary avoids both problems and is the more honest test besides. It runs the same
+composition root, the same DbUp pass, and the same fail-fast `RestaurantOptions.Validate()` a deployment
+runs. A scenario that reaches its first assertion has already proved what `boot-smoke` proves.
+
+Two details make it work. `ASPNETCORE_CONTENTROOT` points at the web application's **source** directory,
+because `Program.cs` serves assets with `UseStaticFiles()` and `wwwroot` is not copied into `bin` —
+without it, `js/passkey.js` 404s and every passkey ceremony fails with nothing in the browser to say
+why. And the configuration and target framework are read from the *test assembly's own* output path, so
+a Debug run boots a Debug application and a Release run boots a Release one; a hard-coded either would
+have silently tested a stale binary on one of the two.
+
+---
+
+#### The origin, which is where this could have quietly not worked
+
+The app is served at `http://localhost:{port}` while `RESTAURANT_PUBLIC_ORIGIN` is set to
+`https://localhost:{port}`. That mismatch is deliberate and it is doing three jobs at once:
+
+- §13 **refuses to start** on a non-https public origin, so the configured value has to say https.
+- Chromium treats `localhost` as a **secure context regardless of scheme**, so `navigator.credentials`
+  is available and the §3.1 authentication cookie — `CookieSecurePolicy.Always`, i.e. `Secure` — is
+  accepted over plain HTTP. Neither is true of `http://192.168.x.x`, which is why the harness insists on
+  the hostname rather than an address.
+- Only the **host** is ever compared. `WebAuthnOriginPolicy` matches `localhost:{port}` exactly and
+  separately treats loopback as trusted for either scheme; the §3.3 relying-party ID is
+  `ServerDomain ?? Request.Host.Host` and `ServerDomain` is null by design (ADR-0005), so it comes out
+  `localhost` at registration and `localhost` again at sign-in. A passkey registered in scenario 13's
+  setup pass is therefore usable by its sign-in pass, on the same instance, same port.
+
+`PublicOriginMiddleware` leaves the host alone here, because it already matches the configured origin —
+which is the branch that says "keep it".
+
+---
+
+#### Scenario 14 needs no clock control, and that is the point
+
+The obvious reading of "expired token URL; token from the previous window" is that it wants a
+controllable server clock. It does not. §4.3's token is a pure function of `(join_secret, table_uuid,
+window_index)`, and `JoinTokenService` is in the Domain, so the harness can compute a token for *any*
+window from the secret it chose. Scenario 14 inserts a table with a known 32-byte secret, asks for
+`window − 4` (inside the bounded lookback, so `Expired` rather than `Invalid`) and then `window − 1`.
+
+The one real hazard is the boundary rolling over between computing a token and the server validating it,
+which at the app's 60-second default would be a one-in-sixty flake. The harness therefore takes
+`TABLE_JOIN_TOKEN_ROTATION_SECONDS` per instance and defaults it to **3600**. §4.3 accepts the current
+and previous window whatever their width, so nothing the assertion depends on changes — the race simply
+stops existing. Scenario 2, when it lands, will ask the same harness for a *short* window, because
+crossing a boundary is the thing it is testing.
+
+The table is inserted by direct SQL rather than through `/administration/tables/new`, also deliberately:
+a token-window assertion that first has to sign in, pass a role check and submit a form can fail for six
+reasons that have nothing to do with token windows. Scenario 2 *is* about that flow and will use the UI.
+
+And the acceptance assertion is the redirect. An anonymous scanner presenting a valid token gets a grant
+cookie and is sent to `/sign-in?ReturnUrl=/table/{id}` — §4.4 step (3). That redirect is what "accepted"
+looks like from the guest's side, and it needs no account, no password, and no second page object.
+
+---
+
+#### Two things about driving the passkey UI that are not obvious
+
+**Conditional mediation races the button.** `passkey.js` starts a `mediation: 'conditional'` request the
+moment the sign-in page loads, and a virtual authenticator with `automaticPresenceSimulation` can satisfy
+it with no gesture at all — at which point the form has already been submitted and there is no button
+left to click. `SignInWithPasskeyAsync` therefore waits a few seconds to see whether the page leaves on
+its own and only drives the button when it has not. Clicking during an in-flight conditional request is
+safe: the element aborts its own pending request before starting a new one.
+
+**The "left the sign-in page" predicate compares the path exactly**, not by prefix. `/sign-in/two-factor`
+has to count as *left*, so that scenario 13 fails with "landed on /sign-in/two-factor" rather than with
+an unexplained thirty-second timeout. The failure message is the whole reason that scenario exists.
+
+Two smaller notes. `defaultBackupEligibility` and `defaultBackupState` arrived in Chromium's 13x line and
+became **required** in the same change, so a single fixed argument list to
+`WebAuthn.addVirtualAuthenticator` is wrong on one side of that boundary; the call is attempted with them
+and retried without. They are not merely tolerated either — the §3.3 store persists `is_backup_eligible`
+and `is_backed_up` and the assertion handler reads them back, so exercising credentials that carry the
+bits set is the more faithful test. And the wizard's every step posts to `/setup` and redirects to
+`/setup`, so the URL never changes and cannot be waited on; each step is identified by the element that
+only exists on it.
+
+---
+
+#### Opt-in, and why that is not a cop-out
+
+The scenarios skip unless `MYRESTAURANT_E2E` is set. The first run downloads roughly 150 MB of Chromium
+into `~/.cache/ms-playwright`, and the rest of this suite is entirely offline once packages are restored;
+a `dotnet test` that silently starts a 150 MB download is a `dotnet test` people stop trusting.
+
+The switch is not where the coverage lives, though. CI's new **`end-to-end`** job sets it on every push,
+and `scripts/ci_local.sh --with-e2e` sets it locally. It is its own job rather than part of
+`build-and-test` for two reasons: `build-and-test` would otherwise pay for a browser on every run to
+answer a different question, and a browser-driven flake should be attributable at a glance instead of
+hiding inside a nine-hundred-fact summary. The job also runs
+`playwright install --with-deps chromium` through the generated `playwright.ps1`, because `--with-deps`
+needs apt and therefore root, which a test process has no business asking for.
+
+Everything else that can be absent is also a skip with the fix in its message: no container engine, no
+browser, no build output, no `MyRestaurant.slnx` above the test assembly. A missing tool is not a broken
+product, and a suite that cannot tell the two apart is a suite nobody reads.
+
+`ContainerEngineDiscovery` is duplicated from `MyRestaurant.DataAccess.Tests` rather than shared. A
+`[ModuleInitializer]` runs once per *assembly* load and Testcontainers snapshots its environment into
+static singletons on first touch, so a helper living in the other test project cannot run in this one's
+process. The alternative was a fourth project in the solution for thirty lines that must not have a
+public API.
+
+---
+
+#### Where to look if this breaks
+
+1. **Everything skips with "opt-in".** Working as intended. `scripts/ci_local.sh --with-e2e`.
+2. **"The built web application could not be found."** The message names the exact path it wanted. Build
+   the solution in the same configuration you are testing in.
+3. **"Chromium could not be started."** Almost always missing shared libraries on a minimal host. Run
+   `pwsh tests/MyRestaurant.EndToEnd.Tests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium`
+   once.
+4. **"exited with code 1 before it became ready."** The captured output is in the message and it will be
+   a `Configuration error:` line — `RestaurantOptions.Validate()` refusing something the harness set.
+5. **A passkey step times out waiting for `p.totp-secret`.** The attestation failed. Check the captured
+   output for the ceremony, and check that `js/passkey.js` was served — a wrong content root turns this
+   into a silent no-op.
+6. **Scenario 14's second navigation shows the expired page.** The token was computed for a window the
+   server no longer accepts. Confirm the instance really got `TABLE_JOIN_TOKEN_ROTATION_SECONDS=3600`.
+
+---
+
+#### Build/test checklist for this slice
+
+1. `dotnet restore` — two package references are added to the end-to-end project (`Npgsql`,
+   `Testcontainers.PostgreSql`), both already pinned centrally, so no version resolution is new.
+2. `dotnet build` — the new code is seven C# files in one test project. Nothing in `src/` changed, so a
+   break here is in the harness, not the product.
+3. `dotnet test` — **still 934 total, 919 passing, 15 skipped.** Three facts changed from
+   `[Fact(Skip)]` to `[Fact]` and now skip at runtime instead of at discovery, which the summary counts
+   the same way. If the total moved, something else moved with it.
+4. `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` — the real check. Expect
+   **12 skipped, 3 passed**, and roughly a minute per scenario the first time (Chromium download aside).
+5. `bash scripts/ci_local.sh` unchanged, then `bash scripts/ci_local.sh --with-e2e` once.
+6. Push, and watch the new `end-to-end` job.
+
+---
+
+#### What is left in M6
+
+The other twelve §16.3 scenarios, and the backup/restore drill as something executable rather than a
+runbook prose section. The scenarios are now incremental work rather than a plumbing project: 2 wants a
+short rotation window and a second context for the display device's principal, 3–11 want the guest
+registration journey and two live circuits at once, 12 wants the obligations pipeline walked end to end.
+
+################################################################################
 # FILE: docs/adr/0001-single-application-with-areas.md
 ################################################################################
 
@@ -10778,15 +11194,15 @@ echo "info: backup complete. Remember to back up the Data Protection keys volume
   File name:             ci_local.sh
   Relative path:         scripts/ci_local.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/ci_local.sh
-  Size:                  5.7 KiB (5867 bytes)
-  Last modified:         2026-07-28 21:09:08.000000000 -0400
+  Size:                  7.3 KiB (7500 bytes)
+  Last modified:         2026-07-29 05:07:19.000000000 -0400
   Permissions:           -rwxr-xr-x
   Owner:                 kushal:kushal
-  Inode:                 26974674
+  Inode:                 27205624
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               9dad29cb2f20389eade8b53c5b68b3b5bd03270557f21323d43b2db6e97987a0
-  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
+  SHA-256:               874ca679298ebe50048763f2cc225bec39d33f9bb3841a9878ddf062f4ef3ae7
+  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
 
 --- CONTENT ---
 #!/usr/bin/env bash
@@ -10796,6 +11212,8 @@ echo "info: backup complete. Remember to back up the Data Protection keys volume
 #
 #   scripts/ci_local.sh              shell lint, restore, strict Release build, full test suite
 #   scripts/ci_local.sh --with-smoke ...and then ./run.sh --smoke (boots the app once, checks health)
+#   scripts/ci_local.sh --with-e2e   ...and then the §16.3 Playwright scenarios (browser required)
+#   scripts/ci_local.sh --with-all   both of the above
 #   scripts/ci_local.sh --help       this text
 #
 # Why this exists: .github/workflows/ci.yml builds with -p:ContinuousIntegrationBuild=true, which
@@ -10807,17 +11225,31 @@ echo "info: backup complete. Remember to back up the Data Protection keys volume
 # boots the resulting image against a real PostgreSQL. `--with-smoke` is the closest local
 # equivalent: same migrations, same readiness probe, but the app runs on the host rather than in the
 # image. For the real thing, `./run.sh --containers-only`.
+#
+# `--with-e2e` sets MYRESTAURANT_E2E=1, which is the only thing that turns the §16.3 end-to-end
+# scenarios from skips into scenarios. They need a container engine and a Chromium build; the first
+# run downloads roughly 150 MB into ~/.cache/ms-playwright, which is why nothing does this by
+# default. On a minimal host the browser's shared libraries may also be missing — install them once
+# with `playwright install --with-deps chromium` (that step needs root, so the harness never tries).
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 WITH_SMOKE=0
+WITH_E2E=0
 
 case "${1:-}" in
     "")
         ;;
     --with-smoke)
         WITH_SMOKE=1
+        ;;
+    --with-e2e)
+        WITH_E2E=1
+        ;;
+    --with-all)
+        WITH_SMOKE=1
+        WITH_E2E=1
         ;;
     --help | -h)
         # Print the header comment block and stop at the first line of real code, so the help text
@@ -10826,7 +11258,7 @@ case "${1:-}" in
         exit 0
         ;;
     *)
-        echo "error: unknown argument '$1' (expected --with-smoke, --help, or nothing)." >&2
+        echo "error: unknown argument '$1' (expected --with-smoke, --with-e2e, --with-all, --help, or nothing)." >&2
         exit 1
         ;;
 esac
@@ -10908,7 +11340,20 @@ dotnet test MyRestaurant.slnx \
     -p:ContinuousIntegrationBuild=true
 
 # ---------------------------------------------------------------------------------------------------
-# 3. Optional: boot once and probe /healthz/ready.
+# 3. Optional: the §16.3 end-to-end scenarios, in a real browser.
+# ---------------------------------------------------------------------------------------------------
+if (( WITH_E2E )); then
+    announce "end to end (§16.3 Playwright scenarios)"
+    echo "MYRESTAURANT_E2E=1 — each scenario creates its own database and boots the built app."
+    echo "The first run downloads Chromium into ~/.cache/ms-playwright."
+    MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj \
+        --configuration Release \
+        --no-build \
+        -p:ContinuousIntegrationBuild=true
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# 4. Optional: boot once and probe /healthz/ready.
 # ---------------------------------------------------------------------------------------------------
 if (( WITH_SMOKE )); then
     announce "boot smoke (./run.sh --smoke)"
@@ -10918,6 +11363,9 @@ fi
 echo
 echo "────────────────────────────────────────────────────────────────────────────"
 echo "  all local CI gates passed."
+if (( ! WITH_E2E )); then
+    echo "  (not run: the §16.3 end-to-end scenarios — add --with-e2e)"
+fi
 if (( ! WITH_SMOKE )); then
     echo "  (not run: the boot smoke — add --with-smoke, or ./run.sh --containers-only)"
 fi
@@ -63085,122 +63533,1491 @@ public sealed class UuidV7IdentifierFactoryTests
   File name:             EndToEndScenarios.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
-  Size:                  3.9 KiB (4031 bytes)
-  Last modified:         2026-07-17 21:31:05.000000000 -0400
+  Size:                  12.2 KiB (12452 bytes)
+  Last modified:         2026-07-29 05:05:53.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258269
+  Inode:                 27205627
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               6a0a42673fb08c2e07fa926ce654d04bd099ee0b830b08d3fe94f458c797aef6
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               887eae6784dd2099feb5018fe468a8c0c31562c154980fba86ac8946a7038b6e
+  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
 
 --- CONTENT ---
+using System.Security.Cryptography;
+using Microsoft.Playwright;
+using MyRestaurant.Domain.Security;
+using MyRestaurant.EndToEnd.Tests.Harness;
+using MyRestaurant.WebApplication.Identity;
 using Xunit;
 
 namespace MyRestaurant.EndToEnd.Tests;
 
 /// <summary>
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
-/// skipped placeholders and implemented with Playwright at M6. Each fact below names one required
-/// scenario; the Skip reason is uniform because none can run until the browsers are installed and a
-/// live instance is available (BUILD_PROGRESS: container-dependent tests).
+/// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// The virtual-authenticator (WebAuthn) and window-boundary timing scenarios in particular need the
-/// Playwright CDP session and a controllable clock, which arrive with the M6 harness.
+/// <para>Three are live: scenario 1 (the first-administrator bootstrap, including a real WebAuthn
+/// attestation and a real TOTP confirmation), scenario 13 (a passkey sign-in of a TOTP-enrolled person
+/// must not be challenged for a code), and scenario 14 (the join-token window arithmetic as a guest
+/// experiences it). They come first because between them they exercise the whole harness — process,
+/// database, browser, virtual authenticator, and the domain's own token computation — which is what
+/// the remaining twelve are waiting on rather than any of their own machinery.</para>
+///
+/// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
+/// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
+/// current build of the web application; each absence is a skip with the fix in its message. See
+/// <see cref="RestaurantHarness"/>.</para>
 /// </summary>
-public sealed class EndToEndScenarios
+public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 {
-    private const string PendingM6 = "End-to-end scenarios are implemented at M6 (needs Playwright browsers and a live instance).";
+    private const string PendingHarnessExtension =
+        "Awaiting a later M6 slice: the harness is in place (Harness/RestaurantHarness.cs), but this"
+        + " scenario needs surface plumbing it does not have yet.";
 
-    [Fact(Skip = PendingM6)]
-    public void Setup_BootstrapsFirstAdministratorThenBecomes404()
+    private readonly RestaurantHarness _harness;
+
+    public EndToEndScenarios(RestaurantHarness harness) => _harness = harness;
+
+    // -------------------------------------------------------------------------------------------
+    // 1. Fresh stack → /setup bootstrap (passkey via virtual authenticator, TOTP, admin granted)
+    //    → /setup now 404.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Setup_BootstrapsFirstAdministratorThenBecomes404()
     {
-        // 1. Fresh stack → /setup (passkey via virtual authenticator, TOTP, admin granted) → /setup now 404.
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+        IPage page = instance.Page;
+
+        // The gate is open on an empty database, and the wizard starts at step one.
+        IResponse? open = await page.GotoAsync(AccountRoutes.Setup);
+        Assert.NotNull(open);
+        Assert.Equal(200, open.Status);
+        Assert.Equal("Create the first administrator", await HeadingAsync(page));
+
+        IReadOnlyList<string> recoveryCodes =
+            await AccountJourneys.CompleteSetupAsync(page, AccountJourneys.DefaultAdministrator);
+
+        Assert.Equal("You are the administrator", await HeadingAsync(page));
+        Assert.Equal(AccountJourneys.ExpectedRecoveryCodeCount, recoveryCodes.Count);
+        Assert.All(recoveryCodes, code => Assert.False(string.IsNullOrWhiteSpace(code)));
+
+        // §3.6's own words: "the moment one does, this page returns 404". The panel still renders — a
+        // person who bookmarked it deserves a sentence, not a blank error — so the status code is the
+        // assertion, not the body.
+        IResponse? closed = await page.GotoAsync(AccountRoutes.Setup);
+        Assert.NotNull(closed);
+        Assert.Equal(404, closed.Status);
     }
 
-    [Fact(Skip = PendingM6)]
+    // -------------------------------------------------------------------------------------------
+    // 13. Passkey sign-in of a TOTP-enrolled user → no TOTP challenge.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task PasskeySignIn_OfTotpUser_SkipsTotpChallenge()
+    {
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+        IPage page = instance.Page;
+        AdministratorAccount account = AccountJourneys.DefaultAdministrator;
+
+        // The §3.6 wizard registers a passkey AND enrolls TOTP in one pass, which is exactly the
+        // account shape this scenario is about: a person who has both, signing in with one of them.
+        await AccountJourneys.CompleteSetupAsync(page, account);
+        await AccountJourneys.SignOutAsync(page);
+        await AccountJourneys.SignInWithPasskeyAsync(page, account.Username);
+
+        // The whole point (§3.5, ADR-0010): TOTP guards the password path only. PasskeySignInAsync
+        // cannot return RequiresTwoFactor by construction, and this is the observable consequence.
+        Assert.DoesNotContain(AccountRoutes.SignInTwoFactor, page.Url);
+        Assert.DoesNotContain(AccountRoutes.SignInRecoveryCode, page.Url);
+
+        // And it is a real session, not merely a page that failed to redirect.
+        ILocator sessionName = page.Locator("span.session-name").First;
+        await sessionName.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        Assert.Equal(account.Username, (await sessionName.InnerTextAsync()).Trim());
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // 14. Expired token URL → friendly expiry page; token from previous window → accepted.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task JoinToken_ExpiredShowsFriendlyPage_PreviousWindowAccepted()
+    {
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const int rotationSeconds = RestaurantInstance.DefaultTableJoinTokenRotationSeconds;
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(rotationSeconds, cancellationToken);
+        IPage page = instance.Page;
+
+        // Real signing material, held only here and in the row — the server reads it back through
+        // ITableJoinSecretReader, so a token computed here is a token it will genuinely verify.
+        byte[] joinSecret = RandomNumberGenerator.GetBytes(32);
+        Guid tableIdentifier = await instance.InsertActiveTableAsync(
+            "E2E Fourteen", joinSecret, cancellationToken);
+
+        long currentWindow = JoinTokenService.CurrentWindowIndex(DateTimeOffset.UtcNow, rotationSeconds);
+
+        // (a) Four windows back is inside §4.3's bounded lookback, so it is classified Expired rather
+        // than Invalid — and §4.4 renders one friendly page for every failure, with no oracle detail
+        // about which thing went wrong. Deliberately first: it must write no grant.
+        string staleToken = JoinTokenService.ComputeToken(joinSecret, tableIdentifier, currentWindow - 4);
+        await page.GotoAsync(JoinPath(tableIdentifier, staleToken));
+
+        Assert.Equal("That code has expired", await HeadingAsync(page));
+        Assert.DoesNotContain(AccountRoutes.SignIn, page.Url);
+
+        // (b) The immediately previous window is accepted (§4.3: "the current and previous window"), so
+        // the grant is written and an anonymous scanner is sent to sign in with this table as the
+        // return URL. That redirect IS the acceptance — it is what the guest flow does next (§4.4).
+        string previousWindowToken =
+            JoinTokenService.ComputeToken(joinSecret, tableIdentifier, currentWindow - 1);
+        await page.GotoAsync(JoinPath(tableIdentifier, previousWindowToken));
+
+        Assert.Contains(AccountRoutes.SignIn, page.Url);
+        Assert.Contains(tableIdentifier.ToString("D"), page.Url);
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
+    // -------------------------------------------------------------------------------------------
+
+    [Fact(Skip = PendingHarnessExtension)]
     public void Display_PairsAndShowsRotatingQrAcrossWindowBoundary()
     {
-        // 2. Admin creates table → pairing code → device pairs at /display/pair → QR changes across a window boundary.
+        // 2. Admin creates table → pairing code → device pairs at /display/pair → QR changes across a
+        //    window boundary. Needs a short TABLE_JOIN_TOKEN_ROTATION_SECONDS instance (the harness
+        //    already takes one) and a second browser context for the display device's own principal.
     }
 
-    [Fact(Skip = PendingM6)]
+    [Fact(Skip = PendingHarnessExtension)]
     public void Guest_ScansRegistersWithPasskeyAndJoins()
     {
-        // 3. Guest scans (simulated URL from current token) → registers with passkey → joins; sitting created.
+        // 3. Guest scans (simulated URL from current token) → registers with passkey → joins; sitting
+        //    created. Needs the guest registration journey, which is not the same page as /setup.
     }
 
-    [Fact(Skip = PendingM6)]
+    [Fact(Skip = PendingHarnessExtension)]
     public void Guest_StagesAddsAndSend_KitchenGetsOneAlert()
     {
         // 4. Guest stages 2 adds + note → Send → kitchen gets one loud alert → lines pending.
     }
 
-    [Fact(Skip = PendingM6)]
+    [Fact(Skip = PendingHarnessExtension)]
     public void SecondGuest_JoinsAndSeesOrderLiveWithRosterUpdate()
     {
-        // 5. Second guest joins via fresh token → sees first guest's order live; first guest sees roster update.
+        // 5. Second guest joins via fresh token → sees first guest's order live; first guest sees
+        //    roster update. Needs two live circuits in two contexts at once.
     }
 
-    [Fact(Skip = PendingM6)]
+    [Fact(Skip = PendingHarnessExtension)]
     public void Kitchen_FulfillsLine_GuestSeesFulfilledBadge()
     {
         // 6. Kitchen fulfills one line → guest sees fulfilled badge.
     }
 
-    [Fact(Skip = PendingM6)]
+    [Fact(Skip = PendingHarnessExtension)]
     public void Guest_RemoveFulfilledLineRejected_RemovePendingSucceeds()
     {
-        // 7. Guest removes fulfilled line → whole batch rejected with per-op reason; removing pending line succeeds.
+        // 7. Guest removes fulfilled line → whole batch rejected with per-op reason; removing pending
+        //    line succeeds.
     }
 
-    [Fact(Skip = PendingM6)]
+    [Fact(Skip = PendingHarnessExtension)]
     public void Send_UnfulfilledPastThreshold_YieldsExactlyOneReminder()
     {
-        // 8. A send sits unfulfilled 60 s → exactly one reminder alert.
+        // 8. A send sits unfulfilled 60 s → exactly one reminder alert. Wants a short
+        //    KITCHEN_SUBMISSION_REMINDER_SECONDS rather than sixty seconds of waiting.
     }
 
-    [Fact(Skip = PendingM6)]
+    [Fact(Skip = PendingHarnessExtension)]
     public void Counter_AdjustsPriceWithReason_GuestSeesOldToNew()
     {
         // 9. Counter adjusts a price with reason → guest sees old → new with reason.
     }
 
-    [Fact(Skip = PendingM6)]
+    [Fact(Skip = PendingHarnessExtension)]
     public void Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch()
     {
         // 10. Counter closes (pending-line warning) → table flips to settled read-only; totals match.
     }
 
-    [Fact(Skip = PendingM6)]
+    [Fact(Skip = PendingHarnessExtension)]
     public void Guest_HidesClosedOrder_AdminCanUnhide()
     {
-        // 11. Guest hides a closed order → gone from own history (staff/admin unchanged); admin unhides.
+        // 11. Guest hides a closed order → gone from own history (staff/admin unchanged); admin
+        //     filters the hidden-records view by username → Unhide restores it.
     }
 
-    [Fact(Skip = PendingM6)]
+    [Fact(Skip = PendingHarnessExtension)]
     public void Admin_ResetsTotpUser_ForcesPasswordThenTotpReenrollment()
     {
-        // 12. Admin resets TOTP-enrolled user → password sign-in → forced password change → forced TOTP re-enroll → home.
+        // 12. Admin resets TOTP-enrolled user → password sign-in → forced password change → forced
+        //     TOTP re-enroll → lands home; the passkey path hits the pipeline too.
     }
 
-    [Fact(Skip = PendingM6)]
-    public void PasskeySignIn_OfTotpUser_SkipsTotpChallenge()
-    {
-        // 13. Passkey sign-in of a TOTP-enrolled user → no TOTP challenge.
-    }
-
-    [Fact(Skip = PendingM6)]
-    public void JoinToken_ExpiredShowsFriendlyPage_PreviousWindowAccepted()
-    {
-        // 14. Expired token URL → friendly expiry page; token from previous window → accepted.
-    }
-
-    [Fact(Skip = PendingM6)]
+    [Fact(Skip = PendingHarnessExtension)]
     public void Admin_RotatesJoinSecret_InFlightTokenDiesNextWindowWorks()
     {
         // 15. Admin rotates a table's join secret → in-flight token dies; display's next window works.
+    }
+
+    // --- helpers ---------------------------------------------------------------------------------
+
+    private void SkipUnlessHarnessAvailable()
+        => Assert.SkipUnless(
+            _harness.SkipReason is null,
+            _harness.SkipReason ?? "The end-to-end harness is unavailable.");
+
+    /// <summary>
+    /// The page's single <c>h1</c>, trimmed. Every surface has exactly one — <c>Routes.razor</c>'s
+    /// <c>FocusOnNavigate</c> depends on that too — so this doubles as a check that it still holds.
+    /// </summary>
+    private static async Task<string> HeadingAsync(IPage page)
+        => (await page.Locator("h1").First.InnerTextAsync()).Trim();
+
+    private static string JoinPath(Guid tableIdentifier, string token)
+        => $"/table/{tableIdentifier:D}?token={Uri.EscapeDataString(token)}";
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs
+################################################################################
+
+--- METADATA ---
+  File name:             AccountJourneys.cs
+  Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs
+  Size:                  7.9 KiB (8073 bytes)
+  Last modified:         2026-07-29 05:05:00.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 27205630
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               7bdd87bc5a5075824b7d2e4202a7f39d3bde7cdfe6e28d9aefc96f687f027f1b
+  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
+
+--- CONTENT ---
+using Microsoft.Playwright;
+using MyRestaurant.Domain.Security;
+using MyRestaurant.WebApplication.Identity;
+
+namespace MyRestaurant.EndToEnd.Tests.Harness;
+
+/// <summary>The account a scenario bootstraps at <c>/setup</c> (§3.6).</summary>
+internal sealed record AdministratorAccount(string Username, string DisplayName, string Password);
+
+/// <summary>
+/// The account journeys more than one §16.3 scenario walks: the first-administrator wizard, sign-out,
+/// and passkey sign-in. Kept out of the scenario file so a scenario reads as its own assertion rather
+/// than as thirty lines of form filling — and so that when a surface changes, one place changes.
+/// </summary>
+internal static class AccountJourneys
+{
+    /// <summary>Ten single-use recovery codes are minted by the §3.6 bootstrap.</summary>
+    internal const int ExpectedRecoveryCodeCount = 10;
+
+    private static readonly TimeSpan CeremonyGrace = TimeSpan.FromSeconds(4);
+
+    /// <summary>
+    /// The default administrator. The password is a passphrase rather than a short scramble because
+    /// §3.2 requires twelve characters and refuses nothing else — and because a fixture that fails the
+    /// policy would fail inside a validation summary, which is a tedious thing to diagnose.
+    /// </summary>
+    internal static readonly AdministratorAccount DefaultAdministrator =
+        new("e2e.administrator", "End To End", "correct horse battery staple");
+
+    /// <summary>
+    /// Walks the whole four-step wizard: account details, a real WebAuthn attestation through the
+    /// virtual authenticator, a real TOTP confirmation computed from the secret the page displays, and
+    /// the commit. Returns the recovery codes shown once on the completion panel.
+    ///
+    /// <para>Every step posts back to <c>/setup</c> and redirects to <c>/setup</c> (the wizard is a
+    /// post/redirect/get over a protected cookie), so the URL never changes and cannot be waited on.
+    /// The waits below are therefore on the element each step is identified by, which is both more
+    /// robust and more legible than a URL or a heading.</para>
+    /// </summary>
+    internal static async Task<IReadOnlyList<string>> CompleteSetupAsync(IPage page, AdministratorAccount account)
+    {
+        await page.GotoAsync(AccountRoutes.Setup);
+
+        // Step 1 — account details.
+        await page.FillAsync("#username", account.Username);
+        await page.FillAsync("#display-name", account.DisplayName);
+        await page.FillAsync("#password", account.Password);
+        await page.FillAsync("#confirm-password", account.Password);
+        await page.ClickAsync("button:has-text('Continue to passkey')");
+
+        // Step 2 — passkey registration. The <passkey-submit> element intercepts this button, runs
+        // navigator.credentials.create() against the virtual authenticator, writes the credential JSON
+        // into the form and submits it natively.
+        ILocator passkeyButton = page.Locator("button[name='__passkeySubmit']");
+        await passkeyButton.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        await passkeyButton.ClickAsync();
+
+        // Step 3 — the authenticator. The page renders the Base32 secret grouped in fours for manual
+        // entry; Base32Text.TryDecode is forgiving of exactly that grouping, so it is passed verbatim.
+        ILocator secret = page.Locator("p.totp-secret");
+        await secret.WaitForAsync(new LocatorWaitForOptions { Timeout = 60_000 });
+        string displayedSecret = await secret.InnerTextAsync();
+
+        if (!Base32Text.TryDecode(displayedSecret, out byte[] totpSecret))
+        {
+            throw new InvalidOperationException(
+                $"The setup page displayed a TOTP secret that is not Base32: '{displayedSecret}'.");
+        }
+
+        // §3.4's provider allows ±1 thirty-second step, so computing the code now and posting it a
+        // moment later is safe even across a step boundary.
+        await page.FillAsync("#code", Rfc6238Totp.ComputeCode(totpSecret, DateTimeOffset.UtcNow));
+        await page.ClickAsync("button:has-text('Confirm and review')");
+
+        // Step 4 — review and commit.
+        ILocator commitButton = page.Locator("button:has-text('Create administrator')");
+        await commitButton.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        await commitButton.ClickAsync();
+
+        // The commit hashes nothing (the password was hashed at step 1) but does write the person, the
+        // passkey, the TOTP secret, ten recovery codes and the role grant in one advisory-locked
+        // transaction, then signs the administrator in on the same response.
+        ILocator recoveryCodes = page.Locator("ul.recovery-codes li");
+        await recoveryCodes.First.WaitForAsync(new LocatorWaitForOptions { Timeout = 60_000 });
+
+        return await recoveryCodes.AllTextContentsAsync();
+    }
+
+    /// <summary>
+    /// Signs out through the header's antiforgery-protected POST form, then waits for the header to
+    /// offer a sign-in link again. That link exists only in the layout's <c>NotAuthorized</c> branch,
+    /// so it is positive proof the cookie is gone rather than a guess about the redirect — and waiting
+    /// for it also settles the navigation the click started.
+    /// </summary>
+    internal static async Task SignOutAsync(IPage page)
+    {
+        await page.GotoAsync("/");
+
+        ILocator signOutButton = page.Locator("form.sign-out-form button[type='submit']");
+        await signOutButton.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        await signOutButton.ClickAsync();
+
+        await page
+            .Locator($"nav.app-session a[href='{AccountRoutes.SignIn}']")
+            .WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+    }
+
+    /// <summary>
+    /// Signs in with a passkey and returns once the sign-in page has been left — wherever it led.
+    /// The caller asserts on the destination, which is the point of §16.3 scenario 13.
+    ///
+    /// <para><c>passkey.js</c> starts a conditional-mediation request the moment the page loads, and an
+    /// authenticator that simulates presence can satisfy it with no gesture at all — in which case the
+    /// form has already been submitted and there is no button left to press. So the button is only
+    /// driven when that has demonstrably not happened. Clicking is still safe if a conditional request
+    /// is merely in flight: the element aborts its own pending request before starting a new one.</para>
+    /// </summary>
+    internal static async Task SignInWithPasskeyAsync(IPage page, string username)
+    {
+        await page.GotoAsync(AccountRoutes.SignIn);
+
+        if (await IsStillOnSignInPageAsync(page, CeremonyGrace))
+        {
+            await page.FillAsync("#username", username);
+            await page.ClickAsync("button[name='__passkeySubmit']");
+        }
+
+        await page.WaitForURLAsync(
+            HasLeftSignInPage,
+            new PageWaitForURLOptions { Timeout = 60_000 });
+    }
+
+    private static async Task<bool> IsStillOnSignInPageAsync(IPage page, TimeSpan grace)
+    {
+        try
+        {
+            await page.WaitForURLAsync(
+                HasLeftSignInPage,
+                new PageWaitForURLOptions { Timeout = (float)grace.TotalMilliseconds });
+
+            return false;
+        }
+        catch (PlaywrightException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// True once the browser is somewhere other than the sign-in page itself. Compares the path
+    /// exactly rather than by prefix on purpose: <c>/sign-in/two-factor</c> must count as "left", so
+    /// that a scenario asserting no TOTP challenge fails with the URL it actually landed on instead of
+    /// with an unexplained timeout.
+    /// </summary>
+    private static bool HasLeftSignInPage(string url)
+        => !Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)
+            || !string.Equals(parsed.AbsolutePath, AccountRoutes.SignIn, StringComparison.Ordinal);
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/ContainerEngineDiscovery.cs
+################################################################################
+
+--- METADATA ---
+  File name:             ContainerEngineDiscovery.cs
+  Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/ContainerEngineDiscovery.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/ContainerEngineDiscovery.cs
+  Size:                  2.9 KiB (2950 bytes)
+  Last modified:         2026-07-29 05:01:48.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 27205633
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               753f60ed3d1b0b9ac8de008592aefc8723c20eed7e27b568026d6116f4be1b84
+  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
+
+--- CONTENT ---
+using System.Runtime.CompilerServices;
+
+namespace MyRestaurant.EndToEnd.Tests.Harness;
+
+/// <summary>
+/// Points Testcontainers at a <b>rootless Podman</b> socket when one is available and nothing else
+/// has been configured (ADR-0004 — rootless Podman is the canonical engine).
+///
+/// <para>This duplicates <c>MyRestaurant.DataAccess.Tests.ContainerEngineDiscovery</c> on purpose,
+/// and the duplication is not accidental sloppiness: a <see cref="ModuleInitializerAttribute"/> runs
+/// once per <em>assembly</em> load, and Testcontainers snapshots its environment-derived
+/// configuration into static singletons the first time any of its types is touched. A shared helper
+/// in one test project cannot run inside the other's process, and both projects run as their own test
+/// host. The alternative — a shared "test support" project — would be one more project in the
+/// solution for thirty lines that must not have a public API. See the DataAccess copy for the full
+/// rationale; the logic below is identical.</para>
+/// </summary>
+internal static class ContainerEngineDiscovery
+{
+    [ModuleInitializer]
+    internal static void Initialize()
+    {
+        // Respect anything the user configured explicitly — env vars or the properties file.
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DOCKER_HOST")))
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TESTCONTAINERS_HOST_OVERRIDE")))
+        {
+            return;
+        }
+
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrEmpty(home) && File.Exists(Path.Combine(home, ".testcontainers.properties")))
+        {
+            return;
+        }
+
+        // If the Docker default endpoint exists, Testcontainers will find it on its own.
+        if (!OperatingSystem.IsLinux() || File.Exists("/var/run/docker.sock"))
+        {
+            return;
+        }
+
+        // Rootless Podman publishes its Docker-compatible API under the user runtime directory.
+        string? runtimeDirectory = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
+        if (string.IsNullOrWhiteSpace(runtimeDirectory))
+        {
+            return;
+        }
+
+        string podmanSocket = Path.Combine(runtimeDirectory, "podman", "podman.sock");
+        if (!File.Exists(podmanSocket))
+        {
+            // The engine is installed but its API socket is not active; RestaurantHarness's skip
+            // message tells the developer the one-time `systemctl --user enable --now podman.socket`.
+            return;
+        }
+
+        Environment.SetEnvironmentVariable("DOCKER_HOST", $"unix://{podmanSocket}");
+
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TESTCONTAINERS_RYUK_DISABLED")))
+        {
+            Environment.SetEnvironmentVariable("TESTCONTAINERS_RYUK_DISABLED", "true");
+        }
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs
+################################################################################
+
+--- METADATA ---
+  File name:             RestaurantHarness.cs
+  Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs
+  Size:                  7.5 KiB (7722 bytes)
+  Last modified:         2026-07-29 05:02:47.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 27205634
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               f3f04a420cca636285f0e497980e09ae9ebffda0b44c19ab964bca892962a08d
+  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
+
+--- CONTENT ---
+using Microsoft.Playwright;
+using Testcontainers.PostgreSql;
+using Xunit;
+
+namespace MyRestaurant.EndToEnd.Tests.Harness;
+
+/// <summary>
+/// The one expensive thing the §16.3 scenarios share: a PostgreSQL 17 container and a Chromium
+/// browser, started once for the whole scenario class. Everything a single scenario must not share
+/// with another — its database, its web application process, its browser context, its cookies, its
+/// virtual authenticator — belongs to <see cref="RestaurantInstance"/> instead.
+///
+/// <para><b>Opt-in, on purpose.</b> These scenarios skip unless <c>MYRESTAURANT_E2E</c> is set. The
+/// first run downloads a Chromium build of roughly 150 MB into <c>~/.cache/ms-playwright</c>, and a
+/// plain <c>dotnet test</c> has no business doing that unasked — the whole suite is otherwise
+/// offline once packages are restored. <c>scripts/ci_local.sh --with-e2e</c> and CI's
+/// <c>end-to-end</c> job set the variable; nothing else does.</para>
+///
+/// <para><b>Every unavailability is a skip, never a failure.</b> No opt-in, no container engine, no
+/// browser, no build output: each sets <see cref="SkipReason"/> and each scenario calls
+/// <c>Assert.SkipUnless</c> — the same discipline the data-access integration tests follow. A missing
+/// tool is not a broken product, and a suite that cannot tell the difference is a suite people stop
+/// reading.</para>
+/// </summary>
+public sealed class RestaurantHarness : IAsyncLifetime
+{
+    /// <summary>The environment variable that opts in to the end-to-end scenarios.</summary>
+    public const string OptInVariableName = "MYRESTAURANT_E2E";
+
+    private const string PostgreSqlImage = "postgres:17-alpine";
+
+    /// <summary>
+    /// Installs only Chromium. The scenarios are single-browser by design: §16.3 is about this
+    /// product's flows, and the WebAuthn virtual authenticator is a Chrome DevTools Protocol feature
+    /// with no Firefox or WebKit equivalent, so a cross-browser matrix would be a matrix of one.
+    /// </summary>
+    private static readonly string[] BrowserInstallArguments = ["install", "chromium"];
+
+    private int _instanceCounter;
+    private IPlaywright? _playwright;
+    private IBrowser? _browser;
+    private PostgreSqlContainer? _container;
+    private string? _administrativeConnectionString;
+    private WebApplicationLaunch? _launch;
+
+    /// <summary>Non-null when the scenarios cannot run; the reason to pass to <c>Assert.SkipUnless</c>.</summary>
+    public string? SkipReason { get; private set; }
+
+    public async ValueTask InitializeAsync()
+    {
+        if (!IsOptedIn())
+        {
+            SkipReason =
+                $"The §16.3 end-to-end scenarios are opt-in: set {OptInVariableName}=1 to run them."
+                + " The first run downloads Chromium into ~/.cache/ms-playwright, and each scenario"
+                + " starts PostgreSQL in a container and boots the built web application."
+                + " `scripts/ci_local.sh --with-e2e` sets it for you.";
+            return;
+        }
+
+        if (!WebApplicationLocator.TryLocate(out WebApplicationLaunch? launch, out string? locationFailure))
+        {
+            SkipReason = "The built web application could not be found: " + locationFailure;
+            return;
+        }
+
+        _launch = launch;
+
+        try
+        {
+            // Documented programmatic equivalent of `playwright install chromium`, and the only one
+            // that does not require PowerShell on the host. A no-op once the browser is present.
+            int installExitCode = Microsoft.Playwright.Program.Main(BrowserInstallArguments);
+            if (installExitCode != 0)
+            {
+                SkipReason =
+                    $"`playwright install chromium` exited with {installExitCode}. Install the browser"
+                    + " by hand and re-run, or clear ~/.cache/ms-playwright and try again.";
+                return;
+            }
+
+            _playwright = await Playwright.CreateAsync();
+            _browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+        }
+        catch (Exception exception)
+        {
+            SkipReason =
+                "Chromium could not be started: " + exception.Message
+                + " — on a minimal Linux host the browser's shared libraries may be missing; install"
+                + " them once with `playwright install --with-deps chromium` (that step needs root,"
+                + " which is why the harness does not attempt it).";
+            return;
+        }
+
+        try
+        {
+            // The default database is `postgres` because the harness connects to it only to CREATE
+            // DATABASE for each scenario; no scenario ever uses this connection for anything else.
+            _container = new PostgreSqlBuilder(PostgreSqlImage)
+                .WithDatabase("postgres")
+                .WithUsername("myrestaurant")
+                .WithPassword("myrestaurant")
+                .Build();
+
+            await _container.StartAsync();
+            _administrativeConnectionString = _container.GetConnectionString();
+        }
+        catch (Exception exception)
+        {
+            SkipReason =
+                "A container engine (Podman/Docker) was not reachable: " + exception.Message +
+                " — on a rootless-Podman host, activate the user API socket once with" +
+                " `systemctl --user enable --now podman.socket` and re-run; the tests discover it" +
+                " automatically.";
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_browser is not null)
+        {
+            await _browser.CloseAsync();
+        }
+
+        _playwright?.Dispose();
+
+        if (_container is not null)
+        {
+            await _container.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Brings up one isolated instance: a fresh database, a fresh data-protection key directory, the
+    /// web application on its own loopback port, and a browser context with a virtual authenticator.
+    /// </summary>
+    /// <param name="tableJoinTokenRotationSeconds">
+    /// <c>TABLE_JOIN_TOKEN_ROTATION_SECONDS</c> for this instance (§13). Scenario 14 wants a long
+    /// window so "the previous window" cannot roll over mid-assertion; scenario 2 will want a short
+    /// one so a boundary can actually be crossed. Neither belongs in a shared default.
+    /// </param>
+    internal async Task<RestaurantInstance> StartInstanceAsync(
+        int tableJoinTokenRotationSeconds = RestaurantInstance.DefaultTableJoinTokenRotationSeconds,
+        CancellationToken cancellationToken = default)
+    {
+        if (SkipReason is not null || _browser is null || _administrativeConnectionString is null || _launch is null)
+        {
+            throw new InvalidOperationException(
+                "The end-to-end harness is unavailable; a scenario must call Assert.SkipUnless on"
+                + $" {nameof(SkipReason)} before asking for an instance.");
+        }
+
+        int ordinal = Interlocked.Increment(ref _instanceCounter);
+
+        return await RestaurantInstance.StartAsync(
+            _browser,
+            _administrativeConnectionString,
+            _launch,
+            ordinal,
+            tableJoinTokenRotationSeconds,
+            cancellationToken);
+    }
+
+    private static bool IsOptedIn()
+    {
+        string? value = Environment.GetEnvironmentVariable(OptInVariableName);
+
+        return value is not null
+            && (value.Equals("1", StringComparison.Ordinal)
+                || value.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("yes", StringComparison.OrdinalIgnoreCase));
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs
+################################################################################
+
+--- METADATA ---
+  File name:             RestaurantInstance.cs
+  Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs
+  Size:                  17.4 KiB (17829 bytes)
+  Last modified:         2026-07-29 05:12:19.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 27205631
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               1dbd042d6fe766d2cca960020f291d76856f3bdf46ab31dbf826df8df6c54af3
+  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
+
+--- CONTENT ---
+using System.Diagnostics;
+using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using Microsoft.Playwright;
+using Npgsql;
+
+namespace MyRestaurant.EndToEnd.Tests.Harness;
+
+/// <summary>
+/// One scenario's private stack: its own database, its own data-protection keys, the real web
+/// application in its own process on its own loopback port, and one browser context holding one page
+/// and one virtual authenticator.
+///
+/// <para><b>Why a child process rather than <c>WebApplicationFactory</c>.</b> Playwright drives a real
+/// browser over a real socket, and <c>WebApplicationFactory</c>'s in-memory <c>TestServer</c> has no
+/// socket to connect to. Beyond that, <c>Program.cs</c> is top-level statements that <c>return 1</c>
+/// on invalid configuration, so its generated entry point is not a <c>TEntryPoint</c> a factory can
+/// use without opening up the assembly. Booting the built binary is also the more honest test: it
+/// exercises the same composition root, the same DbUp migration pass, and the same fail-fast
+/// configuration validation a deployment does.</para>
+///
+/// <para><b>Why one instance per scenario rather than one per class.</b> §16.3's first scenario needs
+/// a database with <em>no</em> administrator; its thirteenth needs one with an administrator who has
+/// both a passkey and TOTP. Sharing a stack would force an execution order, and xUnit deliberately
+/// does not promise one. A fresh database plus a fresh process costs a few seconds and buys
+/// scenarios that can be read, and run, in any order.</para>
+///
+/// <para><b>The origin.</b> The app is served over <c>http://localhost:{port}</c> and
+/// <c>RESTAURANT_PUBLIC_ORIGIN</c> is set to <c>https://localhost:{port}</c> — the scheme mismatch is
+/// deliberate and load-bearing in two directions. §13 refuses to start on a non-https public origin,
+/// so the configured value must say https; and Chromium treats <c>localhost</c> as a secure context
+/// regardless of scheme, so WebAuthn ceremonies run and <c>Secure</c> cookies (the §3.1 authentication
+/// cookie is <c>CookieSecurePolicy.Always</c>) are accepted over plain HTTP. The host matches, which is
+/// all <see cref="MyRestaurant.WebApplication.Identity.WebAuthnOriginPolicy"/> and the §3.3
+/// relying-party derivation actually compare.</para>
+/// </summary>
+internal sealed class RestaurantInstance : IAsyncDisposable
+{
+    /// <summary>
+    /// A one-hour rotation window by default. §13's floor is ten seconds and the app's own default is
+    /// sixty, but a scenario that computes "the token from the previous window" and then asks a server
+    /// to validate it is racing the boundary at any short setting. An hour makes that race impossible
+    /// without changing anything the assertions depend on: §4.3 accepts the current and previous
+    /// window whatever their width.
+    /// </summary>
+    internal const int DefaultTableJoinTokenRotationSeconds = 3600;
+
+    private const string RestaurantName = "End To End Restaurant";
+    private const int DiagnosticOutputCharacterLimit = 8000;
+
+    private static readonly TimeSpan ReadinessTimeout = TimeSpan.FromSeconds(120);
+    private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(15);
+
+    private readonly Lock _outputGate;
+    private readonly StringBuilder _output;
+    private readonly Process _process;
+    private readonly string _dataProtectionKeysDirectory;
+    private readonly IBrowserContext _context;
+
+    private RestaurantInstance(
+        Process process,
+        StringBuilder output,
+        Lock outputGate,
+        string dataProtectionKeysDirectory,
+        string connectionString,
+        string baseUrl,
+        IBrowserContext context,
+        IPage page,
+        VirtualAuthenticator authenticator)
+    {
+        _process = process;
+        _output = output;
+        _outputGate = outputGate;
+        _dataProtectionKeysDirectory = dataProtectionKeysDirectory;
+        _context = context;
+
+        ConnectionString = connectionString;
+        BaseUrl = baseUrl;
+        Page = page;
+        Authenticator = authenticator;
+    }
+
+    /// <summary>The Npgsql connection string for this instance's own database.</summary>
+    internal string ConnectionString { get; }
+
+    /// <summary>The origin the browser talks to, e.g. <c>http://localhost:41235</c>.</summary>
+    internal string BaseUrl { get; }
+
+    /// <summary>The one page in this instance's context; relative URLs resolve against <see cref="BaseUrl"/>.</summary>
+    internal IPage Page { get; }
+
+    /// <summary>The CDP virtual authenticator attached to <see cref="Page"/> (§3.3 ceremonies).</summary>
+    internal VirtualAuthenticator Authenticator { get; }
+
+    /// <summary>
+    /// The tail of the web application's console output. This is where a scenario failure is actually
+    /// explained: the browser only ever sees a 500, while the server has the stack.
+    /// </summary>
+    internal string DiagnosticOutput
+    {
+        get
+        {
+            lock (_outputGate)
+            {
+                return Tail(_output.ToString());
+            }
+        }
+    }
+
+    internal static async Task<RestaurantInstance> StartAsync(
+        IBrowser browser,
+        string administrativeConnectionString,
+        WebApplicationLaunch launch,
+        int ordinal,
+        int tableJoinTokenRotationSeconds,
+        CancellationToken cancellationToken)
+    {
+        string databaseName = string.Create(
+            CultureInfo.InvariantCulture,
+            $"myrestaurant_e2e_{ordinal}_{DateTime.UtcNow:HHmmssfff}");
+
+        string connectionString = await CreateDatabaseAsync(
+            administrativeConnectionString, databaseName, cancellationToken);
+
+        string dataProtectionKeysDirectory = Path.Combine(
+            Path.GetTempPath(), "myrestaurant-end-to-end", databaseName);
+        Directory.CreateDirectory(dataProtectionKeysDirectory);
+
+        int port = ReserveLoopbackPort();
+        string baseUrl = string.Create(CultureInfo.InvariantCulture, $"http://localhost:{port}");
+
+        StringBuilder output = new();
+        Lock outputGate = new();
+        Process process = CreateProcess(
+            launch, port, connectionString, dataProtectionKeysDirectory, tableJoinTokenRotationSeconds);
+
+        process.OutputDataReceived += (_, arguments) => Append(output, outputGate, arguments.Data);
+        process.ErrorDataReceived += (_, arguments) => Append(output, outputGate, arguments.Data);
+
+        process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        IBrowserContext? context = null;
+
+        try
+        {
+            await WaitForReadinessAsync(process, baseUrl, output, outputGate, cancellationToken);
+
+            context = await browser.NewContextAsync(new BrowserNewContextOptions { BaseURL = baseUrl });
+            IPage page = await context.NewPageAsync();
+            page.SetDefaultTimeout(30_000);
+
+            VirtualAuthenticator authenticator = await VirtualAuthenticator.AttachAsync(context, page);
+
+            return new RestaurantInstance(
+                process,
+                output,
+                outputGate,
+                dataProtectionKeysDirectory,
+                connectionString,
+                baseUrl,
+                context,
+                page,
+                authenticator);
+        }
+        catch
+        {
+            if (context is not null)
+            {
+                await context.CloseAsync();
+            }
+
+            await StopProcessAsync(process);
+            DeleteDirectoryQuietly(dataProtectionKeysDirectory);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Arranges an active table with a caller-chosen join secret (§4.1), by direct insert rather than
+    /// through the administration surface. Deliberate: §16.3 scenario 14 is about the token algorithm's
+    /// window arithmetic, and routing it through a sign-in, a role check and a form would make a
+    /// token-window assertion fail for six unrelated reasons. Scenario 2, which <em>is</em> about the
+    /// administration flow, will create its table through the UI.
+    /// </summary>
+    internal async Task<Guid> InsertActiveTableAsync(
+        string label,
+        byte[] joinSecret,
+        CancellationToken cancellationToken)
+    {
+        Guid tableIdentifier = Guid.CreateVersion7();
+
+        await using NpgsqlConnection connection = new(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using NpgsqlCommand command = new(
+            """
+            INSERT INTO restaurant_table
+                (restaurant_table_identifier, label, join_secret, is_active, created_at)
+            VALUES
+                (@table_identifier, @label, @join_secret, true, @created_at);
+            """,
+            connection);
+
+        command.Parameters.AddWithValue("table_identifier", tableIdentifier);
+        command.Parameters.AddWithValue("label", label);
+        command.Parameters.AddWithValue("join_secret", joinSecret);
+        command.Parameters.AddWithValue("created_at", DateTime.UtcNow);
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        return tableIdentifier;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await Authenticator.DisposeAsync();
+        await _context.CloseAsync();
+        await StopProcessAsync(_process);
+        _process.Dispose();
+        DeleteDirectoryQuietly(_dataProtectionKeysDirectory);
+    }
+
+    // --- process plumbing ------------------------------------------------------------------------
+
+    private static Process CreateProcess(
+        WebApplicationLaunch launch,
+        int port,
+        string connectionString,
+        string dataProtectionKeysDirectory,
+        int tableJoinTokenRotationSeconds)
+    {
+        ProcessStartInfo startInfo = new()
+        {
+            FileName = launch.FileName,
+            WorkingDirectory = launch.WorkingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        foreach (string argument in launch.Arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        IDictionary<string, string?> variables = startInfo.Environment;
+
+        // Kestrel binds both loopback families for the literal host `localhost`, so the browser
+        // reaches it whether the name resolves to 127.0.0.1 or ::1.
+        variables["ASPNETCORE_URLS"] = string.Create(CultureInfo.InvariantCulture, $"http://localhost:{port}");
+        variables["ASPNETCORE_ENVIRONMENT"] = "Production";
+        variables["DOTNET_ENVIRONMENT"] = "Production";
+        variables["ASPNETCORE_CONTENTROOT"] = launch.ContentRoot;
+
+        // §13, in full. Nothing is left to the app's own defaults: a scenario that failed because a
+        // default moved would be a scenario nobody could debug.
+        variables["RESTAURANT_NAME"] = RestaurantName;
+        variables["RESTAURANT_PUBLIC_ORIGIN"] =
+            string.Create(CultureInfo.InvariantCulture, $"https://localhost:{port}");
+        variables["RESTAURANT_TRUSTED_ORIGIN_PATTERNS"] = "https://*.trycloudflare.com";
+        variables["RESTAURANT_TIME_ZONE"] = "America/New_York";
+        variables["RESTAURANT_CLOCK_FORMAT"] = "12-hour";
+        variables["RESTAURANT_CURRENCY_CODE"] = "USD";
+        variables["RESTAURANT_DATABASE_CONNECTION_STRING"] = connectionString;
+        variables["DATA_PROTECTION_KEYS_DIRECTORY"] = dataProtectionKeysDirectory;
+        variables["KITCHEN_SUBMISSION_REMINDER_SECONDS"] = "60";
+        variables["TABLE_JOIN_TOKEN_ROTATION_SECONDS"] =
+            tableJoinTokenRotationSeconds.ToString(CultureInfo.InvariantCulture);
+        variables["TABLE_JOIN_GRANT_MINUTES"] = "10";
+        variables["TABLE_DISPLAY_PAIRING_CODE_MINUTES"] = "10";
+
+        // Exactly the §3.2 floor. Argon2id at production parameters would spend most of each
+        // scenario's runtime hashing one password, and the floor is a value the guard accepts, so the
+        // sign-in path under test is the real one.
+        variables["ARGON2_MEMORY_KIBIBYTES"] = "19456";
+        variables["ARGON2_ITERATIONS"] = "2";
+        variables["ARGON2_PARALLELISM"] = "1";
+        variables["ARGON2_MAX_CONCURRENT_HASHES"] = "4";
+
+        // No collector is listening, and Program.cs only attaches the OTLP exporters when one is
+        // configured. Inheriting a developer's endpoint would fill the log with connection refusals.
+        variables.Remove("OTEL_EXPORTER_OTLP_ENDPOINT");
+        variables.Remove("UPTRACE_DSN");
+
+        return new Process { StartInfo = startInfo };
+    }
+
+    private static async Task WaitForReadinessAsync(
+        Process process,
+        string baseUrl,
+        StringBuilder output,
+        Lock outputGate,
+        CancellationToken cancellationToken)
+    {
+        using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(5) };
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + ReadinessTimeout;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (process.HasExited)
+            {
+                throw new InvalidOperationException(
+                    $"The web application exited with code {process.ExitCode} before it became ready."
+                    + $"\n--- web application output ---\n{Snapshot(output, outputGate)}");
+            }
+
+            try
+            {
+                using HttpResponseMessage response = await client.GetAsync(
+                    baseUrl + "/healthz/ready", cancellationToken);
+
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    return;
+                }
+            }
+            catch (HttpRequestException)
+            {
+                // Not listening yet.
+            }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // The probe itself timed out; try again until the deadline.
+            }
+
+            await Task.Delay(ReadinessPollInterval, cancellationToken);
+        }
+
+        await StopProcessAsync(process);
+
+        throw new InvalidOperationException(
+            $"/healthz/ready did not answer 200 within {ReadinessTimeout.TotalSeconds:F0}s."
+            + $"\n--- web application output ---\n{Snapshot(output, outputGate)}");
+    }
+
+    private static async Task StopProcessAsync(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                using CancellationTokenSource shutdown = new(ShutdownTimeout);
+                await process.WaitForExitAsync(shutdown.Token);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // Already gone.
+        }
+        catch (OperationCanceledException)
+        {
+            // It did not die politely within the timeout; the test run is ending regardless.
+        }
+    }
+
+    // --- database plumbing -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Creates this instance's database. The name is interpolated rather than parameterized because
+    /// <c>CREATE DATABASE</c> takes no parameters in PostgreSQL; it is assembled here from an
+    /// interlocked counter and a timestamp, so no caller-supplied text ever reaches it.
+    /// The schema itself is applied by the application's own DbUp pass at startup (§17), which is one
+    /// more thing these scenarios therefore prove.
+    /// </summary>
+    private static async Task<string> CreateDatabaseAsync(
+        string administrativeConnectionString,
+        string databaseName,
+        CancellationToken cancellationToken)
+    {
+        await using NpgsqlConnection connection = new(administrativeConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using NpgsqlCommand command = new($"CREATE DATABASE \"{databaseName}\";", connection);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        NpgsqlConnectionStringBuilder builder = new(administrativeConnectionString)
+        {
+            Database = databaseName,
+        };
+
+        return builder.ConnectionString;
+    }
+
+    // --- odds and ends ---------------------------------------------------------------------------
+
+    private static int ReserveLoopbackPort()
+    {
+        TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+
+        try
+        {
+            return ((IPEndPoint)listener.LocalEndpoint).Port;
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    private static void Append(StringBuilder output, Lock outputGate, string? line)
+    {
+        if (line is null)
+        {
+            return;
+        }
+
+        lock (outputGate)
+        {
+            output.AppendLine(line);
+        }
+    }
+
+    private static string Snapshot(StringBuilder output, Lock outputGate)
+    {
+        lock (outputGate)
+        {
+            return Tail(output.ToString());
+        }
+    }
+
+    private static string Tail(string text)
+        => text.Length <= DiagnosticOutputCharacterLimit
+            ? text
+            : text[^DiagnosticOutputCharacterLimit..];
+
+    private static void DeleteDirectoryQuietly(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // A leftover temp directory is not worth failing a scenario over.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Likewise.
+        }
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/VirtualAuthenticator.cs
+################################################################################
+
+--- METADATA ---
+  File name:             VirtualAuthenticator.cs
+  Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/VirtualAuthenticator.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/VirtualAuthenticator.cs
+  Size:                  4.0 KiB (4143 bytes)
+  Last modified:         2026-07-29 05:04:25.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 27205632
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               6a751ba11bf372dada6ef1c4342112d63fa4975313685c756d366a190b6c6692
+  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
+
+--- CONTENT ---
+using System.Text.Json;
+using Microsoft.Playwright;
+
+namespace MyRestaurant.EndToEnd.Tests.Harness;
+
+/// <summary>
+/// A software WebAuthn authenticator attached to one page over the Chrome DevTools Protocol, so the
+/// §3.3 passkey ceremonies run for real in the browser with no human thumb involved. This is what
+/// §16.3 means by "passkey via virtual authenticator".
+///
+/// <para>The configuration is chosen to match the credential the product actually wants. It presents
+/// as a platform authenticator (<c>internal</c> transport) with resident-key support, because
+/// <c>IdentityPasskeyOptions.ResidentKeyRequirement</c> is <c>"preferred"</c> and a discoverable
+/// credential is what makes the username-less sign-in path work. It reports the user as verified,
+/// because <c>UserVerificationRequirement</c> is also <c>"preferred"</c> and a passkey sign-in that
+/// skipped verification would be a weaker credential than the one a real device produces. And it
+/// simulates presence automatically, because there is no gesture to simulate in a headless run.</para>
+///
+/// <para><c>defaultBackupEligibility</c> and <c>defaultBackupState</c> arrived in Chromium's 13x line
+/// and became <em>required</em> in the same change, which means a single fixed argument list is wrong
+/// on one side of that boundary or the other. Rather than pinning a browser build, the call is
+/// attempted with them and retried without. They matter here beyond mere acceptance: the §3.3 store
+/// persists <c>is_backup_eligible</c> and <c>is_backed_up</c>, and the assertion handler reads them
+/// back, so a scenario should exercise credentials that carry the bits set rather than absent.</para>
+/// </summary>
+internal sealed class VirtualAuthenticator : IAsyncDisposable
+{
+    private readonly ICDPSession _session;
+
+    private VirtualAuthenticator(ICDPSession session, string authenticatorId)
+    {
+        _session = session;
+        AuthenticatorId = authenticatorId;
+    }
+
+    /// <summary>The CDP identifier of the authenticator, for later credential inspection if needed.</summary>
+    internal string AuthenticatorId { get; }
+
+    internal static async Task<VirtualAuthenticator> AttachAsync(IBrowserContext context, IPage page)
+    {
+        ICDPSession session = await context.NewCDPSessionAsync(page);
+
+        await session.SendAsync("WebAuthn.enable", new Dictionary<string, object>
+        {
+            ["enableUI"] = false,
+        });
+
+        JsonElement? added;
+
+        try
+        {
+            added = await session.SendAsync(
+                "WebAuthn.addVirtualAuthenticator", BuildParameters(includeBackupDefaults: true));
+        }
+        catch (PlaywrightException)
+        {
+            added = await session.SendAsync(
+                "WebAuthn.addVirtualAuthenticator", BuildParameters(includeBackupDefaults: false));
+        }
+
+        string authenticatorId =
+            added is { } result && result.TryGetProperty("authenticatorId", out JsonElement identifier)
+                ? identifier.GetString() ?? string.Empty
+                : string.Empty;
+
+        return new VirtualAuthenticator(session, authenticatorId);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await _session.DetachAsync();
+        }
+        catch (PlaywrightException)
+        {
+            // The page or its context may already be closed; there is nothing left to detach from.
+        }
+    }
+
+    private static Dictionary<string, object> BuildParameters(bool includeBackupDefaults)
+    {
+        Dictionary<string, object> options = new()
+        {
+            ["protocol"] = "ctap2",
+            ["ctap2Version"] = "ctap2_1",
+            ["transport"] = "internal",
+            ["hasResidentKey"] = true,
+            ["hasUserVerification"] = true,
+            ["isUserVerified"] = true,
+            ["automaticPresenceSimulation"] = true,
+        };
+
+        if (includeBackupDefaults)
+        {
+            options["defaultBackupEligibility"] = true;
+            options["defaultBackupState"] = true;
+        }
+
+        return new Dictionary<string, object> { ["options"] = options };
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/WebApplicationLocator.cs
+################################################################################
+
+--- METADATA ---
+  File name:             WebApplicationLocator.cs
+  Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/WebApplicationLocator.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/WebApplicationLocator.cs
+  Size:                  6.4 KiB (6601 bytes)
+  Last modified:         2026-07-29 05:02:14.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 27205629
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               15f2d358d6ca977ce211adbad3ea97242bf46c2f54bd5d73dae1081f6f4a5b8c
+  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
+
+--- CONTENT ---
+using System.Diagnostics.CodeAnalysis;
+
+namespace MyRestaurant.EndToEnd.Tests.Harness;
+
+/// <summary>
+/// Everything needed to start one copy of the already-built web application as a child process.
+/// </summary>
+/// <param name="RepositoryRoot">The directory holding <c>MyRestaurant.slnx</c>.</param>
+/// <param name="ContentRoot">
+/// The web application's <em>source</em> directory. It becomes <c>ASPNETCORE_CONTENTROOT</c>, because
+/// <c>Program.cs</c> serves assets with <c>UseStaticFiles()</c> and <c>wwwroot</c> is not copied into
+/// <c>bin</c> — without this, <c>js/passkey.js</c> would 404 and every passkey ceremony would fail
+/// with no browser-side clue why.
+/// </param>
+/// <param name="FileName">The executable to start: the apphost, or the <c>dotnet</c> muxer.</param>
+/// <param name="Arguments">Empty for the apphost; the managed assembly path for the muxer.</param>
+/// <param name="WorkingDirectory">The build output directory.</param>
+internal sealed record WebApplicationLaunch(
+    string RepositoryRoot,
+    string ContentRoot,
+    string FileName,
+    IReadOnlyList<string> Arguments,
+    string WorkingDirectory);
+
+/// <summary>
+/// Finds the web application's build output by walking up from this test assembly's own.
+///
+/// <para>The configuration and target framework are read from this assembly's output path rather than
+/// injected as an MSBuild constant, which keeps the two trees automatically in step: a Debug test run
+/// looks for a Debug web application, a Release run for a Release one. That matters because CI builds
+/// and tests in Release while a workstation usually does not, and a harness that hard-coded either
+/// would silently boot a stale binary from the other.</para>
+/// </summary>
+internal static class WebApplicationLocator
+{
+    private const string SolutionFileName = "MyRestaurant.slnx";
+    private const string ProjectName = "MyRestaurant.WebApplication";
+
+    internal static bool TryLocate(
+        [NotNullWhen(true)] out WebApplicationLaunch? launch,
+        [NotNullWhen(false)] out string? failureReason)
+    {
+        launch = null;
+
+        // .../tests/MyRestaurant.EndToEnd.Tests/bin/<Configuration>/<TargetFramework>/
+        DirectoryInfo targetFrameworkDirectory = new(AppContext.BaseDirectory);
+        DirectoryInfo? configurationDirectory = targetFrameworkDirectory.Parent;
+        if (configurationDirectory is null)
+        {
+            failureReason = $"no build configuration could be read out of '{AppContext.BaseDirectory}'.";
+            return false;
+        }
+
+        string targetFramework = targetFrameworkDirectory.Name;
+        string configuration = configurationDirectory.Name;
+
+        DirectoryInfo? repositoryRoot = FindRepositoryRoot(targetFrameworkDirectory);
+        if (repositoryRoot is null)
+        {
+            failureReason = $"walked up from '{AppContext.BaseDirectory}' without finding {SolutionFileName}.";
+            return false;
+        }
+
+        string contentRoot = Path.Combine(repositoryRoot.FullName, "src", ProjectName);
+        if (!Directory.Exists(contentRoot))
+        {
+            failureReason = $"the web application source directory '{contentRoot}' does not exist.";
+            return false;
+        }
+
+        string outputDirectory = Path.Combine(contentRoot, "bin", configuration, targetFramework);
+        string apphostPath = Path.Combine(outputDirectory, ProjectName);
+        string assemblyPath = Path.Combine(outputDirectory, ProjectName + ".dll");
+
+        if (File.Exists(apphostPath))
+        {
+            launch = new WebApplicationLaunch(repositoryRoot.FullName, contentRoot, apphostPath, [], outputDirectory);
+            failureReason = null;
+            return true;
+        }
+
+        if (!File.Exists(assemblyPath))
+        {
+            failureReason =
+                $"neither '{apphostPath}' nor '{assemblyPath}' exists — build the solution in the"
+                + $" '{configuration}' configuration first (`dotnet build MyRestaurant.slnx"
+                + $" --configuration {configuration}`).";
+            return false;
+        }
+
+        if (!TryFindDotnetMuxer(out string? muxerPath))
+        {
+            failureReason =
+                $"'{assemblyPath}' exists but no apphost was produced alongside it, and the `dotnet`"
+                + " muxer could not be located (set DOTNET_ROOT).";
+            return false;
+        }
+
+        launch = new WebApplicationLaunch(
+            repositoryRoot.FullName, contentRoot, muxerPath, [assemblyPath], outputDirectory);
+        failureReason = null;
+        return true;
+    }
+
+    private static DirectoryInfo? FindRepositoryRoot(DirectoryInfo start)
+    {
+        for (DirectoryInfo? candidate = start; candidate is not null; candidate = candidate.Parent)
+        {
+            if (File.Exists(Path.Combine(candidate.FullName, SolutionFileName)))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The <c>dotnet</c> muxer, only needed when a build produced no apphost. <c>DOTNET_ROOT</c> wins;
+    /// otherwise it is derived from the shared framework this test process is itself running on, which
+    /// lives at <c>&lt;dotnet-root&gt;/shared/Microsoft.NETCore.App/&lt;version&gt;/</c>.
+    /// </summary>
+    private static bool TryFindDotnetMuxer([NotNullWhen(true)] out string? muxerPath)
+    {
+        string executableName = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+
+        string? dotnetRoot = Environment.GetEnvironmentVariable("DOTNET_ROOT");
+        if (!string.IsNullOrWhiteSpace(dotnetRoot))
+        {
+            string configured = Path.Combine(dotnetRoot, executableName);
+            if (File.Exists(configured))
+            {
+                muxerPath = configured;
+                return true;
+            }
+        }
+
+        string coreLibraryPath = typeof(object).Assembly.Location;
+        if (!string.IsNullOrEmpty(coreLibraryPath))
+        {
+            string? sharedFrameworkDirectory = Path.GetDirectoryName(coreLibraryPath);
+            DirectoryInfo? root = sharedFrameworkDirectory is null
+                ? null
+                : new DirectoryInfo(sharedFrameworkDirectory).Parent?.Parent?.Parent;
+
+            if (root is not null)
+            {
+                string derived = Path.Combine(root.FullName, executableName);
+                if (File.Exists(derived))
+                {
+                    muxerPath = derived;
+                    return true;
+                }
+            }
+        }
+
+        muxerPath = null;
+        return false;
     }
 }
 
@@ -63212,23 +65029,41 @@ public sealed class EndToEndScenarios
   File name:             MyRestaurant.EndToEnd.Tests.csproj
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj
-  Size:                  847 B (847 bytes)
-  Last modified:         2026-07-17 21:20:04.000000000 -0400
+  Size:                  2.6 KiB (2711 bytes)
+  Last modified:         2026-07-29 05:01:35.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258270
+  Inode:                 27205635
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               3a682fd9b60d08168c59f6a20d0920b8fae7a1ea9cb745d14d5e7c14cc95cf2f
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               0f0e442a0577b0b078fb07026b6bc9832f3c3687feb138b0467ada70bcdca4f1
+  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
 
 --- CONTENT ---
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Playwright end-to-end scenarios covering the §16.3 matrix. For M1 these are declared but
-    skipped (they need the browsers installed and a live instance — BUILD_PROGRESS). They are
-    filled in at M6 so the scenario list is version-controlled from the start.
+    Playwright end-to-end scenarios covering the §16.3 matrix. The harness arrived at M6 Slice 2:
+    each implemented scenario creates its own database on a shared PostgreSQL 17 container
+    (Testcontainers), boots the already-built web application as a child process on a free loopback
+    port, and drives it through Chromium with a CDP virtual authenticator.
+
+    The scenarios are OPT-IN — they skip unless MYRESTAURANT_E2E=1 — because the first run downloads
+    Chromium (~150 MB) into ~/.cache/ms-playwright, and `dotnet test` should not do that by surprise.
+    See Harness/RestaurantHarness.cs and `scripts/ci_local.sh --with-e2e`.
+
+    References, in the same explicit spirit as MyRestaurant.WebApplication.Tests:
+      • Microsoft.AspNetCore.App, because the WebApplication project reference below is a Web SDK
+        project and the tests name AccountRoutes from it (framework-reference propagation across a
+        Web SDK reference is not something to lean on);
+      • MyRestaurant.WebApplication, for AccountRoutes — the tests assert on the very route
+        constants the app routes on, rather than on string literals that can drift. The reference
+        also makes the web application a BUILD dependency of this project, which is what lets the
+        harness expect its binaries to exist on disk;
+      • MyRestaurant.Domain, for the real JoinTokenService / Rfc6238Totp / Base32Text. The harness
+        computes tokens and authenticator codes with the same code the server validates them with;
+      • Npgsql, to create a per-scenario database and to arrange fixtures (§4.1 rows) directly;
+      • Testcontainers.PostgreSql, for the shared PostgreSQL 17 container.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -63239,10 +65074,21 @@ public sealed class EndToEndScenarios
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Microsoft.Playwright" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/MyRestaurant.WebApplication/MyRestaurant.WebApplication.csproj" />
+    <ProjectReference Include="../../src/MyRestaurant.Domain/MyRestaurant.Domain.csproj" />
   </ItemGroup>
 
 </Project>
@@ -69935,10 +71781,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 287
-  Total size     : 2.8 MiB (2987785 bytes)
+  Files dumped   : 294
+  Total size     : 2.9 MiB (3071145 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-29T03:58:45-04:00
+  Completed at   : 2026-07-29T05:39:24-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
