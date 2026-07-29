@@ -13,8 +13,9 @@ accounts, table administration and rotating join QR codes, paired table displays
 with its locking protocol, the kitchen and counter boards, billing and settlement, menu management,
 and the administration surfaces including the cross-log event explorer. **Milestone 6 (hardening)**
 is in progress — continuous integration has landed, and so has the Playwright end-to-end harness
-with the first three scenarios of the §16.3 matrix; the remaining twelve scenarios and an executable
-backup/restore drill are what is left. See *Roadmap* and `docs/BUILD_PROGRESS.md`.
+with five of the fifteen §16.3 scenarios implemented against a real browser; the remaining ten
+scenarios and an executable backup/restore drill are what is left. See *Roadmap* and
+`docs/BUILD_PROGRESS.md`.
 
 ## Layout
 
@@ -121,6 +122,24 @@ Data Protection key directory, the **built** web application as a child process 
 port, and a browser context with a CDP WebAuthn virtual authenticator. Nothing is shared between
 scenarios, so they can run in any order — which matters, because scenario 1 needs a database with no
 administrator and scenario 13 needs one with an administrator who has both a passkey and TOTP.
+
+Five of the fifteen are implemented: **1** (the `/setup` bootstrap, with a real WebAuthn attestation
+and a real TOTP code), **2** (a display pairs and its QR advances across a rotation boundary), **13**
+(a passkey sign-in of a TOTP-enrolled person is not challenged for a code), **14** (the join-token
+window arithmetic as a guest experiences it), and **15** (rotating a join secret kills every
+outstanding QR while the paired display recovers by itself). The other ten are named, skipped
+placeholders whose skip reason says what each is waiting on.
+
+A scenario that needs more than one principal at once opens more than one browser context — an
+administrator, the tablet on the table, a guest with a phone. For the display device that is not
+hygiene but necessity: the §4.2 device credential is ignored on any request the Identity cookie has
+already authenticated, so a screen paired inside the administrator's browser *is* the administrator
+and never renders a join code at all.
+
+The rotation window is per instance rather than global, because the scenarios want opposite things
+from it: scenario 14 needs one long enough that "the previous window" cannot roll over mid-assertion,
+while 2 and 15 need one short enough that a boundary is crossed inside a test's patience. §4.3 accepts
+the current and previous window whatever their width, so nothing an assertion depends on moves with it.
 
 The app is served at `http://localhost:{port}` while `RESTAURANT_PUBLIC_ORIGIN` says
 `https://localhost:{port}`. The mismatch is deliberate: §13 refuses to start on a non-https origin,
@@ -284,5 +303,7 @@ scripts/ci_local.sh --with-all
   end-of-day, the counter fallback QR, menu management with its event log, the cross-log event
   explorer, hide/unhide, and post-close corrective events.
 - **M6** — hardening *(in progress)*: ✔ the CI pipeline and publish-on-tag; ✔ the Playwright
-  harness and §16.3 scenarios 1, 13 and 14; still to come, the other twelve scenarios and an
-  executable backup/restore drill.
+  harness and §16.3 scenarios 1, 13 and 14; ✔ scenarios 2 and 15, the display's rotating QR across a
+  window boundary and its recovery after a join-secret rotation; still to come, the other ten
+  scenarios and an executable backup/restore drill.
+

@@ -4,7 +4,7 @@
 # the working tree.
 #
 #   scripts/ci_local.sh              shell lint, restore, strict Release build, full test suite
-#   scripts/ci_local.sh --with-smoke ...and then ./run.sh --smoke (boots the app once, checks health)
+#   scripts/ci_local.sh --with-smoke ...and then `bash run.sh --smoke` (boots the app once, checks health)
 #   scripts/ci_local.sh --with-e2e   ...and then the §16.3 Playwright scenarios (browser required)
 #   scripts/ci_local.sh --with-all   both of the above
 #   scripts/ci_local.sh --help       this text
@@ -17,7 +17,13 @@
 # The one gate this cannot reproduce is CI's boot-smoke job, which builds the Containerfile and
 # boots the resulting image against a real PostgreSQL. `--with-smoke` is the closest local
 # equivalent: same migrations, same readiness probe, but the app runs on the host rather than in the
-# image. For the real thing, `./run.sh --containers-only`.
+# image. For the real thing, `bash run.sh --containers-only`.
+#
+# Every invocation of run.sh here goes through `bash` rather than `./run.sh`, and that is not a style
+# preference: a checkout whose execute bit did not survive (a zip, a Windows clone, a `git apply` of a
+# patch that carried no mode) fails at `./run.sh` with "Permission denied", and under `set -e` that
+# ends the whole gate run at the last step rather than reporting a fixable detail. `bash run.sh` works
+# either way. `chmod +x run.sh` is still worth doing so the README's own `./run.sh` is true.
 #
 # `--with-e2e` sets MYRESTAURANT_E2E=1, which is the only thing that turns the §16.3 end-to-end
 # scenarios from skips into scenarios. They need a container engine and a Chromium build; the first
@@ -149,8 +155,8 @@ fi
 # 4. Optional: boot once and probe /healthz/ready.
 # ---------------------------------------------------------------------------------------------------
 if (( WITH_SMOKE )); then
-    announce "boot smoke (./run.sh --smoke)"
-    ./run.sh --smoke
+    announce "boot smoke (bash run.sh --smoke)"
+    bash run.sh --smoke
 fi
 
 echo
@@ -160,6 +166,7 @@ if (( ! WITH_E2E )); then
     echo "  (not run: the §16.3 end-to-end scenarios — add --with-e2e)"
 fi
 if (( ! WITH_SMOKE )); then
-    echo "  (not run: the boot smoke — add --with-smoke, or ./run.sh --containers-only)"
+    echo "  (not run: the boot smoke — add --with-smoke, or bash run.sh --containers-only)"
 fi
 echo "────────────────────────────────────────────────────────────────────────────"
+

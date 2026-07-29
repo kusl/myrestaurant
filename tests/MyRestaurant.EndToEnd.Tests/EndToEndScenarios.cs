@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.Playwright;
 using MyRestaurant.Domain.Security;
 using MyRestaurant.EndToEnd.Tests.Harness;
+using MyRestaurant.WebApplication.Displays;
 using MyRestaurant.WebApplication.Identity;
 using Xunit;
 
@@ -11,12 +12,13 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
 /// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// <para>Three are live: scenario 1 (the first-administrator bootstrap, including a real WebAuthn
-/// attestation and a real TOTP confirmation), scenario 13 (a passkey sign-in of a TOTP-enrolled person
-/// must not be challenged for a code), and scenario 14 (the join-token window arithmetic as a guest
-/// experiences it). They come first because between them they exercise the whole harness — process,
-/// database, browser, virtual authenticator, and the domain's own token computation — which is what
-/// the remaining twelve are waiting on rather than any of their own machinery.</para>
+/// <para>Five are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
+/// WebAuthn attestation and a real TOTP confirmation), <b>13</b> (a passkey sign-in of a TOTP-enrolled
+/// person must not be challenged for a code) and <b>14</b> (the join-token window arithmetic as a guest
+/// experiences it) — chosen because between them they exercise the whole harness. M6 Slice 3 adds
+/// <b>2</b> (a display pairs and its QR advances across a window boundary) and <b>15</b> (rotating a
+/// table's join secret kills every outstanding code and the paired display recovers by itself), which
+/// are the two scenarios about the rotating code as a <em>screen</em> rather than as a URL.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -28,6 +30,16 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     private const string PendingHarnessExtension =
         "Awaiting a later M6 slice: the harness is in place (Harness/RestaurantHarness.cs), but this"
         + " scenario needs surface plumbing it does not have yet.";
+
+    /// <summary>
+    /// The rotation window for the two scenarios that must watch a boundary go past (§13's floor is ten
+    /// seconds; the application's own default is sixty). Twenty is a compromise with a reason on each
+    /// side: long enough that a paused container or a slow page load cannot push a two-step assertion
+    /// across two boundaries, short enough that waiting for the §4.3 refresh is seconds rather than a
+    /// minute. Everything either scenario asserts is expressed relative to the window index, so the
+    /// exact number is not load-bearing — only its order of magnitude is.
+    /// </summary>
+    private const int BoundaryWatchingRotationSeconds = 20;
 
     private readonly RestaurantHarness _harness;
 
@@ -66,6 +78,69 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         IResponse? closed = await page.GotoAsync(AccountRoutes.Setup);
         Assert.NotNull(closed);
         Assert.Equal(404, closed.Status);
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // 2. Admin creates table → pairing code → device pairs at /display/pair → /display/{table}
+    //    shows a rotating QR that changes across a window boundary.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Display_PairsAndShowsRotatingQrAcrossWindowBoundary()
+    {
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Two";
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(BoundaryWatchingRotationSeconds, cancellationToken);
+
+        // The whole scenario is an administrator's doing, so it needs an administrator; §3.6's wizard is
+        // the only way one comes into existence and it signs them in on the same response.
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
+        string pairingCode = await AdministrationJourneys.IssuePairingCodeAsync(administrator, tableIdentifier);
+
+        // The tablet, in its own browser. Not hygiene: the display middleware ignores a device credential
+        // on any request the Identity cookie already authenticated, so pairing inside the administrator's
+        // browser would produce a screen that is the administrator and renders no code at all.
+        IPage display = await instance.OpenIsolatedPageAsync();
+
+        // §11.5's first rule, before anything is paired: an unpaired screen asking for a table display is
+        // sent to the pairing surface rather than to a sign-in page a tablet could never satisfy.
+        await display.GotoAsync(DisplayRoutes.ForTable(tableIdentifier));
+        Assert.Equal("Pair this display", await HeadingAsync(display));
+
+        Guid pairedTable = await DisplayJourneys.PairAsync(display, pairingCode, "E2E Window Tablet");
+
+        // The code paired this device to the table it was issued for, and the surface is the table's own.
+        Assert.Equal(tableIdentifier, pairedTable);
+        Assert.Equal(tableLabel, await HeadingAsync(display));
+
+        // §4.1 lets nothing render or return the join secret, so the row is the only place to learn what
+        // the server is signing with — which is precisely what makes the next two assertions worth making
+        // rather than tautological.
+        byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+
+        // Read the screen first, then the clock: the server rendered at or before the read, so the window
+        // sampled afterwards is the newest one the screen could possibly be showing.
+        string firstCode = await DisplayJourneys.ReadJoinQrPathAsync(display);
+        AssertShowingLiveJoinCode(firstCode, joinSecret, tableIdentifier, instance);
+
+        // §16.3 scenario 2's actual demand: the QR *changes across a window boundary*. Waiting for a
+        // different path is waiting for §4.3's window-aligned refresh; the assertion that follows is what
+        // separates "the screen redrew" from "the screen advanced to the next window's code".
+        string secondCode = await DisplayJourneys.WaitForJoinQrPathAsync(
+            display,
+            candidate => !string.Equals(candidate, firstCode, StringComparison.Ordinal),
+            RefreshPatience(instance.TableJoinTokenRotationSeconds),
+            "a join code different from the one it started on",
+            cancellationToken);
+
+        Assert.NotEqual(firstCode, secondCode);
+        AssertShowingLiveJoinCode(secondCode, joinSecret, tableIdentifier, instance);
     }
 
     // -------------------------------------------------------------------------------------------
@@ -143,22 +218,94 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     }
 
     // -------------------------------------------------------------------------------------------
+    // 15. Admin rotates a table's join secret → in-flight token dies; display's next window works.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Admin_RotatesJoinSecret_InFlightTokenDiesNextWindowWorks()
+    {
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Fifteen";
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(BoundaryWatchingRotationSeconds, cancellationToken);
+
+        // Read back rather than restated: every window computation below is against the value the
+        // application was actually configured with, not the value it was asked for.
+        int rotationSeconds = instance.TableJoinTokenRotationSeconds;
+
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
+        string pairingCode = await AdministrationJourneys.IssuePairingCodeAsync(administrator, tableIdentifier);
+
+        IPage display = await instance.OpenIsolatedPageAsync();
+        await DisplayJourneys.PairAsync(display, pairingCode, "E2E Rotation Tablet");
+
+        byte[] originalSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+        string codeBeforeRotation = await DisplayJourneys.ReadJoinQrPathAsync(display);
+        AssertShowingLiveJoinCode(codeBeforeRotation, originalSecret, tableIdentifier, instance);
+
+        // Exactly what a guest holding a freshly scanned code has: this window's token under the secret
+        // in force right now. §4.1's promise — "immediately invalidates every outstanding QR" — is a
+        // promise about this string and nothing else.
+        string inFlightToken = JoinTokenService.ComputeCurrentToken(
+            originalSecret, tableIdentifier, DateTimeOffset.UtcNow, rotationSeconds);
+
+        await AdministrationJourneys.RotateJoinSecretAsync(administrator, tableIdentifier);
+
+        byte[] rotatedSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+        Assert.NotEqual(originalSecret, rotatedSecret);
+
+        // (a) The in-flight token dies at once, not at the next boundary. Deliberately before the
+        // acceptance half below, so that no grant cookie exists which could carry this browser past a
+        // refusal and quietly turn a failure into a pass.
+        IPage guest = await instance.OpenIsolatedPageAsync();
+        await guest.GotoAsync(JoinPath(tableIdentifier, inFlightToken));
+
+        Assert.Equal("That code has expired", await HeadingAsync(guest));
+        Assert.DoesNotContain(AccountRoutes.SignIn, guest.Url);
+
+        // (b) "The display's next window works": within one rotation the paired screen re-renders a code
+        // the NEW secret signs, with nobody touching the tablet and nothing re-pairing it. The predicate
+        // is the assertion here — waiting for merely *a different* path would also be satisfied by a
+        // display that had drifted onto some other window of the old secret.
+        string codeAfterRotation = await DisplayJourneys.WaitForJoinQrPathAsync(
+            display,
+            candidate => JoinQrCodes.IsLive(
+                candidate,
+                rotatedSecret,
+                tableIdentifier,
+                instance.PublicOrigin,
+                DateTimeOffset.UtcNow,
+                rotationSeconds),
+            RefreshPatience(rotationSeconds),
+            "a join code signed by the rotated secret",
+            cancellationToken);
+
+        Assert.NotEqual(codeBeforeRotation, codeAfterRotation);
+
+        // ...and the new sequence is one a guest can actually use, which is what "works" has to mean.
+        string freshToken = JoinTokenService.ComputeCurrentToken(
+            rotatedSecret, tableIdentifier, DateTimeOffset.UtcNow, rotationSeconds);
+        await guest.GotoAsync(JoinPath(tableIdentifier, freshToken));
+
+        Assert.Contains(AccountRoutes.SignIn, guest.Url);
+        Assert.Contains(tableIdentifier.ToString("D"), guest.Url);
+    }
+
+    // -------------------------------------------------------------------------------------------
     // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
     // -------------------------------------------------------------------------------------------
-
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Display_PairsAndShowsRotatingQrAcrossWindowBoundary()
-    {
-        // 2. Admin creates table → pairing code → device pairs at /display/pair → QR changes across a
-        //    window boundary. Needs a short TABLE_JOIN_TOKEN_ROTATION_SECONDS instance (the harness
-        //    already takes one) and a second browser context for the display device's own principal.
-    }
 
     [Fact(Skip = PendingHarnessExtension)]
     public void Guest_ScansRegistersWithPasskeyAndJoins()
     {
         // 3. Guest scans (simulated URL from current token) → registers with passkey → joins; sitting
-        //    created. Needs the guest registration journey, which is not the same page as /setup.
+        //    created. Needs the guest registration journey, which is not the same page as /setup, and a
+        //    virtual authenticator on the guest's own context rather than the administrator's.
     }
 
     [Fact(Skip = PendingHarnessExtension)]
@@ -220,12 +367,6 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         //     TOTP re-enroll → lands home; the passkey path hits the pipeline too.
     }
 
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Admin_RotatesJoinSecret_InFlightTokenDiesNextWindowWorks()
-    {
-        // 15. Admin rotates a table's join secret → in-flight token dies; display's next window works.
-    }
-
     // --- helpers ---------------------------------------------------------------------------------
 
     private void SkipUnlessHarnessAvailable()
@@ -242,4 +383,40 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
     private static string JoinPath(Guid tableIdentifier, string token)
         => $"/table/{tableIdentifier:D}?token={Uri.EscapeDataString(token)}";
+
+    /// <summary>
+    /// How long to wait for §4.3's window-aligned refresh. Two full rotations plus slack: one window
+    /// because the display fires at the <em>next</em> boundary and the wait may have started just after
+    /// the last one, a second because a container under load can lose a boundary, and twenty seconds
+    /// because a timeout that fires while the thing was about to happen is the worst kind of flake.
+    /// </summary>
+    private static TimeSpan RefreshPatience(int rotationSeconds)
+        => TimeSpan.FromSeconds((rotationSeconds * 2) + 20);
+
+    /// <summary>
+    /// Asserts that the QR on screen is the code this table's secret produces for the current or the
+    /// previous window — §4.3's definition of one that still validates.
+    ///
+    /// <para>The comparison is deliberately reported as a phrase rather than as two thousand characters of
+    /// SVG path: a display frozen on a stale code and a display showing a code from another table both
+    /// fail this, and which of the two it was is the entire content of the failure.</para>
+    /// </summary>
+    private static void AssertShowingLiveJoinCode(
+        string observedQrPath,
+        byte[] joinSecret,
+        Guid tableIdentifier,
+        RestaurantInstance instance)
+    {
+        long newestWindowIndex = JoinTokenService.CurrentWindowIndex(
+            DateTimeOffset.UtcNow, instance.TableJoinTokenRotationSeconds);
+
+        string age = JoinQrCodes.Classify(
+            observedQrPath,
+            joinSecret,
+            tableIdentifier,
+            instance.PublicOrigin,
+            newestWindowIndex);
+
+        Assert.Contains(age, JoinQrCodes.LiveAges);
+    }
 }

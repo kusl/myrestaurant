@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-07-29T05:48:30-04:00
+  Generated at   : 2026-07-29T08:15:40-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,10 +17,10 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 39a8da9d5146cb6ce4e569ee3f696c1e2ee8c5a6
-  Commit (short) : 39a8da9
-  Commit date    : 2026-07-29 05:48:13 -0400
-  Commit message : run scripts
+  Commit (full)  : c0942b37b9a4e9499309448f2cd1a2f03810348c
+  Commit (short) : c0942b3
+  Commit date    : 2026-07-29 08:14:35 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
   Files included : 294
   Excluded path  : docs/llm/
@@ -28,7 +28,20 @@ REPOSITORY METADATA
 
 GIT WORKING TREE STATUS (first 20 lines)
 ═════════════════════════════════════════════════════════════════════════════════
+ M README.md
+ M _CHANGES.md
+ M docs/BUILD_PROGRESS.md
  M docs/llm/vendor/claude-output.txt
+ M scripts/ci_local.sh
+ M tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
+ M tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs
+ M tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs
+ M tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj
+?? docs/_append/BUILD_PROGRESS-m6-slice-3.md
+?? docs/llm/vendor/m6-slice3-display-rotating-qr.tar.gz
+?? tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs
+?? tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs
+?? tests/MyRestaurant.EndToEnd.Tests/Harness/JoinQrCodes.cs
 
 ################################################################################
 # FILE: export.sh  [THIS SCRIPT — included for full context]
@@ -2647,14 +2660,14 @@ For more information on this, and how to apply and follow the GNU AGPL, see
   File name:             README.md
   Relative path:         README.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/README.md
-  Size:                  16.2 KiB (16574 bytes)
-  Last modified:         2026-07-29 05:08:50.000000000 -0400
+  Size:                  17.7 KiB (18113 bytes)
+  Last modified:         2026-07-29 07:53:58.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 27205622
+  Inode:                 27520849
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               a580d4d3c13212979781f1801ee4f78655d373a583bd8fbab1d92e9d6b2e4a8c
+  SHA-256:               3cffd402ff29af2df533f109638c23097a06a8cc895d81d24571c3bc2fd6e14b
   Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
 
 --- CONTENT ---
@@ -2673,8 +2686,9 @@ accounts, table administration and rotating join QR codes, paired table displays
 with its locking protocol, the kitchen and counter boards, billing and settlement, menu management,
 and the administration surfaces including the cross-log event explorer. **Milestone 6 (hardening)**
 is in progress — continuous integration has landed, and so has the Playwright end-to-end harness
-with the first three scenarios of the §16.3 matrix; the remaining twelve scenarios and an executable
-backup/restore drill are what is left. See *Roadmap* and `docs/BUILD_PROGRESS.md`.
+with five of the fifteen §16.3 scenarios implemented against a real browser; the remaining ten
+scenarios and an executable backup/restore drill are what is left. See *Roadmap* and
+`docs/BUILD_PROGRESS.md`.
 
 ## Layout
 
@@ -2781,6 +2795,24 @@ Data Protection key directory, the **built** web application as a child process 
 port, and a browser context with a CDP WebAuthn virtual authenticator. Nothing is shared between
 scenarios, so they can run in any order — which matters, because scenario 1 needs a database with no
 administrator and scenario 13 needs one with an administrator who has both a passkey and TOTP.
+
+Five of the fifteen are implemented: **1** (the `/setup` bootstrap, with a real WebAuthn attestation
+and a real TOTP code), **2** (a display pairs and its QR advances across a rotation boundary), **13**
+(a passkey sign-in of a TOTP-enrolled person is not challenged for a code), **14** (the join-token
+window arithmetic as a guest experiences it), and **15** (rotating a join secret kills every
+outstanding QR while the paired display recovers by itself). The other ten are named, skipped
+placeholders whose skip reason says what each is waiting on.
+
+A scenario that needs more than one principal at once opens more than one browser context — an
+administrator, the tablet on the table, a guest with a phone. For the display device that is not
+hygiene but necessity: the §4.2 device credential is ignored on any request the Identity cookie has
+already authenticated, so a screen paired inside the administrator's browser *is* the administrator
+and never renders a join code at all.
+
+The rotation window is per instance rather than global, because the scenarios want opposite things
+from it: scenario 14 needs one long enough that "the previous window" cannot roll over mid-assertion,
+while 2 and 15 need one short enough that a boundary is crossed inside a test's patience. §4.3 accepts
+the current and previous window whatever their width, so nothing an assertion depends on moves with it.
 
 The app is served at `http://localhost:{port}` while `RESTAURANT_PUBLIC_ORIGIN` says
 `https://localhost:{port}`. The mismatch is deliberate: §13 refuses to start on a non-https origin,
@@ -2944,8 +2976,10 @@ scripts/ci_local.sh --with-all
   end-of-day, the counter fallback QR, menu management with its event log, the cross-log event
   explorer, hide/unhide, and post-close corrective events.
 - **M6** — hardening *(in progress)*: ✔ the CI pipeline and publish-on-tag; ✔ the Playwright
-  harness and §16.3 scenarios 1, 13 and 14; still to come, the other twelve scenarios and an
-  executable backup/restore drill.
+  harness and §16.3 scenarios 1, 13 and 14; ✔ scenarios 2 and 15, the display's rotating QR across a
+  window boundary and its recovery after a join-secret rotation; still to come, the other ten
+  scenarios and an executable backup/restore drill.
+
 
 ################################################################################
 # FILE: _CHANGES.md
@@ -2955,169 +2989,191 @@ scripts/ci_local.sh --with-all
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  11.1 KiB (11362 bytes)
-  Last modified:         2026-07-29 05:10:49.000000000 -0400
+  Size:                  11.8 KiB (12098 bytes)
+  Last modified:         2026-07-29 07:56:15.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 27205636
+  Inode:                 27520862
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               a2b14d9a7c8b958e139d439356a40bc83be17538ee98976e318d278c88c561cc
+  SHA-256:               382e924cf774536ef45b152fcc04e43ceceb06aac0e393a10aa05b062b8bc6d3
   Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
 
 --- CONTENT ---
-# M6 Slice 2 — the end-to-end harness, and the first three scenarios
+# M6 Slice 3 — §16.3 scenarios 2 and 15: the display's rotating code, watched
 
 Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
-and the contents drop straight over your working tree. `git status` will show exactly these 12 files as
+and the contents drop straight over your working tree. `git status` will show exactly these 11 files as
 modified/added, and **no deletions**.
 
 ```bash
-tar -xzf m6-slice2-end-to-end-harness.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice3-display-rotating-qr.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
-**None.** Nothing is renamed and nothing is superseded. No migration ships, no schema change, no
-`Directory.Packages.props` edit, and nothing in `src/` is touched at all.
+**None.** Nothing is renamed and nothing is superseded. No migration, no schema change, nothing in `src/`
+touched at all, and no `Directory.Packages.props` edit — the one package this slice references was already
+pinned there.
 
 ## The state I found
 
-Green, on every gate: `total: 934, failed: 0, succeeded: 919, skipped: 15`, a clean `run.sh --smoke`, a
-healthy `--containers-only`, and `scripts/ci_local.sh` passing all local gates including the strict
-Release build. M6 Slice 1's own checklist is fully discharged. So this is the slice its closing note
-promised: the E2E harness plus §16.3 scenarios 1, 13 and 14.
+Green on every gate that ran: `total: 934, failed: 0, succeeded: 919, skipped: 15`, a clean
+`run.sh --smoke`, a healthy `--containers-only`, `dotnet list package --outdated` empty, and the quick
+tunnel up at `picks-garcia-survive-kruger.trycloudflare.com`. M6 Slice 2's checklist is fully discharged.
 
-## New files (6)
+**One gate did not run**, and it has not been running:
 
-All under `tests/MyRestaurant.EndToEnd.Tests/Harness/`:
+```
+6. boot smoke (./run.sh --smoke)
+scripts/ci_local.sh: line 153: ./run.sh: Permission denied
+```
 
-- `RestaurantHarness.cs` — the class fixture. The opt-in gate, Chromium, the shared PostgreSQL 17
-  container, and the factory that hands out instances. Every unavailability sets a `SkipReason`.
-- `RestaurantInstance.cs` — one scenario's private stack: its own database, its own Data Protection key
-  directory, the built application as a child process on its own loopback port, one browser context, one
-  page, one virtual authenticator. Captures the app's stdout/stderr so a failure has the server's side of
-  the story.
-- `VirtualAuthenticator.cs` — the CDP `WebAuthn` domain, wrapped.
-- `AccountJourneys.cs` — the page objects more than one scenario walks: the four-step `/setup` wizard
-  (real attestation, real TOTP), sign-out, passkey sign-in.
-- `WebApplicationLocator.cs` — finds the built application by walking up to `MyRestaurant.slnx` and
-  mirroring this test assembly's own configuration and target framework.
-- `ContainerEngineDiscovery.cs` — the rootless-Podman module initializer. Duplicated from
-  `MyRestaurant.DataAccess.Tests` on purpose; the file says why.
+`run.sh` carries no execute bit in the working tree — you invoke it as `bash run.sh` everywhere else — and
+under `set -euo pipefail` that ends the script rather than reporting a fixable detail. So the boot-smoke
+step of `ci_local.sh --with-all` has been silently unreachable since it was added. Fixed here, and folded
+into this slice rather than held, per the small-fix policy.
 
-Plus one docs append: `docs/_append/BUILD_PROGRESS-m6-slice-2.md`.
+## New files (4)
 
-## Edited (6)
+Three harness files under `tests/MyRestaurant.EndToEnd.Tests/Harness/`:
 
-- `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` — scenarios 1, 13 and 14 implemented; the
-  other twelve stay as named placeholders with a skip reason that now says what each is waiting on.
-- `tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj` — `Npgsql` and
-  `Testcontainers.PostgreSql` (both already pinned centrally), a `Microsoft.AspNetCore.App` framework
-  reference, and project references to `MyRestaurant.WebApplication` (for `AccountRoutes`, and to make
-  the app a build dependency) and `MyRestaurant.Domain` (for the real `JoinTokenService`,
-  `Rfc6238Totp` and `Base32Text`).
-- `.github/workflows/ci.yml` — a fourth gate, `end-to-end`.
-- `scripts/ci_local.sh` — `--with-e2e`, and `--with-all`. Clean under `bash -n` as delivered.
-- `README.md` — a new *End-to-end scenarios* section, the CI table's fourth row, status and roadmap.
+- `AdministrationJourneys.cs` — create a table, issue a display pairing code, rotate a join secret. All
+  three through the real static-SSR administration surfaces, because "admin creates table" in §16.3 means
+  the form, the antiforgery token, the endpoint authorization and the redirect, not an `INSERT`.
+- `DisplayJourneys.cs` — redeem a pairing code as an unpaired screen, read the QR's `d` attribute, and
+  poll it until a predicate holds. Refusals are quoted verbatim into the exception, because §4.2's
+  deliberately vague one-sentence rejection is as unhelpful to whoever reads the failure as it is to a
+  prober.
+- `JoinQrCodes.cs` — the expected SVG path for a given `(secret, table, origin, window)`, and a
+  classification of what is on screen: the current window's code, the previous window's code, a code N
+  windows out of date, or one this table's secret does not produce.
+
+Plus one docs append: `docs/_append/BUILD_PROGRESS-m6-slice-3.md`.
+
+## Edited (7)
+
+- `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` — scenarios **2** and **15** implemented; the
+  remaining ten stay as named placeholders, with scenario 3's skip reason now naming the one piece of
+  plumbing it still wants.
+- `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs` — `OpenIsolatedPageAsync()` for
+  additional browser contexts (closed in reverse on disposal), `PublicOrigin` and
+  `TableJoinTokenRotationSeconds` as properties instead of facts buried in the process environment, and
+  `ReadJoinSecretAsync()`.
+- `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs` — documentation only. Its
+  `tableJoinTokenRotationSeconds` parameter said "scenario 2 *will* want a short one"; scenario 2 exists
+  now.
+- `tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj` —
+  `Net.Codecrete.QrCodeGenerator`, versionless as always.
+- `scripts/ci_local.sh` — `bash run.sh` rather than `./run.sh`, everywhere, with the reason in the header.
+  Clean under `bash -n`, `shellcheck --severity=warning` **and** `--severity=style` as delivered.
+- `README.md` — five of fifteen scenarios, the multiple-contexts note, the per-instance rotation window,
+  and the roadmap line.
 - `_CHANGES.md` (this file)
 
-No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, `docs/DOCUMENTATION_REVIEW.md`, or ADR
-edit: this realizes behaviour §16.3 already specifies, in the words it already uses.
+No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, `docs/DOCUMENTATION_REVIEW.md` or ADR edit:
+this realizes behaviour §4.1, §4.2, §4.3 and §11.5 already specify, in the words they already use.
 
-## The four decisions worth arguing about
+## The one decision worth arguing about
 
-**A child process, not `WebApplicationFactory`.** A real browser cannot connect to an in-memory
-`TestServer`, and `Program.cs` is top-level statements returning `int`, so its generated `Program` is
-internal and not available as a `TEntryPoint`. Booting the built binary sidesteps both and is the more
-honest test: same composition root, same DbUp pass, same fail-fast `Validate()`. A scenario that reaches
-its first assertion has already proved what `boot-smoke` proves.
+**"The QR changed" is close to a worthless assertion.** It is also the obvious one, and it is what §16.3
+scenario 2 literally asks for — so it is worth saying why this slice does more than that.
 
-Two details carry it. `ASPNETCORE_CONTENTROOT` points at the **source** directory, because `Program.cs`
-serves assets with `UseStaticFiles()` and `wwwroot` is not copied into `bin` — get this wrong and
-`js/passkey.js` 404s and every passkey ceremony fails with nothing in the browser to explain it. And the
-configuration and TFM come from the *test assembly's own* output path, so a Debug run boots a Debug app
-and a Release run boots a Release one.
+A display frozen on a stale code satisfies "changed" the moment anything else on the page moves. A display
+signed by the wrong table's secret satisfies it perfectly. A display three windows behind satisfies it
+every time it falls one further behind. Those are precisely the failures §11.5 exists to prevent; its own
+comment says it out loud — *"a frozen QR looks exactly like a live one"*. So the assertion made here is
+that **the artefact on screen is the code the server would accept right now**, at both ends of the
+boundary.
 
-**`http://localhost:{port}` served, `https://localhost:{port}` configured.** The mismatch is load-bearing
-in three directions at once: §13 refuses to start on a non-https public origin; Chromium treats
-`localhost` as a secure context regardless of scheme, so WebAuthn works *and* the `Secure` §3.1
-authentication cookie is accepted over plain HTTP; and only the host is ever compared, so
-`WebAuthnOriginPolicy` matches and the §3.3 RP ID comes out `localhost` at both registration and sign-in
-(ADR-0005 — `ServerDomain` is null by design). None of that is true of an IP address, which is why the
-harness insists on the hostname.
+Getting there means recomputing the QR: the secret from the row, the token from the domain's own
+`JoinTokenService`, the URL from its own `BuildJoinUrl`, the geometry from the same
+`Net.Codecrete.QrCodeGenerator` call the renderer makes. The alternative — decoding the SVG on screen —
+means a rasteriser and a computer-vision dependency to answer a question about HMAC arithmetic.
 
-**Scenario 14 needs no clock control.** §4.3's token is a pure function of `(secret, table, window)`, and
-`JoinTokenService` lives in the Domain — so the harness inserts a table with a secret it chose and
-computes tokens for `window − 4` and `window − 1` directly. The only hazard is the boundary rolling over
-mid-assertion, a one-in-sixty flake at the app's default, so `TABLE_JOIN_TOKEN_ROTATION_SECONDS` is
-per-instance and defaults to 3600. §4.3 accepts current-or-previous whatever their width, so nothing the
-assertion depends on changes. Scenario 2 will ask the same knob for a *short* window, because crossing a
-boundary is what it tests.
+That restates three private facts about `TableJoinTokens.RenderJoinQrSvg`: Ecc.Medium, a four-module quiet
+zone, `ToGraphicsPath`. They should stay private; nothing in the product needs them, and widening their
+visibility for a test is the worse trade. If one of them moves, both scenarios fail immediately and say
+so, which is what a duplicated constant is supposed to do.
 
-The acceptance assertion is the redirect: an anonymous scanner with a valid token gets a grant and is sent
-to `/sign-in?ReturnUrl=/table/{id}` (§4.4 step 3). That is what "accepted" looks like from the guest's
-side, and it needs no account at all.
+And the comparison is reported as a **phrase**, not as two thousand characters of path against two
+thousand characters of path, so a failure reads:
 
-**Opt-in, gated in CI rather than by hope.** The scenarios skip unless `MYRESTAURANT_E2E` is set, because
-the first run downloads ~150 MB of Chromium and the rest of this suite is offline once packages are
-restored. The coverage does not live behind the switch: the new `end-to-end` CI job sets it on every push,
-and `--with-e2e` sets it locally. It is its own job so `build-and-test` does not pay for a browser to
-answer a different question, and so a browser flake is attributable at a glance rather than buried in a
-nine-hundred-fact summary. The job runs `playwright install --with-deps chromium` through the generated
-`playwright.ps1`, because `--with-deps` needs root and a test process should never ask for that.
+```
+Collection: ["the current window's code", "the previous window's code"]
+Not found:  "a code 3 windows out of date"
+```
 
-## Two things about driving the passkey UI
+## Three smaller things, in case they look arbitrary
 
-`passkey.js` starts a conditional-mediation request on page load, and a virtual authenticator that
-simulates presence can satisfy it with no gesture — so by the time you look for the button, the form may
-already have been submitted. `SignInWithPasskeyAsync` waits to see whether the page leaves on its own and
-only drives the button when it has not. Clicking mid-flight is safe; the element aborts its own pending
-request first.
+**The tablet needs its own browser context, and it is not tidiness.**
+`DisplayDeviceAuthenticationMiddleware` ignores the §4.2 device credential on any request the Identity
+cookie already authenticated — *"a signed-in person always wins"*, so staff opening a display URL on a
+paired tablet are themselves. Pair inside the administrator's browser and the surface resolves to
+`NotPaired` and bounces to `/display/pair`, for a reason that looks nothing like the cause. Scenario 15
+opens a third context for the guest, because a browser that was refused must not be carrying a grant
+cookie when it is later accepted.
 
-And "left the sign-in page" compares the path **exactly**, not by prefix, so `/sign-in/two-factor` counts
-as *left*. That is what makes scenario 13 fail with "landed on /sign-in/two-factor" instead of an
-unexplained timeout — which is the entire value of that scenario.
+**The clock is sampled after the browser is read, never before.** The server rendered at or before the
+read, so the window sampled afterwards is the newest one the screen could be showing — and accepting the
+previous window too is §4.3's own tolerance. That is what turns a boundary landing mid-assertion from a
+flake into a non-event.
+
+**Rotation stays a per-instance parameter.** Twenty seconds for these two, the existing hour for scenario
+14. They want opposite things from the same knob, and §4.3 accepts the current and previous window
+whatever their width, so nothing an assertion depends on moves with it. Waits are two rotations plus
+twenty seconds.
 
 ## What I verified rather than guessed
 
-The authoring environment has no SDK, so anything I could get wrong silently was checked against source:
+- **Playwright 1.61.0** (`microsoft/playwright-dotnet` at `v1.61.0`): `ILocator.GetAttributeAsync`,
+  `CountAsync`, `InnerTextAsync`, and `LocatorWaitForOptions` carrying `WaitForSelectorState? State`
+  beside `float? Timeout`. The QR path is waited for as **attached** rather than visible, because §11.5's
+  offline curtain sits on top of that element and a scenario diagnosing a frozen display must still be
+  able to read what it froze on.
+- **`Net.Codecrete.QrCodeGenerator` 3.0.0**: `QrCode.EncodeText(string, QrCode.Ecc)` and
+  `ToGraphicsPath(int)` — the two calls `TableJoinTokens` already makes, so verified by code that compiles
+  today rather than by a document.
+- **Every selector, against the Razor in the tree**: `#label` / *Create table*; `p.pairing-code` /
+  *Generate pairing code*; *Rotate join secret* and the `secret-rotated` flash text; `#pairing-code`,
+  `#device-label` / *Pair this display*; `#table-display-surface svg.join-qr-svg path`;
+  `p.status-success`; `p.status-error`. Each is a selector a Razor edit could break, which is why they
+  live in three journey files rather than scattered through the scenarios.
+- **`scripts/ci_local.sh`**: `bash -n` clean, `shellcheck --severity=warning` clean, `--severity=style`
+  clean. The `--help` path prints its header by scanning contiguous `#` lines, so the new paragraph is
+  `#`-prefixed throughout — a bare blank line there would have truncated the help.
 
-- **Playwright 1.61.0** (`microsoft/playwright-dotnet` at `v1.61.0`): `ICDPSession.SendAsync(string,
-  Dictionary<string, object>?) → Task<JsonElement?>` and that `args` is forwarded verbatim as CDP
-  `params`; `IBrowserContext.NewCDPSessionAsync(IPage)`; `ICDPSession : IAsyncDisposable`;
-  `IPlaywright : IDisposable`; `Program.Main(string[]) → int`; and every `IPage` / `ILocator` /
-  `BrowserTypeLaunchOptions` / `BrowserNewContextOptions` member used here. There is **no**
-  `TimeoutException` type in that tree, only `PlaywrightException`, which is what the waits catch.
-- **Testcontainers 4.13.0**: `PostgreSqlBuilder(string image)` is current and the parameterless ctor is
-  `[Obsolete]` — which matters under warnings-as-errors, and matches what `PostgreSqlFixture` already does.
-- **xunit.analyzers**: `xUnit2013` returns early unless the expected size is 0 or 1, so
-  `Assert.Equal(10, recoveryCodes.Count)` is clean.
-- **`.editorconfig`**: `csharp_style_namespace_declarations = file_scoped:warning` and
-  `csharp_prefer_braces = true:warning` are the only severity overrides, both honoured throughout.
-- **Chromium's virtual-authenticator parameters**, and the 13x change that made two of them required —
-  hence the attempt-then-retry.
-
-One thing I could not verify: whether a headless Chromium on your Fedora box has every shared library it
-wants. If it does not, that is a skip with the one-line fix in its message, not a failure.
+One thing I could not verify without an SDK: whether xUnit's analyzers have anything to say about
+`Assert.Contains(phrase, collection)`. It is the recommended form for collection membership (the rule that
+exists, xUnit2017, fires on `Assert.True(collection.Contains(x))`, which this deliberately avoids), and
+overload resolution is unambiguous because the second argument is an `IReadOnlyList<string>` rather than a
+`string`. If CI disagrees under warnings-as-errors, the fix is local to one helper.
 
 ## Build/test checklist for this slice
 
-1. `dotnet restore` — two new package *references*, no new versions.
-2. `dotnet build` — seven C# files in one test project; nothing in `src/` changed.
-3. `dotnet test` — **still 934 total, 919 passing, 15 skipped.** Three facts moved from a discovery-time
+1. `dotnet restore` — one new package *reference*, already pinned centrally and already arriving
+   transitively. No version resolution is new.
+2. `dotnet build` — three new files and four edited ones, all in the end-to-end test project.
+3. `dotnet test` — **still 934 total, 919 passing, 15 skipped.** Two facts moved from a discovery-time
    skip to a runtime one, which the summary counts identically.
 4. `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` — the real check for this slice.
-   Expect **3 passed, 12 skipped**. First run also downloads Chromium; if it complains about shared
-   libraries, run
-   `pwsh tests/MyRestaurant.EndToEnd.Tests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium`
-   once and retry.
-5. `bash -n scripts/ci_local.sh` (clean as delivered), then `bash scripts/ci_local.sh --with-e2e`.
-6. Push, and watch the new `end-to-end` job.
+   Expect **5 passed, 10 skipped**. Scenarios 2 and 15 each wait for rotation boundaries on purpose, so
+   this run is meaningfully longer than the last.
+5. `bash scripts/ci_local.sh --with-all` — and this time watch step 6 actually run.
+6. Push, and watch the `end-to-end` job.
+
+## Also worth doing on your side
+
+```bash
+chmod +x run.sh && git update-index --chmod=+x run.sh
+```
+
+The script fix makes `ci_local.sh` work regardless, but the README tells people to type `./run.sh`, and
+right now that is not true of a fresh clone.
 
 ## Housekeeping carried over
 
-`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Nine appends are now unmerged in
+`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Eleven appends are now unmerged in
 `docs/_append/`, including this slice's:
 
 ```bash
@@ -3131,20 +3187,22 @@ cat docs/_append/BUILD_PROGRESS-m5-slice-4.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m5-slice-5.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m6-slice-1.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m6-slice-2.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m6-slice-3.md >> docs/BUILD_PROGRESS.md
 ```
 
 ## What is next
 
-The other twelve §16.3 scenarios, and the backup/restore drill as something executable. The scenarios are
-incremental work now rather than a plumbing project — 2 wants a short rotation window and a second
-browser context for the display device's principal; 3 through 11 want the guest registration journey and
-two live circuits at once; 12 wants the obligations pipeline walked end to end.
+Ten §16.3 scenarios, and the backup/restore drill as something executable. Scenario **3** is the next one
+and the last with any plumbing left in it: the guest registration journey (not the same page as `/setup`)
+and a virtual authenticator on a context that is not the administrator's. After that, 4 through 11 are two
+live circuits and a shopping list, and 12 walks the obligations pipeline end to end.
 
 ## The one-line why
 
-For five milestones the only thing that could tell you whether a guest could actually order dinner was
-you, opening the app on a phone; there is now a machine that scans the code, presses the buttons, and
-says so on every push.
+The single worst thing this product can do is show a table a QR code that stopped working ten minutes ago,
+because a dead code and a live one look identical from every seat in the restaurant — and there is now a
+machine that pairs a screen, waits for the boundary, rotates the secret out from under it, and says
+whether the code on the glass is one the server would honour.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3283,14 +3341,14 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  222.0 KiB (227374 bytes)
-  Last modified:         2026-07-29 05:38:53.804800440 -0400
+  Size:                  235.9 KiB (241607 bytes)
+  Last modified:         2026-07-29 08:15:37.471859933 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 25661728
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               ad39280934d979d991d0ea97a3c7f1fa20d0bb14af4a716370264865fc2da370
+  SHA-256:               ebefd41b9748e39856f15e4ade8f62019a8eb695c1cc35d1bbfbac872762d317
   Last git commit:       a8f40f5 2026-07-29 05:39:06 -0400 append build progress
 
 --- CONTENT ---
@@ -6436,6 +6494,237 @@ The other twelve §16.3 scenarios, and the backup/restore drill as something exe
 runbook prose section. The scenarios are now incremental work rather than a plumbing project: 2 wants a
 short rotation window and a second context for the display device's principal, 3–11 want the guest
 registration journey and two live circuits at once, 12 wants the obligations pipeline walked end to end.
+### M6 Slice 3 — the display's rotating code, watched (landed)
+
+Two §16.3 scenarios, chosen together because they are the same scenario asked twice:
+
+- **2** — Admin creates table → pairing code → device pairs at `/display/pair` → `/display/{table}`
+  shows a rotating QR that **changes across a window boundary**.
+- **15** — Admin rotates a table's join secret → the in-flight token dies; the **display's next window
+  works**.
+
+Both are about the rotating code as a *screen* rather than as a URL, both need an administrator driving
+real administration forms, and both need a second browser that is a tablet rather than a person. Scenario
+14 already proved the token arithmetic from the guest's side; these two prove that the thing on the table
+is showing it.
+
+Nothing in `src/` is touched. No migration, no schema change, no ADR, no specification edit — §4.1, §4.2,
+§4.3 and §11.5 already say all of this. One `Directory.Packages.props` *reference* is added (the version
+was already pinned), and nothing is deleted.
+
+---
+
+#### The problem with "the QR changed"
+
+§16.3 scenario 2 says the code must change across a window boundary, and the obvious test is to
+screenshot-compare, or diff the SVG, and assert inequality. That assertion is close to worthless. A
+display frozen on a stale code satisfies "changed" the moment anything else on the page moves; a display
+signed by the wrong table's secret satisfies it perfectly; a display that has drifted three windows behind
+satisfies it every time it drifts one more. All three are exactly the failures §11.5 exists to prevent —
+its own comment says it out loud: *"a frozen QR looks exactly like a live one"*.
+
+So what needed proving is not that the artefact changed but that **the artefact on screen is the code the
+server would accept right now**. The display renders nothing else: no token text, no URL, just an inline
+SVG. There are precisely two ways to get from that SVG back to a token — decode it, or recompute it — and
+decoding means a rasteriser and a computer-vision dependency to answer a question about HMAC arithmetic.
+
+`Harness/JoinQrCodes.cs` recomputes it. The secret comes out of the row, the token from the domain's own
+`JoinTokenService`, the URL from its own `BuildJoinUrl`, and the module geometry from the same
+`Net.Codecrete.QrCodeGenerator` call the renderer makes. Then `Classify` answers a *sentence*: the current
+window's code, the previous window's code, a code N windows out of date, or one this table's join secret
+does not produce. A failure therefore reads
+
+```
+Assert.Contains() Failure: Item not found in collection
+Collection: ["the current window's code", "the previous window's code"]
+Not found:  "a code 3 windows out of date"
+```
+
+rather than two thousand characters of SVG path against two thousand characters of SVG path.
+
+**The duplication, named.** Three private facts about `TableJoinTokens.RenderJoinQrSvg` are restated in the
+harness: error-correction level Medium, a four-module quiet zone, `ToGraphicsPath` as the source of the `d`
+attribute. They should stay private — nothing in the product needs them, and widening their visibility to
+satisfy a test is the worse trade. If any of the three moves, both scenarios fail immediately and say so,
+which is the behaviour a duplicated constant is supposed to have.
+
+---
+
+#### Reading the join secret, which is the one rule bent on purpose
+
+§4.1 is emphatic that the join secret never leaves the server: no page renders it, `ITableDirectory`
+refuses to select it, `ITableJoinSecretReader` exists as a deliberately narrow keyhole for the token
+service alone, and rotation replaces it without showing anyone either value.
+`RestaurantInstance.ReadJoinSecretAsync` reads it straight out of the row.
+
+That is not a hole in the rule; it is the reason the rule is testable. The harness is not the application
+— it owns the database it created — and the only reason it needs the secret is to check the application's
+arithmetic from outside. Unlike `ITableJoinSecretReader` it is **not** gated on `is_active`, because a
+scenario about a deactivated table still needs to know what it would have signed with.
+
+---
+
+#### Why the tablet needs its own browser, and why that is not tidiness
+
+`DisplayDeviceAuthenticationMiddleware` resolves the §4.2 device credential only when nothing has
+already authenticated the request — *"a signed-in person always wins"*, so that a member of staff who
+opens the display URL on a paired tablet is themselves rather than the screen. Pair a display inside the
+administrator's browser and the surface resolves to `DisplayStage.NotPaired` and bounces to
+`/display/pair`, for a reason that looks nothing whatsoever like the cause.
+
+So `RestaurantInstance.OpenIsolatedPageAsync()` hands out additional contexts — own cookie jar, same
+origin — and both scenarios use one for the tablet. Scenario 15 opens a third for the guest, because the
+join flow writes a grant cookie and a browser that had been refused must not be carrying one when it is
+later accepted. Contexts are closed in reverse on disposal.
+
+No virtual authenticator is attached to them. The journeys that need one run on the instance's own page;
+a guest who registers a passkey will want one on a context of their own, which is scenario 3's business.
+
+---
+
+#### Scenario 2, step by step
+
+1. `/setup` — the only way an administrator exists, and it signs them in on the same response.
+2. `/administration/tables/new` — the label is typed, and the table identifier is read back out of the
+   success panel's *Manage this table* link. Deliberately: the identifier is minted server-side, so
+   recovering it this way tests the surface instead of reimplementing it.
+3. `/administration/tables/{table}/displays` — Generate, then the plaintext code is read off the panel.
+   That surface renders it in place rather than through a redirect, because that response is the only
+   moment the plaintext exists; only its SHA-256 hash is stored.
+4. The tablet asks for `/display/{table}` while still unpaired, and §11.5's first rule sends it to the
+   pairing surface — not to a sign-in page a tablet could never satisfy.
+5. It pairs, and the table it lands on is read out of the redirect rather than assumed, so *"the code
+   paired this device to that table"* is an assertion rather than a premise.
+6. The QR on screen is the current or previous window's code for this table's secret.
+7. Within one rotation it is a **different** code — and that one is live too.
+
+Steps 6 and 7 sample the clock *after* reading the browser, never before. The server rendered at or
+before the read, so the window sampled afterwards is the newest one the screen could possibly be showing;
+accepting the previous window as well is §4.3's own tolerance, and it is what makes a boundary landing
+mid-assertion a non-event instead of a flake.
+
+---
+
+#### Scenario 15, and what "works" has to mean
+
+Same setup, then: read the secret, read the screen, compute the token a guest holding a freshly scanned
+code would have, rotate, read the new secret.
+
+- **The in-flight token dies** — a guest presenting it gets §4.4's friendly page, at HTTP 200, with no
+  detail about which thing failed. This half runs *first*, before anything is accepted, so no grant cookie
+  exists that could carry the browser past a refusal and quietly turn a failure into a pass.
+- **The display's next window works** — the wait predicate is not "a different code" but "a code the
+  **new** secret signs, live at this instant". The weaker predicate would also be satisfied by a display
+  that had merely drifted onto some other window of the old secret, which is the opposite of the claim.
+  Nobody touches the tablet and nothing re-pairs it; §4.1's "paired displays pick up the new one
+  automatically" is the whole assertion.
+- ...and then a guest presenting the new window's token is accepted, because a code no guest can use is
+  not a code that works.
+
+Rotation is a post/redirect/get, so `RotateJoinSecretAsync` waits for the confirmation flash before
+returning — and matches its *text*, since a rename and an activation change flash through the same
+element. Without that wait, a scenario could read the old secret back and then spend its remaining minute
+failing to explain why.
+
+---
+
+#### The rotation window is a parameter, not a constant
+
+Twenty seconds for these two; the harness's default of an hour stays for scenario 14. The scenarios want
+opposite things from the same knob — 14 needs "the previous window" not to roll over mid-assertion, 2 and
+15 need a boundary to actually arrive inside a test's patience — and §4.3 accepts the current and previous
+window whatever their width, so nothing an assertion depends on moves with it. Waits are two rotations
+plus twenty seconds: one window because the refresh fires at the *next* boundary and the wait may have
+begun just after the last one, a second because a loaded container can lose one, and the slack because a
+timeout that fires while the thing was about to happen is the worst kind of flake.
+
+---
+
+#### The `--with-all` gate that never ran
+
+The last full local run ended at step 6 with
+
+```
+scripts/ci_local.sh: line 153: ./run.sh: Permission denied
+```
+
+`run.sh` has no execute bit in the working tree, and under `set -euo pipefail` that ends the run rather
+than reporting a fixable detail — so the boot-smoke gate has been silently unreachable through
+`ci_local.sh` since `--with-all` was added. Every `run.sh` invocation in the script now goes through
+`bash`, which works either way, and the header says why. Worth doing on your side as well, so the
+README's own `./run.sh` is true:
+
+```bash
+chmod +x run.sh && git update-index --chmod=+x run.sh
+```
+
+---
+
+#### What I verified rather than guessed
+
+- **Playwright 1.61.0** (`microsoft/playwright-dotnet` at `v1.61.0`): `ILocator.GetAttributeAsync(string,
+  LocatorGetAttributeOptions?) → Task<string?>`, `ILocator.CountAsync() → Task<int>`,
+  `ILocator.InnerTextAsync(LocatorInnerTextOptions?)`, and `LocatorWaitForOptions` carrying
+  `WaitForSelectorState? State` alongside `float? Timeout` — the QR path is waited for as **attached**
+  rather than visible, because the offline curtain §11.5 raises over a stale code sits on top of that very
+  element and a scenario diagnosing a frozen display must still be able to read what it froze on.
+- **`Net.Codecrete.QrCodeGenerator` 3.0.0**: `QrCode.EncodeText(string, QrCode.Ecc)` and
+  `ToGraphicsPath(int)` — the same two calls `TableJoinTokens` already makes, so they are verified by
+  code that compiles today rather than by a document.
+- **The surfaces themselves**, selector by selector, against the Razor in the tree: `#label` and
+  *Create table*; `p.pairing-code` and *Generate pairing code*; *Rotate join secret* and the
+  `secret-rotated` flash text; `#pairing-code`, `#device-label` and *Pair this display*;
+  `#table-display-surface svg.join-qr-svg path`. Every one of them is a selector a Razor edit could
+  break, which is why they live in three journey files rather than scattered through the scenarios.
+- **`scripts/ci_local.sh`** under `bash -n` and `shellcheck --severity=warning` *and* `--severity=style`:
+  clean at both, as delivered. The `--help` path prints its header by scanning contiguous `#` lines, so
+  the new paragraph is `#`-prefixed throughout — a bare blank line there would have truncated the help.
+
+---
+
+#### Build/test checklist for this slice
+
+1. `dotnet restore` — one new package *reference* (`Net.Codecrete.QrCodeGenerator`), already pinned
+   centrally, and already arriving transitively; no version resolution is new.
+2. `dotnet build` — three new files and three edited ones, all in the end-to-end test project. Nothing in
+   `src/` changed, so a break is in the harness rather than the product.
+3. `dotnet test` — **still 934 total, 919 passing, 15 skipped.** Two facts moved from a discovery-time
+   skip to a runtime one, which the summary counts identically. If the total moved, something else moved
+   with it.
+4. `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` — the real check. Expect
+   **5 passed, 10 skipped**. Scenarios 2 and 15 each spend up to a minute waiting for rotation
+   boundaries on purpose, so this run is meaningfully longer than the last.
+5. `bash scripts/ci_local.sh --with-all` — and this time watch step 6 actually run.
+6. Push, and watch the `end-to-end` job.
+
+---
+
+#### If something fails
+
+1. **`Pairing the display did not reach a table display surface.`** The refusal text is quoted into the
+   message. §4.2 gives one deliberately vague sentence for every failure — expired, used, unknown, typo —
+   so check the app's captured output for which it was, and check that the code was not consumed twice.
+2. **`a code this table's join secret does not produce`** on the *first* read. Either the public origin
+   the harness computed is not the one the app embedded (they are now derived from one variable, so this
+   should be impossible), or `RenderJoinQrSvg` changed one of its three geometry facts.
+3. **`a code N windows out of date`.** The refresh loop is behind rather than wrong. Look for a paused
+   container or a stopped circuit; §11.5's curtain will also be up on screen.
+4. **The rotation wait times out.** The display never picked up the new secret. Check that
+   `RotateJoinSecretAsync`'s confirmation really appeared, and that the tablet's circuit is still alive —
+   `LoadAsync` revalidates the device on every pass, so a revoked or dead device stops the loop rather
+   than showing a stale code.
+5. **The unpaired-display assertion fails with a sign-in heading.** The pairing context inherited an
+   Identity cookie, which means it is not actually isolated.
+
+---
+
+#### What is left in M6
+
+Ten §16.3 scenarios, and the backup/restore drill as something executable rather than a runbook prose
+section. Scenario 3 is the next natural one and the last with any plumbing left in it: the guest
+registration journey, and a virtual authenticator on a context that is not the administrator's. From
+there, 4 through 11 are two live circuits and a shopping list, and 12 walks the obligations pipeline
+end to end.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -11194,14 +11483,14 @@ echo "info: backup complete. Remember to back up the Data Protection keys volume
   File name:             ci_local.sh
   Relative path:         scripts/ci_local.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/ci_local.sh
-  Size:                  7.3 KiB (7500 bytes)
-  Last modified:         2026-07-29 05:07:19.000000000 -0400
-  Permissions:           -rwxr-xr-x
+  Size:                  7.8 KiB (8021 bytes)
+  Last modified:         2026-07-29 07:53:16.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 27205624
+  Inode:                 27520851
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               874ca679298ebe50048763f2cc225bec39d33f9bb3841a9878ddf062f4ef3ae7
+  SHA-256:               61d04d22c35d6787336520b1b4048de59773545693630ee44113b8769afe518a
   Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
 
 --- CONTENT ---
@@ -11211,7 +11500,7 @@ echo "info: backup complete. Remember to back up the Data Protection keys volume
 # the working tree.
 #
 #   scripts/ci_local.sh              shell lint, restore, strict Release build, full test suite
-#   scripts/ci_local.sh --with-smoke ...and then ./run.sh --smoke (boots the app once, checks health)
+#   scripts/ci_local.sh --with-smoke ...and then `bash run.sh --smoke` (boots the app once, checks health)
 #   scripts/ci_local.sh --with-e2e   ...and then the §16.3 Playwright scenarios (browser required)
 #   scripts/ci_local.sh --with-all   both of the above
 #   scripts/ci_local.sh --help       this text
@@ -11224,7 +11513,13 @@ echo "info: backup complete. Remember to back up the Data Protection keys volume
 # The one gate this cannot reproduce is CI's boot-smoke job, which builds the Containerfile and
 # boots the resulting image against a real PostgreSQL. `--with-smoke` is the closest local
 # equivalent: same migrations, same readiness probe, but the app runs on the host rather than in the
-# image. For the real thing, `./run.sh --containers-only`.
+# image. For the real thing, `bash run.sh --containers-only`.
+#
+# Every invocation of run.sh here goes through `bash` rather than `./run.sh`, and that is not a style
+# preference: a checkout whose execute bit did not survive (a zip, a Windows clone, a `git apply` of a
+# patch that carried no mode) fails at `./run.sh` with "Permission denied", and under `set -e` that
+# ends the whole gate run at the last step rather than reporting a fixable detail. `bash run.sh` works
+# either way. `chmod +x run.sh` is still worth doing so the README's own `./run.sh` is true.
 #
 # `--with-e2e` sets MYRESTAURANT_E2E=1, which is the only thing that turns the §16.3 end-to-end
 # scenarios from skips into scenarios. They need a container engine and a Chromium build; the first
@@ -11356,8 +11651,8 @@ fi
 # 4. Optional: boot once and probe /healthz/ready.
 # ---------------------------------------------------------------------------------------------------
 if (( WITH_SMOKE )); then
-    announce "boot smoke (./run.sh --smoke)"
-    ./run.sh --smoke
+    announce "boot smoke (bash run.sh --smoke)"
+    bash run.sh --smoke
 fi
 
 echo
@@ -11367,9 +11662,10 @@ if (( ! WITH_E2E )); then
     echo "  (not run: the §16.3 end-to-end scenarios — add --with-e2e)"
 fi
 if (( ! WITH_SMOKE )); then
-    echo "  (not run: the boot smoke — add --with-smoke, or ./run.sh --containers-only)"
+    echo "  (not run: the boot smoke — add --with-smoke, or bash run.sh --containers-only)"
 fi
 echo "────────────────────────────────────────────────────────────────────────────"
+
 
 ################################################################################
 # FILE: scripts/quick_tunnel.sh
@@ -63533,14 +63829,14 @@ public sealed class UuidV7IdentifierFactoryTests
   File name:             EndToEndScenarios.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
-  Size:                  12.2 KiB (12452 bytes)
-  Last modified:         2026-07-29 05:05:53.000000000 -0400
+  Size:                  22.2 KiB (22735 bytes)
+  Last modified:         2026-07-29 07:57:42.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 27205627
+  Inode:                 27520854
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               887eae6784dd2099feb5018fe468a8c0c31562c154980fba86ac8946a7038b6e
+  SHA-256:               2e63684d5d192b9f40342cf652c36d2a80552a34cda110a5d180c51724ac900f
   Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
 
 --- CONTENT ---
@@ -63548,6 +63844,7 @@ using System.Security.Cryptography;
 using Microsoft.Playwright;
 using MyRestaurant.Domain.Security;
 using MyRestaurant.EndToEnd.Tests.Harness;
+using MyRestaurant.WebApplication.Displays;
 using MyRestaurant.WebApplication.Identity;
 using Xunit;
 
@@ -63557,12 +63854,13 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
 /// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// <para>Three are live: scenario 1 (the first-administrator bootstrap, including a real WebAuthn
-/// attestation and a real TOTP confirmation), scenario 13 (a passkey sign-in of a TOTP-enrolled person
-/// must not be challenged for a code), and scenario 14 (the join-token window arithmetic as a guest
-/// experiences it). They come first because between them they exercise the whole harness — process,
-/// database, browser, virtual authenticator, and the domain's own token computation — which is what
-/// the remaining twelve are waiting on rather than any of their own machinery.</para>
+/// <para>Five are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
+/// WebAuthn attestation and a real TOTP confirmation), <b>13</b> (a passkey sign-in of a TOTP-enrolled
+/// person must not be challenged for a code) and <b>14</b> (the join-token window arithmetic as a guest
+/// experiences it) — chosen because between them they exercise the whole harness. M6 Slice 3 adds
+/// <b>2</b> (a display pairs and its QR advances across a window boundary) and <b>15</b> (rotating a
+/// table's join secret kills every outstanding code and the paired display recovers by itself), which
+/// are the two scenarios about the rotating code as a <em>screen</em> rather than as a URL.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -63574,6 +63872,16 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     private const string PendingHarnessExtension =
         "Awaiting a later M6 slice: the harness is in place (Harness/RestaurantHarness.cs), but this"
         + " scenario needs surface plumbing it does not have yet.";
+
+    /// <summary>
+    /// The rotation window for the two scenarios that must watch a boundary go past (§13's floor is ten
+    /// seconds; the application's own default is sixty). Twenty is a compromise with a reason on each
+    /// side: long enough that a paused container or a slow page load cannot push a two-step assertion
+    /// across two boundaries, short enough that waiting for the §4.3 refresh is seconds rather than a
+    /// minute. Everything either scenario asserts is expressed relative to the window index, so the
+    /// exact number is not load-bearing — only its order of magnitude is.
+    /// </summary>
+    private const int BoundaryWatchingRotationSeconds = 20;
 
     private readonly RestaurantHarness _harness;
 
@@ -63612,6 +63920,69 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         IResponse? closed = await page.GotoAsync(AccountRoutes.Setup);
         Assert.NotNull(closed);
         Assert.Equal(404, closed.Status);
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // 2. Admin creates table → pairing code → device pairs at /display/pair → /display/{table}
+    //    shows a rotating QR that changes across a window boundary.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Display_PairsAndShowsRotatingQrAcrossWindowBoundary()
+    {
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Two";
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(BoundaryWatchingRotationSeconds, cancellationToken);
+
+        // The whole scenario is an administrator's doing, so it needs an administrator; §3.6's wizard is
+        // the only way one comes into existence and it signs them in on the same response.
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
+        string pairingCode = await AdministrationJourneys.IssuePairingCodeAsync(administrator, tableIdentifier);
+
+        // The tablet, in its own browser. Not hygiene: the display middleware ignores a device credential
+        // on any request the Identity cookie already authenticated, so pairing inside the administrator's
+        // browser would produce a screen that is the administrator and renders no code at all.
+        IPage display = await instance.OpenIsolatedPageAsync();
+
+        // §11.5's first rule, before anything is paired: an unpaired screen asking for a table display is
+        // sent to the pairing surface rather than to a sign-in page a tablet could never satisfy.
+        await display.GotoAsync(DisplayRoutes.ForTable(tableIdentifier));
+        Assert.Equal("Pair this display", await HeadingAsync(display));
+
+        Guid pairedTable = await DisplayJourneys.PairAsync(display, pairingCode, "E2E Window Tablet");
+
+        // The code paired this device to the table it was issued for, and the surface is the table's own.
+        Assert.Equal(tableIdentifier, pairedTable);
+        Assert.Equal(tableLabel, await HeadingAsync(display));
+
+        // §4.1 lets nothing render or return the join secret, so the row is the only place to learn what
+        // the server is signing with — which is precisely what makes the next two assertions worth making
+        // rather than tautological.
+        byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+
+        // Read the screen first, then the clock: the server rendered at or before the read, so the window
+        // sampled afterwards is the newest one the screen could possibly be showing.
+        string firstCode = await DisplayJourneys.ReadJoinQrPathAsync(display);
+        AssertShowingLiveJoinCode(firstCode, joinSecret, tableIdentifier, instance);
+
+        // §16.3 scenario 2's actual demand: the QR *changes across a window boundary*. Waiting for a
+        // different path is waiting for §4.3's window-aligned refresh; the assertion that follows is what
+        // separates "the screen redrew" from "the screen advanced to the next window's code".
+        string secondCode = await DisplayJourneys.WaitForJoinQrPathAsync(
+            display,
+            candidate => !string.Equals(candidate, firstCode, StringComparison.Ordinal),
+            RefreshPatience(instance.TableJoinTokenRotationSeconds),
+            "a join code different from the one it started on",
+            cancellationToken);
+
+        Assert.NotEqual(firstCode, secondCode);
+        AssertShowingLiveJoinCode(secondCode, joinSecret, tableIdentifier, instance);
     }
 
     // -------------------------------------------------------------------------------------------
@@ -63689,22 +64060,94 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     }
 
     // -------------------------------------------------------------------------------------------
+    // 15. Admin rotates a table's join secret → in-flight token dies; display's next window works.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Admin_RotatesJoinSecret_InFlightTokenDiesNextWindowWorks()
+    {
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Fifteen";
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(BoundaryWatchingRotationSeconds, cancellationToken);
+
+        // Read back rather than restated: every window computation below is against the value the
+        // application was actually configured with, not the value it was asked for.
+        int rotationSeconds = instance.TableJoinTokenRotationSeconds;
+
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
+        string pairingCode = await AdministrationJourneys.IssuePairingCodeAsync(administrator, tableIdentifier);
+
+        IPage display = await instance.OpenIsolatedPageAsync();
+        await DisplayJourneys.PairAsync(display, pairingCode, "E2E Rotation Tablet");
+
+        byte[] originalSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+        string codeBeforeRotation = await DisplayJourneys.ReadJoinQrPathAsync(display);
+        AssertShowingLiveJoinCode(codeBeforeRotation, originalSecret, tableIdentifier, instance);
+
+        // Exactly what a guest holding a freshly scanned code has: this window's token under the secret
+        // in force right now. §4.1's promise — "immediately invalidates every outstanding QR" — is a
+        // promise about this string and nothing else.
+        string inFlightToken = JoinTokenService.ComputeCurrentToken(
+            originalSecret, tableIdentifier, DateTimeOffset.UtcNow, rotationSeconds);
+
+        await AdministrationJourneys.RotateJoinSecretAsync(administrator, tableIdentifier);
+
+        byte[] rotatedSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+        Assert.NotEqual(originalSecret, rotatedSecret);
+
+        // (a) The in-flight token dies at once, not at the next boundary. Deliberately before the
+        // acceptance half below, so that no grant cookie exists which could carry this browser past a
+        // refusal and quietly turn a failure into a pass.
+        IPage guest = await instance.OpenIsolatedPageAsync();
+        await guest.GotoAsync(JoinPath(tableIdentifier, inFlightToken));
+
+        Assert.Equal("That code has expired", await HeadingAsync(guest));
+        Assert.DoesNotContain(AccountRoutes.SignIn, guest.Url);
+
+        // (b) "The display's next window works": within one rotation the paired screen re-renders a code
+        // the NEW secret signs, with nobody touching the tablet and nothing re-pairing it. The predicate
+        // is the assertion here — waiting for merely *a different* path would also be satisfied by a
+        // display that had drifted onto some other window of the old secret.
+        string codeAfterRotation = await DisplayJourneys.WaitForJoinQrPathAsync(
+            display,
+            candidate => JoinQrCodes.IsLive(
+                candidate,
+                rotatedSecret,
+                tableIdentifier,
+                instance.PublicOrigin,
+                DateTimeOffset.UtcNow,
+                rotationSeconds),
+            RefreshPatience(rotationSeconds),
+            "a join code signed by the rotated secret",
+            cancellationToken);
+
+        Assert.NotEqual(codeBeforeRotation, codeAfterRotation);
+
+        // ...and the new sequence is one a guest can actually use, which is what "works" has to mean.
+        string freshToken = JoinTokenService.ComputeCurrentToken(
+            rotatedSecret, tableIdentifier, DateTimeOffset.UtcNow, rotationSeconds);
+        await guest.GotoAsync(JoinPath(tableIdentifier, freshToken));
+
+        Assert.Contains(AccountRoutes.SignIn, guest.Url);
+        Assert.Contains(tableIdentifier.ToString("D"), guest.Url);
+    }
+
+    // -------------------------------------------------------------------------------------------
     // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
     // -------------------------------------------------------------------------------------------
-
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Display_PairsAndShowsRotatingQrAcrossWindowBoundary()
-    {
-        // 2. Admin creates table → pairing code → device pairs at /display/pair → QR changes across a
-        //    window boundary. Needs a short TABLE_JOIN_TOKEN_ROTATION_SECONDS instance (the harness
-        //    already takes one) and a second browser context for the display device's own principal.
-    }
 
     [Fact(Skip = PendingHarnessExtension)]
     public void Guest_ScansRegistersWithPasskeyAndJoins()
     {
         // 3. Guest scans (simulated URL from current token) → registers with passkey → joins; sitting
-        //    created. Needs the guest registration journey, which is not the same page as /setup.
+        //    created. Needs the guest registration journey, which is not the same page as /setup, and a
+        //    virtual authenticator on the guest's own context rather than the administrator's.
     }
 
     [Fact(Skip = PendingHarnessExtension)]
@@ -63766,12 +64209,6 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         //     TOTP re-enroll → lands home; the passkey path hits the pipeline too.
     }
 
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Admin_RotatesJoinSecret_InFlightTokenDiesNextWindowWorks()
-    {
-        // 15. Admin rotates a table's join secret → in-flight token dies; display's next window works.
-    }
-
     // --- helpers ---------------------------------------------------------------------------------
 
     private void SkipUnlessHarnessAvailable()
@@ -63788,6 +64225,42 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
     private static string JoinPath(Guid tableIdentifier, string token)
         => $"/table/{tableIdentifier:D}?token={Uri.EscapeDataString(token)}";
+
+    /// <summary>
+    /// How long to wait for §4.3's window-aligned refresh. Two full rotations plus slack: one window
+    /// because the display fires at the <em>next</em> boundary and the wait may have started just after
+    /// the last one, a second because a container under load can lose a boundary, and twenty seconds
+    /// because a timeout that fires while the thing was about to happen is the worst kind of flake.
+    /// </summary>
+    private static TimeSpan RefreshPatience(int rotationSeconds)
+        => TimeSpan.FromSeconds((rotationSeconds * 2) + 20);
+
+    /// <summary>
+    /// Asserts that the QR on screen is the code this table's secret produces for the current or the
+    /// previous window — §4.3's definition of one that still validates.
+    ///
+    /// <para>The comparison is deliberately reported as a phrase rather than as two thousand characters of
+    /// SVG path: a display frozen on a stale code and a display showing a code from another table both
+    /// fail this, and which of the two it was is the entire content of the failure.</para>
+    /// </summary>
+    private static void AssertShowingLiveJoinCode(
+        string observedQrPath,
+        byte[] joinSecret,
+        Guid tableIdentifier,
+        RestaurantInstance instance)
+    {
+        long newestWindowIndex = JoinTokenService.CurrentWindowIndex(
+            DateTimeOffset.UtcNow, instance.TableJoinTokenRotationSeconds);
+
+        string age = JoinQrCodes.Classify(
+            observedQrPath,
+            joinSecret,
+            tableIdentifier,
+            instance.PublicOrigin,
+            newestWindowIndex);
+
+        Assert.Contains(age, JoinQrCodes.LiveAges);
+    }
 }
 
 ################################################################################
@@ -64064,14 +64537,14 @@ internal static class ContainerEngineDiscovery
   File name:             RestaurantHarness.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs
-  Size:                  7.5 KiB (7722 bytes)
-  Last modified:         2026-07-29 05:02:47.000000000 -0400
+  Size:                  7.9 KiB (8067 bytes)
+  Last modified:         2026-07-29 07:50:45.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 27205634
+  Inode:                 27520860
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               f3f04a420cca636285f0e497980e09ae9ebffda0b44c19ab964bca892962a08d
+  SHA-256:               a8bc97fe1aa0d42709ce32e6d6deb99cab661cdc116283ecd4049926097d70fb
   Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
 
 --- CONTENT ---
@@ -64084,7 +64557,7 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 /// <summary>
 /// The one expensive thing the §16.3 scenarios share: a PostgreSQL 17 container and a Chromium
 /// browser, started once for the whole scenario class. Everything a single scenario must not share
-/// with another — its database, its web application process, its browser context, its cookies, its
+/// with another — its database, its web application process, its browser contexts, its cookies, its
 /// virtual authenticator — belongs to <see cref="RestaurantInstance"/> instead.
 ///
 /// <para><b>Opt-in, on purpose.</b> These scenarios skip unless <c>MYRESTAURANT_E2E</c> is set. The
@@ -64210,11 +64683,15 @@ public sealed class RestaurantHarness : IAsyncLifetime
     /// <summary>
     /// Brings up one isolated instance: a fresh database, a fresh data-protection key directory, the
     /// web application on its own loopback port, and a browser context with a virtual authenticator.
+    /// Further contexts — a display device, a guest — come from
+    /// <see cref="RestaurantInstance.OpenIsolatedPageAsync"/>.
     /// </summary>
     /// <param name="tableJoinTokenRotationSeconds">
-    /// <c>TABLE_JOIN_TOKEN_ROTATION_SECONDS</c> for this instance (§13). Scenario 14 wants a long
-    /// window so "the previous window" cannot roll over mid-assertion; scenario 2 will want a short
-    /// one so a boundary can actually be crossed. Neither belongs in a shared default.
+    /// <c>TABLE_JOIN_TOKEN_ROTATION_SECONDS</c> for this instance (§13). There is no right shared
+    /// default, which is why it is a parameter: scenario 14 wants a window long enough that "the
+    /// previous window" cannot roll over mid-assertion, while scenarios 2 and 15 want one short enough
+    /// that a boundary is actually crossed inside a test's patience. §4.3 accepts the current and
+    /// previous window whatever their width, so nothing an assertion depends on changes with it.
     /// </param>
     internal async Task<RestaurantInstance> StartInstanceAsync(
         int tableJoinTokenRotationSeconds = RestaurantInstance.DefaultTableJoinTokenRotationSeconds,
@@ -64257,14 +64734,14 @@ public sealed class RestaurantHarness : IAsyncLifetime
   File name:             RestaurantInstance.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs
-  Size:                  17.4 KiB (17829 bytes)
-  Last modified:         2026-07-29 05:12:19.000000000 -0400
+  Size:                  22.8 KiB (23311 bytes)
+  Last modified:         2026-07-29 07:50:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 27205631
+  Inode:                 27520858
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               1dbd042d6fe766d2cca960020f291d76856f3bdf46ab31dbf826df8df6c54af3
+  SHA-256:               e8af2b8e65a6393f80a553c842a3fd0dc53278d8428b46c05b81db7eed3c38d2
   Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
 
 --- CONTENT ---
@@ -64281,7 +64758,7 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 /// <summary>
 /// One scenario's private stack: its own database, its own data-protection keys, the real web
 /// application in its own process on its own loopback port, and one browser context holding one page
-/// and one virtual authenticator.
+/// and one virtual authenticator — plus any additional isolated contexts the scenario asks for.
 ///
 /// <para><b>Why a child process rather than <c>WebApplicationFactory</c>.</b> Playwright drives a real
 /// browser over a real socket, and <c>WebApplicationFactory</c>'s in-memory <c>TestServer</c> has no
@@ -64297,13 +64774,22 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 /// does not promise one. A fresh database plus a fresh process costs a few seconds and buys
 /// scenarios that can be read, and run, in any order.</para>
 ///
+/// <para><b>Why more than one browser context.</b> Several scenarios need two or three principals at the
+/// same time in the same restaurant: an administrator, the tablet on the table, a guest with a phone.
+/// Cookies are per-context, so each of those is a context — and for the display device it is not merely
+/// hygiene. <c>DisplayDeviceAuthenticationMiddleware</c> ignores the device credential whenever the
+/// Identity cookie already authenticated the request, so a screen paired inside the administrator's
+/// browser resolves as the administrator and never renders a join code at all. See
+/// <see cref="OpenIsolatedPageAsync"/>.</para>
+///
 /// <para><b>The origin.</b> The app is served over <c>http://localhost:{port}</c> and
 /// <c>RESTAURANT_PUBLIC_ORIGIN</c> is set to <c>https://localhost:{port}</c> — the scheme mismatch is
 /// deliberate and load-bearing in two directions. §13 refuses to start on a non-https public origin,
 /// so the configured value must say https; and Chromium treats <c>localhost</c> as a secure context
 /// regardless of scheme, so WebAuthn ceremonies run and <c>Secure</c> cookies (the §3.1 authentication
-/// cookie is <c>CookieSecurePolicy.Always</c>) are accepted over plain HTTP. The host matches, which is
-/// all <see cref="MyRestaurant.WebApplication.Identity.WebAuthnOriginPolicy"/> and the §3.3
+/// cookie is <c>CookieSecurePolicy.Always</c>, and so is the §4.2 display credential) are accepted over
+/// plain HTTP. The host matches, which is all
+/// <see cref="MyRestaurant.WebApplication.Identity.WebAuthnOriginPolicy"/> and the §3.3
 /// relying-party derivation actually compare.</para>
 /// </summary>
 internal sealed class RestaurantInstance : IAsyncDisposable
@@ -64319,6 +64805,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
 
     private const string RestaurantName = "End To End Restaurant";
     private const int DiagnosticOutputCharacterLimit = 8000;
+    private const int PageTimeoutMilliseconds = 30_000;
 
     private static readonly TimeSpan ReadinessTimeout = TimeSpan.FromSeconds(120);
     private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(250);
@@ -64328,7 +64815,15 @@ internal sealed class RestaurantInstance : IAsyncDisposable
     private readonly StringBuilder _output;
     private readonly Process _process;
     private readonly string _dataProtectionKeysDirectory;
+    private readonly IBrowser _browser;
     private readonly IBrowserContext _context;
+
+    /// <summary>
+    /// Contexts handed out by <see cref="OpenIsolatedPageAsync"/>, closed in reverse on disposal. A
+    /// plain list: one instance belongs to one scenario, and xUnit runs a single test on a single flow
+    /// of control, so there is no second thread to guard against.
+    /// </summary>
+    private readonly List<IBrowserContext> _isolatedContexts = [];
 
     private RestaurantInstance(
         Process process,
@@ -64337,6 +64832,9 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         string dataProtectionKeysDirectory,
         string connectionString,
         string baseUrl,
+        string publicOrigin,
+        int tableJoinTokenRotationSeconds,
+        IBrowser browser,
         IBrowserContext context,
         IPage page,
         VirtualAuthenticator authenticator)
@@ -64345,10 +64843,13 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         _output = output;
         _outputGate = outputGate;
         _dataProtectionKeysDirectory = dataProtectionKeysDirectory;
+        _browser = browser;
         _context = context;
 
         ConnectionString = connectionString;
         BaseUrl = baseUrl;
+        PublicOrigin = publicOrigin;
+        TableJoinTokenRotationSeconds = tableJoinTokenRotationSeconds;
         Page = page;
         Authenticator = authenticator;
     }
@@ -64358,6 +64859,16 @@ internal sealed class RestaurantInstance : IAsyncDisposable
 
     /// <summary>The origin the browser talks to, e.g. <c>http://localhost:41235</c>.</summary>
     internal string BaseUrl { get; }
+
+    /// <summary>
+    /// The <c>RESTAURANT_PUBLIC_ORIGIN</c> this instance was configured with, e.g.
+    /// <c>https://localhost:41235</c> — the origin the application embeds in every join URL, and
+    /// therefore the origin a scenario must use when computing the QR it expects to see (§4.3).
+    /// </summary>
+    internal string PublicOrigin { get; }
+
+    /// <summary>The <c>TABLE_JOIN_TOKEN_ROTATION_SECONDS</c> this instance was configured with (§13).</summary>
+    internal int TableJoinTokenRotationSeconds { get; }
 
     /// <summary>The one page in this instance's context; relative URLs resolve against <see cref="BaseUrl"/>.</summary>
     internal IPage Page { get; }
@@ -64401,11 +64912,17 @@ internal sealed class RestaurantInstance : IAsyncDisposable
 
         int port = ReserveLoopbackPort();
         string baseUrl = string.Create(CultureInfo.InvariantCulture, $"http://localhost:{port}");
+        string publicOrigin = string.Create(CultureInfo.InvariantCulture, $"https://localhost:{port}");
 
         StringBuilder output = new();
         Lock outputGate = new();
         Process process = CreateProcess(
-            launch, port, connectionString, dataProtectionKeysDirectory, tableJoinTokenRotationSeconds);
+            launch,
+            port,
+            publicOrigin,
+            connectionString,
+            dataProtectionKeysDirectory,
+            tableJoinTokenRotationSeconds);
 
         process.OutputDataReceived += (_, arguments) => Append(output, outputGate, arguments.Data);
         process.ErrorDataReceived += (_, arguments) => Append(output, outputGate, arguments.Data);
@@ -64422,7 +64939,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
 
             context = await browser.NewContextAsync(new BrowserNewContextOptions { BaseURL = baseUrl });
             IPage page = await context.NewPageAsync();
-            page.SetDefaultTimeout(30_000);
+            page.SetDefaultTimeout(PageTimeoutMilliseconds);
 
             VirtualAuthenticator authenticator = await VirtualAuthenticator.AttachAsync(context, page);
 
@@ -64433,6 +64950,9 @@ internal sealed class RestaurantInstance : IAsyncDisposable
                 dataProtectionKeysDirectory,
                 connectionString,
                 baseUrl,
+                publicOrigin,
+                tableJoinTokenRotationSeconds,
+                browser,
                 context,
                 page,
                 authenticator);
@@ -64451,11 +64971,34 @@ internal sealed class RestaurantInstance : IAsyncDisposable
     }
 
     /// <summary>
+    /// A second (or third) browser in the same restaurant: its own cookie jar, its own page, the same
+    /// origin. This is how a scenario holds an administrator, a display device and a guest at once.
+    ///
+    /// <para>No virtual authenticator is attached. The ones that need one are the account journeys, and
+    /// they run on <see cref="Page"/>; a display device has no credentials of its own beyond the §4.2
+    /// cookie, and a guest who registers a passkey will want an authenticator on a context of their own,
+    /// which is a later scenario's business rather than a default worth paying for here.</para>
+    /// </summary>
+    internal async Task<IPage> OpenIsolatedPageAsync()
+    {
+        IBrowserContext context = await _browser.NewContextAsync(
+            new BrowserNewContextOptions { BaseURL = BaseUrl });
+
+        _isolatedContexts.Add(context);
+
+        IPage page = await context.NewPageAsync();
+        page.SetDefaultTimeout(PageTimeoutMilliseconds);
+
+        return page;
+    }
+
+    /// <summary>
     /// Arranges an active table with a caller-chosen join secret (§4.1), by direct insert rather than
     /// through the administration surface. Deliberate: §16.3 scenario 14 is about the token algorithm's
     /// window arithmetic, and routing it through a sign-in, a role check and a form would make a
-    /// token-window assertion fail for six unrelated reasons. Scenario 2, which <em>is</em> about the
-    /// administration flow, will create its table through the UI.
+    /// token-window assertion fail for six unrelated reasons. Scenarios 2 and 15, which <em>are</em> about
+    /// the administration flow, create their tables through the UI instead
+    /// (<see cref="AdministrationJourneys.CreateTableAsync"/>).
     /// </summary>
     internal async Task<Guid> InsertActiveTableAsync(
         string label,
@@ -64485,8 +65028,53 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         return tableIdentifier;
     }
 
+    /// <summary>
+    /// Reads a table's current <c>join_secret</c> straight out of the row.
+    ///
+    /// <para>This is the one place the harness deliberately reaches past every surface, and the reason is
+    /// the property under test rather than convenience. §4.1 says the join secret never leaves the server:
+    /// no page renders it, <c>ITableDirectory</c> refuses to select it, and rotation replaces it without
+    /// showing anyone either value. A scenario that must verify what the display is showing therefore has
+    /// exactly two options — decode the QR on screen, or know the secret — and the second is the one that
+    /// does not require a computer-vision dependency to answer a question about HMAC arithmetic.</para>
+    ///
+    /// <para>Unlike <c>ITableJoinSecretReader</c> this is <em>not</em> gated on <c>is_active</c>: a
+    /// scenario about a deactivated table still needs to know what it would have signed with.</para>
+    /// </summary>
+    internal async Task<byte[]> ReadJoinSecretAsync(Guid tableIdentifier, CancellationToken cancellationToken)
+    {
+        await using NpgsqlConnection connection = new(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using NpgsqlCommand command = new(
+            """
+            SELECT join_secret
+            FROM restaurant_table
+            WHERE restaurant_table_identifier = @table_identifier;
+            """,
+            connection);
+
+        command.Parameters.AddWithValue("table_identifier", tableIdentifier);
+
+        object? value = await command.ExecuteScalarAsync(cancellationToken);
+
+        if (value is not byte[] joinSecret)
+        {
+            throw new InvalidOperationException(
+                $"No restaurant_table row exists for {tableIdentifier:D}, so it has no join secret.");
+        }
+
+        return joinSecret;
+    }
+
     public async ValueTask DisposeAsync()
     {
+        // Reverse order, so a context is never left open behind one that failed to close.
+        for (int index = _isolatedContexts.Count - 1; index >= 0; index--)
+        {
+            await _isolatedContexts[index].CloseAsync();
+        }
+
         await Authenticator.DisposeAsync();
         await _context.CloseAsync();
         await StopProcessAsync(_process);
@@ -64499,6 +65087,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
     private static Process CreateProcess(
         WebApplicationLaunch launch,
         int port,
+        string publicOrigin,
         string connectionString,
         string dataProtectionKeysDirectory,
         int tableJoinTokenRotationSeconds)
@@ -64529,8 +65118,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         // §13, in full. Nothing is left to the app's own defaults: a scenario that failed because a
         // default moved would be a scenario nobody could debug.
         variables["RESTAURANT_NAME"] = RestaurantName;
-        variables["RESTAURANT_PUBLIC_ORIGIN"] =
-            string.Create(CultureInfo.InvariantCulture, $"https://localhost:{port}");
+        variables["RESTAURANT_PUBLIC_ORIGIN"] = publicOrigin;
         variables["RESTAURANT_TRUSTED_ORIGIN_PATTERNS"] = "https://*.trycloudflare.com";
         variables["RESTAURANT_TIME_ZONE"] = "America/New_York";
         variables["RESTAURANT_CLOCK_FORMAT"] = "12-hour";
@@ -65029,14 +65617,14 @@ internal static class WebApplicationLocator
   File name:             MyRestaurant.EndToEnd.Tests.csproj
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj
-  Size:                  2.7 KiB (2751 bytes)
-  Last modified:         2026-07-29 05:45:31.875215579 -0400
+  Size:                  3.3 KiB (3333 bytes)
+  Last modified:         2026-07-29 07:52:57.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 27205635
+  Inode:                 27520861
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               711529821c40638a679d19ce4c6443bb3506d2eec6960b84cd77511e00d2179d
+  SHA-256:               f591fe16fecd8040cafdaa26b83373968a429fcbb581c8049b5d29763d6863d7
   Last git commit:       78cef2f 2026-07-29 05:45:43 -0400 fix build
 
 --- CONTENT ---
@@ -65056,14 +65644,19 @@ internal static class WebApplicationLocator
       • Microsoft.AspNetCore.App, because the WebApplication project reference below is a Web SDK
         project and the tests name AccountRoutes from it (framework-reference propagation across a
         Web SDK reference is not something to lean on);
-      • MyRestaurant.WebApplication, for AccountRoutes — the tests assert on the very route
-        constants the app routes on, rather than on string literals that can drift. The reference
-        also makes the web application a BUILD dependency of this project, which is what lets the
-        harness expect its binaries to exist on disk;
+      • MyRestaurant.WebApplication, for AccountRoutes and DisplayRoutes — the tests assert on the
+        very route constants the app routes on, rather than on string literals that can drift. The
+        reference also makes the web application a BUILD dependency of this project, which is what
+        lets the harness expect its binaries to exist on disk;
       • MyRestaurant.Domain, for the real JoinTokenService / Rfc6238Totp / Base32Text. The harness
         computes tokens and authenticator codes with the same code the server validates them with;
       • Npgsql, to create a per-scenario database and to arrange fixtures (§4.1 rows) directly;
-      • Testcontainers.PostgreSql, for the shared PostgreSQL 17 container.
+      • Testcontainers.PostgreSql, for the shared PostgreSQL 17 container;
+      • Net.Codecrete.QrCodeGenerator, so that Harness/JoinQrCodes.cs can compute the exact SVG path
+        a table display must be showing for a given window (§16.3 scenarios 2 and 15). It arrives
+        transitively through the web application anyway — CentralPackageTransitivePinningEnabled sees
+        to the version — but a file that types `QrCode.EncodeText` should say so itself rather than
+        depend on a reference chain that a future refactor could shorten without noticing.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -65082,6 +65675,7 @@ internal static class WebApplicationLocator
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Microsoft.Playwright" />
+    <PackageReference Include="Net.Codecrete.QrCodeGenerator" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Testcontainers.PostgreSql" />
   </ItemGroup>
@@ -71782,9 +72376,9 @@ public sealed class RestaurantTimeTests
 # DUMP SUMMARY
 ################################################################################
   Files dumped   : 294
-  Total size     : 2.9 MiB (3071185 bytes)
+  Total size     : 3.0 MiB (3104906 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-07-29T05:48:39-04:00
+  Completed at   : 2026-07-29T08:15:49-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################

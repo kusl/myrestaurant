@@ -7,7 +7,7 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 /// <summary>
 /// The one expensive thing the §16.3 scenarios share: a PostgreSQL 17 container and a Chromium
 /// browser, started once for the whole scenario class. Everything a single scenario must not share
-/// with another — its database, its web application process, its browser context, its cookies, its
+/// with another — its database, its web application process, its browser contexts, its cookies, its
 /// virtual authenticator — belongs to <see cref="RestaurantInstance"/> instead.
 ///
 /// <para><b>Opt-in, on purpose.</b> These scenarios skip unless <c>MYRESTAURANT_E2E</c> is set. The
@@ -133,11 +133,15 @@ public sealed class RestaurantHarness : IAsyncLifetime
     /// <summary>
     /// Brings up one isolated instance: a fresh database, a fresh data-protection key directory, the
     /// web application on its own loopback port, and a browser context with a virtual authenticator.
+    /// Further contexts — a display device, a guest — come from
+    /// <see cref="RestaurantInstance.OpenIsolatedPageAsync"/>.
     /// </summary>
     /// <param name="tableJoinTokenRotationSeconds">
-    /// <c>TABLE_JOIN_TOKEN_ROTATION_SECONDS</c> for this instance (§13). Scenario 14 wants a long
-    /// window so "the previous window" cannot roll over mid-assertion; scenario 2 will want a short
-    /// one so a boundary can actually be crossed. Neither belongs in a shared default.
+    /// <c>TABLE_JOIN_TOKEN_ROTATION_SECONDS</c> for this instance (§13). There is no right shared
+    /// default, which is why it is a parameter: scenario 14 wants a window long enough that "the
+    /// previous window" cannot roll over mid-assertion, while scenarios 2 and 15 want one short enough
+    /// that a boundary is actually crossed inside a test's patience. §4.3 accepts the current and
+    /// previous window whatever their width, so nothing an assertion depends on changes with it.
     /// </param>
     internal async Task<RestaurantInstance> StartInstanceAsync(
         int tableJoinTokenRotationSeconds = RestaurantInstance.DefaultTableJoinTokenRotationSeconds,

@@ -11,7 +11,7 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 /// <summary>
 /// One scenario's private stack: its own database, its own data-protection keys, the real web
 /// application in its own process on its own loopback port, and one browser context holding one page
-/// and one virtual authenticator.
+/// and one virtual authenticator — plus any additional isolated contexts the scenario asks for.
 ///
 /// <para><b>Why a child process rather than <c>WebApplicationFactory</c>.</b> Playwright drives a real
 /// browser over a real socket, and <c>WebApplicationFactory</c>'s in-memory <c>TestServer</c> has no
@@ -27,13 +27,22 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 /// does not promise one. A fresh database plus a fresh process costs a few seconds and buys
 /// scenarios that can be read, and run, in any order.</para>
 ///
+/// <para><b>Why more than one browser context.</b> Several scenarios need two or three principals at the
+/// same time in the same restaurant: an administrator, the tablet on the table, a guest with a phone.
+/// Cookies are per-context, so each of those is a context — and for the display device it is not merely
+/// hygiene. <c>DisplayDeviceAuthenticationMiddleware</c> ignores the device credential whenever the
+/// Identity cookie already authenticated the request, so a screen paired inside the administrator's
+/// browser resolves as the administrator and never renders a join code at all. See
+/// <see cref="OpenIsolatedPageAsync"/>.</para>
+///
 /// <para><b>The origin.</b> The app is served over <c>http://localhost:{port}</c> and
 /// <c>RESTAURANT_PUBLIC_ORIGIN</c> is set to <c>https://localhost:{port}</c> — the scheme mismatch is
 /// deliberate and load-bearing in two directions. §13 refuses to start on a non-https public origin,
 /// so the configured value must say https; and Chromium treats <c>localhost</c> as a secure context
 /// regardless of scheme, so WebAuthn ceremonies run and <c>Secure</c> cookies (the §3.1 authentication
-/// cookie is <c>CookieSecurePolicy.Always</c>) are accepted over plain HTTP. The host matches, which is
-/// all <see cref="MyRestaurant.WebApplication.Identity.WebAuthnOriginPolicy"/> and the §3.3
+/// cookie is <c>CookieSecurePolicy.Always</c>, and so is the §4.2 display credential) are accepted over
+/// plain HTTP. The host matches, which is all
+/// <see cref="MyRestaurant.WebApplication.Identity.WebAuthnOriginPolicy"/> and the §3.3
 /// relying-party derivation actually compare.</para>
 /// </summary>
 internal sealed class RestaurantInstance : IAsyncDisposable
@@ -49,6 +58,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
 
     private const string RestaurantName = "End To End Restaurant";
     private const int DiagnosticOutputCharacterLimit = 8000;
+    private const int PageTimeoutMilliseconds = 30_000;
 
     private static readonly TimeSpan ReadinessTimeout = TimeSpan.FromSeconds(120);
     private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(250);
@@ -58,7 +68,15 @@ internal sealed class RestaurantInstance : IAsyncDisposable
     private readonly StringBuilder _output;
     private readonly Process _process;
     private readonly string _dataProtectionKeysDirectory;
+    private readonly IBrowser _browser;
     private readonly IBrowserContext _context;
+
+    /// <summary>
+    /// Contexts handed out by <see cref="OpenIsolatedPageAsync"/>, closed in reverse on disposal. A
+    /// plain list: one instance belongs to one scenario, and xUnit runs a single test on a single flow
+    /// of control, so there is no second thread to guard against.
+    /// </summary>
+    private readonly List<IBrowserContext> _isolatedContexts = [];
 
     private RestaurantInstance(
         Process process,
@@ -67,6 +85,9 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         string dataProtectionKeysDirectory,
         string connectionString,
         string baseUrl,
+        string publicOrigin,
+        int tableJoinTokenRotationSeconds,
+        IBrowser browser,
         IBrowserContext context,
         IPage page,
         VirtualAuthenticator authenticator)
@@ -75,10 +96,13 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         _output = output;
         _outputGate = outputGate;
         _dataProtectionKeysDirectory = dataProtectionKeysDirectory;
+        _browser = browser;
         _context = context;
 
         ConnectionString = connectionString;
         BaseUrl = baseUrl;
+        PublicOrigin = publicOrigin;
+        TableJoinTokenRotationSeconds = tableJoinTokenRotationSeconds;
         Page = page;
         Authenticator = authenticator;
     }
@@ -88,6 +112,16 @@ internal sealed class RestaurantInstance : IAsyncDisposable
 
     /// <summary>The origin the browser talks to, e.g. <c>http://localhost:41235</c>.</summary>
     internal string BaseUrl { get; }
+
+    /// <summary>
+    /// The <c>RESTAURANT_PUBLIC_ORIGIN</c> this instance was configured with, e.g.
+    /// <c>https://localhost:41235</c> — the origin the application embeds in every join URL, and
+    /// therefore the origin a scenario must use when computing the QR it expects to see (§4.3).
+    /// </summary>
+    internal string PublicOrigin { get; }
+
+    /// <summary>The <c>TABLE_JOIN_TOKEN_ROTATION_SECONDS</c> this instance was configured with (§13).</summary>
+    internal int TableJoinTokenRotationSeconds { get; }
 
     /// <summary>The one page in this instance's context; relative URLs resolve against <see cref="BaseUrl"/>.</summary>
     internal IPage Page { get; }
@@ -131,11 +165,17 @@ internal sealed class RestaurantInstance : IAsyncDisposable
 
         int port = ReserveLoopbackPort();
         string baseUrl = string.Create(CultureInfo.InvariantCulture, $"http://localhost:{port}");
+        string publicOrigin = string.Create(CultureInfo.InvariantCulture, $"https://localhost:{port}");
 
         StringBuilder output = new();
         Lock outputGate = new();
         Process process = CreateProcess(
-            launch, port, connectionString, dataProtectionKeysDirectory, tableJoinTokenRotationSeconds);
+            launch,
+            port,
+            publicOrigin,
+            connectionString,
+            dataProtectionKeysDirectory,
+            tableJoinTokenRotationSeconds);
 
         process.OutputDataReceived += (_, arguments) => Append(output, outputGate, arguments.Data);
         process.ErrorDataReceived += (_, arguments) => Append(output, outputGate, arguments.Data);
@@ -152,7 +192,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
 
             context = await browser.NewContextAsync(new BrowserNewContextOptions { BaseURL = baseUrl });
             IPage page = await context.NewPageAsync();
-            page.SetDefaultTimeout(30_000);
+            page.SetDefaultTimeout(PageTimeoutMilliseconds);
 
             VirtualAuthenticator authenticator = await VirtualAuthenticator.AttachAsync(context, page);
 
@@ -163,6 +203,9 @@ internal sealed class RestaurantInstance : IAsyncDisposable
                 dataProtectionKeysDirectory,
                 connectionString,
                 baseUrl,
+                publicOrigin,
+                tableJoinTokenRotationSeconds,
+                browser,
                 context,
                 page,
                 authenticator);
@@ -181,11 +224,34 @@ internal sealed class RestaurantInstance : IAsyncDisposable
     }
 
     /// <summary>
+    /// A second (or third) browser in the same restaurant: its own cookie jar, its own page, the same
+    /// origin. This is how a scenario holds an administrator, a display device and a guest at once.
+    ///
+    /// <para>No virtual authenticator is attached. The ones that need one are the account journeys, and
+    /// they run on <see cref="Page"/>; a display device has no credentials of its own beyond the §4.2
+    /// cookie, and a guest who registers a passkey will want an authenticator on a context of their own,
+    /// which is a later scenario's business rather than a default worth paying for here.</para>
+    /// </summary>
+    internal async Task<IPage> OpenIsolatedPageAsync()
+    {
+        IBrowserContext context = await _browser.NewContextAsync(
+            new BrowserNewContextOptions { BaseURL = BaseUrl });
+
+        _isolatedContexts.Add(context);
+
+        IPage page = await context.NewPageAsync();
+        page.SetDefaultTimeout(PageTimeoutMilliseconds);
+
+        return page;
+    }
+
+    /// <summary>
     /// Arranges an active table with a caller-chosen join secret (§4.1), by direct insert rather than
     /// through the administration surface. Deliberate: §16.3 scenario 14 is about the token algorithm's
     /// window arithmetic, and routing it through a sign-in, a role check and a form would make a
-    /// token-window assertion fail for six unrelated reasons. Scenario 2, which <em>is</em> about the
-    /// administration flow, will create its table through the UI.
+    /// token-window assertion fail for six unrelated reasons. Scenarios 2 and 15, which <em>are</em> about
+    /// the administration flow, create their tables through the UI instead
+    /// (<see cref="AdministrationJourneys.CreateTableAsync"/>).
     /// </summary>
     internal async Task<Guid> InsertActiveTableAsync(
         string label,
@@ -215,8 +281,53 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         return tableIdentifier;
     }
 
+    /// <summary>
+    /// Reads a table's current <c>join_secret</c> straight out of the row.
+    ///
+    /// <para>This is the one place the harness deliberately reaches past every surface, and the reason is
+    /// the property under test rather than convenience. §4.1 says the join secret never leaves the server:
+    /// no page renders it, <c>ITableDirectory</c> refuses to select it, and rotation replaces it without
+    /// showing anyone either value. A scenario that must verify what the display is showing therefore has
+    /// exactly two options — decode the QR on screen, or know the secret — and the second is the one that
+    /// does not require a computer-vision dependency to answer a question about HMAC arithmetic.</para>
+    ///
+    /// <para>Unlike <c>ITableJoinSecretReader</c> this is <em>not</em> gated on <c>is_active</c>: a
+    /// scenario about a deactivated table still needs to know what it would have signed with.</para>
+    /// </summary>
+    internal async Task<byte[]> ReadJoinSecretAsync(Guid tableIdentifier, CancellationToken cancellationToken)
+    {
+        await using NpgsqlConnection connection = new(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        await using NpgsqlCommand command = new(
+            """
+            SELECT join_secret
+            FROM restaurant_table
+            WHERE restaurant_table_identifier = @table_identifier;
+            """,
+            connection);
+
+        command.Parameters.AddWithValue("table_identifier", tableIdentifier);
+
+        object? value = await command.ExecuteScalarAsync(cancellationToken);
+
+        if (value is not byte[] joinSecret)
+        {
+            throw new InvalidOperationException(
+                $"No restaurant_table row exists for {tableIdentifier:D}, so it has no join secret.");
+        }
+
+        return joinSecret;
+    }
+
     public async ValueTask DisposeAsync()
     {
+        // Reverse order, so a context is never left open behind one that failed to close.
+        for (int index = _isolatedContexts.Count - 1; index >= 0; index--)
+        {
+            await _isolatedContexts[index].CloseAsync();
+        }
+
         await Authenticator.DisposeAsync();
         await _context.CloseAsync();
         await StopProcessAsync(_process);
@@ -229,6 +340,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
     private static Process CreateProcess(
         WebApplicationLaunch launch,
         int port,
+        string publicOrigin,
         string connectionString,
         string dataProtectionKeysDirectory,
         int tableJoinTokenRotationSeconds)
@@ -259,8 +371,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         // §13, in full. Nothing is left to the app's own defaults: a scenario that failed because a
         // default moved would be a scenario nobody could debug.
         variables["RESTAURANT_NAME"] = RestaurantName;
-        variables["RESTAURANT_PUBLIC_ORIGIN"] =
-            string.Create(CultureInfo.InvariantCulture, $"https://localhost:{port}");
+        variables["RESTAURANT_PUBLIC_ORIGIN"] = publicOrigin;
         variables["RESTAURANT_TRUSTED_ORIGIN_PATTERNS"] = "https://*.trycloudflare.com";
         variables["RESTAURANT_TIME_ZONE"] = "America/New_York";
         variables["RESTAURANT_CLOCK_FORMAT"] = "12-hour";
