@@ -850,3 +850,214 @@ Claude is AI and can make mistakes. Please double-check responses.
 97
 
 Please continue 
+
+
+/
+Claude finished the response
+Please continue with the next step 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+
+
+Verified file structure and orchestrated extraction script composition
+Verified file structure and orchestrated extraction script composition
+I found the root cause. Stopping here to report before making changes, because the diagnosis changes what the next slice should be.
+
+What's broken
+dotnet test is green (934 total, 919 passing, 15 skipped). The two failures are both in MYRESTAURANT_E2E=1:
+
+Display_PairsAndShowsRotatingQrAcrossWindowBoundary — the QR never changes in 60 s (3 windows at 20 s)
+Admin_RotatesJoinSecret_InFlightTokenDiesNextWindowWorks — same, waiting for the rotated secret's code
+Everything before the WaitForJoinQrPathAsync call passed in both, including AssertShowingLiveJoinCode on the first code. So the display renders a correct, live code once and then never re-renders.
+
+Root cause: the E2E harness never gets a Blazor circuit
+RestaurantInstance.CreateProcess sets ASPNETCORE_ENVIRONMENT=Production and boots the build output (bin/<Config>/net10.0) with ASPNETCORE_CONTENTROOT pointed at the source directory.
+
+In dotnet/aspnetcore release/10.0, WebHost.ConfigureWebDefaults reads the build-time static-web-assets manifest only in Development:
+
+csharp
+builder.ConfigureAppConfiguration((ctx, cb) =>
+{
+    if (ctx.HostingEnvironment.IsDevelopment())
+    {
+        StaticWebAssetsLoader.UseStaticWebAssets(ctx.HostingEnvironment, ctx.Configuration);
+    }
+});
+_framework/blazor.web.js is a framework static web asset. dotnet publish copies it into wwwroot/_framework (which is why the container works, and why dev works — that's Development). A build output served as Production has neither: Program.cs only calls app.UseStaticFiles(), so GET /_framework/blazor.web.js → 404. No circuit. TableDisplay.razor is prerendered HTML only, and OnAfterRender — where the refresh loop starts — never runs at all.
+
+That also means no E2E scenario has ever exercised an interactive surface; the five passing ones are all static-SSR, which is why this went unnoticed.
+
+A second, real product bug behind it
+Even with the circuit up, TableDisplay.razor has a live race:
+
+csharp
+protected override void OnAfterRender(bool firstRender)
+{
+    if (!firstRender || _stage is DisplayStage.NotPaired or DisplayStage.WrongTable) return;
+    _subscription = Broadcaster.Subscribe(OnDomainNotification);
+    _ = RunRefreshLoopAsync();
+}
+ComponentBase.RunInitAndSetParametersAsync calls StateHasChanged() as soon as OnInitializedAsync yields — and it yields on the first of four DB round trips inside LoadAsync. The client's acknowledgement of that first (empty) batch will usually beat those round trips, so OnAfterRender(firstRender: true) fires while _stage is still its default NotPaired. The guard returns, firstRender is never true again, and the loop never starts. A display frozen on the code it was born with — §11.5's stated worst failure — intermittently, in production. Separately, RunRefreshLoopAsync only catches OperationCanceledException/ObjectDisposedException, so one transient DB error kills the loop permanently and silently.
+
+Verified against dotnet/aspnetcore release/10.0
+StaticWebAssetsLoader.ResolveManifest returns null when <AppName>.staticwebassets.runtime.json is absent → calling it in a published deployment is a no-op, so the fix costs production nothing.
+StaticWebAssetsLoader.UseStaticWebAssets(IWebHostEnvironment, IConfiguration) is public shipped API.
+ComponentBase.RendererInfo → RendererInfo(Name, IsInteractive); RemoteRenderer = ("Server", true), Web.HtmlRendering.StaticHtmlRenderer = ("Static", false). Safe to read in BuildRenderTree.
+ConfigureWebHostBuilder.ConfigureAppConfiguration does not throw (it runs eagerly and only rejects host-config key changes), but calling the loader after builder.Build() and before app.UseStaticFiles() is the predictable placement.
+The slice I'd deliver next (say go and I'll produce the tar.gz)
+src/MyRestaurant.WebApplication/Program.cs — load the build-time manifest outside Development; no-op when published.
+src/MyRestaurant.WebApplication/Components/Pages/Display/TableDisplay.razor — start the live work idempotently, gated on RendererInfo.IsInteractive instead of firstRender; make the refresh loop survive a transient failure; publish data-live so a dead circuit is observable.
+src/MyRestaurant.WebApplication/Displays/DisplayRefreshSchedule.cs (new) — the boundary arithmetic pulled out of Razor, with the ceiling no longer truncating a legitimate full-window wait.
+tests/MyRestaurant.WebApplication.Tests/Displays/DisplayRefreshScheduleTests.cs (new) — fast unit coverage for it.
+tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs — probe /_framework/blazor.web.js during readiness and refuse to start with a message naming the cause.
+tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs + EndToEndScenarios.cs — wait for data-live before watching the QR, so this can never again fail as an unexplained timeout.
+docs/_append/BUILD_PROGRESS-m6-slice-4.md, _CHANGES.md.
+Files to delete: none. No migration, no schema change, no package change.
+
+One thing worth your judgement before I write it: I'm fixing this in Program.cs rather than flipping the harness to Development, because "build output + ASPNETCORE_ENVIRONMENT=Production" is a combination a real operator will try and losing all interactivity silently is a bad trap. If you'd rather keep product code untouched and have the harness publish instead, that's a bigger but arguably purer change — tell me which you want.
+
+please continue
+
+
+Identified integer overflow risk and engineered protective safeguards
+Identified integer overflow risk and engineered protective safeguards
+Now the display surface itself.
+
+
+Verifying implicit usings availability in Web SDK
+Verifying implicit usings availability in Web SDK
+Now the code block — the lifecycle race and the fragile loop.
+
+
+Scrutinizing disposal flow and header documentation updates
+Scrutinizing disposal flow and header documentation updates
+Now the unit tests for the schedule arithmetic.
+
+
+Tracing tick arithmetic across boundary values
+Tracing tick arithmetic across boundary values
+Now the display journey helper — so a dead circuit reports itself.
+
+
+Edited 3 files
+Edited 3 files
+Now wire the wait into scenarios 2 and 15.
+
+
+Reconciled test count discrepancies and recalibrated documentation figures
+Reconciled test count discrepancies and recalibrated documentation figures
+Now _CHANGES.md, then the archive.
+
+
+Created a file, ran a command
+Created a file, ran a command
+I hit the tool limit before packaging. Here's where things stand — the diagnosis is complete and all nine changed files are written and verified for editorconfig compliance; only the tar.gz step remains.
+
+What I found
+Two independent causes, plus a latent hazard.
+
+1. The E2E harness never had a Blazor circuit. RestaurantInstance boots the build output with ASPNETCORE_ENVIRONMENT=Production. _framework/blazor.web.js is a framework static web asset: dotnet publish copies it into wwwroot/, but a plain dotnet build only describes it in a build-time manifest — and WebHost.ConfigureWebDefaults loads that manifest only when IsDevelopment(). Program.cs serves assets with UseStaticFiles(), so build-output-as-Production has neither. The script tag 404s, no circuit starts, and every interactive page silently degrades to prerendered HTML: a valid table label, a valid current QR, no errors, and nothing ever changes again. The container is fine (it publishes); run.sh is fine (Development). No E2E scenario had ever exercised an interactive surface — the five that pass are all static SSR — so there was nowhere for this to surface until one watched a screen for 60 s.
+
+2. A real product bug in TableDisplay.razor. ComponentBase.RunInitAndSetParametersAsync calls StateHasChanged() the moment OnInitializedAsync yields, and it yields on the first of four DB round trips inside LoadAsync. That render goes out with _stage still at NotPaired; the client's ack is one loopback message and routinely beats four queries, so OnAfterRender(firstRender: true) gets rejected by the guard and the refresh loop never starts. firstRender is never true again. Intermittent by construction, invisible when it happens.
+
+3. Latent: RunRefreshLoopAsync caught only cancellation/disposal, so any other exception killed a fire-and-forget loop permanently and silently.
+
+Writing the extracted arithmetic also turned up a fourth, smaller mistake: the delay ceiling was rotation flat, so a code minted at the start of its window woke the loop 250 ms before the boundary and re-rendered the window already on screen — a late QR on every healthy display, every window.
+
+Files ready to ship
+New (3)
+
+src/MyRestaurant.WebApplication/Displays/DisplayRefreshSchedule.cs
+tests/MyRestaurant.WebApplication.Tests/Displays/DisplayRefreshScheduleTests.cs — 16 cases
+docs/_append/BUILD_PROGRESS-m6-slice-4.md
+Edited (6)
+
+src/MyRestaurant.WebApplication/Program.cs
+src/MyRestaurant.WebApplication/Components/Pages/Display/TableDisplay.razor
+tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs
+tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs
+tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
+_CHANGES.md
+Files to delete: none. No migration, no schema change, no package change, no ADR or spec edit.
+
+Say the word and I'll emit the tar.gz (m6-slice4-display-refreshes.tar.gz, extracts at repo root) as my first action — no re-derivation needed, the tree is already assembled at exact repo-relative paths.
+
+Expected after applying: dotnet test 950 total / 0 failed / 935 succeeded / 15 skipped; MYRESTAURANT_E2E=1 5 passed / 10 skipped.
+
+Please continue
+
+
+Reconciled string interpolation constraints and verified async patterns
+Reconciled string interpolation constraints and verified async patterns
+Curating modified files for selective archiving.
+
+
+Final review of DisplayJourneys header and selectors
+
+Review WaitForLiveSurfaceAsync
+Grappling with string interpolation handler constraints.
+
+Reconciled string interpolation constraints and verified async patterns.
+
+
+Verify all cross-references are wired
+
+Stage exactly the nine changed files
+
+Create the structured archive that extracts at repo root
+
+Presented file
+Done
+bash
+tar -xzf m6-slice4-display-refreshes.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+Files to delete: none. No migration, no schema change, no package change, no ADR or spec edit.
+
+Nine files, exactly what git status should show:
+
+New (3)
+
+src/MyRestaurant.WebApplication/Displays/DisplayRefreshSchedule.cs
+tests/MyRestaurant.WebApplication.Tests/Displays/DisplayRefreshScheduleTests.cs
+docs/_append/BUILD_PROGRESS-m6-slice-4.md
+Edited (6)
+
+src/MyRestaurant.WebApplication/Program.cs
+src/MyRestaurant.WebApplication/Components/Pages/Display/TableDisplay.razor
+tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs
+tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs
+tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
+_CHANGES.md
+Expected
+dotnet build — the .razor is the one to watch: @inject ILogger<TableDisplay> Logger, RendererInfo used from @code, two data-live attributes.
+dotnet test — 950 total, 0 failed, 935 succeeded, 15 skipped (was 934/0/919/15).
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests — 5 passed, 10 skipped.
+bash scripts/ci_local.sh --with-all.
+If 2 and 15 still fail
+The failure now names its own cause:
+
+RestaurantInstance refuses to start → /_framework/blazor.web.js still isn't served; the Program.cs change didn't take.
+WaitForLiveSurfaceAsync times out → the script loads but no circuit is established; check /_blazor.
+WaitForJoinQrPathAsync times out with data-live='true' on screen → circuit is up, refresh loop isn't. That's TableDisplay.razor and nothing to do with static assets.
+Also worth doing on your side, unchanged from last slice: sudo dnf install ShellCheck so ci_local.sh step 1 does more than parse.
+
+
+M6 slice4 display refreshes.tar
+GZ 
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+15
+99

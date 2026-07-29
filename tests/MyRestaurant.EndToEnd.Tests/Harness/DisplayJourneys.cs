@@ -25,6 +25,16 @@ internal static class DisplayJourneys
     /// </summary>
     private const string JoinQrPathSelector = "#table-display-surface svg.join-qr-svg path";
 
+    /// <summary>The surface itself, whatever state it is in.</summary>
+    private const string SurfaceSelector = "#table-display-surface";
+
+    /// <summary>
+    /// The surface as rendered by a live circuit. <c>TableDisplay.razor</c> sets <c>data-live</c> from
+    /// <c>RendererInfo.IsInteractive</c>, so this matches only markup an interactive renderer produced —
+    /// never the prerendered pass, which is byte-identical in every other respect.
+    /// </summary>
+    private const string LiveSurfaceSelector = "#table-display-surface[data-live='true']";
+
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
     /// <summary>
@@ -66,6 +76,48 @@ internal static class DisplayJourneys
         }
 
         return tableIdentifier;
+    }
+
+    /// <summary>
+    /// Waits until the surface on screen was rendered by a live circuit rather than by prerendering.
+    ///
+    /// <para><b>Why any scenario that watches the QR must do this first.</b> Prerendering produces the
+    /// entire surface server-side: the table label, the party-size chip, and a genuinely current, valid
+    /// join code. What it does not produce is anything that keeps happening — no §4.3 refresh timer, no
+    /// §9 subscription. So a page that never becomes interactive passes every assertion about the
+    /// <em>first</em> code and then fails, sixty seconds later, with "the QR did not change": a symptom
+    /// two steps removed from its cause, in a scenario that had no way to say so. Waiting here turns that
+    /// into one sentence about interactivity, at the moment interactivity was needed.</para>
+    /// </summary>
+    internal static async Task WaitForLiveSurfaceAsync(IPage page, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        try
+        {
+            await page.Locator(LiveSurfaceSelector).First.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Attached,
+                Timeout = (float)timeout.TotalMilliseconds,
+            });
+        }
+        catch (PlaywrightException exception)
+        {
+            // Read the page BEFORE composing the message: an await inside an interpolated string that
+            // binds to a handler is CS4007, and the diagnosis is worth more than the one-liner.
+            string surface = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The table display surface never became interactive within {timeout.TotalSeconds:F0}s;"
+                    + $" it is still the prerendered markup ({surface}). Nothing on this page will ever"
+                    + " change — the QR cannot advance across a rotation boundary and the party-size chip"
+                    + " cannot move — because no Blazor circuit was established. Check that"
+                    + " /_framework/blazor.web.js is served (RestaurantInstance probes it at startup) and"
+                    + " that the browser reached /_blazor."),
+                exception);
+        }
     }
 
     /// <summary>
@@ -187,6 +239,30 @@ internal static class DisplayJourneys
         }
 
         return Guid.TryParse(path[prefix.Length..], out tableIdentifier);
+    }
+
+    /// <summary>
+    /// What the surface currently claims about itself, for the interactivity failure above. Reported as
+    /// the attribute values rather than as a screenshot, because the two states differ in exactly one
+    /// attribute and in nothing a human eye could distinguish.
+    /// </summary>
+    private static async Task<string> DescribeSurfaceAsync(IPage page)
+    {
+        ILocator surface = page.Locator(SurfaceSelector).First;
+
+        if (await surface.CountAsync() == 0)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"there is no display surface on the page at all; the browser is at '{page.Url}'");
+        }
+
+        string? live = await surface.GetAttributeAsync("data-live");
+        string? token = await surface.GetAttributeAsync("data-refresh-token");
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"data-live='{live ?? "absent"}', data-refresh-token='{token ?? "absent"}'");
     }
 
     private static async Task<string> DescribeRefusalAsync(IPage page)

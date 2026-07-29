@@ -1,178 +1,207 @@
-# M6 Slice 3 — §16.3 scenarios 2 and 15: the display's rotating code, watched
+# M6 Slice 4 — the display refreshes
 
 Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
-and the contents drop straight over your working tree. `git status` will show exactly these 11 files as
+and the contents drop straight over your working tree. `git status` will show exactly these 9 files as
 modified/added, and **no deletions**.
 
 ```bash
-tar -xzf m6-slice3-display-rotating-qr.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice4-display-refreshes.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
-**None.** Nothing is renamed and nothing is superseded. No migration, no schema change, nothing in `src/`
-touched at all, and no `Directory.Packages.props` edit — the one package this slice references was already
-pinned there.
+**None.** Nothing is renamed or superseded. No migration, no schema change, no
+`Directory.Packages.props` edit, no new package.
 
 ## The state I found
 
-Green on every gate that ran: `total: 934, failed: 0, succeeded: 919, skipped: 15`, a clean
-`run.sh --smoke`, a healthy `--containers-only`, `dotnet list package --outdated` empty, and the quick
-tunnel up at `picks-garcia-survive-kruger.trycloudflare.com`. M6 Slice 2's checklist is fully discharged.
+`dotnet test` green: `total: 934, failed: 0, succeeded: 919, skipped: 15`. Clean `run.sh --smoke`, healthy
+`--containers-only`, `dotnet list package --outdated` empty, quick tunnel up, and step 6 of
+`ci_local.sh --with-all` running for the first time (the `bash run.sh` fix landed).
 
-**One gate did not run**, and it has not been running:
+`MYRESTAURANT_E2E=1` — **3 passed, 2 failed, 10 skipped.** Both new scenarios from Slice 3:
 
 ```
-6. boot smoke (./run.sh --smoke)
-scripts/ci_local.sh: line 153: ./run.sh: Permission denied
+Display_PairsAndShowsRotatingQrAcrossWindowBoundary
+  The table display did not show a join code different from the one it started on within 60s.
+Admin_RotatesJoinSecret_InFlightTokenDiesNextWindowWorks
+  The table display did not show a join code signed by the rotated secret within 60s.
 ```
 
-`run.sh` carries no execute bit in the working tree — you invoke it as `bash run.sh` everywhere else — and
-under `set -euo pipefail` that ends the script rather than reporting a fixable detail. So the boot-smoke
-step of `ci_local.sh --with-all` has been silently unreachable since it was added. Fixed here, and folded
-into this slice rather than held, per the small-fix policy.
+Everything before the wait passed in both — including `AssertShowingLiveJoinCode` on the *first* code. So
+the display rendered a correct, live code exactly once and then never again.
 
-## New files (4)
+## The diagnosis
 
-Three harness files under `tests/MyRestaurant.EndToEnd.Tests/Harness/`:
+**Two causes, and a third hazard found on the way.**
 
-- `AdministrationJourneys.cs` — create a table, issue a display pairing code, rotate a join secret. All
-  three through the real static-SSR administration surfaces, because "admin creates table" in §16.3 means
-  the form, the antiforgery token, the endpoint authorization and the redirect, not an `INSERT`.
-- `DisplayJourneys.cs` — redeem a pairing code as an unpaired screen, read the QR's `d` attribute, and
-  poll it until a predicate holds. Refusals are quoted verbatim into the exception, because §4.2's
-  deliberately vague one-sentence rejection is as unhelpful to whoever reads the failure as it is to a
-  prober.
-- `JoinQrCodes.cs` — the expected SVG path for a given `(secret, table, origin, window)`, and a
-  classification of what is on screen: the current window's code, the previous window's code, a code N
-  windows out of date, or one this table's secret does not produce.
+### 1. The harness never had a Blazor circuit (harness/product boundary)
 
-Plus one docs append: `docs/_append/BUILD_PROGRESS-m6-slice-3.md`.
+`RestaurantInstance` boots the **build** output with `ASPNETCORE_ENVIRONMENT=Production`.
+`_framework/blazor.web.js` is a framework **static web asset**: `dotnet publish` copies those into
+`wwwroot/`, a plain `dotnet build` leaves them in the NuGet cache and describes them in a build-time
+manifest — and that manifest is loaded by `WebHost.ConfigureWebDefaults` **only in Development**
+(`dotnet/aspnetcore`, `release/10.0`):
 
-## Edited (7)
+```csharp
+if (ctx.HostingEnvironment.IsDevelopment())
+{
+    StaticWebAssetsLoader.UseStaticWebAssets(ctx.HostingEnvironment, ctx.Configuration);
+}
+```
 
-- `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` — scenarios **2** and **15** implemented; the
-  remaining ten stay as named placeholders, with scenario 3's skip reason now naming the one piece of
-  plumbing it still wants.
-- `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs` — `OpenIsolatedPageAsync()` for
-  additional browser contexts (closed in reverse on disposal), `PublicOrigin` and
-  `TableJoinTokenRotationSeconds` as properties instead of facts buried in the process environment, and
-  `ReadJoinSecretAsync()`.
-- `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs` — documentation only. Its
-  `tableJoinTokenRotationSeconds` parameter said "scenario 2 *will* want a short one"; scenario 2 exists
-  now.
-- `tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj` —
-  `Net.Codecrete.QrCodeGenerator`, versionless as always.
-- `scripts/ci_local.sh` — `bash run.sh` rather than `./run.sh`, everywhere, with the reason in the header.
-  Clean under `bash -n`, `shellcheck --severity=warning` **and** `--severity=style` as delivered.
-- `README.md` — five of fifteen scenarios, the multiple-contexts note, the per-instance rotation window,
-  and the roadmap line.
+`Program.cs` serves assets with `UseStaticFiles()`, so build-output-as-Production has neither. The script
+tag 404s, no circuit is established, and every interactive page silently degrades to prerendered HTML.
+
+Silently is the difficulty. Prerendering renders the whole surface server-side — table label, party-size
+chip, and a genuinely valid current join code. Nothing errors, nothing looks wrong, the page just never
+changes again. The container is fine (it publishes) and `run.sh` is fine (it is Development). **No
+end-to-end scenario had ever exercised an interactive surface** — the five that pass are all static SSR —
+so there was nowhere for this to show up until one watched a screen for sixty seconds.
+
+### 2. The refresh loop lost a race with itself (real product bug)
+
+Independent of the above, and it would bite in production:
+
+```csharp
+protected override void OnAfterRender(bool firstRender)
+{
+    if (!firstRender || _stage is DisplayStage.NotPaired or DisplayStage.WrongTable) return;
+    _subscription = Broadcaster.Subscribe(OnDomainNotification);
+    _ = RunRefreshLoopAsync();
+}
+```
+
+`ComponentBase.RunInitAndSetParametersAsync` calls `StateHasChanged()` the moment `OnInitializedAsync`
+yields, and it yields on the first of **four** database round trips inside `LoadAsync`. That render goes
+out with `_stage` still at its default `NotPaired`. The client's acknowledgement is one loopback WebSocket
+message and routinely beats four queries — at which point `OnAfterRender(firstRender: true)` is rejected
+by the guard, `firstRender` is never true again, and **the refresh loop never starts.** Intermittent by
+construction, invisible when it happens, and the common case on a busy database.
+
+### 3. A loop that could die once, permanently (latent)
+
+`RunRefreshLoopAsync` caught only `OperationCanceledException` and `ObjectDisposedException`. Anything
+else escaped a fire-and-forget task — unobserved, unlogged, terminal. One dropped connection and a screen
+freezes for the rest of the day, looking exactly like a healthy one.
+
+## New files (3)
+
+- `src/MyRestaurant.WebApplication/Displays/DisplayRefreshSchedule.cs` — the boundary arithmetic and the
+  staleness deadline, pure and clock-free, out of the `.razor` where nothing but Playwright could reach it.
+- `tests/MyRestaurant.WebApplication.Tests/Displays/DisplayRefreshScheduleTests.cs` — sixteen cases.
+- `docs/_append/BUILD_PROGRESS-m6-slice-4.md`
+
+## Edited (6)
+
+- `src/MyRestaurant.WebApplication/Program.cs` — load the build-time static web assets manifest outside
+  Development. **No-op in the container**: `ResolveManifest` returns `null` when the file is absent and
+  publish emits no runtime manifest, so this finds nothing there and `UseStaticFiles` serves the published
+  copies exactly as before.
+- `src/MyRestaurant.WebApplication/Components/Pages/Display/TableDisplay.razor` — start the live work via
+  an idempotent `StartLiveWorkIfNeeded()` gated on `RendererInfo.IsInteractive` instead of `firstRender`,
+  called from the end of `OnInitializedAsync` (which needs no render at all); absorb, log, and retry
+  unexpected refresh failures; publish `data-live`; delegate the arithmetic to `DisplayRefreshSchedule`.
+- `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs` — `VerifyInteractivityAsync` probes
+  `/_framework/blazor.web.js` at startup and refuses to hand back an instance that cannot be interactive,
+  naming the cause.
+- `tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs` — `WaitForLiveSurfaceAsync`, plus
+  `DescribeSurfaceAsync` for the failure message.
+- `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` — scenarios 2 and 15 wait for interactivity
+  before they start watching the QR; `InteractivityPatience` beside `RefreshPatience`.
 - `_CHANGES.md` (this file)
 
 No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, `docs/DOCUMENTATION_REVIEW.md` or ADR edit:
-this realizes behaviour §4.1, §4.2, §4.3 and §11.5 already specify, in the words they already use.
+every line here makes §4.3 and §11.5 true as written, and changes nothing they say.
 
-## The one decision worth arguing about
+## The decision worth arguing about
 
-**"The QR changed" is close to a worthless assertion.** It is also the obvious one, and it is what §16.3
-scenario 2 literally asks for — so it is worth saying why this slice does more than that.
+**The static-web-assets fix went in `Program.cs`, not in the harness.**
 
-A display frozen on a stale code satisfies "changed" the moment anything else on the page moves. A display
-signed by the wrong table's secret satisfies it perfectly. A display three windows behind satisfies it
-every time it falls one further behind. Those are precisely the failures §11.5 exists to prevent; its own
-comment says it out loud — *"a frozen QR looks exactly like a live one"*. So the assertion made here is
-that **the artefact on screen is the code the server would accept right now**, at both ends of the
-boundary.
+The purist move is to leave product code alone and change the harness — flip it to `Development`, or have
+it boot a `dotnet publish` output. I did not, for one reason: *build output + `ASPNETCORE_ENVIRONMENT=Production`*
+is a thing a real operator does, on the day they are reproducing a production configuration locally before
+publishing. What they get today is an application where every interactive surface renders once and then
+stops, with no error anywhere and no clue as to why. That is worth three lines to close for them, not just
+for the test.
 
-Getting there means recomputing the QR: the secret from the row, the token from the domain's own
-`JoinTokenService`, the URL from its own `BuildJoinUrl`, the geometry from the same
-`Net.Codecrete.QrCodeGenerator` call the renderer makes. The alternative — decoding the SVG on screen —
-means a rasteriser and a computer-vision dependency to answer a question about HMAC arithmetic.
+It is also the cheapest of the three options and the only one with no downside in the container, where it
+provably does nothing.
 
-That restates three private facts about `TableJoinTokens.RenderJoinQrSvg`: Ecc.Medium, a four-module quiet
-zone, `ToGraphicsPath`. They should stay private; nothing in the product needs them, and widening their
-visibility for a test is the worse trade. If one of them moves, both scenarios fail immediately and say
-so, which is what a duplicated constant is supposed to do.
-
-And the comparison is reported as a **phrase**, not as two thousand characters of path against two
-thousand characters of path, so a failure reads:
-
-```
-Collection: ["the current window's code", "the previous window's code"]
-Not found:  "a code 3 windows out of date"
-```
+If you would rather the harness published instead, the change is contained: `WebApplicationLocator` grows
+a publish step and `WebApplicationLaunch.ContentRoot` stops needing to point at the source tree. It is a
+slower loop and a bigger diff, and it buys only the container's exact asset layout — which nothing
+currently asserts.
 
 ## Three smaller things, in case they look arbitrary
 
-**The tablet needs its own browser context, and it is not tidiness.**
-`DisplayDeviceAuthenticationMiddleware` ignores the §4.2 device credential on any request the Identity
-cookie already authenticated — *"a signed-in person always wins"*, so staff opening a display URL on a
-paired tablet are themselves. Pair inside the administrator's browser and the surface resolves to
-`NotPaired` and bounces to `/display/pair`, for a reason that looks nothing like the cause. Scenario 15
-opens a third context for the guest, because a browser that was refused must not be carrying a grant
-cookie when it is later accepted.
+**The ceiling was off by the overshoot.** `DelayUntilNextWindow` clamped to `rotation` flat. A code minted
+at the very start of its window reports a `NextRotationAt` one full rotation away and legitimately wants
+`rotation + 250 ms`; clamping woke the loop 250 ms *before* the boundary, re-rendered the window already on
+screen, and reached the new code only on the pass after. Every healthy display, every window. The ceiling
+is now `rotation + overshoot` — it exists to stop a backwards clock jump parking the loop for hours, not to
+second-guess an ordinary full-window wait. Found by writing the test, which is the argument for the file.
 
-**The clock is sampled after the browser is read, never before.** The server rendered at or before the
-read, so the window sampled afterwards is the newest one the screen could be showing — and accepting the
-previous window too is §4.3's own tolerance. That is what turns a boundary landing mid-assertion from a
-flake into a non-event.
+**`data-live` is not only for tests.** §11.5's staleness curtain covers a circuit that dies *later* —
+`data-refresh-token` stops changing and `js/display.js` notices. It cannot cover a circuit that never
+lived, because the prerendered surface is byte-identical to a healthy one. One attribute makes that
+readable in dev tools and waitable in a scenario.
 
-**Rotation stays a per-instance parameter.** Twenty seconds for these two, the existing hour for scenario
-14. They want opposite things from the same knob, and §4.3 accepts the current and previous window
-whatever their width, so nothing an assertion depends on moves with it. Waits are two rotations plus
-twenty seconds.
+**The interactivity probe stays even though `Program.cs` now makes it pass.** It is one request per
+instance, and it guards a failure that is invisible by construction: if a future change breaks
+interactivity, this fails at instance startup with the reason instead of surfacing as an unrelated
+sixty-second timeout in whichever scenario happened to need a circuit.
 
 ## What I verified rather than guessed
 
-- **Playwright 1.61.0** (`microsoft/playwright-dotnet` at `v1.61.0`): `ILocator.GetAttributeAsync`,
-  `CountAsync`, `InnerTextAsync`, and `LocatorWaitForOptions` carrying `WaitForSelectorState? State`
-  beside `float? Timeout`. The QR path is waited for as **attached** rather than visible, because §11.5's
-  offline curtain sits on top of that element and a scenario diagnosing a frozen display must still be
-  able to read what it froze on.
-- **`Net.Codecrete.QrCodeGenerator` 3.0.0**: `QrCode.EncodeText(string, QrCode.Ecc)` and
-  `ToGraphicsPath(int)` — the two calls `TableJoinTokens` already makes, so verified by code that compiles
-  today rather than by a document.
-- **Every selector, against the Razor in the tree**: `#label` / *Create table*; `p.pairing-code` /
-  *Generate pairing code*; *Rotate join secret* and the `secret-rotated` flash text; `#pairing-code`,
-  `#device-label` / *Pair this display*; `#table-display-surface svg.join-qr-svg path`;
-  `p.status-success`; `p.status-error`. Each is a selector a Razor edit could break, which is why they
-  live in three journey files rather than scattered through the scenarios.
-- **`scripts/ci_local.sh`**: `bash -n` clean, `shellcheck --severity=warning` clean, `--severity=style`
-  clean. The `--help` path prints its header by scanning contiguous `#` lines, so the new paragraph is
-  `#`-prefixed throughout — a bare blank line there would have truncated the help.
-
-One thing I could not verify without an SDK: whether xUnit's analyzers have anything to say about
-`Assert.Contains(phrase, collection)`. It is the recommended form for collection membership (the rule that
-exists, xUnit2017, fires on `Assert.True(collection.Contains(x))`, which this deliberately avoids), and
-overload resolution is unambiguous because the second argument is an `IReadOnlyList<string>` rather than a
-`string`. If CI disagrees under warnings-as-errors, the fix is local to one helper.
+- **`WebHost.ConfigureWebDefaults`** (`src/DefaultBuilder/src/WebHost.cs`, `release/10.0`) — the
+  `IsDevelopment()` gate on `StaticWebAssetsLoader.UseStaticWebAssets`, quoted above.
+- **`StaticWebAssetsLoader`** (`src/Hosting/Hosting/src/StaticWebAssets/StaticWebAssetsLoader.cs`) —
+  `ResolveManifest` reads `configuration[WebHostDefaults.StaticWebAssetsKey]` or
+  `{ApplicationName}.staticwebassets.runtime.json` beside the assembly, and **returns `default` when the
+  file does not exist**. That is what makes the call a no-op in a published deployment. Confirmed public
+  shipped API in `PublicAPI.Shipped.txt`:
+  `StaticWebAssetsLoader.UseStaticWebAssets(IWebHostEnvironment!, IConfiguration!) -> void`.
+- **`WebApplication`** (`src/DefaultBuilder/src/WebApplication.cs`) — `Environment` is
+  `IWebHostEnvironment` and `Configuration` is `IConfiguration`, so the call site needs no adapter. I used
+  `StaticWebAssetsLoader` directly rather than `builder.WebHost.UseStaticWebAssets()` because the latter
+  goes through `ConfigureWebHostBuilder.ConfigureAppConfiguration`, which runs eagerly and then validates
+  host-configuration keys — legal here, but placing the call after `Build()` and before `UseStaticFiles()`
+  is the placement whose ordering I can reason about without an SDK.
+- **`ComponentBase`** (`src/Components/Components/src/ComponentBase.cs`) —
+  `RunInitAndSetParametersAsync` calls `StateHasChanged()` before awaiting `OnInitializedAsync`, which is
+  the whole of cause 2; and `RendererInfo => _renderHandle.RendererInfo` is `protected`, so it is reachable
+  from `@code`.
+- **`RendererInfo`** (`src/Components/Components/src/RenderTree/RendererInfo.cs`) — `Name` and
+  `IsInteractive`. `RemoteRenderer` overrides it with `new("Server", isInteractive: true)`;
+  `Web.HtmlRendering.StaticHtmlRenderer`, which `EndpointHtmlRenderer` derives from, with
+  `new("Static", isInteractive: false)`. So `data-live` is exactly "a circuit rendered this".
+- **Playwright 1.61.0** — `LocatorWaitForOptions.Timeout` is `float?`, hence the explicit cast;
+  `Microsoft.Playwright.TimeoutException` derives from `PlaywrightException`, so the existing catch shape
+  covers the wait timing out.
+- **CS4007** — `await` cannot appear inside an interpolated string that binds to
+  `DefaultInterpolatedStringHandler`, so `WaitForLiveSurfaceAsync` reads the page into a local *before*
+  composing its message. The existing `PairAsync` avoids the same trap by concatenating instead.
 
 ## Build/test checklist for this slice
 
-1. `dotnet restore` — one new package *reference*, already pinned centrally and already arriving
-   transitively. No version resolution is new.
-2. `dotnet build` — three new files and four edited ones, all in the end-to-end test project.
-3. `dotnet test` — **still 934 total, 919 passing, 15 skipped.** Two facts moved from a discovery-time
-   skip to a runtime one, which the summary counts identically.
-4. `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` — the real check for this slice.
-   Expect **5 passed, 10 skipped**. Scenarios 2 and 15 each wait for rotation boundaries on purpose, so
-   this run is meaningfully longer than the last.
-5. `bash scripts/ci_local.sh --with-all` — and this time watch step 6 actually run.
-6. Push, and watch the `end-to-end` job.
+1. `dotnet build` — one new source file, one new test file, one edited `.razor`. The Razor edit is the one
+   worth watching: `@inject ILogger<TableDisplay> Logger` (self-referencing generic, legal), `RendererInfo`
+   used from `@code`, and two `data-live` attributes.
+2. `dotnet test` — expect **950 total, 0 failed, 935 succeeded, 15 skipped** (was 934/0/919/15).
+3. `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` — the real check. Expect
+   **5 passed, 10 skipped**. Scenarios 2 and 15 still wait on real boundaries, so it is still the slow one.
+4. `bash scripts/ci_local.sh --with-all`.
+5. Push, and watch the `end-to-end` job.
 
-## Also worth doing on your side
-
-```bash
-chmod +x run.sh && git update-index --chmod=+x run.sh
-```
-
-The script fix makes `ci_local.sh` work regardless, but the README tells people to type `./run.sh`, and
-right now that is not true of a fresh clone.
+**If 2 and 15 still fail**, the failure now tells you where to look: `WaitForLiveSurfaceAsync` timing out
+means the circuit never started (and `RestaurantInstance` should have refused before that);
+`WaitForJoinQrPathAsync` timing out with `data-live='true'` on screen means the circuit is up and the
+refresh loop is not, which is a `TableDisplay.razor` problem and nothing to do with static assets.
 
 ## Housekeeping carried over
 
-`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Eleven appends are now unmerged in
-`docs/_append/`, including this slice's:
+`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Twelve appends are now unmerged:
 
 ```bash
 cat docs/_append/BUILD_PROGRESS-m4-slice-2.md >> docs/BUILD_PROGRESS.md
@@ -186,18 +215,25 @@ cat docs/_append/BUILD_PROGRESS-m5-slice-5.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m6-slice-1.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m6-slice-2.md >> docs/BUILD_PROGRESS.md
 cat docs/_append/BUILD_PROGRESS-m6-slice-3.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m6-slice-4.md >> docs/BUILD_PROGRESS.md
+```
+
+`shellcheck` is still not installed locally, so `ci_local.sh` step 1 only parses:
+
+```bash
+sudo dnf install ShellCheck
 ```
 
 ## What is next
 
-Ten §16.3 scenarios, and the backup/restore drill as something executable. Scenario **3** is the next one
-and the last with any plumbing left in it: the guest registration journey (not the same page as `/setup`)
-and a virtual authenticator on a context that is not the administrator's. After that, 4 through 11 are two
-live circuits and a shopping list, and 12 walks the obligations pipeline end to end.
+Ten §16.3 scenarios. Scenario **3** is next and the last with plumbing left in it: the guest registration
+journey (not the same page as `/setup`) and a virtual authenticator on a context that is not the
+administrator's. 4 through 11 are two live circuits and a shopping list — and they are now worth attempting,
+because until this slice a scenario needing two live circuits would have had none.
 
 ## The one-line why
 
-The single worst thing this product can do is show a table a QR code that stopped working ten minutes ago,
-because a dead code and a live one look identical from every seat in the restaurant — and there is now a
-machine that pairs a screen, waits for the boundary, rotates the secret out from under it, and says
-whether the code on the glass is one the server would honour.
+The display had two independent ways to freeze on a code that stopped working — one that made every
+interactive page in the application inert outside Development, and one that turned on whether a WebSocket
+round trip beat four database queries — and both were undetectable by design, because a dead QR code and a
+live one are the same picture.

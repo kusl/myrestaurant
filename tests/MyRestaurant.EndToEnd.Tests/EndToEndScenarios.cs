@@ -119,6 +119,12 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         Assert.Equal(tableIdentifier, pairedTable);
         Assert.Equal(tableLabel, await HeadingAsync(display));
 
+        // Everything below waits on a *server timer* (§4.3), which only exists once a circuit does.
+        // Prerendering alone renders a table label and a valid QR and then never moves again, so without
+        // this the scenario's failure would be "the QR did not change" — true, and two steps from the
+        // cause. See DisplayJourneys.WaitForLiveSurfaceAsync.
+        await DisplayJourneys.WaitForLiveSurfaceAsync(display, InteractivityPatience);
+
         // §4.1 lets nothing render or return the join secret, so the row is the only place to learn what
         // the server is signing with — which is precisely what makes the next two assertions worth making
         // rather than tautological.
@@ -243,6 +249,10 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
         IPage display = await instance.OpenIsolatedPageAsync();
         await DisplayJourneys.PairAsync(display, pairingCode, "E2E Rotation Tablet");
+
+        // "The display's next window works" is a claim about a live circuit re-reading the secret. A
+        // prerendered surface would satisfy every assertion up to the rotation and none after it.
+        await DisplayJourneys.WaitForLiveSurfaceAsync(display, InteractivityPatience);
 
         byte[] originalSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
         string codeBeforeRotation = await DisplayJourneys.ReadJoinQrPathAsync(display);
@@ -392,6 +402,14 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     /// </summary>
     private static TimeSpan RefreshPatience(int rotationSeconds)
         => TimeSpan.FromSeconds((rotationSeconds * 2) + 20);
+
+    /// <summary>
+    /// How long to give a page to become interactive. Independent of the rotation window, because this is
+    /// a WebSocket handshake and one render batch rather than anything on a timer — thirty seconds is the
+    /// same patience <see cref="RestaurantInstance"/> gives every other page operation, and a circuit that
+    /// has not arrived by then is not late, it is absent.
+    /// </summary>
+    private static readonly TimeSpan InteractivityPatience = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Asserts that the QR on screen is the code this table's secret produces for the current or the

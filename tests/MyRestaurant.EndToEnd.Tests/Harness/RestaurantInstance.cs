@@ -60,6 +60,13 @@ internal sealed class RestaurantInstance : IAsyncDisposable
     private const int DiagnosticOutputCharacterLimit = 8000;
     private const int PageTimeoutMilliseconds = 30_000;
 
+    /// <summary>
+    /// The script <c>App.razor</c> loads to start a circuit. Probed at startup — see
+    /// <see cref="VerifyInteractivityAsync"/> — because without it every interactive surface silently
+    /// degrades to prerendered HTML, which no scenario would report as anything but a timeout.
+    /// </summary>
+    private const string BlazorScriptPath = "/_framework/blazor.web.js";
+
     private static readonly TimeSpan ReadinessTimeout = TimeSpan.FromSeconds(120);
     private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(15);
@@ -189,6 +196,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         try
         {
             await WaitForReadinessAsync(process, baseUrl, output, outputGate, cancellationToken);
+            await VerifyInteractivityAsync(baseUrl, cancellationToken);
 
             context = await browser.NewContextAsync(new BrowserNewContextOptions { BaseURL = baseUrl });
             IPage page = await context.NewPageAsync();
@@ -446,6 +454,59 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         throw new InvalidOperationException(
             $"/healthz/ready did not answer 200 within {ReadinessTimeout.TotalSeconds:F0}s."
             + $"\n--- web application output ---\n{Snapshot(output, outputGate)}");
+    }
+
+    /// <summary>
+    /// Refuses to hand back an instance whose pages cannot become interactive.
+    ///
+    /// <para><b>Why a probe and not a scenario's problem.</b> <c>/healthz/ready</c> proves the process
+    /// answers, the configuration binds and the schema is current — and says nothing about whether a
+    /// browser can start a Blazor circuit. If <c>_framework/blazor.web.js</c> is missing, every page still
+    /// renders: prerendering produces the whole document server-side, so a display shows a table label and
+    /// a perfectly good QR code, a kitchen board shows its columns, and nothing anywhere reports an error.
+    /// They simply never change again. Scenario 2 experienced that as "the QR did not advance within 60s"
+    /// and scenario 15 as "no code signed by the rotated secret" — two mysteries with one cause and no
+    /// mention of it in either message.</para>
+    ///
+    /// <para><b>Why it can be missing at all.</b> The framework's own JavaScript is a static <em>web
+    /// asset</em>. <c>dotnet publish</c> copies those into <c>wwwroot/</c>; a plain <c>dotnet build</c>
+    /// leaves them in the NuGet cache and describes them in a build-time manifest which
+    /// <c>WebHost.ConfigureWebDefaults</c> loads only when the environment is Development. This harness
+    /// boots the <em>build</em> output with <c>ASPNETCORE_ENVIRONMENT=Production</c>, which is exactly the
+    /// combination that has neither. <c>Program.cs</c> now asks for that manifest itself outside
+    /// Development, so this probe should pass; it stays because the cost is one request per instance and
+    /// the failure it catches is invisible by nature.</para>
+    /// </summary>
+    private static async Task VerifyInteractivityAsync(string baseUrl, CancellationToken cancellationToken)
+    {
+        using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(10) };
+
+        HttpStatusCode status;
+        try
+        {
+            using HttpResponseMessage response = await client.GetAsync(baseUrl + BlazorScriptPath, cancellationToken);
+            status = response.StatusCode;
+        }
+        catch (HttpRequestException exception)
+        {
+            throw new InvalidOperationException(
+                $"Could not fetch {BlazorScriptPath} from {baseUrl}, so no page can become interactive.",
+                exception);
+        }
+
+        if (status == HttpStatusCode.OK)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"{baseUrl}{BlazorScriptPath} answered {(int)status} instead of 200, so this instance can"
+            + " serve no interactive page: every surface would render once, from prerendering, and then"
+            + " never update — a table display frozen on its first QR, a kitchen board that never alerts."
+            + " The usual cause is that the framework's static web assets are unreachable: they live in"
+            + " wwwroot only after `dotnet publish`, and a build output's manifest is loaded by"
+            + " WebHost.ConfigureWebDefaults only in the Development environment. Program.cs loads that"
+            + " manifest itself for other environments; if this fires, check that it still does.");
     }
 
     private static async Task StopProcessAsync(Process process)

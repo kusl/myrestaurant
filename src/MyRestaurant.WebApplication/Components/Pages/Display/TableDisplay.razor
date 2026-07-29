@@ -14,6 +14,7 @@
 @inject IClock Clock
 @inject RestaurantOptions Options
 @inject NavigationManager Navigation
+@inject ILogger<TableDisplay> Logger
 
 @* The table display surface (TECHNICAL_SPECIFICATION §4.3, §11.5).
 
@@ -30,7 +31,13 @@
    belongs in the surface — the same place §3.7 already leaves /table's per-sitting membership check.
 
    Rotation is continuous and independent of sitting state (§4.3), so the timer runs whether or not the
-   table has anyone at it. Deactivating the table stops rendering (§4.1) without unpairing the device. *@
+   table has anyone at it. Deactivating the table stops rendering (§4.1) without unpairing the device.
+
+   Everything §11.5 asks for beyond the first paint depends on interactivity actually arriving. If
+   /_framework/blazor.web.js cannot be fetched, this page is prerendered HTML and nothing else: the code
+   painted at page load stays on the glass indefinitely, looking exactly like a live one. That is why the
+   surface publishes data-live (see IsLiveAttributeValue) and why Program.cs asks for the build-time
+   static web assets manifest outside Development. *@
 
 <PageTitle>@PageTitleText</PageTitle>
 
@@ -75,9 +82,11 @@ else if (_stage == DisplayStage.TableOutOfService)
 else if (_qr is not null)
 {
     @* data-refresh-token / data-fresh-for-ms drive js/display.js: it measures the deadline from when it
-       observes the token change, so a kiosk with a badly wrong clock still detects a dead circuit. *@
+       observes the token change, so a kiosk with a badly wrong clock still detects a dead circuit.
+       data-live says whether a circuit produced this markup at all — see IsLiveAttributeValue. *@
     <section class="display-card display-surface" id="table-display-surface"
-             data-refresh-token="@_refreshSequence" data-fresh-for-ms="@FreshForMilliseconds">
+             data-refresh-token="@_refreshSequence" data-fresh-for-ms="@FreshForMilliseconds"
+             data-live="@IsLiveAttributeValue">
         <p class="display-eyebrow">@Options.RestaurantName</p>
         <h1>@_tableLabel</h1>
 
@@ -112,7 +121,8 @@ else
     @* Active table, no code back. Transient rather than fatal — the refresh loop will try again on the
        next boundary — so say so plainly instead of dereferencing a null or showing a blank screen. *@
     <section class="display-card display-surface" id="table-display-surface"
-             data-refresh-token="@_refreshSequence" data-fresh-for-ms="@FreshForMilliseconds">
+             data-refresh-token="@_refreshSequence" data-fresh-for-ms="@FreshForMilliseconds"
+             data-live="@IsLiveAttributeValue">
         <p class="display-eyebrow">@Options.RestaurantName</p>
         <h1>@_tableLabel</h1>
         <p class="display-lede">Preparing the join code…</p>
@@ -226,6 +236,7 @@ else
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationToken _stopping;
     private IDisposable? _subscription;
+    private bool _liveWorkStarted;
     private bool _disposed;
 
     [Parameter]
@@ -239,11 +250,28 @@ else
         : string.IsNullOrEmpty(_tableLabel) ? "Table display" : _tableLabel;
 
     /// <summary>
-    /// How long a rendered code stays trustworthy, for js/display.js. One rotation covers the healthy
-    /// case (the loop refreshes within a fraction of a second of the boundary); the extra ten seconds is
-    /// slack for a slow round trip, so a working display never flickers into the offline state.
+    /// How long a rendered code stays trustworthy, for js/display.js (§11.5). The arithmetic lives in
+    /// <see cref="DisplayRefreshSchedule"/> so it can be tested without a circuit.
     /// </summary>
-    private int FreshForMilliseconds => (Options.TableJoinTokenRotationSeconds + 10) * 1000;
+    private int FreshForMilliseconds
+        => DisplayRefreshSchedule.FreshForMilliseconds(Options.TableJoinTokenRotationSeconds);
+
+    /// <summary>
+    /// Whether a live circuit produced this markup — <c>"true"</c> only in interactive-server rendering,
+    /// <c>"false"</c> during the prerender pass.
+    ///
+    /// <para>Published because §11.5's central hazard is that <em>a frozen QR looks exactly like a live
+    /// one</em>, and the most complete way for it to freeze is for interactivity never to arrive at all:
+    /// if <c>/_framework/blazor.web.js</c> cannot be fetched, the prerendered code sits on the glass for
+    /// as long as the tablet is left alone, and nothing else on the page differs by so much as a pixel.
+    /// One attribute turns that into something an operator can read in dev tools and something the §16.3
+    /// scenarios can wait for, instead of a display that simply never advances.</para>
+    ///
+    /// <para><c>js/display.js</c> does not need it: the staleness curtain already covers a circuit that
+    /// dies <em>later</em>, because <c>data-refresh-token</c> stops changing. This covers the case where
+    /// it never lived.</para>
+    /// </summary>
+    private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {
@@ -282,17 +310,51 @@ else
 
         _tableLabel = _deviceTableLabel ?? string.Empty;
         await LoadAsync();
+
+        StartLiveWorkIfNeeded();
     }
 
+    // A safety net, not the primary path: OnInitializedAsync above starts the live work as soon as it knows
+    // the stage, which needs no render at all. This catches any future edit that returns early and still
+    // ends up in a stage worth refreshing. firstRender is deliberately ignored — see below.
     protected override void OnAfterRender(bool firstRender)
+        => StartLiveWorkIfNeeded();
+
+    /// <summary>
+    /// Starts the §4.3 refresh timer and the §9 subscription, once, as soon as this component is both
+    /// interactive and past the point of knowing which §11.5 state it is in.
+    ///
+    /// <para><b>Deliberately not gated on <c>firstRender</c>, which is the bug this replaces.</b>
+    /// <c>ComponentBase</c> calls <c>StateHasChanged()</c> the moment <c>OnInitializedAsync</c> yields,
+    /// and it yields on the first of four database round trips inside <see cref="LoadAsync"/>. The
+    /// client's acknowledgement of that first (empty) batch is one loopback message and routinely beats
+    /// them, so <c>OnAfterRender(firstRender: true)</c> arrives while <c>_stage</c> is still its default
+    /// <c>NotPaired</c> — a state the old guard rejected. <c>firstRender</c> is never true again, so the
+    /// refresh loop was never started at all, and the display sat frozen on the code it was born with for
+    /// as long as the tablet was left alone. Intermittent by construction: it turns on which of a
+    /// WebSocket round trip and four queries finishes first.</para>
+    ///
+    /// <para>Idempotence comes from <c>_liveWorkStarted</c> rather than from the lifecycle, so it does not
+    /// matter how many times or from where this is called. <c>RendererInfo.IsInteractive</c> is what keeps
+    /// the prerender pass from starting a timer on a render that is about to be thrown away — the honest
+    /// question, and the one <c>firstRender</c> was standing in for.</para>
+    /// </summary>
+    private void StartLiveWorkIfNeeded()
     {
-        if (!firstRender || _stage is DisplayStage.NotPaired or DisplayStage.WrongTable)
+        if (_liveWorkStarted || _disposed || !RendererInfo.IsInteractive)
         {
             return;
         }
 
-        // Only on the circuit: OnAfterRender does not run during prerendering, so neither the timer nor
-        // the subscription is ever created for a render that is about to be thrown away.
+        // Nothing to keep fresh, and nothing that will ever become fresh: an unpaired device is on its way
+        // to /display/pair, and a device on the wrong table renders no code by design (§3.7). Not latched,
+        // because both are terminal for this component instance — a re-pair is a new page load.
+        if (_stage is DisplayStage.NotPaired or DisplayStage.WrongTable)
+        {
+            return;
+        }
+
+        _liveWorkStarted = true;
         _subscription = Broadcaster.Subscribe(OnDomainNotification);
         _ = RunRefreshLoopAsync();
     }
@@ -336,6 +398,16 @@ else
     /// The window-aligned refresh (§4.3: "the display re-renders on a server timer aligned to the window
     /// boundary — fire at <c>(window_index+1) × rotation</c>"). The next boundary comes from the code
     /// just rendered, so the loop stays aligned without keeping its own notion of the window.
+    ///
+    /// <para><b>Why the broad catch.</b> This loop is fire-and-forget, so an exception escaping it becomes
+    /// an unobserved task exception: the loop stops, nothing is logged, and the screen keeps showing the
+    /// last code it managed to render — forever, and identically to a healthy one. A dropped connection or
+    /// a moment of database unavailability, neither of them the display's fault, would permanently freeze a
+    /// screen the restaurant is trusting. Absorbing it and waiting for the next boundary is the behaviour
+    /// §11.5 actually wants, and it is not a swallow: it is logged, and <c>_refreshSequence</c> stops
+    /// advancing, so <c>js/display.js</c> raises the offline curtain if the trouble outlasts
+    /// <c>data-fresh-for-ms</c>. Cancellation and disposal still end the loop, because those mean the
+    /// circuit is genuinely gone.</para>
     /// </summary>
     private async Task RunRefreshLoopAsync()
     {
@@ -353,6 +425,13 @@ else
             catch (ObjectDisposedException)
             {
                 return; // torn down mid-flight
+            }
+            catch (Exception exception)
+            {
+                Logger.LogWarning(
+                    exception,
+                    "Refreshing the display surface for table {TableIdentifier} failed; retrying at the next rotation boundary.",
+                    TableId);
             }
         }
     }
@@ -374,25 +453,16 @@ else
     }
 
     /// <summary>
-    /// Time until just after the next rotation boundary. The 250 ms of overshoot keeps the refresh on the
-    /// far side of the boundary, so the code rendered is the new window's rather than the old one's; the
-    /// floor and ceiling stop a clock jump from turning the loop into a spin or a long sleep.
+    /// Time until just after the next rotation boundary, taken from the code currently on screen so the
+    /// loop stays aligned without keeping its own notion of the window. The arithmetic — the overshoot,
+    /// the floor, and the ceiling that defends against a clock jump — lives in
+    /// <see cref="DisplayRefreshSchedule"/>, where it is unit-tested.
     /// </summary>
     private TimeSpan DelayUntilNextWindow()
-    {
-        TimeSpan rotation = TimeSpan.FromSeconds(Options.TableJoinTokenRotationSeconds);
-        DateTimeOffset now = Clock.UtcNow;
-        DateTimeOffset boundary = _qr?.NextRotationAt ?? now + rotation;
-
-        TimeSpan delay = boundary - now + TimeSpan.FromMilliseconds(250);
-
-        if (delay < TimeSpan.FromMilliseconds(500))
-        {
-            return TimeSpan.FromMilliseconds(500);
-        }
-
-        return delay > rotation ? rotation : delay;
-    }
+        => DisplayRefreshSchedule.DelayUntilNextRefresh(
+            Clock.UtcNow,
+            _qr?.NextRotationAt,
+            Options.TableJoinTokenRotationSeconds);
 
     /// <summary>
     /// §9 attaches the party-size chip to <c>SittingMemberJoined</c>, and a close empties the table, so

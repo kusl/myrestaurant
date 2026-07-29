@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Hosting.StaticWebAssets;
 using Microsoft.AspNetCore.HttpOverrides;
 using MyRestaurant.DataAccess;
 using MyRestaurant.Domain.Identifiers;
@@ -170,6 +171,32 @@ WebApplication app = builder.Build();
 using (IServiceScope migrationScope = app.Services.CreateScope())
 {
     migrationScope.ServiceProvider.GetRequiredService<SchemaMigrationRunner>().Run();
+}
+
+// Static web assets — which is where /_framework/blazor.web.js comes from, and therefore whether ANY
+// page in this application is interactive at all.
+//
+// The framework wires these up in WebHost.ConfigureWebDefaults, but only `if
+// (ctx.HostingEnvironment.IsDevelopment())`, and only from the build-time
+// `MyRestaurant.WebApplication.staticwebassets.runtime.json` manifest that sits beside the built
+// assembly. So a *build* output run with any environment other than Development serves no
+// /_framework/* at all — the script tag in App.razor 404s, no circuit is ever established, and every
+// interactive surface silently degrades to the prerendered HTML it was born with. On the table display
+// that is precisely §11.5's worst failure: a QR frozen on a code that stopped working, indistinguishable
+// from a live one from every seat in the restaurant. The kitchen board would likewise never alert.
+//
+// That configuration is not hypothetical — it is what the §16.3 end-to-end harness boots (build output,
+// ASPNETCORE_ENVIRONMENT=Production), and what an operator does when reproducing a production
+// configuration locally without publishing first.
+//
+// Asking for the manifest here closes that gap and costs a real deployment nothing:
+// StaticWebAssetsLoader.ResolveManifest returns null when the file is absent, and `dotnet publish`
+// copies these assets into wwwroot/ instead of emitting a runtime manifest — so in the container this
+// call finds no file and does nothing, while UseStaticFiles serves the published copies as before.
+// Skipped in Development, where ConfigureWebDefaults has already done exactly this.
+if (!app.Environment.IsDevelopment())
+{
+    StaticWebAssetsLoader.UseStaticWebAssets(app.Environment, app.Configuration);
 }
 
 // (5) HTTP pipeline. No HTTPS redirection — TLS is terminated at the proxy. Authentication populates
