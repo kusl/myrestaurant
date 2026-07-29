@@ -1,0 +1,98 @@
+# Publish the container image on a tag (TECHNICAL_SPECIFICATION §16.4: "publish image on tag").
+#
+# The gates are not re-declared here. `verify` calls .github/workflows/ci.yml, so a release runs the
+# same shell lint, the same strict build, the same test suite and the same boot smoke that every
+# push runs — a second copy of them would be a second copy to keep correct.
+#
+# Tagging:
+#     git tag --annotate v0.6.0 --message 'M6 slice 1'
+#     git push origin v0.6.0
+#
+# Result: ghcr.io/<owner>/<repository>:0.6.0, :0.6, and :sha-<commit>. See docs/OPERATIONS.md §14
+# for how to deploy from the registry instead of building on the box.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a release in flight: a half-pushed manifest is worse than a slow one.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verify
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  image:
+    name: publish image
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: check out the tag
+        uses: actions/checkout@v7
+
+      - name: set up buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: sign in to ghcr.io
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: derive tags and labels
+        id: metadata
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+          labels: |
+            org.opencontainers.image.title=MyRestaurant
+            org.opencontainers.image.description=Self-hosted, single-restaurant ordering system
+            org.opencontainers.image.licenses=AGPL-3.0-only
+
+      # linux/amd64 only, deliberately. The Containerfile runs a full `dotnet publish` inside the
+      # build stage, and doing that for arm64 under QEMU emulation takes long enough to time out.
+      # An arm64 image wants a cross-compiled publish (-r linux-arm64 from an amd64 SDK) rather than
+      # an emulated one; that is a Containerfile change, not a workflow line, so it is not here.
+      - name: build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Containerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+
+      - name: summarize
+        run: |
+          set -euo pipefail
+          {
+              echo "### Published"
+              echo
+              echo '```'
+              printf '%s\n' "${{ steps.metadata.outputs.tags }}"
+              echo '```'
+              echo
+              echo "Pull with: \`podman pull ghcr.io/${{ github.repository }}:\${TAG}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

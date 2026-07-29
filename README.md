@@ -1,16 +1,19 @@
 # MyRestaurant
 
+[![ci](https://github.com/kusl/myrestaurant/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kusl/myrestaurant/actions/workflows/ci.yml)
+[![license: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
+
 A self-hosted, single-restaurant ordering system: guests order from their table on their own phones,
 the kitchen and counter work from live boards, and everything runs on one small box behind a
 Cloudflare tunnel. Blazor Server over PostgreSQL, no external runtime dependencies beyond the
 database and the tunnel.
 
-This repository has completed **Milestone 1 (the skeleton)** and is partway through **Milestone 2
-(identity & accounts)**: password sign-in with the TOTP/recovery-code challenge, lockout, sign-out,
-the forced-password-change pipeline, and the first authorization-gated area all work. Passkeys, TOTP
-enrollment, the `/setup` bootstrap, and account administration are the remaining M2 slices; the
-guest, kitchen, counter, administrator, and table-display experiences arrive in later milestones
-(see *Roadmap* and `docs/BUILD_PROGRESS.md`).
+**Milestones 1 through 5 are complete**, which means the product is feature-whole: identity and
+accounts, table administration and rotating join QR codes, paired table displays, the living order
+with its locking protocol, the kitchen and counter boards, billing and settlement, menu management,
+and the administration surfaces including the cross-log event explorer. **Milestone 6 (hardening)**
+is in progress — continuous integration has landed; the Playwright end-to-end matrix and an
+executable backup/restore drill are what remain. See *Roadmap* and `docs/BUILD_PROGRESS.md`.
 
 ## Layout
 
@@ -28,13 +31,16 @@ the web layer depends on data-access and the domain; the domain depends on nothi
   validation, OpenTelemetry wiring, the in-process live-update broadcaster, cookie authentication
   with the auditing sign-in manager, the §3.5 obligations middleware, the account pages (static SSR),
   and the Blazor shell.
-- `tests/` — pure domain tests, Testcontainers integration tests for migrations and the Identity
-  stores, web-layer configuration/wiring/enforcement tests, and the version-controlled end-to-end
-  scenario matrix (skipped until Milestone 6).
+- `tests/` — pure domain tests, Testcontainers integration tests for migrations, the Identity stores
+  and every reader/mutation over real PostgreSQL, web-layer configuration/wiring/enforcement tests,
+  and the version-controlled end-to-end scenario matrix (still skipped — the harness is the next M6
+  slice).
+- `.github/workflows/` — the CI and release pipelines (see *Continuous integration*).
 
 ## Prerequisites
 
-- The .NET SDK pinned in `global.json` (10.0.302 or a newer 10.0 feature band).
+- The .NET SDK pinned in `global.json` — `10.0.100` with `rollForward: latestMinor`, so any 10.0
+  feature band satisfies it.
 - A container engine — rootless **Podman** is the primary target; Docker works too.
 - For integration tests, the container engine's API socket must be reachable (see *Testing*). For
   end-to-end tests (later), Playwright browsers as well.
@@ -102,6 +108,38 @@ configuration still wins: `DOCKER_HOST` or `~/.testcontainers.properties`, if se
 The end-to-end project lists the required scenarios as skipped placeholders and is implemented at
 Milestone 6.
 
+## Continuous integration
+
+Every push and pull request against `main` runs three gates (`.github/workflows/ci.yml`):
+
+| Gate | What it proves |
+| --- | --- |
+| `shell-scripts` | every tracked `*.sh` parses under `bash -n` and passes shellcheck |
+| `build-and-test` | a Release build with **warnings escalated to errors**, then all ~934 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
+| `boot-smoke` | the production `Containerfile` builds, and the resulting image boots against a real PostgreSQL until `/healthz/ready` answers 200 |
+
+That third gate is the one worth understanding. `/healthz/ready` returns 200 only once DbUp has
+applied every migration and the composition root has resolved, so it catches the class of failure no
+unit test sees: a missing DI registration, a migration that conflicts against a genuinely empty
+database, a configuration default the validator rejects. Those do not break a build — they break a
+deployment.
+
+Run the same gates locally before pushing:
+
+```bash
+scripts/ci_local.sh                # shell lint, restore, strict build, full suite
+scripts/ci_local.sh --with-smoke   # ...and boot once against the dev database
+```
+
+Note that `dotnet build` on a workstation is deliberately *more* forgiving than CI:
+`TreatWarningsAsErrors` is switched on only when `ContinuousIntegrationBuild=true`
+(`Directory.Build.props`), so a fresh clone on a newer SDK still builds through analyzer drift.
+`scripts/ci_local.sh` passes that property, which is the whole reason it exists.
+
+Pushing a `v*` tag runs the same gates and then publishes `ghcr.io/kusl/myrestaurant` at
+`:<version>`, `:<major>.<minor>` and `:sha-<commit>` (`.github/workflows/release.yml`). Deploying
+from the registry instead of building on the box is `docs/OPERATIONS.md` §14.
+
 ## Deployment
 
 The stack is defined in `compose.yaml` with two profiles:
@@ -158,10 +196,18 @@ environment (no toolchain or package feed there). On a networked machine:
    container engine socket (see *Testing*).
 4. `./run.sh --smoke` — confirm migrations apply and `/healthz/ready` returns 200.
 
+Or, in one command that mirrors what CI will say about the same tree:
+
+```bash
+scripts/ci_local.sh --with-smoke
+```
+
 ## Known caveats and deliberate decisions
 
-- **Warnings are not errors yet.** `TreatWarningsAsErrors=false` lets a fresh clone build through
-  analyzer drift on a newer SDK; tighten to `true` once the first build is green.
+- **Warnings are errors in CI, not on your workstation.** `TreatWarningsAsErrors` is switched on only
+  under `ContinuousIntegrationBuild=true` (`Directory.Build.props`), so a fresh clone on a newer SDK
+  builds through analyzer drift while a pull request does not. `scripts/ci_local.sh` asks the strict
+  question locally.
 - **Not `InvariantGlobalization`.** The app resolves `RESTAURANT_TIME_ZONE` through `TimeZoneInfo`,
   so globalization stays on and the runtime image installs `tzdata`.
 - **DbUp logging** uses `LogToConsole()` rather than a custom `IUpgradeLog`, whose interface shape
@@ -176,17 +222,33 @@ environment (no toolchain or package feed there). On a networked machine:
   chowns it to the container user. On Docker, drop the `:U` suffix if it objects.
 - **Account pages are static SSR by design.** Sign-in and the forced-change pages write cookies on
   the response, which a Blazor circuit cannot do; do not convert them to interactive components.
-- **No registration or `/setup` page yet.** Guests register at the moment of joining a table (M3)
-  and staff are created by an administrator (later M2 slice), so until the bootstrap slice lands
-  there is no in-app way to create the first account.
+- **The first account is created at `/setup`, once.** On a fresh database only that route is
+  reachable; from the moment an administrator exists it is 404 forever. Do the bootstrap on the
+  production origin, never through a quick tunnel — the passkey binds to the origin it was
+  registered on (`docs/OPERATIONS.md` §3).
+- **Container images are `linux/amd64` only.** The release pipeline does not emulate arm64: the
+  `Containerfile` runs `dotnet publish` in its build stage, and doing that under QEMU is slow enough
+  to risk a timeout. An arm64 image wants a cross-compiled publish rather than an emulated one
+  (`docs/OPERATIONS.md` §14).
 
 ## Roadmap
 
-- **M2** — identity & accounts *(in progress)*: ✔ custom Dapper Identity stores, ✔ Argon2id hashing
-  with the floor guard and concurrency semaphore, ✔ lockout, ✔ password sign-in with the
-  TOTP/recovery challenge, ✔ the obligations middleware with forced password change, ✔ roles →
-  policies → the first gated area, ✔ security-event logging; still to come: TOTP enrollment,
-  passkeys, `/setup` first-admin bootstrap, and account administration (which is what starts
-  setting the obligation flags).
-- **M3–M5** — guest ordering, kitchen and counter boards, table displays, administration.
-- **M6** — the Playwright end-to-end matrix and CI publishing.
+- ✔ **M1** — skeleton: solution layout, `Containerfile`, compose dev profile, DbUp with the initial
+  schema, health endpoints, OpenTelemetry wiring, `run.sh`.
+- ✔ **M2** — identity & accounts: Dapper Identity stores, Argon2id with the floor guard and
+  concurrency semaphore, WebAuthn passkeys, TOTP + recovery codes, lockout, the obligations pipeline,
+  the `/setup` first-administrator bootstrap, roles → policies → gated areas, security events,
+  account administration, and the person's own profile page.
+- ✔ **M3** — tables & joining: table CRUD, per-table join secrets and rotation, display pairing and
+  device auth, the `/display` surface, rotating token generation/validation with metrics, the join
+  grant cookie, sittings and membership.
+- ✔ **M4** — ordering: the living order and its row-level locking protocol, client staging, batch
+  send with all-or-nothing validation, staff edits, fulfillment and reversal, the projection fold
+  with equivalence tests, and the kitchen surface with alerts and the reminder loop. Plus the
+  close-out that made `RESTAURANT_TIME_ZONE` actually true on every surface.
+- ✔ **M5** — counter & administration: bills, price adjustment with reason, close & settle,
+  end-of-day, the counter fallback QR, menu management with its event log, the cross-log event
+  explorer, hide/unhide, and post-close corrective events.
+- **M6** — hardening *(in progress)*: ✔ the CI pipeline and publish-on-tag; still to come, the
+  Playwright end-to-end matrix (§16.3 — fifteen scenarios, currently version-controlled as skipped
+  placeholders) and an executable backup/restore drill.

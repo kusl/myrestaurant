@@ -138,3 +138,53 @@ Migrations are append-only and roll forward only — the same philosophy as the 
 | Suspected join-token abuse | Rotate the affected table's join secret — in-flight tokens die instantly; watch the `table_join_tokens_validated_total{result}` metric |
 | Administrator's authenticator lost | Another administrator resets them (same flow as any user; TOTP re-enrollment is forced — administrators cannot exist unenrolled). Single-admin instances: this is why the bootstrap made you save **recovery codes** |
 | Lockout complaints | 5 failed attempts locks 5 minutes, automatically clears; no admin action needed |
+
+## 14. Continuous integration and releases
+
+CI is not an operations concern until the day you need to know *which build* is on the box and whether anyone verified it. This section is that day.
+
+**What every push is checked against.** `.github/workflows/ci.yml` runs three gates on every push and pull request against `main`: `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), and `boot-smoke` (the production `Containerfile` is built and the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200).
+
+`boot-smoke` is the gate that matters operationally, because it is the only one that exercises what a deployment exercises: DbUp applying every migration to an empty database, `RestaurantOptions.Validate()` accepting the configuration, and the composition root resolving. A green `boot-smoke` is the machine saying "this commit starts". Nothing else in the suite says that.
+
+CI deliberately does **not** use `compose.yaml`. The data-protection volume carries Podman's `:U` suffix — correct for the canonical rootless engine (ADR-0004) and rejected outright by Docker Compose — so the job uses a service-container PostgreSQL plus one `docker run --network host` instead. Same image, same environment variables, same readiness probe; the canonical stack stays the only compose file in the tree.
+
+**Cutting a release.**
+
+```bash
+scripts/ci_local.sh --with-smoke          # optional, but cheaper than a failed tag
+git tag --annotate v0.6.0 --message 'M6 slice 1'
+git push origin v0.6.0
+```
+
+`.github/workflows/release.yml` re-runs the full CI workflow (it calls `ci.yml` rather than repeating it, so a tag is verified by exactly the gates a push is), and only then publishes to GitHub Container Registry:
+
+- `ghcr.io/kusl/myrestaurant:0.6.0` — the exact version. **Use this in production.**
+- `ghcr.io/kusl/myrestaurant:0.6` — moves with each patch on that minor.
+- `ghcr.io/kusl/myrestaurant:sha-<commit>` — for when you need to name a build rather than a version.
+
+There is no `latest`, on purpose. A tag that silently changes what it points at is the reason people cannot answer "what is running".
+
+**Images are `linux/amd64` only.** The `Containerfile` runs a full `dotnet publish` inside its build stage, and doing that for arm64 through QEMU emulation is slow enough to risk the job timeout. If you want to run this on an ARM single-board machine, build on the box (`podman-compose --profile production up -d --build`, which is the default deployment anyway) or teach the `Containerfile` a cross-compiled publish (`-r linux-arm64` from an amd64 SDK). Emulation is the wrong fix.
+
+**Deploying from the registry instead of building on the box.** The default production flow builds locally — `git pull` then `--build` (§12) — which needs the SDK image and a few minutes of CPU on the host. To deploy a published image instead, add a `compose.override.yaml` beside `compose.yaml`; Podman and Docker both merge it automatically, and it stays untracked so it cannot follow a `git pull`:
+
+```yaml
+services:
+  web:
+    build: !reset null
+    image: ghcr.io/kusl/myrestaurant:0.6.0
+```
+
+Then the upgrade in §12 becomes: back up, edit the pinned version in that one file, `podman-compose --profile production up -d`. Everything else about §12 still holds — `web` applies new migrations at startup and exits non-zero on failure, and there is no schema downgrade path, ever.
+
+If your compose implementation does not support `!reset`, delete the `build:` block by writing the whole `web` service out in the override instead. The images are public, so no registry login is needed to pull.
+
+**Verifying what is actually running.**
+
+```bash
+podman inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' myrestaurant_web_1
+podman inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' myrestaurant_web_1
+```
+
+Those labels are stamped by `docker/metadata-action` at publish time, so they are trustworthy on a registry image and absent on one you built locally — which is itself a useful signal about where a container came from.

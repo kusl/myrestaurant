@@ -23,11 +23,30 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <!--
-      Warnings are NOT errors yet: a fresh clone must build through analyzer drift on a
-      newer SDK. Flip to true once the first green build is established (BUILD_PROGRESS).
+      Warnings are not errors for a plain `dotnet build`: a fresh clone on a newer SDK must build
+      through analyzer drift rather than refusing at the door (README: known caveats).
     -->
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!--
+    ...and they ARE errors in CI, which passes -p:ContinuousIntegrationBuild=true
+    (.github/workflows/ci.yml, TECHNICAL_SPECIFICATION §16.4). This is the answer to the note this
+    file carried from M1 — "flip to true once the first green build is established". The first green
+    build is long established; what stayed unresolved is that flipping it globally would make a
+    fresh clone on tomorrow's SDK fail at the door, which is a worse outcome than a warning nobody
+    read. Conditioning on the property CI already sets gets the strictness where it belongs and
+    leaves `dotnet build` on a workstation lenient.
+
+    NuGet audit findings (NU1901-NU1904) stay warnings even there. They appear when an advisory is
+    published against a package this tree already depends on — real news, but news that arrives on a
+    day nobody touched the repository, and a pipeline that turns red without a commit is a pipeline
+    people learn to ignore. CI reports them in a dedicated non-blocking step instead.
+  -->
+  <PropertyGroup Condition="'$(ContinuousIntegrationBuild)' == 'true'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
   </PropertyGroup>
 
   <PropertyGroup>

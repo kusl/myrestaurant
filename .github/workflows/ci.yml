@@ -1,0 +1,238 @@
+# Continuous integration (TECHNICAL_SPECIFICATION §16.4).
+#
+# Three gates. None of them can be satisfied by a tree that merely looks right:
+#
+#   shell-scripts   Every tracked *.sh parses (`bash -n`) and passes shellcheck. This is the
+#                   project's own pre-delivery discipline, enforced instead of remembered.
+#
+#   build-and-test  Restore, a Release build with warnings escalated to errors, then the whole
+#                   xUnit suite. The data-access tests start real PostgreSQL 17 containers through
+#                   Testcontainers; a GitHub runner has a Docker socket, so those tests RUN here
+#                   rather than skipping the way they do on a machine with no container engine.
+#
+#   boot-smoke      The production Containerfile is built and the resulting image is booted against
+#                   a real PostgreSQL, and /healthz/ready must answer 200. This is the only gate
+#                   that proves DbUp migrations apply and the composition root resolves — a class of
+#                   failure no unit test sees, because it happens exactly once, at startup, and
+#                   presents as a 500 on some route hours later.
+#
+# The workflow is also callable (`workflow_call`) so the release pipeline runs precisely these
+# gates before it publishes an image, rather than a copy of them that can drift.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A second push to the same ref makes the first answer irrelevant, so cancel it. Keyed on the ref
+# rather than the workflow so a tag build and a branch build never cancel each other.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  # -----------------------------------------------------------------------------------------------
+  # 1. Shell scripts. Cheapest gate, so it runs alongside everything else and fails in ~30 seconds.
+  # -----------------------------------------------------------------------------------------------
+  shell-scripts:
+    name: shell scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: check out
+        uses: actions/checkout@v7
+
+      - name: parse every tracked script
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(git ls-files '*.sh')
+          printf 'checking %d script(s)\n' "${#scripts[@]}"
+          for script in "${scripts[@]}"; do
+              printf '  bash -n %s\n' "$script"
+              bash -n "$script"
+          done
+
+      - name: install shellcheck
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends shellcheck
+          shellcheck --version
+
+      # Blocking at `warning`. Every script in the tree is clean at `style` today, but the gate sits
+      # one notch lower on purpose: a shellcheck upgrade that adds a new style check would otherwise
+      # turn a build red on a day nobody touched the repository, and that is how people learn to
+      # ignore a red build. The stricter pass runs below, advisory only.
+      - name: shellcheck (blocking, severity=warning)
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(git ls-files '*.sh')
+          shellcheck --severity=warning --color=always "${scripts[@]}"
+
+      - name: shellcheck (advisory, severity=style)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(git ls-files '*.sh')
+          shellcheck --severity=style --color=always "${scripts[@]}"
+
+  # -----------------------------------------------------------------------------------------------
+  # 2. Build and the full test suite, with warnings as errors.
+  # -----------------------------------------------------------------------------------------------
+  build-and-test:
+    name: build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: check out
+        uses: actions/checkout@v7
+
+      # 10.0.x rather than global.json's exact pin: global.json says 10.0.100 with
+      # rollForward=latestMinor, so any 10.0 SDK satisfies it, and asking for an exact patch that
+      # has since been delisted is a needless way to fail.
+      - name: set up the .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # There are no packages.lock.json files, so setup-dotnet's own cache input cannot be used;
+      # key the global-packages folder on the only files that can change a restore graph.
+      - name: cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json', '**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: dotnet --info
+        run: dotnet --info
+
+      - name: restore
+        run: dotnet restore MyRestaurant.slnx
+
+      # ContinuousIntegrationBuild=true flips TreatWarningsAsErrors in Directory.Build.props (and
+      # makes the build deterministic). A plain `dotnet build` on a developer's clone stays lenient.
+      - name: build (Release, warnings as errors)
+        run: |
+          dotnet build MyRestaurant.slnx \
+              --configuration Release \
+              --no-restore \
+              -p:ContinuousIntegrationBuild=true
+
+      # Testcontainers finds /var/run/docker.sock on the runner, so the ~190 data-access integration
+      # facts execute here. The 15 Playwright placeholders still skip until the M6 harness lands.
+      - name: test
+        run: |
+          dotnet test MyRestaurant.slnx \
+              --configuration Release \
+              --no-build \
+              -p:ContinuousIntegrationBuild=true \
+              --logger "trx" \
+              --logger "console;verbosity=normal" \
+              --results-directory "${{ github.workspace }}/TestResults"
+
+      - name: upload test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: TestResults/**/*.trx
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Advisory. A published advisory against a package we already depend on is real news, but it
+      # arrives without a commit, so it reports rather than blocks (see Directory.Build.props).
+      - name: vulnerable package audit (advisory)
+        continue-on-error: true
+        run: dotnet list MyRestaurant.slnx package --vulnerable --include-transitive
+
+  # -----------------------------------------------------------------------------------------------
+  # 3. Boot the actual production image against an actual PostgreSQL.
+  # -----------------------------------------------------------------------------------------------
+  boot-smoke:
+    name: boot smoke (container image)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # compose.yaml is deliberately not used here: its data-protection volume carries Podman's ':U'
+    # suffix (ADR-0004 — rootless Podman is canonical), which Docker Compose rejects outright. A
+    # service container plus one `docker run` is the same topology with none of that argument.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: myrestaurant
+          POSTGRES_PASSWORD: myrestaurant
+          POSTGRES_DB: myrestaurant
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U myrestaurant -d myrestaurant"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: check out
+        uses: actions/checkout@v7
+
+      - name: build the runtime image
+        run: docker build --file Containerfile --tag myrestaurant_web:ci .
+
+      # --network host so the container reaches the service database on the runner's published
+      # 127.0.0.1:5432 and publishes its own 8080 back to the runner for the probe below.
+      - name: start it against the service database
+        run: |
+          docker run --detach --name myrestaurant_web_ci --network host \
+              --env RESTAURANT_NAME="CI Restaurant" \
+              --env RESTAURANT_PUBLIC_ORIGIN="https://localhost:8443" \
+              --env RESTAURANT_TIME_ZONE="America/New_York" \
+              --env RESTAURANT_CLOCK_FORMAT="12-hour" \
+              --env RESTAURANT_CURRENCY_CODE="USD" \
+              --env RESTAURANT_DATABASE_CONNECTION_STRING="Host=127.0.0.1;Port=5432;Database=myrestaurant;Username=myrestaurant;Password=myrestaurant" \
+              --env DATA_PROTECTION_KEYS_DIRECTORY="/var/lib/myrestaurant/dataprotection" \
+              myrestaurant_web:ci
+
+      - name: wait for /healthz/ready
+        run: |
+          set -euo pipefail
+          deadline=$(( SECONDS + 180 ))
+          while (( SECONDS < deadline )); do
+              if ! docker inspect --format '{{.State.Running}}' myrestaurant_web_ci | grep --quiet true; then
+                  echo "the web container exited before it became ready" >&2
+                  exit 1
+              fi
+              if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/healthz/ready; then
+                  echo
+                  echo "ready: config bound, migrations applied, database reachable."
+                  curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/healthz/live
+                  echo
+                  exit 0
+              fi
+              sleep 3
+          done
+          echo "/healthz/ready did not answer 200 within 180s" >&2
+          exit 1
+
+      - name: container logs
+        if: ${{ failure() }}
+        run: docker logs myrestaurant_web_ci
+
+      - name: stop the container
+        if: ${{ always() }}
+        run: docker rm --force myrestaurant_web_ci || true

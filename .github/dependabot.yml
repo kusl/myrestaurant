@@ -1,0 +1,48 @@
+# Dependency updates.
+#
+# Two ecosystems, both weekly, both opening pull requests that CI then judges — which is the point:
+# a bump is only interesting if the suite still passes with it, and until this slice there was
+# nothing to ask.
+#
+# NuGet reads Directory.Packages.props (central package management, REQUIREMENTS §2), so every bump
+# lands in the one file that pins versions. Dependabot never proposes a prerelease for a dependency
+# that is currently on a stable version, which is exactly the project's rule (no prerelease
+# packages) without needing to say so.
+
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    # Grouped so a coordinated family arrives as one pull request rather than six that only build
+    # together. These four move in lockstep by design.
+    groups:
+      opentelemetry:
+        patterns:
+          - "OpenTelemetry*"
+      xunit:
+        patterns:
+          - "xunit*"
+      npgsql:
+        patterns:
+          - "Npgsql"
+          - "Npgsql.*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"

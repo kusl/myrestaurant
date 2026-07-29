@@ -351,7 +351,7 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
 
         // The undo does not erase the fulfillment; both are events, and §6.4's line lifecycle is read off
         // the pair rather than off a flag somebody overwrote.
-        Assert.Single(record.Events.Where(stored => stored.EventType == "fulfillment"));
+        Assert.Single(record.Events, stored => stored.EventType == "fulfillment");
     }
 
     /// <summary>
