@@ -12,8 +12,9 @@ database and the tunnel.
 accounts, table administration and rotating join QR codes, paired table displays, the living order
 with its locking protocol, the kitchen and counter boards, billing and settlement, menu management,
 and the administration surfaces including the cross-log event explorer. **Milestone 6 (hardening)**
-is in progress — continuous integration has landed; the Playwright end-to-end matrix and an
-executable backup/restore drill are what remain. See *Roadmap* and `docs/BUILD_PROGRESS.md`.
+is in progress — continuous integration has landed, and so has the Playwright end-to-end harness
+with the first three scenarios of the §16.3 matrix; the remaining twelve scenarios and an executable
+backup/restore drill are what is left. See *Roadmap* and `docs/BUILD_PROGRESS.md`.
 
 ## Layout
 
@@ -33,8 +34,7 @@ the web layer depends on data-access and the domain; the domain depends on nothi
   and the Blazor shell.
 - `tests/` — pure domain tests, Testcontainers integration tests for migrations, the Identity stores
   and every reader/mutation over real PostgreSQL, web-layer configuration/wiring/enforcement tests,
-  and the version-controlled end-to-end scenario matrix (still skipped — the harness is the next M6
-  slice).
+  and the end-to-end scenario matrix with its Playwright harness (see *End-to-end scenarios*).
 - `.github/workflows/` — the CI and release pipelines (see *Continuous integration*).
 
 ## Prerequisites
@@ -43,7 +43,7 @@ the web layer depends on data-access and the domain; the domain depends on nothi
   feature band satisfies it.
 - A container engine — rootless **Podman** is the primary target; Docker works too.
 - For integration tests, the container engine's API socket must be reachable (see *Testing*). For
-  end-to-end tests (later), Playwright browsers as well.
+  the end-to-end scenarios, a Chromium build as well (see *End-to-end scenarios*).
 
 ## Quick start
 
@@ -105,18 +105,48 @@ The test suite then discovers `unix://$XDG_RUNTIME_DIR/podman/podman.sock` autom
 disables Ryuk, which is unreliable rootless — every fixture disposes its own container). Explicit
 configuration still wins: `DOCKER_HOST` or `~/.testcontainers.properties`, if set, are respected.
 
-The end-to-end project lists the required scenarios as skipped placeholders and is implemented at
-Milestone 6.
+## End-to-end scenarios
+
+The §16.3 matrix lives in `tests/MyRestaurant.EndToEnd.Tests`. It is **opt-in** — a plain
+`dotnet test` skips it — because the first run downloads a Chromium build of roughly 150 MB. Run it
+with either of:
+
+```bash
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+scripts/ci_local.sh --with-e2e
+```
+
+Each scenario gets its own stack: a fresh database on a shared PostgreSQL 17 container, a fresh
+Data Protection key directory, the **built** web application as a child process on a free loopback
+port, and a browser context with a CDP WebAuthn virtual authenticator. Nothing is shared between
+scenarios, so they can run in any order — which matters, because scenario 1 needs a database with no
+administrator and scenario 13 needs one with an administrator who has both a passkey and TOTP.
+
+The app is served at `http://localhost:{port}` while `RESTAURANT_PUBLIC_ORIGIN` says
+`https://localhost:{port}`. The mismatch is deliberate: §13 refuses to start on a non-https origin,
+and Chromium treats `localhost` as a secure context regardless of scheme, so WebAuthn ceremonies run
+and the `Secure` authentication cookie is accepted. Only the host is ever compared.
+
+On a minimal Linux host Chromium's shared libraries may be missing. Install them once — this needs
+root, which is why the harness never attempts it:
+
+```bash
+pwsh tests/MyRestaurant.EndToEnd.Tests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+```
+
+Every unavailability is a skip with the fix in its message: not opted in, no container engine, no
+browser, no build output. A missing tool is not a broken product.
 
 ## Continuous integration
 
-Every push and pull request against `main` runs three gates (`.github/workflows/ci.yml`):
+Every push and pull request against `main` runs four gates (`.github/workflows/ci.yml`):
 
 | Gate | What it proves |
 | --- | --- |
 | `shell-scripts` | every tracked `*.sh` parses under `bash -n` and passes shellcheck |
 | `build-and-test` | a Release build with **warnings escalated to errors**, then all ~934 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
 | `boot-smoke` | the production `Containerfile` builds, and the resulting image boots against a real PostgreSQL until `/healthz/ready` answers 200 |
+| `end-to-end` | the §16.3 scenarios in Chromium against the built application, with `MYRESTAURANT_E2E=1` |
 
 That third gate is the one worth understanding. `/healthz/ready` returns 200 only once DbUp has
 applied every migration and the composition root has resolved, so it catches the class of failure no
@@ -128,7 +158,9 @@ Run the same gates locally before pushing:
 
 ```bash
 scripts/ci_local.sh                # shell lint, restore, strict build, full suite
+scripts/ci_local.sh --with-e2e     # ...and the §16.3 scenarios in a real browser
 scripts/ci_local.sh --with-smoke   # ...and boot once against the dev database
+scripts/ci_local.sh --with-all     # both of the optional gates
 ```
 
 Note that `dotnet build` on a workstation is deliberately *more* forgiving than CI:
@@ -199,7 +231,7 @@ environment (no toolchain or package feed there). On a networked machine:
 Or, in one command that mirrors what CI will say about the same tree:
 
 ```bash
-scripts/ci_local.sh --with-smoke
+scripts/ci_local.sh --with-all
 ```
 
 ## Known caveats and deliberate decisions
@@ -208,6 +240,8 @@ scripts/ci_local.sh --with-smoke
   under `ContinuousIntegrationBuild=true` (`Directory.Build.props`), so a fresh clone on a newer SDK
   builds through analyzer drift while a pull request does not. `scripts/ci_local.sh` asks the strict
   question locally.
+- **The end-to-end scenarios are opt-in.** `MYRESTAURANT_E2E=1` is the switch. Without it they skip,
+  and a green `dotnet test` says nothing about them — read the `end-to-end` CI job instead.
 - **Not `InvariantGlobalization`.** The app resolves `RESTAURANT_TIME_ZONE` through `TimeZoneInfo`,
   so globalization stays on and the runtime image installs `tzdata`.
 - **DbUp logging** uses `LogToConsole()` rather than a custom `IUpgradeLog`, whose interface shape
@@ -249,6 +283,6 @@ scripts/ci_local.sh --with-smoke
 - ✔ **M5** — counter & administration: bills, price adjustment with reason, close & settle,
   end-of-day, the counter fallback QR, menu management with its event log, the cross-log event
   explorer, hide/unhide, and post-close corrective events.
-- **M6** — hardening *(in progress)*: ✔ the CI pipeline and publish-on-tag; still to come, the
-  Playwright end-to-end matrix (§16.3 — fifteen scenarios, currently version-controlled as skipped
-  placeholders) and an executable backup/restore drill.
+- **M6** — hardening *(in progress)*: ✔ the CI pipeline and publish-on-tag; ✔ the Playwright
+  harness and §16.3 scenarios 1, 13 and 14; still to come, the other twelve scenarios and an
+  executable backup/restore drill.

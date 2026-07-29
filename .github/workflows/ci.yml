@@ -1,6 +1,6 @@
 # Continuous integration (TECHNICAL_SPECIFICATION §16.4).
 #
-# Three gates. None of them can be satisfied by a tree that merely looks right:
+# Four gates. None of them can be satisfied by a tree that merely looks right:
 #
 #   shell-scripts   Every tracked *.sh parses (`bash -n`) and passes shellcheck. This is the
 #                   project's own pre-delivery discipline, enforced instead of remembered.
@@ -15,6 +15,12 @@
 #                   that proves DbUp migrations apply and the composition root resolves — a class of
 #                   failure no unit test sees, because it happens exactly once, at startup, and
 #                   presents as a 500 on some route hours later.
+#
+#   end-to-end      The §16.3 Playwright scenarios, in Chromium, against the built application. Its
+#                   own job rather than part of build-and-test, for two reasons: the scenarios are
+#                   opt-in (MYRESTAURANT_E2E) so a workstation `dotnet test` never downloads a
+#                   browser by surprise, and a browser-driven flake should be attributable at a
+#                   glance instead of hiding inside a nine-hundred-fact summary.
 #
 # The workflow is also callable (`workflow_call`) so the release pipeline runs precisely these
 # gates before it publishes an image, rather than a copy of them that can drift.
@@ -135,7 +141,8 @@ jobs:
               -p:ContinuousIntegrationBuild=true
 
       # Testcontainers finds /var/run/docker.sock on the runner, so the ~190 data-access integration
-      # facts execute here. The 15 Playwright placeholders still skip until the M6 harness lands.
+      # facts execute here. MYRESTAURANT_E2E is deliberately NOT set: the §16.3 scenarios have their
+      # own job below, and running them twice would double the browser time for one answer.
       - name: test
         run: |
           dotnet test MyRestaurant.slnx \
@@ -236,3 +243,81 @@ jobs:
       - name: stop the container
         if: ${{ always() }}
         run: docker rm --force myrestaurant_web_ci || true
+
+  # -----------------------------------------------------------------------------------------------
+  # 4. The §16.3 end-to-end scenarios, in a real browser.
+  # -----------------------------------------------------------------------------------------------
+  end-to-end:
+    name: end to end (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: check out
+        uses: actions/checkout@v7
+
+      - name: set up the .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json', '**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: restore
+        run: dotnet restore MyRestaurant.slnx
+
+      # The harness boots the web application from its own build output, so this build is not merely
+      # a prerequisite for the test assembly — it produces the binary under test.
+      - name: build (Release, warnings as errors)
+        run: |
+          dotnet build MyRestaurant.slnx \
+              --configuration Release \
+              --no-restore \
+              -p:ContinuousIntegrationBuild=true
+
+      # The harness calls `playwright install chromium` itself, which downloads the browser but not
+      # its system libraries. --with-deps needs apt and therefore root, which a test process has no
+      # business asking for — so it happens here, once, through the wrapper the build produced.
+      # pwsh is preinstalled on GitHub's Ubuntu runners.
+      - name: cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('Directory.Packages.props') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: install Chromium and its dependencies
+        run: |
+          set -euo pipefail
+          pwsh tests/MyRestaurant.EndToEnd.Tests/bin/Release/net10.0/playwright.ps1 \
+              install --with-deps chromium
+
+      # MYRESTAURANT_E2E is what turns the fifteen placeholders into real scenarios. Testcontainers
+      # reaches the runner's Docker socket for the shared PostgreSQL 17 container; each scenario then
+      # creates its own database on it and boots the application on its own loopback port.
+      - name: run the §16.3 scenarios
+        env:
+          MYRESTAURANT_E2E: "1"
+        run: |
+          dotnet test tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj \
+              --configuration Release \
+              --no-build \
+              -p:ContinuousIntegrationBuild=true \
+              --logger "trx" \
+              --logger "console;verbosity=normal" \
+              --results-directory "${{ github.workspace }}/TestResults"
+
+      - name: upload end-to-end results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: end-to-end-results
+          path: TestResults/**/*.trx
+          if-no-files-found: warn
+          retention-days: 14
