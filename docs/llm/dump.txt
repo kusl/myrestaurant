@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-02T11:33:27-04:00
+  Generated at   : 2026-08-02T12:57:46-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : bdbb43d6e25bfd7c90245834f31fde7e82e1c171
-  Commit (short) : bdbb43d
-  Commit date    : 2026-08-02 11:33:18 -0400
-  Commit message : update script
+  Commit (full)  : 0c2e6f86d524fefbce25307a853f615f1fa2dde0
+  Commit (short) : 0c2e6f8
+  Commit date    : 2026-08-02 12:57:36 -0400
+  Commit message : add slice 9 documentation
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 314
+  Files included : 316
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (314 included files)
+# FILE TREE  (316 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -576,7 +576,9 @@ cat "$OUTPUT_FILE"
 │   │   ├── BUILD_PROGRESS-m6-slice-5.md
 │   │   ├── BUILD_PROGRESS-m6-slice-6.md
 │   │   ├── BUILD_PROGRESS-m6-slice-7.md
-│   │   └── BUILD_PROGRESS-m6-slice-8.md
+│   │   ├── BUILD_PROGRESS-m6-slice-8.md
+│   │   ├── BUILD_PROGRESS-m6-slice-9.md
+│   │   └── M6-SLICE-9-CHANGES.md
 │   └── adr
 │       ├── 0001-single-application-with-areas.md
 │       ├── 0002-relational-append-only-event-logs.md
@@ -3050,188 +3052,179 @@ scripts/ci_local.sh --with-all
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  8.9 KiB (9095 bytes)
-  Last modified:         2026-08-02 10:48:00.000000000 -0400
+  Size:                  9.0 KiB (9195 bytes)
+  Last modified:         2026-08-01 20:00:00.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 29591204
+  Inode:                 29897747
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               23c4a5d880bb936c9039bd0465d1b091842ac0cd331faf916d49edf459051da5
-  Last git commit:       bfc6f7c 2026-08-02 11:26:28 -0400 add claude response
+  SHA-256:               713e0a717e959528965705facce125e3eef323c2e0d47a060049c7d99b92e76f
+  Last git commit:       aa33fb0 2026-08-02 12:56:45 -0400 add claude changes
 
 --- CONTENT ---
-# M6 Slice 8 — the three red scenarios, and why they were never green
+# M6 Slice 9 — two guests at one table (§16.3 scenario 5)
 
 Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
 and the contents drop straight over your working tree.
 
 ```bash
-tar -xzf m6-slice8-enhanced-nav-fix.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice9-second-guest.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
-`git status` will then show 3 modified/added files and 1 deletion.
+`git status` will then show 4 modified/added files and no deletions.
 
 ## Files to DELETE
 
-```bash
-cd /home/kushal/src/dotnet/myrestaurant
-git rm docs/llm/vendor/fix_assert_single.py
-```
-
-**One file.** It was the xUnit2031 rewriter from Slice 7. It has done its job — the four
-`Assert.Single(xs.Where(p))` sites are already `Assert.Single(xs, p)` in your tree — and you have said you
-do not want bespoke text-manipulation scripts sitting in the repository where you will not notice them.
-Nothing references it. If you would rather keep it, nothing breaks; it is excluded from `export.sh` either
-way.
-
-Nothing else is renamed or superseded. No migration, no schema change, no package change, no ADR edit, no
-`Program.cs` edit, no `.slnx` edit.
+**None.** Nothing in this slice renames, supersedes or orphans an existing file. No migration, no schema
+change, no package change, no ADR edit, no `Program.cs` edit, no `.slnx` edit.
 
 ## The four files
 
 | File | Change |
 | --- | --- |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/EnhancedNavigation.cs` | **new** — following an in-app link without believing the address bar |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs` | the fix, the guard, and the diagnostic the failing wait never had |
-| `docs/_append/BUILD_PROGRESS-m6-slice-8.md` | **new** — the ledger row |
+| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | scenario **5** implemented; `SeatGuestAsync` extracted |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | roster and party reads, with waits |
+| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor` | one added CSS class (see below) |
+| `docs/_append/BUILD_PROGRESS-m6-slice-9.md` | **new** — the ledger row |
 | `_CHANGES.md` | this file |
 
-**No `src/` file changes.** Not one `.cs`, not one `.razor`. `/register` is correct and this was never a
-product bug — see below.
+## First: your tests are not failing
 
-## What was wrong
+You asked me to fix failing tests. `claude-terminal.txt` shows every gate green, so there was nothing to
+fix and I have not invented anything:
 
-All three failures are the same line of the same method, and it is the only method in the harness that
-navigates by **clicking a link in the application** instead of `page.GotoAsync`.
+| Run | Result |
+| --- | --- |
+| `dotnet test` | total **971**, failed **0**, succeeded 956, skipped 15 |
+| `bash scripts/ci_local.sh --with-all` | all six gates passed |
+| `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` | total 15, failed **0**, **8 passed**, 7 skipped |
+| `bash run.sh --smoke` | `/healthz/ready` → 200 |
+| `dotnet list package --outdated` | nothing outdated in any project |
 
-A link click on a static-SSR page is an *enhanced* navigation. From `NavigationEnhancement.ts` in
-`dotnet/aspnetcore@release/10.0`, `onDocumentClick`:
+Slice 8's enhanced-navigation fix worked. Scenarios 3, 4 and 6 are genuinely green for the first time — the
+first slice in three entitled to say so. If you saw a failure in a run you did not paste, send me that
+output and I will take it as the next thing.
 
-```ts
-history.pushState(null, /* ignored title */ '', absoluteInternalHref);
-...
-performEnhancedPageLoad(absoluteInternalHref, /* interceptedLink */ true);
+## What this slice adds
+
+§16.3 scenario **5**: *"Second guest joins via fresh token → sees first guest's order live; first guest sees
+roster update."*
+
+An administrator bootstraps, puts soup and a pie on the menu, creates a table. The first guest scans,
+registers with a passkey, joins, sends one soup. The second guest scans the code the table is showing now —
+their own context, their own authenticator, their own account — registers, and joins. Then, with nobody
+touching either phone:
+
+- the **first** guest's roster grows to two (`SittingMemberJoined`, §9);
+- the first guest's *"rest of the table"* stays **empty**, because §6.1 creates a `guest_order` row only
+  inside a first send — the roster and the bill are two different lists;
+- the **second** guest's screen already carries the first guest's soup, from the read model;
+- the first guest sends a pie ×2 and the second guest's screen grows a line (`OrderLinesChanged`, §9);
+- and the database holds **one** open sitting with both usernames in join order.
+
+The last one matters: from a seat, "both joined the sitting" and "a second sitting was opened on the same
+table and the unique index did not stop it" look identical.
+
+## The one `src/` change, and why
+
+`TableOrderSurface.razor` rendered another guest's line as a bare `<span>`:
+
+```razor
+<span>@theirLine.Quantity × @theirLine.MenuItemName</span>
 ```
 
-The URL moves **first**. The `fetch` and the `synchronizeDomContent` that patches the new page in come
-after, and Playwright resolves `WaitForURLAsync` on a same-document navigation the moment the URL matches
-— there is no `load` event coming. So:
+It is now `<span class="order-party-line-name">`. That was the only text on the ordering surface with no way
+to address it — your own lines carry `.order-line-name`, the kitchen's carry `.kitchen-line-name`, and this
+was a gap rather than a decision.
 
-1. Click *Create an account* → `WaitForURLAsync(IsRegistrationUrl)` returns **while the sign-in document
-   is still on screen**.
-2. `FillAsync("#username", "e2e.guest")` succeeds instantly, because `/sign-in` has a `#username` too.
-3. `FillAsync("#display-name", …)` waits — that field exists only on `/register`. While it waits the fetch
-   lands, and `DomSync.ts`'s `ensureEditableValueSynchronized` assigns every input the value the server
-   rendered. The register markup carries `value=""`. **The username is erased.**
-4. Continue posts empty → `[Required]` fails → `OnValidSubmit` never fires → the details step re-renders
-   with *"Choose a username."*
-5. No credential step, so no `__passkeySubmit`, so a thirty-second timeout on an element three states
-   away from the cause.
+Deliberately a **new** class rather than reusing `.order-line-name`: that one is `font-weight: 600`, and the
+rest of the table is meant to read quieter than your own order. The new name has no CSS rule behind it, so
+nothing changes on screen. I checked `wwwroot/app.css` — no selector reaches that bare span today, so this
+is purely additive.
 
-Deterministic rather than flaky because the fill takes ~2 ms and the fetch ~20 ms.
-
-Two things this rules out, both of which I chased first before reading the framework source:
-
-- **The registration ticket cookie is fine.** `RegistrationTicketTests` already pins the Data-Protection
-  round trip, and `/setup` proves the identical `Secure`/`HttpOnly`/`SameSite=Lax` cookie mechanic works
-  over `http://localhost` in this harness (Chromium treats localhost as a secure context).
-- **Form posts are not enhanced.** `enhancedNavigationIsEnabledForForm` requires `data-enhance` on the form
-  element itself and nothing in this application sets it, so the passkey step, the join POST and every
-  administration form are ordinary browser navigations. That is why `CompleteSetupAsync` — the same
-  four-step cookie dance over the same kind of surface — has worked since Slice 2.
-
-## What changed in the harness
-
-**`EnhancedNavigation.FollowAsync(page, link, arrivalSelector, description, timeout)`** clicks the link and
-then waits for an element the destination has and the current page does not. `synchronizeDomContent` is one
-synchronous call on the main thread and a Playwright query cannot interleave with it, so the instant any
-part of the new markup is observable, all of it is — including the reset of every shared field. That makes
-it an exact barrier, not a delay.
-
-Its own file rather than four inlined lines because §16.3 scenario **11** will meet the same hazard: an
-administrator filtering the hidden-records view is a link click on a static-SSR page with a form behind it.
-
-**`AccountJourneys.RegisterGuestWithPasskeyAsync`** now uses it with `#display-name` as the barrier, checks
-the URL *after* arrival rather than waiting on it, reads both fields back with `InputValueAsync`
-immediately before submitting (`AssertFieldHoldsAsync`), and wraps the `__passkeySubmit` wait in the
-diagnostic it never had. `DescribeRefusalAsync` became `DescribeSurfaceAsync` and reports the heading plus
-**every** `p.status-error` and `.validation-message`, not the first — *"Choose a username."* on its own
-would have explained all three scenarios on day one.
-
-`CompleteSetupAsync`, `SignOutAsync`, `SignInWithPasskeyAsync`, `HasLeftSignInPage`, `IsRegistrationUrl` and
-`IsStillOnSignInPageAsync` are byte-for-byte unchanged apart from doc comments.
+The harness could have used `span:not(.chip)` and touched no product file at all. I chose the class because
+this codebase has consistently added explicit hooks (`data-live`, `#table-order-surface`,
+`data-unseen-alerts`, `.kitchen-line-name`) wherever a surface needed to be observable, and a negation
+selector would have been the one place that guessed instead.
 
 ## Build/test checklist
 
 ```bash
 cd /home/kushal/src/dotnet/myrestaurant
 
-# 1. Nothing outside the end-to-end project moved.
+# 1. Nothing outside the end-to-end project changed behaviour.
 dotnet test
-#    expect: total 971, failed 0, succeeded 956, skipped 15   (unchanged)
+#    expect: total 971, failed 0, succeeded 956, skipped 15   (UNCHANGED)
+#    Scenario 5 goes from [Fact(Skip = …)] to a [Fact] that calls Assert.SkipUnless, and xUnit
+#    counts both as skipped — so with MYRESTAURANT_E2E unset every number stays exactly where
+#    it was. It is still one test method either way.
 
-# 2. The strict build — two new/changed test files, no new usings, no new analyzer surface.
+# 2. The strict build. The .razor edit is the only thing that can produce a compiler diagnostic;
+#    it is one attribute on one element, and I balance-checked the file.
 bash scripts/ci_local.sh --with-all
 
 # 3. The point of the slice.
 MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
-#    expect: 8 passed / 7 skipped
-#    scenarios 3, 4 and 6 are the three that were red
+#    expect: total 15, failed 0, 9 passed, 6 skipped
+#    scenario 5 is the one that moves
 
 # 4. Append the progress block.
-cat docs/_append/BUILD_PROGRESS-m6-slice-8.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m6-slice-9.md >> docs/BUILD_PROGRESS.md
 ```
 
-## If it is still red
+I cannot run any of this — there is no .NET SDK in my sandbox — and Slice 8's `_CHANGES.md` had to correct
+two slices' worth of numbers I had once stated as though I had. So: **9 passed / 6 skipped is an arithmetic
+prediction, not an observation.** One scenario moved from skipped to implemented; if it comes back red, the
+scenario is wrong and the numbers were never the point.
 
-The three scenarios go further than they have ever gone, so a failure now will be at a **new** line, and
-the new diagnostics are built to name it. Read the message rather than the stack:
+## If it goes red
+
+The scenario reaches new ground in exactly two places. The new waits are built to name which:
 
 | Message begins | What it means |
 | --- | --- |
-| `'#username' holds '' rather than 'e2e.guest'…` | The barrier did not hold — something else patches that page. Send me the message; it names both values. |
-| `Following a link away from '…' never produced the registration details step` | `/register` did not render `#display-name`, or the fetch behind the link failed. The message carries both URLs. |
-| `…never advanced from the details step to the credential step…` | The details POST was refused. The message now quotes the heading and every validation message — that is the answer. |
-| `…never left /register.` | The attestation was refused. Likely `/register/passkey/creation-options`, which no scenario had ever exercised before this one got past the details step. |
-| A timeout inside `TableOrderJourneys` or `KitchenJourneys` | Scenarios 4 and 6 reaching genuinely new ground. Those journeys already report `data-live` and the send-refusal reasons. |
+| `The table roster never showed both guests on the roster…` | The `SittingMemberJoined` broadcast did not reach the first guest's circuit, or the first guest's circuit had gone away. The message lists who the roster *does* show. Check that both pages are still on `/table/{id}` and that neither navigated. |
+| `The rest of the table never showed the first guest's soup…` | The second guest's surface loaded but `ListSittingBillAsync` returned nothing for the first guest — which would mean the send did not create a `guest_order` row, or the two guests are on different sittings. Step (f)'s database read would catch the second; if it is the first, the failure will be at step (d) rather than at (f). |
+| `The rest of the table never showed both of the first guest's lines…` | The arrival read worked and the live one did not: `OrderLinesChanged` reached one circuit and not the other. This is the only assertion in the scenario that has no non-live equivalent. |
+| `…never advanced from the details step to the credential step…` | Registration, i.e. Slice 8's territory — but for a *second* account in the same instance. If this fires only for `e2e.guest.five.two`, suspect username uniqueness or a shared virtual authenticator rather than enhanced navigation. |
+| `Assert.Equal() Failure … 'First Guest' vs 'Second Guest'` at step (f) | Join order came back reversed. `ReadOpenSittingAsync` orders by `joined_at`; two joins seconds apart cannot tie, so this would be a real ordering bug rather than a flake. |
 
-The web application's own console tail is on `RestaurantInstance.DiagnosticOutput` if you want the server
-side of any of these.
+The web application's own console tail is on `RestaurantInstance.DiagnosticOutput` for the server side of
+any of these.
 
-## Housekeeping carried over
+## Housekeeping — a correction to Slice 8's note
 
-`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Fifteen appends are unmerged:
+Slice 8's `_CHANGES.md` claimed fifteen unmerged appends and gave a loop to merge them. That was **wrong**:
+you had already merged most of them. Checking `docs/BUILD_PROGRESS.md` against `docs/_append/` right now,
+only two are genuinely unmerged:
 
 ```bash
-for slice in m4-slice-2 m4-slice-3 m4-slice-4 \
-             m5-slice-1 m5-slice-2 m5-slice-3 m5-slice-4 m5-slice-5 \
-             m6-slice-1 m6-slice-2 m6-slice-3 m6-slice-4 m6-slice-6 m6-slice-7 m6-slice-8; do
-  cat "docs/_append/BUILD_PROGRESS-${slice}.md" >> docs/BUILD_PROGRESS.md
-done
+cat docs/_append/BUILD_PROGRESS-m5-slice-4.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m5-slice-5.md >> docs/BUILD_PROGRESS.md
 ```
 
-(`m6-slice-5` is already merged.) `shellcheck` is still not installed locally, so `ci_local.sh` step 1 only
-parses: `sudo dnf install ShellCheck`.
+**And there is a real defect worth your eyes.** M5 Slice 3's block is in `docs/BUILD_PROGRESS.md`
+**twice** — identical `### M5 Slice 3 — administration sittings…` headings at lines **1550** and **2506**.
+Something got appended twice at some point. That needs one block deleted by hand; I am not giving you a
+script for it, and the file is far too large to regenerate. If you would rather I produced the whole
+corrected file in a future slice, say so and I will — it is ~4,100 lines, which is a lot of tokens but not
+an unreasonable ask for a document that is the project's own record.
 
-## A correction worth making in writing
-
-Slice 5 recorded "6 passed / 9 skipped" and Slice 6 recorded "8 passed / 7 skipped". Neither was ever
-observed — I could not run the suite and stated the arithmetic as though I had. Scenario 3 has never been
-green, and 4 and 6 inherited its journey. Those two append files are unmerged, so the numbers have not yet
-reached `BUILD_PROGRESS.md`; the Slice 8 block above records the correction where the ledger will read it.
+`shellcheck` is still not installed locally, so `ci_local.sh` step 1 only parses:
+`sudo dnf install ShellCheck`.
 
 ## What is next
 
-Scenario **5** — a second guest joins on a fresh token, sees the first guest's order live, and the first
-guest sees the roster update. Slice 6 built the harness shape for exactly this, and it is deliberately held
-back one slice rather than stacked on top of a fix nobody has run yet. Then 7 through 12, and the
-backup/restore drill.
+Scenario **7** — a guest ticks a fulfilled line for removal, the whole batch is refused with a
+per-operation reason, and removing their *pending* line succeeds. It is the first scenario about §6.5.9's
+all-or-nothing refusal as a guest experiences it, and `TableOrderJourneys` already reads the rejection
+panel, so it needs a tick-and-send journey and nothing else. Then 8 through 12, and the backup/restore
+drill.
 
 ## The one-line why
 
-Three scenarios were waiting for a button that could never appear, because the harness believed an address
-bar that Blazor moves before it moves the page.
+Two people at one table is the first thing this application does that a single browser cannot show you.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3370,15 +3363,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  282.2 KiB (289020 bytes)
-  Last modified:         2026-08-02 11:31:54.334176315 -0400
+  Size:                  321.4 KiB (329063 bytes)
+  Last modified:         2026-08-02 12:57:29.107428660 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 25661728
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               174825da4aab98b1212a85e540f91332085a38e74f52ea41598ed374e3b3765f
-  Last git commit:       868eb62 2026-08-02 11:32:11 -0400 run scripts
+  SHA-256:               74561403f1c75471144640aa15b4aecdf0d9fcca8a54176377ec1f07208b4725
+  Last git commit:       0c2e6f8 2026-08-02 12:57:36 -0400 add slice 9 documentation
 
 --- CONTENT ---
 # Build progress
@@ -6068,6 +6061,494 @@ order, and menu events filtered by subject, actor, type, and time). `ISittingRec
 of that explorer's engine; `IMenuEventLog` is the menu half; `ISecurityEventLog` reads the third. What is
 missing is `order_visibility_event`'s write path and one screen that queries all three.
 
+### M5 Slice 4 — hide and unhide: the guest's own history, and the only way back (landed)
+
+M5's build-order line (§19) reads "bills, price adjustment, close & settle, end-of-day, counter fallback
+QR, menu management + events, event explorer, **hide/unhide**, post-close corrections". This slice is the
+emphasised word, both halves of it: §11.1's guest history with its per-order Hide, and §11.4's
+hidden-records view with the per-record Unhide that is the system's only undo for it.
+
+No migration, no packages, no schema change, `Program.cs` untouched, and nothing deleted. Every table and
+view this needs shipped in `0001_initial_schema.sql` — `order_visibility_event` and the
+`order_visibility_current` view have been sitting there since M1 with no writer and no reader.
+
+---
+
+#### What was actually missing
+
+M4 Slice 2 recorded the deferral in as many words: "§11.1's per-order **Hide** control and the guest's own
+**history** of past orders need `order_visibility_event` writes and a closed-sitting query that reads
+across sittings; both are §6.8 work and belong with the §11.4 hidden-records view that is their only
+unhide path (M5)." That is exactly what this is.
+
+Until now a guest could see the meal they were eating and nothing else. Every reader in the tree is scoped
+to an order or a sitting the caller already names — `IOrderReadModel` for the projection views,
+`IOrderEventLog` for the fold, `ISittingRecordReads` for one sitting's complete record — and none of them
+can answer "which of *this person's* orders, across every sitting they have ever been in, may they still
+see". That question is the whole of §11.1's history section, and its second clause ("may they still see")
+is §6.8.
+
+---
+
+#### Hiding is enforced in SQL, once
+
+§6.8's guarantee is that a hidden order is gone from "the owner's own views". Both person-scoped queries in
+`IOrderHistoryReads` therefore exclude hidden orders in the statement itself:
+
+```sql
+LEFT JOIN order_visibility_current AS visibility
+        ON visibility.guest_order_identifier = guest_order.guest_order_identifier
+WHERE guest_order.person_identifier = @PersonIdentifier
+  AND sitting.closed_at IS NOT NULL
+  AND NOT COALESCE(visibility.is_hidden, false)
+```
+
+A guarantee that depends on every future page remembering a `Where` clause is not one. The `COALESCE` is
+load-bearing in its own small way: "never had a visibility event" and "explicitly unhidden" must read the
+same, because §6.8 defines the current flag as the latest event and no events means not hidden.
+
+`ListHiddenOrdersAsync` is the deliberate inverse, and it is the only reader in the tree that goes looking
+for hidden rows. It is reached from one page, behind `area.administration` (§3.7).
+
+---
+
+#### Six decisions worth knowing before you read the diff
+
+**The lock is on `guest_order` and nothing else.** Both writes take `SELECT … FOR UPDATE OF guest_order`
+before reading the current flag, so two taps on Hide cannot both see "not hidden" and both append. They
+deliberately do *not* lock `table_sitting`: §6.6's order-mutating transaction locks the sitting first and
+the order second, and a transaction that only ever waits on the order can never be the other half of a
+deadlock with it. The sitting's `closed_at` is read in the same statement without a lock, which is sound
+because a close is one-way — §5.3 stamps it and nothing in the system clears it, so a value read here
+cannot go stale in the direction that would matter.
+
+**A visibility event is not an order event, so it does not go through `IOrderMutations`.** It has no
+`sequence_number`, no operations, changes no line and no total, and appears nowhere in §8.5's fold.
+Routing it through the §6.6 transaction would take a `FOR SHARE` on a sitting that is closed by definition
+and imply, wrongly, that a bill could move because somebody tidied their history.
+
+**Append-only, three rows for a round trip.** Hide writes `hidden`, unhide writes `unhidden`, and the
+current flag is the latest of them. A boolean on `guest_order` would have been shorter and would have
+thrown away the two questions the log answers: who hid it, and had it been hidden before. §6.8's prose
+calls the administrator's row `unhidden_by_administrator`; the stored word is `unhidden` and who did it is
+`actor_person_identifier`, because there is no guest unhide to distinguish it from.
+
+**The confirmation is a step, not a `confirm()`.** §6.8 requires it to state "plainly that this cannot be
+undone from the guest's account". A browser dialog cannot be read, cannot be styled, and does not exist
+without JavaScript — while this page works with none. Tapping Hide navigates to `?hide={order}`, which
+renders the warning inline above the row with the only two things to do next.
+
+**Expansion in the hidden-records view is one row at a time, by URL.** §11.4 requires the complete
+record — "never projected or truncated" — and a complete record is three queries. Rendering a hundred of
+them to draw a list would be three hundred round trips for a page somebody is skimming. `?record={order}`
+*is* the "expandable" in §6.8: the list is always complete, and the record of the row an administrator
+actually opened is fetched in full.
+
+**The hidden list is not filtered to closed sittings.** `HideAsync` refuses an open one, so a row for a
+live sitting cannot arise from the application. If one ever does, this is the one screen that must show it
+rather than hide the anomaly (§11.4) — hence a nullable `ClosedAt` on the summary and markup that says
+"this sitting is still open" in bold.
+
+---
+
+#### The date filter, and why `RestaurantTime` grew two methods
+
+§6.8's filter is "username, date range, and table". A date range needs a boundary, and §8.1 is
+unambiguous about whose calendar day it is: an administrator typing 26 July means the restaurant's 26
+July, not UTC's and not their own. §8.1 is equally unambiguous that exactly one type performs that
+conversion, so `StartOfDay(DateOnly)` and `StartOfNextDay(DateOnly)` are on `RestaurantTime` rather than
+in a `… AT TIME ZONE …` clause — a second place the configured zone is honoured is the place the two
+drift.
+
+Both return UTC-normalised instants, and that is not cosmetic: Npgsql refuses to write a `DateTimeOffset`
+whose offset is not zero to a `timestamptz` parameter, so a boundary handed straight to a query must
+already be UTC.
+
+The range is half-open — the start of the lower day to the start of the day after the upper — so no caller
+has to decide whether 23:59:59.999999 is inside a day. In a zone whose clocks move at midnight (Cuba's do)
+the local midnight of a spring-forward day does not exist, and `TimeZoneInfo.GetUtcOffset` answers with
+the standard offset; the boundary is then out by the size of the shift for one day a year. That is
+deliberately preferred over `ConvertTimeToUtc`, which throws on an invalid local time: a filter an hour
+wide at one edge is a filter, and a filter that throws is a blank page.
+
+The username filter matches a substring case-insensitively, with `%`, `_` and `\` escaped so a pasted
+wildcard cannot silently widen the search to everything. It is written `owner.username::text ILIKE …`
+rather than as a bare `LIKE` on the column: `person.username` is `citext` (§8.2) and compares
+case-insensitively under equality, but which of the extension's pattern operators a mixed
+`citext`/`text` comparison resolves to is not something a query should quietly depend on.
+
+---
+
+#### `ISittingRecordReads` grew a second question
+
+`GetOrderRecordAsync(guestOrderIdentifier)` returns one order's complete record, or `null`. The
+hidden-records view lists orders from many different sittings and expands one of them; reading the whole
+sitting to render one order would show an administrator the rest of that party's orders as a side effect
+of opening a row about one person's hidden meal, and §11.4 is explicit that filters narrow "only on
+explicit request" in *both* directions.
+
+The three statements are now built from templates parameterised by one `const` WHERE fragment
+(`table_sitting_identifier = @SittingIdentifier` or `guest_order_identifier = @GuestOrderIdentifier`),
+composed once into six `static readonly` strings. Nothing is derived from input and every placeholder
+stays a parameter; the point is not dynamic SQL but stopping the same 180-line union from existing twice,
+which is how a reader ends up fixed in one copy and wrong in the other. `ListOrderRecordsForSittingAsync`
+answers exactly as it did — its SQL is character-for-character the same once the fragment is
+substituted — and both public methods now sit over one private `ReadRecordsAsync`.
+
+---
+
+#### No new metric
+
+§12's meter list is closed and contains no visibility counter, correctly. The instruments there are the
+ones an operator watches a service by — sends, lines, reminders, closes, token validations, sign-ins — and
+how often guests tidy their own history is not one of them. The same judgement §11.6 recorded about
+profile edits and `security_event`: the vocabulary is closed on purpose, and the honest answer to "should
+this be in it" was no.
+
+The §9 broadcast is not optional, though. `VisibilityChanged(orderId)` goes out after each committed
+write, and §9 routes it to "table members (history views)" — a guest with their history open on one phone
+and the order surface on another would otherwise keep seeing the row they had just asked to have gone.
+`OrderVisibilityWorkflow` is the post-commit shell, in the same relationship to `IOrderVisibility` that
+`OrderWorkflow` has to `IOrderMutations`; surfaces take the workflow and never the write service.
+
+---
+
+#### Tests
+
+- `OrderVisibilityTests` (Testcontainers, 11 facts) — a hide on a settled sitting by the owner appends one
+  row and flips the view; a hide by somebody else, on an open sitting, on an already-hidden order, and on
+  an order that does not exist each refuse and write nothing, and the "not the owner" refusal still reports
+  whose order it was; an unhide appends the second row and flips back, reporting the owner rather than the
+  actor; an unhide of a visible order and of an unknown one write nothing; hide → unhide → hide leaves
+  three rows and the order hidden, which is only true if this writer and `order_visibility_current` agree
+  on what "latest" means; hiding one order on a two-person sitting leaves the other alone; and an
+  administrator can unhide an order whose sitting is somehow still open — the deliberate asymmetry with the
+  hide path, arranged directly because the writer will not produce that state.
+- `OrderHistoryReadsTests` (Testcontainers, 16 facts) — settled sittings only, newest settled first, with
+  the table and the person's own share, and the still-open one absent; a hidden order excluded and an
+  unhidden one back; only that person's own orders even when two orders share a sitting; the lines as the
+  projection (removal gone, adjustment applied, note carried) rather than the record; empty for a member
+  who never ordered; the cap, and a non-positive cap asking for nothing; the hidden list system-wide with
+  the username fallback on both the owner's name and the hider's, newest-hidden first; both totals and the
+  sitting context on the row; an unhidden order gone from the list; the hide currently in force reported
+  after a round trip; the username filter as a case-insensitive substring with wildcards taken literally;
+  the table filter; the date range on the sitting's `opened_at`, half-open at both ends; the three filters
+  composing; a row whose sitting is somehow open still reported with a null `ClosedAt`; and the visibility
+  log oldest-first with the stored word, excluding other orders' events.
+- `OrderVisibilityWorkflowTests` (10 facts, no container) — a committed hide announces once and passes its
+  arguments through unchanged; the announcement carries the order the *service* reported; each of the four
+  hide refusals and both unhide refusals announce nothing; a committed unhide announces once and is handed
+  the administrator's identifier while reporting the owner's; hide-then-unhide announces twice; and the
+  constructor rejects nulls.
+- `OrdersWiringTests` gains two facts: `IOrderHistoryReads` resolves, and `IOrderVisibilityWorkflow`
+  resolves *and* drags in a real `IOrderVisibility` — the same shape as the existing `IOrderWorkflow` fact
+  and for the same reason.
+
+`OrderTestWorld` gains `AddVisibilityEventAsync`, which writes a visibility row in plain SQL. That is the
+established pattern in that class and the right one here twice over: it keeps a bug in the writer from
+looking like a bug in the reader, and it reaches the state the writer refuses to create.
+
+---
+
+#### Where to look if the build breaks
+
+**`HiddenRecords.razor`**, and specifically its two `<text>` blocks and the `class="hidden-record @(…)"`
+ternary. Both idioms already exist in the tree — `<text>` in nineteen places, the nested-quote class
+ternary in `CounterSitting.razor` and `KitchenBoard.razor` — so neither is new ground, but this file uses
+them in the same markup. It deliberately declares no locals inside a markup `@foreach`: nothing else in
+the tree does, so `IsExpanded(summary)` and `CountSentence(count)` are methods instead.
+
+Then `SittingRecordReads.cs`'s template refactor. `OrdersTemplate`, `EventsTemplate` and
+`OperationsTemplate` are `private static string` methods returning raw interpolated strings, consumed by
+six `static readonly` fields declared after them; both scope fragments are `const`, so there is no
+initialisation-order hazard. `ListOrderRecordsForSittingAsync` is now an expression-bodied `async` method
+(`=> await ReadRecordsAsync(…).ConfigureAwait(false)`), which is legal but is the one shape in this slice
+that has no precedent in the tree.
+
+Three things I could not check without a compiler, each deliberate:
+
+1. `form[OrderField]` is read out to a `string?` local before `Guid.TryParse` in both new surfaces.
+   `StringValues` has an implicit conversion to `string?`, and `Guid.TryParse` has both a `string?` and a
+   `ReadOnlySpan<char>` overload; being explicit keeps overload resolution off that question entirely.
+2. `= ANY(@GuestOrderIdentifiers)` binds a `Guid[]` as one `uuid[]` parameter. `DapperMenuDirectory`
+   already does this, so the shape is proven — but this is the first use of it in `Orders`.
+3. `ESCAPE '\'` in a C# raw string literal is a single literal backslash on both sides: raw strings do not
+   process escapes, and `standard_conforming_strings` (on by default since PostgreSQL 9.1) means the SQL
+   string is one backslash rather than the start of an escape sequence.
+
+Everything else is ordinary C# and SQL in the shapes the surrounding files already use — the readers are
+`DapperCounterBoardReads`'s aliased-column, internal-row-type pattern with a `CROSS JOIN LATERAL … LIMIT
+1` for the latest visibility event, and both surfaces are the static-SSR post/redirect/get shape
+`ManageTable` established and `AdministrationSittings` repeated, including its `ReadFormAsync` note.
+
+---
+
+#### What is left in M5
+
+The cross-cutting **event explorer** (§11.4: security, order, and menu events filtered by subject, actor,
+type, and time). All three engines exist — `ISittingRecordReads` reads the order half, `IMenuEventLog` the
+menu half, `ISecurityEventLog` the third — and what is missing is one screen that queries all three and a
+shared filter over them. After that, M5 is closed and M6 is hardening: the Playwright matrix (fifteen
+skips today, two of which — `Guest_HidesClosedOrder_AdminCanUnhide` and the join/token pair — this slice
+finally makes writable), the restore drill, and CI.
+
+### M5 Slice 5 — the event explorer: three logs, one question (landed)
+
+M5's build-order line (§19) reads "bills, price adjustment, close & settle, end-of-day, counter fallback
+QR, menu management + events, **event explorer**, hide/unhide, post-close corrections". This slice is the
+emphasised phrase, and it is the last thing M5 owed. §11.4 spells it out in one clause: "Event explorer
+(filter security/order/menu events by subject, actor, type, and time)."
+
+No migration, no packages, no schema change, and nothing deleted. Every table this reads shipped in
+`0001_initial_schema.sql`. `Program.cs` gains one `using` and one call — the first startup edit since M4
+Slice 1, and the reasoning for it is below.
+
+---
+
+#### What was actually missing
+
+Three append-only logs, three readers, and no way to ask a question of all three at once.
+
+`ISecurityEventLog` writes `security_event` and has never had a read side at all. `IMenuEventLog` reads
+`menu_item_event`, scoped to one item or capped to a recent-activity panel. `ISittingRecordReads` reads
+`order_event`, scoped to one sitting or one order. Every one of them takes a subject the caller already
+names, which is correct for the screens they serve — a person's management page, an item's history, a
+sitting's record — and useless for the question §11.4 poses, which is the opposite shape: *what happened,
+anywhere, in this window*.
+
+Answering that by calling the three readers and merging in memory would mean fetching every event in the
+restaurant in order to render the fifty most recent. The interleaving, the ordering and the cap have to
+happen in one statement, so the statement had to exist.
+
+---
+
+#### One statement, sixteen columns, three branches
+
+`DapperEventExplorerReads` is a `UNION ALL` over the three tables inside a subquery, with the filter, the
+ordering and the `LIMIT` applied once to the union's output.
+
+```sql
+FROM (
+    SELECT 'security'::text AS event_stream, … FROM security_event …  WHERE @IncludeSecurityEvents::boolean
+    UNION ALL
+    SELECT 'order'::text    AS event_stream, … FROM order_event …     WHERE @IncludeOrderEvents::boolean
+    UNION ALL
+    SELECT 'menu'::text     AS event_stream, … FROM menu_item_event … WHERE @IncludeMenuEvents::boolean
+) AS event_row
+WHERE (@SubjectPattern IS NULL OR event_row.subject_search ILIKE @SubjectPattern ESCAPE '\')
+  AND …
+ORDER BY event_row.occurred_at DESC, event_row.event_identifier DESC
+LIMIT @MaximumCount;
+```
+
+The stream flags sit *inside* the branches so a stream that is switched off is not scanned at all; the
+other four bounds sit outside, written once rather than three times, because PostgreSQL pushes qualifiers
+down through a `UNION ALL` on its own and three copies of a WHERE clause is how one copy ends up fixed and
+the other two wrong. That is the same failure `DapperSittingRecordReads`' shared `const` fragments exist to
+prevent, reached from the other side.
+
+**Every column is aliased in every branch**, which `DapperSittingRecordReads`' five-way union deliberately
+does not do. PostgreSQL takes the names from the first branch and ignores the rest, so the aliases below
+the first are documentation — and with sixteen columns drawn from three unrelated tables, documentation is
+exactly what stops a future edit inserting a column into one branch and silently shifting five others.
+
+**Every missing column is cast** (`NULL::uuid`, `NULL::bigint`, `NULL::text`, `NULL::numeric(10,2)`) and
+every `citext` is cast to `text` before it meets a `text` from another branch, so no column's type depends
+on how the planner resolves `citext` against `text` in a union.
+
+---
+
+#### The security branch's LEFT JOIN is the load-bearing line
+
+`security_event.actor_person_identifier` is the only nullable actor column in the three tables (§8.2:
+NULL means the subject acted on themselves, or the system did). Its join to `person` is therefore the only
+`LEFT` one in the statement.
+
+An `INNER` there would compile, run, return rows, and silently hide every lockout and every failed sign-in
+from the one screen an administrator opens to look for them. It does not throw and it does not look
+wrong. `Security_WithNoActor_KeepsTheRowAndReportsNoActor` is the test that notices.
+
+The two search expressions are `concat_ws` rather than `||` for the neighbouring reason: `||` annihilates
+on NULL, so a person with no display name would become unfindable by username. For an actorless security
+event `concat_ws` yields the empty string, which matches no actor filter — correct, and quieter than a
+NULL needing a `COALESCE` at every use.
+
+---
+
+#### Six decisions worth knowing before you read the diff
+
+**The type filter is exact, and that is only sound because the three vocabularies do not overlap.**
+`created` is the menu's word; `account_created` is security's, and contains it. A substring match would
+answer "when was this item created" with a list of accounts. One flat `event_type = @EventType` across the
+union works because no word appears in two streams — a property of the schema rather than a coincidence,
+so `Catalogue_TheThreeVocabularies_DoNotOverlap` asserts it and `Catalogue_SecurityEventTypes_AreExactly…`
+pins the biggest list to `SecurityEventType.All`.
+
+**Three streams, not four.** §6.8's `order_visibility_event` is deliberately absent. §11.4 names security,
+order and menu, and gives visibility its own screen — the hidden-records view, where its log sits beside
+the order it is about and next to the Unhide button that is its only counterpart. Folding it in here would
+put "somebody tidied their history" in the same list as the meal, without the one control that answers it.
+
+**Nothing is projected, including on the way out.** `event_type`, `actor_role` and the stream word all
+travel as strings, and the reader cannot throw on a value it does not recognise. The surface renders a
+friendly label for the words §8.2's CHECKs admit and falls back to the raw string — the same rule
+`ManageSitting` and `HiddenRecords` already follow, for §11.4's reason: an enum is a projection with a
+failure mode, and the one screen whose job is to show what is stored is the last place a word may be
+mapped to something it is not.
+
+**The subject is not the same kind of thing in each stream, and the filter reaches all three.** A security
+event's subject is a person, searchable by username or display name; an order event's is the order,
+searchable by its owner *or by its table label* — which is what an administrator actually remembers; a
+menu event's is the item, searchable by name. `SubjectFilter_ReachesPeopleTablesAndItems` covers all four
+routes.
+
+**Wildcard escaping is copied from `DapperOrderHistoryReads`, character for character.** `%`, `_` and `\`
+are escaped so searching for the username `a_b` does not also find `axb`. Two search boxes on two
+administration screens that escaped differently would be a bug nobody could see.
+
+**The page is read-only, and that is a design constraint rather than a stage.** There is no control on
+`/administration/events` that changes anything. Every row links to the screen that owns the thing it is
+about, and that screen has the buttons. An audit log with edit affordances on it is a different and much
+worse object.
+
+---
+
+#### Why `Program.cs` was edited this time
+
+The four existing extensions each resisted being split for a real reason: a host that wired ordering
+without the reminder loop would alert and never remind, and one that wired ordering without the menu would
+have a staging area that could list nothing. Both are silent half-failures, so both stay welded together —
+and that is why M5 Slices 2 and 4 both went out of their way to avoid a startup edit.
+
+The explorer is not like that. It reads identity's audit log, ordering's event log and the menu's, and
+belongs to none of them; putting it in `AddRestaurantOrders()` would make the ordering extension the
+registrar of a reader of `security_event`. And its failure mode if omitted is not silent — one
+administration route throws on resolve, loudly, in front of the person who asked for it. So it gets
+`AddRestaurantEventExplorer()`, one scoped registration whose only dependency is the connection factory.
+`EventsWiringTests` asserts that last part directly: a registration that grew a clock, an identifier
+factory, a broadcaster or a metric would mean the explorer had acquired a write path or a notification,
+and it must never have either.
+
+---
+
+#### `EventExplorerQuery`, and why the URL logic left the page
+
+`HiddenRecords.razor` holds the same logic inline — parse two dates, notice a reversed range, rebuild the
+path with every bound preserved — and none of it is reachable by a test, because reaching it means
+rendering a static-SSR component with an `HttpContext`. It is also the part most likely to be quietly
+wrong: every narrowing affordance on the page rebuilds the URL from the current selection, so a bound that
+survives parsing but not the rebuild silently changes the administrator's question the moment they click
+anything, and nothing looks broken while it happens.
+
+Lifting it into one immutable class in the web layer costs a file and buys twenty-five container-free
+facts, including the round trip (`ReparsingItsOwnPath_YieldsTheSameFilter`) and the restaurant-zone date
+conversion asserted against two different zones. The same treatment is available to `HiddenRecords` later;
+this slice does not touch it, because a refactor of a green page is not this slice's business.
+
+Three parsing rules are worth stating out loud:
+
+- **No stream named means all three.** An unchecked checkbox submits nothing, so "cleared every box and
+  pressed the button" and "opened the page fresh" arrive as byte-identical requests. They cannot be told
+  apart, so they must mean the same thing, and the only defensible meaning is §11.4's default: everything.
+  The page then re-checks all three boxes, which is how it says so.
+- **Nothing is ever refused.** An unreadable date, a reversed range, a misspelled stream, a type this
+  build does not know — each is ignored or passed through, and each adds a sentence to `Problems` that the
+  page prints. A filter returning a wider answer is still a filter; a filter that throws is a blank page in
+  front of somebody trying to find out what happened.
+- **Dates are the restaurant's** (§8.1), converted through `RestaurantTime.StartOfDay`/`StartOfNextDay`
+  into a half-open UTC range. The mirror image of the rendering rule, and the reason the conversion is not
+  an `AT TIME ZONE` in the query — §8.1 wants exactly one type performing it.
+
+---
+
+#### Files
+
+**New (7)**
+
+| Path | What |
+| --- | --- |
+| `src/MyRestaurant.DataAccess/Events/EventExplorerReads.cs` | `EventStream`, `EventTypeCatalogue`, `ExplorerEvent`, `EventExplorerFilter`, `IEventExplorerReads`/`DapperEventExplorerReads` |
+| `src/MyRestaurant.WebApplication/Events/EventExplorerQuery.cs` | query string ↔ filter ↔ canonical URL |
+| `src/MyRestaurant.WebApplication/Events/EventsServiceCollectionExtensions.cs` | `AddRestaurantEventExplorer()` |
+| `src/MyRestaurant.WebApplication/Components/Pages/Administration/EventExplorer.razor` | `/administration/events` |
+| `tests/MyRestaurant.DataAccess.Tests/Events/EventExplorerReadsTests.cs` | 21 facts (19 Testcontainers, 2 pure) |
+| `tests/MyRestaurant.WebApplication.Tests/Events/EventExplorerQueryTests.cs` | 25 facts, no container |
+| `tests/MyRestaurant.WebApplication.Tests/Events/EventsWiringTests.cs` | 3 facts, no container |
+
+**Edited (7)**
+
+| Path | What |
+| --- | --- |
+| `src/MyRestaurant.WebApplication/Program.cs` | one `using`, one `AddRestaurantEventExplorer()` |
+| `…/Administration/AdministrationHome.razor` | one `<a>` — Events in the header actions |
+| `…/Administration/AdministrationTables.razor` | one `<a>` |
+| `…/Administration/AdministrationMenu.razor` | one `<a>` |
+| `…/Administration/AdministrationSittings.razor` | one `<a>` |
+| `…/Administration/HiddenRecords.razor` | one `<a>` |
+| `tests/MyRestaurant.DataAccess.Tests/Orders/OrderTestWorld.cs` | `AddSecurityEventAsync`, `AddMenuItemEventAsync`, two statements |
+
+No `docs/TECHNICAL_SPECIFICATION.md`, `docs/REQUIREMENTS.md`, or ADR edit: this realizes behaviour §11.4
+already specifies, in the words it already uses.
+
+---
+
+#### Where to look if the build breaks
+
+**`EventExplorer.razor`**, as always. Three things in it have no exact precedent in the tree:
+
+1. `[SupplyParameterFromQuery(Name = …)] private string[]? Streams { get; set; }` — the first array-valued
+   query parameter in the project. Repeated `?stream=a&stream=b` binds to it; the attribute's `Name` is a
+   `const` on `EventExplorerQuery`, so the form field and the parser cannot drift.
+2. `<fieldset>`/`<legend>` and `<optgroup>` — ordinary HTML, but the first of each here.
+3. `class="event-stream-badge event-stream-@entry.Stream"` — an implicit expression finishing an attribute
+   value. Common Razor, first use in this tree.
+
+The one thing deliberately avoided: no locals are declared directly inside a markup `@foreach`, matching
+`HiddenRecords`. Pattern variables inside an `@if` within a `@foreach` *are* used, which that file already
+does.
+
+Then `EventExplorerReads.cs`, and specifically the union's column list. Two things I could not check
+without a compiler, both deliberate:
+
+1. `WHERE @IncludeSecurityEvents::boolean` as an entire WHERE clause — a bare boolean parameter, cast for
+   the same belt-and-braces reason `DapperSecurityEventLog` casts `@ActorPersonIdentifier::uuid`.
+2. `concat_ws(' ', subject.username::text, subject.display_name)` — first use of `concat_ws` in the tree.
+   It returns `text`, skips NULLs, and yields `''` (not NULL) when every argument is NULL, which is the
+   behaviour the actorless-security-event case depends on.
+
+`ESCAPE '\'` inside a C# raw interpolated string is one literal backslash on both sides — raw strings do
+not process escapes, and `standard_conforming_strings` makes the SQL string a single backslash. Same as
+`DapperOrderHistoryReads`.
+
+---
+
+#### Build/test checklist for this slice
+
+1. `dotnet restore` — no new packages, no migration, no schema change.
+2. `dotnet build` — the Razor page is the likely compiler-catch home, as always.
+3. `dotnet test` — expect **+49 facts** (21 + 25 + 3). Taking M5 Slice 4's projected 877 as the baseline:
+   926 total, 911 passing, 15 still skipped with a container engine present. Without one, the 19
+   container-dependent facts here skip as well.
+4. `bash run.sh --smoke` — should be unaffected, but `Program.cs` changed, so this one is not a formality
+   this time.
+5. `bash run.sh --containers-only`, then as an administrator:
+   - `/administration/events` — three streams interleaved, newest first.
+   - Untick Orders and Menu — only security events; the URL says `?stream=security`.
+   - Type a username into Subject; then the same word into Actor — different answers.
+   - Pick a type from each of the three optgroups.
+   - Set a date range, then reverse it — the range is dropped and the page says why.
+   - Click a stream badge, then "only this subject" — the other bounds survive.
+   - Follow a security row to its person, an order row to its sitting, a menu row to its item.
+
+---
+
+#### What is left in M5
+
+**Nothing.** §19's M5 line is closed: bills, price adjustment, close & settle, end-of-day, counter fallback
+QR, menu management + events, event explorer, hide/unhide, post-close corrections.
+
+M6 is hardening: the Playwright matrix (fifteen skips today), the backup/restore drill, and CI.
+
 ### M6 Slice 1 — continuous integration: the machine that compiles what I cannot (landed)
 
 M6's build-order line (§19) reads "full E2E suite (§16.3), backups + restore drill, cloudflared production
@@ -7513,6 +7994,144 @@ on the page rather than the first — a details step can refuse in more than one
 
 Expected after this: `MYRESTAURANT_E2E=1` reports **8 passed / 7 skipped**, which is what Slice 6 claimed
 and this is the first slice entitled to.
+
+### M6 Slice 9 — two guests at one table (landed)
+
+§16.3 scenario **5**: *"Second guest joins via fresh token → sees first guest's order live; first guest sees
+roster update."* It is the first scenario with two guests in the restaurant at once, and the only one so far
+where **every** interesting event is raised by a browser other than the one being asserted on. Scenario 6
+already watched a fulfillment cross from the kitchen's circuit to a guest's; this watches a join and a send
+cross from one guest's circuit to another's, in the opposite direction, twice.
+
+`MYRESTAURANT_E2E=1` goes from **8 passed / 7 skipped** to **9 passed / 6 skipped**. `dotnet test` stays at
+**971 total / 0 failed** — no unit or integration test moved, and the scenario is opt-in like every other.
+
+---
+
+#### What the scenario does
+
+An administrator bootstraps, puts soup and a steak pie on the menu, and creates a table. Then:
+
+1. **The first guest** scans, self-registers with a passkey, joins, and sends one soup. Their roster is
+   asserted to hold exactly one person wearing the *"you"* chip, and *"the rest of the table"* to be empty.
+2. **The second guest** scans the code the table is showing now — their own browser context, their own
+   virtual authenticator, their own account — registers, and joins.
+3. **The first guest's roster grows to two, with nobody touching their phone.** `TableJoin.razor` publishes
+   `SittingMemberJoined` after the membership row commits (§9: *"fired on: membership insert"*), the first
+   guest's circuit re-reads, and the second guest appears without the *"you"* chip.
+4. **The first guest's party list stays empty**, which is the assertion that makes §5.2's *"who is here"*
+   and §11.1's *"the rest of the table"* two different lists rather than two renderings of one. §6.1 creates
+   the `guest_order` row lazily inside a first send and `sitting_bill` is grouped from those rows, so a guest
+   who has joined and ordered nothing is on the roster and nowhere near the bill.
+5. **The second guest sees the first guest's soup on arrival.** That half comes from the read model, not
+   from a notification — their circuit started after the send — and would still hold with §9 switched off.
+   It is asserted separately for exactly that reason.
+6. **The first guest sends a steak pie ×2, and the second guest's screen grows a line.** No reload, no
+   click, no navigation on the second browser: `OrderLinesChanged` to the sitting's members, and the surface
+   re-reads. The quantity is asserted as well as the name, because a party list that showed the line and
+   lost the number would be a bill nobody could read.
+7. **One open sitting, two members, in join order** — read from the rows. From a seat, *"both joined the
+   sitting"* and *"a second sitting was opened on the same table and the unique index did not stop it"* look
+   identical, and only `table_sitting` plus `table_sitting_member` say which happened.
+
+---
+
+#### "Fresh token" at an hour-long window
+
+§16.3's word is *fresh*, and this scenario deliberately runs at the harness default of 3600 s rather than at
+§13's ten-second floor. At an hour the second guest's token is very often the same string as the first
+guest's, and that is the right reading: *fresh* means **the code the table is showing at the moment they
+scan**, not a code the first guest's has aged out of. Scenario 3 already owns the expiry half — it is built
+on the ten-second floor precisely so that the token it scanned is provably dead before the guest joins — and
+duplicating that here would only add a clock to race against two registrations and four form posts.
+
+---
+
+#### The one product change: naming a span
+
+`TableOrderSurface.razor`, §11.1's *"the rest of the table"*, rendered another guest's line as:
+
+```razor
+<span>@theirLine.Quantity × @theirLine.MenuItemName</span>
+```
+
+It is now `<span class="order-party-line-name">`. That was the only text on the ordering surface a reader
+had no way to address — the guest's own lines carry `.order-line-name`, the kitchen's carry
+`.kitchen-line-name`, and this one was a gap rather than a decision. A **distinct** class rather than
+reusing `.order-line-name`, because that one is `font-weight: 600` and the rest of the table is deliberately
+quieter than your own order; the new name has no rule behind it and changes nothing on screen.
+
+Nothing else under `src/` moved. No migration, no schema change, no package, no ADR, no `Program.cs`, no
+`.slnx`.
+
+---
+
+#### Harness: three new reads, and why each has a wait
+
+`Harness/TableOrderJourneys.cs` gains `ReadRosterAsync` / `WaitForRosterAsync`, `ReadPartyAsync` /
+`WaitForPartyAsync`, two records (`TableRosterMember`, `PartyOrder`), and one extracted helper
+(`ReadBadgeAsync`) now shared by the guest's own lines and everybody else's.
+
+Both new lists change because of a §9 broadcast started by **another** browser, and there is no click on
+this page to await and no navigation to settle. A scenario that read them once would be sampling a race it
+cannot see. So both re-read until the predicate holds and then report, in one sentence, what was on screen
+when it never did — the same discipline `WaitForBoardAsync` and `WaitForCommittedLinesAsync` already follow,
+and for the same reason: *"the roster did not grow"* and *"the broadcast never left the other circuit"* are
+indistinguishable from a bare timeout.
+
+`TableRosterMember.IsYou` is read from the presence of the roster row's chip rather than from its word. That
+chip is the only thing on the surface that makes the list this reader's view of the table rather than a list
+of strings, and step 3 above turns on exactly that distinction.
+
+`PartyOrder.TotalText` is kept as **text**. It is rendered through `MoneyText.Format(amount, CurrencyCode)`,
+so parsing it back into a decimal would mean reimplementing a currency formatter inside a test in order to
+compare against a number the test already knew. A scenario that cares can assert containment; this one
+asserts on the lines, which is what §16.3 scenario 5 is actually about.
+
+`GuestOrderLine` is reused for a party line rather than duplicated. The two lists come from different
+sources — your own from the event fold, everybody else's from `order_current_line` — and word the badge
+differently (*"At your table"* against *"At the table"*), but both publish the same `chip-ok`, which is the
+state rather than the copy. The one asymmetry is that `GuestLineBadge.Removed` cannot occur on a party line
+at all: `order_current_line` filters removals out in SQL (`WHERE removed.order_line_identifier IS NULL`), so
+a line that was taken off simply is not there.
+
+---
+
+#### `SeatGuestAsync`, extracted
+
+Scan → register with a passkey → join → wait for the circuit, in the guest's own browser context with its
+own virtual authenticator. `ArrangeServiceAsync` (scenarios 4 and 6) now calls it instead of inlining the
+same five steps; the call sequence is byte-for-byte what it was, so those two scenarios are unchanged in
+behaviour. Scenario 5 needs two of these alive at once, which is what turned four lines inside one
+arrangement into a method.
+
+Cookies are per-context and a WebAuthn credential belongs to the authenticator that minted it, so a second
+guest sharing the first's context would be the first guest with a second passkey — which is a different
+scenario, and not one §16.3 asks for.
+
+---
+
+#### What this does not prove
+
+The two guests are seated **sequentially**, not concurrently. §5.1's advisory lock over sitting creation and
+§6.6's `FOR SHARE`/`FOR UPDATE` ordering are what make a genuine race safe, and neither is exercised here —
+those belong to `MyRestaurant.DataAccess.Tests`, which already drives concurrent sends and a concurrent
+close against a real PostgreSQL. A browser scenario that tried to race two joins would be asserting on
+Playwright's scheduling rather than on the lock.
+
+---
+
+#### Where scenario 5 sits in the matrix
+
+Live after this slice: **1, 2, 3, 4, 5, 6, 13, 14, 15**. Remaining: **7** (a removal of a fulfilled line
+sinks the whole batch with a per-operation reason), **8** (one reminder and exactly one, which wants a short
+`KITCHEN_SUBMISSION_REMINDER_SECONDS` rather than sixty seconds of waiting), **9** (a counter price
+adjustment read old → new on the guest's screen), **10** (a close, the pending-line warning, and the flip to
+a settled read-only view), **11** (hide, the hidden-records filter, unhide — the one that will meet
+`EnhancedNavigation` again, on an administrator following a filter link), and **12** (a TOTP reset driving
+the obligations pipeline through a forced password change and a forced re-enrollment).
+
+Then the backup/restore drill, and M6 is done.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -12344,6 +12963,345 @@ on the page rather than the first — a details step can refuse in more than one
 
 Expected after this: `MYRESTAURANT_E2E=1` reports **8 passed / 7 skipped**, which is what Slice 6 claimed
 and this is the first slice entitled to.
+
+################################################################################
+# FILE: docs/_append/BUILD_PROGRESS-m6-slice-9.md
+################################################################################
+
+--- METADATA ---
+  File name:             BUILD_PROGRESS-m6-slice-9.md
+  Relative path:         docs/_append/BUILD_PROGRESS-m6-slice-9.md
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/_append/BUILD_PROGRESS-m6-slice-9.md
+  Size:                  8.5 KiB (8735 bytes)
+  Last modified:         2026-08-01 20:00:00.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 29897750
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               41ebf6b6a5cf073b6074de56d6c1087cecc5595dc129855f8b59935590f87619
+  Last git commit:       aa33fb0 2026-08-02 12:56:45 -0400 add claude changes
+
+--- CONTENT ---
+### M6 Slice 9 — two guests at one table (landed)
+
+§16.3 scenario **5**: *"Second guest joins via fresh token → sees first guest's order live; first guest sees
+roster update."* It is the first scenario with two guests in the restaurant at once, and the only one so far
+where **every** interesting event is raised by a browser other than the one being asserted on. Scenario 6
+already watched a fulfillment cross from the kitchen's circuit to a guest's; this watches a join and a send
+cross from one guest's circuit to another's, in the opposite direction, twice.
+
+`MYRESTAURANT_E2E=1` goes from **8 passed / 7 skipped** to **9 passed / 6 skipped**. `dotnet test` stays at
+**971 total / 0 failed** — no unit or integration test moved, and the scenario is opt-in like every other.
+
+---
+
+#### What the scenario does
+
+An administrator bootstraps, puts soup and a steak pie on the menu, and creates a table. Then:
+
+1. **The first guest** scans, self-registers with a passkey, joins, and sends one soup. Their roster is
+   asserted to hold exactly one person wearing the *"you"* chip, and *"the rest of the table"* to be empty.
+2. **The second guest** scans the code the table is showing now — their own browser context, their own
+   virtual authenticator, their own account — registers, and joins.
+3. **The first guest's roster grows to two, with nobody touching their phone.** `TableJoin.razor` publishes
+   `SittingMemberJoined` after the membership row commits (§9: *"fired on: membership insert"*), the first
+   guest's circuit re-reads, and the second guest appears without the *"you"* chip.
+4. **The first guest's party list stays empty**, which is the assertion that makes §5.2's *"who is here"*
+   and §11.1's *"the rest of the table"* two different lists rather than two renderings of one. §6.1 creates
+   the `guest_order` row lazily inside a first send and `sitting_bill` is grouped from those rows, so a guest
+   who has joined and ordered nothing is on the roster and nowhere near the bill.
+5. **The second guest sees the first guest's soup on arrival.** That half comes from the read model, not
+   from a notification — their circuit started after the send — and would still hold with §9 switched off.
+   It is asserted separately for exactly that reason.
+6. **The first guest sends a steak pie ×2, and the second guest's screen grows a line.** No reload, no
+   click, no navigation on the second browser: `OrderLinesChanged` to the sitting's members, and the surface
+   re-reads. The quantity is asserted as well as the name, because a party list that showed the line and
+   lost the number would be a bill nobody could read.
+7. **One open sitting, two members, in join order** — read from the rows. From a seat, *"both joined the
+   sitting"* and *"a second sitting was opened on the same table and the unique index did not stop it"* look
+   identical, and only `table_sitting` plus `table_sitting_member` say which happened.
+
+---
+
+#### "Fresh token" at an hour-long window
+
+§16.3's word is *fresh*, and this scenario deliberately runs at the harness default of 3600 s rather than at
+§13's ten-second floor. At an hour the second guest's token is very often the same string as the first
+guest's, and that is the right reading: *fresh* means **the code the table is showing at the moment they
+scan**, not a code the first guest's has aged out of. Scenario 3 already owns the expiry half — it is built
+on the ten-second floor precisely so that the token it scanned is provably dead before the guest joins — and
+duplicating that here would only add a clock to race against two registrations and four form posts.
+
+---
+
+#### The one product change: naming a span
+
+`TableOrderSurface.razor`, §11.1's *"the rest of the table"*, rendered another guest's line as:
+
+```razor
+<span>@theirLine.Quantity × @theirLine.MenuItemName</span>
+```
+
+It is now `<span class="order-party-line-name">`. That was the only text on the ordering surface a reader
+had no way to address — the guest's own lines carry `.order-line-name`, the kitchen's carry
+`.kitchen-line-name`, and this one was a gap rather than a decision. A **distinct** class rather than
+reusing `.order-line-name`, because that one is `font-weight: 600` and the rest of the table is deliberately
+quieter than your own order; the new name has no rule behind it and changes nothing on screen.
+
+Nothing else under `src/` moved. No migration, no schema change, no package, no ADR, no `Program.cs`, no
+`.slnx`.
+
+---
+
+#### Harness: three new reads, and why each has a wait
+
+`Harness/TableOrderJourneys.cs` gains `ReadRosterAsync` / `WaitForRosterAsync`, `ReadPartyAsync` /
+`WaitForPartyAsync`, two records (`TableRosterMember`, `PartyOrder`), and one extracted helper
+(`ReadBadgeAsync`) now shared by the guest's own lines and everybody else's.
+
+Both new lists change because of a §9 broadcast started by **another** browser, and there is no click on
+this page to await and no navigation to settle. A scenario that read them once would be sampling a race it
+cannot see. So both re-read until the predicate holds and then report, in one sentence, what was on screen
+when it never did — the same discipline `WaitForBoardAsync` and `WaitForCommittedLinesAsync` already follow,
+and for the same reason: *"the roster did not grow"* and *"the broadcast never left the other circuit"* are
+indistinguishable from a bare timeout.
+
+`TableRosterMember.IsYou` is read from the presence of the roster row's chip rather than from its word. That
+chip is the only thing on the surface that makes the list this reader's view of the table rather than a list
+of strings, and step 3 above turns on exactly that distinction.
+
+`PartyOrder.TotalText` is kept as **text**. It is rendered through `MoneyText.Format(amount, CurrencyCode)`,
+so parsing it back into a decimal would mean reimplementing a currency formatter inside a test in order to
+compare against a number the test already knew. A scenario that cares can assert containment; this one
+asserts on the lines, which is what §16.3 scenario 5 is actually about.
+
+`GuestOrderLine` is reused for a party line rather than duplicated. The two lists come from different
+sources — your own from the event fold, everybody else's from `order_current_line` — and word the badge
+differently (*"At your table"* against *"At the table"*), but both publish the same `chip-ok`, which is the
+state rather than the copy. The one asymmetry is that `GuestLineBadge.Removed` cannot occur on a party line
+at all: `order_current_line` filters removals out in SQL (`WHERE removed.order_line_identifier IS NULL`), so
+a line that was taken off simply is not there.
+
+---
+
+#### `SeatGuestAsync`, extracted
+
+Scan → register with a passkey → join → wait for the circuit, in the guest's own browser context with its
+own virtual authenticator. `ArrangeServiceAsync` (scenarios 4 and 6) now calls it instead of inlining the
+same five steps; the call sequence is byte-for-byte what it was, so those two scenarios are unchanged in
+behaviour. Scenario 5 needs two of these alive at once, which is what turned four lines inside one
+arrangement into a method.
+
+Cookies are per-context and a WebAuthn credential belongs to the authenticator that minted it, so a second
+guest sharing the first's context would be the first guest with a second passkey — which is a different
+scenario, and not one §16.3 asks for.
+
+---
+
+#### What this does not prove
+
+The two guests are seated **sequentially**, not concurrently. §5.1's advisory lock over sitting creation and
+§6.6's `FOR SHARE`/`FOR UPDATE` ordering are what make a genuine race safe, and neither is exercised here —
+those belong to `MyRestaurant.DataAccess.Tests`, which already drives concurrent sends and a concurrent
+close against a real PostgreSQL. A browser scenario that tried to race two joins would be asserting on
+Playwright's scheduling rather than on the lock.
+
+---
+
+#### Where scenario 5 sits in the matrix
+
+Live after this slice: **1, 2, 3, 4, 5, 6, 13, 14, 15**. Remaining: **7** (a removal of a fulfilled line
+sinks the whole batch with a per-operation reason), **8** (one reminder and exactly one, which wants a short
+`KITCHEN_SUBMISSION_REMINDER_SECONDS` rather than sixty seconds of waiting), **9** (a counter price
+adjustment read old → new on the guest's screen), **10** (a close, the pending-line warning, and the flip to
+a settled read-only view), **11** (hide, the hidden-records filter, unhide — the one that will meet
+`EnhancedNavigation` again, on an administrator following a filter link), and **12** (a TOTP reset driving
+the obligations pipeline through a forced password change and a forced re-enrollment).
+
+Then the backup/restore drill, and M6 is done.
+
+################################################################################
+# FILE: docs/_append/M6-SLICE-9-CHANGES.md
+################################################################################
+
+--- METADATA ---
+  File name:             M6-SLICE-9-CHANGES.md
+  Relative path:         docs/_append/M6-SLICE-9-CHANGES.md
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/_append/M6-SLICE-9-CHANGES.md
+  Size:                  9.0 KiB (9195 bytes)
+  Last modified:         2026-08-02 16:55:02.000000000 -0400
+  Permissions:           -rw-------
+  Owner:                 kushal:kushal
+  Inode:                 29897649
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               713e0a717e959528965705facce125e3eef323c2e0d47a060049c7d99b92e76f
+  Last git commit:       aa33fb0 2026-08-02 12:56:45 -0400 add claude changes
+
+--- CONTENT ---
+# M6 Slice 9 — two guests at one table (§16.3 scenario 5)
+
+Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
+and the contents drop straight over your working tree.
+
+```bash
+tar -xzf m6-slice9-second-guest.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+```
+
+`git status` will then show 4 modified/added files and no deletions.
+
+## Files to DELETE
+
+**None.** Nothing in this slice renames, supersedes or orphans an existing file. No migration, no schema
+change, no package change, no ADR edit, no `Program.cs` edit, no `.slnx` edit.
+
+## The four files
+
+| File | Change |
+| --- | --- |
+| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | scenario **5** implemented; `SeatGuestAsync` extracted |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | roster and party reads, with waits |
+| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor` | one added CSS class (see below) |
+| `docs/_append/BUILD_PROGRESS-m6-slice-9.md` | **new** — the ledger row |
+| `_CHANGES.md` | this file |
+
+## First: your tests are not failing
+
+You asked me to fix failing tests. `claude-terminal.txt` shows every gate green, so there was nothing to
+fix and I have not invented anything:
+
+| Run | Result |
+| --- | --- |
+| `dotnet test` | total **971**, failed **0**, succeeded 956, skipped 15 |
+| `bash scripts/ci_local.sh --with-all` | all six gates passed |
+| `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` | total 15, failed **0**, **8 passed**, 7 skipped |
+| `bash run.sh --smoke` | `/healthz/ready` → 200 |
+| `dotnet list package --outdated` | nothing outdated in any project |
+
+Slice 8's enhanced-navigation fix worked. Scenarios 3, 4 and 6 are genuinely green for the first time — the
+first slice in three entitled to say so. If you saw a failure in a run you did not paste, send me that
+output and I will take it as the next thing.
+
+## What this slice adds
+
+§16.3 scenario **5**: *"Second guest joins via fresh token → sees first guest's order live; first guest sees
+roster update."*
+
+An administrator bootstraps, puts soup and a pie on the menu, creates a table. The first guest scans,
+registers with a passkey, joins, sends one soup. The second guest scans the code the table is showing now —
+their own context, their own authenticator, their own account — registers, and joins. Then, with nobody
+touching either phone:
+
+- the **first** guest's roster grows to two (`SittingMemberJoined`, §9);
+- the first guest's *"rest of the table"* stays **empty**, because §6.1 creates a `guest_order` row only
+  inside a first send — the roster and the bill are two different lists;
+- the **second** guest's screen already carries the first guest's soup, from the read model;
+- the first guest sends a pie ×2 and the second guest's screen grows a line (`OrderLinesChanged`, §9);
+- and the database holds **one** open sitting with both usernames in join order.
+
+The last one matters: from a seat, "both joined the sitting" and "a second sitting was opened on the same
+table and the unique index did not stop it" look identical.
+
+## The one `src/` change, and why
+
+`TableOrderSurface.razor` rendered another guest's line as a bare `<span>`:
+
+```razor
+<span>@theirLine.Quantity × @theirLine.MenuItemName</span>
+```
+
+It is now `<span class="order-party-line-name">`. That was the only text on the ordering surface with no way
+to address it — your own lines carry `.order-line-name`, the kitchen's carry `.kitchen-line-name`, and this
+was a gap rather than a decision.
+
+Deliberately a **new** class rather than reusing `.order-line-name`: that one is `font-weight: 600`, and the
+rest of the table is meant to read quieter than your own order. The new name has no CSS rule behind it, so
+nothing changes on screen. I checked `wwwroot/app.css` — no selector reaches that bare span today, so this
+is purely additive.
+
+The harness could have used `span:not(.chip)` and touched no product file at all. I chose the class because
+this codebase has consistently added explicit hooks (`data-live`, `#table-order-surface`,
+`data-unseen-alerts`, `.kitchen-line-name`) wherever a surface needed to be observable, and a negation
+selector would have been the one place that guessed instead.
+
+## Build/test checklist
+
+```bash
+cd /home/kushal/src/dotnet/myrestaurant
+
+# 1. Nothing outside the end-to-end project changed behaviour.
+dotnet test
+#    expect: total 971, failed 0, succeeded 956, skipped 15   (UNCHANGED)
+#    Scenario 5 goes from [Fact(Skip = …)] to a [Fact] that calls Assert.SkipUnless, and xUnit
+#    counts both as skipped — so with MYRESTAURANT_E2E unset every number stays exactly where
+#    it was. It is still one test method either way.
+
+# 2. The strict build. The .razor edit is the only thing that can produce a compiler diagnostic;
+#    it is one attribute on one element, and I balance-checked the file.
+bash scripts/ci_local.sh --with-all
+
+# 3. The point of the slice.
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: total 15, failed 0, 9 passed, 6 skipped
+#    scenario 5 is the one that moves
+
+# 4. Append the progress block.
+cat docs/_append/BUILD_PROGRESS-m6-slice-9.md >> docs/BUILD_PROGRESS.md
+```
+
+I cannot run any of this — there is no .NET SDK in my sandbox — and Slice 8's `_CHANGES.md` had to correct
+two slices' worth of numbers I had once stated as though I had. So: **9 passed / 6 skipped is an arithmetic
+prediction, not an observation.** One scenario moved from skipped to implemented; if it comes back red, the
+scenario is wrong and the numbers were never the point.
+
+## If it goes red
+
+The scenario reaches new ground in exactly two places. The new waits are built to name which:
+
+| Message begins | What it means |
+| --- | --- |
+| `The table roster never showed both guests on the roster…` | The `SittingMemberJoined` broadcast did not reach the first guest's circuit, or the first guest's circuit had gone away. The message lists who the roster *does* show. Check that both pages are still on `/table/{id}` and that neither navigated. |
+| `The rest of the table never showed the first guest's soup…` | The second guest's surface loaded but `ListSittingBillAsync` returned nothing for the first guest — which would mean the send did not create a `guest_order` row, or the two guests are on different sittings. Step (f)'s database read would catch the second; if it is the first, the failure will be at step (d) rather than at (f). |
+| `The rest of the table never showed both of the first guest's lines…` | The arrival read worked and the live one did not: `OrderLinesChanged` reached one circuit and not the other. This is the only assertion in the scenario that has no non-live equivalent. |
+| `…never advanced from the details step to the credential step…` | Registration, i.e. Slice 8's territory — but for a *second* account in the same instance. If this fires only for `e2e.guest.five.two`, suspect username uniqueness or a shared virtual authenticator rather than enhanced navigation. |
+| `Assert.Equal() Failure … 'First Guest' vs 'Second Guest'` at step (f) | Join order came back reversed. `ReadOpenSittingAsync` orders by `joined_at`; two joins seconds apart cannot tie, so this would be a real ordering bug rather than a flake. |
+
+The web application's own console tail is on `RestaurantInstance.DiagnosticOutput` for the server side of
+any of these.
+
+## Housekeeping — a correction to Slice 8's note
+
+Slice 8's `_CHANGES.md` claimed fifteen unmerged appends and gave a loop to merge them. That was **wrong**:
+you had already merged most of them. Checking `docs/BUILD_PROGRESS.md` against `docs/_append/` right now,
+only two are genuinely unmerged:
+
+```bash
+cat docs/_append/BUILD_PROGRESS-m5-slice-4.md >> docs/BUILD_PROGRESS.md
+cat docs/_append/BUILD_PROGRESS-m5-slice-5.md >> docs/BUILD_PROGRESS.md
+```
+
+**And there is a real defect worth your eyes.** M5 Slice 3's block is in `docs/BUILD_PROGRESS.md`
+**twice** — identical `### M5 Slice 3 — administration sittings…` headings at lines **1550** and **2506**.
+Something got appended twice at some point. That needs one block deleted by hand; I am not giving you a
+script for it, and the file is far too large to regenerate. If you would rather I produced the whole
+corrected file in a future slice, say so and I will — it is ~4,100 lines, which is a lot of tokens but not
+an unreasonable ask for a document that is the project's own record.
+
+`shellcheck` is still not installed locally, so `ci_local.sh` step 1 only parses:
+`sudo dnf install ShellCheck`.
+
+## What is next
+
+Scenario **7** — a guest ticks a fulfilled line for removal, the whole batch is refused with a
+per-operation reason, and removing their *pending* line succeeds. It is the first scenario about §6.5.9's
+all-or-nothing refusal as a guest experiences it, and `TableOrderJourneys` already reads the rejection
+panel, so it needs a tick-and-send journey and nothing else. Then 8 through 12, and the backup/restore
+drill.
+
+## The one-line why
+
+Two people at one table is the first thing this application does that a single browser cannot show you.
 
 ################################################################################
 # FILE: docs/adr/0001-single-application-with-areas.md
@@ -42802,15 +43760,15 @@ else
   File name:             TableOrderSurface.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
-  Size:                  35.4 KiB (36236 bytes)
-  Last modified:         2026-08-01 23:46:07.000000000 -0400
+  Size:                  36.1 KiB (37012 bytes)
+  Last modified:         2026-08-01 20:00:00.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 29144367
+  Inode:                 29897741
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               4099f7e834f8a6ef0007090fd382d8d450ea23bdf8862a14b3a0c352b72ae963
-  Last git commit:       2762659 2026-08-01 23:51:22 -0400 add claude response
+  SHA-256:               92abe24dc3ae8dc69e5953f0ef5a6055728efbe7bcfd7be42177ae596d9e1094
+  Last git commit:       aa33fb0 2026-08-02 12:56:45 -0400 add claude changes
 
 --- CONTENT ---
 @using System.Globalization
@@ -43183,7 +44141,14 @@ else
                                 @foreach (OrderLineView theirLine in theirLines)
                                 {
                                     <li @key="theirLine.OrderLineIdentifier">
-                                        <span>@theirLine.Quantity × @theirLine.MenuItemName</span>
+                                        @* Named rather than bare, and with a class of its own rather than
+                                           .order-line-name: this is the only text in §11.1 that a reader —
+                                           an operator in dev tools, or §16.3 scenario 5 — has no way to
+                                           address. The guest's own lines already carry .order-line-name and
+                                           the kitchen's carry .kitchen-line-name; this was the gap. A
+                                           distinct name because .order-line-name is bold, and the rest of
+                                           the table is deliberately quieter than your own order. *@
+                                        <span class="order-party-line-name">@theirLine.Quantity × @theirLine.MenuItemName</span>
                                         @if (theirLine.IsFulfilled)
                                         {
                                             <span class="chip chip-ok">At the table</span>
@@ -67580,15 +68545,15 @@ public sealed class UuidV7IdentifierFactoryTests
   File name:             EndToEndScenarios.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
-  Size:                  44.0 KiB (45062 bytes)
-  Last modified:         2026-08-02 09:24:10.775194647 -0400
+  Size:                  53.9 KiB (55223 bytes)
+  Last modified:         2026-08-01 20:00:00.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 29144370
+  Inode:                 29897744
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               dd4c55e6956fe76bf70a3fb60072063e51c7154b14b672cdc7f339ba3bf1e9fb
-  Last git commit:       5ebd271 2026-08-02 09:24:45 -0400 update with claude
+  SHA-256:               a4d7422cf1bee1e7822e53abdb3d901bd9f842a89a4bce269f5ce28287acf06b
+  Last git commit:       aa33fb0 2026-08-02 12:56:45 -0400 add claude changes
 
 --- CONTENT ---
 using System.Security.Cryptography;
@@ -67606,7 +68571,7 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
 /// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// <para>Eight are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
+/// <para>Nine are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
 /// WebAuthn attestation and a real TOTP confirmation), <b>13</b> (a passkey sign-in of a TOTP-enrolled
 /// person must not be challenged for a code) and <b>14</b> (the join-token window arithmetic as a guest
 /// experiences it) — chosen because between them they exercise the whole harness. M6 Slice 3 adds
@@ -67618,7 +68583,11 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// and no role — and the first that needed a product surface built before it could be written. M6
 /// Slice 6 adds <b>4</b> (a guest stages two adds and a note, sends, and the kitchen gets exactly one
 /// alert with both lines pending) and <b>6</b> (the kitchen marks one line away and the guest's own
-/// screen re-badges it), the first two that watch §9's live updates cross between two circuits.</para>
+/// screen re-badges it), the first two that watch §9's live updates cross between two circuits. M6
+/// Slice 9 adds <b>5</b> (a second guest joins, the first guest's roster grows without anyone touching
+/// their phone, and the second guest watches the first guest's order grow), the first with two guests
+/// in the restaurant at once and the only one where every interesting event is raised by a browser
+/// other than the one being asserted on.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -68004,10 +68973,6 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     }
 
     // -------------------------------------------------------------------------------------------
-    // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
-    // -------------------------------------------------------------------------------------------
-
-    // -------------------------------------------------------------------------------------------
     // 4. Guest stages 2 adds + note → Send → kitchen gets one loud alert → lines pending.
     // -------------------------------------------------------------------------------------------
     [Fact]
@@ -68095,11 +69060,151 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         Assert.Equal(1, settled.UnseenAlertCount);
     }
 
-    [Fact(Skip = PendingHarnessExtension)]
-    public void SecondGuest_JoinsAndSeesOrderLiveWithRosterUpdate()
+    // -------------------------------------------------------------------------------------------
+    // 5. Second guest joins via fresh token → sees first guest's order live; first guest sees roster
+    //    update.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task SecondGuest_JoinsAndSeesOrderLiveWithRosterUpdate()
     {
-        // 5. Second guest joins via fresh token → sees first guest's order live; first guest sees
-        //    roster update. Needs two live circuits in two contexts at once.
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Five";
+        GuestAccount firstAccount = new("e2e.guest.five.one", "First Guest");
+        GuestAccount secondAccount = new("e2e.guest.five.two", "Second Guest");
+
+        // The default hour-long window. Unlike scenario 3 there is nothing here that wants a token to
+        // die mid-run — "fresh" in §16.3's sentence means the code the table is showing at the moment
+        // the second guest scans, not a code the first guest's has aged out of. Scenario 3 already owns
+        // the expiry half, and a short window here would only add a clock to race.
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        // Two items whose names are not substrings of one another, for the same reason scenarios 4 and
+        // 6 insist on it: every assertion below finds a line by name.
+        MenuItemOnTheMenu soup =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Soup of the day", 6.50m);
+        MenuItemOnTheMenu pie =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Steak pie", 14.00m);
+
+        Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
+        byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+
+        // (a) The first guest, seated and having ordered. Their send is what gives the second guest
+        // something to see on arrival; without it "the rest of the table" would be empty and the
+        // scenario would prove only that a roster grows.
+        IPage first = await SeatGuestAsync(
+            instance, tableIdentifier, joinSecret, firstAccount, cancellationToken);
+
+        await TableOrderJourneys.StageAsync(first, soup, 1);
+        await TableOrderJourneys.SendAsync(first);
+
+        await TableOrderJourneys.WaitForCommittedLinesAsync(
+            first,
+            lines => lines.Count == 1,
+            LiveUpdatePatience,
+            "the soup on the first guest's own order",
+            cancellationToken);
+
+        // Alone at the table. The "you" chip is asserted as well as the name because it is the only
+        // thing that makes the roster this reader's view of the table rather than a list of strings —
+        // and step (c) below turns on the distinction between it and everyone else.
+        TableRosterMember aloneAtTheTable =
+            Assert.Single(await TableOrderJourneys.ReadRosterAsync(first));
+
+        Assert.Equal(firstAccount.DisplayName, aloneAtTheTable.Name);
+        Assert.True(aloneAtTheTable.IsYou);
+
+        // Nobody else has ordered, so §11.1's "the rest of the table" is empty. Asserted now so that
+        // what the second guest's arrival changes is a change rather than a state it was born in.
+        Assert.Empty(await TableOrderJourneys.ReadPartyAsync(first));
+
+        // (b) The second guest, scanning the code the table is showing now — their own browser, their
+        // own authenticator, their own account, and no knowledge of the first guest's session.
+        IPage second = await SeatGuestAsync(
+            instance, tableIdentifier, joinSecret, secondAccount, cancellationToken);
+
+        // (c) "First guest sees roster update." Nobody touched the first guest's phone: TableJoin.razor
+        // publishes SittingMemberJoined after the membership row commits (§9: "fired on: membership
+        // insert"), the first guest's circuit re-reads, and the list grows. This is the assertion the
+        // scenario exists for, and it is about a broadcast crossing between two circuits in two browser
+        // contexts — not about anything either page did to itself.
+        IReadOnlyList<TableRosterMember> roster = await TableOrderJourneys.WaitForRosterAsync(
+            first,
+            members => members.Count == 2,
+            LiveUpdatePatience,
+            "both guests on the roster",
+            cancellationToken);
+
+        Assert.Equal(firstAccount.DisplayName, Assert.Single(roster, member => member.IsYou).Name);
+        Assert.Equal(secondAccount.DisplayName, Assert.Single(roster, member => !member.IsYou).Name);
+
+        // The roster grew and the bill did not, which is the difference between §5.2's "who is here"
+        // and §11.1's "the rest of the table". §6.1 creates a guest_order row lazily inside a first
+        // send and sitting_bill is grouped from those rows, so a guest who has joined and ordered
+        // nothing is on one list and absent from the other.
+        Assert.Empty(await TableOrderJourneys.ReadPartyAsync(first));
+
+        // (d) "Sees first guest's order." The second guest's surface was built by a circuit that never
+        // saw the send — it started after it — so this comes from the read model rather than from a
+        // notification, and it is the half that would still be true if §9 were switched off.
+        IReadOnlyList<PartyOrder> onArrival = await TableOrderJourneys.WaitForPartyAsync(
+            second,
+            party => party.Count == 1 && party[0].Lines.Count == 1,
+            LiveUpdatePatience,
+            "the first guest's soup under the rest of the table",
+            cancellationToken);
+
+        PartyOrder theirOrderOnArrival = Assert.Single(onArrival);
+
+        Assert.Equal(firstAccount.DisplayName, theirOrderOnArrival.BillName);
+        Assert.Contains(
+            soup.Name,
+            Assert.Single(theirOrderOnArrival.Lines).Name,
+            StringComparison.Ordinal);
+        Assert.Equal(GuestLineBadge.WithTheKitchen, theirOrderOnArrival.Lines[0].Badge);
+
+        // (e) "…live." The first guest orders again, on the other side of the restaurant, and nothing
+        // touches the second guest's browser: no reload, no click, no navigation. §9 sends
+        // OrderLinesChanged to the sitting's members and the second surface re-reads. That path is the
+        // rest of what §16.3 scenario 5 is asking for, and it is the reason this waits rather than
+        // reads.
+        await TableOrderJourneys.StageAsync(first, pie, 2);
+        await TableOrderJourneys.SendAsync(first);
+
+        IReadOnlyList<PartyOrder> afterSecondSend = await TableOrderJourneys.WaitForPartyAsync(
+            second,
+            party => party.Count == 1 && party[0].Lines.Count == 2,
+            LiveUpdatePatience,
+            "both of the first guest's lines under the rest of the table",
+            cancellationToken);
+
+        PartyOrder theirGrownOrder = Assert.Single(afterSecondSend);
+
+        Assert.Equal(firstAccount.DisplayName, theirGrownOrder.BillName);
+        Assert.Single(theirGrownOrder.Lines, line => line.Name.Contains(soup.Name, StringComparison.Ordinal));
+
+        // The quantity crossed too, not merely the name: §11.1 renders "2 × Steak pie", and a party
+        // list that showed the line but lost the number would be a bill nobody could read.
+        GuestOrderLine pieOnTheirOrder = Assert.Single(
+            theirGrownOrder.Lines,
+            line => line.Name.Contains(pie.Name, StringComparison.Ordinal));
+
+        Assert.StartsWith("2 ", pieOnTheirOrder.Name, StringComparison.Ordinal);
+
+        // (f) One sitting, two members, in join order (§5.1). The screens above cannot tell "both
+        // joined the sitting" from "a second sitting was opened on the same table and the unique index
+        // did not stop it" — from a seat those look identical, and only the rows say which happened.
+        OpenSitting? sitting = await instance.ReadOpenSittingAsync(tableIdentifier, cancellationToken);
+
+        Assert.NotNull(sitting);
+        Assert.Equal(2, sitting!.MemberUsernames.Count);
+        Assert.Equal(firstAccount.Username, sitting.MemberUsernames[0]);
+        Assert.Equal(secondAccount.Username, sitting.MemberUsernames[1]);
     }
 
     // -------------------------------------------------------------------------------------------
@@ -68175,6 +69280,10 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
         Assert.Equal(service.Pie.Name, Assert.Single(board.PendingLines).Name);
     }
+
+    // -------------------------------------------------------------------------------------------
+    // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
+    // -------------------------------------------------------------------------------------------
 
     [Fact(Skip = PendingHarnessExtension)]
     public void Guest_RemoveFulfilledLineRejected_RemovePendingSucceeds()
@@ -68287,11 +69396,6 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     /// subscribers and <c>KitchenBoard.razor</c> subscribes on its first interactive render. A board
     /// opened after the send would show the queue perfectly — that comes from <c>kitchen_pending_line</c>
     /// — and would have heard nothing, which is precisely the half of §10 these scenarios exist for.</para>
-    ///
-    /// <para>The join secret is read out of the row (<see cref="RestaurantInstance.ReadJoinSecretAsync"/>)
-    /// rather than decoded off a display: these scenarios are about what happens after the guest is
-    /// seated, and pairing a tablet to get at a QR would put scenario 2's whole apparatus in front of
-    /// them. The token computed from it is one the server really verifies.</para>
     /// </summary>
     private static async Task<ArrangedService> ArrangeServiceAsync(
         RestaurantInstance instance,
@@ -68310,8 +69414,40 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
             await AdministrationJourneys.CreateMenuItemAsync(administrator, "Steak pie", 14.00m);
 
         Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
-
         byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+
+        IPage guest = await SeatGuestAsync(
+            instance, tableIdentifier, joinSecret, guestAccount, cancellationToken);
+
+        await KitchenJourneys.OpenAsync(administrator, InteractivityPatience);
+
+        return new ArrangedService(administrator, guest, tableIdentifier, soup, pie);
+    }
+
+    /// <summary>
+    /// One guest, from a code on a table to a live ordering surface: scan, self-register with a passkey,
+    /// join, and wait for the circuit. Returns their page.
+    ///
+    /// <para><b>Their own browser context, with its own authenticator.</b> Cookies are per-context, and a
+    /// WebAuthn credential belongs to the authenticator that minted it — a passkey created anywhere else
+    /// would be offered to the wrong person and to nobody useful. §16.3 scenario 5 needs two of these
+    /// alive at once, which is the reason this is a method rather than four lines inside one
+    /// arrangement.</para>
+    ///
+    /// <para><b>The token is computed at the moment of the scan</b>, from the secret read out of the row
+    /// (<see cref="RestaurantInstance.ReadJoinSecretAsync"/>) rather than decoded off a display: these
+    /// scenarios are about what happens after the guest is seated, and pairing a tablet to get at a QR
+    /// would put scenario 2's whole apparatus in front of them. The token is still one the server really
+    /// verifies, and a second guest arriving later gets the code the table is showing then rather than a
+    /// copy of the first guest's.</para>
+    /// </summary>
+    private static async Task<IPage> SeatGuestAsync(
+        RestaurantInstance instance,
+        Guid tableIdentifier,
+        byte[] joinSecret,
+        GuestAccount account,
+        CancellationToken cancellationToken)
+    {
         string token = JoinTokenService.ComputeCurrentToken(
             joinSecret, tableIdentifier, DateTimeOffset.UtcNow, instance.TableJoinTokenRotationSeconds);
 
@@ -68321,13 +69457,16 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
             TableJourneys.JoinStage.SentToSignIn,
             await TableJourneys.ScanAsync(guest, tableIdentifier, token));
 
-        await AccountJourneys.RegisterGuestWithPasskeyAsync(guest, guestAccount);
+        await AccountJourneys.RegisterGuestWithPasskeyAsync(guest, account);
         await TableJourneys.JoinAsync(guest);
         await TableOrderJourneys.WaitForLiveSurfaceAsync(guest, InteractivityPatience);
 
-        await KitchenJourneys.OpenAsync(administrator, InteractivityPatience);
+        // The cancellation token is not idle: it is the scenario's, and every wait above is bounded by
+        // its own timeout rather than by cancellation. Observing it here means a cancelled run stops at
+        // the seam between guests instead of registering a second account nobody will look at.
+        cancellationToken.ThrowIfCancellationRequested();
 
-        return new ArrangedService(administrator, guest, tableIdentifier, soup, pie);
+        return guest;
     }
 
     /// <summary>
@@ -71134,15 +72273,15 @@ internal static class TableJourneys
   File name:             TableOrderJourneys.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs
-  Size:                  16.7 KiB (17051 bytes)
-  Last modified:         2026-08-01 23:46:07.000000000 -0400
+  Size:                  28.2 KiB (28835 bytes)
+  Last modified:         2026-08-01 20:00:00.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 29144376
+  Inode:                 29897746
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               82a0a5a30ace7427d5b41943318947731936f0483a860a2ee8c942930b5faaf7
-  Last git commit:       2762659 2026-08-01 23:51:22 -0400 add claude response
+  SHA-256:               d614a3d7da9057870bd6a87b83cf65082b199fae476f31a952c24b749945a8bb
+  Last git commit:       aa33fb0 2026-08-02 12:56:45 -0400 add claude changes
 
 --- CONTENT ---
 using System.Globalization;
@@ -71154,6 +72293,15 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 /// One line on the guest's committed order, as the surface renders it (§11.1): what it is, and which
 /// of the two badges it is wearing. The badge is the whole of §16.3 scenario 6's assertion, so it is
 /// modelled as a value rather than left as a class name for a scenario to match on.
+///
+/// <para>The same record carries a line belonging to <em>somebody else</em> at the table
+/// (<see cref="PartyOrder.Lines"/>). That is reuse rather than laziness: §11.1 renders the two lists
+/// from different sources — your own from the event fold, the rest of the table from
+/// <c>order_current_line</c> — but the badge is published as the same pair of classes in both, and a
+/// scenario asking "is their soup still with the kitchen?" is asking exactly the question it asks of
+/// its own. The one difference is that <see cref="GuestLineBadge.Removed"/> cannot occur on a party
+/// line at all: <c>order_current_line</c> filters removals out in SQL, so a line that was taken off
+/// simply is not there.</para>
 /// </summary>
 internal sealed record GuestOrderLine(string Name, GuestLineBadge Badge);
 
@@ -71171,8 +72319,36 @@ internal enum GuestLineBadge
 }
 
 /// <summary>
+/// One person on the sitting's roster, as §11.1's "Who is here" list renders them (§5.2).
+///
+/// <para><paramref name="IsYou" /> is read from the "you" chip beside the name rather than from a
+/// person identifier the harness would have to learn some other way. That chip is the only thing on
+/// the surface that distinguishes the reader from everybody else, and §16.3 scenario 5 turns on
+/// exactly that distinction: the first guest must see the second arrive <em>as somebody else</em>.</para>
+/// </summary>
+internal sealed record TableRosterMember(string Name, bool IsYou);
+
+/// <summary>
+/// One other person's order under §11.1's "The rest of the table": the name that goes on the bill, the
+/// money beside it exactly as the surface formatted it, and their lines.
+///
+/// <para><b>The total is kept as text on purpose.</b> It is rendered through
+/// <c>MoneyText.Format(amount, CurrencyCode)</c>, so parsing it back into a decimal here would mean
+/// reimplementing a currency formatter inside a test in order to compare against a number the test
+/// already knew. A scenario that cares asserts on containment of a formatted figure, or — better —
+/// asserts on the lines, which are the thing §16.3 scenario 5 is actually about.</para>
+///
+/// <para>Only people who have <em>sent</em> something appear here. §6.1 creates the
+/// <c>guest_order</c> row lazily inside the first send transaction and <c>sitting_bill</c> is built
+/// from those rows, so a guest who has joined and ordered nothing is on the roster and not in the
+/// party list. That asymmetry is the product's, not the harness's, and scenario 5 depends on it.</para>
+/// </summary>
+internal sealed record PartyOrder(string BillName, string TotalText, IReadOnlyList<GuestOrderLine> Lines);
+
+/// <summary>
 /// The guest ordering journeys the §16.3 scenarios walk: staging items into the basket, sending them,
-/// and reading what came back (TECHNICAL_SPECIFICATION §6.5, §9, §11.1).
+/// and reading what came back — plus who else is at the table and what they have ordered
+/// (TECHNICAL_SPECIFICATION §6.5, §9, §11.1).
 ///
 /// <para><b>Everything here is scoped to <c>#table-order-surface</c>, and that is not decoration.</b>
 /// <c>/table/{id}</c> is a static-SSR page hosting this island, and the page itself renders a
@@ -71188,6 +72364,12 @@ internal enum GuestLineBadge
 /// stayed empty thirty seconds later. <see cref="WaitForLiveSurfaceAsync"/> turns that into one sentence
 /// about the circuit, at the moment the circuit was needed — the same lesson
 /// <see cref="DisplayJourneys.WaitForLiveSurfaceAsync"/> was written for.</para>
+///
+/// <para><b>Why the roster and the party list have waits of their own.</b> Both change because of a §9
+/// broadcast started by <em>another</em> browser — a second guest pressing Join, a first guest pressing
+/// Send — and there is no click on this page to await. A scenario that read them once would be sampling
+/// a race it cannot see; <see cref="WaitForRosterAsync"/> and <see cref="WaitForPartyAsync"/> re-read
+/// until the predicate holds and then say, in one sentence, what was on screen when it never did.</para>
 /// </summary>
 internal static class TableOrderJourneys
 {
@@ -71207,6 +72389,12 @@ internal static class TableOrderJourneys
 
     /// <summary>The committed lines — what has actually reached the kitchen (§11.1's "Sent to the kitchen").</summary>
     private const string CommittedLineSelector = "#table-order-surface ul.order-lines li.order-line";
+
+    /// <summary>§11.1's "Who is here" list — every member of the sitting, in join order (§5.2).</summary>
+    private const string RosterMemberSelector = "#table-order-surface ul.table-roster > li";
+
+    /// <summary>§11.1's "The rest of the table" — one entry per <em>other</em> person who has ordered.</summary>
+    private const string PartyOrderSelector = "#table-order-surface ul.order-party > li.order-party-order";
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
@@ -71375,16 +72563,7 @@ internal static class TableOrderJourneys
             // that is how §11.1 words it. The scenarios match on containment, so it is kept whole.
             string name = (await line.Locator("span.order-line-name").First.InnerTextAsync()).Trim();
 
-            bool removed = await line.Locator("span.chip-warn").CountAsync() > 0;
-            bool fulfilled = await line.Locator("span.chip-ok").CountAsync() > 0;
-
-            GuestLineBadge badge = removed
-                ? GuestLineBadge.Removed
-                : fulfilled
-                    ? GuestLineBadge.AtYourTable
-                    : GuestLineBadge.WithTheKitchen;
-
-            committed.Add(new GuestOrderLine(name, badge));
+            committed.Add(new GuestOrderLine(name, await ReadBadgeAsync(line)));
         }
 
         return committed;
@@ -71428,6 +72607,168 @@ internal static class TableOrderJourneys
                 + $" {timeout.TotalSeconds:F0}s. What it shows instead: {Describe(observed)}."));
     }
 
+    // --- who is at the table (§5.2, §11.1) ---------------------------------------------------------
+
+    /// <summary>
+    /// §11.1's "Who is here" list, in the order the surface renders it — which is join order, because
+    /// <c>ISittingDirectory.ListMembersAsync</c> orders by <c>joined_at</c>.
+    /// </summary>
+    internal static async Task<IReadOnlyList<TableRosterMember>> ReadRosterAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator members = page.Locator(RosterMemberSelector);
+        int count = await members.CountAsync();
+
+        List<TableRosterMember> roster = new(count);
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator member = members.Nth(index);
+
+            string name = (await member.Locator("span.table-roster-name").First.InnerTextAsync()).Trim();
+
+            // The "you" chip is the only chip a roster row ever carries, so its presence is the whole
+            // test. Matching on the word would be matching on copy.
+            bool isYou = await member.Locator("span.chip").CountAsync() > 0;
+
+            roster.Add(new TableRosterMember(name, isYou));
+        }
+
+        return roster;
+    }
+
+    /// <summary>
+    /// Waits until the roster satisfies <paramref name="expectation"/>.
+    ///
+    /// <para>This is the wait §16.3 scenario 5 is built on. Nobody touches the first guest's phone: a
+    /// second guest presses Join in another browser, <c>TableJoin.razor</c> publishes
+    /// <c>SittingMemberJoined</c> after the membership row commits (§9: "fired on: membership insert"),
+    /// and this surface re-reads. There is no click here to await and no navigation to settle, so the
+    /// only honest thing to do is re-read until it arrives — and to say what was on screen if it never
+    /// did, because "the roster did not grow" and "the broadcast never left the other circuit" look
+    /// identical from a timeout.</para>
+    /// </summary>
+    internal static async Task<IReadOnlyList<TableRosterMember>> WaitForRosterAsync(
+        IPage page,
+        Func<IReadOnlyList<TableRosterMember>, bool> expectation,
+        TimeSpan timeout,
+        string whatIsExpected,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(expectation);
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        IReadOnlyList<TableRosterMember> observed = [];
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            observed = await ReadRosterAsync(page);
+
+            if (expectation(observed))
+            {
+                return observed;
+            }
+
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The table roster never showed {whatIsExpected} within {timeout.TotalSeconds:F0}s."
+                + $" Who it says is here: {DescribeRoster(observed)}."));
+    }
+
+    /// <summary>
+    /// §11.1's "The rest of the table": everybody <em>except</em> the reader who has sent something,
+    /// with their lines underneath.
+    ///
+    /// <para>An entry with no lines is normal rather than broken — <c>sitting_bill</c> is grouped from
+    /// <c>guest_order</c> and keeps a person whose every line has since been removed, and the surface
+    /// says "Nothing on their order right now" for exactly that case.</para>
+    /// </summary>
+    internal static async Task<IReadOnlyList<PartyOrder>> ReadPartyAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator orders = page.Locator(PartyOrderSelector);
+        int count = await orders.CountAsync();
+
+        List<PartyOrder> party = new(count);
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator order = orders.Nth(index);
+
+            // Scoped to the entry's own header rather than to the entry: .order-line-name is the
+            // person's bill name here, and nothing inside .order-party-lines carries that class — but
+            // pinning it to the header row says so rather than relying on it.
+            ILocator header = order.Locator("div.order-line-main").First;
+
+            string billName = (await header.Locator("span.order-line-name").First.InnerTextAsync()).Trim();
+            string total = (await header.Locator("span.order-line-price").First.InnerTextAsync()).Trim();
+
+            ILocator lines = order.Locator("ul.order-party-lines > li");
+            int lineCount = await lines.CountAsync();
+
+            List<GuestOrderLine> theirLines = new(lineCount);
+
+            for (int lineIndex = 0; lineIndex < lineCount; lineIndex++)
+            {
+                ILocator line = lines.Nth(lineIndex);
+
+                string name = (await line.Locator("span.order-party-line-name").First.InnerTextAsync()).Trim();
+
+                theirLines.Add(new GuestOrderLine(name, await ReadBadgeAsync(line)));
+            }
+
+            party.Add(new PartyOrder(billName, total, theirLines));
+        }
+
+        return party;
+    }
+
+    /// <summary>
+    /// Waits until the rest of the table satisfies <paramref name="expectation"/>. The other half of
+    /// §16.3 scenario 5: the second guest's screen must show the first guest's order change while
+    /// nobody touches it, which is <c>OrderLinesChanged</c> crossing from one circuit to another.
+    /// </summary>
+    internal static async Task<IReadOnlyList<PartyOrder>> WaitForPartyAsync(
+        IPage page,
+        Func<IReadOnlyList<PartyOrder>, bool> expectation,
+        TimeSpan timeout,
+        string whatIsExpected,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(expectation);
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        IReadOnlyList<PartyOrder> observed = [];
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            observed = await ReadPartyAsync(page);
+
+            if (expectation(observed))
+            {
+                return observed;
+            }
+
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The rest of the table never showed {whatIsExpected} within"
+                + $" {timeout.TotalSeconds:F0}s. What it shows instead: {DescribeParty(observed)}."));
+    }
+
+    // --- failure prose -----------------------------------------------------------------------------
+
     /// <summary>A short, quotable rendering of a set of lines, for a failure message.</summary>
     internal static string Describe(IReadOnlyList<GuestOrderLine> lines)
     {
@@ -71440,6 +72781,53 @@ internal static class TableOrderJourneys
                 lines.Select(line => string.Create(
                     CultureInfo.InvariantCulture,
                     $"'{line.Name}' [{line.Badge}]")));
+    }
+
+    /// <summary>A short, quotable rendering of the roster, for a failure message.</summary>
+    internal static string DescribeRoster(IReadOnlyList<TableRosterMember> roster)
+    {
+        ArgumentNullException.ThrowIfNull(roster);
+
+        return roster.Count == 0
+            ? "nobody at all"
+            : string.Join(
+                "; ",
+                roster.Select(member => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"'{member.Name}'{(member.IsYou ? " (you)" : string.Empty)}")));
+    }
+
+    /// <summary>A short, quotable rendering of the rest of the table, for a failure message.</summary>
+    internal static string DescribeParty(IReadOnlyList<PartyOrder> party)
+    {
+        ArgumentNullException.ThrowIfNull(party);
+
+        return party.Count == 0
+            ? "nobody else has ordered"
+            : string.Join(
+                " | ",
+                party.Select(entry => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"'{entry.BillName}' {entry.TotalText}: {Describe(entry.Lines)}")));
+    }
+
+    // --- internals ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Which badge a line is wearing, from the chip's class rather than from its words. The two lists
+    /// word it differently — "At your table" on your own order, "At the table" on somebody else's — and
+    /// both publish <c>chip-ok</c>, which is the state rather than the copy.
+    /// </summary>
+    private static async Task<GuestLineBadge> ReadBadgeAsync(ILocator line)
+    {
+        if (await line.Locator("span.chip-warn").CountAsync() > 0)
+        {
+            return GuestLineBadge.Removed;
+        }
+
+        return await line.Locator("span.chip-ok").CountAsync() > 0
+            ? GuestLineBadge.AtYourTable
+            : GuestLineBadge.WithTheKitchen;
     }
 
     private static async Task<bool> WaitForBasketCountAsync(IPage page, int expected, TimeSpan timeout)
@@ -79000,10 +80388,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 314
-  Total size     : 3.3 MiB (3443874 bytes)
+  Files dumped   : 316
+  Total size     : 3.4 MiB (3524668 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-02T11:33:38-04:00
+  Completed at   : 2026-08-02T12:57:57-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
