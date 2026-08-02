@@ -24,7 +24,18 @@ internal static class AccountJourneys
     /// <summary>Ten single-use recovery codes are minted by the §3.6 bootstrap.</summary>
     internal const int ExpectedRecoveryCodeCount = 10;
 
+    /// <summary>
+    /// A field the registration details step renders and the sign-in page does not, used as the arrival
+    /// barrier for the one navigation in this harness that follows a link rather than a URL (see
+    /// <see cref="EnhancedNavigation"/>). Deliberately a field rather than the heading: copy changes and
+    /// a barrier that fails on a reworded sentence is a barrier that gets deleted.
+    /// </summary>
+    private const string RegistrationDetailsMarker = "#display-name";
+
     private static readonly TimeSpan CeremonyGrace = TimeSpan.FromSeconds(4);
+
+    /// <summary>How long a surface has to arrive — the same thirty seconds every page operation gets.</summary>
+    private static readonly TimeSpan SurfacePatience = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// The default administrator. The password is a passphrase rather than a short scramble because
@@ -43,6 +54,10 @@ internal static class AccountJourneys
     /// post/redirect/get over a protected cookie), so the URL never changes and cannot be waited on.
     /// The waits below are therefore on the element each step is identified by, which is both more
     /// robust and more legible than a URL or a heading.</para>
+    ///
+    /// <para>Every navigation here is either a <c>GotoAsync</c> or a form post, so none of them is an
+    /// enhanced navigation and none of them needs <see cref="EnhancedNavigation"/> — which is exactly
+    /// why this journey has always worked while the registration one below had never once passed.</para>
     /// </summary>
     internal static async Task<IReadOnlyList<string>> CompleteSetupAsync(IPage page, AdministratorAccount account)
     {
@@ -103,6 +118,16 @@ internal static class AccountJourneys
     /// mechanism by which registering lands the guest back at the table they scanned; a scenario that
     /// typed the URL itself would be asserting on a path no guest can take.</para>
     ///
+    /// <para><b>And following it is why this needs a barrier.</b> A link click is an <em>enhanced</em>
+    /// navigation: the URL is pushed onto the history before the page is fetched, so waiting on the URL
+    /// returns while the sign-in document is still on screen — and both surfaces have a
+    /// <c>#username</c>. Typing then is worse than useless, because the DOM patch that follows resets
+    /// every field to what the server rendered. That is the whole of why §16.3 scenarios 3, 4 and 6
+    /// timed out on a button that was never going to appear: the details step was posting an empty
+    /// username and refusing itself. See <see cref="EnhancedNavigation"/> for the mechanism, and
+    /// <see cref="AssertFieldHoldsAsync"/> for the guard that makes any recurrence say so in one
+    /// sentence instead of thirty seconds.</para>
+    ///
     /// <para>The password field is left blank on purpose. It makes the passkey the only credential,
     /// which is the harder shape to get right — the <c>person</c> row must accept a NULL
     /// <c>password_hash</c> (§3.2) and the account must still be signable-into afterwards — and it
@@ -131,22 +156,60 @@ internal static class AccountJourneys
                 exception);
         }
 
-        await createAccount.ClickAsync();
+        // Step 1 — details. Blank password: a passkey-only account (§4.3). The wait is for the details
+        // form itself rather than for the URL, for the reason spelled out above and in EnhancedNavigation.
+        await EnhancedNavigation.FollowAsync(
+            page,
+            createAccount,
+            RegistrationDetailsMarker,
+            "the registration details step",
+            SurfacePatience);
 
-        // Step 1 — details. Blank password: a passkey-only account (§4.3).
-        await page.WaitForURLAsync(
-            url => IsRegistrationUrl(url), new PageWaitForURLOptions { Timeout = 30_000 });
+        // Checked after arrival rather than waited on. By here the document really is the destination,
+        // so the URL is a fact rather than an intention — and a link that carried the guest somewhere
+        // else entirely (a lost return URL, a redirect) is worth naming rather than discovering later
+        // through a missing field.
+        if (!IsRegistrationUrl(page.Url))
+        {
+            throw new InvalidOperationException(
+                $"Following the sign-in page's 'Create an account' link landed on '{page.Url}' rather"
+                + $" than on {AccountRoutes.Register}.");
+        }
 
         await page.FillAsync("#username", account.Username);
         await page.FillAsync("#display-name", account.DisplayName);
-        await page.ClickAsync("button:has-text('Continue')");
+
+        // Read back what is actually in the fields at the instant before the form goes. This is one
+        // round trip and it converts an entire family of "the DOM moved under us" bugs — the one above,
+        // and any future surface that patches itself between the keystrokes and the click — from a
+        // thirty-second timeout on an unrelated element into a sentence naming the field and both values.
+        await AssertFieldHoldsAsync(page, "#username", account.Username);
+        await AssertFieldHoldsAsync(page, RegistrationDetailsMarker, account.DisplayName);
+
+        await page.ClickAsync("form button[type='submit']:has-text('Continue')");
 
         // Step 2 — the credential. The <passkey-submit> element intercepts this button, runs
         // navigator.credentials.create() against the virtual authenticator, writes the credential JSON
         // into the form and submits it natively; the server verifies the attestation and commits the
         // whole account in one transaction.
         ILocator addPasskey = page.Locator("button[name='__passkeySubmit']");
-        await addPasskey.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+
+        try
+        {
+            await addPasskey.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            // §4.3's details step refuses itself in a ValidationMessage rather than in a status panel,
+            // and a refusal there is indistinguishable from a hung page unless somebody reads it out.
+            string refusal = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                $"Registering '{account.Username}' never advanced from the details step to the"
+                + $" credential step, so there was no passkey button to press. {refusal}",
+                exception);
+        }
+
         await addPasskey.ClickAsync();
 
         try
@@ -156,7 +219,7 @@ internal static class AccountJourneys
         }
         catch (PlaywrightException exception)
         {
-            string refusal = await DescribeRefusalAsync(page);
+            string refusal = await DescribeSurfaceAsync(page);
 
             throw new InvalidOperationException(
                 $"Registering '{account.Username}' never left {AccountRoutes.Register}. {refusal}",
@@ -225,6 +288,34 @@ internal static class AccountJourneys
     }
 
     /// <summary>
+    /// Refuses to submit a form whose fields do not hold what was typed into them.
+    ///
+    /// <para>Not defensive programming for its own sake. The failure this catches is the one that
+    /// cannot be diagnosed from where it surfaces: a value silently reset by a DOM patch produces a
+    /// perfectly ordinary validation refusal on the next screen, and the scenario then times out
+    /// waiting for a screen after that. Two round trips here buy a message that names the field, what
+    /// it holds, and what it should have held.</para>
+    /// </summary>
+    private static async Task AssertFieldHoldsAsync(IPage page, string selector, string expected)
+    {
+        string actual = await page.InputValueAsync(selector);
+
+        if (string.Equals(actual, expected, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"'{selector}' holds '{actual}' rather than '{expected}' at the moment the form was about"
+            + " to be submitted, so the post would carry the wrong value and the surface would refuse"
+            + " itself for a reason unrelated to what is under test. The usual cause is a DOM patch"
+            + " landing between the keystrokes and the click: Blazor's enhanced navigation assigns"
+            + " every input the value the server rendered, so anything typed while its fetch was still"
+            + " in flight is erased. Whatever was supposed to make the destination surface a completed"
+            + " fact before typing began did not (see EnhancedNavigation).");
+    }
+
+    /// <summary>
     /// True once the browser is somewhere other than the sign-in page itself. Compares the path
     /// exactly rather than by prefix on purpose: <c>/sign-in/two-factor</c> must count as "left", so
     /// that a scenario asserting no TOTP challenge fails with the URL it actually landed on instead of
@@ -245,21 +336,39 @@ internal static class AccountJourneys
             && string.Equals(parsed.AbsolutePath, AccountRoutes.Register, StringComparison.Ordinal);
 
     /// <summary>
-    /// Whatever the account surface has to say about why it did not proceed: a refusal panel, a
-    /// validation message, or — when there is neither — the URL it is sitting on.
+    /// Whatever the account surface has to say about why it did not proceed: which step it is showing,
+    /// every refusal and validation message on it, and the URL it is sitting on.
+    ///
+    /// <para>All of them rather than the first. A details step that refuses can refuse in more than one
+    /// field at once, and "Choose a username." on its own would have explained these three scenarios
+    /// the day they were written.</para>
     /// </summary>
-    private static async Task<string> DescribeRefusalAsync(IPage page)
+    private static async Task<string> DescribeSurfaceAsync(IPage page)
     {
+        string heading = await HeadingOrNothingAsync(page);
         ILocator problems = page.Locator("p.status-error, .validation-message");
 
         if (await problems.CountAsync() == 0)
         {
-            return $"The page reports no error; the browser is at '{page.Url}'.";
+            return $"The page is headed '{heading}' and reports no error; the browser is at '{page.Url}'.";
         }
 
-        string message = (await problems.First.InnerTextAsync()).Trim();
+        IReadOnlyList<string> all = await problems.AllInnerTextsAsync();
+        string message = string.Join(" | ", all.Select(text => text.Trim()));
 
-        return $"The page reports: {message} (browser at '{page.Url}').";
+        return $"The page is headed '{heading}' and reports: {message} (browser at '{page.Url}').";
+    }
+
+    /// <summary>The page's first <c>h1</c>, or a placeholder — a blank error page has none at all.</summary>
+    private static async Task<string> HeadingOrNothingAsync(IPage page)
+    {
+        ILocator headings = page.Locator("h1");
+
+        if (await headings.CountAsync() == 0)
+        {
+            return "(no heading)";
+        }
+
+        return (await headings.First.InnerTextAsync()).Trim();
     }
 }
-

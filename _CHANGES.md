@@ -1,180 +1,171 @@
-# M6 Slice 7 — documentation catches up, and one dependency moves
+# M6 Slice 8 — the three red scenarios, and why they were never green
 
 Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
-and the contents drop straight over your working tree. `git status` will show exactly these 9 files as
-modified/added, and **no deletions**.
+and the contents drop straight over your working tree.
 
 ```bash
-tar -xzf m6-slice7-docs-and-dependency.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice8-enhanced-nav-fix.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
+
+`git status` will then show 3 modified/added files and 1 deletion.
 
 ## Files to DELETE
 
-**None.** Nothing is renamed or superseded. No migration, no schema change, no new package, no
-`Program.cs` edit, no `.slnx` edit, and — deliberately — **not one `.cs` or `.razor` file**.
+```bash
+cd /home/kushal/src/dotnet/myrestaurant
+git rm docs/llm/vendor/fix_assert_single.py
+```
 
-## Read this first: the archive does not contain the E2E fix
+**One file.** It was the xUnit2031 rewriter from Slice 7. It has done its job — the four
+`Assert.Single(xs.Where(p))` sites are already `Assert.Single(xs, p)` in your tree — and you have said you
+do not want bespoke text-manipulation scripts sitting in the repository where you will not notice them.
+Nothing references it. If you would rather keep it, nothing breaks; it is excluded from `export.sh` either
+way.
 
-Your `dump.txt` is at commit `7172839`, which is **M6 Slice 5**. Your build output is from after **Slice
-6**. I confirmed the gap three ways rather than assuming it:
+Nothing else is renamed or superseded. No migration, no schema change, no package change, no ADR edit, no
+`Program.cs` edit, no `.slnx` edit.
 
-- The dump's `EndToEndScenarios.cs` is 559 lines; your errors cite 566 and 568.
-- The dump's `TableJourneys.cs:113` still holds the `string.Create` call that raised CS1620 — the bug you
-  have already fixed.
-- `github.com/kusl/myrestaurant@main` is at the same state: `EndToEndScenarios.cs` is 31,473 bytes there,
-  byte-identical to the dump, and there is no `Harness/TableOrderJourneys.cs`, no `Harness/KitchenJourneys.cs`
-  and no `BUILD_PROGRESS-m6-slice-6.md`. Slice 6 exists only on your disk.
-
-So a "full file" for anything under `tests/MyRestaurant.EndToEnd.Tests/` would be a Slice 5 file wearing a
-Slice 6 name, and extracting it would silently revert two scenarios. Those files are **not in this
-archive**. Neither are `TableOrderSurface.razor` and `KitchenBoard.razor`, which Slice 6 also edited.
-
-Everything that *is* here was untouched by Slice 6 — its own change notes list nine files and none of them
-is documentation or `Directory.Packages.props`.
-
-## The nine files
+## The four files
 
 | File | Change |
 | --- | --- |
-| `Directory.Packages.props` | `Net.Codecrete.QrCodeGenerator` 3.0.0 → **3.1.0**; refreshed audit comment |
-| `README.md` | five scenarios → eight, with a table; `~934 facts` → `~970`; `/register` in the layout and caveats; M6 roadmap |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.0 → v1.1**: new §11.8, §11.1 pointer, §17 accepted risk, §19 note, Appendix A row, changelog |
-| `docs/REQUIREMENTS.md` | §4.3 points at the surface that implements it |
-| `docs/DOCUMENTATION_REVIEW.md` | **F-37** added; status header and closing note updated |
-| `docs/OPERATIONS.md` | §3 gains a paragraph on guests needing nothing from the operator |
-| `docs/_append/BUILD_PROGRESS-m6-slice-7.md` | new |
-| `docs/llm/vendor/fix_assert_single.py` | new — the xUnit2031 rewriter, in your existing vendor folder |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/EnhancedNavigation.cs` | **new** — following an in-app link without believing the address bar |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs` | the fix, the guard, and the diagnostic the failing wait never had |
+| `docs/_append/BUILD_PROGRESS-m6-slice-8.md` | **new** — the ledger row |
 | `_CHANGES.md` | this file |
 
-## The package bump, and why it is safe
+**No `src/` file changes.** Not one `.cs`, not one `.razor`. `/register` is correct and this was never a
+product bug — see below.
 
-3.0.0 → 3.1.0 is additive. The whole release is balanced sizing for **structured append** — splitting one
-long text across several linked QR codes — and nothing here does that; every code this application renders
-encodes one short URL.
+## What was wrong
 
-I checked the v3.1.0 tag rather than trusting semver. All three members in use carry identical signatures:
+All three failures are the same line of the same method, and it is the only method in the harness that
+navigates by **clicking a link in the application** instead of `page.GotoAsync`.
 
-```csharp
-public static QrCode EncodeText(string text, Ecc ecl)   // QrCode.cs:79
-public int Size => _modules.Size;                       // QrCode.cs:377
-public string ToGraphicsPath(int border = 0)            // QrCode.cs:475
+A link click on a static-SSR page is an *enhanced* navigation. From `NavigationEnhancement.ts` in
+`dotnet/aspnetcore@release/10.0`, `onDocumentClick`:
+
+```ts
+history.pushState(null, /* ignored title */ '', absoluteInternalHref);
+...
+performEnhancedPageLoad(absoluteInternalHref, /* interceptedLink */ true);
 ```
 
-No test pins a golden module path — the QR assertions are structural — so the modules may change shape
-without anything going red.
+The URL moves **first**. The `fetch` and the `synchronizeDomContent` that patches the new page in come
+after, and Playwright resolves `WaitForURLAsync` on a same-document navigation the moment the URL matches
+— there is no `load` event coming. So:
 
-**One thing to know:** this package is referenced by the web application *and* the end-to-end test project,
-and central package management moves both at once. That is load-bearing. `JoinQrCodes` proves a display is
-showing the code the table's secret produces by recomputing the expected path with this same library, and
-that assertion is only real while both sides encode identically. Never pin them apart.
+1. Click *Create an account* → `WaitForURLAsync(IsRegistrationUrl)` returns **while the sign-in document
+   is still on screen**.
+2. `FillAsync("#username", "e2e.guest")` succeeds instantly, because `/sign-in` has a `#username` too.
+3. `FillAsync("#display-name", …)` waits — that field exists only on `/register`. While it waits the fetch
+   lands, and `DomSync.ts`'s `ensureEditableValueSynchronized` assigns every input the value the server
+   rendered. The register markup carries `value=""`. **The username is erased.**
+4. Continue posts empty → `[Required]` fails → `OnValidSubmit` never fires → the details step re-renders
+   with *"Choose a username."*
+5. No credential step, so no `__passkeySubmit`, so a thirty-second timeout on an element three states
+   away from the cause.
 
-`dotnet list package --outdated` is silent about `NSubstitute` because nothing references it — it is a pin
-standing ready for §16.1, not a dependency. Checked by hand: 6.0.0 is current. The props comment now says
-so, so the next refresh does not rediscover it.
+Deterministic rather than flaky because the fill takes ~2 ms and the fetch ~20 ms.
 
-## The four xUnit2031 errors — run this, do not hand-edit
+Two things this rules out, both of which I chased first before reading the framework source:
 
-`Assert.Single(xs.Where(p))` → `Assert.Single(xs, p)`. Worth fixing rather than suppressing, for a reason
-that is diagnostic rather than stylistic: `Assert.Single` prints the collection it was given on failure,
-and with `.Where(…)` in front that is the *filtered* collection — so a scenario expecting one soup line and
-finding none reports an empty collection, which restates the failure instead of explaining it. The
-predicate overload (`public static T Single<T>(IEnumerable<T>, Predicate<T>)`, confirmed in
-`xunit/assert.xunit`) prints every line that *was* there.
+- **The registration ticket cookie is fine.** `RegistrationTicketTests` already pins the Data-Protection
+  round trip, and `/setup` proves the identical `Secure`/`HttpOnly`/`SameSite=Lax` cookie mechanic works
+  over `http://localhost` in this harness (Chromium treats localhost as a secure context).
+- **Form posts are not enhanced.** `enhancedNavigationIsEnabledForForm` requires `data-enhance` on the form
+  element itself and nothing in this application sets it, so the passkey step, the join POST and every
+  administration form are ordinary browser navigations. That is why `CompleteSetupAsync` — the same
+  four-step cookie dance over the same kind of surface — has worked since Slice 2.
 
-Since I cannot see your file, here is a parser instead of a guess. It ships in the archive at
-`docs/llm/vendor/fix_assert_single.py` — the folder you already use for generated artifacts, and one
-`export.sh` excludes, so it will never appear in a future dump:
+## What changed in the harness
 
-```bash
-cd /home/kushal/src/dotnet/myrestaurant
+**`EnhancedNavigation.FollowAsync(page, link, arrivalSelector, description, timeout)`** clicks the link and
+then waits for an element the destination has and the current page does not. `synchronizeDomContent` is one
+synchronous call on the main thread and a Playwright query cannot interleave with it, so the instant any
+part of the new markup is observable, all of it is — including the reset of every shared field. That makes
+it an exact barrier, not a delay.
 
-python3 docs/llm/vendor/fix_assert_single.py \
-  tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs --dry-run --expect 4
+Its own file rather than four inlined lines because §16.3 scenario **11** will meet the same hazard: an
+administrator filtering the hidden-records view is a link click on a static-SSR page with a form behind it.
 
-# review the before/after it prints, then drop --dry-run
-python3 docs/llm/vendor/fix_assert_single.py \
-  tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs --expect 4
-```
+**`AccountJourneys.RegisterGuestWithPasskeyAsync`** now uses it with `#display-name` as the barrier, checks
+the URL *after* arrival rather than waiting on it, reads both fields back with `InputValueAsync`
+immediately before submitting (`AssertFieldHoldsAsync`), and wraps the `__passkeySubmit` wait in the
+diagnostic it never had. `DescribeRefusalAsync` became `DescribeSurfaceAsync` and reports the heading plus
+**every** `p.status-error` and `.validation-message`, not the first — *"Choose a username."* on its own
+would have explained all three scenarios on day one.
 
-It only rewrites a call whose **entire** argument is `<receiver>.Where(<lambda>)`. `Assert.Single(xs)`,
-an already-correct `Assert.Single(xs, p)`, `Assert.Single(xs.Where(p).ToList())`, and any occurrence inside
-a comment or a string literal are left alone — it skips string, verbatim, interpolated, raw and character
-literals as well as both comment forms, so a `)` inside `"with a )() note"` cannot close a call early. I
-ran it across all 309 files of the Slice 5 tree: zero changes, byte-identical output. Running it twice
-changes nothing.
-
-Two of your four sites I recovered exactly; it will produce this for them:
-
-```csharp
-GuestOrderLine soupLine = Assert.Single(afterFulfillment,
-    line => line.Name.Contains(service.Soup.Name, StringComparison.Ordinal));
-GuestOrderLine pieLine = Assert.Single(afterFulfillment,
-    line => line.Name.Contains(service.Pie.Name, StringComparison.Ordinal));
-```
+`CompleteSetupAsync`, `SignOutAsync`, `SignInWithPasskeyAsync`, `HasLeftSignInPage`, `IsRegistrationUrl` and
+`IsStillOnSignInPageAsync` are byte-for-byte unchanged apart from doc comments.
 
 ## Build/test checklist
 
 ```bash
 cd /home/kushal/src/dotnet/myrestaurant
 
-# 1. The package bump.
-dotnet restore
-dotnet list package --outdated     # expect: no updates for any project
-
-# 2. Nothing executable changed, so nothing should move.
+# 1. Nothing outside the end-to-end project moved.
 dotnet test
-#    expect: total 971, failed 0, succeeded 956, skipped 15  (unchanged)
+#    expect: total 971, failed 0, succeeded 956, skipped 15   (unchanged)
 
-# 3. The strict build — this is the one that was red.
+# 2. The strict build — two new/changed test files, no new usings, no new analyzer surface.
 bash scripts/ci_local.sh --with-all
-#    expect: no xUnit2031, no CS-anything
 
-# 4. Unchanged, but the QR bump touches both, so prove it once.
+# 3. The point of the slice.
 MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
 #    expect: 8 passed / 7 skipped
-#    scenarios 2 and 15 are the ones that would notice a QR regression
+#    scenarios 3, 4 and 6 are the three that were red
 
-# 5. Append the progress block.
-cat docs/_append/BUILD_PROGRESS-m6-slice-7.md >> docs/BUILD_PROGRESS.md
+# 4. Append the progress block.
+cat docs/_append/BUILD_PROGRESS-m6-slice-8.md >> docs/BUILD_PROGRESS.md
 ```
+
+## If it is still red
+
+The three scenarios go further than they have ever gone, so a failure now will be at a **new** line, and
+the new diagnostics are built to name it. Read the message rather than the stack:
+
+| Message begins | What it means |
+| --- | --- |
+| `'#username' holds '' rather than 'e2e.guest'…` | The barrier did not hold — something else patches that page. Send me the message; it names both values. |
+| `Following a link away from '…' never produced the registration details step` | `/register` did not render `#display-name`, or the fetch behind the link failed. The message carries both URLs. |
+| `…never advanced from the details step to the credential step…` | The details POST was refused. The message now quotes the heading and every validation message — that is the answer. |
+| `…never left /register.` | The attestation was refused. Likely `/register/passkey/creation-options`, which no scenario had ever exercised before this one got past the details step. |
+| A timeout inside `TableOrderJourneys` or `KitchenJourneys` | Scenarios 4 and 6 reaching genuinely new ground. Those journeys already report `data-live` and the send-refusal reasons. |
+
+The web application's own console tail is on `RestaurantInstance.DiagnosticOutput` if you want the server
+side of any of these.
 
 ## Housekeeping carried over
 
-`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Fifteen appends are unmerged (you
-merged Slice 5's already; Slice 6's is on your disk and not in this archive):
+`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Fifteen appends are unmerged:
 
 ```bash
 for slice in m4-slice-2 m4-slice-3 m4-slice-4 \
              m5-slice-1 m5-slice-2 m5-slice-3 m5-slice-4 m5-slice-5 \
-             m6-slice-1 m6-slice-2 m6-slice-3 m6-slice-4 m6-slice-6 m6-slice-7; do
+             m6-slice-1 m6-slice-2 m6-slice-3 m6-slice-4 m6-slice-6 m6-slice-7 m6-slice-8; do
   cat "docs/_append/BUILD_PROGRESS-${slice}.md" >> docs/BUILD_PROGRESS.md
 done
 ```
 
-`shellcheck` is still not installed locally, so `ci_local.sh` step 1 only parses:
+(`m6-slice-5` is already merged.) `shellcheck` is still not installed locally, so `ci_local.sh` step 1 only
+parses: `sudo dnf install ShellCheck`.
 
-```bash
-sudo dnf install ShellCheck
-```
+## A correction worth making in writing
 
-## Where to look if this breaks
-
-| Symptom | Where to look |
-| --- | --- |
-| `NU1101` / restore cannot find 3.1.0 | The feed is stale or offline. `Directory.Packages.props` is the only place the version lives. |
-| Scenario 2 or 15 fails on the QR after the bump | Version skew between the app and the test project — impossible under CPM unless a `.csproj` regained an explicit `Version=`. Check both. |
-| A QR unit test fails | It should not; they are structural. If one does, it pinned a golden path at some point and that is the bug. |
-| `xUnit2031` still reported | The script printed fewer than 4 sites, meaning a call has a shape it declines to touch — `.Where(p).ToList()`, or a query-syntax `where`. Fix that one by hand. |
-| `dotnet build` green, `ci_local.sh` red | Working as designed: `TreatWarningsAsErrors` is on only under `ContinuousIntegrationBuild`. Always ask the strict question before pushing. |
+Slice 5 recorded "6 passed / 9 skipped" and Slice 6 recorded "8 passed / 7 skipped". Neither was ever
+observed — I could not run the suite and stated the arithmetic as though I had. Scenario 3 has never been
+green, and 4 and 6 inherited its journey. Those two append files are unmerged, so the numbers have not yet
+reached `BUILD_PROGRESS.md`; the Slice 8 block above records the correction where the ledger will read it.
 
 ## What is next
 
-The fresh dump, then scenario **5** — a second guest joins on a fresh token, sees the first guest's order
-live, and the first guest sees the roster update. It is the first with two guest circuits watching each
-other rather than one guest and one staff board, but Slice 6 built the harness for exactly this shape, so
-it should be short. Then 7 through 12, and the backup/restore drill.
+Scenario **5** — a second guest joins on a fresh token, sees the first guest's order live, and the first
+guest sees the roster update. Slice 6 built the harness shape for exactly this, and it is deliberately held
+back one slice rather than stacked on top of a fix nobody has run yet. Then 7 through 12, and the
+backup/restore drill.
 
 ## The one-line why
 
-Two slices of product had landed and the documents still described the tree from before them — including a
-ledger that had gone a whole surface without a row, for the second time, in the same way.
+Three scenarios were waiting for a button that could never appear, because the harness believed an address
+bar that Blazor moves before it moves the page.
