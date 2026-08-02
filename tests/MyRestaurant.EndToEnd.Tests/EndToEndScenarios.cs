@@ -474,9 +474,9 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         // "Lines pending", in the kitchen's own terms: one row per order line, the quantities the guest
         // chose, and §11.2's prominent customization note against the line it belongs to.
         KitchenBoardLine soupOnThePass =
-            Assert.Single(board.PendingLines.Where(line => line.Name == service.Soup.Name));
+            Assert.Single(board.PendingLines, line => line.Name == service.Soup.Name);
         KitchenBoardLine pieOnThePass =
-            Assert.Single(board.PendingLines.Where(line => line.Name == service.Pie.Name));
+            Assert.Single(board.PendingLines, line => line.Name == service.Pie.Name);
 
         Assert.Equal(1, soupOnThePass.Quantity);
         Assert.Equal(customizationNote, soupOnThePass.Note);
@@ -563,10 +563,10 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
             "a line badged as at the table",
             cancellationToken);
 
-        GuestOrderLine soupLine = Assert.Single(afterFulfillment
-            .Where(line => line.Name.Contains(service.Soup.Name, StringComparison.Ordinal)));
-        GuestOrderLine pieLine = Assert.Single(afterFulfillment
-            .Where(line => line.Name.Contains(service.Pie.Name, StringComparison.Ordinal)));
+        GuestOrderLine soupLine = Assert.Single(afterFulfillment,
+            line => line.Name.Contains(service.Soup.Name, StringComparison.Ordinal));
+        GuestOrderLine pieLine = Assert.Single(afterFulfillment,
+            line => line.Name.Contains(service.Pie.Name, StringComparison.Ordinal));
 
         Assert.Equal(GuestLineBadge.AtYourTable, soupLine.Badge);
         Assert.Equal(GuestLineBadge.WithTheKitchen, pieLine.Badge);
