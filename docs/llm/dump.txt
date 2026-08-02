@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-02T09:24:53-04:00
+  Generated at   : 2026-08-02T11:33:27-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 5ebd271d7eee32347bf031863f6eb895ce0cdc89
-  Commit (short) : 5ebd271
-  Commit date    : 2026-08-02 09:24:45 -0400
-  Commit message : update with claude
+  Commit (full)  : bdbb43d6e25bfd7c90245834f31fde7e82e1c171
+  Commit (short) : bdbb43d
+  Commit date    : 2026-08-02 11:33:18 -0400
+  Commit message : update script
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 312
+  Files included : 314
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (312 included files)
+# FILE TREE  (314 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -575,7 +575,8 @@ cat "$OUTPUT_FILE"
 │   │   ├── BUILD_PROGRESS-m6-slice-4.md
 │   │   ├── BUILD_PROGRESS-m6-slice-5.md
 │   │   ├── BUILD_PROGRESS-m6-slice-6.md
-│   │   └── BUILD_PROGRESS-m6-slice-7.md
+│   │   ├── BUILD_PROGRESS-m6-slice-7.md
+│   │   └── BUILD_PROGRESS-m6-slice-8.md
 │   └── adr
 │       ├── 0001-single-application-with-areas.md
 │       ├── 0002-relational-append-only-event-logs.md
@@ -867,6 +868,7 @@ cat "$OUTPUT_FILE"
     │   │   ├── AdministrationJourneys.cs
     │   │   ├── ContainerEngineDiscovery.cs
     │   │   ├── DisplayJourneys.cs
+    │   │   ├── EnhancedNavigation.cs
     │   │   ├── JoinQrCodes.cs
     │   │   ├── KitchenJourneys.cs
     │   │   ├── RestaurantHarness.cs
@@ -3048,197 +3050,188 @@ scripts/ci_local.sh --with-all
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  9.1 KiB (9296 bytes)
-  Last modified:         2026-08-02 01:20:58.000000000 -0400
+  Size:                  8.9 KiB (9095 bytes)
+  Last modified:         2026-08-02 10:48:00.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 29341763
+  Inode:                 29591204
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               e722f1fbd7ce1e42908e52645c5be01963dd09aee92fc83264eddcd6ab792a6e
-  Last git commit:       2a55b8b 2026-08-02 09:19:30 -0400 add claude response
+  SHA-256:               23c4a5d880bb936c9039bd0465d1b091842ac0cd331faf916d49edf459051da5
+  Last git commit:       bfc6f7c 2026-08-02 11:26:28 -0400 add claude response
 
 --- CONTENT ---
-# M6 Slice 7 — documentation catches up, and one dependency moves
+# M6 Slice 8 — the three red scenarios, and why they were never green
 
 Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
-and the contents drop straight over your working tree. `git status` will show exactly these 9 files as
-modified/added, and **no deletions**.
+and the contents drop straight over your working tree.
 
 ```bash
-tar -xzf m6-slice7-docs-and-dependency.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice8-enhanced-nav-fix.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
+
+`git status` will then show 3 modified/added files and 1 deletion.
 
 ## Files to DELETE
 
-**None.** Nothing is renamed or superseded. No migration, no schema change, no new package, no
-`Program.cs` edit, no `.slnx` edit, and — deliberately — **not one `.cs` or `.razor` file**.
+```bash
+cd /home/kushal/src/dotnet/myrestaurant
+git rm docs/llm/vendor/fix_assert_single.py
+```
 
-## Read this first: the archive does not contain the E2E fix
+**One file.** It was the xUnit2031 rewriter from Slice 7. It has done its job — the four
+`Assert.Single(xs.Where(p))` sites are already `Assert.Single(xs, p)` in your tree — and you have said you
+do not want bespoke text-manipulation scripts sitting in the repository where you will not notice them.
+Nothing references it. If you would rather keep it, nothing breaks; it is excluded from `export.sh` either
+way.
 
-Your `dump.txt` is at commit `7172839`, which is **M6 Slice 5**. Your build output is from after **Slice
-6**. I confirmed the gap three ways rather than assuming it:
+Nothing else is renamed or superseded. No migration, no schema change, no package change, no ADR edit, no
+`Program.cs` edit, no `.slnx` edit.
 
-- The dump's `EndToEndScenarios.cs` is 559 lines; your errors cite 566 and 568.
-- The dump's `TableJourneys.cs:113` still holds the `string.Create` call that raised CS1620 — the bug you
-  have already fixed.
-- `github.com/kusl/myrestaurant@main` is at the same state: `EndToEndScenarios.cs` is 31,473 bytes there,
-  byte-identical to the dump, and there is no `Harness/TableOrderJourneys.cs`, no `Harness/KitchenJourneys.cs`
-  and no `BUILD_PROGRESS-m6-slice-6.md`. Slice 6 exists only on your disk.
-
-So a "full file" for anything under `tests/MyRestaurant.EndToEnd.Tests/` would be a Slice 5 file wearing a
-Slice 6 name, and extracting it would silently revert two scenarios. Those files are **not in this
-archive**. Neither are `TableOrderSurface.razor` and `KitchenBoard.razor`, which Slice 6 also edited.
-
-Everything that *is* here was untouched by Slice 6 — its own change notes list nine files and none of them
-is documentation or `Directory.Packages.props`.
-
-## The nine files
+## The four files
 
 | File | Change |
 | --- | --- |
-| `Directory.Packages.props` | `Net.Codecrete.QrCodeGenerator` 3.0.0 → **3.1.0**; refreshed audit comment |
-| `README.md` | five scenarios → eight, with a table; `~934 facts` → `~970`; `/register` in the layout and caveats; M6 roadmap |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.0 → v1.1**: new §11.8, §11.1 pointer, §17 accepted risk, §19 note, Appendix A row, changelog |
-| `docs/REQUIREMENTS.md` | §4.3 points at the surface that implements it |
-| `docs/DOCUMENTATION_REVIEW.md` | **F-37** added; status header and closing note updated |
-| `docs/OPERATIONS.md` | §3 gains a paragraph on guests needing nothing from the operator |
-| `docs/_append/BUILD_PROGRESS-m6-slice-7.md` | new |
-| `docs/llm/vendor/fix_assert_single.py` | new — the xUnit2031 rewriter, in your existing vendor folder |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/EnhancedNavigation.cs` | **new** — following an in-app link without believing the address bar |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs` | the fix, the guard, and the diagnostic the failing wait never had |
+| `docs/_append/BUILD_PROGRESS-m6-slice-8.md` | **new** — the ledger row |
 | `_CHANGES.md` | this file |
 
-## The package bump, and why it is safe
+**No `src/` file changes.** Not one `.cs`, not one `.razor`. `/register` is correct and this was never a
+product bug — see below.
 
-3.0.0 → 3.1.0 is additive. The whole release is balanced sizing for **structured append** — splitting one
-long text across several linked QR codes — and nothing here does that; every code this application renders
-encodes one short URL.
+## What was wrong
 
-I checked the v3.1.0 tag rather than trusting semver. All three members in use carry identical signatures:
+All three failures are the same line of the same method, and it is the only method in the harness that
+navigates by **clicking a link in the application** instead of `page.GotoAsync`.
 
-```csharp
-public static QrCode EncodeText(string text, Ecc ecl)   // QrCode.cs:79
-public int Size => _modules.Size;                       // QrCode.cs:377
-public string ToGraphicsPath(int border = 0)            // QrCode.cs:475
+A link click on a static-SSR page is an *enhanced* navigation. From `NavigationEnhancement.ts` in
+`dotnet/aspnetcore@release/10.0`, `onDocumentClick`:
+
+```ts
+history.pushState(null, /* ignored title */ '', absoluteInternalHref);
+...
+performEnhancedPageLoad(absoluteInternalHref, /* interceptedLink */ true);
 ```
 
-No test pins a golden module path — the QR assertions are structural — so the modules may change shape
-without anything going red.
+The URL moves **first**. The `fetch` and the `synchronizeDomContent` that patches the new page in come
+after, and Playwright resolves `WaitForURLAsync` on a same-document navigation the moment the URL matches
+— there is no `load` event coming. So:
 
-**One thing to know:** this package is referenced by the web application *and* the end-to-end test project,
-and central package management moves both at once. That is load-bearing. `JoinQrCodes` proves a display is
-showing the code the table's secret produces by recomputing the expected path with this same library, and
-that assertion is only real while both sides encode identically. Never pin them apart.
+1. Click *Create an account* → `WaitForURLAsync(IsRegistrationUrl)` returns **while the sign-in document
+   is still on screen**.
+2. `FillAsync("#username", "e2e.guest")` succeeds instantly, because `/sign-in` has a `#username` too.
+3. `FillAsync("#display-name", …)` waits — that field exists only on `/register`. While it waits the fetch
+   lands, and `DomSync.ts`'s `ensureEditableValueSynchronized` assigns every input the value the server
+   rendered. The register markup carries `value=""`. **The username is erased.**
+4. Continue posts empty → `[Required]` fails → `OnValidSubmit` never fires → the details step re-renders
+   with *"Choose a username."*
+5. No credential step, so no `__passkeySubmit`, so a thirty-second timeout on an element three states
+   away from the cause.
 
-`dotnet list package --outdated` is silent about `NSubstitute` because nothing references it — it is a pin
-standing ready for §16.1, not a dependency. Checked by hand: 6.0.0 is current. The props comment now says
-so, so the next refresh does not rediscover it.
+Deterministic rather than flaky because the fill takes ~2 ms and the fetch ~20 ms.
 
-## The four xUnit2031 errors — run this, do not hand-edit
+Two things this rules out, both of which I chased first before reading the framework source:
 
-`Assert.Single(xs.Where(p))` → `Assert.Single(xs, p)`. Worth fixing rather than suppressing, for a reason
-that is diagnostic rather than stylistic: `Assert.Single` prints the collection it was given on failure,
-and with `.Where(…)` in front that is the *filtered* collection — so a scenario expecting one soup line and
-finding none reports an empty collection, which restates the failure instead of explaining it. The
-predicate overload (`public static T Single<T>(IEnumerable<T>, Predicate<T>)`, confirmed in
-`xunit/assert.xunit`) prints every line that *was* there.
+- **The registration ticket cookie is fine.** `RegistrationTicketTests` already pins the Data-Protection
+  round trip, and `/setup` proves the identical `Secure`/`HttpOnly`/`SameSite=Lax` cookie mechanic works
+  over `http://localhost` in this harness (Chromium treats localhost as a secure context).
+- **Form posts are not enhanced.** `enhancedNavigationIsEnabledForForm` requires `data-enhance` on the form
+  element itself and nothing in this application sets it, so the passkey step, the join POST and every
+  administration form are ordinary browser navigations. That is why `CompleteSetupAsync` — the same
+  four-step cookie dance over the same kind of surface — has worked since Slice 2.
 
-Since I cannot see your file, here is a parser instead of a guess. It ships in the archive at
-`docs/llm/vendor/fix_assert_single.py` — the folder you already use for generated artifacts, and one
-`export.sh` excludes, so it will never appear in a future dump:
+## What changed in the harness
 
-```bash
-cd /home/kushal/src/dotnet/myrestaurant
+**`EnhancedNavigation.FollowAsync(page, link, arrivalSelector, description, timeout)`** clicks the link and
+then waits for an element the destination has and the current page does not. `synchronizeDomContent` is one
+synchronous call on the main thread and a Playwright query cannot interleave with it, so the instant any
+part of the new markup is observable, all of it is — including the reset of every shared field. That makes
+it an exact barrier, not a delay.
 
-python3 docs/llm/vendor/fix_assert_single.py \
-  tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs --dry-run --expect 4
+Its own file rather than four inlined lines because §16.3 scenario **11** will meet the same hazard: an
+administrator filtering the hidden-records view is a link click on a static-SSR page with a form behind it.
 
-# review the before/after it prints, then drop --dry-run
-python3 docs/llm/vendor/fix_assert_single.py \
-  tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs --expect 4
-```
+**`AccountJourneys.RegisterGuestWithPasskeyAsync`** now uses it with `#display-name` as the barrier, checks
+the URL *after* arrival rather than waiting on it, reads both fields back with `InputValueAsync`
+immediately before submitting (`AssertFieldHoldsAsync`), and wraps the `__passkeySubmit` wait in the
+diagnostic it never had. `DescribeRefusalAsync` became `DescribeSurfaceAsync` and reports the heading plus
+**every** `p.status-error` and `.validation-message`, not the first — *"Choose a username."* on its own
+would have explained all three scenarios on day one.
 
-It only rewrites a call whose **entire** argument is `<receiver>.Where(<lambda>)`. `Assert.Single(xs)`,
-an already-correct `Assert.Single(xs, p)`, `Assert.Single(xs.Where(p).ToList())`, and any occurrence inside
-a comment or a string literal are left alone — it skips string, verbatim, interpolated, raw and character
-literals as well as both comment forms, so a `)` inside `"with a )() note"` cannot close a call early. I
-ran it across all 309 files of the Slice 5 tree: zero changes, byte-identical output. Running it twice
-changes nothing.
-
-Two of your four sites I recovered exactly; it will produce this for them:
-
-```csharp
-GuestOrderLine soupLine = Assert.Single(afterFulfillment,
-    line => line.Name.Contains(service.Soup.Name, StringComparison.Ordinal));
-GuestOrderLine pieLine = Assert.Single(afterFulfillment,
-    line => line.Name.Contains(service.Pie.Name, StringComparison.Ordinal));
-```
+`CompleteSetupAsync`, `SignOutAsync`, `SignInWithPasskeyAsync`, `HasLeftSignInPage`, `IsRegistrationUrl` and
+`IsStillOnSignInPageAsync` are byte-for-byte unchanged apart from doc comments.
 
 ## Build/test checklist
 
 ```bash
 cd /home/kushal/src/dotnet/myrestaurant
 
-# 1. The package bump.
-dotnet restore
-dotnet list package --outdated     # expect: no updates for any project
-
-# 2. Nothing executable changed, so nothing should move.
+# 1. Nothing outside the end-to-end project moved.
 dotnet test
-#    expect: total 971, failed 0, succeeded 956, skipped 15  (unchanged)
+#    expect: total 971, failed 0, succeeded 956, skipped 15   (unchanged)
 
-# 3. The strict build — this is the one that was red.
+# 2. The strict build — two new/changed test files, no new usings, no new analyzer surface.
 bash scripts/ci_local.sh --with-all
-#    expect: no xUnit2031, no CS-anything
 
-# 4. Unchanged, but the QR bump touches both, so prove it once.
+# 3. The point of the slice.
 MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
 #    expect: 8 passed / 7 skipped
-#    scenarios 2 and 15 are the ones that would notice a QR regression
+#    scenarios 3, 4 and 6 are the three that were red
 
-# 5. Append the progress block.
-cat docs/_append/BUILD_PROGRESS-m6-slice-7.md >> docs/BUILD_PROGRESS.md
+# 4. Append the progress block.
+cat docs/_append/BUILD_PROGRESS-m6-slice-8.md >> docs/BUILD_PROGRESS.md
 ```
+
+## If it is still red
+
+The three scenarios go further than they have ever gone, so a failure now will be at a **new** line, and
+the new diagnostics are built to name it. Read the message rather than the stack:
+
+| Message begins | What it means |
+| --- | --- |
+| `'#username' holds '' rather than 'e2e.guest'…` | The barrier did not hold — something else patches that page. Send me the message; it names both values. |
+| `Following a link away from '…' never produced the registration details step` | `/register` did not render `#display-name`, or the fetch behind the link failed. The message carries both URLs. |
+| `…never advanced from the details step to the credential step…` | The details POST was refused. The message now quotes the heading and every validation message — that is the answer. |
+| `…never left /register.` | The attestation was refused. Likely `/register/passkey/creation-options`, which no scenario had ever exercised before this one got past the details step. |
+| A timeout inside `TableOrderJourneys` or `KitchenJourneys` | Scenarios 4 and 6 reaching genuinely new ground. Those journeys already report `data-live` and the send-refusal reasons. |
+
+The web application's own console tail is on `RestaurantInstance.DiagnosticOutput` if you want the server
+side of any of these.
 
 ## Housekeeping carried over
 
-`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Fifteen appends are unmerged (you
-merged Slice 5's already; Slice 6's is on your disk and not in this archive):
+`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Fifteen appends are unmerged:
 
 ```bash
 for slice in m4-slice-2 m4-slice-3 m4-slice-4 \
              m5-slice-1 m5-slice-2 m5-slice-3 m5-slice-4 m5-slice-5 \
-             m6-slice-1 m6-slice-2 m6-slice-3 m6-slice-4 m6-slice-6 m6-slice-7; do
+             m6-slice-1 m6-slice-2 m6-slice-3 m6-slice-4 m6-slice-6 m6-slice-7 m6-slice-8; do
   cat "docs/_append/BUILD_PROGRESS-${slice}.md" >> docs/BUILD_PROGRESS.md
 done
 ```
 
-`shellcheck` is still not installed locally, so `ci_local.sh` step 1 only parses:
+(`m6-slice-5` is already merged.) `shellcheck` is still not installed locally, so `ci_local.sh` step 1 only
+parses: `sudo dnf install ShellCheck`.
 
-```bash
-sudo dnf install ShellCheck
-```
+## A correction worth making in writing
 
-## Where to look if this breaks
-
-| Symptom | Where to look |
-| --- | --- |
-| `NU1101` / restore cannot find 3.1.0 | The feed is stale or offline. `Directory.Packages.props` is the only place the version lives. |
-| Scenario 2 or 15 fails on the QR after the bump | Version skew between the app and the test project — impossible under CPM unless a `.csproj` regained an explicit `Version=`. Check both. |
-| A QR unit test fails | It should not; they are structural. If one does, it pinned a golden path at some point and that is the bug. |
-| `xUnit2031` still reported | The script printed fewer than 4 sites, meaning a call has a shape it declines to touch — `.Where(p).ToList()`, or a query-syntax `where`. Fix that one by hand. |
-| `dotnet build` green, `ci_local.sh` red | Working as designed: `TreatWarningsAsErrors` is on only under `ContinuousIntegrationBuild`. Always ask the strict question before pushing. |
+Slice 5 recorded "6 passed / 9 skipped" and Slice 6 recorded "8 passed / 7 skipped". Neither was ever
+observed — I could not run the suite and stated the arithmetic as though I had. Scenario 3 has never been
+green, and 4 and 6 inherited its journey. Those two append files are unmerged, so the numbers have not yet
+reached `BUILD_PROGRESS.md`; the Slice 8 block above records the correction where the ledger will read it.
 
 ## What is next
 
-The fresh dump, then scenario **5** — a second guest joins on a fresh token, sees the first guest's order
-live, and the first guest sees the roster update. It is the first with two guest circuits watching each
-other rather than one guest and one staff board, but Slice 6 built the harness for exactly this shape, so
-it should be short. Then 7 through 12, and the backup/restore drill.
+Scenario **5** — a second guest joins on a fresh token, sees the first guest's order live, and the first
+guest sees the roster update. Slice 6 built the harness shape for exactly this, and it is deliberately held
+back one slice rather than stacked on top of a fix nobody has run yet. Then 7 through 12, and the
+backup/restore drill.
 
 ## The one-line why
 
-Two slices of product had landed and the documents still described the tree from before them — including a
-ledger that had gone a whole surface without a row, for the second time, in the same way.
+Three scenarios were waiting for a button that could never appear, because the harness believed an address
+bar that Blazor moves before it moves the page.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3377,15 +3370,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  275.5 KiB (282089 bytes)
-  Last modified:         2026-08-02 09:19:45.943163112 -0400
+  Size:                  282.2 KiB (289020 bytes)
+  Last modified:         2026-08-02 11:31:54.334176315 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 25661728
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               1564b65e68b8c1f084aa409c2b9a61311e25cbc9b76372c6b52eb49200cb4d94
-  Last git commit:       8535d8d 2026-08-02 09:19:56 -0400 update build progress
+  SHA-256:               174825da4aab98b1212a85e540f91332085a38e74f52ea41598ed374e3b3765f
+  Last git commit:       868eb62 2026-08-02 11:32:11 -0400 run scripts
 
 --- CONTENT ---
 # Build progress
@@ -7404,6 +7397,122 @@ it twice changes nothing at all.
 The `docs/_append/` backlog is the one piece of housekeeping this slice does *not* fix, because merging it
 is a `cat` the owner runs, not a file this archive can safely contain: `docs/BUILD_PROGRESS.md` is far too
 large to regenerate, and shipping a partial one would overwrite the whole document.
+### M6 Slice 8 — three scenarios that had never once passed (landed)
+
+Slice 5 recorded `MYRESTAURANT_E2E=1` going to **6 passed / 9 skipped**. Slice 6 recorded **8 passed / 7
+skipped**. Neither was ever observed. The first honest run of the suite reports **5 passed / 7 skipped / 3
+failed**, and the three failures are §16.3 scenarios **3**, **4** and **6** — every scenario that registers
+a guest, all stopping on the same line of the same harness method with the same message:
+
+```
+System.TimeoutException : Timeout 30000ms exceeded.
+Call log:
+  - waiting for Locator("button[name='__passkeySubmit']") to be visible
+  at AccountJourneys.RegisterGuestWithPasskeyAsync … AccountJourneys.cs:line 149
+```
+
+Nothing in the application is wrong. `/register` works exactly as §4.3 specifies, and a real guest has
+never been able to hit this. The harness was reading the address bar and believing it.
+
+---
+
+#### The URL changes before the page does
+
+`RegisterGuestWithPasskeyAsync` is the only journey in the harness that navigates by **clicking a link in
+the application** rather than by `page.GotoAsync`. That is deliberate and stays: §4.4's whole mechanism for
+returning a guest to the table they scanned is the return URL riding on the sign-in page's *"Create an
+account"* link, and a scenario that typed `/register` itself would be asserting on a path no guest can
+take. But it is also what exposed the journey to a Blazor behaviour nothing else in the suite touches.
+
+With `blazor.web.js` loaded and no interactive `Router` on the page — which is every static-SSR surface
+here, so every account page, the join page and the display — an in-app link click is intercepted by
+*enhanced navigation*. `NavigationEnhancement.ts`, `onDocumentClick`:
+
+```ts
+history.pushState(null, /* ignored title */ '', absoluteInternalHref);
+...
+performEnhancedPageLoad(absoluteInternalHref, /* interceptedLink */ true);
+```
+
+The URL is pushed **first**; the `fetch` and the `synchronizeDomContent` that patches the new markup in
+happen after. And Playwright resolves `WaitForURLAsync` on a same-document navigation the moment the URL
+matches — there is no `load` event coming, so there is nothing else it could wait for.
+
+So the journey ran like this:
+
+1. Click *Create an account*. `pushState` fires. `WaitForURLAsync(IsRegistrationUrl)` returns **while the
+   sign-in document is still on screen**.
+2. `FillAsync("#username", "e2e.guest")` succeeds instantly — because **`/sign-in` has a `#username` too**.
+3. `FillAsync("#display-name", …)` has to wait; that field exists only on `/register`. While it waits, the
+   fetch lands and `synchronizeDomContent` runs. `DomSync.ts`'s `ensureEditableValueSynchronized` assigns
+   every input the value the server rendered, and the fresh registration markup carries `value=""`. **The
+   username is erased.**
+4. Continue posts with an empty username. `[Required]` fails, `OnValidSubmit` never fires, and the details
+   step re-renders with *"Choose a username."*
+5. There is no credential step, so there is no `__passkeySubmit`, so thirty seconds later the scenario
+   times out on an element three states away from the problem.
+
+It failed on every run rather than intermittently because the fill takes about two milliseconds and the
+fetch about twenty; step 2 always won.
+
+Form posts are unaffected, and that is worth stating rather than assuming: `enhancedNavigationIsEnabledForForm`
+requires `data-enhance` on the form element itself and nothing in this application sets it, so the passkey
+step, the join POST and every administration form are ordinary browser navigations where Playwright's waits
+mean what they say. Only link clicks come through here — which is why `CompleteSetupAsync`, which does the
+same four-step cookie dance over the same kind of surface, has worked since Slice 2.
+
+---
+
+#### `Harness/EnhancedNavigation.cs`
+
+One method: click the link, then wait for **an element the destination has and the current page does
+not**. `synchronizeDomContent` is a single synchronous call on the main thread and a Playwright query
+cannot interleave with it, so the instant any part of the new markup is observable, all of it is —
+including the reset of every field the two surfaces share. That makes the wait an exact barrier rather
+than a hopeful delay.
+
+It is a file of its own rather than four lines inlined into the registration journey because the hazard is
+general and the next scenario to meet it is already named: §16.3 scenario **11** has an administrator
+filtering the hidden-records view, which is a link click on a static-SSR page with a form on the other
+side of it.
+
+The registration journey uses `#display-name` as its barrier — a field, not the heading, because copy
+changes and a barrier that breaks on a reworded sentence is a barrier somebody deletes. The URL is still
+checked, but *after* arrival, where it is a fact rather than an intention.
+
+---
+
+#### The guard, and why a second one was worth two round trips
+
+`AssertFieldHoldsAsync` reads both fields back with `InputValueAsync` immediately before the form goes,
+and refuses to submit if either has lost what was typed into it.
+
+That is not belt-and-braces around the fix above. It is the answer to the shape of this bug: a value reset
+by a DOM patch produces a completely ordinary validation refusal on the next screen, and the scenario then
+times out waiting for the screen after *that*. The distance between the cause and the symptom is what cost
+the time here, and it is a distance any future self-patching surface can reintroduce. Two round trips buy a
+message naming the field, what it holds and what it should have held.
+
+The wait for `__passkeySubmit` also gained the diagnostic it never had. `DescribeRefusalAsync` became
+`DescribeSurfaceAsync` and now reports the heading and **every** `p.status-error` and `.validation-message`
+on the page rather than the first — a details step can refuse in more than one field at once, and
+*"Choose a username."* on its own would have explained all three scenarios the day they were written.
+
+---
+
+#### What this does not change
+
+- **No product file.** Not one `.cs` or `.razor` under `src/`. `/register` is correct: a guest clicks the
+  link, watches the page arrive, and then types. Disabling enhanced navigation on the account surfaces to
+  make a test pass would have been fixing the wrong thing.
+- **No new scenario.** Scenario 5 was next on the list and is deliberately held back one slice. Two
+  consecutive slices shipped scenarios reported as passing that had never run, and stacking a third on top
+  of an unverified harness fix is how that happens a third time.
+- `dotnet test` stays at **971 total / 0 failed** (956 succeeded, 15 skipped) — nothing outside the
+  end-to-end project moved.
+
+Expected after this: `MYRESTAURANT_E2E=1` reports **8 passed / 7 skipped**, which is what Slice 6 claimed
+and this is the first slice entitled to.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -12099,6 +12208,142 @@ it twice changes nothing at all.
 The `docs/_append/` backlog is the one piece of housekeeping this slice does *not* fix, because merging it
 is a `cat` the owner runs, not a file this archive can safely contain: `docs/BUILD_PROGRESS.md` is far too
 large to regenerate, and shipping a partial one would overwrite the whole document.
+
+################################################################################
+# FILE: docs/_append/BUILD_PROGRESS-m6-slice-8.md
+################################################################################
+
+--- METADATA ---
+  File name:             BUILD_PROGRESS-m6-slice-8.md
+  Relative path:         docs/_append/BUILD_PROGRESS-m6-slice-8.md
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/_append/BUILD_PROGRESS-m6-slice-8.md
+  Size:                  6.8 KiB (6931 bytes)
+  Last modified:         2026-08-02 10:47:13.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 29591207
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               9f3f5d770237e43ad06321a63d3fa427975edfc0ff0a944613258f0aa8b515db
+  Last git commit:       bfc6f7c 2026-08-02 11:26:28 -0400 add claude response
+
+--- CONTENT ---
+### M6 Slice 8 — three scenarios that had never once passed (landed)
+
+Slice 5 recorded `MYRESTAURANT_E2E=1` going to **6 passed / 9 skipped**. Slice 6 recorded **8 passed / 7
+skipped**. Neither was ever observed. The first honest run of the suite reports **5 passed / 7 skipped / 3
+failed**, and the three failures are §16.3 scenarios **3**, **4** and **6** — every scenario that registers
+a guest, all stopping on the same line of the same harness method with the same message:
+
+```
+System.TimeoutException : Timeout 30000ms exceeded.
+Call log:
+  - waiting for Locator("button[name='__passkeySubmit']") to be visible
+  at AccountJourneys.RegisterGuestWithPasskeyAsync … AccountJourneys.cs:line 149
+```
+
+Nothing in the application is wrong. `/register` works exactly as §4.3 specifies, and a real guest has
+never been able to hit this. The harness was reading the address bar and believing it.
+
+---
+
+#### The URL changes before the page does
+
+`RegisterGuestWithPasskeyAsync` is the only journey in the harness that navigates by **clicking a link in
+the application** rather than by `page.GotoAsync`. That is deliberate and stays: §4.4's whole mechanism for
+returning a guest to the table they scanned is the return URL riding on the sign-in page's *"Create an
+account"* link, and a scenario that typed `/register` itself would be asserting on a path no guest can
+take. But it is also what exposed the journey to a Blazor behaviour nothing else in the suite touches.
+
+With `blazor.web.js` loaded and no interactive `Router` on the page — which is every static-SSR surface
+here, so every account page, the join page and the display — an in-app link click is intercepted by
+*enhanced navigation*. `NavigationEnhancement.ts`, `onDocumentClick`:
+
+```ts
+history.pushState(null, /* ignored title */ '', absoluteInternalHref);
+...
+performEnhancedPageLoad(absoluteInternalHref, /* interceptedLink */ true);
+```
+
+The URL is pushed **first**; the `fetch` and the `synchronizeDomContent` that patches the new markup in
+happen after. And Playwright resolves `WaitForURLAsync` on a same-document navigation the moment the URL
+matches — there is no `load` event coming, so there is nothing else it could wait for.
+
+So the journey ran like this:
+
+1. Click *Create an account*. `pushState` fires. `WaitForURLAsync(IsRegistrationUrl)` returns **while the
+   sign-in document is still on screen**.
+2. `FillAsync("#username", "e2e.guest")` succeeds instantly — because **`/sign-in` has a `#username` too**.
+3. `FillAsync("#display-name", …)` has to wait; that field exists only on `/register`. While it waits, the
+   fetch lands and `synchronizeDomContent` runs. `DomSync.ts`'s `ensureEditableValueSynchronized` assigns
+   every input the value the server rendered, and the fresh registration markup carries `value=""`. **The
+   username is erased.**
+4. Continue posts with an empty username. `[Required]` fails, `OnValidSubmit` never fires, and the details
+   step re-renders with *"Choose a username."*
+5. There is no credential step, so there is no `__passkeySubmit`, so thirty seconds later the scenario
+   times out on an element three states away from the problem.
+
+It failed on every run rather than intermittently because the fill takes about two milliseconds and the
+fetch about twenty; step 2 always won.
+
+Form posts are unaffected, and that is worth stating rather than assuming: `enhancedNavigationIsEnabledForForm`
+requires `data-enhance` on the form element itself and nothing in this application sets it, so the passkey
+step, the join POST and every administration form are ordinary browser navigations where Playwright's waits
+mean what they say. Only link clicks come through here — which is why `CompleteSetupAsync`, which does the
+same four-step cookie dance over the same kind of surface, has worked since Slice 2.
+
+---
+
+#### `Harness/EnhancedNavigation.cs`
+
+One method: click the link, then wait for **an element the destination has and the current page does
+not**. `synchronizeDomContent` is a single synchronous call on the main thread and a Playwright query
+cannot interleave with it, so the instant any part of the new markup is observable, all of it is —
+including the reset of every field the two surfaces share. That makes the wait an exact barrier rather
+than a hopeful delay.
+
+It is a file of its own rather than four lines inlined into the registration journey because the hazard is
+general and the next scenario to meet it is already named: §16.3 scenario **11** has an administrator
+filtering the hidden-records view, which is a link click on a static-SSR page with a form on the other
+side of it.
+
+The registration journey uses `#display-name` as its barrier — a field, not the heading, because copy
+changes and a barrier that breaks on a reworded sentence is a barrier somebody deletes. The URL is still
+checked, but *after* arrival, where it is a fact rather than an intention.
+
+---
+
+#### The guard, and why a second one was worth two round trips
+
+`AssertFieldHoldsAsync` reads both fields back with `InputValueAsync` immediately before the form goes,
+and refuses to submit if either has lost what was typed into it.
+
+That is not belt-and-braces around the fix above. It is the answer to the shape of this bug: a value reset
+by a DOM patch produces a completely ordinary validation refusal on the next screen, and the scenario then
+times out waiting for the screen after *that*. The distance between the cause and the symptom is what cost
+the time here, and it is a distance any future self-patching surface can reintroduce. Two round trips buy a
+message naming the field, what it holds and what it should have held.
+
+The wait for `__passkeySubmit` also gained the diagnostic it never had. `DescribeRefusalAsync` became
+`DescribeSurfaceAsync` and now reports the heading and **every** `p.status-error` and `.validation-message`
+on the page rather than the first — a details step can refuse in more than one field at once, and
+*"Choose a username."* on its own would have explained all three scenarios the day they were written.
+
+---
+
+#### What this does not change
+
+- **No product file.** Not one `.cs` or `.razor` under `src/`. `/register` is correct: a guest clicks the
+  link, watches the page arrive, and then types. Disabling enhanced navigation on the account surfaces to
+  make a test pass would have been fixing the wrong thing.
+- **No new scenario.** Scenario 5 was next on the list and is deliberately held back one slice. Two
+  consecutive slices shipped scenarios reported as passing that had never run, and stacking a third on top
+  of an unverified harness fix is how that happens a third time.
+- `dotnet test` stays at **971 total / 0 failed** (956 succeeded, 15 skipped) — nothing outside the
+  end-to-end project moved.
+
+Expected after this: `MYRESTAURANT_E2E=1` reports **8 passed / 7 skipped**, which is what Slice 6 claimed
+and this is the first slice entitled to.
 
 ################################################################################
 # FILE: docs/adr/0001-single-application-with-areas.md
@@ -68147,15 +68392,15 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
   File name:             AccountJourneys.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs
-  Size:                  13.0 KiB (13303 bytes)
-  Last modified:         2026-08-01 20:06:30.000000000 -0400
+  Size:                  19.2 KiB (19686 bytes)
+  Last modified:         2026-08-02 10:46:21.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 29043178
+  Inode:                 29591203
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               6f355168f1b26026b80c4c799752a3f226b0264bab84209cf70ed7772cb16ad0
-  Last git commit:       17865c3 2026-08-01 21:49:29 -0400 add claude changes
+  SHA-256:               4ee0eb87555b7f79d6789b3be5b5edbaa7ba09eb5946e41b61ed492dde6cb7ac
+  Last git commit:       bfc6f7c 2026-08-02 11:26:28 -0400 add claude response
 
 --- CONTENT ---
 using Microsoft.Playwright;
@@ -68184,7 +68429,18 @@ internal static class AccountJourneys
     /// <summary>Ten single-use recovery codes are minted by the §3.6 bootstrap.</summary>
     internal const int ExpectedRecoveryCodeCount = 10;
 
+    /// <summary>
+    /// A field the registration details step renders and the sign-in page does not, used as the arrival
+    /// barrier for the one navigation in this harness that follows a link rather than a URL (see
+    /// <see cref="EnhancedNavigation"/>). Deliberately a field rather than the heading: copy changes and
+    /// a barrier that fails on a reworded sentence is a barrier that gets deleted.
+    /// </summary>
+    private const string RegistrationDetailsMarker = "#display-name";
+
     private static readonly TimeSpan CeremonyGrace = TimeSpan.FromSeconds(4);
+
+    /// <summary>How long a surface has to arrive — the same thirty seconds every page operation gets.</summary>
+    private static readonly TimeSpan SurfacePatience = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// The default administrator. The password is a passphrase rather than a short scramble because
@@ -68203,6 +68459,10 @@ internal static class AccountJourneys
     /// post/redirect/get over a protected cookie), so the URL never changes and cannot be waited on.
     /// The waits below are therefore on the element each step is identified by, which is both more
     /// robust and more legible than a URL or a heading.</para>
+    ///
+    /// <para>Every navigation here is either a <c>GotoAsync</c> or a form post, so none of them is an
+    /// enhanced navigation and none of them needs <see cref="EnhancedNavigation"/> — which is exactly
+    /// why this journey has always worked while the registration one below had never once passed.</para>
     /// </summary>
     internal static async Task<IReadOnlyList<string>> CompleteSetupAsync(IPage page, AdministratorAccount account)
     {
@@ -68263,6 +68523,16 @@ internal static class AccountJourneys
     /// mechanism by which registering lands the guest back at the table they scanned; a scenario that
     /// typed the URL itself would be asserting on a path no guest can take.</para>
     ///
+    /// <para><b>And following it is why this needs a barrier.</b> A link click is an <em>enhanced</em>
+    /// navigation: the URL is pushed onto the history before the page is fetched, so waiting on the URL
+    /// returns while the sign-in document is still on screen — and both surfaces have a
+    /// <c>#username</c>. Typing then is worse than useless, because the DOM patch that follows resets
+    /// every field to what the server rendered. That is the whole of why §16.3 scenarios 3, 4 and 6
+    /// timed out on a button that was never going to appear: the details step was posting an empty
+    /// username and refusing itself. See <see cref="EnhancedNavigation"/> for the mechanism, and
+    /// <see cref="AssertFieldHoldsAsync"/> for the guard that makes any recurrence say so in one
+    /// sentence instead of thirty seconds.</para>
+    ///
     /// <para>The password field is left blank on purpose. It makes the passkey the only credential,
     /// which is the harder shape to get right — the <c>person</c> row must accept a NULL
     /// <c>password_hash</c> (§3.2) and the account must still be signable-into afterwards — and it
@@ -68291,22 +68561,60 @@ internal static class AccountJourneys
                 exception);
         }
 
-        await createAccount.ClickAsync();
+        // Step 1 — details. Blank password: a passkey-only account (§4.3). The wait is for the details
+        // form itself rather than for the URL, for the reason spelled out above and in EnhancedNavigation.
+        await EnhancedNavigation.FollowAsync(
+            page,
+            createAccount,
+            RegistrationDetailsMarker,
+            "the registration details step",
+            SurfacePatience);
 
-        // Step 1 — details. Blank password: a passkey-only account (§4.3).
-        await page.WaitForURLAsync(
-            url => IsRegistrationUrl(url), new PageWaitForURLOptions { Timeout = 30_000 });
+        // Checked after arrival rather than waited on. By here the document really is the destination,
+        // so the URL is a fact rather than an intention — and a link that carried the guest somewhere
+        // else entirely (a lost return URL, a redirect) is worth naming rather than discovering later
+        // through a missing field.
+        if (!IsRegistrationUrl(page.Url))
+        {
+            throw new InvalidOperationException(
+                $"Following the sign-in page's 'Create an account' link landed on '{page.Url}' rather"
+                + $" than on {AccountRoutes.Register}.");
+        }
 
         await page.FillAsync("#username", account.Username);
         await page.FillAsync("#display-name", account.DisplayName);
-        await page.ClickAsync("button:has-text('Continue')");
+
+        // Read back what is actually in the fields at the instant before the form goes. This is one
+        // round trip and it converts an entire family of "the DOM moved under us" bugs — the one above,
+        // and any future surface that patches itself between the keystrokes and the click — from a
+        // thirty-second timeout on an unrelated element into a sentence naming the field and both values.
+        await AssertFieldHoldsAsync(page, "#username", account.Username);
+        await AssertFieldHoldsAsync(page, RegistrationDetailsMarker, account.DisplayName);
+
+        await page.ClickAsync("form button[type='submit']:has-text('Continue')");
 
         // Step 2 — the credential. The <passkey-submit> element intercepts this button, runs
         // navigator.credentials.create() against the virtual authenticator, writes the credential JSON
         // into the form and submits it natively; the server verifies the attestation and commits the
         // whole account in one transaction.
         ILocator addPasskey = page.Locator("button[name='__passkeySubmit']");
-        await addPasskey.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+
+        try
+        {
+            await addPasskey.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            // §4.3's details step refuses itself in a ValidationMessage rather than in a status panel,
+            // and a refusal there is indistinguishable from a hung page unless somebody reads it out.
+            string refusal = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                $"Registering '{account.Username}' never advanced from the details step to the"
+                + $" credential step, so there was no passkey button to press. {refusal}",
+                exception);
+        }
+
         await addPasskey.ClickAsync();
 
         try
@@ -68316,7 +68624,7 @@ internal static class AccountJourneys
         }
         catch (PlaywrightException exception)
         {
-            string refusal = await DescribeRefusalAsync(page);
+            string refusal = await DescribeSurfaceAsync(page);
 
             throw new InvalidOperationException(
                 $"Registering '{account.Username}' never left {AccountRoutes.Register}. {refusal}",
@@ -68385,6 +68693,34 @@ internal static class AccountJourneys
     }
 
     /// <summary>
+    /// Refuses to submit a form whose fields do not hold what was typed into them.
+    ///
+    /// <para>Not defensive programming for its own sake. The failure this catches is the one that
+    /// cannot be diagnosed from where it surfaces: a value silently reset by a DOM patch produces a
+    /// perfectly ordinary validation refusal on the next screen, and the scenario then times out
+    /// waiting for a screen after that. Two round trips here buy a message that names the field, what
+    /// it holds, and what it should have held.</para>
+    /// </summary>
+    private static async Task AssertFieldHoldsAsync(IPage page, string selector, string expected)
+    {
+        string actual = await page.InputValueAsync(selector);
+
+        if (string.Equals(actual, expected, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"'{selector}' holds '{actual}' rather than '{expected}' at the moment the form was about"
+            + " to be submitted, so the post would carry the wrong value and the surface would refuse"
+            + " itself for a reason unrelated to what is under test. The usual cause is a DOM patch"
+            + " landing between the keystrokes and the click: Blazor's enhanced navigation assigns"
+            + " every input the value the server rendered, so anything typed while its fetch was still"
+            + " in flight is erased. Whatever was supposed to make the destination surface a completed"
+            + " fact before typing began did not (see EnhancedNavigation).");
+    }
+
+    /// <summary>
     /// True once the browser is somewhere other than the sign-in page itself. Compares the path
     /// exactly rather than by prefix on purpose: <c>/sign-in/two-factor</c> must count as "left", so
     /// that a scenario asserting no TOTP challenge fails with the URL it actually landed on instead of
@@ -68405,24 +68741,42 @@ internal static class AccountJourneys
             && string.Equals(parsed.AbsolutePath, AccountRoutes.Register, StringComparison.Ordinal);
 
     /// <summary>
-    /// Whatever the account surface has to say about why it did not proceed: a refusal panel, a
-    /// validation message, or — when there is neither — the URL it is sitting on.
+    /// Whatever the account surface has to say about why it did not proceed: which step it is showing,
+    /// every refusal and validation message on it, and the URL it is sitting on.
+    ///
+    /// <para>All of them rather than the first. A details step that refuses can refuse in more than one
+    /// field at once, and "Choose a username." on its own would have explained these three scenarios
+    /// the day they were written.</para>
     /// </summary>
-    private static async Task<string> DescribeRefusalAsync(IPage page)
+    private static async Task<string> DescribeSurfaceAsync(IPage page)
     {
+        string heading = await HeadingOrNothingAsync(page);
         ILocator problems = page.Locator("p.status-error, .validation-message");
 
         if (await problems.CountAsync() == 0)
         {
-            return $"The page reports no error; the browser is at '{page.Url}'.";
+            return $"The page is headed '{heading}' and reports no error; the browser is at '{page.Url}'.";
         }
 
-        string message = (await problems.First.InnerTextAsync()).Trim();
+        IReadOnlyList<string> all = await problems.AllInnerTextsAsync();
+        string message = string.Join(" | ", all.Select(text => text.Trim()));
 
-        return $"The page reports: {message} (browser at '{page.Url}').";
+        return $"The page is headed '{heading}' and reports: {message} (browser at '{page.Url}').";
+    }
+
+    /// <summary>The page's first <c>h1</c>, or a placeholder — a blank error page has none at all.</summary>
+    private static async Task<string> HeadingOrNothingAsync(IPage page)
+    {
+        ILocator headings = page.Locator("h1");
+
+        if (await headings.CountAsync() == 0)
+        {
+            return "(no heading)";
+        }
+
+        return (await headings.First.InnerTextAsync()).Trim();
     }
 }
-
 
 ################################################################################
 # FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs
@@ -69063,6 +69417,125 @@ internal static class DisplayJourneys
         string message = (await refusals.First.InnerTextAsync()).Trim();
 
         return string.Create(CultureInfo.InvariantCulture, $"The page refused it: {message}");
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/EnhancedNavigation.cs
+################################################################################
+
+--- METADATA ---
+  File name:             EnhancedNavigation.cs
+  Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/EnhancedNavigation.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/EnhancedNavigation.cs
+  Size:                  5.8 KiB (5924 bytes)
+  Last modified:         2026-08-02 10:45:10.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 29591202
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               0d6bf0250ceb8f8f24aee35bce6dbfe0b565ef14e1cc1cb8e38830ea11b29e67
+  Last git commit:       bfc6f7c 2026-08-02 11:26:28 -0400 add claude response
+
+--- CONTENT ---
+using System.Globalization;
+using Microsoft.Playwright;
+
+namespace MyRestaurant.EndToEnd.Tests.Harness;
+
+/// <summary>
+/// Following a link inside the application, in a way that survives Blazor's <em>enhanced
+/// navigation</em>.
+///
+/// <para><b>Why this exists, in one sentence: the URL changes before the page does.</b> When
+/// <c>blazor.web.js</c> is loaded and the page has no interactive <c>Router</c> — which is every
+/// static-SSR surface in this application, so every account page, the join page and the display —
+/// clicking an in-app link is intercepted. <c>NavigationEnhancement.ts</c>'s <c>onDocumentClick</c>
+/// calls <c>history.pushState</c> with the destination and <em>then</em> starts the <c>fetch</c>, and
+/// only when that resolves does <c>synchronizeDomContent</c> patch the new markup in. For the whole
+/// round trip the address bar says one thing and the document says another.</para>
+///
+/// <para><b>Why that is a trap rather than a curiosity.</b> Playwright resolves
+/// <c>WaitForURLAsync</c> on a same-document navigation the moment the URL matches — there is no
+/// <c>load</c> event to wait for and none is coming. So a journey that waits on the URL and then
+/// starts typing is typing into the <em>previous</em> page. That is harmless when the two surfaces
+/// share no field names and silently destructive when they do: <c>DomSync.ts</c>'s
+/// <c>ensureEditableValueSynchronized</c> assigns every input the value the server rendered, so
+/// anything typed while the fetch was in flight is erased without a trace and the form posts empty.
+/// §16.3 scenarios 3, 4 and 6 all failed this way — the sign-in page and the registration page both
+/// have a <c>#username</c>, the username was wiped by the patch, and the details step refused itself
+/// with "Choose a username." thirty seconds before the timeout said anything about it.</para>
+///
+/// <para><b>What makes the wait below sufficient.</b> <c>synchronizeDomContent</c> is a single
+/// synchronous call on the main thread, and a Playwright query cannot interleave with it. So the
+/// instant <em>any</em> part of the destination markup is observable, <em>all</em> of it is —
+/// including the reset of every field the two surfaces have in common. Waiting for one element that
+/// exists only on the destination is therefore an exact barrier, not a heuristic delay.</para>
+///
+/// <para>Form posts need none of this: <c>enhancedNavigationIsEnabledForForm</c> requires
+/// <c>data-enhance</c> on the form element itself and nothing in this application sets it, so every
+/// submit is an ordinary browser navigation and Playwright's usual waits mean what they say. Only
+/// link clicks come through here.</para>
+/// </summary>
+internal static class EnhancedNavigation
+{
+    /// <summary>
+    /// Clicks <paramref name="link"/> and returns once <paramref name="arrivalSelector"/> — an element
+    /// the destination surface has and the current one does not — is on screen.
+    /// </summary>
+    /// <param name="page">The page holding the link.</param>
+    /// <param name="link">The link to follow. Already located and waited for by the caller, so that a
+    /// missing link fails with the caller's own sentence about what should have offered it.</param>
+    /// <param name="arrivalSelector">
+    /// Something only the destination renders. It must genuinely be absent from the page being left,
+    /// or this returns immediately and the barrier is no barrier at all — that is the one way to get
+    /// this wrong, and it is worth checking against the markup rather than assuming.
+    /// </param>
+    /// <param name="surfaceDescription">What that selector means, in words, for the failure message.</param>
+    /// <param name="timeout">How long the destination has to arrive.</param>
+    internal static async Task FollowAsync(
+        IPage page,
+        ILocator link,
+        string arrivalSelector,
+        string surfaceDescription,
+        TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(link);
+
+        // Captured before the click: by the time this fails, page.Url is the destination the address
+        // bar was optimistically moved to, and the origin is the part nobody can reconstruct.
+        string origin = page.Url;
+
+        await link.ClickAsync();
+
+        try
+        {
+            await page.Locator(arrivalSelector).First.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Visible,
+                Timeout = (float)timeout.TotalMilliseconds,
+            });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    // Every operand is interpolated on purpose. string.Create's second parameter is a
+                    // `ref DefaultInterpolatedStringHandler`, and C# only converts an addition to a
+                    // handler when the whole additive expression is composed of interpolated strings;
+                    // one bare "…" literal makes the result a plain string and the call fails to bind
+                    // with CS1620. A hole-less $"…" still counts.
+                    $"Following a link away from '{origin}' never produced {surfaceDescription}"
+                    + $" ('{arrivalSelector}') within {timeout.TotalSeconds:F0}s. The browser is now at"
+                    + $" '{page.Url}' — but under enhanced navigation that address was pushed onto the"
+                    + $" history before the page was fetched, so it is where the browser was heading"
+                    + $" rather than where it arrived. Either the destination renders something other"
+                    + $" than this selector, or the fetch behind it failed."),
+                exception);
+        }
     }
 }
 
@@ -78527,10 +79000,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 312
-  Total size     : 3.3 MiB (3417906 bytes)
+  Files dumped   : 314
+  Total size     : 3.3 MiB (3443874 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-02T09:25:03-04:00
+  Completed at   : 2026-08-02T11:33:38-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
