@@ -67,6 +67,8 @@ Administrators must always be **enrolled** in TOTP (enrolled at grant time and i
 
 Guests self-register at the moment of joining a table (§5.1): username, optional display name, and at least one credential — passkey offered first, password accepted. Staff accounts are created by an administrator.
 
+A guest who scans a table's code without an account is offered registration on the spot, and the join grant survives the ceremony — that is what the grant is for, and it is why a slow registration does not cost the guest their seat. The surface is specified at `S§11.8`; it went unbuilt until M6 despite this section requiring it, which is recorded as F-37.
+
 ### 4.4 First administrator
 
 On a fresh database, `/setup` runs a one-time bootstrap wizard: create the account, register a passkey, enroll TOTP, grant `administrator` — all inside one guarded transaction. Once any administrator exists, `/setup` returns 404 forever.

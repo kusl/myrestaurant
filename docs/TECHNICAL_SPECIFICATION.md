@@ -1,6 +1,6 @@
 # myrestaurant — Technical Specification
 
-**Version 1.0 — 2026-07-17 — Status: accepted, implementation-ready.**
+**Version 1.1 — 2026-08-02 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
 This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md` (rev 2). It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. The decisions register in Appendix A maps every ruling to its embodiment.
 
@@ -697,7 +697,7 @@ Browsers block autoplay: the kitchen surface shows a one-tap "enable sound" arm 
 
 ### 11.1 `/table`
 
-Anonymous with valid token → grant → sign-in/registration (passkey-first, password offered) → join. Member view: the party roster; **my order** — staging area (add item pickers from the menu — deactivated items greyed out and unselectable (§7) — with quantity 1–100 and note; mark-my-pending-line-for-removal) with a Send button that is disabled while empty and shows an all-or-nothing error panel (per-operation reasons) on rejection; below it the committed living order, each line badged pending/fulfilled, removed lines struck-through with actor + reason, price adjustments shown old → new with reason; **party orders** — read-only equivalents for other members; running personal and table totals; history (the guest's **own** past orders at this restaurant — cross-member history is never shown); a per-order **Hide** control on closed orders, confirmed as irreversible from the guest's account (§6.8); and a link to the **profile page** (§11.6) — set the display name; manage passkeys, password, TOTP and recovery codes; optional phone number and email address (used for manual staff escalation only — nothing in the system sends to them automatically); postal addresses with **free-text labels** ("Home", "Work", "Grandparents' house") — deliberate scaffolding for a possible future delivery/takeout feature, consumed by nothing in version 1 and not to be removed as dead weight. On `SittingClosed`, the surface flips to a read-only settled-bill view.
+Anonymous with valid token → grant → sign-in/registration (passkey-first, password offered; the registration surface is §11.8) → join. Member view: the party roster; **my order** — staging area (add item pickers from the menu — deactivated items greyed out and unselectable (§7) — with quantity 1–100 and note; mark-my-pending-line-for-removal) with a Send button that is disabled while empty and shows an all-or-nothing error panel (per-operation reasons) on rejection; below it the committed living order, each line badged pending/fulfilled, removed lines struck-through with actor + reason, price adjustments shown old → new with reason; **party orders** — read-only equivalents for other members; running personal and table totals; history (the guest's **own** past orders at this restaurant — cross-member history is never shown); a per-order **Hide** control on closed orders, confirmed as irreversible from the guest's account (§6.8); and a link to the **profile page** (§11.6) — set the display name; manage passkeys, password, TOTP and recovery codes; optional phone number and email address (used for manual staff escalation only — nothing in the system sends to them automatically); postal addresses with **free-text labels** ("Home", "Work", "Grandparents' house") — deliberate scaffolding for a possible future delivery/takeout feature, consumed by nothing in version 1 and not to be removed as dead weight. On `SittingClosed`, the surface flips to a read-only settled-bill view.
 
 ### 11.2 `/kitchen`
 
@@ -752,7 +752,23 @@ Address management (§4.6's free-text-labelled postal addresses) is **not surfac
 
 **`GET /restaurant-clock`** returns the same anchor as JSON: anonymous, `no-store`, and exempt from the §3.5 obligations pipeline (it carries no user action, and the obligation pages render this footer too). The page markup is the anchor for a short-lived page; the endpoint exists for the ones that are not — a `/display/{table}` tablet holds one URL for days on a cheap oscillator, and a guest's circuit lasts a meal. It is asked: every ten minutes while visible, on returning from a minute or more hidden, and on detected clock divergence. Never while hidden, never more than once a minute, and a failed request is ignored rather than allowed to blank the clock — half the round trip is subtracted as the usual symmetric-latency estimate.
 
+### 11.8 `/register`
+
+The surface R§4.3 has always required — "guests self-register at the moment of joining a table: username, optional display name, and at least one credential — passkey offered first, password accepted" — and §11.1 and §4.4 both assume. Anonymous, static SSR (it writes cookies on the response), reachable from `/sign-in` by a **"Create an account"** link that carries the return URL forward; that link is the whole mechanism by which registering mid-join lands the guest back at their table.
+
+Two steps over one Data-Protection-protected **registration ticket** cookie:
+
+1. **Details** — username (§3.1's 3–64 `citext` rules), optional display name, **optional** password. A supplied password is hashed at once and the ticket carries the PHC string; a plaintext never persists across the round trip.
+2. **Sign-in method** — the WebAuthn attestation ceremony against an anonymous `POST /register/passkey/creation-options` gated on that cookie. Registering the passkey commits the account. **"Not now — use my password"** commits on the password alone, and **renders only when a password was set**.
+
+That asymmetry is §3.3's rule made structural: a passkey is always offered, never required, never a gate for a guest — so declining is offered exactly when there is something to decline *to*. An account with neither credential is refused twice, in the markup and again in the data layer before any SQL runs.
+
+**Why a ticket rather than a single form.** A WebAuthn attestation needs a user handle *before* the account row exists, and that handle must equal the eventual `person.person_identifier` or a later discoverable-credential sign-in presents a handle matching nobody. This is §3.6's problem and §3.6's solution. Unlike the bootstrap wizard's ticket there is **no step enum**: `/setup` has three ordered steps that must each be unskippable, registration has one, and the ticket's existence *is* the state.
+
+No TOTP step (§3.4 pairs the authenticator with the password path for staff) and no role — a guest is the *absence* of a grant (§3.7), so nothing touches `person_role`. The account commits in one transaction — `person`, the optional `passkey_credential`, and a `security_event` with a **NULL actor**, this being a self-action, exactly as the bootstrap records itself.
+
 ## 12. Observability
+
 
 OpenTelemetry traces (ASP.NET Core + Npgsql instrumentation), logs, and metrics via OTLP (`OTEL_EXPORTER_OTLP_ENDPOINT` etc.; `run.sh` translates a legacy `UPTRACE_DSN` if present — any OTLP collector works). Custom meters (full snake_case):
 
@@ -829,6 +845,10 @@ Threats mitigated: static-QR capability theft (rotating tokens, ≤120 s life, p
 
 Accepted, by ruling or by design: token replay within ≤120 s (bounded by membership/visibility rules); WAN dependence of in-house ordering (hairpin — F-06); quick-tunnel passkeys work per run but the per-run URL is not persistent (PSL — re-register each demo; named tunnel for durability); counter role may operate password-only (no passkey mandate); guest sees table-mates' display names and orders (that's the product); no rate limit on authenticated order sends beyond all-or-nothing validation (single-restaurant trust model).
 
+**No rate limit on `/register` (§11.8), by ruling — F-37.** It is the second anonymous surface that writes, and the more consequential one: a `person` row outlives its request where a failed pairing attempt does not. Four things bound it meanwhile, none of them a policy: registration is a **two-request** flow behind an antiforgery token and a protected ticket cookie, so it is not a scriptable single POST; the password is capped at 256 characters, so an anonymous caller cannot ask for unbounded Argon2id work; §3.2's semaphore bounds concurrent hashes process-wide; and a spam account holds no capability — a guest is the absence of a grant (§3.7), so the worst outcome is rows, not access.
+
+The reason this is not a two-line addition, recorded so it is not rediscovered: the limiter is configured inside `AddRestaurantDisplays`, and `RateLimiterOptions.OnRejected` and `RejectionStatusCode` are single-valued. A second `AddRateLimiter` call adding a registration policy silently takes over the rejection handler, and a refused registration would then answer with §4.2's *"Too many pairing attempts from this device"* — worse than no limit, because it is wrong and looks deliberate. Doing it properly means `OnRejected` dispatching on the endpoint. When it lands, §13 gains the window and permit count beside `DISPLAY_PAIRING_*`.
+
 ## 18. Governance
 
 Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic documentation:** a behavior change lands in one commit with its `REQUIREMENTS.md`, this specification, `DOCUMENTATION_REVIEW.md` ledger, and ADR edits. ADRs are edited in place with a History line (never duplicated); supersessions say so explicitly. This specification's version bumps (1.0 → 1.1 …) with a dated changelog appended at the bottom when normative content changes.
@@ -841,7 +861,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 - **M4 — ordering:** living order + locking protocol, staging UI, batch send + validation, staff edits, fulfillment/reversal, projections + fold + equivalence tests, kitchen surface + alerts + reminder service.
 - **M4 close-out — restaurant time:** the §8.1 rendering rule actually honoured on every surface (`RestaurantTime`, replacing eighteen `ToLocalTime()` call sites), the §13 clock-format decision, and the §11.7 footer clock. Scheduled here rather than inside a feature slice because a half-applied time convention is worse than a uniformly wrong one, and ahead of M5 because a wrong time on a settled bill is a different order of problem from a wrong time on a roster — see F-36.
 - **M5 — counter & administration:** bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu management + events, event explorer, hide/unhide, post-close corrections.
-- **M6 — hardening & production:** full E2E suite (§16.3), backups + restore drill, cloudflared production profile + tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, CI pipeline.
+- **M6 — hardening & production:** full E2E suite (§16.3), backups + restore drill, cloudflared production profile + tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, CI pipeline. The **guest registration surface** (§11.8) also lands here rather than in M2, where it belonged: R§4.3 required it from rev 2 and no milestone claimed it, and the gap surfaced only when §16.3 scenario 3 went to write it — see F-37.
 
 ---
 
@@ -860,6 +880,17 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 | F-36 | All instants rendered in `RESTAURANT_TIME_ZONE` for every reader, through one type; `RESTAURANT_CLOCK_FORMAT` settles the 12-vs-24 question; ticking footer clock states the convention on every page | §8.1, §11.7, §13, §19 |
 | F-18 / F-19 | Menu item event log; lockout 5/5min, username 3–64 citext, currency/timezone defaults | §7, §3.1, §13, §8.2 |
 | F-20 | Hand-written fakes; NSubstitute ok; no Moq | §16.1 |
+| F-37 | Guest self-registration is a real surface at `/register`, specified rather than assumed; a passkey is offered first and may be declined only when a password was set; no rate limit in v1, with the reason it is not a two-line addition recorded | §11.1, §11.8, §17, §19 · R§4.3 |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP re-enrollment only if enrolled pre-reset; obligations pipeline runs on passkey path too; counter fallback = same rotating QR (no short-code) | §10.1–10.2, §3.5, §3.7, §4.5 · ledger notes |
+
+---
+
+## Changelog
+
+**v1.1 — 2026-08-02.** Guest registration written down. New **§11.8 `/register`** specifies the surface R§4.3 has required since rev 2 and which no milestone had claimed: the two-step ticket-backed flow, why a ticket is needed at all (a WebAuthn user handle must exist before the `person` row does), and the rule that declining a passkey is offered exactly when a password was set. **§11.1** points at it instead of naming registration in passing. **§17** records the absent rate limit as an accepted risk with the concrete reason it is not a small change. **§19** notes that the surface lands in M6 rather than M2, and why. **Appendix A** gains F-37.
+
+Nothing else moved. §11.7 keeps its number — a dozen source files cite it — so the new subsection is appended rather than inserted, and no existing cross-reference changes meaning.
+
+**v1.0 — 2026-07-17.** Initial accepted specification.

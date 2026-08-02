@@ -38,6 +38,8 @@ Do the bootstrap **on the production origin**, never through a quick tunnel (§1
 
 Immediately after: create the staff accounts (Administration → Users; each gets a temporary password and is forced to change it at first sign-in), create your tables, then pair the displays (§5).
 
+**Guests need nothing from you.** A guest who scans a table's code without an account is offered registration on the spot at `/register` — a username, optionally a display name, and either a passkey or a password. There is no invitation, no approval queue, and no self-service password reset (§13 covers the lost-credential path, which runs through the counter). A guest account carries no role and therefore no capability beyond its own order, so the only cost of a junk registration is a row.
+
 ## 4. Kitchen display runbook
 
 Use a dedicated, always-powered device (tablet or small PC) in browser kiosk mode pointed at `/kitchen`, signed in with a kitchen-role account (kitchen accounts hold a passkey — registered at grant time).

@@ -13,8 +13,10 @@ accounts, table administration and rotating join QR codes, paired table displays
 with its locking protocol, the kitchen and counter boards, billing and settlement, menu management,
 and the administration surfaces including the cross-log event explorer. **Milestone 6 (hardening)**
 is in progress — continuous integration has landed, and so has the Playwright end-to-end harness
-with five of the fifteen §16.3 scenarios implemented against a real browser; the remaining ten
-scenarios and an executable backup/restore drill are what is left. See *Roadmap* and
+with eight of the fifteen §16.3 scenarios implemented against a real browser. Building those
+scenarios turned up one genuine product gap and closed it: guests can now self-register at
+`/register`, which the requirements had mandated since rev 2 and no page had ever provided. The
+remaining seven scenarios and an executable backup/restore drill are what is left. See *Roadmap* and
 `docs/BUILD_PROGRESS.md`.
 
 ## Layout
@@ -31,8 +33,9 @@ the web layer depends on data-access and the domain; the domain depends on nothi
   append-only security-event log). Entity Framework is deliberately not used anywhere.
 - `src/MyRestaurant.WebApplication` — the composition root, configuration binding and fail-fast
   validation, OpenTelemetry wiring, the in-process live-update broadcaster, cookie authentication
-  with the auditing sign-in manager, the §3.5 obligations middleware, the account pages (static SSR),
-  and the Blazor shell.
+  with the auditing sign-in manager, the §3.5 obligations middleware, the account pages including
+  anonymous guest registration (all static SSR, because they write cookies on the response), and the
+  Blazor shell.
 - `tests/` — pure domain tests, Testcontainers integration tests for migrations, the Identity stores
   and every reader/mutation over real PostgreSQL, web-layer configuration/wiring/enforcement tests,
   and the end-to-end scenario matrix with its Playwright harness (see *End-to-end scenarios*).
@@ -123,12 +126,33 @@ port, and a browser context with a CDP WebAuthn virtual authenticator. Nothing i
 scenarios, so they can run in any order — which matters, because scenario 1 needs a database with no
 administrator and scenario 13 needs one with an administrator who has both a passkey and TOTP.
 
-Five of the fifteen are implemented: **1** (the `/setup` bootstrap, with a real WebAuthn attestation
-and a real TOTP code), **2** (a display pairs and its QR advances across a rotation boundary), **13**
-(a passkey sign-in of a TOTP-enrolled person is not challenged for a code), **14** (the join-token
-window arithmetic as a guest experiences it), and **15** (rotating a join secret kills every
-outstanding QR while the paired display recovers by itself). The other ten are named, skipped
-placeholders whose skip reason says what each is waiting on.
+Eight of the fifteen are implemented:
+
+| # | What it proves |
+| --- | --- |
+| 1 | the `/setup` bootstrap, with a real WebAuthn attestation and a real TOTP code, then `/setup` is 404 |
+| 2 | a display pairs and its QR advances across a rotation boundary |
+| 3 | a guest scans, self-registers with a passkey, and joins *after* the code they scanned has expired |
+| 4 | a guest stages two adds and a note, sends, and the kitchen gets exactly one alert with both lines pending |
+| 6 | the kitchen marks one line away and the guest's own screen re-badges it |
+| 13 | a passkey sign-in of a TOTP-enrolled person is not challenged for a code |
+| 14 | the join-token window arithmetic as a guest experiences it |
+| 15 | rotating a join secret kills every outstanding QR while the paired display recovers by itself |
+
+The other seven — 5, 7, 8, 9, 10, 11 and 12 — are named, skipped placeholders whose skip reason says
+what each is waiting on.
+
+Scenario 3 is the one that earns its runtime. §16.3 words it *"registers with passkey (slowly — grant
+outlives token)"*, and that parenthetical is the entire reason the §4.4 join grant exists. The
+instance runs at the §13 floor of a ten-second rotation, so the scanned token is provably dead about
+twenty seconds later; the scenario waits it out, proves the death by re-scanning in a third browser
+context with no grant cookie to carry it past a refusal, and only then joins on the grant.
+
+Scenarios 4 and 6 are the first to watch a §9 broadcast cross between two circuits — a guest's phone
+and the kitchen board, in two browser contexts, reacting to each other's commits. The kitchen board
+is opened *before* anything is sent, because `KitchenBoard.razor` subscribes in
+`OnAfterRender(firstRender)` and a board opened afterwards would render the queue perfectly well
+while having heard nothing.
 
 A scenario that needs more than one principal at once opens more than one browser context — an
 administrator, the tablet on the table, a guest with a phone. For the display device that is not
@@ -163,7 +187,7 @@ Every push and pull request against `main` runs four gates (`.github/workflows/c
 | Gate | What it proves |
 | --- | --- |
 | `shell-scripts` | every tracked `*.sh` parses under `bash -n` and passes shellcheck |
-| `build-and-test` | a Release build with **warnings escalated to errors**, then all ~934 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
+| `build-and-test` | a Release build with **warnings escalated to errors**, then all ~970 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
 | `boot-smoke` | the production `Containerfile` builds, and the resulting image boots against a real PostgreSQL until `/healthz/ready` answers 200 |
 | `end-to-end` | the §16.3 scenarios in Chromium against the built application, with `MYRESTAURANT_E2E=1` |
 
@@ -279,6 +303,13 @@ scripts/ci_local.sh --with-all
   reachable; from the moment an administrator exists it is 404 forever. Do the bootstrap on the
   production origin, never through a quick tunnel — the passkey binds to the origin it was
   registered on (`docs/OPERATIONS.md` §3).
+- **`/register` is anonymous and not rate-limited.** It is the second anonymous surface that writes
+  a row, and the more consequential one, since a `person` outlives the request. What bounds it today
+  is shape rather than policy: two requests behind an antiforgery token and a Data-Protection-
+  protected ticket cookie (so not a scriptable single POST), a 256-character cap on the password so
+  an anonymous caller cannot ask for unbounded Argon2id work, and §3.2's process-wide hashing
+  semaphore. `/display/pair` is the only limited endpoint (§4.2, 5/min/IP), and adding a second
+  policy naively would hijack its rejection message — see `docs/TECHNICAL_SPECIFICATION.md` §17.
 - **Container images are `linux/amd64` only.** The release pipeline does not emulate arm64: the
   `Containerfile` runs `dotnet publish` in its build stage, and doing that under QEMU is slow enough
   to risk a timeout. An arm64 image wants a cross-compiled publish rather than an emulated one
@@ -304,6 +335,8 @@ scripts/ci_local.sh --with-all
   explorer, hide/unhide, and post-close corrective events.
 - **M6** — hardening *(in progress)*: ✔ the CI pipeline and publish-on-tag; ✔ the Playwright
   harness and §16.3 scenarios 1, 13 and 14; ✔ scenarios 2 and 15, the display's rotating QR across a
-  window boundary and its recovery after a join-secret rotation; still to come, the other ten
-  scenarios and an executable backup/restore drill.
-
+  window boundary and its recovery after a join-secret rotation; ✔ the display's own refresh
+  schedule, extracted and unit-tested; ✔ guest self-registration at `/register` and scenario 3, the
+  grant outliving the token it was issued for; ✔ scenarios 4 and 6, the first to watch a live update
+  cross between two circuits; still to come, the other seven scenarios and an executable
+  backup/restore drill.

@@ -6,8 +6,17 @@
     <PackageReference> entries.
 
     Every version below is the latest STABLE (non-prerelease, non-nightly) release as
-    resolved on 2026-07-17. Confirm with `dotnet restore` on a networked machine; if a
-    version has moved on, bump it here only (BUILD_PROGRESS: first-build checklist).
+    resolved on 2026-08-02, verified with `dotnet list package` in its outdated mode
+    against nuget.org. Confirm with `dotnet restore` on a networked machine; if a version
+    has moved on, bump it here only (BUILD_PROGRESS: first-build checklist).
+
+    Note that outdated mode only inspects packages a project actually references, so it is
+    silent about NSubstitute below — that entry is a version *pin standing ready* for
+    §16.1's "NSubstitute acceptable", not a dependency anything currently takes. It is
+    checked by hand when this block is refreshed (6.0.0 was current on 2026-08-02).
+
+    An XML comment may not contain two consecutive hyphens, which is why the flag is
+    described here rather than spelled.
   -->
 
   <PropertyGroup>
@@ -24,11 +33,23 @@
   </ItemGroup>
 
   <ItemGroup Label="Observability + database wiring (MyRestaurant.WebApplication)">
-    <!-- Server-side TOTP provisioning QR (§3.4). MIT, zero dependencies, netstandard2.0; used only
-         for its module geometry (we compose the inline SVG ourselves). 3.0.0 is the latest stable
-         release as resolved on 2026-07-19; if restore cannot find it, bump to the nearest available
-         (the EncodeText/ToGraphicsPath API is stable across the 3.x line). -->
-    <PackageVersion Include="Net.Codecrete.QrCodeGenerator" Version="3.0.0" />
+    <!-- Server-side TOTP provisioning QR (§3.4) and the rotating table join QR (§4.3). MIT, zero
+         dependencies, netstandard2.0; used only for its module geometry (we compose the inline SVG
+         ourselves). 3.1.0 is the latest stable release as resolved on 2026-08-02.
+
+         3.0.0 -> 3.1.0 is additive: the only change is balanced sizing for *structured append*
+         (one long text split across several linked QR codes), which nothing here uses — this tree
+         encodes one short URL per code. The three members it does use — QrCode.EncodeText(string,
+         Ecc), QrCode.Size and QrCode.ToGraphicsPath(int) — carry identical signatures at the v3.1.0
+         tag, and no test pins a golden module path (the assertions are structural, and the
+         end-to-end harness recomputes the expected path with this same library), so the modules
+         themselves may change shape without anything going red.
+
+         This package is referenced by BOTH the web application and the end-to-end test project, and
+         central package management means one bump moves both. That is deliberate: the harness
+         asserts a display is showing the code the table's secret produces, which is only a real
+         assertion while both sides encode with the same version. -->
+    <PackageVersion Include="Net.Codecrete.QrCodeGenerator" Version="3.1.0" />
     <PackageVersion Include="Npgsql.OpenTelemetry" Version="10.0.3" />
     <PackageVersion Include="OpenTelemetry" Version="1.17.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
