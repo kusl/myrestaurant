@@ -12,3 +12,716 @@ It removes the guess work of which file goes where
 if I can paste the whole folder together in one go 
 please do that if possible 
 remember to tell me which files if any I would need to delete
+
+
+/
+Claude finished the response
+I had previously fixed a test but you broke it again 
+perhaps I should let you fix it yourself so you remember 
+  MyRestaurant.EndToEnd.Tests net10.0 failed with 1 error(s) (0.4s)
+    /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs(113,21): error CS1620: Argument 2 must be passed with the 'ref' keyword
+  MyRestaurant.WebApplication.Tests net10.0 succeeded (0.6s) → tests/MyRestaurant.WebApplication.Tests/bin/Release/net10.0/MyRestaurant.WebApplication.Tests.dll
+Please continue with the next step 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+
+Show more
+
+Verifying endpoint functionality and component rendering behavior
+Verifying endpoint functionality and component rendering behavior
+Thinking about fixing a C# ref keyword compilation error and organizing project files for efficient setup.
+
+
+Check project files exist
+
+Inspect dump format
+
+Split dump into working tree
+
+List E2E test files
+
+Read TableJourneys.cs to find the CS1620 error
+Resolving compiler error with ref parameter passing.
+
+
+Survey string.Create usage patterns
+
+See house style for string.Create in tests
+Weighing string concatenation versus raw interpolation patterns.
+
+
+Inspect DisplayJourneys message-building style
+Diagnosing raw string literal escape sequence issues.
+
+
+Find Roslyn source handling interpolated string addition
+
+Read Roslyn helper for interpolated string addition detection
+Investigated operator binding logic and constant folding mechanisms.
+
+
+Locate the binder logic for interpolated string addition
+
+Read the exact condition for unconverted interpolated string addition
+Diagnosing string literal handling in operand validation.
+
+Diagnosed string literal binding issue causing type mismatch error.
+
+
+Confirm hole-less interpolated strings still bind as unconverted nodes
+Reconciling interpolated string styling with handler conversion patterns.
+
+
+Find all raw-string trailing-backslash continuations
+
+Read the E2E scenario list and current implementation state
+
+Read the rest of the scenarios
+Diagnosing TableJourneys compilation error and tracing original code.
+
+
+Check pending append docs
+
+Read the tail of slice 5 progress for the planned next step
+
+Read head of slice 5 progress
+
+Read terminal log head
+Reconciling test count discrepancies and tracing missing E2E tests.
+
+
+Read rest of terminal log
+
+List Blazor components
+
+Size up the surfaces and harness
+Scrutinizing TableOrderSurface markup for workflow integration.
+
+
+Read the guest order surface markup
+
+Read the remaining markup of the order surface
+
+Read the kitchen board markup
+
+Read kitchen board code-behind
+
+Read the kitchen board @code block
+Verifying alert badge count displays unseen notifications correctly.
+
+
+Read authorization policies
+
+Read policy definitions
+Verifying administrator account compatibility for Kitchen policy endpoint.
+
+Reconciling scenario scope and test architecture tradeoffs.
+
+
+Read AdministrationJourneys harness
+
+Read the menu item creation page
+
+Read AccountJourneys harness
+
+Read the RestaurantInstance harness
+
+Read the middle of RestaurantInstance (DB helpers, page helpers)
+
+Read the environment variables the harness sets
+
+Read DisplayJourneys selectors
+
+See how the display exposes liveness
+
+Read IsLiveAttributeValue doc
+
+Read TableArea page hosting the order surface
+
+Read the table join page which hosts the order surface island
+Wrapping component output in container div for interactivity.
+
+
+Check CSS selectors that could be affected by a wrapper div
+
+Check CSS for descendant/child selectors around the order surface
+Reconsidering wrapper necessity and scrutinizing guest page requirements.
+
+
+Trace the KitchenAlert notification
+
+Read the workflow's broadcast logic
+
+Read KitchenAlertState
+
+Read kitchen board lifecycle code
+Untangling subscription timing and interactive renderer subtleties.
+
+
+Check global render mode
+Verifying endpoint functionality and component rendering behavior.
+
+
+Read the order surface state fields
+
+Read StageItem and load logic
+Done
+I hit my tool budget mid-investigation, so let me give you what I have — including the fix you asked for, which is complete and verified.
+
+The CS1620, and why I keep reintroducing it
+tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs, line 113:
+
+csharp
+string.Create(
+    CultureInfo.InvariantCulture,
+    $"Joining did not confirm; the table page is now showing {stage}. A grant is"
+    + " single-use and is cleared whatever the outcome (§4.4), so if this was a"
+    + " refusal the grant is already spent and a retry will not help."),
+The overload being bound is string.Create(IFormatProvider?, ref DefaultInterpolatedStringHandler). C# 10's interpolated-string-handler conversion only applies to an additive expression composed entirely of interpolated string expressions. I confirmed this against Roslyn's Binder_Operators.cs — the guard is literally:
+
+csharp
+&& left  is BoundUnconvertedInterpolatedString or BoundBinaryOperator { IsUnconvertedInterpolatedStringAddition: true }
+&& right is BoundUnconvertedInterpolatedString or BoundBinaryOperator { IsUnconvertedInterpolatedStringAddition: true }
+A bare " single-use…" literal binds as BoundLiteral, not BoundUnconvertedInterpolatedString, so the whole expression collapses to a plain string and the handler parameter demands ref. Prefixing every continuation with $ fixes it — and I checked in Binder_InterpolatedString.cs that a hole-less $"…" still binds as BoundUnconvertedInterpolatedString (it carries a resultConstant but keeps the node type), so $"a" + $" b" is legal even when the second operand has no holes. That's also exactly the shape DisplayJourneys.cs:197–198 already uses and compiles.
+
+The one-line-per-operand fix:
+
+csharp
+                    $"Joining did not confirm; the table page is now showing {stage}. A grant is"
+                    + $" single-use and is cleared whatever the outcome (§4.4), so if this was a"
+                    + $" refusal the grant is already spent and a retry will not help."),
+This is the only occurrence in the repo — I grepped all 19 string.Create call sites.
+
+A second, quieter defect in the same folder
+DisplayJourneys.cs:113–119 uses a raw string literal with trailing \ line continuations. Raw string literals process no escape sequences, so that diagnostic currently renders with literal backslashes and hard line breaks in it. It compiles and no test fails on it, but the message is garbled. Also mine, also worth fixing.
+
+Where I got to on "the next step"
+Slice 5 (scenario 3, /register) is landed and in the dump; the append doc is there. So the next slice is scenario 4 — guest stages 2 adds + note → Send → kitchen gets one loud alert → lines pending — and I'd pair it with scenario 6 (kitchen fulfills a line → guest sees the badge), since they share an eight-step arrangement and 6 is nearly free once 4 exists.
+
+What I established for it:
+
+Administrator satisfies AuthorizationPolicies.Kitchen, so no staff account is needed to observe the board.
+OrderWorkflow.AfterCommit publishes exactly one KitchenAlert(Initial) per committed submission regardless of line count — so "one loud alert" for a two-add send is a real assertion, not an artifact.
+The board subscribes in OnAfterRenderAsync(firstRender), so it must be live before the guest sends. Same class of hazard M6 Slice 4 fixed on the display.
+Neither TableOrderSurface nor KitchenBoard publishes data-live, so a prerendered-but-dead surface would fail as "the basket never filled" rather than "no circuit". Two small product changes, mirroring TableDisplay.razor's IsLiveAttributeValue: a data-live wrapper on the order surface, and data-live plus data-unseen-alerts on the existing #kitchen-board-surface. I verified no > child selectors in app.css would break from the wrapper.
+Menu items can be created via /administration/menu/new (#name, #price, "Create item", then parse the identifier out of the "Manage this item" href), and the picker's <option value> is the raw GUID, so SelectOptionAsync by value avoids matching on price-formatted copy.
+Expected counts after the fix alone: dotnet test 971 total / 956 succeeded / 15 skipped / 0 failed; MYRESTAURANT_E2E=1 6 passed / 9 skipped. Nothing to delete.
+
+If you want, say the word and I'll come back with the full Slice 6 tarball — the two corrected harness files plus the scenario 4/6 implementation, the data-live product changes, and the docs/_append/BUILD_PROGRESS-m6-slice-6.md with its _CHANGES.md. Or if you'd rather unblock the build right now, apply the three $ characters above and you're green.
+
+Claude reached its tool-use limit for this turn.
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+86
+07
+
+00
+07 
+
+please continue 
+
+
+/
+Claude finished the response
+I had previously fixed a test but you broke it again 
+perhaps I should let you fix it yourself so you remember 
+  MyRestaurant.EndToEnd.Tests net10.0 failed with 1 error(s) (0.4s)
+    /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs(113,21): error CS1620: Argument 2 must be passed with the 'ref' keyword
+  MyRestaurant.WebApplication.Tests net10.0 succeeded (0.6s) → tests/MyRestaurant.WebApplication.Tests/bin/Release/net10.0/MyRestaurant.WebApplication.Tests.dll
+Please continue with the next step 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+
+Show more
+
+Verifying endpoint functionality and component rendering behavior
+Verifying endpoint functionality and component rendering behavior
+Thinking about fixing a C# ref keyword compilation error and organizing project files for efficient setup.
+
+
+Check project files exist
+
+Inspect dump format
+
+Split dump into working tree
+
+List E2E test files
+
+Read TableJourneys.cs to find the CS1620 error
+Resolving compiler error with ref parameter passing.
+
+
+Survey string.Create usage patterns
+
+See house style for string.Create in tests
+Weighing string concatenation versus raw interpolation patterns.
+
+
+Inspect DisplayJourneys message-building style
+Diagnosing raw string literal escape sequence issues.
+
+
+Find Roslyn source handling interpolated string addition
+
+Read Roslyn helper for interpolated string addition detection
+Investigated operator binding logic and constant folding mechanisms.
+
+
+Locate the binder logic for interpolated string addition
+
+Read the exact condition for unconverted interpolated string addition
+Diagnosing string literal handling in operand validation.
+
+Diagnosed string literal binding issue causing type mismatch error.
+
+
+Confirm hole-less interpolated strings still bind as unconverted nodes
+Reconciling interpolated string styling with handler conversion patterns.
+
+
+Find all raw-string trailing-backslash continuations
+
+Read the E2E scenario list and current implementation state
+
+Read the rest of the scenarios
+Diagnosing TableJourneys compilation error and tracing original code.
+
+
+Check pending append docs
+
+Read the tail of slice 5 progress for the planned next step
+
+Read head of slice 5 progress
+
+Read terminal log head
+Reconciling test count discrepancies and tracing missing E2E tests.
+
+
+Read rest of terminal log
+
+List Blazor components
+
+Size up the surfaces and harness
+Scrutinizing TableOrderSurface markup for workflow integration.
+
+
+Read the guest order surface markup
+
+Read the remaining markup of the order surface
+
+Read the kitchen board markup
+
+Read kitchen board code-behind
+
+Read the kitchen board @code block
+Verifying alert badge count displays unseen notifications correctly.
+
+
+Read authorization policies
+
+Read policy definitions
+Verifying administrator account compatibility for Kitchen policy endpoint.
+
+Reconciling scenario scope and test architecture tradeoffs.
+
+
+Read AdministrationJourneys harness
+
+Read the menu item creation page
+
+Read AccountJourneys harness
+
+Read the RestaurantInstance harness
+
+Read the middle of RestaurantInstance (DB helpers, page helpers)
+
+Read the environment variables the harness sets
+
+Read DisplayJourneys selectors
+
+See how the display exposes liveness
+
+Read IsLiveAttributeValue doc
+
+Read TableArea page hosting the order surface
+
+Read the table join page which hosts the order surface island
+Wrapping component output in container div for interactivity.
+
+
+Check CSS selectors that could be affected by a wrapper div
+
+Check CSS for descendant/child selectors around the order surface
+Reconsidering wrapper necessity and scrutinizing guest page requirements.
+
+
+Trace the KitchenAlert notification
+
+Read the workflow's broadcast logic
+
+Read KitchenAlertState
+
+Read kitchen board lifecycle code
+Untangling subscription timing and interactive renderer subtleties.
+
+
+Check global render mode
+Verifying endpoint functionality and component rendering behavior.
+
+
+Read the order surface state fields
+
+Read StageItem and load logic
+Done
+I hit my tool budget mid-investigation, so let me give you what I have — including the fix you asked for, which is complete and verified.
+
+The CS1620, and why I keep reintroducing it
+tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs, line 113:
+
+csharp
+string.Create(
+    CultureInfo.InvariantCulture,
+    $"Joining did not confirm; the table page is now showing {stage}. A grant is"
+    + " single-use and is cleared whatever the outcome (§4.4), so if this was a"
+    + " refusal the grant is already spent and a retry will not help."),
+The overload being bound is string.Create(IFormatProvider?, ref DefaultInterpolatedStringHandler). C# 10's interpolated-string-handler conversion only applies to an additive expression composed entirely of interpolated string expressions. I confirmed this against Roslyn's Binder_Operators.cs — the guard is literally:
+
+csharp
+&& left  is BoundUnconvertedInterpolatedString or BoundBinaryOperator { IsUnconvertedInterpolatedStringAddition: true }
+&& right is BoundUnconvertedInterpolatedString or BoundBinaryOperator { IsUnconvertedInterpolatedStringAddition: true }
+A bare " single-use…" literal binds as BoundLiteral, not BoundUnconvertedInterpolatedString, so the whole expression collapses to a plain string and the handler parameter demands ref. Prefixing every continuation with $ fixes it — and I checked in Binder_InterpolatedString.cs that a hole-less $"…" still binds as BoundUnconvertedInterpolatedString (it carries a resultConstant but keeps the node type), so $"a" + $" b" is legal even when the second operand has no holes. That's also exactly the shape DisplayJourneys.cs:197–198 already uses and compiles.
+
+The one-line-per-operand fix:
+
+csharp
+                    $"Joining did not confirm; the table page is now showing {stage}. A grant is"
+                    + $" single-use and is cleared whatever the outcome (§4.4), so if this was a"
+                    + $" refusal the grant is already spent and a retry will not help."),
+This is the only occurrence in the repo — I grepped all 19 string.Create call sites.
+
+A second, quieter defect in the same folder
+DisplayJourneys.cs:113–119 uses a raw string literal with trailing \ line continuations. Raw string literals process no escape sequences, so that diagnostic currently renders with literal backslashes and hard line breaks in it. It compiles and no test fails on it, but the message is garbled. Also mine, also worth fixing.
+
+Where I got to on "the next step"
+Slice 5 (scenario 3, /register) is landed and in the dump; the append doc is there. So the next slice is scenario 4 — guest stages 2 adds + note → Send → kitchen gets one loud alert → lines pending — and I'd pair it with scenario 6 (kitchen fulfills a line → guest sees the badge), since they share an eight-step arrangement and 6 is nearly free once 4 exists.
+
+What I established for it:
+
+Administrator satisfies AuthorizationPolicies.Kitchen, so no staff account is needed to observe the board.
+OrderWorkflow.AfterCommit publishes exactly one KitchenAlert(Initial) per committed submission regardless of line count — so "one loud alert" for a two-add send is a real assertion, not an artifact.
+The board subscribes in OnAfterRenderAsync(firstRender), so it must be live before the guest sends. Same class of hazard M6 Slice 4 fixed on the display.
+Neither TableOrderSurface nor KitchenBoard publishes data-live, so a prerendered-but-dead surface would fail as "the basket never filled" rather than "no circuit". Two small product changes, mirroring TableDisplay.razor's IsLiveAttributeValue: a data-live wrapper on the order surface, and data-live plus data-unseen-alerts on the existing #kitchen-board-surface. I verified no > child selectors in app.css would break from the wrapper.
+Menu items can be created via /administration/menu/new (#name, #price, "Create item", then parse the identifier out of the "Manage this item" href), and the picker's <option value> is the raw GUID, so SelectOptionAsync by value avoids matching on price-formatted copy.
+Expected counts after the fix alone: dotnet test 971 total / 956 succeeded / 15 skipped / 0 failed; MYRESTAURANT_E2E=1 6 passed / 9 skipped. Nothing to delete.
+
+If you want, say the word and I'll come back with the full Slice 6 tarball — the two corrected harness files plus the scenario 4/6 implementation, the data-live product changes, and the docs/_append/BUILD_PROGRESS-m6-slice-6.md with its _CHANGES.md. Or if you'd rather unblock the build right now, apply the three $ characters above and you're green.
+
+please continue
+
+
+Refined code structure and validated styling conventions
+Refined code structure and validated styling conventions
+Architecting new harness files for Administration module.
+
+Orchestrating token generation and guest authentication flow.
+
+
+Confirm working tree survived and read the kitchen alert script
+Deliberated testing strategy and prepared implementation adjustments.
+
+
+Fix CS1620 by making every operand an interpolated string
+TableJourneys.cs
++8
+-3
+
+Raw string literals process no escapes, so the trailing backslashes were landing in the message
+DisplayJourneys.cs
++12
+-10
+Wrapping render tree in data-live container element.
+
+Architected wrapper strategy and mapped implementation workflow.
+
+
+Locate the render tree boundaries for wrapping
+
+Wrap the ordering island in a data-live element
+Strategically positioning the property before initialization method.
+
+Strategized property placement within code structure.
+
+
+Publish whether a circuit produced this markup, the way TableDisplay does
+TableOrderSurface.razor
++23
+-9
+Strategized component enhancement with attribute integration.
+
+
+Publish liveness and the unseen-alert count on the board surface
+KitchenBoard.razor
++4
+-1
+
+Add the IsLiveAttributeValue property with its rationale
+KitchenBoard.razor
++30
+-11
+Defining MenuItem record and scrutinizing layer dependencies.
+
+
+Check E2E project references
+Crafting menu item creation method implementation.
+
+Architected async menu creation logic and selector parsing strategy.
+
+
+Document the new menu journey in the type summary
+AdministrationJourneys.cs
++6
+-5
+
+Add the menu-item creation journey
+AdministrationJourneys.cs
++11
+-4
+
+Insert CreateMenuItemAsync before the path helpers
+AdministrationJourneys.cs
++52
+-2
+Architecting harness methods for table interactions and menu staging.
+
+Architected test harness methods for order staging and kitchen workflows.
+
+
+Check route constant classes and chip styling
+
+Harness for the guest ordering island: staging, sending, and reading committed lines
+Rectifying async syntax error in string interpolation.
+
+Identified and resolved async syntax error in string interpolation.
+
+
+Hoist the await out of the interpolated string — an await inside a handler-bound interpolation is CS4007
+TableOrderJourneys.cs
++10
+-8
+Examining kitchen route status messaging mechanisms.
+
+Architected deterministic test logic handling race conditions and state validation.
+
+
+Harness for the kitchen board: liveness, the alert count, the pending queue, and fulfilling a line
+Untangling nested string interpolation complexities.
+
+Verifying kitchen board row quantities and confirmation messaging.
+
+
+Verify LinesAdded semantics and the pending-line view granularity
+
+Confirm the pending-line view is one row per order line
+Refactoring test scenarios and crafting helper methods.
+
+Architected test scenarios and refined assertion strategies.
+
+
+Check xUnit assertion idioms already used
+Resolved testing approach and prepared documentation updates.
+
+
+Update the scenario-matrix summary for Slice 6
+EndToEndScenarios.cs
++13
+-10
+
+Implement §16.3 scenario 4
+EndToEndScenarios.cs
++84
+-7
+
+Implement §16.3 scenario 6
+EndToEndScenarios.cs
++73
+-5
+Orchestrating test file additions and verifying imports.
+
+
+Check ImplicitUsings and nullable settings
+Navigating compiler warnings and implicit namespace availability.
+
+
+Check for editorconfig-driven analyzer severities
+
+See which analyzer rules are escalated
+
+Read the editorconfig
+Refactoring ternary logic into clearer local variables.
+
+Refined code structure and validated styling conventions.
+
+
+Spell the badge decision out rather than chaining awaits through a ternary
+TableOrderJourneys.cs
++10
+-6
+Done
+Now the shared arrangement helper and the new patience constant:
+
+
+Verified test structure and prepared component packaging
+Verified test structure and prepared component packaging
+
+Add the live-update patience and the shared ordering arrangement
+EndToEndScenarios.cs
++81
+-1
+Scrutinizing unused properties in C# codebase architecture.
+
+Audited code balance and repurposed unused property strategically.
+
+
+Confirm the surface under test is the arranged table's
+EndToEndScenarios.cs
++9
+-4
+
+Balance-check braces, parens and brackets in all touched files
+Verifying brace balance and formatting in Razor files.
+
+Verified syntax consistency across markup and code regions.
+
+
+Find precedent for @ inside XML doc comments in Razor code blocks
+Parsing Razor's @ character behavior in code blocks.
+
+
+Avoid an at-sign inside a C# doc comment in a Razor code block
+TableOrderSurface.razor
++1
+-1
+
+Verify markup tag balance and no stray at-signs in Razor doc comments
+Tracing mismatched HTML tags in TableOrderSurface component.
+
+
+Locate the div and dl tags to check balance
+Reconciling markup discrepancies within Razor comments.
+
+
+Spot-check the edited Razor regions
+
+Read the previous slice's _CHANGES.md for format
+Deliberating documentation needs and test coverage justification.
+
+Documenting changelog while forgoing unit tests.
+
+Orchestrated documentation updates and compiled deployment artifacts.
+
+
+BUILD_PROGRESS append block for M6 Slice 6
+
+Write the _CHANGES.md handoff document
+Verifying C# compile issues and import dependencies.
+
+Verifying Playwright's event dispatch behavior for Blazor binding.
+
+Investigated Playwright event dispatch behavior for Blazor binding compatibility.
+
+
+Locate Playwright's injected script to confirm fill's event dispatch
+
+Confirm whether fill dispatches a change event
+
+Read the fill implementation
+Continuing analysis of input handling mechanisms.
+
+Weighing blur strategies for ensuring reliable event sequencing.
+
+Architected event sequencing strategy for Blazor form interactions.
+
+
+Flush the two-way bindings before the click instead of relying on the click's implicit blur
+TableOrderJourneys.cs
++26
+-16
+
+Review the shape of the scenario class after the edits
+Packaging component files into tarball.
+
+Verified test structure and prepared component packaging.
+
+
+Correct the file count in the handoff document
+
+Stage the archive contents and verify line endings
+
+Build the deliverable archive
+
+Presented file
+Done
+M6 Slice 6 — the kitchen hears the guest. Extracts at the repo root; 10 full files, no deletions.
+
+bash
+tar -xzf m6-slice6-kitchen-hears-the-guest.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+Files to DELETE: none. No migration, no schema change, no package change, no Program.cs, no .slnx, no .csproj — the test SDK globs the two new harness files on its own.
+
+Path	
+tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs	the CS1620
+tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs	raw-string backslashes were printing into the diagnostic
+src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor	data-live wrapper
+src/MyRestaurant.WebApplication/Components/Pages/Kitchen/KitchenBoard.razor	data-live, data-unseen-alerts
+tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs	new
+tests/MyRestaurant.EndToEnd.Tests/Harness/KitchenJourneys.cs	new
+tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs	CreateMenuItemAsync
+tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs	scenarios 4 and 6
+docs/_append/BUILD_PROGRESS-m6-slice-6.md	new, append-only
+_CHANGES.md	
+Expected: dotnet test 971 / 0 failed (unchanged — no unit test added), MYRESTAURANT_E2E=1 8 passed / 7 skipped, up from 6/9.
+
+Three things worth knowing before you read the diff:
+
+The CS1620 now carries its own explanation. Roslyn only converts an addition to a DefaultInterpolatedStringHandler when every operand is an interpolated string; one bare "…" collapses the whole expression to a plain string. A hole-less $"…" still counts. The comment sits beside the call so the next full-file rewrite doesn't undo it a third time.
+
+Two product changes, both data-live. The ordering island and the kitchen board both prerender completely and then, with no circuit, never change again — the island's controls are all click handlers landing on nothing, the board shows a correct-looking queue and never alerts. That's the same hazard TableDisplay.razor published data-live for in Slice 4, and it's the difference between failing with "no circuit was established" and failing with "the basket stayed empty". The wrapper re-indents TableOrderSurface's body one level; git diff -w shows the real change is seven lines and a closing tag. No CSS moved.
+
+StageAsync focuses the button before clicking it, deliberately. I checked Playwright's injected script: for text and number inputs fill types rather than assigning, so the DOM has the value but change hasn't fired and @bind hasn't heard. Moving focus is what fires it. Each fill blurs the previous field and that focus blurs the last, so all three bindings are dispatched before the click — rather than leaning on the click's implicit blur, which works until the day the events race.
+
+Scenario 4's "one alert" waits on a single predicate over both the queue and the count, because §9 publishes OrderLinesChanged before KitchenAlert and there's a real window where the lines have landed and the alert hasn't. Then it re-reads at the end to turn "one so far" into "one, full stop".
+
+Scenario 5 is next — two guests, two live circuits, each watching the other's roster and totals.
+
+
+M6 slice6 kitchen hears the guest.tar
+GZ 
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
