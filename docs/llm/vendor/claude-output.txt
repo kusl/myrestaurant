@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-01T23:52:35-04:00
+  Generated at   : 2026-08-02T09:20:03-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : ec5d91f6e2eb824970c671fcd1bc6ec05664bfb8
-  Commit (short) : ec5d91f
-  Commit date    : 2026-08-01 23:52:29 -0400
-  Commit message : append build progress
+  Commit (full)  : 8535d8dd9e85413612dffe70d5804508edacbcd8
+  Commit (short) : 8535d8d
+  Commit date    : 2026-08-02 09:19:56 -0400
+  Commit message : update build progress
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 311
+  Files included : 312
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (311 included files)
+# FILE TREE  (312 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -574,7 +574,8 @@ cat "$OUTPUT_FILE"
 │   │   ├── BUILD_PROGRESS-m6-slice-3.md
 │   │   ├── BUILD_PROGRESS-m6-slice-4.md
 │   │   ├── BUILD_PROGRESS-m6-slice-5.md
-│   │   └── BUILD_PROGRESS-m6-slice-6.md
+│   │   ├── BUILD_PROGRESS-m6-slice-6.md
+│   │   └── BUILD_PROGRESS-m6-slice-7.md
 │   └── adr
 │       ├── 0001-single-application-with-areas.md
 │       ├── 0002-relational-append-only-event-logs.md
@@ -1863,15 +1864,15 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
   File name:             Directory.Packages.props
   Relative path:         Directory.Packages.props
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/Directory.Packages.props
-  Size:                  2.7 KiB (2758 bytes)
-  Last modified:         2026-07-21 00:47:29.666604995 -0400
+  Size:                  4.1 KiB (4238 bytes)
+  Last modified:         2026-08-02 01:20:09.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21843832
+  Inode:                 29341761
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               bed7e13a204d584ce35d05f69b8d9c983c9f710818a8cf63797205b99f58c502
-  Last git commit:       8026e39 2026-07-21 00:47:46 -0400 update dbup to 7.0.1
+  SHA-256:               85ce3331b3717bbcd39d5168154680f97b9685b5444c3572997735707836780e
+  Last git commit:       2a55b8b 2026-08-02 09:19:30 -0400 add claude response
 
 --- CONTENT ---
 <Project>
@@ -1882,8 +1883,17 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
     <PackageReference> entries.
 
     Every version below is the latest STABLE (non-prerelease, non-nightly) release as
-    resolved on 2026-07-17. Confirm with `dotnet restore` on a networked machine; if a
-    version has moved on, bump it here only (BUILD_PROGRESS: first-build checklist).
+    resolved on 2026-08-02, verified with `dotnet list package` in its outdated mode
+    against nuget.org. Confirm with `dotnet restore` on a networked machine; if a version
+    has moved on, bump it here only (BUILD_PROGRESS: first-build checklist).
+
+    Note that outdated mode only inspects packages a project actually references, so it is
+    silent about NSubstitute below — that entry is a version *pin standing ready* for
+    §16.1's "NSubstitute acceptable", not a dependency anything currently takes. It is
+    checked by hand when this block is refreshed (6.0.0 was current on 2026-08-02).
+
+    An XML comment may not contain two consecutive hyphens, which is why the flag is
+    described here rather than spelled.
   -->
 
   <PropertyGroup>
@@ -1900,11 +1910,23 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
   </ItemGroup>
 
   <ItemGroup Label="Observability + database wiring (MyRestaurant.WebApplication)">
-    <!-- Server-side TOTP provisioning QR (§3.4). MIT, zero dependencies, netstandard2.0; used only
-         for its module geometry (we compose the inline SVG ourselves). 3.0.0 is the latest stable
-         release as resolved on 2026-07-19; if restore cannot find it, bump to the nearest available
-         (the EncodeText/ToGraphicsPath API is stable across the 3.x line). -->
-    <PackageVersion Include="Net.Codecrete.QrCodeGenerator" Version="3.0.0" />
+    <!-- Server-side TOTP provisioning QR (§3.4) and the rotating table join QR (§4.3). MIT, zero
+         dependencies, netstandard2.0; used only for its module geometry (we compose the inline SVG
+         ourselves). 3.1.0 is the latest stable release as resolved on 2026-08-02.
+
+         3.0.0 -> 3.1.0 is additive: the only change is balanced sizing for *structured append*
+         (one long text split across several linked QR codes), which nothing here uses — this tree
+         encodes one short URL per code. The three members it does use — QrCode.EncodeText(string,
+         Ecc), QrCode.Size and QrCode.ToGraphicsPath(int) — carry identical signatures at the v3.1.0
+         tag, and no test pins a golden module path (the assertions are structural, and the
+         end-to-end harness recomputes the expected path with this same library), so the modules
+         themselves may change shape without anything going red.
+
+         This package is referenced by BOTH the web application and the end-to-end test project, and
+         central package management means one bump moves both. That is deliberate: the harness
+         asserts a display is showing the code the table's secret produces, which is only a real
+         assertion while both sides encode with the same version. -->
+    <PackageVersion Include="Net.Codecrete.QrCodeGenerator" Version="3.1.0" />
     <PackageVersion Include="Npgsql.OpenTelemetry" Version="10.0.3" />
     <PackageVersion Include="OpenTelemetry" Version="1.17.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
@@ -2664,15 +2686,15 @@ For more information on this, and how to apply and follow the GNU AGPL, see
   File name:             README.md
   Relative path:         README.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/README.md
-  Size:                  17.7 KiB (18113 bytes)
-  Last modified:         2026-07-29 07:53:58.000000000 -0400
+  Size:                  20.2 KiB (20651 bytes)
+  Last modified:         2026-08-02 00:12:27.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 27520849
+  Inode:                 29341762
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               3cffd402ff29af2df533f109638c23097a06a8cc895d81d24571c3bc2fd6e14b
-  Last git commit:       0447626 2026-07-29 08:20:23 -0400 add claude response
+  SHA-256:               aef7fa64c099238b4bb586810bc0f6ad24394881bf7de74aea3623bf202eed38
+  Last git commit:       2a55b8b 2026-08-02 09:19:30 -0400 add claude response
 
 --- CONTENT ---
 # MyRestaurant
@@ -2690,8 +2712,10 @@ accounts, table administration and rotating join QR codes, paired table displays
 with its locking protocol, the kitchen and counter boards, billing and settlement, menu management,
 and the administration surfaces including the cross-log event explorer. **Milestone 6 (hardening)**
 is in progress — continuous integration has landed, and so has the Playwright end-to-end harness
-with five of the fifteen §16.3 scenarios implemented against a real browser; the remaining ten
-scenarios and an executable backup/restore drill are what is left. See *Roadmap* and
+with eight of the fifteen §16.3 scenarios implemented against a real browser. Building those
+scenarios turned up one genuine product gap and closed it: guests can now self-register at
+`/register`, which the requirements had mandated since rev 2 and no page had ever provided. The
+remaining seven scenarios and an executable backup/restore drill are what is left. See *Roadmap* and
 `docs/BUILD_PROGRESS.md`.
 
 ## Layout
@@ -2708,8 +2732,9 @@ the web layer depends on data-access and the domain; the domain depends on nothi
   append-only security-event log). Entity Framework is deliberately not used anywhere.
 - `src/MyRestaurant.WebApplication` — the composition root, configuration binding and fail-fast
   validation, OpenTelemetry wiring, the in-process live-update broadcaster, cookie authentication
-  with the auditing sign-in manager, the §3.5 obligations middleware, the account pages (static SSR),
-  and the Blazor shell.
+  with the auditing sign-in manager, the §3.5 obligations middleware, the account pages including
+  anonymous guest registration (all static SSR, because they write cookies on the response), and the
+  Blazor shell.
 - `tests/` — pure domain tests, Testcontainers integration tests for migrations, the Identity stores
   and every reader/mutation over real PostgreSQL, web-layer configuration/wiring/enforcement tests,
   and the end-to-end scenario matrix with its Playwright harness (see *End-to-end scenarios*).
@@ -2800,12 +2825,33 @@ port, and a browser context with a CDP WebAuthn virtual authenticator. Nothing i
 scenarios, so they can run in any order — which matters, because scenario 1 needs a database with no
 administrator and scenario 13 needs one with an administrator who has both a passkey and TOTP.
 
-Five of the fifteen are implemented: **1** (the `/setup` bootstrap, with a real WebAuthn attestation
-and a real TOTP code), **2** (a display pairs and its QR advances across a rotation boundary), **13**
-(a passkey sign-in of a TOTP-enrolled person is not challenged for a code), **14** (the join-token
-window arithmetic as a guest experiences it), and **15** (rotating a join secret kills every
-outstanding QR while the paired display recovers by itself). The other ten are named, skipped
-placeholders whose skip reason says what each is waiting on.
+Eight of the fifteen are implemented:
+
+| # | What it proves |
+| --- | --- |
+| 1 | the `/setup` bootstrap, with a real WebAuthn attestation and a real TOTP code, then `/setup` is 404 |
+| 2 | a display pairs and its QR advances across a rotation boundary |
+| 3 | a guest scans, self-registers with a passkey, and joins *after* the code they scanned has expired |
+| 4 | a guest stages two adds and a note, sends, and the kitchen gets exactly one alert with both lines pending |
+| 6 | the kitchen marks one line away and the guest's own screen re-badges it |
+| 13 | a passkey sign-in of a TOTP-enrolled person is not challenged for a code |
+| 14 | the join-token window arithmetic as a guest experiences it |
+| 15 | rotating a join secret kills every outstanding QR while the paired display recovers by itself |
+
+The other seven — 5, 7, 8, 9, 10, 11 and 12 — are named, skipped placeholders whose skip reason says
+what each is waiting on.
+
+Scenario 3 is the one that earns its runtime. §16.3 words it *"registers with passkey (slowly — grant
+outlives token)"*, and that parenthetical is the entire reason the §4.4 join grant exists. The
+instance runs at the §13 floor of a ten-second rotation, so the scanned token is provably dead about
+twenty seconds later; the scenario waits it out, proves the death by re-scanning in a third browser
+context with no grant cookie to carry it past a refusal, and only then joins on the grant.
+
+Scenarios 4 and 6 are the first to watch a §9 broadcast cross between two circuits — a guest's phone
+and the kitchen board, in two browser contexts, reacting to each other's commits. The kitchen board
+is opened *before* anything is sent, because `KitchenBoard.razor` subscribes in
+`OnAfterRender(firstRender)` and a board opened afterwards would render the queue perfectly well
+while having heard nothing.
 
 A scenario that needs more than one principal at once opens more than one browser context — an
 administrator, the tablet on the table, a guest with a phone. For the display device that is not
@@ -2840,7 +2886,7 @@ Every push and pull request against `main` runs four gates (`.github/workflows/c
 | Gate | What it proves |
 | --- | --- |
 | `shell-scripts` | every tracked `*.sh` parses under `bash -n` and passes shellcheck |
-| `build-and-test` | a Release build with **warnings escalated to errors**, then all ~934 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
+| `build-and-test` | a Release build with **warnings escalated to errors**, then all ~970 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
 | `boot-smoke` | the production `Containerfile` builds, and the resulting image boots against a real PostgreSQL until `/healthz/ready` answers 200 |
 | `end-to-end` | the §16.3 scenarios in Chromium against the built application, with `MYRESTAURANT_E2E=1` |
 
@@ -2956,6 +3002,13 @@ scripts/ci_local.sh --with-all
   reachable; from the moment an administrator exists it is 404 forever. Do the bootstrap on the
   production origin, never through a quick tunnel — the passkey binds to the origin it was
   registered on (`docs/OPERATIONS.md` §3).
+- **`/register` is anonymous and not rate-limited.** It is the second anonymous surface that writes
+  a row, and the more consequential one, since a `person` outlives the request. What bounds it today
+  is shape rather than policy: two requests behind an antiforgery token and a Data-Protection-
+  protected ticket cookie (so not a scriptable single POST), a 256-character cap on the password so
+  an anonymous caller cannot ask for unbounded Argon2id work, and §3.2's process-wide hashing
+  semaphore. `/display/pair` is the only limited endpoint (§4.2, 5/min/IP), and adding a second
+  policy naively would hijack its rejection message — see `docs/TECHNICAL_SPECIFICATION.md` §17.
 - **Container images are `linux/amd64` only.** The release pipeline does not emulate arm64: the
   `Containerfile` runs `dotnet publish` in its build stage, and doing that under QEMU is slow enough
   to risk a timeout. An arm64 image wants a cross-compiled publish rather than an emulated one
@@ -2981,9 +3034,11 @@ scripts/ci_local.sh --with-all
   explorer, hide/unhide, and post-close corrective events.
 - **M6** — hardening *(in progress)*: ✔ the CI pipeline and publish-on-tag; ✔ the Playwright
   harness and §16.3 scenarios 1, 13 and 14; ✔ scenarios 2 and 15, the display's rotating QR across a
-  window boundary and its recovery after a join-secret rotation; still to come, the other ten
-  scenarios and an executable backup/restore drill.
-
+  window boundary and its recovery after a join-secret rotation; ✔ the display's own refresh
+  schedule, extracted and unit-tested; ✔ guest self-registration at `/register` and scenario 3, the
+  grant outliving the token it was issued for; ✔ scenarios 4 and 6, the first to watch a live update
+  cross between two circuits; still to come, the other seven scenarios and an executable
+  backup/restore drill.
 
 ################################################################################
 # FILE: _CHANGES.md
@@ -2993,170 +3048,197 @@ scripts/ci_local.sh --with-all
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  8.3 KiB (8511 bytes)
-  Last modified:         2026-08-01 23:46:07.000000000 -0400
+  Size:                  9.1 KiB (9296 bytes)
+  Last modified:         2026-08-02 01:20:58.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 29144377
+  Inode:                 29341763
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               a14640e1217253fddb25e48ea6957cfac697ba32b53e7cf9a0fa310f1b00155f
-  Last git commit:       2762659 2026-08-01 23:51:22 -0400 add claude response
+  SHA-256:               e722f1fbd7ce1e42908e52645c5be01963dd09aee92fc83264eddcd6ab792a6e
+  Last git commit:       2a55b8b 2026-08-02 09:19:30 -0400 add claude response
 
 --- CONTENT ---
-# M6 Slice 6 — the kitchen hears the guest
+# M6 Slice 7 — documentation catches up, and one dependency moves
 
 Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
-and the contents drop straight over your working tree. `git status` will show exactly these 10 files as
+and the contents drop straight over your working tree. `git status` will show exactly these 9 files as
 modified/added, and **no deletions**.
 
 ```bash
-tar -xzf m6-slice6-kitchen-hears-the-guest.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice7-docs-and-dependency.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
-**None.** Nothing is renamed or superseded. No migration, no schema change, no
-`Directory.Packages.props` edit, no new package, no `Program.cs` edit, no `.slnx` edit, no `.csproj` edit
-(the test SDK globs new files in `tests/MyRestaurant.EndToEnd.Tests/Harness/` on its own).
+**None.** Nothing is renamed or superseded. No migration, no schema change, no new package, no
+`Program.cs` edit, no `.slnx` edit, and — deliberately — **not one `.cs` or `.razor` file**.
 
-## The state I found
+## Read this first: the archive does not contain the E2E fix
 
-`MyRestaurant.EndToEnd.Tests` did not compile:
+Your `dump.txt` is at commit `7172839`, which is **M6 Slice 5**. Your build output is from after **Slice
+6**. I confirmed the gap three ways rather than assuming it:
 
-```
-tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs(113,21): error CS1620:
-    Argument 2 must be passed with the 'ref' keyword
-```
+- The dump's `EndToEndScenarios.cs` is 559 lines; your errors cite 566 and 568.
+- The dump's `TableJourneys.cs:113` still holds the `string.Create` call that raised CS1620 — the bug you
+  have already fixed.
+- `github.com/kusl/myrestaurant@main` is at the same state: `EndToEndScenarios.cs` is 31,473 bytes there,
+  byte-identical to the dump, and there is no `Harness/TableOrderJourneys.cs`, no `Harness/KitchenJourneys.cs`
+  and no `BUILD_PROGRESS-m6-slice-6.md`. Slice 6 exists only on your disk.
 
-Everything else was green — `dotnet test` reported **956 / 0 failed** with the E2E project excluded by the
-build failure. That is mine, from Slice 5, and it is the second time it has been reintroduced; the fix now
-carries a comment explaining the rule so a future full-file rewrite does not undo it again. See
-"Why this happens" below.
+So a "full file" for anything under `tests/MyRestaurant.EndToEnd.Tests/` would be a Slice 5 file wearing a
+Slice 6 name, and extracting it would silently revert two scenarios. Those files are **not in this
+archive**. Neither are `TableOrderSurface.razor` and `KitchenBoard.razor`, which Slice 6 also edited.
 
-## Files (9)
+Everything that *is* here was untouched by Slice 6 — its own change notes list nine files and none of them
+is documentation or `Directory.Packages.props`.
 
-### Fixes to what Slice 5 shipped
+## The nine files
 
-- `tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs` — the CS1620. Three characters, one comment.
-- `tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs` — a raw string literal with trailing
-  backslashes used as line continuations. Raw string literals process **no** escape sequences, so those
-  backslashes and the newlines they were hiding were being printed into the diagnostic. Compiles fine,
-  nothing failed on it, the message was just mangled at the moment somebody most needed to read it.
+| File | Change |
+| --- | --- |
+| `Directory.Packages.props` | `Net.Codecrete.QrCodeGenerator` 3.0.0 → **3.1.0**; refreshed audit comment |
+| `README.md` | five scenarios → eight, with a table; `~934 facts` → `~970`; `/register` in the layout and caveats; M6 roadmap |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.0 → v1.1**: new §11.8, §11.1 pointer, §17 accepted risk, §19 note, Appendix A row, changelog |
+| `docs/REQUIREMENTS.md` | §4.3 points at the surface that implements it |
+| `docs/DOCUMENTATION_REVIEW.md` | **F-37** added; status header and closing note updated |
+| `docs/OPERATIONS.md` | §3 gains a paragraph on guests needing nothing from the operator |
+| `docs/_append/BUILD_PROGRESS-m6-slice-7.md` | new |
+| `docs/llm/vendor/fix_assert_single.py` | new — the xUnit2031 rewriter, in your existing vendor folder |
+| `_CHANGES.md` | this file |
 
-### Product (2)
+## The package bump, and why it is safe
 
-- `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor` — the whole render tree
-  is now wrapped in `<div class="order-surface" id="table-order-surface" data-live="…">`, and a
-  `IsLiveAttributeValue` property was added beside the other computed ones. Same attribute, same reason,
-  as `TableDisplay.razor`'s. The body is re-indented one level by the wrapper — `git diff -w` shows the
-  real change, which is seven added lines and one closing tag.
-- `src/MyRestaurant.WebApplication/Components/Pages/Kitchen/KitchenBoard.razor` — `data-live` and
-  `data-unseen-alerts` on the existing `#kitchen-board-surface` section, plus the same property.
+3.0.0 → 3.1.0 is additive. The whole release is balanced sizing for **structured append** — splitting one
+long text across several linked QR codes — and nothing here does that; every code this application renders
+encodes one short URL.
 
-**Why any product change at all.** Both surfaces prerender completely and then, without a circuit, never
-change again — the ordering island's controls are all click handlers that land on nothing, and the kitchen
-board lists a correct-looking queue and never alerts. That is indistinguishable from a quiet restaurant.
-It is the same hazard `TableDisplay.razor` published `data-live` for in Slice 4, and it is the difference
-between a scenario failing with "no circuit was established" and failing with "the basket stayed empty".
-
-`data-unseen-alerts` is the §10.3 count as a number rather than as English inside the badge (which also
-carries pluralisation and an optional "(n overdue)"). It is the only state on that screen that exists
-solely in circuit memory.
-
-No CSS changed: nothing in `app.css` reaches into the ordering surface with a child combinator.
-
-### Harness (3)
-
-- `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` — **new**. Staging, sending, reading
-  committed lines and their badges. All selectors scoped to `#table-order-surface`, which is load-bearing:
-  the parent page renders its own `p.status-success` ("You have joined …") and an unscoped wait would
-  report a send as accepted before the button was pressed.
-- `tests/MyRestaurant.EndToEnd.Tests/Harness/KitchenJourneys.cs` — **new**. Opening the board, one
-  snapshot of `(unseen alerts, pending lines)`, waiting on a predicate over it, fulfilling a line.
-- `tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs` — adds `CreateMenuItemAsync` and
-  the `MenuItemOnTheMenu` record.
-
-### Scenarios (1)
-
-- `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` — §16.3 scenarios **4** and **6** implemented,
-  their `[Fact(Skip)]` placeholders removed, and a shared `ArrangeServiceAsync` that stands up an
-  administrator, two menu items, a table, a joined guest with a live ordering island, and a live kitchen
-  board.
-
-### Documentation (1)
-
-- `docs/_append/BUILD_PROGRESS-m6-slice-6.md` — **new**. Append it, do not regenerate:
-
-```bash
-cat docs/_append/BUILD_PROGRESS-m6-slice-6.md >> docs/BUILD_PROGRESS.md
-```
-
-No `TECHNICAL_SPECIFICATION.md`, `REQUIREMENTS.md` or ADR edit: nothing here changes what the system is
-required to do. `data-live` / `data-unseen-alerts` are at the same grain as `data-refresh-token`, which §11
-does not enumerate either.
-
-## Why this happens (CS1620), so it stops happening
-
-`string.Create`'s second parameter is `ref DefaultInterpolatedStringHandler`. C# converts an **addition**
-to that handler only when the whole additive expression is composed of interpolated strings — Roslyn's
-`Binder_Operators.cs` requires every operand to be a `BoundUnconvertedInterpolatedString`. One bare
-`"…"` literal in the chain makes it a `BoundLiteral`, the expression collapses to a plain `string`, and the
-call cannot bind by value.
+I checked the v3.1.0 tag rather than trusting semver. All three members in use carry identical signatures:
 
 ```csharp
-$"a {x}" + " b"     // ✗ CS1620 — " b" is a literal
-$"a {x}" + $" b"    // ✓ a hole-less $"…" still counts
+public static QrCode EncodeText(string text, Ecc ecl)   // QrCode.cs:79
+public int Size => _modules.Size;                       // QrCode.cs:377
+public string ToGraphicsPath(int border = 0)            // QrCode.cs:475
 ```
 
-Two related traps the harness now comments on in place:
+No test pins a golden module path — the QR assertions are structural — so the modules may change shape
+without anything going red.
 
-- An `await` **inside** an interpolated string that binds to a handler is **CS4007**. Read the page into a
-  local first, then compose the message.
-- Raw string literals (`$"""…"""`) process no escapes, so `\` at end of line is a backslash, not a
-  continuation.
+**One thing to know:** this package is referenced by the web application *and* the end-to-end test project,
+and central package management moves both at once. That is load-bearing. `JoinQrCodes` proves a display is
+showing the code the table's secret produces by recomputing the expected path with this same library, and
+that assertion is only real while both sides encode identically. Never pin them apart.
 
-## Build and test checklist
+`dotnet list package --outdated` is silent about `NSubstitute` because nothing references it — it is a pin
+standing ready for §16.1, not a dependency. Checked by hand: 6.0.0 is current. The props comment now says
+so, so the next refresh does not rediscover it.
+
+## The four xUnit2031 errors — run this, do not hand-edit
+
+`Assert.Single(xs.Where(p))` → `Assert.Single(xs, p)`. Worth fixing rather than suppressing, for a reason
+that is diagnostic rather than stylistic: `Assert.Single` prints the collection it was given on failure,
+and with `.Where(…)` in front that is the *filtered* collection — so a scenario expecting one soup line and
+finding none reports an empty collection, which restates the failure instead of explaining it. The
+predicate overload (`public static T Single<T>(IEnumerable<T>, Predicate<T>)`, confirmed in
+`xunit/assert.xunit`) prints every line that *was* there.
+
+Since I cannot see your file, here is a parser instead of a guess. It ships in the archive at
+`docs/llm/vendor/fix_assert_single.py` — the folder you already use for generated artifacts, and one
+`export.sh` excludes, so it will never appear in a future dump:
 
 ```bash
 cd /home/kushal/src/dotnet/myrestaurant
 
-# 1. It compiles again — this is the whole of the red build.
-dotnet build
+python3 docs/llm/vendor/fix_assert_single.py \
+  tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs --dry-run --expect 4
 
-# 2. Unchanged: no unit test was added or removed by this slice.
-dotnet test
-#    expect: total 971, failed 0, succeeded 956, skipped 15
-
-# 3. Warnings-as-errors, the way CI builds it.
-bash scripts/ci_local.sh --with-all
-
-# 4. The scenarios themselves.
-MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
-#    expect: 8 passed / 7 skipped   (was 6 passed / 9 skipped)
-#    newly passing: Guest_StagesAddsAndSend_KitchenGetsOneAlert
-#                   Kitchen_FulfillsLine_GuestSeesFulfilledBadge
-
-# 5. Append the progress block.
-cat docs/_append/BUILD_PROGRESS-m6-slice-6.md >> docs/BUILD_PROGRESS.md
+# review the before/after it prints, then drop --dry-run
+python3 docs/llm/vendor/fix_assert_single.py \
+  tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs --expect 4
 ```
 
-Remaining `[Fact(Skip)]` placeholders: **7** — scenarios 5, 7, 8, 9, 10, 11, 12.
+It only rewrites a call whose **entire** argument is `<receiver>.Where(<lambda>)`. `Assert.Single(xs)`,
+an already-correct `Assert.Single(xs, p)`, `Assert.Single(xs.Where(p).ToList())`, and any occurrence inside
+a comment or a string literal are left alone — it skips string, verbatim, interpolated, raw and character
+literals as well as both comment forms, so a `)` inside `"with a )() note"` cannot close a call early. I
+ran it across all 309 files of the Slice 5 tree: zero changes, byte-identical output. Running it twice
+changes nothing.
+
+Two of your four sites I recovered exactly; it will produce this for them:
+
+```csharp
+GuestOrderLine soupLine = Assert.Single(afterFulfillment,
+    line => line.Name.Contains(service.Soup.Name, StringComparison.Ordinal));
+GuestOrderLine pieLine = Assert.Single(afterFulfillment,
+    line => line.Name.Contains(service.Pie.Name, StringComparison.Ordinal));
+```
+
+## Build/test checklist
+
+```bash
+cd /home/kushal/src/dotnet/myrestaurant
+
+# 1. The package bump.
+dotnet restore
+dotnet list package --outdated     # expect: no updates for any project
+
+# 2. Nothing executable changed, so nothing should move.
+dotnet test
+#    expect: total 971, failed 0, succeeded 956, skipped 15  (unchanged)
+
+# 3. The strict build — this is the one that was red.
+bash scripts/ci_local.sh --with-all
+#    expect: no xUnit2031, no CS-anything
+
+# 4. Unchanged, but the QR bump touches both, so prove it once.
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: 8 passed / 7 skipped
+#    scenarios 2 and 15 are the ones that would notice a QR regression
+
+# 5. Append the progress block.
+cat docs/_append/BUILD_PROGRESS-m6-slice-7.md >> docs/BUILD_PROGRESS.md
+```
+
+## Housekeeping carried over
+
+`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Fifteen appends are unmerged (you
+merged Slice 5's already; Slice 6's is on your disk and not in this archive):
+
+```bash
+for slice in m4-slice-2 m4-slice-3 m4-slice-4 \
+             m5-slice-1 m5-slice-2 m5-slice-3 m5-slice-4 m5-slice-5 \
+             m6-slice-1 m6-slice-2 m6-slice-3 m6-slice-4 m6-slice-6 m6-slice-7; do
+  cat "docs/_append/BUILD_PROGRESS-${slice}.md" >> docs/BUILD_PROGRESS.md
+done
+```
+
+`shellcheck` is still not installed locally, so `ci_local.sh` step 1 only parses:
+
+```bash
+sudo dnf install ShellCheck
+```
 
 ## Where to look if this breaks
 
 | Symptom | Where to look |
 | --- | --- |
-| `CS1620` again, anywhere | An operand in a `string.Create(provider, $"…" + …)` chain lost its `$`. |
-| `CS4007` | An `await` inside an interpolated string bound to a handler. Hoist it into a local. |
-| "The ordering surface never became interactive" | `/_framework/blazor.web.js` is not being served, or the wrapper's `data-live` is not rendering. `RestaurantInstance.VerifyInteractivityAsync` probes the first at startup. |
-| "The kitchen board never became interactive" | Same cause. The board subscribes in `OnAfterRender(firstRender)`, which only runs on a circuit. |
-| Scenario 4: `0 unseen alerts` but two lines arrive | The board heard `OrderLinesChanged` and not `KitchenAlert`. Check `OrderWorkflow.AfterCommit`'s `if (result.KitchenNotificationWritten)` and whether the `kitchen_notification` row went in with the event (§10.1). |
-| Scenario 4: `2 unseen alerts` | The alert has gone per-line rather than per-event. One send is one `order_event` is one alert. |
-| Scenario 4: send not confirmed | The failure quotes §6.5.9's whole refusal panel — every per-operation reason, because a send is refused as a whole. |
-| Staging does not fill the basket | The failure quotes §11.1's staging notice. An unavailable item or a quantity outside 1–100 are the two local refusals. |
-| Scenario 6: badge never flips | `LineFulfillmentChanged` did not reach the guest's circuit, or the guest surface's subscription was never made. The board's own confirmation is asserted first, so a refused fulfillment fails earlier and says so. |
-| A send appears to succeed before the button is pressed | A `p.status-success` selector lost its `#table-order-surface` scope and is matching the parent page's "You have joined …". |
+| `NU1101` / restore cannot find 3.1.0 | The feed is stale or offline. `Directory.Packages.props` is the only place the version lives. |
+| Scenario 2 or 15 fails on the QR after the bump | Version skew between the app and the test project — impossible under CPM unless a `.csproj` regained an explicit `Version=`. Check both. |
+| A QR unit test fails | It should not; they are structural. If one does, it pinned a golden path at some point and that is the bug. |
+| `xUnit2031` still reported | The script printed fewer than 4 sites, meaning a call has a shape it declines to touch — `.Where(p).ToList()`, or a query-syntax `where`. Fix that one by hand. |
+| `dotnet build` green, `ci_local.sh` red | Working as designed: `TreatWarningsAsErrors` is on only under `ContinuousIntegrationBuild`. Always ask the strict question before pushing. |
+
+## What is next
+
+The fresh dump, then scenario **5** — a second guest joins on a fresh token, sees the first guest's order
+live, and the first guest sees the roster update. It is the first with two guest circuits watching each
+other rather than one guest and one staff board, but Slice 6 built the harness for exactly this shape, so
+it should be short. Then 7 through 12, and the backup/restore drill.
+
+## The one-line why
+
+Two slices of product had landed and the documents still described the tree from before them — including a
+ledger that had gone a whole surface without a row, for the second time, in the same way.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3295,15 +3377,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  268.8 KiB (275227 bytes)
-  Last modified:         2026-08-01 23:51:35.327983891 -0400
+  Size:                  275.5 KiB (282089 bytes)
+  Last modified:         2026-08-02 09:19:45.943163112 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 25661728
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               be064e32f619db5325c803c7e3c9f1e69c15c5c9b704225f8200f1d04f5d9141
-  Last git commit:       ec5d91f 2026-08-01 23:52:29 -0400 append build progress
+  SHA-256:               1564b65e68b8c1f084aa409c2b9a61311e25cbc9b76372c6b52eb49200cb4d94
+  Last git commit:       8535d8d 2026-08-02 09:19:56 -0400 update build progress
 
 --- CONTENT ---
 # Build progress
@@ -7217,6 +7299,111 @@ in *"Chef's soup"* is not something a scenario should have to know about.
 - **It leaves scenario 5 for its own slice.** Two guests with two live circuits watching each other's
   roster and totals is a different axis from this one, and folding it in here would have made a single
   arrangement serve three scenarios badly.
+### M6 Slice 7 — documentation catches up, and one dependency moves (landed)
+
+Not a feature slice. Two slices of product landed while the documentation stood still, one package went a
+minor version behind, and an analyzer started failing the CI build. This closes all three, and touches no
+behaviour whatsoever — no `.cs`, no `.razor`, no SQL, no migration, no wiring.
+
+`dotnet test` counts are unchanged at **971 total / 956 succeeded / 15 skipped**, and
+`MYRESTAURANT_E2E=1` unchanged at **8 passed / 7 skipped**, because nothing here is executable.
+
+---
+
+#### Why the documentation had drifted two slices
+
+`README.md` still said *"five of the fifteen §16.3 scenarios"* and *"all ~934 facts"*. Both were true on
+the day they were written and neither had been true since. That is the ordinary failure mode of a status
+sentence living in a document nobody edits when the status changes, and the fix is not a process — it is
+noticing, which is what this slice is.
+
+More consequentially, **M6 Slice 5 shipped a product surface without a ledger row.** It built `/register`,
+argued in its own change notes that no specification edit was required, and was right about the narrow
+question it asked — R§4.3, S§4.4 and S§11.1 all already mandated guest registration, so nothing they said
+became false. But the atomic-documentation rule (R§10 · S§18) is not only about contradictions. A behaviour
+change lands with its ledger row, and a new anonymous route that writes a `person` row is a behaviour
+change by any reading.
+
+So **F-37** is entered now, late, and says so. Its content is the interesting part rather than its
+existence: it is the *same shape* as F-35, the profile page. A requirement stated plainly in
+`REQUIREMENTS.md`, a mechanism described in the specification, and no line in §19's build order claiming
+it — so every milestone review passed, because every milestone had done what its own list said. Twice is a
+pattern. The ledger's closing note now names it, along with the cheap guard: when a requirement section
+names a capability, §19 should name the milestone that owns it. Both gaps were found the same way in the
+end — by somebody trying to *use* the thing, not by anybody re-reading the documents.
+
+The specification gains **§11.8 `/register`**, appended rather than inserted. §11.7 (the wall clock) keeps
+its number because a dozen source files cite it in comments, and renumbering to put registration next to
+§11.6 `/account` — where it belongs thematically — would have silently falsified every one of them. Section
+numbers are an interface once code quotes them.
+
+Also new: **S§17** now carries the missing rate limit as a named accepted risk rather than a note in a
+change file nobody will find again. The reason it is not a two-line addition is written down — the limiter
+lives inside `AddRestaurantDisplays`, `RateLimiterOptions.OnRejected` and `RejectionStatusCode` are
+single-valued, and a second `AddRateLimiter` policy would silently take over the rejection handler so that
+a refused registration answers with §4.2's *"Too many pairing attempts from this device"*. Wrong, and
+deliberate-looking, which is worse than absent. Four things bound it meanwhile, and none of them is a
+policy; all four are recorded.
+
+Specification version bumps **1.0 → 1.1** with a dated changelog, per its own §18.
+
+---
+
+#### The package
+
+`Net.Codecrete.QrCodeGenerator` **3.0.0 → 3.1.0**, the only outdated reference in the tree.
+
+The release is additive: balanced sizing for *structured append*, which is the feature that splits one long
+text across several linked QR codes. Nothing here does that — every code this application renders encodes
+one short URL. The three members it actually uses (`QrCode.EncodeText(string, Ecc)`, `QrCode.Size`,
+`QrCode.ToGraphicsPath(int)`) carry identical signatures at the v3.1.0 tag, checked against the source
+rather than inferred from semver.
+
+One consequence worth stating because central package management hides it: this package is referenced by
+**both** the web application and the end-to-end test project, so one bump moves both. That is not
+incidental. `JoinQrCodes` asserts that a paired display is showing the code the table's secret produces by
+recomputing the expected path with this same library, and that assertion is only real while both sides
+encode identically. A version skew between them would turn scenario 2 into a test of the library.
+
+No golden module path is pinned anywhere — the QR assertions are structural (`starts with <svg`, `has a
+viewBox`, `path begins with a moveto`, `makes no external references`) — so the modules may legitimately
+change shape without anything going red.
+
+`dotnet list package --outdated` cannot see `NSubstitute`, because no project references it; it is a
+version pin standing ready for §16.1's *"NSubstitute acceptable"*, not a dependency. Checked by hand: 6.0.0
+is current. The comment in `Directory.Packages.props` now says so, so the next refresh does not have to
+rediscover why one entry is invisible to the tool.
+
+---
+
+#### The analyzer
+
+Four `xUnit2031` findings in `EndToEndScenarios.cs` — `Assert.Single(xs.Where(p))` where
+`Assert.Single(xs, p)` is meant. Warnings on a workstation, **errors in CI**, since
+`TreatWarningsAsErrors` is conditioned on `ContinuousIntegrationBuild`; the local build was green and the
+strict build was not, which is exactly the split `Directory.Build.props` documents and exactly why
+`scripts/ci_local.sh` exists.
+
+Worth fixing rather than suppressing, and the reason is diagnostic rather than stylistic. `Assert.Single`'s
+failure message prints the collection it was given. With `.Where(…)` in front, the collection it was given
+is the *filtered* one — so a scenario that expected one soup line and found none reports an empty
+collection, which is a restatement of the failure rather than information about it. The predicate overload
+(`public static T Single<T>(IEnumerable<T>, Predicate<T>)`) prints every line that *was* there, which for
+an end-to-end failure is most of the diagnosis.
+
+The rewrite was applied mechanically rather than by hand, by a parser that only touches a call whose entire
+argument is `<receiver>.Where(<lambda>)` — leaving `Assert.Single(xs)`, `Assert.Single(xs, p)`,
+`Assert.Single(xs.Where(p).ToList())` and any occurrence inside a comment or a string literal alone. Run
+across all 300-odd `.cs` files in the tree it changes nothing outside the four intended sites, and running
+it twice changes nothing at all.
+
+---
+
+#### Carried forward, unchanged
+
+The `docs/_append/` backlog is the one piece of housekeeping this slice does *not* fix, because merging it
+is a `cat` the owner runs, not a file this archive can safely contain: `docs/BUILD_PROGRESS.md` is far too
+large to regenerate, and shipping a partial one would overwrite the whole document.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -7226,20 +7413,20 @@ in *"Chef's soup"* is not something a scenario should have to know about.
   File name:             DOCUMENTATION_REVIEW.md
   Relative path:         docs/DOCUMENTATION_REVIEW.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/DOCUMENTATION_REVIEW.md
-  Size:                  17.4 KiB (17768 bytes)
-  Last modified:         2026-07-26 20:41:49.000000000 -0400
+  Size:                  20.4 KiB (20859 bytes)
+  Last modified:         2026-08-02 01:18:01.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25951186
+  Inode:                 29341766
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               c0ae5e1d900d1a5c68fe4a6c971824d7b9f65b12038aaf9b10cefce6ddea4c71
-  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
+  SHA-256:               11449be11699001936082d2a937d9a4697c12bc2f8f597235bbacc5193ae1f60
+  Last git commit:       2a55b8b 2026-08-02 09:19:30 -0400 add claude response
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
 
-**Status:** All findings resolved. **F-36** (timestamps ignored `RESTAURANT_TIME_ZONE`) closed in the M4 close-out slice, on the schedule its row recorded.
+**Status:** All findings resolved. **F-36** (timestamps ignored `RESTAURANT_TIME_ZONE`) closed in the M4 close-out slice, on the schedule its row recorded. **F-37** (no guest registration surface existed) closed in M6 Slice 5, with one part deliberately left open and named — see its row.
 **Scope of the original review (2026-07-16):** `REQUIREMENTS.md` rev 1 (commit `af51017`) and the `dump.txt` produced by `export.sh`.
 **Rulings:** the owner ruled on every finding on 2026-07-17 — F-01–05, F-09–11, F-13–19, F-21–24 accepted as raised; F-06, F-07 (Q1), F-08 (Q2/Q3), and F-12 (Q4/Q5) resolved with the defaults proposed in the ruling exchange ("all of this is fine").
 
@@ -7312,6 +7499,7 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 | F-34 | §8.2's `passkey_credential` was specified before ASP.NET Core Identity's .NET 10 passkey API was verified against source. That API's `UserPasskeyInfo` credential record carries WebAuthn state the table did not model (user-verified, backup-eligible, backed-up), and assertion **reads** the stored backup-eligible bit and fails the ceremony on a mismatch — so it cannot be dropped and reconstructed. | Additive migration `0002_passkey_credential_webauthn_state.sql` adds `is_user_verified` / `is_backup_eligible` / `is_backed_up` (all `NOT NULL DEFAULT false`); `0001` is left untouched (DbUp journals per script). The raw attestation object and client-data JSON `UserPasskeyInfo` also exposes are deliberately not stored (attestation is `none`, §3.3; nothing re-reads them) and are reconstructed as empty on read. This is the framework gap §3.3 anticipated — no fallback library was needed, only the columns. | S§8.2 (schema-evolution note), S§3.3 · `0002_*.sql`, `DapperUserStore` passkey region · BUILD_PROGRESS Slice 5 |
 | F-35 | The profile page is specified twice — R§4.6 ("every person has a profile page") and S§11.1 (in the `/table` surface list) — but §19's build order never named it, so no milestone claimed it. M2 shipped the individual credential pages (`/account/enroll-totp`, `/account/passkeys`) with no hub and no way to edit the three self-owned fields, and the gap was only noticed in use, after M3: two freshly created staff accounts could not set their own display names. Compounding it, §11.2 groups the kitchen queue by *person display name*, so M4 would have inherited tickets reading `betty`. | The profile page ships as an M2 close-out slice before M4 opens: `/account` (display name, email, phone, plus the credential status hub) and `/account/change-password` (voluntary change, and add-a-password for a passkey-only account). R§4.6 now states display-name editing and username immutability explicitly; S§11.1 points at a new S§11.6 that specifies the surface; S§19's M2 line names it and records that it landed late. Addresses stay unsurfaced, with the reason recorded in S§11.6. | R§4.6 · S§11.1, S§11.6, S§19 · `ProfileDetails.cs`, `Profile.razor`, `ChangePassword.razor` · BUILD_PROGRESS M2 close-out |
 | F-36 | Every surface rendered instants with `DateTimeOffset.ToLocalTime()`, which is the **server process's** zone — not `RESTAURANT_TIME_ZONE`. S§8.1 says instants are "stored `timestamptz` UTC; rendered in `RESTAURANT_TIME_ZONE`", and S§13 listed the variable as "rendering only", but nothing read it: `RestaurantOptions.ResolveTimeZone()` existed with no caller, and the runtime container sets no `TZ`, so a deployed instance rendered UTC. Harmless while the only timestamps were on administration pages read by staff who could infer the offset; not harmless from M4 Slice 2 onward, where a guest sees "sent 19:04" for an order placed at 3:04 PM. A second, unspecified question was entangled with it: S§13 had no locale setting, so nothing decided 12- versus 24-hour or the separator, and `ToString("t")` took those from the container's culture too. | **Closed in the M4 close-out slice**, on the schedule the original row recorded — deliberately not folded into the slice that found it, because doing it piecemeal would have left two time conventions inside a single page (the static `/table/{id}` header and its interactive island are one screen). Three parts. (1) **The rule made explicit and enforceable:** all instants render in `RESTAURANT_TIME_ZONE` for **every** reader — the viewer's own zone is irrelevant, because a restaurant is a physical place in one zone and a guest abroad wants the times the meal actually happened at. One type, `WebApplication/Time/RestaurantTime`, performs the conversion; all eighteen `ToLocalTime()` call sites now go through it and nothing else may call it. (2) **The locale question answered:** `RESTAURANT_CLOCK_FORMAT` (`12-hour` default / `24-hour`), validated at startup; every other pattern is explicit and invariant-cultured, so the base image's locale decides nothing. (3) **The convention stated where readers are:** a footer clock on every page in both layouts, ticking to the second, server-anchored and client-driven — no server-side timer, nothing running while the tab is hidden, one wake per visible second, and a rare `GET /restaurant-clock` re-anchor for the surfaces that outlive a page load. | S§8.1, S§11.7 (new), S§13, S§19 · R§8 · `Time/RestaurantTime.cs`, `Time/RestaurantClockEndpoints.cs`, `Components/Layout/RestaurantClockFooter.razor`, `wwwroot/js/clock.js` · BUILD_PROGRESS M4 close-out |
+| F-37 | There was no registration page. R§4.3 has required guest self-registration since rev 2, S§4.4 says the join grant's purpose is to survive it (*"the grant cookie survives the passkey ceremony; that is its purpose"*), and S§11.1 puts it on the join path — but §19's build order never named it, so no milestone claimed it, exactly as happened to the profile page in F-35. Thirty-six routable pages and none of them a registration surface: `SignIn.razor` said so in its own footnote, `TableJoin.razor` sent an anonymous grant-holder to `/sign-in` — a door with nothing behind it for a first-time guest — and BUILD_PROGRESS had flagged the gap twice. It surfaced only when §16.3 scenario 3 went to write it, and it also blocked scenarios 4 through 11, every one of which needs a guest account; until then the only non-administrator account obtainable was a *staff* account with `must_change_password` set, which is not what those scenarios are about. | The surface ships in M6 as its own slice: `/register`, anonymous static SSR, two steps over a Data-Protection-protected ticket cookie, reached from `/sign-in` by a link carrying the return URL. A ticket rather than one form because a WebAuthn attestation needs a user handle before the `person` row exists and that handle must equal the eventual identifier — S§3.6's problem, S§3.6's solution — but with **no step enum**, since the wizard has three unskippable steps and registration has one, so the ticket's existence *is* the state. Declining the passkey renders only when a password was set, making S§3.3's "offered, never required, never a gate" structural rather than advisory; an account with neither credential is refused in the markup and again before any SQL runs. **Left open, by ruling:** no rate limit, because a naive second `AddRateLimiter` policy would hijack §4.2's single-valued rejection handler and answer a refused registration with "too many pairing attempts" — wrong, and deliberate-looking. What bounds it meanwhile is written into S§17 rather than left as folklore. | R§4.3 · S§11.1, S§11.8 (new), S§17, S§19 · `GuestRegistration.cs`, `RegistrationState.cs`, `Register.razor`, `AccountEndpoints.cs` · BUILD_PROGRESS M6 Slice 5 |
 
 ---
 
@@ -7320,7 +7508,17 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 **F-36 is closed**, which completes a round trip worth naming: it was entered the moment it was understood,
 carried the reason its fix was *not* folded into the slice that found it, named the milestone it would land
 before, and landed there. That is the ledger working as intended — a finding is recorded when it is seen, not
-when it is convenient. New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodiment — landed in the **same commit** as the change they describe, together with the matching `REQUIREMENTS.md`, specification, and ADR edits (atomic documentation, R§10 · S§18).
+when it is convenient.
+
+**F-37 is the ledger's blind spot, twice.** It is the same shape as F-35: a requirement stated plainly in
+`REQUIREMENTS.md`, a mechanism described in the specification, and no line in §19's build order claiming it —
+so every milestone review passed, because every milestone had done what its own list said. Two findings with
+one cause is a pattern rather than an accident, and the cheap guard is a habit rather than a process: when a
+requirement section names a capability, §19 should name the milestone that owns it, and a section that no
+milestone claims should be visible as such. Both gaps were found the same way in the end — by somebody
+trying to *use* the thing, not by anybody reading the documents.
+
+New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodiment — landed in the **same commit** as the change they describe, together with the matching `REQUIREMENTS.md`, specification, and ADR edits (atomic documentation, R§10 · S§18).
 
 ################################################################################
 # FILE: docs/OPERATIONS.md
@@ -7330,15 +7528,15 @@ when it is convenient. New issues enter this ledger as fresh `F-nn` rows — fin
   File name:             OPERATIONS.md
   Relative path:         docs/OPERATIONS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/OPERATIONS.md
-  Size:                  20.0 KiB (20452 bytes)
-  Last modified:         2026-07-29 02:41:19.000000000 -0400
+  Size:                  20.5 KiB (20951 bytes)
+  Last modified:         2026-08-02 01:18:08.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 26974670
+  Inode:                 29341770
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               81d3f6ced2a1db1f661ac51cd0a3d61b95d4149f440e7a7ea33f3418e291cad9
-  Last git commit:       54f578e 2026-07-29 03:40:02 -0400 add claude changes
+  SHA-256:               639d2f8ba23c33b6f4dd819c89c35b46e6733d4468cb193d3d3bd9045f4e8329
+  Last git commit:       2a55b8b 2026-08-02 09:19:30 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Operations
@@ -7380,6 +7578,8 @@ On a fresh database, only `/setup` is reachable. The wizard walks the first admi
 Do the bootstrap **on the production origin**, never through a quick tunnel (§10) — the passkey you register binds to the origin you registered it on.
 
 Immediately after: create the staff accounts (Administration → Users; each gets a temporary password and is forced to change it at first sign-in), create your tables, then pair the displays (§5).
+
+**Guests need nothing from you.** A guest who scans a table's code without an account is offered registration on the spot at `/register` — a username, optionally a display name, and either a passkey or a password. There is no invitation, no approval queue, and no self-service password reset (§13 covers the lost-credential path, which runs through the counter). A guest account carries no role and therefore no capability beyond its own order, so the only cost of a junk registration is a row.
 
 ## 4. Kitchen display runbook
 
@@ -7540,15 +7740,15 @@ Those labels are stamped by `docker/metadata-action` at publish time, so they ar
   File name:             REQUIREMENTS.md
   Relative path:         docs/REQUIREMENTS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/REQUIREMENTS.md
-  Size:                  22.9 KiB (23463 bytes)
-  Last modified:         2026-07-26 20:41:28.000000000 -0400
+  Size:                  23.3 KiB (23825 bytes)
+  Last modified:         2026-08-02 01:17:00.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25951187
+  Inode:                 29341771
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               b7845e33963b1dd1ed2caeaddda8c8465a6f6d883b32e3a14ec75c022227e35c
-  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
+  SHA-256:               86bd7c7d05d276afff695529bc4a569f965660f4f879590ac026b1f70dbd1273
+  Last git commit:       2a55b8b 2026-08-02 09:19:30 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Requirements
@@ -7619,6 +7819,8 @@ Administrators must always be **enrolled** in TOTP (enrolled at grant time and i
 ### 4.3 Registration
 
 Guests self-register at the moment of joining a table (§5.1): username, optional display name, and at least one credential — passkey offered first, password accepted. Staff accounts are created by an administrator.
+
+A guest who scans a table's code without an account is offered registration on the spot, and the join grant survives the ceremony — that is what the grant is for, and it is why a slow registration does not cost the guest their seat. The surface is specified at `S§11.8`; it went unbuilt until M6 despite this section requiring it, which is recorded as F-37.
 
 ### 4.4 First administrator
 
@@ -7760,20 +7962,20 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
   File name:             TECHNICAL_SPECIFICATION.md
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/TECHNICAL_SPECIFICATION.md
-  Size:                  77.7 KiB (79594 bytes)
-  Last modified:         2026-07-26 20:41:13.000000000 -0400
+  Size:                  82.8 KiB (84807 bytes)
+  Last modified:         2026-08-02 01:16:52.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25951188
+  Inode:                 29341765
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               65bc1e8550117ef30b14843064ec94bf41a314bbcf80072d087e5c0d34f591a4
-  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
+  SHA-256:               be60c9c4a4539f833bc612fa52ed5f5631c5c5da585d2e07e0fc0a9d0fb81526
+  Last git commit:       2a55b8b 2026-08-02 09:19:30 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
 
-**Version 1.0 — 2026-07-17 — Status: accepted, implementation-ready.**
+**Version 1.1 — 2026-08-02 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
 This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md` (rev 2). It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. The decisions register in Appendix A maps every ruling to its embodiment.
 
@@ -8470,7 +8672,7 @@ Browsers block autoplay: the kitchen surface shows a one-tap "enable sound" arm 
 
 ### 11.1 `/table`
 
-Anonymous with valid token → grant → sign-in/registration (passkey-first, password offered) → join. Member view: the party roster; **my order** — staging area (add item pickers from the menu — deactivated items greyed out and unselectable (§7) — with quantity 1–100 and note; mark-my-pending-line-for-removal) with a Send button that is disabled while empty and shows an all-or-nothing error panel (per-operation reasons) on rejection; below it the committed living order, each line badged pending/fulfilled, removed lines struck-through with actor + reason, price adjustments shown old → new with reason; **party orders** — read-only equivalents for other members; running personal and table totals; history (the guest's **own** past orders at this restaurant — cross-member history is never shown); a per-order **Hide** control on closed orders, confirmed as irreversible from the guest's account (§6.8); and a link to the **profile page** (§11.6) — set the display name; manage passkeys, password, TOTP and recovery codes; optional phone number and email address (used for manual staff escalation only — nothing in the system sends to them automatically); postal addresses with **free-text labels** ("Home", "Work", "Grandparents' house") — deliberate scaffolding for a possible future delivery/takeout feature, consumed by nothing in version 1 and not to be removed as dead weight. On `SittingClosed`, the surface flips to a read-only settled-bill view.
+Anonymous with valid token → grant → sign-in/registration (passkey-first, password offered; the registration surface is §11.8) → join. Member view: the party roster; **my order** — staging area (add item pickers from the menu — deactivated items greyed out and unselectable (§7) — with quantity 1–100 and note; mark-my-pending-line-for-removal) with a Send button that is disabled while empty and shows an all-or-nothing error panel (per-operation reasons) on rejection; below it the committed living order, each line badged pending/fulfilled, removed lines struck-through with actor + reason, price adjustments shown old → new with reason; **party orders** — read-only equivalents for other members; running personal and table totals; history (the guest's **own** past orders at this restaurant — cross-member history is never shown); a per-order **Hide** control on closed orders, confirmed as irreversible from the guest's account (§6.8); and a link to the **profile page** (§11.6) — set the display name; manage passkeys, password, TOTP and recovery codes; optional phone number and email address (used for manual staff escalation only — nothing in the system sends to them automatically); postal addresses with **free-text labels** ("Home", "Work", "Grandparents' house") — deliberate scaffolding for a possible future delivery/takeout feature, consumed by nothing in version 1 and not to be removed as dead weight. On `SittingClosed`, the surface flips to a read-only settled-bill view.
 
 ### 11.2 `/kitchen`
 
@@ -8525,7 +8727,23 @@ Address management (§4.6's free-text-labelled postal addresses) is **not surfac
 
 **`GET /restaurant-clock`** returns the same anchor as JSON: anonymous, `no-store`, and exempt from the §3.5 obligations pipeline (it carries no user action, and the obligation pages render this footer too). The page markup is the anchor for a short-lived page; the endpoint exists for the ones that are not — a `/display/{table}` tablet holds one URL for days on a cheap oscillator, and a guest's circuit lasts a meal. It is asked: every ten minutes while visible, on returning from a minute or more hidden, and on detected clock divergence. Never while hidden, never more than once a minute, and a failed request is ignored rather than allowed to blank the clock — half the round trip is subtracted as the usual symmetric-latency estimate.
 
+### 11.8 `/register`
+
+The surface R§4.3 has always required — "guests self-register at the moment of joining a table: username, optional display name, and at least one credential — passkey offered first, password accepted" — and §11.1 and §4.4 both assume. Anonymous, static SSR (it writes cookies on the response), reachable from `/sign-in` by a **"Create an account"** link that carries the return URL forward; that link is the whole mechanism by which registering mid-join lands the guest back at their table.
+
+Two steps over one Data-Protection-protected **registration ticket** cookie:
+
+1. **Details** — username (§3.1's 3–64 `citext` rules), optional display name, **optional** password. A supplied password is hashed at once and the ticket carries the PHC string; a plaintext never persists across the round trip.
+2. **Sign-in method** — the WebAuthn attestation ceremony against an anonymous `POST /register/passkey/creation-options` gated on that cookie. Registering the passkey commits the account. **"Not now — use my password"** commits on the password alone, and **renders only when a password was set**.
+
+That asymmetry is §3.3's rule made structural: a passkey is always offered, never required, never a gate for a guest — so declining is offered exactly when there is something to decline *to*. An account with neither credential is refused twice, in the markup and again in the data layer before any SQL runs.
+
+**Why a ticket rather than a single form.** A WebAuthn attestation needs a user handle *before* the account row exists, and that handle must equal the eventual `person.person_identifier` or a later discoverable-credential sign-in presents a handle matching nobody. This is §3.6's problem and §3.6's solution. Unlike the bootstrap wizard's ticket there is **no step enum**: `/setup` has three ordered steps that must each be unskippable, registration has one, and the ticket's existence *is* the state.
+
+No TOTP step (§3.4 pairs the authenticator with the password path for staff) and no role — a guest is the *absence* of a grant (§3.7), so nothing touches `person_role`. The account commits in one transaction — `person`, the optional `passkey_credential`, and a `security_event` with a **NULL actor**, this being a self-action, exactly as the bootstrap records itself.
+
 ## 12. Observability
+
 
 OpenTelemetry traces (ASP.NET Core + Npgsql instrumentation), logs, and metrics via OTLP (`OTEL_EXPORTER_OTLP_ENDPOINT` etc.; `run.sh` translates a legacy `UPTRACE_DSN` if present — any OTLP collector works). Custom meters (full snake_case):
 
@@ -8602,6 +8820,10 @@ Threats mitigated: static-QR capability theft (rotating tokens, ≤120 s life, p
 
 Accepted, by ruling or by design: token replay within ≤120 s (bounded by membership/visibility rules); WAN dependence of in-house ordering (hairpin — F-06); quick-tunnel passkeys work per run but the per-run URL is not persistent (PSL — re-register each demo; named tunnel for durability); counter role may operate password-only (no passkey mandate); guest sees table-mates' display names and orders (that's the product); no rate limit on authenticated order sends beyond all-or-nothing validation (single-restaurant trust model).
 
+**No rate limit on `/register` (§11.8), by ruling — F-37.** It is the second anonymous surface that writes, and the more consequential one: a `person` row outlives its request where a failed pairing attempt does not. Four things bound it meanwhile, none of them a policy: registration is a **two-request** flow behind an antiforgery token and a protected ticket cookie, so it is not a scriptable single POST; the password is capped at 256 characters, so an anonymous caller cannot ask for unbounded Argon2id work; §3.2's semaphore bounds concurrent hashes process-wide; and a spam account holds no capability — a guest is the absence of a grant (§3.7), so the worst outcome is rows, not access.
+
+The reason this is not a two-line addition, recorded so it is not rediscovered: the limiter is configured inside `AddRestaurantDisplays`, and `RateLimiterOptions.OnRejected` and `RejectionStatusCode` are single-valued. A second `AddRateLimiter` call adding a registration policy silently takes over the rejection handler, and a refused registration would then answer with §4.2's *"Too many pairing attempts from this device"* — worse than no limit, because it is wrong and looks deliberate. Doing it properly means `OnRejected` dispatching on the endpoint. When it lands, §13 gains the window and permit count beside `DISPLAY_PAIRING_*`.
+
 ## 18. Governance
 
 Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic documentation:** a behavior change lands in one commit with its `REQUIREMENTS.md`, this specification, `DOCUMENTATION_REVIEW.md` ledger, and ADR edits. ADRs are edited in place with a History line (never duplicated); supersessions say so explicitly. This specification's version bumps (1.0 → 1.1 …) with a dated changelog appended at the bottom when normative content changes.
@@ -8614,7 +8836,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 - **M4 — ordering:** living order + locking protocol, staging UI, batch send + validation, staff edits, fulfillment/reversal, projections + fold + equivalence tests, kitchen surface + alerts + reminder service.
 - **M4 close-out — restaurant time:** the §8.1 rendering rule actually honoured on every surface (`RestaurantTime`, replacing eighteen `ToLocalTime()` call sites), the §13 clock-format decision, and the §11.7 footer clock. Scheduled here rather than inside a feature slice because a half-applied time convention is worse than a uniformly wrong one, and ahead of M5 because a wrong time on a settled bill is a different order of problem from a wrong time on a roster — see F-36.
 - **M5 — counter & administration:** bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu management + events, event explorer, hide/unhide, post-close corrections.
-- **M6 — hardening & production:** full E2E suite (§16.3), backups + restore drill, cloudflared production profile + tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, CI pipeline.
+- **M6 — hardening & production:** full E2E suite (§16.3), backups + restore drill, cloudflared production profile + tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, CI pipeline. The **guest registration surface** (§11.8) also lands here rather than in M2, where it belonged: R§4.3 required it from rev 2 and no milestone claimed it, and the gap surfaced only when §16.3 scenario 3 went to write it — see F-37.
 
 ---
 
@@ -8633,9 +8855,20 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 | F-36 | All instants rendered in `RESTAURANT_TIME_ZONE` for every reader, through one type; `RESTAURANT_CLOCK_FORMAT` settles the 12-vs-24 question; ticking footer clock states the convention on every page | §8.1, §11.7, §13, §19 |
 | F-18 / F-19 | Menu item event log; lockout 5/5min, username 3–64 citext, currency/timezone defaults | §7, §3.1, §13, §8.2 |
 | F-20 | Hand-written fakes; NSubstitute ok; no Moq | §16.1 |
+| F-37 | Guest self-registration is a real surface at `/register`, specified rather than assumed; a passkey is offered first and may be declined only when a password was set; no rate limit in v1, with the reason it is not a two-line addition recorded | §11.1, §11.8, §17, §19 · R§4.3 |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP re-enrollment only if enrolled pre-reset; obligations pipeline runs on passkey path too; counter fallback = same rotating QR (no short-code) | §10.1–10.2, §3.5, §3.7, §4.5 · ledger notes |
+
+---
+
+## Changelog
+
+**v1.1 — 2026-08-02.** Guest registration written down. New **§11.8 `/register`** specifies the surface R§4.3 has required since rev 2 and which no milestone had claimed: the two-step ticket-backed flow, why a ticket is needed at all (a WebAuthn user handle must exist before the `person` row does), and the rule that declining a passkey is offered exactly when a password was set. **§11.1** points at it instead of naming registration in passing. **§17** records the absent rate limit as an accepted risk with the concrete reason it is not a small change. **§19** notes that the surface lands in M6 rather than M2, and why. **Appendix A** gains F-37.
+
+Nothing else moved. §11.7 keeps its number — a dozen source files cite it — so the new subsection is appended rather than inserted, and no existing cross-reference changes meaning.
+
+**v1.0 — 2026-07-17.** Initial accepted specification.
 
 ################################################################################
 # FILE: docs/_append/BUILD_PROGRESS-m4-slice-2.md
@@ -11741,6 +11974,131 @@ in *"Chef's soup"* is not something a scenario should have to know about.
 - **It leaves scenario 5 for its own slice.** Two guests with two live circuits watching each other's
   roster and totals is a different axis from this one, and folding it in here would have made a single
   arrangement serve three scenarios badly.
+
+################################################################################
+# FILE: docs/_append/BUILD_PROGRESS-m6-slice-7.md
+################################################################################
+
+--- METADATA ---
+  File name:             BUILD_PROGRESS-m6-slice-7.md
+  Relative path:         docs/_append/BUILD_PROGRESS-m6-slice-7.md
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/_append/BUILD_PROGRESS-m6-slice-7.md
+  Size:                  6.7 KiB (6862 bytes)
+  Last modified:         2026-08-02 01:18:51.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 29341773
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               e5f4a5aa7482ab843a552f22403f2f00fe78b171b943128a6f3f9795a765f08b
+  Last git commit:       2a55b8b 2026-08-02 09:19:30 -0400 add claude response
+
+--- CONTENT ---
+### M6 Slice 7 — documentation catches up, and one dependency moves (landed)
+
+Not a feature slice. Two slices of product landed while the documentation stood still, one package went a
+minor version behind, and an analyzer started failing the CI build. This closes all three, and touches no
+behaviour whatsoever — no `.cs`, no `.razor`, no SQL, no migration, no wiring.
+
+`dotnet test` counts are unchanged at **971 total / 956 succeeded / 15 skipped**, and
+`MYRESTAURANT_E2E=1` unchanged at **8 passed / 7 skipped**, because nothing here is executable.
+
+---
+
+#### Why the documentation had drifted two slices
+
+`README.md` still said *"five of the fifteen §16.3 scenarios"* and *"all ~934 facts"*. Both were true on
+the day they were written and neither had been true since. That is the ordinary failure mode of a status
+sentence living in a document nobody edits when the status changes, and the fix is not a process — it is
+noticing, which is what this slice is.
+
+More consequentially, **M6 Slice 5 shipped a product surface without a ledger row.** It built `/register`,
+argued in its own change notes that no specification edit was required, and was right about the narrow
+question it asked — R§4.3, S§4.4 and S§11.1 all already mandated guest registration, so nothing they said
+became false. But the atomic-documentation rule (R§10 · S§18) is not only about contradictions. A behaviour
+change lands with its ledger row, and a new anonymous route that writes a `person` row is a behaviour
+change by any reading.
+
+So **F-37** is entered now, late, and says so. Its content is the interesting part rather than its
+existence: it is the *same shape* as F-35, the profile page. A requirement stated plainly in
+`REQUIREMENTS.md`, a mechanism described in the specification, and no line in §19's build order claiming
+it — so every milestone review passed, because every milestone had done what its own list said. Twice is a
+pattern. The ledger's closing note now names it, along with the cheap guard: when a requirement section
+names a capability, §19 should name the milestone that owns it. Both gaps were found the same way in the
+end — by somebody trying to *use* the thing, not by anybody re-reading the documents.
+
+The specification gains **§11.8 `/register`**, appended rather than inserted. §11.7 (the wall clock) keeps
+its number because a dozen source files cite it in comments, and renumbering to put registration next to
+§11.6 `/account` — where it belongs thematically — would have silently falsified every one of them. Section
+numbers are an interface once code quotes them.
+
+Also new: **S§17** now carries the missing rate limit as a named accepted risk rather than a note in a
+change file nobody will find again. The reason it is not a two-line addition is written down — the limiter
+lives inside `AddRestaurantDisplays`, `RateLimiterOptions.OnRejected` and `RejectionStatusCode` are
+single-valued, and a second `AddRateLimiter` policy would silently take over the rejection handler so that
+a refused registration answers with §4.2's *"Too many pairing attempts from this device"*. Wrong, and
+deliberate-looking, which is worse than absent. Four things bound it meanwhile, and none of them is a
+policy; all four are recorded.
+
+Specification version bumps **1.0 → 1.1** with a dated changelog, per its own §18.
+
+---
+
+#### The package
+
+`Net.Codecrete.QrCodeGenerator` **3.0.0 → 3.1.0**, the only outdated reference in the tree.
+
+The release is additive: balanced sizing for *structured append*, which is the feature that splits one long
+text across several linked QR codes. Nothing here does that — every code this application renders encodes
+one short URL. The three members it actually uses (`QrCode.EncodeText(string, Ecc)`, `QrCode.Size`,
+`QrCode.ToGraphicsPath(int)`) carry identical signatures at the v3.1.0 tag, checked against the source
+rather than inferred from semver.
+
+One consequence worth stating because central package management hides it: this package is referenced by
+**both** the web application and the end-to-end test project, so one bump moves both. That is not
+incidental. `JoinQrCodes` asserts that a paired display is showing the code the table's secret produces by
+recomputing the expected path with this same library, and that assertion is only real while both sides
+encode identically. A version skew between them would turn scenario 2 into a test of the library.
+
+No golden module path is pinned anywhere — the QR assertions are structural (`starts with <svg`, `has a
+viewBox`, `path begins with a moveto`, `makes no external references`) — so the modules may legitimately
+change shape without anything going red.
+
+`dotnet list package --outdated` cannot see `NSubstitute`, because no project references it; it is a
+version pin standing ready for §16.1's *"NSubstitute acceptable"*, not a dependency. Checked by hand: 6.0.0
+is current. The comment in `Directory.Packages.props` now says so, so the next refresh does not have to
+rediscover why one entry is invisible to the tool.
+
+---
+
+#### The analyzer
+
+Four `xUnit2031` findings in `EndToEndScenarios.cs` — `Assert.Single(xs.Where(p))` where
+`Assert.Single(xs, p)` is meant. Warnings on a workstation, **errors in CI**, since
+`TreatWarningsAsErrors` is conditioned on `ContinuousIntegrationBuild`; the local build was green and the
+strict build was not, which is exactly the split `Directory.Build.props` documents and exactly why
+`scripts/ci_local.sh` exists.
+
+Worth fixing rather than suppressing, and the reason is diagnostic rather than stylistic. `Assert.Single`'s
+failure message prints the collection it was given. With `.Where(…)` in front, the collection it was given
+is the *filtered* one — so a scenario that expected one soup line and found none reports an empty
+collection, which is a restatement of the failure rather than information about it. The predicate overload
+(`public static T Single<T>(IEnumerable<T>, Predicate<T>)`) prints every line that *was* there, which for
+an end-to-end failure is most of the diagnosis.
+
+The rewrite was applied mechanically rather than by hand, by a parser that only touches a call whose entire
+argument is `<receiver>.Where(<lambda>)` — leaving `Assert.Single(xs)`, `Assert.Single(xs, p)`,
+`Assert.Single(xs.Where(p).ToList())` and any occurrence inside a comment or a string literal alone. Run
+across all 300-odd `.cs` files in the tree it changes nothing outside the four intended sites, and running
+it twice changes nothing at all.
+
+---
+
+#### Carried forward, unchanged
+
+The `docs/_append/` backlog is the one piece of housekeeping this slice does *not* fix, because merging it
+is a `cat` the owner runs, not a file this archive can safely contain: `docs/BUILD_PROGRESS.md` is far too
+large to regenerate, and shipping a partial one would overwrite the whole document.
 
 ################################################################################
 # FILE: docs/adr/0001-single-application-with-areas.md
@@ -78169,10 +78527,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 311
-  Total size     : 3.2 MiB (3390240 bytes)
+  Files dumped   : 312
+  Total size     : 3.3 MiB (3417932 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-01T23:52:46-04:00
+  Completed at   : 2026-08-02T09:20:13-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
