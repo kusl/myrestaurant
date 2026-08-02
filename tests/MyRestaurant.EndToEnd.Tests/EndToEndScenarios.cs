@@ -13,7 +13,7 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
 /// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// <para>Eight are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
+/// <para>Nine are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
 /// WebAuthn attestation and a real TOTP confirmation), <b>13</b> (a passkey sign-in of a TOTP-enrolled
 /// person must not be challenged for a code) and <b>14</b> (the join-token window arithmetic as a guest
 /// experiences it) — chosen because between them they exercise the whole harness. M6 Slice 3 adds
@@ -25,7 +25,11 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// and no role — and the first that needed a product surface built before it could be written. M6
 /// Slice 6 adds <b>4</b> (a guest stages two adds and a note, sends, and the kitchen gets exactly one
 /// alert with both lines pending) and <b>6</b> (the kitchen marks one line away and the guest's own
-/// screen re-badges it), the first two that watch §9's live updates cross between two circuits.</para>
+/// screen re-badges it), the first two that watch §9's live updates cross between two circuits. M6
+/// Slice 9 adds <b>5</b> (a second guest joins, the first guest's roster grows without anyone touching
+/// their phone, and the second guest watches the first guest's order grow), the first with two guests
+/// in the restaurant at once and the only one where every interesting event is raised by a browser
+/// other than the one being asserted on.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -411,10 +415,6 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     }
 
     // -------------------------------------------------------------------------------------------
-    // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
-    // -------------------------------------------------------------------------------------------
-
-    // -------------------------------------------------------------------------------------------
     // 4. Guest stages 2 adds + note → Send → kitchen gets one loud alert → lines pending.
     // -------------------------------------------------------------------------------------------
     [Fact]
@@ -502,11 +502,151 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         Assert.Equal(1, settled.UnseenAlertCount);
     }
 
-    [Fact(Skip = PendingHarnessExtension)]
-    public void SecondGuest_JoinsAndSeesOrderLiveWithRosterUpdate()
+    // -------------------------------------------------------------------------------------------
+    // 5. Second guest joins via fresh token → sees first guest's order live; first guest sees roster
+    //    update.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task SecondGuest_JoinsAndSeesOrderLiveWithRosterUpdate()
     {
-        // 5. Second guest joins via fresh token → sees first guest's order live; first guest sees
-        //    roster update. Needs two live circuits in two contexts at once.
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Five";
+        GuestAccount firstAccount = new("e2e.guest.five.one", "First Guest");
+        GuestAccount secondAccount = new("e2e.guest.five.two", "Second Guest");
+
+        // The default hour-long window. Unlike scenario 3 there is nothing here that wants a token to
+        // die mid-run — "fresh" in §16.3's sentence means the code the table is showing at the moment
+        // the second guest scans, not a code the first guest's has aged out of. Scenario 3 already owns
+        // the expiry half, and a short window here would only add a clock to race.
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        // Two items whose names are not substrings of one another, for the same reason scenarios 4 and
+        // 6 insist on it: every assertion below finds a line by name.
+        MenuItemOnTheMenu soup =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Soup of the day", 6.50m);
+        MenuItemOnTheMenu pie =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Steak pie", 14.00m);
+
+        Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
+        byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+
+        // (a) The first guest, seated and having ordered. Their send is what gives the second guest
+        // something to see on arrival; without it "the rest of the table" would be empty and the
+        // scenario would prove only that a roster grows.
+        IPage first = await SeatGuestAsync(
+            instance, tableIdentifier, joinSecret, firstAccount, cancellationToken);
+
+        await TableOrderJourneys.StageAsync(first, soup, 1);
+        await TableOrderJourneys.SendAsync(first);
+
+        await TableOrderJourneys.WaitForCommittedLinesAsync(
+            first,
+            lines => lines.Count == 1,
+            LiveUpdatePatience,
+            "the soup on the first guest's own order",
+            cancellationToken);
+
+        // Alone at the table. The "you" chip is asserted as well as the name because it is the only
+        // thing that makes the roster this reader's view of the table rather than a list of strings —
+        // and step (c) below turns on the distinction between it and everyone else.
+        TableRosterMember aloneAtTheTable =
+            Assert.Single(await TableOrderJourneys.ReadRosterAsync(first));
+
+        Assert.Equal(firstAccount.DisplayName, aloneAtTheTable.Name);
+        Assert.True(aloneAtTheTable.IsYou);
+
+        // Nobody else has ordered, so §11.1's "the rest of the table" is empty. Asserted now so that
+        // what the second guest's arrival changes is a change rather than a state it was born in.
+        Assert.Empty(await TableOrderJourneys.ReadPartyAsync(first));
+
+        // (b) The second guest, scanning the code the table is showing now — their own browser, their
+        // own authenticator, their own account, and no knowledge of the first guest's session.
+        IPage second = await SeatGuestAsync(
+            instance, tableIdentifier, joinSecret, secondAccount, cancellationToken);
+
+        // (c) "First guest sees roster update." Nobody touched the first guest's phone: TableJoin.razor
+        // publishes SittingMemberJoined after the membership row commits (§9: "fired on: membership
+        // insert"), the first guest's circuit re-reads, and the list grows. This is the assertion the
+        // scenario exists for, and it is about a broadcast crossing between two circuits in two browser
+        // contexts — not about anything either page did to itself.
+        IReadOnlyList<TableRosterMember> roster = await TableOrderJourneys.WaitForRosterAsync(
+            first,
+            members => members.Count == 2,
+            LiveUpdatePatience,
+            "both guests on the roster",
+            cancellationToken);
+
+        Assert.Equal(firstAccount.DisplayName, Assert.Single(roster, member => member.IsYou).Name);
+        Assert.Equal(secondAccount.DisplayName, Assert.Single(roster, member => !member.IsYou).Name);
+
+        // The roster grew and the bill did not, which is the difference between §5.2's "who is here"
+        // and §11.1's "the rest of the table". §6.1 creates a guest_order row lazily inside a first
+        // send and sitting_bill is grouped from those rows, so a guest who has joined and ordered
+        // nothing is on one list and absent from the other.
+        Assert.Empty(await TableOrderJourneys.ReadPartyAsync(first));
+
+        // (d) "Sees first guest's order." The second guest's surface was built by a circuit that never
+        // saw the send — it started after it — so this comes from the read model rather than from a
+        // notification, and it is the half that would still be true if §9 were switched off.
+        IReadOnlyList<PartyOrder> onArrival = await TableOrderJourneys.WaitForPartyAsync(
+            second,
+            party => party.Count == 1 && party[0].Lines.Count == 1,
+            LiveUpdatePatience,
+            "the first guest's soup under the rest of the table",
+            cancellationToken);
+
+        PartyOrder theirOrderOnArrival = Assert.Single(onArrival);
+
+        Assert.Equal(firstAccount.DisplayName, theirOrderOnArrival.BillName);
+        Assert.Contains(
+            soup.Name,
+            Assert.Single(theirOrderOnArrival.Lines).Name,
+            StringComparison.Ordinal);
+        Assert.Equal(GuestLineBadge.WithTheKitchen, theirOrderOnArrival.Lines[0].Badge);
+
+        // (e) "…live." The first guest orders again, on the other side of the restaurant, and nothing
+        // touches the second guest's browser: no reload, no click, no navigation. §9 sends
+        // OrderLinesChanged to the sitting's members and the second surface re-reads. That path is the
+        // rest of what §16.3 scenario 5 is asking for, and it is the reason this waits rather than
+        // reads.
+        await TableOrderJourneys.StageAsync(first, pie, 2);
+        await TableOrderJourneys.SendAsync(first);
+
+        IReadOnlyList<PartyOrder> afterSecondSend = await TableOrderJourneys.WaitForPartyAsync(
+            second,
+            party => party.Count == 1 && party[0].Lines.Count == 2,
+            LiveUpdatePatience,
+            "both of the first guest's lines under the rest of the table",
+            cancellationToken);
+
+        PartyOrder theirGrownOrder = Assert.Single(afterSecondSend);
+
+        Assert.Equal(firstAccount.DisplayName, theirGrownOrder.BillName);
+        Assert.Single(theirGrownOrder.Lines, line => line.Name.Contains(soup.Name, StringComparison.Ordinal));
+
+        // The quantity crossed too, not merely the name: §11.1 renders "2 × Steak pie", and a party
+        // list that showed the line but lost the number would be a bill nobody could read.
+        GuestOrderLine pieOnTheirOrder = Assert.Single(
+            theirGrownOrder.Lines,
+            line => line.Name.Contains(pie.Name, StringComparison.Ordinal));
+
+        Assert.StartsWith("2 ", pieOnTheirOrder.Name, StringComparison.Ordinal);
+
+        // (f) One sitting, two members, in join order (§5.1). The screens above cannot tell "both
+        // joined the sitting" from "a second sitting was opened on the same table and the unique index
+        // did not stop it" — from a seat those look identical, and only the rows say which happened.
+        OpenSitting? sitting = await instance.ReadOpenSittingAsync(tableIdentifier, cancellationToken);
+
+        Assert.NotNull(sitting);
+        Assert.Equal(2, sitting!.MemberUsernames.Count);
+        Assert.Equal(firstAccount.Username, sitting.MemberUsernames[0]);
+        Assert.Equal(secondAccount.Username, sitting.MemberUsernames[1]);
     }
 
     // -------------------------------------------------------------------------------------------
@@ -582,6 +722,10 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
         Assert.Equal(service.Pie.Name, Assert.Single(board.PendingLines).Name);
     }
+
+    // -------------------------------------------------------------------------------------------
+    // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
+    // -------------------------------------------------------------------------------------------
 
     [Fact(Skip = PendingHarnessExtension)]
     public void Guest_RemoveFulfilledLineRejected_RemovePendingSucceeds()
@@ -694,11 +838,6 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     /// subscribers and <c>KitchenBoard.razor</c> subscribes on its first interactive render. A board
     /// opened after the send would show the queue perfectly — that comes from <c>kitchen_pending_line</c>
     /// — and would have heard nothing, which is precisely the half of §10 these scenarios exist for.</para>
-    ///
-    /// <para>The join secret is read out of the row (<see cref="RestaurantInstance.ReadJoinSecretAsync"/>)
-    /// rather than decoded off a display: these scenarios are about what happens after the guest is
-    /// seated, and pairing a tablet to get at a QR would put scenario 2's whole apparatus in front of
-    /// them. The token computed from it is one the server really verifies.</para>
     /// </summary>
     private static async Task<ArrangedService> ArrangeServiceAsync(
         RestaurantInstance instance,
@@ -717,8 +856,40 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
             await AdministrationJourneys.CreateMenuItemAsync(administrator, "Steak pie", 14.00m);
 
         Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
-
         byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+
+        IPage guest = await SeatGuestAsync(
+            instance, tableIdentifier, joinSecret, guestAccount, cancellationToken);
+
+        await KitchenJourneys.OpenAsync(administrator, InteractivityPatience);
+
+        return new ArrangedService(administrator, guest, tableIdentifier, soup, pie);
+    }
+
+    /// <summary>
+    /// One guest, from a code on a table to a live ordering surface: scan, self-register with a passkey,
+    /// join, and wait for the circuit. Returns their page.
+    ///
+    /// <para><b>Their own browser context, with its own authenticator.</b> Cookies are per-context, and a
+    /// WebAuthn credential belongs to the authenticator that minted it — a passkey created anywhere else
+    /// would be offered to the wrong person and to nobody useful. §16.3 scenario 5 needs two of these
+    /// alive at once, which is the reason this is a method rather than four lines inside one
+    /// arrangement.</para>
+    ///
+    /// <para><b>The token is computed at the moment of the scan</b>, from the secret read out of the row
+    /// (<see cref="RestaurantInstance.ReadJoinSecretAsync"/>) rather than decoded off a display: these
+    /// scenarios are about what happens after the guest is seated, and pairing a tablet to get at a QR
+    /// would put scenario 2's whole apparatus in front of them. The token is still one the server really
+    /// verifies, and a second guest arriving later gets the code the table is showing then rather than a
+    /// copy of the first guest's.</para>
+    /// </summary>
+    private static async Task<IPage> SeatGuestAsync(
+        RestaurantInstance instance,
+        Guid tableIdentifier,
+        byte[] joinSecret,
+        GuestAccount account,
+        CancellationToken cancellationToken)
+    {
         string token = JoinTokenService.ComputeCurrentToken(
             joinSecret, tableIdentifier, DateTimeOffset.UtcNow, instance.TableJoinTokenRotationSeconds);
 
@@ -728,13 +899,16 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
             TableJourneys.JoinStage.SentToSignIn,
             await TableJourneys.ScanAsync(guest, tableIdentifier, token));
 
-        await AccountJourneys.RegisterGuestWithPasskeyAsync(guest, guestAccount);
+        await AccountJourneys.RegisterGuestWithPasskeyAsync(guest, account);
         await TableJourneys.JoinAsync(guest);
         await TableOrderJourneys.WaitForLiveSurfaceAsync(guest, InteractivityPatience);
 
-        await KitchenJourneys.OpenAsync(administrator, InteractivityPatience);
+        // The cancellation token is not idle: it is the scenario's, and every wait above is bounded by
+        // its own timeout rather than by cancellation. Observing it here means a cancelled run stops at
+        // the seam between guests instead of registering a second account nobody will look at.
+        cancellationToken.ThrowIfCancellationRequested();
 
-        return new ArrangedService(administrator, guest, tableIdentifier, soup, pie);
+        return guest;
     }
 
     /// <summary>
