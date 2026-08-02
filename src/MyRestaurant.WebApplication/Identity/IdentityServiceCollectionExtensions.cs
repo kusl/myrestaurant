@@ -33,7 +33,9 @@ namespace MyRestaurant.WebApplication.Identity;
 ///   <item>the append-only <see cref="ISecurityEventLog"/> that sign-in outcomes are recorded to (§3.5);</item>
 ///   <item>the read-only <see cref="IPersonDirectory"/> the administration people list reads from (§3.6/§3.7);</item>
 ///   <item>the transactional <see cref="IAccountAdministration"/> the administration tools write through
-///   (create staff, grant/revoke roles, reset credentials, deactivate/reactivate — §3.7).</item>
+///   (create staff, grant/revoke roles, reset credentials, deactivate/reactivate — §3.7);</item>
+///   <item>the transactional <see cref="IGuestRegistration"/> the <c>/register</c> surface commits a
+///   self-registering guest through (§4.3, §11.1).</item>
 /// </list>
 ///
 /// The obligations pipeline itself is enforced by <see cref="ObligationsMiddleware"/> in the request
@@ -235,6 +237,18 @@ public static class IdentityServiceCollectionExtensions
             serviceProvider.GetRequiredService<IClock>(),
             serviceProvider.GetRequiredService<IIdentifierFactory>()));
 
+        // Guest self-registration (§4.3, §11.1): one transaction writing a person with no role, no
+        // TOTP, no obligations, and at least one credential, plus its account_created (and
+        // passkey_registered) audit rows. Separate from IAccountAdministration on purpose — everything
+        // there requires an acting administrator to record as the actor, and a guest registering has
+        // none. Scoped like its neighbours; it holds no state, needs no data protection (it never
+        // writes a TOTP secret), and opens its own connection per call from the singleton factory.
+        services.AddScoped<IGuestRegistration>(serviceProvider => new DapperGuestRegistration(
+            serviceProvider.GetRequiredService<IDatabaseConnectionFactory>(),
+            serviceProvider.GetRequiredService<IClock>(),
+            serviceProvider.GetRequiredService<IIdentifierFactory>()));
+
         return services;
     }
 }
+

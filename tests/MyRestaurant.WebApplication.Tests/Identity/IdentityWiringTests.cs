@@ -241,6 +241,21 @@ public sealed class IdentityWiringTests
     }
 
     [Fact]
+    public void GuestRegistration_IsResolvableInAScope()
+    {
+        // §4.3: the /register surface resolves IGuestRegistration for its single commit. Registered
+        // separately from IAccountAdministration because self-registration has no acting administrator
+        // to record as the actor; constructing it opens no connection, so this resolves without a
+        // database.
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        IGuestRegistration registration = scope.ServiceProvider.GetRequiredService<IGuestRegistration>();
+
+        Assert.IsType<DapperGuestRegistration>(registration);
+    }
+
+    [Fact]
     public void PersonDirectory_IsResolvableInAScope()
     {
         using ServiceProvider provider = BuildProvider();
@@ -307,3 +322,4 @@ public sealed class IdentityWiringTests
             => throw new InvalidOperationException("Wiring tests must not open a database connection.");
     }
 }
+

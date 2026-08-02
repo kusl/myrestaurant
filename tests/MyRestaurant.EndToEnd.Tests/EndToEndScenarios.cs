@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.Playwright;
 using MyRestaurant.Domain.Security;
 using MyRestaurant.EndToEnd.Tests.Harness;
+using MyRestaurant.WebApplication.Configuration;
 using MyRestaurant.WebApplication.Displays;
 using MyRestaurant.WebApplication.Identity;
 using Xunit;
@@ -12,13 +13,16 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
 /// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// <para>Five are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
+/// <para>Six are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
 /// WebAuthn attestation and a real TOTP confirmation), <b>13</b> (a passkey sign-in of a TOTP-enrolled
 /// person must not be challenged for a code) and <b>14</b> (the join-token window arithmetic as a guest
 /// experiences it) — chosen because between them they exercise the whole harness. M6 Slice 3 adds
 /// <b>2</b> (a display pairs and its QR advances across a window boundary) and <b>15</b> (rotating a
 /// table's join secret kills every outstanding code and the paired display recovers by itself), which
-/// are the two scenarios about the rotating code as a <em>screen</em> rather than as a URL.</para>
+/// are the two scenarios about the rotating code as a <em>screen</em> rather than as a URL. M6 Slice 5
+/// adds <b>3</b> (a guest scans, self-registers with a passkey, and joins on the grant after the code
+/// they scanned has expired), which is the first scenario driven entirely by somebody with no account
+/// and no role — and the first that needed a product surface built before it could be written.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -40,6 +44,15 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     /// exact number is not load-bearing — only its order of magnitude is.
     /// </summary>
     private const int BoundaryWatchingRotationSeconds = 20;
+
+    /// <summary>
+    /// §13's floor, used by the one scenario that needs a token to <em>expire</em> during the run
+    /// rather than merely to rotate. Ten seconds means the current-and-previous acceptance window
+    /// (§4.3) closes twenty-odd seconds after a scan, which is a wait a scenario can afford and a
+    /// duration a real registration could plausibly exceed. Nothing else wants it this short: the two
+    /// boundary-watching scenarios above need a window that cannot be crossed twice by accident.
+    /// </summary>
+    private const int ShortestRotationSeconds = RestaurantOptions.MinimumTableJoinTokenRotationSeconds;
 
     private readonly RestaurantHarness _harness;
 
@@ -147,6 +160,94 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
         Assert.NotEqual(firstCode, secondCode);
         AssertShowingLiveJoinCode(secondCode, joinSecret, tableIdentifier, instance);
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // 3. Guest scans (simulated URL from current token) → registers with a passkey, slowly enough that
+    //    the token dies while they are doing it → joins on the grant alone; sitting created.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Guest_ScansRegistersWithPasskeyAndJoins()
+    {
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Three";
+        GuestAccount guestAccount = new("e2e.guest", "Hungry Guest");
+
+        // The §13 floor, and the whole point of this scenario. §16.3 words it "(slowly — grant outlives
+        // token)": the grant exists because registration can take longer than a rotation window, and at
+        // ten seconds a window the token this guest scanned is provably dead — §4.3 accepts the current
+        // and the previous window, so two windows and a moment — long before they finish. At the
+        // default hour there would be nothing to outlive and the assertion would be vacuous.
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(ShortestRotationSeconds, cancellationToken);
+
+        int rotationSeconds = instance.TableJoinTokenRotationSeconds;
+
+        // Inserted rather than created through the administration surface, as scenario 14 does and for
+        // the same reason: this scenario is about the guest's journey, and standing up an administrator
+        // first would add a /setup wizard, an Argon2id hash and four form posts that nothing here
+        // asserts on — while the clock this scenario is racing runs the whole time.
+        byte[] joinSecret = RandomNumberGenerator.GetBytes(32);
+        Guid tableIdentifier = await instance.InsertActiveTableAsync(tableLabel, joinSecret, cancellationToken);
+
+        // The guest's own browser, with its own authenticator: a WebAuthn credential belongs to the
+        // authenticator that minted it, so registering a passkey anywhere but here would produce one
+        // this guest could never use.
+        IPage guest = await instance.OpenIsolatedPageAsync(withVirtualAuthenticator: true);
+
+        // (a) The scan. A live token, computed the way the display would have, on a table nobody is
+        // sitting at yet. §4.4: the grant is written and an anonymous scanner goes to sign in.
+        DateTimeOffset scannedAt = DateTimeOffset.UtcNow;
+        string scannedToken = JoinTokenService.ComputeCurrentToken(
+            joinSecret, tableIdentifier, scannedAt, rotationSeconds);
+
+        TableJourneys.JoinStage afterScan =
+            await TableJourneys.ScanAsync(guest, tableIdentifier, scannedToken);
+
+        Assert.Equal(TableJourneys.JoinStage.SentToSignIn, afterScan);
+        Assert.Contains(tableIdentifier.ToString("D"), guest.Url, StringComparison.Ordinal);
+
+        // (b) Registration, from the sign-in page a first-time guest was just dropped on. No password:
+        // the passkey is the only credential, which is §4.3's passkey-first default and the shape that
+        // proves person.password_hash is genuinely optional (§3.2).
+        await AccountJourneys.RegisterGuestWithPasskeyAsync(guest, guestAccount);
+
+        // Registering returns them to the table — that is the return URL surviving two redirects and a
+        // WebAuthn ceremony — and the grant, not the token, is what gets them past the door: the URL
+        // they are on now carries no token at all.
+        Assert.DoesNotContain("token=", guest.Url, StringComparison.Ordinal);
+        Assert.Equal(TableJourneys.JoinStage.Confirm, await TableJourneys.JoinStageOnScreen(guest));
+
+        // (c) "Slowly". Wait until the scanned token is past §4.3's current-and-previous acceptance, so
+        // that what happens next cannot possibly be the token still working. Deliberately measured from
+        // the instant it was minted rather than from now, because the registration above already spent
+        // some of it.
+        await WaitUntilTokenIsDeadAsync(scannedAt, rotationSeconds, cancellationToken);
+
+        // Proven in a context of its own, so no grant cookie of the guest's can carry this navigation
+        // past a refusal and quietly turn a failure into a pass.
+        IPage bystander = await instance.OpenIsolatedPageAsync();
+        Assert.Equal(
+            TableJourneys.JoinStage.Expired,
+            await TableJourneys.ScanAsync(bystander, tableIdentifier, scannedToken));
+
+        // (d) And yet the guest joins, on a page that has been sitting on a dead token's table for
+        // longer than that token lived. This is the grant doing the one job it exists for (§4.4:
+        // "Registration mid-flow: the grant cookie survives the passkey ceremony; that is its purpose").
+        await TableJourneys.JoinAsync(guest);
+
+        Assert.Equal(TableJourneys.JoinStage.Member, await TableJourneys.JoinStageOnScreen(guest));
+        Assert.Equal(tableLabel, await HeadingAsync(guest));
+
+        // (e) "Sitting created" (§5.1) — one open sitting on this table, with this guest on it. The
+        // page saying so is not quite the same claim: a second sitting the unique index should have
+        // prevented would look identical from a seat.
+        OpenSitting? sitting = await instance.ReadOpenSittingAsync(tableIdentifier, cancellationToken);
+
+        Assert.NotNull(sitting);
+        Assert.Equal(guestAccount.Username, Assert.Single(sitting!.MemberUsernames));
     }
 
     // -------------------------------------------------------------------------------------------
@@ -311,14 +412,6 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     // -------------------------------------------------------------------------------------------
 
     [Fact(Skip = PendingHarnessExtension)]
-    public void Guest_ScansRegistersWithPasskeyAndJoins()
-    {
-        // 3. Guest scans (simulated URL from current token) → registers with passkey → joins; sitting
-        //    created. Needs the guest registration journey, which is not the same page as /setup, and a
-        //    virtual authenticator on the guest's own context rather than the administrator's.
-    }
-
-    [Fact(Skip = PendingHarnessExtension)]
     public void Guest_StagesAddsAndSend_KitchenGetsOneAlert()
     {
         // 4. Guest stages 2 adds + note → Send → kitchen gets one loud alert → lines pending.
@@ -412,6 +505,32 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     private static readonly TimeSpan InteractivityPatience = TimeSpan.FromSeconds(30);
 
     /// <summary>
+    /// Waits until a token minted at <paramref name="mintedAt"/> is outside §4.3's acceptance window.
+    ///
+    /// <para>The arithmetic, spelled out because an off-by-one here would make the assertion that
+    /// follows it meaningless rather than merely wrong: a token is accepted while its window index is
+    /// the current one or the previous one, so the last instant it can work is the end of the window
+    /// after the one it was minted in. Waiting to <c>(mint window + 2) × rotation</c> reaches exactly
+    /// that boundary, and a second of slack carries it past.</para>
+    /// </summary>
+    private static async Task WaitUntilTokenIsDeadAsync(
+        DateTimeOffset mintedAt,
+        int rotationSeconds,
+        CancellationToken cancellationToken)
+    {
+        long mintedWindow = JoinTokenService.CurrentWindowIndex(mintedAt, rotationSeconds);
+        DateTimeOffset deadAt = DateTimeOffset
+            .FromUnixTimeSeconds((mintedWindow + 2) * rotationSeconds)
+            .AddSeconds(1);
+
+        TimeSpan remaining = deadAt - DateTimeOffset.UtcNow;
+        if (remaining > TimeSpan.Zero)
+        {
+            await Task.Delay(remaining, cancellationToken);
+        }
+    }
+
+    /// <summary>
     /// Asserts that the QR on screen is the code this table's secret produces for the current or the
     /// previous window — §4.3's definition of one that still validates.
     ///
@@ -438,3 +557,4 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         Assert.Contains(age, JoinQrCodes.LiveAges);
     }
 }
+

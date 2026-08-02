@@ -45,6 +45,11 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 /// <see cref="MyRestaurant.WebApplication.Identity.WebAuthnOriginPolicy"/> and the §3.3
 /// relying-party derivation actually compare.</para>
 /// </summary>
+/// <summary>
+/// A table's currently open sitting (§5.1) and the usernames on its roster, in join order.
+/// </summary>
+internal sealed record OpenSitting(Guid SittingIdentifier, IReadOnlyList<string> MemberUsernames);
+
 internal sealed class RestaurantInstance : IAsyncDisposable
 {
     /// <summary>
@@ -84,6 +89,13 @@ internal sealed class RestaurantInstance : IAsyncDisposable
     /// of control, so there is no second thread to guard against.
     /// </summary>
     private readonly List<IBrowserContext> _isolatedContexts = [];
+
+    /// <summary>
+    /// Virtual authenticators attached to those contexts on request, detached in reverse before the
+    /// contexts they belong to are closed. Kept apart from <see cref="Authenticator"/> because that one
+    /// belongs to <see cref="Page"/> and is disposed with it.
+    /// </summary>
+    private readonly List<VirtualAuthenticator> _isolatedAuthenticators = [];
 
     private RestaurantInstance(
         Process process,
@@ -235,12 +247,15 @@ internal sealed class RestaurantInstance : IAsyncDisposable
     /// A second (or third) browser in the same restaurant: its own cookie jar, its own page, the same
     /// origin. This is how a scenario holds an administrator, a display device and a guest at once.
     ///
-    /// <para>No virtual authenticator is attached. The ones that need one are the account journeys, and
-    /// they run on <see cref="Page"/>; a display device has no credentials of its own beyond the §4.2
-    /// cookie, and a guest who registers a passkey will want an authenticator on a context of their own,
-    /// which is a later scenario's business rather than a default worth paying for here.</para>
+    /// <para><b>No virtual authenticator unless one is asked for.</b> A display device has no
+    /// credentials of its own beyond the §4.2 cookie, so paying CDP setup for every tablet would be
+    /// waste. A guest who registers a passkey (§4.3) is the case that needs one, and it must be on
+    /// <em>their</em> context rather than the administrator's: a WebAuthn credential is scoped to the
+    /// authenticator that minted it, so a guest passkey created against <see cref="Authenticator"/>
+    /// would be offered back to whoever is signing in on <see cref="Page"/> and to nobody else. Pass
+    /// <paramref name="withVirtualAuthenticator"/> to get one.</para>
     /// </summary>
-    internal async Task<IPage> OpenIsolatedPageAsync()
+    internal async Task<IPage> OpenIsolatedPageAsync(bool withVirtualAuthenticator = false)
     {
         IBrowserContext context = await _browser.NewContextAsync(
             new BrowserNewContextOptions { BaseURL = BaseUrl });
@@ -249,6 +264,11 @@ internal sealed class RestaurantInstance : IAsyncDisposable
 
         IPage page = await context.NewPageAsync();
         page.SetDefaultTimeout(PageTimeoutMilliseconds);
+
+        if (withVirtualAuthenticator)
+        {
+            _isolatedAuthenticators.Add(await VirtualAuthenticator.AttachAsync(context, page));
+        }
 
         return page;
     }
@@ -328,8 +348,77 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         return joinSecret;
     }
 
+    /// <summary>
+    /// The open sitting on a table (§5.1) and who is on it, or <c>null</c> when the table has none.
+    ///
+    /// <para>§16.3 scenario 3 ends on the words "sitting created", and that is a claim about rows: a
+    /// sitting was opened on <em>this</em> table, it is still open, and the person who scanned is a
+    /// member of it. The surface can show that a join happened — it says so, and the roster names the
+    /// guest — but it cannot distinguish "joined the sitting" from "joined a second sitting the unique
+    /// index should have prevented", which is the interesting failure. So this reads the two rows and
+    /// counts them, and the scenario asserts on both the page and the database.</para>
+    ///
+    /// <para>Usernames rather than identifiers, because that is what a scenario knows about the guest
+    /// it registered.</para>
+    /// </summary>
+    internal async Task<OpenSitting?> ReadOpenSittingAsync(Guid tableIdentifier, CancellationToken cancellationToken)
+    {
+        await using NpgsqlConnection connection = new(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        Guid sittingIdentifier;
+
+        await using (NpgsqlCommand sitting = new(
+            """
+            SELECT table_sitting_identifier
+            FROM table_sitting
+            WHERE restaurant_table_identifier = @table_identifier AND closed_at IS NULL;
+            """,
+            connection))
+        {
+            sitting.Parameters.AddWithValue("table_identifier", tableIdentifier);
+
+            object? value = await sitting.ExecuteScalarAsync(cancellationToken);
+            if (value is not Guid found)
+            {
+                return null;
+            }
+
+            sittingIdentifier = found;
+        }
+
+        List<string> members = [];
+
+        await using (NpgsqlCommand roster = new(
+            """
+            SELECT p.username
+            FROM table_sitting_member m
+            JOIN person p ON p.person_identifier = m.person_identifier
+            WHERE m.table_sitting_identifier = @sitting_identifier
+            ORDER BY m.joined_at;
+            """,
+            connection))
+        {
+            roster.Parameters.AddWithValue("sitting_identifier", sittingIdentifier);
+
+            await using NpgsqlDataReader reader = await roster.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                members.Add(reader.GetString(0));
+            }
+        }
+
+        return new OpenSitting(sittingIdentifier, members);
+    }
+
     public async ValueTask DisposeAsync()
     {
+        // Authenticators first: each one holds a CDP session on a context that is about to close.
+        for (int index = _isolatedAuthenticators.Count - 1; index >= 0; index--)
+        {
+            await _isolatedAuthenticators[index].DisposeAsync();
+        }
+
         // Reverse order, so a context is never left open behind one that failed to close.
         for (int index = _isolatedContexts.Count - 1; index >= 0; index--)
         {
@@ -620,3 +709,4 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         }
     }
 }
+

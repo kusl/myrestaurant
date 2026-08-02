@@ -132,6 +132,48 @@ public static class AccountEndpoints
             return Results.Content(optionsJson, "application/json");
         });
 
+        // Registration ceremony options for a GUEST who is registering (§4.3, §11.1). Anonymous for
+        // the same reason the setup one is — the account does not exist yet, so there is no session to
+        // authorize against — and gated the same way, on a Data-Protection-protected cookie that only
+        // this server could have written. The pending person id in that ticket becomes the WebAuthn
+        // user handle, which must equal the person row the commit will write or a later discoverable
+        // sign-in would present a handle matching nobody (§3.3).
+        //
+        // Note what this deliberately does NOT check: whether the caller holds a join grant. §4.3 puts
+        // registration at the moment of joining a table, but a grant that expires while a guest is
+        // fumbling a fingerprint prompt must cost them the table, not the account they were halfway
+        // through creating — §4.4 already sends them to the friendly re-scan page for the former.
+        endpoints.MapPost(AccountRoutes.RegistrationPasskeyCreationOptions, async (
+            HttpContext context,
+            SignInManager<Person> signInManager,
+            IAntiforgery antiforgery,
+            IDataProtectionProvider dataProtectionProvider,
+            IClock clock) =>
+        {
+            await antiforgery.ValidateRequestAsync(context);
+
+            RegistrationTicketProtector protector = new(dataProtectionProvider);
+            if (!context.Request.Cookies.TryGetValue(RegistrationCookie.Name, out string? cookie)
+                || !protector.TryUnprotect(cookie, out RegistrationTicket? ticket)
+                || ticket is null
+                || ticket.HasExpired(clock.UtcNow, RegistrationCookie.Lifetime))
+            {
+                // No valid in-flight registration — the details step must be completed (or redone)
+                // before a passkey can be created for an identity that does not exist yet.
+                return Results.BadRequest();
+            }
+
+            string optionsJson = await signInManager.MakePasskeyCreationOptionsAsync(new PasskeyUserEntity
+            {
+                Id = ticket.PersonIdentifier.ToString(),
+                Name = ticket.Username,
+                DisplayName = string.IsNullOrWhiteSpace(ticket.DisplayName) ? ticket.Username : ticket.DisplayName,
+            });
+
+            return Results.Content(optionsJson, "application/json");
+        });
+
         return endpoints;
     }
 }
+

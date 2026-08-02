@@ -22,6 +22,23 @@ public static class AccountRoutes
     /// <summary>The sign-out endpoint (POST only, antiforgery-protected).</summary>
     public const string SignOut = "/sign-out";
 
+    /// <summary>
+    /// Guest self-registration (§4.3, §4.4, §11.1) — anonymous, static SSR, and the destination the
+    /// sign-in page offers a first-time guest who arrived from a table's QR. Not a general "create an
+    /// account" surface in spirit: §4.3 places registration "at the moment of joining a table", and
+    /// the join grant written before the detour (§4.4) is what carries the guest back to the table
+    /// afterwards. Staff accounts are still created by an administrator (§3.7).
+    /// </summary>
+    public const string Register = "/register";
+
+    /// <summary>
+    /// POST endpoint returning WebAuthn registration (attestation) options for the guest registration
+    /// surface — anonymous, because there is no session yet, and gated instead on the in-flight
+    /// registration cookie (§4.3). Distinct from both <see cref="PasskeyCreationOptions"/> (signed-in)
+    /// and <see cref="SetupPasskeyCreationOptions"/> (gated on zero administrators).
+    /// </summary>
+    public const string RegistrationPasskeyCreationOptions = "/register/passkey/creation-options";
+
     /// <summary>Shown when an authenticated principal fails an area policy (§3.7).</summary>
     public const string AccessDenied = "/access-denied";
 
@@ -160,3 +177,4 @@ public static class ObligationsEnforcement
     private static bool HasObligationClaim(ClaimsPrincipal principal, string claimType)
         => string.Equals(principal.FindFirstValue(claimType), "true", StringComparison.OrdinalIgnoreCase);
 }
+

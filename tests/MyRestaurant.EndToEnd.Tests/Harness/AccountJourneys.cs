@@ -8,6 +8,13 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 internal sealed record AdministratorAccount(string Username, string DisplayName, string Password);
 
 /// <summary>
+/// A guest a scenario self-registers at <c>/register</c> (§4.3). No password field: the journey that
+/// consumes this registers a passkey and nothing else, which is the passkey-first default and the
+/// shape that proves <c>person.password_hash</c> is genuinely optional.
+/// </summary>
+internal sealed record GuestAccount(string Username, string DisplayName);
+
+/// <summary>
 /// The account journeys more than one §16.3 scenario walks: the first-administrator wizard, sign-out,
 /// and passkey sign-in. Kept out of the scenario file so a scenario reads as its own assertion rather
 /// than as thirty lines of form filling — and so that when a surface changes, one place changes.
@@ -87,6 +94,77 @@ internal static class AccountJourneys
     }
 
     /// <summary>
+    /// Registers a guest at <c>/register</c> with a passkey and no password (§4.3's passkey-first
+    /// default), and returns once the browser has left the registration surface — wherever it led.
+    ///
+    /// <para><b>Reached the way a guest reaches it.</b> The caller starts on the sign-in page the join
+    /// flow redirected them to (§4.4), and this follows the "Create an account" link rather than
+    /// navigating to <c>/register</c> directly. That link carrying the return URL is the whole
+    /// mechanism by which registering lands the guest back at the table they scanned; a scenario that
+    /// typed the URL itself would be asserting on a path no guest can take.</para>
+    ///
+    /// <para>The password field is left blank on purpose. It makes the passkey the only credential,
+    /// which is the harder shape to get right — the <c>person</c> row must accept a NULL
+    /// <c>password_hash</c> (§3.2) and the account must still be signable-into afterwards — and it
+    /// removes an Argon2id hash from the critical path of a scenario that already waits on a rotation
+    /// window.</para>
+    ///
+    /// <para>Requires a virtual authenticator on <paramref name="page"/>'s own context; see
+    /// <see cref="RestaurantInstance.OpenIsolatedPageAsync"/>.</para>
+    /// </summary>
+    internal static async Task RegisterGuestWithPasskeyAsync(IPage page, GuestAccount account)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(account);
+
+        ILocator createAccount = page.Locator($"a[href^='{AccountRoutes.Register}']").First;
+
+        try
+        {
+            await createAccount.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                $"The sign-in page at '{page.Url}' offered no link to {AccountRoutes.Register}, so a"
+                + " first-time guest arriving from a table's QR has nowhere to go (§4.4, §11.1).",
+                exception);
+        }
+
+        await createAccount.ClickAsync();
+
+        // Step 1 — details. Blank password: a passkey-only account (§4.3).
+        await page.WaitForURLAsync(
+            url => IsRegistrationUrl(url), new PageWaitForURLOptions { Timeout = 30_000 });
+
+        await page.FillAsync("#username", account.Username);
+        await page.FillAsync("#display-name", account.DisplayName);
+        await page.ClickAsync("button:has-text('Continue')");
+
+        // Step 2 — the credential. The <passkey-submit> element intercepts this button, runs
+        // navigator.credentials.create() against the virtual authenticator, writes the credential JSON
+        // into the form and submits it natively; the server verifies the attestation and commits the
+        // whole account in one transaction.
+        ILocator addPasskey = page.Locator("button[name='__passkeySubmit']");
+        await addPasskey.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        await addPasskey.ClickAsync();
+
+        try
+        {
+            await page.WaitForURLAsync(
+                url => !IsRegistrationUrl(url), new PageWaitForURLOptions { Timeout = 60_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            string refusal = await DescribeRefusalAsync(page);
+
+            throw new InvalidOperationException(
+                $"Registering '{account.Username}' never left {AccountRoutes.Register}. {refusal}",
+                exception);
+        }
+    }
+
+    /// <summary>
     /// Signs out through the header's antiforgery-protected POST form, then waits for the header to
     /// offer a sign-in link again. That link exists only in the layout's <c>NotAuthorized</c> branch,
     /// so it is positive proof the cookie is gone rather than a guess about the redirect — and waiting
@@ -155,4 +233,33 @@ internal static class AccountJourneys
     private static bool HasLeftSignInPage(string url)
         => !Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)
             || !string.Equals(parsed.AbsolutePath, AccountRoutes.SignIn, StringComparison.Ordinal);
+
+    /// <summary>
+    /// True while the browser is on the registration page itself. Compared by exact path, so the
+    /// ceremony endpoint underneath it (<c>/register/passkey/creation-options</c>) would not count —
+    /// though the element fetches that rather than navigating to it, so in practice this only ever
+    /// sees the page.
+    /// </summary>
+    private static bool IsRegistrationUrl(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)
+            && string.Equals(parsed.AbsolutePath, AccountRoutes.Register, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Whatever the account surface has to say about why it did not proceed: a refusal panel, a
+    /// validation message, or — when there is neither — the URL it is sitting on.
+    /// </summary>
+    private static async Task<string> DescribeRefusalAsync(IPage page)
+    {
+        ILocator problems = page.Locator("p.status-error, .validation-message");
+
+        if (await problems.CountAsync() == 0)
+        {
+            return $"The page reports no error; the browser is at '{page.Url}'.";
+        }
+
+        string message = (await problems.First.InnerTextAsync()).Trim();
+
+        return $"The page reports: {message} (browser at '{page.Url}').";
+    }
 }
+

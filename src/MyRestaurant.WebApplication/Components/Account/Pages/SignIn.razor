@@ -65,9 +65,14 @@
             </div>
         </EditForm>
 
+        @* §4.4/§11.1: an anonymous guest who scanned a table's QR is sent here holding a join grant,
+           and for a first-time guest this page is a dead end unless it offers the other half of
+           "sign-in/registration". The return URL is carried across so registering lands them back at
+           the table, where the grant is still waiting. Staff never use this link — administrators
+           create those accounts (§3.7). *@
         <p class="form-footnote">
-            Guests register at the table by scanning its display — there is no stand-alone
-            registration page. Lost access? Ask at the counter.
+            New here? <a href="@RegisterUrl">Create an account</a> — it takes a moment, and a passkey
+            means nothing to remember. Lost access to an existing account? Ask at the counter.
         </p>
     }
 </section>
@@ -84,6 +89,16 @@
 
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
+
+    /// <summary>
+    /// The registration surface, carrying this page's return URL so the two are interchangeable
+    /// entry points to the same destination (§4.4). Not sanitized here — <c>/register</c> passes it
+    /// through <see cref="ObligationsEnforcement.SafeLocalReturnUrl"/> before it redirects anywhere,
+    /// exactly as this page does with its own.
+    /// </summary>
+    private string RegisterUrl => string.IsNullOrEmpty(ReturnUrl)
+        ? AccountRoutes.Register
+        : $"{AccountRoutes.Register}?ReturnUrl={Uri.EscapeDataString(ReturnUrl)}";
 
     // BL0008: on a static-SSR form POST the framework binds [SupplyParameterFromForm] itself and may
     // assign null, silently discarding a `= new()` initializer — so the default is applied here instead.
@@ -183,3 +198,4 @@
         public PasskeyInputModel? Passkey { get; set; }
     }
 }
+
