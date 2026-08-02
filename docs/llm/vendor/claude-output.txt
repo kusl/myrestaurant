@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-01T21:49:48-04:00
+  Generated at   : 2026-08-01T23:52:35-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 7172839fc571ce9bb5ac4f62b7c3fec50671cb4b
-  Commit (short) : 7172839
-  Commit date    : 2026-08-01 21:49:44 -0400
-  Commit message : append progress
+  Commit (full)  : ec5d91f6e2eb824970c671fcd1bc6ec05664bfb8
+  Commit (short) : ec5d91f
+  Commit date    : 2026-08-01 23:52:29 -0400
+  Commit message : append build progress
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 308
+  Files included : 311
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (308 included files)
+# FILE TREE  (311 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -573,7 +573,8 @@ cat "$OUTPUT_FILE"
 │   │   ├── BUILD_PROGRESS-m6-slice-2.md
 │   │   ├── BUILD_PROGRESS-m6-slice-3.md
 │   │   ├── BUILD_PROGRESS-m6-slice-4.md
-│   │   └── BUILD_PROGRESS-m6-slice-5.md
+│   │   ├── BUILD_PROGRESS-m6-slice-5.md
+│   │   └── BUILD_PROGRESS-m6-slice-6.md
 │   └── adr
 │       ├── 0001-single-application-with-areas.md
 │       ├── 0002-relational-append-only-event-logs.md
@@ -866,9 +867,11 @@ cat "$OUTPUT_FILE"
     │   │   ├── ContainerEngineDiscovery.cs
     │   │   ├── DisplayJourneys.cs
     │   │   ├── JoinQrCodes.cs
+    │   │   ├── KitchenJourneys.cs
     │   │   ├── RestaurantHarness.cs
     │   │   ├── RestaurantInstance.cs
     │   │   ├── TableJourneys.cs
+    │   │   ├── TableOrderJourneys.cs
     │   │   ├── VirtualAuthenticator.cs
     │   │   └── WebApplicationLocator.cs
     │   └── MyRestaurant.EndToEnd.Tests.csproj
@@ -2990,297 +2993,170 @@ scripts/ci_local.sh --with-all
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  17.8 KiB (18198 bytes)
-  Last modified:         2026-08-01 20:46:34.000000000 -0400
+  Size:                  8.3 KiB (8511 bytes)
+  Last modified:         2026-08-01 23:46:07.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 29043180
+  Inode:                 29144377
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               016c8e8b45ee4861bc6542af7229bf59e7471bfd3928052a99d9d481307bb2fd
-  Last git commit:       17865c3 2026-08-01 21:49:29 -0400 add claude changes
+  SHA-256:               a14640e1217253fddb25e48ea6957cfac697ba32b53e7cf9a0fa310f1b00155f
+  Last git commit:       2762659 2026-08-01 23:51:22 -0400 add claude response
 
 --- CONTENT ---
-# M6 Slice 5 — guests can register
+# M6 Slice 6 — the kitchen hears the guest
 
 Every file below is a **full file** at its **repo-relative path**. Extract this archive at the repo root
-and the contents drop straight over your working tree. `git status` will show exactly these 16 files as
+and the contents drop straight over your working tree. `git status` will show exactly these 10 files as
 modified/added, and **no deletions**.
 
 ```bash
-tar -xzf m6-slice5-guest-registration.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice6-kitchen-hears-the-guest.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
 **None.** Nothing is renamed or superseded. No migration, no schema change, no
-`Directory.Packages.props` edit, no new package, no `Program.cs` edit, no `.slnx` edit.
+`Directory.Packages.props` edit, no new package, no `Program.cs` edit, no `.slnx` edit, no `.csproj` edit
+(the test SDK globs new files in `tests/MyRestaurant.EndToEnd.Tests/Harness/` on its own).
 
 ## The state I found
 
-Slice 4 landed clean. `bash scripts/ci_local.sh --with-all` green end to end: `dotnet test`
-**950 total / 0 failed / 935 succeeded / 15 skipped**, `MYRESTAURANT_E2E=1` **5 passed / 10 skipped**,
-`run.sh --smoke` healthy, quick tunnel up. Exactly the numbers Slice 4 predicted.
+`MyRestaurant.EndToEnd.Tests` did not compile:
 
-## What this slice is, and why it is not what Slice 4 said it would be
+```
+tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs(113,21): error CS1620:
+    Argument 2 must be passed with the 'ref' keyword
+```
 
-Slice 4 closed with "scenario **3** is next and the last with plumbing left in it." That was wrong in an
-instructive way. Scenario 3 needed no plumbing. It needed a **page that does not exist**.
+Everything else was green — `dotnet test` reported **956 / 0 failed** with the E2E project excluded by the
+build failure. That is mine, from Slice 5, and it is the second time it has been reintroduced; the fix now
+carries a comment explaining the rule so a future full-file rewrite does not undo it again. See
+"Why this happens" below.
 
-There is no `/register`. Thirty-six routable pages, and none of them is a registration surface.
-`SignIn.razor` said so in its own footnote — *"Guests register at the table by scanning its display —
-there is no stand-alone registration page"* — and `TableJoin.razor` sends an anonymous grant-holder to
-`/sign-in`, which for a first-time guest is a door with nothing behind it. `BUILD_PROGRESS.md` had it
-flagged twice already (M2's limitations; the M3 join slice's *"Guest self-registration on the join path
-is still to come"*).
+## Files (9)
 
-Meanwhile the specification mandates it in three places:
+### Fixes to what Slice 5 shipped
 
-- **R§4.3** — "Guests self-register at the moment of joining a table: username, optional display name,
-  and at least one credential — passkey offered first, password accepted."
-- **S§4.4** — "…continue to sign-in/**registration** if anonymous… Registration mid-flow: the grant
-  cookie survives the passkey ceremony; **that is its purpose**."
-- **S§11.1** — "Anonymous with valid token → grant → sign-in/registration (passkey-first, password
-  offered) → join."
+- `tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs` — the CS1620. Three characters, one comment.
+- `tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs` — a raw string literal with trailing
+  backslashes used as line continuations. Raw string literals process **no** escape sequences, so those
+  backslashes and the newlines they were hiding were being printed into the diagnostic. Compiles fine,
+  nothing failed on it, the message was just mangled at the moment somebody most needed to read it.
 
-So this is a product slice that happens to unblock a test. It also unblocks §16.3 scenarios **4**
-through **11**, every one of which needs a guest with an account — and until now the only way to get a
-non-administrator account was for an administrator to create a *staff* account with
-`must_change_password` set, which is not the thing those scenarios are about.
+### Product (2)
 
-**No specification edit.** Nothing here changes what §4.3, §4.4 or §11.1 say; three of their sentences
-become true. The route names are new, but §11 has never enumerated routes at that grain —
-`/account/passkeys` and `/account/change-password` are described, not named, either.
+- `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor` — the whole render tree
+  is now wrapped in `<div class="order-surface" id="table-order-surface" data-live="…">`, and a
+  `IsLiveAttributeValue` property was added beside the other computed ones. Same attribute, same reason,
+  as `TableDisplay.razor`'s. The body is re-indented one level by the wrapper — `git diff -w` shows the
+  real change, which is seven added lines and one closing tag.
+- `src/MyRestaurant.WebApplication/Components/Pages/Kitchen/KitchenBoard.razor` — `data-live` and
+  `data-unseen-alerts` on the existing `#kitchen-board-surface` section, plus the same property.
 
-## New files (7)
+**Why any product change at all.** Both surfaces prerender completely and then, without a circuit, never
+change again — the ordering island's controls are all click handlers that land on nothing, and the kitchen
+board lists a correct-looking queue and never alerts. That is indistinguishable from a quiet restaurant.
+It is the same hazard `TableDisplay.razor` published `data-live` for in Slice 4, and it is the difference
+between a scenario failing with "no circuit was established" and failing with "the basket stayed empty".
 
-- `src/MyRestaurant.DataAccess/Identity/GuestRegistration.cs` — `NewGuestAccount`,
-  `GuestRegistrationStatus`, `IGuestRegistration`, `DapperGuestRegistration`.
-- `src/MyRestaurant.WebApplication/Identity/RegistrationState.cs` — `RegistrationTicket`,
-  `RegistrationTicketProtector`, `RegistrationCookie`.
-- `src/MyRestaurant.WebApplication/Components/Account/Pages/Register.razor` — the surface.
-- `tests/MyRestaurant.DataAccess.Tests/Identity/GuestRegistrationTests.cs` — 7 integration tests.
-- `tests/MyRestaurant.WebApplication.Tests/Identity/RegistrationTicketTests.cs` — 11 cases.
-- `tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs` — the guest-side join journeys.
-- `docs/_append/BUILD_PROGRESS-m6-slice-5.md`
+`data-unseen-alerts` is the §10.3 count as a number rather than as English inside the badge (which also
+carries pluralisation and an optional "(n overdue)"). It is the only state on that screen that exists
+solely in circuit memory.
 
-## Edited (9)
+No CSS changed: nothing in `app.css` reaches into the ordering surface with a child combinator.
 
-- `src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs` — two constants on
-  `AccountRoutes`: `Register` and `RegistrationPasskeyCreationOptions`. Nothing else; the obligations
-  pipeline needs no exemption, because it only acts on authenticated principals and `/register` is
-  anonymous by definition.
-- `src/MyRestaurant.WebApplication/Identity/AccountEndpoints.cs` — the anonymous
-  `/register/passkey/creation-options` endpoint, gated on the registration cookie.
-- `src/MyRestaurant.WebApplication/Identity/IdentityServiceCollectionExtensions.cs` — registers
-  `IGuestRegistration`; one line added to the summary list.
-- `src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor` — the footnote becomes a
-  **"Create an account"** link carrying `ReturnUrl`, plus the `RegisterUrl` helper.
-- `tests/MyRestaurant.WebApplication.Tests/Identity/IdentityWiringTests.cs` — one resolvability test.
-- `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs` —
-  `OpenIsolatedPageAsync(withVirtualAuthenticator:)`, `ReadOpenSittingAsync`, the `OpenSitting` record,
-  and authenticator teardown ahead of context close.
-- `tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs` — `GuestAccount` and
-  `RegisterGuestWithPasskeyAsync`.
-- `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` — scenario **3** implemented; the
-  `[Fact(Skip)]` placeholder removed.
-- `_CHANGES.md` (this file)
+### Harness (3)
 
-## The surface
+- `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` — **new**. Staging, sending, reading
+  committed lines and their badges. All selectors scoped to `#table-order-surface`, which is load-bearing:
+  the parent page renders its own `p.status-success` ("You have joined …") and an unscoped wait would
+  report a send as accepted before the button was pressed.
+- `tests/MyRestaurant.EndToEnd.Tests/Harness/KitchenJourneys.cs` — **new**. Opening the board, one
+  snapshot of `(unseen alerts, pending lines)`, waiting on a predicate over it, fulfilling a line.
+- `tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs` — adds `CreateMenuItemAsync` and
+  the `MenuItemOnTheMenu` record.
 
-Anonymous, static SSR, two steps over a Data-Protection-protected cookie:
+### Scenarios (1)
 
-1. **Details** — username, optional display name, **optional** password (hashed at once; the ticket
-   carries a PHC string, never a plaintext).
-2. **Sign-in method** — the real attestation ceremony. Registering commits the account; *"Not now — use
-   my password"* commits on the password alone, **and renders only when a password was set**.
+- `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` — §16.3 scenarios **4** and **6** implemented,
+  their `[Fact(Skip)]` placeholders removed, and a shared `ArrangeServiceAsync` that stands up an
+  administrator, two menu items, a table, a joined guest with a live ordering island, and a live kitchen
+  board.
 
-That asymmetry is §3.3's rule made structural rather than advisory. A passkey is "always offered, never
-required, never a gate for guests" — so declining is offered exactly when there is something to fall
-back on. `RegistrationTicket.CanDeclineThePasskey` is the single predicate the markup and the POST
-handler both consult, and an account with neither credential is refused twice: the button is absent, and
-`DapperGuestRegistration` throws before any SQL runs.
+### Documentation (1)
 
-**Why a ticket at all, for a two-step form.** A WebAuthn attestation needs a user handle *before* the
-account exists, and that handle must equal the eventual `person` row's id or a later
-discoverable-credential sign-in presents a handle matching nobody. Same problem `/setup` has, same
-solution (§3.6). Unlike `SetupTicket` there is **no step enum**: the wizard has three ordered steps that
-must each be unskippable, registration has one, and the ticket's existence *is* the state.
+- `docs/_append/BUILD_PROGRESS-m6-slice-6.md` — **new**. Append it, do not regenerate:
 
-No TOTP step (§3.4 pairs the authenticator with the password path for staff) and no role — a guest is
-the *absence* of a grant (§3.7), so nothing touches `person_role`.
+```bash
+cat docs/_append/BUILD_PROGRESS-m6-slice-6.md >> docs/BUILD_PROGRESS.md
+```
 
-## The decision worth arguing about
+No `TECHNICAL_SPECIFICATION.md`, `REQUIREMENTS.md` or ADR edit: nothing here changes what the system is
+required to do. `data-live` / `data-unseen-alerts` are at the same grain as `data-refresh-token`, which §11
+does not enumerate either.
 
-**`/register` is not rate-limited, and that was a decision rather than an omission** — you asked to leave
-it out, and here is what "out" costs so it stays visible.
+## Why this happens (CS1620), so it stops happening
 
-`/display/pair` is the only limited endpoint (§4.2: 5/min/IP). `/register` is now a second anonymous
-surface that writes a row, and the more consequential one, since a `person` row outlives the request.
+`string.Create`'s second parameter is `ref DefaultInterpolatedStringHandler`. C# converts an **addition**
+to that handler only when the whole additive expression is composed of interpolated strings — Roslyn's
+`Binder_Operators.cs` requires every operand to be a `BoundUnconvertedInterpolatedString`. One bare
+`"…"` literal in the chain makes it a `BoundLiteral`, the expression collapses to a plain `string`, and the
+call cannot bind by value.
 
-The reason it is not a two-line addition: the limiter is configured inside `AddRestaurantDisplays`, and
-`RateLimiterOptions.OnRejected` and `RejectionStatusCode` are single-valued. A second `AddRateLimiter`
-call adding a registration policy would silently take over the rejection handler, and a refused
-registration would answer with *"Too many pairing attempts from this device"* — worse than no limit,
-because it is wrong and looks deliberate. Doing it properly means `OnRejected` dispatching on the
-endpoint, which is an edit to a file this slice otherwise does not touch, and a policy §13 does not
-specify.
+```csharp
+$"a {x}" + " b"     // ✗ CS1620 — " b" is a literal
+$"a {x}" + $" b"    // ✓ a hole-less $"…" still counts
+```
 
-What stands meanwhile: registration is a **two-request** flow behind an antiforgery token and a
-protected ticket cookie, so it is not a scriptable single POST; the password is capped at 256 characters
-so an anonymous caller cannot ask for unbounded Argon2id work; and §3.2's semaphore bounds concurrent
-hashes process-wide regardless. Recorded as a named follow-up in the BUILD_PROGRESS append.
+Two related traps the harness now comments on in place:
 
-## Scenario 3, and the parenthetical nobody had tested
+- An `await` **inside** an interpolated string that binds to a handler is **CS4007**. Read the page into a
+  local first, then compose the message.
+- Raw string literals (`$"""…"""`) process no escapes, so `\` at end of line is a backslash, not a
+  continuation.
 
-§16.3's full text is *"Guest scans (simulated URL from current token) → registers with passkey
-**(slowly — grant outlives token)** → joins; sitting created."* The parenthetical is the whole reason
-§4.4's grant exists, and it had never been tested — there was nothing to be slow at.
+## Build and test checklist
 
-The instance runs at `TABLE_JOIN_TOKEN_ROTATION_SECONDS = 10`, §13's floor and the only scenario that
-wants it: §4.3 accepts the current *and* previous window, so a scanned token is provably dead about
-twenty seconds later. At the harness default of an hour the assertion would be vacuous.
+```bash
+cd /home/kushal/src/dotnet/myrestaurant
 
-- Scans a live token in the guest's **own** context with its **own** virtual authenticator — a WebAuthn
-  credential belongs to the authenticator that minted it, so a passkey created on the shared
-  administrator context would be one this guest could never use.
-- Follows the **"Create an account"** link rather than typing `/register`. That link carrying the return
-  URL is the entire mechanism by which registering lands the guest back at the table; a scenario that
-  navigated directly would assert on a path no guest can take.
-- Registers with a passkey and no password.
-- Asserts the URL it returns to carries **no token at all**, and shows the join confirmation.
-- Waits until the scanned token is past §4.3's window — measured from the instant it was minted, not
-  from now, because registration already spent some of it — and proves it dead by re-scanning in a
-  **third** context, one with no grant cookie that could carry the navigation past a refusal and quietly
-  turn a failure into a pass.
-- Joins anyway, then checks the database for exactly one open sitting on that table with exactly this
-  guest on its roster. Not redundant with the page: a second sitting that
-  `table_sitting_one_open_per_table` should have prevented looks identical from a seat.
+# 1. It compiles again — this is the whole of the red build.
+dotnet build
 
-## The bug I caught in review, before you did
+# 2. Unchanged: no unit test was added or removed by this slice.
+dotnet test
+#    expect: total 971, failed 0, succeeded 956, skipped 15
 
-My first `TableJourneys.ScanAsync` built the scan URL with
-`JoinTokenService.BuildJoinUrl(instance.PublicOrigin, …)` — which is `https://localhost:{port}` while
-Kestrel serves plain **HTTP** on that port. It would have reached nothing, and the failure would have
-read as a scenario problem rather than a harness one.
+# 3. Warnings-as-errors, the way CI builds it.
+bash scripts/ci_local.sh --with-all
 
-It navigates to a relative path now, with the reason written into the type's remarks rather than merely
-patched: the origin mismatch is deliberate and load-bearing (§13 refuses a non-https public origin;
-Chromium treats `localhost` as a secure context regardless of scheme), so the absolute URL a display
-encodes is by construction not fetchable from the harness. Scenario 2 already asserts that a real screen
-encodes exactly the code the table's secret produces, so between the two nothing is assumed.
+# 4. The scenarios themselves.
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: 8 passed / 7 skipped   (was 6 passed / 9 skipped)
+#    newly passing: Guest_StagesAddsAndSend_KitchenGetsOneAlert
+#                   Kitchen_FulfillsLine_GuestSeesFulfilledBadge
 
-## What I verified rather than guessed
+# 5. Append the progress block.
+cat docs/_append/BUILD_PROGRESS-m6-slice-6.md >> docs/BUILD_PROGRESS.md
+```
 
-- **`passkey.js`** — `tryAutofillPasskey` runs only for `operation === 'Request'`, so the `Create`
-  element on `/register` does not self-fire on load; and `obtainAndSubmitCredential` **returns without
-  submitting** when a conditional-mediation attempt fails. That second one matters here: the guest lands
-  on `/sign-in` with an authenticator holding no credentials, and if a failed conditional request
-  submitted the form the browser would navigate away before the "Create an account" link could be
-  clicked. It does not.
-- **`creation-options-url`** is read from the element's attribute and overrides the default, which is how
-  `/setup` already points attestation at its own anonymous endpoint — the same mechanism, reused.
-- **`App.razor`** — `RenderModeForPage` is `null` when `AcceptsInteractiveRouting()` is false, so
-  `[ExcludeFromInteractiveRouting]` genuinely yields static SSR and the page can write cookies.
-- **`ObligationsMiddleware`** — acts only when `user.Identity?.IsAuthenticated == true`, so an anonymous
-  `/register` needs no entry in `IsExemptPath`.
-- **`TableOrderSurface.razor`** — its four buttons are "Add to basket", "Send", and two `link-button`
-  row actions. None contains "Join", so `JoinStageOnScreen`'s `button:has-text('Join')` discriminates
-  Confirm from Member cleanly even though both render the table label as their `h1`.
-- **`RestaurantHarness.StartInstanceAsync(int, CancellationToken)`** — parameter order and defaults
-  unchanged; scenario 3 passes the rotation positionally like 2 and 15 do.
-- **`DapperUserStore`** — `FindByNameAsync`, `FindPasskeyAsync(user, credentialId, ct)` and
-  `GetTwoFactorEnabledAsync` signatures, for the round-trip test.
-- **`Directory.Build.props`** — `GenerateDocumentationFile` is false, so cref resolution is not
-  compiled; `TreatWarningsAsErrors` is on only under `ContinuousIntegrationBuild`, which is what the
-  CI run will apply.
-
-## Build/test checklist for this slice
-
-1. `dotnet build` — one new `.razor` and one edited one. **The Razor is the thing to watch**, as always:
-   `Register.razor` has three `@formname` forms on one page (`register-passkey`,
-   `register-skip-passkey`, `register-restart`) plus an `EditForm` named `register-details`, a nested
-   `DetailsInputModel : IValidatableObject` reaching the enclosing component's private
-   `MinimumPasswordLength` const, and a `PasskeySubmit` with `CreationOptionsUrl` set.
-2. `dotnet test` — expect **969 total, 0 failed, 954 succeeded, 15 skipped** (was 950/0/935/15). The
-   arithmetic: +7 `GuestRegistrationTests`, +11 `RegistrationTicketTests`, +1 `IdentityWiringTests` = 19
-   new; scenario 3 stops being a `[Fact(Skip)]` placeholder and becomes a real `[Fact]` that skips on the
-   `MYRESTAURANT_E2E` gate instead, so the skip count is unchanged at 15.
-3. `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` — expect **6 passed, 9 skipped**.
-   Scenario 3 adds roughly 30–40 s: a WebAuthn ceremony plus the deliberate wait for the token to die.
-4. `bash scripts/ci_local.sh --with-all`.
-5. Push, and watch the `end-to-end` job.
-
-**Worth doing by hand once**, because no test covers it and it is the other branch of the surface: run
-`bash run.sh`, open `/register`, fill in a username **and** a password, and take *"Not now — use my
-password"*. You should land signed in with a password-only guest account. Then sign out and sign back in
-with it.
+Remaining `[Fact(Skip)]` placeholders: **7** — scenarios 5, 7, 8, 9, 10, 11, 12.
 
 ## Where to look if this breaks
 
-- **`RegisterGuestWithPasskeyAsync` fails at the link** ("offered no link to /register") — `SignIn.razor`
-  did not render `RegisterUrl`, or the `a[href^='/register']` selector missed because the href was
-  rewritten. The page, not the ceremony.
-- **It reaches step 2 and stalls on `__passkeySubmit`** — the details POST did not advance the ticket.
-  Check the registration cookie is being written: it is `Secure`, and everything depends on Chromium
-  treating `http://localhost` as a secure context.
-- **It clicks "Add a passkey" and stays on `/register` with a refusal** — the attestation was rejected.
-  Most likely `/register/passkey/creation-options` returned 400, which means the cookie did not reach it
-  (path or SameSite) or the ticket had expired. The harness quotes the page's `p.status-error`, which
-  distinguishes "could not be added" (browser ceremony) from "could not be registered" (server
-  verification).
-- **Scenario 3 fails at `JoinStage.Confirm` right after registering** — the return URL did not survive.
-  Either `SignIn.razor` dropped it from `RegisterUrl`, or `Register.razor`'s `SelfUrl` dropped it across
-  the post/redirect/get, and the guest was sent to `/` instead of the table.
-- **It fails at the bystander's `Expired`** — the token is somehow still valid, which means
-  `WaitUntilTokenIsDeadAsync`'s arithmetic is off or the instance is not running at the rotation it was
-  asked for. `instance.TableJoinTokenRotationSeconds` is read back rather than assumed, so print it.
-- **It fails at the final database check** — the join happened but the rows are not what §5.1 promises.
-  That is `SittingMembership`, not this slice.
-
-## Housekeeping carried over
-
-`docs/BUILD_PROGRESS.md` still jumps from "M4 Slice 1" to "M5 Slice 2". Thirteen appends are now
-unmerged:
-
-```bash
-cat docs/_append/BUILD_PROGRESS-m4-slice-2.md >> docs/BUILD_PROGRESS.md
-cat docs/_append/BUILD_PROGRESS-m4-slice-3.md >> docs/BUILD_PROGRESS.md
-cat docs/_append/BUILD_PROGRESS-m4-slice-4.md >> docs/BUILD_PROGRESS.md
-cat docs/_append/BUILD_PROGRESS-m5-slice-1.md >> docs/BUILD_PROGRESS.md
-cat docs/_append/BUILD_PROGRESS-m5-slice-2.md >> docs/BUILD_PROGRESS.md
-cat docs/_append/BUILD_PROGRESS-m5-slice-3.md >> docs/BUILD_PROGRESS.md
-cat docs/_append/BUILD_PROGRESS-m5-slice-4.md >> docs/BUILD_PROGRESS.md
-cat docs/_append/BUILD_PROGRESS-m5-slice-5.md >> docs/BUILD_PROGRESS.md
-cat docs/_append/BUILD_PROGRESS-m6-slice-1.md >> docs/BUILD_PROGRESS.md
-cat docs/_append/BUILD_PROGRESS-m6-slice-2.md >> docs/BUILD_PROGRESS.md
-cat docs/_append/BUILD_PROGRESS-m6-slice-3.md >> docs/BUILD_PROGRESS.md
-cat docs/_append/BUILD_PROGRESS-m6-slice-4.md >> docs/BUILD_PROGRESS.md
-cat docs/_append/BUILD_PROGRESS-m6-slice-5.md >> docs/BUILD_PROGRESS.md
-```
-
-`shellcheck` is still not installed locally, so `ci_local.sh` step 1 only parses:
-
-```bash
-sudo dnf install ShellCheck
-```
-
-## What is next
-
-Nine §16.3 scenarios. **4** is the natural next one and is now genuinely unblocked: a guest stages two
-adds and a note, sends, and the kitchen gets exactly one alert. It needs a menu item (an administrator,
-or a direct insert like this slice's table), a second live circuit on the kitchen board, and the
-`TableOrderSurface` island — which means it is the first scenario to drive an *interactive* surface's
-controls rather than watch one. Slice 4 made that possible; this one supplies the guest.
-
-After that, 5 through 11 are variations on the same two-circuit shape and should come quickly. Then the
-backup/restore drill, and M6 is done.
-
-## The one-line why
-
-The join grant's entire purpose is to outlive the token while a guest registers — and until this slice
-there was no way for a guest to register, so the grant had nothing to outlive and the specification's
-own promise had never once been executed.
+| Symptom | Where to look |
+| --- | --- |
+| `CS1620` again, anywhere | An operand in a `string.Create(provider, $"…" + …)` chain lost its `$`. |
+| `CS4007` | An `await` inside an interpolated string bound to a handler. Hoist it into a local. |
+| "The ordering surface never became interactive" | `/_framework/blazor.web.js` is not being served, or the wrapper's `data-live` is not rendering. `RestaurantInstance.VerifyInteractivityAsync` probes the first at startup. |
+| "The kitchen board never became interactive" | Same cause. The board subscribes in `OnAfterRender(firstRender)`, which only runs on a circuit. |
+| Scenario 4: `0 unseen alerts` but two lines arrive | The board heard `OrderLinesChanged` and not `KitchenAlert`. Check `OrderWorkflow.AfterCommit`'s `if (result.KitchenNotificationWritten)` and whether the `kitchen_notification` row went in with the event (§10.1). |
+| Scenario 4: `2 unseen alerts` | The alert has gone per-line rather than per-event. One send is one `order_event` is one alert. |
+| Scenario 4: send not confirmed | The failure quotes §6.5.9's whole refusal panel — every per-operation reason, because a send is refused as a whole. |
+| Staging does not fill the basket | The failure quotes §11.1's staging notice. An unavailable item or a quantity outside 1–100 are the two local refusals. |
+| Scenario 6: badge never flips | `LineFulfillmentChanged` did not reach the guest's circuit, or the guest surface's subscription was never made. The board's own confirmation is asserted first, so a refused fulfillment fails earlier and says so. |
+| A send appears to succeed before the button is pressed | A `p.status-success` selector lost its `#table-order-surface` scope and is matching the parent page's "You have joined …". |
 
 ################################################################################
 # FILE: compose.yaml
@@ -3419,15 +3295,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  257.3 KiB (263490 bytes)
-  Last modified:         2026-08-01 21:49:33.457452141 -0400
+  Size:                  268.8 KiB (275227 bytes)
+  Last modified:         2026-08-01 23:51:35.327983891 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 25661728
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               75a2d65bc06d83a544ca8fcaa34585ea2e77a53d75f76f107d8fa4897a136679
-  Last git commit:       7172839 2026-08-01 21:49:44 -0400 append progress
+  SHA-256:               be064e32f619db5325c803c7e3c9f1e69c15c5c9b704225f8200f1d04f5d9141
+  Last git commit:       ec5d91f 2026-08-01 23:52:29 -0400 append build progress
 
 --- CONTENT ---
 # Build progress
@@ -7160,6 +7036,187 @@ bounds concurrent hashes process-wide regardless. This is a named follow-up, not
   on the previous screen, so nudging them on the next one would be asking twice; the durable home is the
   `/account/passkeys` page, which already exists and is linked from the profile. The *sign-in* nudge remains
   outstanding, as recorded in M2's limitations.
+### M6 Slice 6 — the kitchen hears the guest (landed)
+
+Two more of §16.3's fifteen: **4** (a guest stages two adds and a note, presses Send, and the kitchen
+gets exactly one alert with both lines pending) and **6** (the kitchen marks one line away and the
+guest's own screen re-badges it). They are the first scenarios in which a commit made by one browser has
+to be observed by a *second live circuit in another browser context* — everything before this watched a
+timer, a redirect, or a row.
+
+`dotnet test` stays at **971 total / 0 failed** (956 succeeded, 15 skipped) because no unit test was
+added; `MYRESTAURANT_E2E=1` goes from **6 passed / 9 skipped** to **8 passed / 7 skipped**. No migration,
+no schema change, no package change, no ADR edit, no `Program.cs` edit, nothing deleted.
+
+---
+
+#### The build was red, and the reason is worth writing down
+
+Slice 5 shipped `Harness/TableJourneys.cs` with this in it:
+
+```csharp
+string.Create(
+    CultureInfo.InvariantCulture,
+    $"Joining did not confirm; the table page is now showing {stage}. A grant is"
+    + " single-use and is cleared whatever the outcome (§4.4), so if this was a"
+    + " refusal the grant is already spent and a retry will not help."),
+```
+
+`error CS1620: Argument 2 must be passed with the 'ref' keyword`. The overload being bound is
+`string.Create(IFormatProvider?, ref DefaultInterpolatedStringHandler)`, and C# converts an addition to a
+handler only when the additive expression is composed **entirely** of interpolated strings. Roslyn's
+`Binder_Operators.cs` says so literally:
+
+```csharp
+&& left  is BoundUnconvertedInterpolatedString or BoundBinaryOperator { IsUnconvertedInterpolatedStringAddition: true }
+&& right is BoundUnconvertedInterpolatedString or BoundBinaryOperator { IsUnconvertedInterpolatedStringAddition: true }
+```
+
+A bare `" single-use…"` binds as a `BoundLiteral`, the whole expression collapses to a plain `string`, and
+the call no longer matches an overload it can bind by value. Prefixing every continuation with `$` fixes
+it, and a hole-less `$"…"` still qualifies — `BindInterpolatedString` returns a
+`BoundUnconvertedInterpolatedString` carrying a constant, not a literal node. The rule is now written into
+the file as a comment beside the call, because this is the second time it has been reintroduced.
+
+The same review found a quieter one three files over. `DisplayJourneys.WaitForLiveSurfaceAsync` wrapped its
+diagnostic in a **raw** string literal with trailing backslashes for line continuation — and raw string
+literals process no escape sequences at all, so every one of those backslashes and every newline it was
+meant to hide was being printed into the message. It compiled and no test failed on it; it just produced a
+mangled sentence at the exact moment somebody most needed to read one. Both are now concatenated
+interpolated strings, which is the shape the rest of the harness already uses.
+
+---
+
+#### One new attribute on two surfaces: `data-live`
+
+`TableDisplay.razor` has published `data-live` since Slice 4, for a reason that turned out not to be
+specific to displays: **a surface that never became interactive is indistinguishable from a live one**.
+Prerendering produces the whole document server-side, so the page looks completely correct and then never
+changes again.
+
+That hazard is worse, not better, on the other two live surfaces:
+
+- **The ordering island.** Every control on it is a click handler. On a dead island "Add to basket" lands
+  on nothing, and the first thing anybody learns is that the basket stayed empty — thirty seconds later,
+  with no mention of circuits. `TableOrderSurface.razor` now renders its whole tree inside
+  `<div class="order-surface" id="table-order-surface" data-live="…">`. That wrapper is also what
+  disambiguates the island's own `p.status-success` from the parent page's *"You have joined Table Four"*,
+  which is the same element on the same document and is on screen from the moment a join redirects back.
+- **The kitchen board.** A prerendered board lists what was outstanding when the page was requested, in the
+  right order, with the right waiting times, and then never alerts. A kitchen that has genuinely had no
+  orders for ten minutes looks exactly the same. This is §10's worst failure and the one nobody notices
+  while it is happening. `KitchenBoard.razor` already had `id="kitchen-board-surface"` for `js/kitchen.js`;
+  it gains `data-live` on the same element.
+
+The board also gains **`data-unseen-alerts`**, the §10.3 count as a number. The badge says it in English
+already, but that string carries pluralisation and an optional *"(n overdue)"* parenthetical, and the count
+is the one piece of state on that screen that exists **only in circuit memory** — everything else can be
+re-derived from the database. Publishing it means an operator can read it in dev tools and a scenario can
+assert on it without parsing prose to learn a fact the component already knows.
+
+No CSS changed. Nothing in `app.css` reaches into the ordering surface with a child combinator, so the
+wrapper is inert; `.order-totals > div` is internal to the tree it wraps.
+
+---
+
+#### Scenario 4 — "one loud alert" is a claim about the number one
+
+The scenario stages 1 × *Soup of the day* with the note *"No onions, extra hot"*, then 2 × *Steak pie*, and
+sends. Three things are asserted in an order that matters.
+
+**Before the send, the board is live and showing nothing.** That is what turns §11.1's *"nothing reaches
+the kitchen until you press Send"* from documentation into a test: a surface that wrote as it staged would
+have alerted already, and the board was subscribed and watching.
+
+**After the send, one predicate over both facts.** §9 publishes `OrderLinesChanged` **before**
+`KitchenAlert`, and `KitchenBoard.OnDomainNotification` handles each as it arrives — so there is a real
+window in which the queue has re-read and the alert has not yet been counted. A scenario that waited for
+two lines and *then* read the count would sample that window and report a silent kitchen. So the wait is
+`PendingLines.Count == 2 && UnseenAlertCount >= 1`, and the equality (`== 1`) is asserted on the snapshot
+that satisfied it — then re-read once at the end, after the guest surface has finished reacting, which
+turns "one alert so far" into "one alert, full stop".
+
+**One alert, not two.** Two adds in one send is one `order_event`, therefore one `kitchen_notification`
+row, therefore one `KitchenAlert` (§10.1). A count of two would mean the alert had gone per-line, which is
+how a busy service becomes a siren nobody can hear over. The whole of `AfterCommit`'s
+`if (result.KitchenNotificationWritten)` is what this asserts.
+
+`Sound is not armed and not asserted.` §10.3's arm control has to run inside a real user gesture to unlock
+browser audio, and what it unlocks is an `AudioContext` on a headless browser with no output device — "did
+it beep" is a question about Chromium's audio stack, not about this application. §10.3 itself names the
+visual badge as the fallback whenever sound is not working and makes the unseen count the record of what
+arrived; that count is the number the sound is played *from*, so asserting on it asserts on the alert.
+
+---
+
+#### Scenario 6 — the badge crosses a browser boundary
+
+One tap on one line (§11.2's *"tap a line → one fulfillment event"*, not *fulfill all*, because the half
+worth getting wrong is the **other** line staying where it was), and then nobody touches the guest's phone.
+§9 sends `LineFulfillmentChanged` to the sitting's members, the ordering island re-reads, and the chip goes
+from *With the kitchen* to *At your table*.
+
+The badge is read from the chip's **class** rather than its words: `chip-ok` is the state, "At your table"
+is copy, and a scenario that matched the copy would fail on a wording change and pass on a styling bug. The
+pass losing the line is asserted too — `kitchen_pending_line` excludes a fulfilled line (§8.3), so that is
+the same fact from the writing side rather than a second opinion.
+
+---
+
+#### The arrangement both scenarios share
+
+`ArrangeServiceAsync` stands up: an administrator (the §3.6 wizard), two menu items, a table, a guest who
+scans, self-registers with a passkey and joins, a live ordering island, and a live kitchen board. Two
+decisions in it are worth recording.
+
+**The kitchen board is the administrator's own browser.** §3.7 admits both `kitchen` and `administrator` to
+`/kitchen`, and an administrator covering the pass is a case the application deliberately supports —
+`KitchenBoard.razor` reads the actor role from the principal precisely so that one is not recorded as the
+other. Creating a separate kitchen account would mean `/administration/people/new`, a forced password
+change (§3.2), and a second sign-in, none of which either scenario asserts on. It is also not free to
+avoid: the administrator has TOTP from the wizard, so a *password* sign-in in a fresh context would hit the
+§3.5 challenge, and a *passkey* sign-in would need the credential, which belongs to the authenticator on the
+administrator's own context. Scenarios that are about a staff account's own journey will create one.
+
+**The board is opened before anything is sent.** An alert is a §9 broadcast to subscribers, and
+`KitchenBoard.razor` subscribes in `OnAfterRender(firstRender)` — which only runs on a circuit. A board
+opened after the send would show the queue perfectly well and would have heard nothing.
+
+The join secret is read out of the row rather than decoded off a paired display. These scenarios are about
+what happens after the guest sits down, and pairing a tablet to obtain a QR would put the whole of scenario
+2's apparatus in front of them; scenario 2 already proves that a real screen encodes exactly the code the
+table's secret produces, so nothing is assumed by computing one here.
+
+---
+
+#### Harness changes
+
+- `Harness/TableOrderJourneys.cs` (new) — `WaitForLiveSurfaceAsync`, `StageAsync`, `SendAsync`,
+  `BasketLineCountAsync`, `ReadCommittedLinesAsync`, `WaitForCommittedLinesAsync`, and the
+  `GuestOrderLine` / `GuestLineBadge` vocabulary. Every selector is scoped to `#table-order-surface`.
+- `Harness/KitchenJourneys.cs` (new) — `OpenAsync`, `WaitForLiveBoardAsync`, `ReadBoardAsync`,
+  `WaitForBoardAsync`, `FulfillLineAsync`, and the `KitchenBoardSnapshot` / `KitchenBoardLine` vocabulary.
+- `AdministrationJourneys.CreateMenuItemAsync` and the `MenuItemOnTheMenu` record.
+
+Two small habits worth keeping. **Items are selected by identifier, not by label**: the picker's label is
+the name, the formatted price, and possibly §7's *"(currently unavailable)"*, so matching it would make a
+scenario fail for a currency setting. **A line is found by reading the queue and comparing names in C#**,
+not by interpolating a name into a `:text-is('…')` selector — menu items are free text, and an apostrophe
+in *"Chef's soup"* is not something a scenario should have to know about.
+
+---
+
+#### What this slice does not do
+
+- **It does not arm the alert sound.** Recorded above; the badge count is the assertion §10.3 itself names.
+- **It does not assert the §10.2 reminder.** That is scenario 8, and it wants a short
+  `KITCHEN_SUBMISSION_REMINDER_SECONDS` rather than sixty seconds of waiting — a harness change, not a
+  product one.
+- **It does not touch `TableJoin.razor`.** The island's wrapper lives inside the component, so the static
+  parent is unchanged.
+- **It leaves scenario 5 for its own slice.** Two guests with two live circuits watching each other's
+  roster and totals is a different axis from this one, and folding it in here would have made a single
+  arrangement serve three scenarios badly.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -11483,6 +11540,207 @@ bounds concurrent hashes process-wide regardless. This is a named follow-up, not
   on the previous screen, so nudging them on the next one would be asking twice; the durable home is the
   `/account/passkeys` page, which already exists and is linked from the profile. The *sign-in* nudge remains
   outstanding, as recorded in M2's limitations.
+
+################################################################################
+# FILE: docs/_append/BUILD_PROGRESS-m6-slice-6.md
+################################################################################
+
+--- METADATA ---
+  File name:             BUILD_PROGRESS-m6-slice-6.md
+  Relative path:         docs/_append/BUILD_PROGRESS-m6-slice-6.md
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/_append/BUILD_PROGRESS-m6-slice-6.md
+  Size:                  11.5 KiB (11737 bytes)
+  Last modified:         2026-08-01 23:46:07.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 29144380
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               7dd865016b24f61ffd45c5bbd16024351263712fd0b74d5f761132abbdc5af5f
+  Last git commit:       2762659 2026-08-01 23:51:22 -0400 add claude response
+
+--- CONTENT ---
+### M6 Slice 6 — the kitchen hears the guest (landed)
+
+Two more of §16.3's fifteen: **4** (a guest stages two adds and a note, presses Send, and the kitchen
+gets exactly one alert with both lines pending) and **6** (the kitchen marks one line away and the
+guest's own screen re-badges it). They are the first scenarios in which a commit made by one browser has
+to be observed by a *second live circuit in another browser context* — everything before this watched a
+timer, a redirect, or a row.
+
+`dotnet test` stays at **971 total / 0 failed** (956 succeeded, 15 skipped) because no unit test was
+added; `MYRESTAURANT_E2E=1` goes from **6 passed / 9 skipped** to **8 passed / 7 skipped**. No migration,
+no schema change, no package change, no ADR edit, no `Program.cs` edit, nothing deleted.
+
+---
+
+#### The build was red, and the reason is worth writing down
+
+Slice 5 shipped `Harness/TableJourneys.cs` with this in it:
+
+```csharp
+string.Create(
+    CultureInfo.InvariantCulture,
+    $"Joining did not confirm; the table page is now showing {stage}. A grant is"
+    + " single-use and is cleared whatever the outcome (§4.4), so if this was a"
+    + " refusal the grant is already spent and a retry will not help."),
+```
+
+`error CS1620: Argument 2 must be passed with the 'ref' keyword`. The overload being bound is
+`string.Create(IFormatProvider?, ref DefaultInterpolatedStringHandler)`, and C# converts an addition to a
+handler only when the additive expression is composed **entirely** of interpolated strings. Roslyn's
+`Binder_Operators.cs` says so literally:
+
+```csharp
+&& left  is BoundUnconvertedInterpolatedString or BoundBinaryOperator { IsUnconvertedInterpolatedStringAddition: true }
+&& right is BoundUnconvertedInterpolatedString or BoundBinaryOperator { IsUnconvertedInterpolatedStringAddition: true }
+```
+
+A bare `" single-use…"` binds as a `BoundLiteral`, the whole expression collapses to a plain `string`, and
+the call no longer matches an overload it can bind by value. Prefixing every continuation with `$` fixes
+it, and a hole-less `$"…"` still qualifies — `BindInterpolatedString` returns a
+`BoundUnconvertedInterpolatedString` carrying a constant, not a literal node. The rule is now written into
+the file as a comment beside the call, because this is the second time it has been reintroduced.
+
+The same review found a quieter one three files over. `DisplayJourneys.WaitForLiveSurfaceAsync` wrapped its
+diagnostic in a **raw** string literal with trailing backslashes for line continuation — and raw string
+literals process no escape sequences at all, so every one of those backslashes and every newline it was
+meant to hide was being printed into the message. It compiled and no test failed on it; it just produced a
+mangled sentence at the exact moment somebody most needed to read one. Both are now concatenated
+interpolated strings, which is the shape the rest of the harness already uses.
+
+---
+
+#### One new attribute on two surfaces: `data-live`
+
+`TableDisplay.razor` has published `data-live` since Slice 4, for a reason that turned out not to be
+specific to displays: **a surface that never became interactive is indistinguishable from a live one**.
+Prerendering produces the whole document server-side, so the page looks completely correct and then never
+changes again.
+
+That hazard is worse, not better, on the other two live surfaces:
+
+- **The ordering island.** Every control on it is a click handler. On a dead island "Add to basket" lands
+  on nothing, and the first thing anybody learns is that the basket stayed empty — thirty seconds later,
+  with no mention of circuits. `TableOrderSurface.razor` now renders its whole tree inside
+  `<div class="order-surface" id="table-order-surface" data-live="…">`. That wrapper is also what
+  disambiguates the island's own `p.status-success` from the parent page's *"You have joined Table Four"*,
+  which is the same element on the same document and is on screen from the moment a join redirects back.
+- **The kitchen board.** A prerendered board lists what was outstanding when the page was requested, in the
+  right order, with the right waiting times, and then never alerts. A kitchen that has genuinely had no
+  orders for ten minutes looks exactly the same. This is §10's worst failure and the one nobody notices
+  while it is happening. `KitchenBoard.razor` already had `id="kitchen-board-surface"` for `js/kitchen.js`;
+  it gains `data-live` on the same element.
+
+The board also gains **`data-unseen-alerts`**, the §10.3 count as a number. The badge says it in English
+already, but that string carries pluralisation and an optional *"(n overdue)"* parenthetical, and the count
+is the one piece of state on that screen that exists **only in circuit memory** — everything else can be
+re-derived from the database. Publishing it means an operator can read it in dev tools and a scenario can
+assert on it without parsing prose to learn a fact the component already knows.
+
+No CSS changed. Nothing in `app.css` reaches into the ordering surface with a child combinator, so the
+wrapper is inert; `.order-totals > div` is internal to the tree it wraps.
+
+---
+
+#### Scenario 4 — "one loud alert" is a claim about the number one
+
+The scenario stages 1 × *Soup of the day* with the note *"No onions, extra hot"*, then 2 × *Steak pie*, and
+sends. Three things are asserted in an order that matters.
+
+**Before the send, the board is live and showing nothing.** That is what turns §11.1's *"nothing reaches
+the kitchen until you press Send"* from documentation into a test: a surface that wrote as it staged would
+have alerted already, and the board was subscribed and watching.
+
+**After the send, one predicate over both facts.** §9 publishes `OrderLinesChanged` **before**
+`KitchenAlert`, and `KitchenBoard.OnDomainNotification` handles each as it arrives — so there is a real
+window in which the queue has re-read and the alert has not yet been counted. A scenario that waited for
+two lines and *then* read the count would sample that window and report a silent kitchen. So the wait is
+`PendingLines.Count == 2 && UnseenAlertCount >= 1`, and the equality (`== 1`) is asserted on the snapshot
+that satisfied it — then re-read once at the end, after the guest surface has finished reacting, which
+turns "one alert so far" into "one alert, full stop".
+
+**One alert, not two.** Two adds in one send is one `order_event`, therefore one `kitchen_notification`
+row, therefore one `KitchenAlert` (§10.1). A count of two would mean the alert had gone per-line, which is
+how a busy service becomes a siren nobody can hear over. The whole of `AfterCommit`'s
+`if (result.KitchenNotificationWritten)` is what this asserts.
+
+`Sound is not armed and not asserted.` §10.3's arm control has to run inside a real user gesture to unlock
+browser audio, and what it unlocks is an `AudioContext` on a headless browser with no output device — "did
+it beep" is a question about Chromium's audio stack, not about this application. §10.3 itself names the
+visual badge as the fallback whenever sound is not working and makes the unseen count the record of what
+arrived; that count is the number the sound is played *from*, so asserting on it asserts on the alert.
+
+---
+
+#### Scenario 6 — the badge crosses a browser boundary
+
+One tap on one line (§11.2's *"tap a line → one fulfillment event"*, not *fulfill all*, because the half
+worth getting wrong is the **other** line staying where it was), and then nobody touches the guest's phone.
+§9 sends `LineFulfillmentChanged` to the sitting's members, the ordering island re-reads, and the chip goes
+from *With the kitchen* to *At your table*.
+
+The badge is read from the chip's **class** rather than its words: `chip-ok` is the state, "At your table"
+is copy, and a scenario that matched the copy would fail on a wording change and pass on a styling bug. The
+pass losing the line is asserted too — `kitchen_pending_line` excludes a fulfilled line (§8.3), so that is
+the same fact from the writing side rather than a second opinion.
+
+---
+
+#### The arrangement both scenarios share
+
+`ArrangeServiceAsync` stands up: an administrator (the §3.6 wizard), two menu items, a table, a guest who
+scans, self-registers with a passkey and joins, a live ordering island, and a live kitchen board. Two
+decisions in it are worth recording.
+
+**The kitchen board is the administrator's own browser.** §3.7 admits both `kitchen` and `administrator` to
+`/kitchen`, and an administrator covering the pass is a case the application deliberately supports —
+`KitchenBoard.razor` reads the actor role from the principal precisely so that one is not recorded as the
+other. Creating a separate kitchen account would mean `/administration/people/new`, a forced password
+change (§3.2), and a second sign-in, none of which either scenario asserts on. It is also not free to
+avoid: the administrator has TOTP from the wizard, so a *password* sign-in in a fresh context would hit the
+§3.5 challenge, and a *passkey* sign-in would need the credential, which belongs to the authenticator on the
+administrator's own context. Scenarios that are about a staff account's own journey will create one.
+
+**The board is opened before anything is sent.** An alert is a §9 broadcast to subscribers, and
+`KitchenBoard.razor` subscribes in `OnAfterRender(firstRender)` — which only runs on a circuit. A board
+opened after the send would show the queue perfectly well and would have heard nothing.
+
+The join secret is read out of the row rather than decoded off a paired display. These scenarios are about
+what happens after the guest sits down, and pairing a tablet to obtain a QR would put the whole of scenario
+2's apparatus in front of them; scenario 2 already proves that a real screen encodes exactly the code the
+table's secret produces, so nothing is assumed by computing one here.
+
+---
+
+#### Harness changes
+
+- `Harness/TableOrderJourneys.cs` (new) — `WaitForLiveSurfaceAsync`, `StageAsync`, `SendAsync`,
+  `BasketLineCountAsync`, `ReadCommittedLinesAsync`, `WaitForCommittedLinesAsync`, and the
+  `GuestOrderLine` / `GuestLineBadge` vocabulary. Every selector is scoped to `#table-order-surface`.
+- `Harness/KitchenJourneys.cs` (new) — `OpenAsync`, `WaitForLiveBoardAsync`, `ReadBoardAsync`,
+  `WaitForBoardAsync`, `FulfillLineAsync`, and the `KitchenBoardSnapshot` / `KitchenBoardLine` vocabulary.
+- `AdministrationJourneys.CreateMenuItemAsync` and the `MenuItemOnTheMenu` record.
+
+Two small habits worth keeping. **Items are selected by identifier, not by label**: the picker's label is
+the name, the formatted price, and possibly §7's *"(currently unavailable)"*, so matching it would make a
+scenario fail for a currency setting. **A line is found by reading the queue and comparing names in C#**,
+not by interpolating a name into a `:text-is('…')` selector — menu items are free text, and an apostrophe
+in *"Chef's soup"* is not something a scenario should have to know about.
+
+---
+
+#### What this slice does not do
+
+- **It does not arm the alert sound.** Recorded above; the badge count is the assertion §10.3 itself names.
+- **It does not assert the §10.2 reminder.** That is scenario 8, and it wants a short
+  `KITCHEN_SUBMISSION_REMINDER_SECONDS` rather than sixty seconds of waiting — a harness change, not a
+  product one.
+- **It does not touch `TableJoin.razor`.** The island's wrapper lives inside the component, so the static
+  parent is unchanged.
+- **It leaves scenario 5 for its own slice.** Two guests with two live circuits watching each other's
+  roster and totals is a different axis from this one, and folding it in here would have made a single
+  arrangement serve three scenarios badly.
 
 ################################################################################
 # FILE: docs/adr/0001-single-application-with-areas.md
@@ -39478,15 +39736,15 @@ else
   File name:             KitchenBoard.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Kitchen/KitchenBoard.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Kitchen/KitchenBoard.razor
-  Size:                  30.2 KiB (30906 bytes)
-  Last modified:         2026-07-27 09:11:31.000000000 -0400
+  Size:                  31.9 KiB (32625 bytes)
+  Last modified:         2026-08-01 23:46:07.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 26147162
+  Inode:                 29144365
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               e7f89f98c8c9578bff05e8f979d45f1ed03428ad9551cdbaf071af58356fc470
-  Last git commit:       4c041d1 2026-07-27 09:54:04 -0400 add claude changes
+  SHA-256:               5955c9c2b413aba16ec9442948e3fa6903ad26b1978cf3d56439235b0bfd3c09
+  Last git commit:       2762659 2026-08-01 23:51:22 -0400 add claude response
 
 --- CONTENT ---
 @page "/kitchen"
@@ -39528,7 +39786,10 @@ else
 
 <PageTitle>Kitchen</PageTitle>
 
-<section class="panel kitchen-board" id="kitchen-board-surface">
+@* data-live says whether a circuit produced this markup at all, and data-unseen-alerts publishes the
+   §10.3 count as a number rather than only as English inside the badge — see IsLiveAttributeValue. *@
+<section class="panel kitchen-board" id="kitchen-board-surface"
+         data-live="@IsLiveAttributeValue" data-unseen-alerts="@_alerts.UnseenCount">
     <div class="kitchen-header">
         <div>
             <p class="eyebrow">@Options.RestaurantName</p>
@@ -40026,6 +40287,25 @@ else
 
     [CascadingParameter]
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    /// <summary>
+    /// Whether a live circuit produced this markup — <c>"true"</c> only in interactive-server rendering,
+    /// <c>"false"</c> during the prerender pass. Published for the same reason <c>TableDisplay</c>
+    /// publishes it, and the stakes here are the highest of the three surfaces that do.
+    ///
+    /// <para>The board's whole job is to react. Prerendering renders the queue as it stood at the moment
+    /// of the request and then nothing ever arrives: no <c>KitchenAlert</c>, no re-read, no badge — and
+    /// a kitchen that has simply had no orders for ten minutes looks exactly the same. That is §10's
+    /// worst failure and the one nobody notices while it is happening. The attribute costs eight
+    /// characters and turns it into something an operator can see in dev tools.</para>
+    ///
+    /// <para><c>data-unseen-alerts</c> beside it is the §10.3 count as a number. The badge already says
+    /// it in English, but the count is the one piece of state on this screen that exists <em>only</em>
+    /// in circuit memory — everything else can be re-derived from the database — and reading it back out
+    /// of a sentence that also carries pluralisation and an overdue parenthetical means parsing prose to
+    /// learn a fact the component already knows.</para>
+    /// </summary>
+    private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {
@@ -41919,15 +42199,15 @@ else
   File name:             TableOrderSurface.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
-  Size:                  32.6 KiB (33342 bytes)
-  Last modified:         2026-07-28 15:15:42.000000000 -0400
+  Size:                  35.4 KiB (36236 bytes)
+  Last modified:         2026-08-01 23:46:07.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 26706698
+  Inode:                 29144367
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               2619d61545f2ce07a51f47493e5aad13675d827e5ebf88d6a49887fa1ddad898
-  Last git commit:       35d7749 2026-07-28 16:07:14 -0400 add claude changes
+  SHA-256:               4099f7e834f8a6ef0007090fd382d8d450ea23bdf8862a14b3a0c352b72ae963
+  Last git commit:       2762659 2026-08-01 23:51:22 -0400 add claude response
 
 --- CONTENT ---
 @using System.Globalization
@@ -41970,347 +42250,355 @@ else
    that is no longer the guest's to remove — it refuses only so the answer arrives at the moment of the
    tap instead of after a round trip. *@
 
-@if (!_loaded)
-{
-    <p class="lede">Loading your table…</p>
-}
-else if (_person is null)
-{
-    @* Only reachable if the cookie expired between the page render and the circuit starting. *@
-    <p class="status-error" role="alert">
-        Your session has ended. Please <a href="@AccountRoutes.SignIn">sign in</a> again to see your order.
-    </p>
-}
-else
-{
-    <h2 class="table-heading">Who is here</h2>
-
-    @if (_sitting is not null)
+@* One element around the whole island, and the reason is the attribute on it rather than the
+   layout. §11.1's hazard is the same one §11.5 has: a surface that never became interactive looks
+   exactly like a live one. Prerendering renders the picker, the basket and the totals; what it does
+   not render is anything that responds — every control here is an @@onclick, so on a dead island
+   "Add to basket" silently does nothing and the first thing anyone learns is that the basket stayed
+   empty. data-live is the one bit that differs, published the same way TableDisplay publishes it. *@
+<div class="order-surface" id="table-order-surface" data-live="@IsLiveAttributeValue">
+    @if (!_loaded)
     {
-        <p class="lede">
-            Open since @RestaurantClock.Time(_sitting.OpenedAt) —
-            @_roster.Count @(_roster.Count == 1 ? "person" : "people") at the table.
-        </p>
+        <p class="lede">Loading your table…</p>
     }
-
-    <ul class="table-roster">
-        @foreach (SittingMemberSummary member in _roster)
-        {
-            <li @key="member.PersonIdentifier">
-                <span class="table-roster-name">@member.RosterName</span>
-                @if (member.PersonIdentifier == Person)
-                {
-                    <span class="chip">you</span>
-                }
-                <span class="table-roster-joined">joined @RestaurantClock.Time(member.JoinedAt)</span>
-            </li>
-        }
-    </ul>
-
-    <hr class="table-rule" />
-
-    @if (_sitting is null)
+    else if (_person is null)
     {
-        @* §11.1: "On SittingClosed, the surface flips to a read-only settled-bill view." *@
-        <h2 class="table-heading">This sitting has been settled</h2>
-        <p class="lede">
-            The counter has closed and settled this table, so nothing more can be ordered against it.
-            What was ordered is below, and stays on <a href="/table/history">your order history</a>.
+        @* Only reachable if the cookie expired between the page render and the circuit starting. *@
+        <p class="status-error" role="alert">
+            Your session has ended. Please <a href="@AccountRoutes.SignIn">sign in</a> again to see your order.
         </p>
     }
     else
     {
-        <h2 class="table-heading">Your order</h2>
+        <h2 class="table-heading">Who is here</h2>
 
-        @if (_sendStatus is { } sendStatus)
+        @if (_sitting is not null)
         {
-            <p class="status-success" role="status">@sendStatus</p>
-        }
-
-        @if (_rejection is { Count: > 0 })
-        {
-            @* §6.5.9 is all-or-nothing at the granularity of the event, so the honest headline is that
-               nothing at all was written — not that "some items failed". *@
-            <div class="status-error" role="alert">
-                <p class="order-reject-lede">
-                    <strong>Nothing was sent.</strong> A send is accepted or refused as a whole, so your
-                    basket is exactly as you left it. Fix these and send again.
-                </p>
-                <ul class="order-reject-list">
-                    @foreach (RejectedOperation problem in _rejection)
-                    {
-                        <li><strong>@problem.What</strong> — @problem.Reason</li>
-                    }
-                </ul>
-            </div>
-        }
-
-        @if (_pruneNotice is { } pruneNotice)
-        {
-            <p class="status-error" role="status">@pruneNotice</p>
-        }
-
-        @* ---- staging area (§11.1) ------------------------------------------------------------ *@
-        <div class="order-picker">
-            <div class="form-field">
-                <label for="order-picker-item">Item</label>
-                <select id="order-picker-item" @bind="_pickedMenuItemId">
-                    <option value="">Choose something…</option>
-                    @foreach (MenuItemSummary item in _menu)
-                    {
-                        @* §7: a deactivated item stays on the menu, marked, and cannot be picked —
-                           "the guest sees that the salmon exists and is out". *@
-                        <option value="@item.MenuItemIdentifier" disabled="@(!item.IsActive)">
-                            @item.Name — @Money(item.PriceAmount)@(item.IsActive ? string.Empty : " (currently unavailable)")
-                        </option>
-                    }
-                </select>
-            </div>
-
-            <div class="form-field order-picker-quantity">
-                <label for="order-picker-quantity">Quantity</label>
-                <input id="order-picker-quantity" type="number" inputmode="numeric"
-                       min="@OrderStaging.MinimumQuantity" max="@OrderStaging.MaximumQuantity" step="1"
-                       @bind="_pickedQuantity" />
-            </div>
-
-            <div class="form-field">
-                <label for="order-picker-note">Anything to note? <span class="optional">(optional)</span></label>
-                <input id="order-picker-note" type="text" maxlength="200" autocomplete="off"
-                       placeholder="No onions, extra hot…" @bind="_pickedNote" />
-            </div>
-
-            <div class="form-actions">
-                <button type="button" class="button-secondary" @onclick="StageItem">Add to basket</button>
-            </div>
-
-            @if (_stagingNotice is { } stagingNotice)
-            {
-                <p class="status-error" role="alert">@stagingNotice</p>
-            }
-        </div>
-
-        @if (_menu.Count == 0)
-        {
-            <p class="muted">
-                There is nothing on the menu yet. Please ask a member of staff.
+            <p class="lede">
+                Open since @RestaurantClock.Time(_sitting.OpenedAt) —
+                @_roster.Count @(_roster.Count == 1 ? "person" : "people") at the table.
             </p>
         }
 
-        @if (_staging.IsEmpty)
+        <ul class="table-roster">
+            @foreach (SittingMemberSummary member in _roster)
+            {
+                <li @key="member.PersonIdentifier">
+                    <span class="table-roster-name">@member.RosterName</span>
+                    @if (member.PersonIdentifier == Person)
+                    {
+                        <span class="chip">you</span>
+                    }
+                    <span class="table-roster-joined">joined @RestaurantClock.Time(member.JoinedAt)</span>
+                </li>
+            }
+        </ul>
+
+        <hr class="table-rule" />
+
+        @if (_sitting is null)
         {
-            <p class="muted order-basket-empty">
-                Your basket is empty. Pick something above — nothing reaches the kitchen until you press
-                <strong>Send</strong>.
+            @* §11.1: "On SittingClosed, the surface flips to a read-only settled-bill view." *@
+            <h2 class="table-heading">This sitting has been settled</h2>
+            <p class="lede">
+                The counter has closed and settled this table, so nothing more can be ordered against it.
+                What was ordered is below, and stays on <a href="/table/history">your order history</a>.
             </p>
         }
         else
         {
-            <ul class="order-basket">
-                @foreach (StagedOrderLine staged in _staging.Lines)
-                {
-                    MenuItemSummary? item = MenuItem(staged.MenuItemIdentifier);
+            <h2 class="table-heading">Your order</h2>
 
-                    <li class="order-basket-line" @key="staged.StagingIdentifier">
+            @if (_sendStatus is { } sendStatus)
+            {
+                <p class="status-success" role="status">@sendStatus</p>
+            }
+
+            @if (_rejection is { Count: > 0 })
+            {
+                @* §6.5.9 is all-or-nothing at the granularity of the event, so the honest headline is that
+                   nothing at all was written — not that "some items failed". *@
+                <div class="status-error" role="alert">
+                    <p class="order-reject-lede">
+                        <strong>Nothing was sent.</strong> A send is accepted or refused as a whole, so your
+                        basket is exactly as you left it. Fix these and send again.
+                    </p>
+                    <ul class="order-reject-list">
+                        @foreach (RejectedOperation problem in _rejection)
+                        {
+                            <li><strong>@problem.What</strong> — @problem.Reason</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (_pruneNotice is { } pruneNotice)
+            {
+                <p class="status-error" role="status">@pruneNotice</p>
+            }
+
+            @* ---- staging area (§11.1) ------------------------------------------------------------ *@
+            <div class="order-picker">
+                <div class="form-field">
+                    <label for="order-picker-item">Item</label>
+                    <select id="order-picker-item" @bind="_pickedMenuItemId">
+                        <option value="">Choose something…</option>
+                        @foreach (MenuItemSummary item in _menu)
+                        {
+                            @* §7: a deactivated item stays on the menu, marked, and cannot be picked —
+                               "the guest sees that the salmon exists and is out". *@
+                            <option value="@item.MenuItemIdentifier" disabled="@(!item.IsActive)">
+                                @item.Name — @Money(item.PriceAmount)@(item.IsActive ? string.Empty : " (currently unavailable)")
+                            </option>
+                        }
+                    </select>
+                </div>
+
+                <div class="form-field order-picker-quantity">
+                    <label for="order-picker-quantity">Quantity</label>
+                    <input id="order-picker-quantity" type="number" inputmode="numeric"
+                           min="@OrderStaging.MinimumQuantity" max="@OrderStaging.MaximumQuantity" step="1"
+                           @bind="_pickedQuantity" />
+                </div>
+
+                <div class="form-field">
+                    <label for="order-picker-note">Anything to note? <span class="optional">(optional)</span></label>
+                    <input id="order-picker-note" type="text" maxlength="200" autocomplete="off"
+                           placeholder="No onions, extra hot…" @bind="_pickedNote" />
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="button-secondary" @onclick="StageItem">Add to basket</button>
+                </div>
+
+                @if (_stagingNotice is { } stagingNotice)
+                {
+                    <p class="status-error" role="alert">@stagingNotice</p>
+                }
+            </div>
+
+            @if (_menu.Count == 0)
+            {
+                <p class="muted">
+                    There is nothing on the menu yet. Please ask a member of staff.
+                </p>
+            }
+
+            @if (_staging.IsEmpty)
+            {
+                <p class="muted order-basket-empty">
+                    Your basket is empty. Pick something above — nothing reaches the kitchen until you press
+                    <strong>Send</strong>.
+                </p>
+            }
+            else
+            {
+                <ul class="order-basket">
+                    @foreach (StagedOrderLine staged in _staging.Lines)
+                    {
+                        MenuItemSummary? item = MenuItem(staged.MenuItemIdentifier);
+
+                        <li class="order-basket-line" @key="staged.StagingIdentifier">
+                            <div class="order-line-main">
+                                <span class="order-line-name">@(item?.Name ?? staged.MenuItemName)</span>
+                                <span class="order-line-price">@Money(StagedLineTotal(staged))</span>
+                            </div>
+
+                            @if (staged.CustomizationNote is { } note)
+                            {
+                                <p class="order-line-note">“@note”</p>
+                            }
+
+                            @if (item is null || !item.IsActive)
+                            {
+                                @* §7: "guest staging areas mark newly-inactive staged items and the send
+                                   re-validates server-side regardless". Marked, not silently dropped. *@
+                                <p class="order-line-warning">
+                                    This became unavailable while it was in your basket. Take it out, or the
+                                    whole send will be refused.
+                                </p>
+                            }
+
+                            <div class="order-basket-controls">
+                                <label class="order-basket-quantity">
+                                    <span>Quantity</span>
+                                    <input type="number" inputmode="numeric"
+                                           min="@OrderStaging.MinimumQuantity" max="@OrderStaging.MaximumQuantity" step="1"
+                                           value="@staged.Quantity"
+                                           @onchange="args => ChangeStagedQuantity(staged.StagingIdentifier, args)" />
+                                </label>
+                                <button type="button" class="link-button danger"
+                                        @onclick="() => Unstage(staged.StagingIdentifier)">
+                                    Take out
+                                </button>
+                            </div>
+                        </li>
+                    }
+
+                    @foreach (StagedRemoval removal in _staging.Removals)
+                    {
+                        <li class="order-basket-line is-removal" @key="removal.OrderLineIdentifier">
+                            <div class="order-line-main">
+                                <span class="order-line-name">Remove @removal.Description</span>
+                            </div>
+                            <div class="order-basket-controls">
+                                <button type="button" class="link-button"
+                                        @onclick="() => _staging.SetMarkedForRemoval(removal.OrderLineIdentifier, removal.Description, false)">
+                                    Keep it after all
+                                </button>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+
+            <div class="form-actions order-send">
+                <button type="button" class="button-primary" disabled="@(_staging.IsEmpty || _sending)"
+                        @onclick="SendAsync">
+                    @(_sending ? "Sending…" : SendLabel)
+                </button>
+                @if (!_staging.IsEmpty && StagedTotal > 0m)
+                {
+                    <span class="order-send-total">@Money(StagedTotal) to add</span>
+                }
+            </div>
+        }
+
+        @* ---- the committed living order (§11.1) ---------------------------------------------------- *@
+        <h3 class="order-subheading">@(_sitting is null ? "What you ordered" : "Sent to the kitchen")</h3>
+
+        @if (_myLines.Count == 0)
+        {
+            <p class="muted">You have not sent anything yet.</p>
+        }
+        else
+        {
+            <ul class="order-lines">
+                @foreach (NarratedOrderLine line in _myLines)
+                {
+                    <li class="order-line @(line.IsRemoved ? "is-removed" : string.Empty)" @key="line.OrderLineIdentifier">
                         <div class="order-line-main">
-                            <span class="order-line-name">@(item?.Name ?? staged.MenuItemName)</span>
-                            <span class="order-line-price">@Money(StagedLineTotal(staged))</span>
+                            <span class="order-line-name">@line.Quantity × @MenuItemName(line.MenuItemIdentifier)</span>
+                            <span class="order-line-price">@Money(line.Quantity * line.CurrentUnitPriceAmount)</span>
                         </div>
 
-                        @if (staged.CustomizationNote is { } note)
+                        @if (line.CustomizationNote is { } note)
                         {
                             <p class="order-line-note">“@note”</p>
                         }
 
-                        @if (item is null || !item.IsActive)
+                        <p class="order-line-badges">
+                            @if (line.IsRemoved)
+                            {
+                                <span class="chip chip-warn">Removed</span>
+                            }
+                            else if (line.IsFulfilled)
+                            {
+                                <span class="chip chip-ok">At your table</span>
+                            }
+                            else
+                            {
+                                <span class="chip">With the kitchen</span>
+                            }
+                            <span class="order-line-when">sent @RestaurantClock.Time(line.AddedAt)</span>
+                        </p>
+
+                        @if (line.IsRemoved)
                         {
-                            @* §7: "guest staging areas mark newly-inactive staged items and the send
-                               re-validates server-side regardless". Marked, not silently dropped. *@
-                            <p class="order-line-warning">
-                                This became unavailable while it was in your basket. Take it out, or the
-                                whole send will be refused.
+                            @* §11.1: "removed lines struck-through with actor + reason". *@
+                            <p class="order-line-detail">
+                                Taken off by @ActorText(line.RemovedByActorRole, line.RemovedByActorPersonIdentifier, Person)@(line.RemovalReason is { } removalReason ? $" — {removalReason}" : string.Empty).
                             </p>
                         }
 
-                        <div class="order-basket-controls">
-                            <label class="order-basket-quantity">
-                                <span>Quantity</span>
-                                <input type="number" inputmode="numeric"
-                                       min="@OrderStaging.MinimumQuantity" max="@OrderStaging.MaximumQuantity" step="1"
-                                       value="@staged.Quantity"
-                                       @onchange="args => ChangeStagedQuantity(staged.StagingIdentifier, args)" />
-                            </label>
-                            <button type="button" class="link-button danger"
-                                    @onclick="() => Unstage(staged.StagingIdentifier)">
-                                Take out
-                            </button>
-                        </div>
-                    </li>
-                }
+                        @foreach (NarratedPriceAdjustment adjustment in line.PriceAdjustments)
+                        {
+                            @* §11.1: "price adjustments shown old → new with reason". *@
+                            <p class="order-line-detail">
+                                Price changed from <s>@Money(adjustment.PreviousUnitPriceAmount)</s>
+                                to <strong>@Money(adjustment.NewUnitPriceAmount)</strong>
+                                by @DescribeRole(adjustment.ActorRole) — @adjustment.Reason.
+                            </p>
+                        }
 
-                @foreach (StagedRemoval removal in _staging.Removals)
-                {
-                    <li class="order-basket-line is-removal" @key="removal.OrderLineIdentifier">
-                        <div class="order-line-main">
-                            <span class="order-line-name">Remove @removal.Description</span>
-                        </div>
-                        <div class="order-basket-controls">
-                            <button type="button" class="link-button"
-                                    @onclick="() => _staging.SetMarkedForRemoval(removal.OrderLineIdentifier, removal.Description, false)">
-                                Keep it after all
-                            </button>
-                        </div>
+                        @if (_sitting is not null && line.GuestMayRemove(Person))
+                        {
+                            <label class="order-line-remove">
+                                <input type="checkbox"
+                                       checked="@_staging.IsMarkedForRemoval(line.OrderLineIdentifier)"
+                                       @onchange="args => ToggleRemoval(line, args)" />
+                                <span>Take this off my order on the next send</span>
+                            </label>
+                        }
                     </li>
                 }
             </ul>
         }
 
-        <div class="form-actions order-send">
-            <button type="button" class="button-primary" disabled="@(_staging.IsEmpty || _sending)"
-                    @onclick="SendAsync">
-                @(_sending ? "Sending…" : SendLabel)
-            </button>
-            @if (!_staging.IsEmpty && StagedTotal > 0m)
-            {
-                <span class="order-send-total">@Money(StagedTotal) to add</span>
-            }
-        </div>
-    }
+        @* ---- totals and the rest of the party (§11.1) ---------------------------------------------- *@
+        @* A <dl> with <div> groupings — dt/dd outside a definition list is invalid HTML5, and the div
+           wrappers are what .order-totals lays out. The same shape .account-facts already uses. *@
+        <dl class="order-totals">
+            <div>
+                <dt>Your total</dt>
+                <dd>@Money(MyTotal)</dd>
+            </div>
+            <div>
+                <dt>Table total</dt>
+                <dd>@Money(TableTotal)</dd>
+            </div>
+        </dl>
 
-    @* ---- the committed living order (§11.1) ---------------------------------------------------- *@
-    <h3 class="order-subheading">@(_sitting is null ? "What you ordered" : "Sent to the kitchen")</h3>
+        <h3 class="order-subheading">@(_sitting is null ? "The settled bill" : "The rest of the table")</h3>
 
-    @if (_myLines.Count == 0)
-    {
-        <p class="muted">You have not sent anything yet.</p>
-    }
-    else
-    {
-        <ul class="order-lines">
-            @foreach (NarratedOrderLine line in _myLines)
-            {
-                <li class="order-line @(line.IsRemoved ? "is-removed" : string.Empty)" @key="line.OrderLineIdentifier">
-                    <div class="order-line-main">
-                        <span class="order-line-name">@line.Quantity × @MenuItemName(line.MenuItemIdentifier)</span>
-                        <span class="order-line-price">@Money(line.Quantity * line.CurrentUnitPriceAmount)</span>
-                    </div>
+        @if (OtherPeople.Count == 0)
+        {
+            <p class="muted">Nobody else at this table has ordered yet.</p>
+        }
+        else
+        {
+            <ul class="order-party">
+                @foreach (SittingBillEntry entry in OtherPeople)
+                {
+                    <li class="order-party-order" @key="entry.GuestOrderIdentifier">
+                        <div class="order-line-main">
+                            <span class="order-line-name">@entry.BillName</span>
+                            <span class="order-line-price">@Money(entry.PersonTotalAmount)</span>
+                        </div>
 
-                    @if (line.CustomizationNote is { } note)
-                    {
-                        <p class="order-line-note">“@note”</p>
-                    }
-
-                    <p class="order-line-badges">
-                        @if (line.IsRemoved)
-                        {
-                            <span class="chip chip-warn">Removed</span>
+                        @{
+                            IReadOnlyList<OrderLineView> theirLines = LinesFor(entry.GuestOrderIdentifier);
                         }
-                        else if (line.IsFulfilled)
+
+                        @if (theirLines.Count == 0)
                         {
-                            <span class="chip chip-ok">At your table</span>
+                            <p class="muted">Nothing on their order right now.</p>
                         }
                         else
                         {
-                            <span class="chip">With the kitchen</span>
+                            <ul class="order-party-lines">
+                                @foreach (OrderLineView theirLine in theirLines)
+                                {
+                                    <li @key="theirLine.OrderLineIdentifier">
+                                        <span>@theirLine.Quantity × @theirLine.MenuItemName</span>
+                                        @if (theirLine.IsFulfilled)
+                                        {
+                                            <span class="chip chip-ok">At the table</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="chip">With the kitchen</span>
+                                        }
+                                    </li>
+                                }
+                            </ul>
                         }
-                        <span class="order-line-when">sent @RestaurantClock.Time(line.AddedAt)</span>
-                    </p>
-
-                    @if (line.IsRemoved)
-                    {
-                        @* §11.1: "removed lines struck-through with actor + reason". *@
-                        <p class="order-line-detail">
-                            Taken off by @ActorText(line.RemovedByActorRole, line.RemovedByActorPersonIdentifier, Person)@(line.RemovalReason is { } removalReason ? $" — {removalReason}" : string.Empty).
-                        </p>
-                    }
-
-                    @foreach (NarratedPriceAdjustment adjustment in line.PriceAdjustments)
-                    {
-                        @* §11.1: "price adjustments shown old → new with reason". *@
-                        <p class="order-line-detail">
-                            Price changed from <s>@Money(adjustment.PreviousUnitPriceAmount)</s>
-                            to <strong>@Money(adjustment.NewUnitPriceAmount)</strong>
-                            by @DescribeRole(adjustment.ActorRole) — @adjustment.Reason.
-                        </p>
-                    }
-
-                    @if (_sitting is not null && line.GuestMayRemove(Person))
-                    {
-                        <label class="order-line-remove">
-                            <input type="checkbox"
-                                   checked="@_staging.IsMarkedForRemoval(line.OrderLineIdentifier)"
-                                   @onchange="args => ToggleRemoval(line, args)" />
-                            <span>Take this off my order on the next send</span>
-                        </label>
-                    }
-                </li>
-            }
-        </ul>
+                    </li>
+                }
+            </ul>
+        }
     }
-
-    @* ---- totals and the rest of the party (§11.1) ---------------------------------------------- *@
-    @* A <dl> with <div> groupings — dt/dd outside a definition list is invalid HTML5, and the div
-       wrappers are what .order-totals lays out. The same shape .account-facts already uses. *@
-    <dl class="order-totals">
-        <div>
-            <dt>Your total</dt>
-            <dd>@Money(MyTotal)</dd>
-        </div>
-        <div>
-            <dt>Table total</dt>
-            <dd>@Money(TableTotal)</dd>
-        </div>
-    </dl>
-
-    <h3 class="order-subheading">@(_sitting is null ? "The settled bill" : "The rest of the table")</h3>
-
-    @if (OtherPeople.Count == 0)
-    {
-        <p class="muted">Nobody else at this table has ordered yet.</p>
-    }
-    else
-    {
-        <ul class="order-party">
-            @foreach (SittingBillEntry entry in OtherPeople)
-            {
-                <li class="order-party-order" @key="entry.GuestOrderIdentifier">
-                    <div class="order-line-main">
-                        <span class="order-line-name">@entry.BillName</span>
-                        <span class="order-line-price">@Money(entry.PersonTotalAmount)</span>
-                    </div>
-
-                    @{
-                        IReadOnlyList<OrderLineView> theirLines = LinesFor(entry.GuestOrderIdentifier);
-                    }
-
-                    @if (theirLines.Count == 0)
-                    {
-                        <p class="muted">Nothing on their order right now.</p>
-                    }
-                    else
-                    {
-                        <ul class="order-party-lines">
-                            @foreach (OrderLineView theirLine in theirLines)
-                            {
-                                <li @key="theirLine.OrderLineIdentifier">
-                                    <span>@theirLine.Quantity × @theirLine.MenuItemName</span>
-                                    @if (theirLine.IsFulfilled)
-                                    {
-                                        <span class="chip chip-ok">At the table</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="chip">With the kitchen</span>
-                                    }
-                                </li>
-                            }
-                        </ul>
-                    }
-                </li>
-            }
-        </ul>
-    }
-}
+</div>
 
 @code {
     /// <summary>One refused operation, already turned into two readable halves for the panel (§6.5.9).</summary>
@@ -42389,6 +42677,20 @@ else
             return count == 0 ? "Send to the kitchen" : $"Send {count} change{(count == 1 ? string.Empty : "s")}";
         }
     }
+
+    /// <summary>
+    /// Whether a live circuit produced this markup — <c>"true"</c> only in interactive-server rendering,
+    /// <c>"false"</c> during the prerender pass. The same attribute, for the same reason, as
+    /// <c>TableDisplay</c>'s.
+    ///
+    /// <para>This island is prerendered, so the picker, the basket and the totals all appear before any
+    /// circuit exists — and every control on it is a click handler, which means a surface that never
+    /// became interactive is indistinguishable from a live one until somebody taps something and nothing
+    /// happens. "The basket stayed empty" is two steps from "no circuit was established", and the
+    /// second is the sentence worth having. One attribute is what makes it available to an operator in
+    /// dev tools and to the §16.3 scenarios that drive this surface.</para>
+    /// </summary>
+    private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {
@@ -66675,15 +66977,15 @@ public sealed class UuidV7IdentifierFactoryTests
   File name:             EndToEndScenarios.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
-  Size:                  30.7 KiB (31473 bytes)
-  Last modified:         2026-08-01 20:11:12.000000000 -0400
+  Size:                  44.0 KiB (45088 bytes)
+  Last modified:         2026-08-01 23:46:07.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 29043175
+  Inode:                 29144370
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               f2ef4125b4d41915c83c283f05fef0681160f490be0aad65f93fad2060fb6136
-  Last git commit:       17865c3 2026-08-01 21:49:29 -0400 add claude changes
+  SHA-256:               ed4d261c23e6246f91e4fd18f97711038c614b306e0e3459ba8b2fcf4b00ddce
+  Last git commit:       2762659 2026-08-01 23:51:22 -0400 add claude response
 
 --- CONTENT ---
 using System.Security.Cryptography;
@@ -66701,7 +67003,7 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
 /// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// <para>Six are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
+/// <para>Eight are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
 /// WebAuthn attestation and a real TOTP confirmation), <b>13</b> (a passkey sign-in of a TOTP-enrolled
 /// person must not be challenged for a code) and <b>14</b> (the join-token window arithmetic as a guest
 /// experiences it) — chosen because between them they exercise the whole harness. M6 Slice 3 adds
@@ -66710,7 +67012,10 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// are the two scenarios about the rotating code as a <em>screen</em> rather than as a URL. M6 Slice 5
 /// adds <b>3</b> (a guest scans, self-registers with a passkey, and joins on the grant after the code
 /// they scanned has expired), which is the first scenario driven entirely by somebody with no account
-/// and no role — and the first that needed a product surface built before it could be written.</para>
+/// and no role — and the first that needed a product surface built before it could be written. M6
+/// Slice 6 adds <b>4</b> (a guest stages two adds and a note, sends, and the kitchen gets exactly one
+/// alert with both lines pending) and <b>6</b> (the kitchen marks one line away and the guest's own
+/// screen re-badges it), the first two that watch §9's live updates cross between two circuits.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -67099,10 +67404,92 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
     // -------------------------------------------------------------------------------------------
 
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Guest_StagesAddsAndSend_KitchenGetsOneAlert()
+    // -------------------------------------------------------------------------------------------
+    // 4. Guest stages 2 adds + note → Send → kitchen gets one loud alert → lines pending.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Guest_StagesAddsAndSend_KitchenGetsOneAlert()
     {
-        // 4. Guest stages 2 adds + note → Send → kitchen gets one loud alert → lines pending.
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Four";
+        const string customizationNote = "No onions, extra hot";
+        GuestAccount guestAccount = new("e2e.guest.four", "Four Guest");
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+
+        ArrangedService service = await ArrangeServiceAsync(
+            instance, tableLabel, guestAccount, cancellationToken);
+
+        // The surface under test belongs to the table the administrator created, rather than to some
+        // other sitting this guest might hold — §5.1 allows several at once, and the URL is what scopes
+        // the one on screen.
+        Assert.Contains(service.TableIdentifier.ToString("D"), service.Guest.Url, StringComparison.Ordinal);
+
+        // (a) Two adds and a note, staged. Nothing has reached the kitchen yet, and the board being
+        // live and watching is what makes that an assertion rather than an assumption: §11.1 says the
+        // basket is local until Send, and a surface that wrote as it staged would have alerted here.
+        await TableOrderJourneys.StageAsync(service.Guest, service.Soup, 1, customizationNote);
+        await TableOrderJourneys.StageAsync(service.Guest, service.Pie, 2);
+
+        Assert.Equal(2, await TableOrderJourneys.BasketLineCountAsync(service.Guest));
+
+        KitchenBoardSnapshot beforeSend = await KitchenJourneys.ReadBoardAsync(service.Kitchen);
+        Assert.Equal(0, beforeSend.UnseenAlertCount);
+        Assert.Empty(beforeSend.PendingLines);
+
+        // (b) Send. §6.5: one guest_submission owning both adds, priced inside the transaction.
+        string confirmation = await TableOrderJourneys.SendAsync(service.Guest);
+
+        Assert.Contains("2 items", confirmation, StringComparison.Ordinal);
+
+        // (c) The board, waited for as one predicate over both facts rather than two waits in a row.
+        // §9 publishes OrderLinesChanged before KitchenAlert and the board handles each as it arrives,
+        // so there is a real window in which the queue has already re-read and the alert has not yet
+        // been counted — a scenario that sampled it would report a silent kitchen.
+        KitchenBoardSnapshot board = await KitchenJourneys.WaitForBoardAsync(
+            service.Kitchen,
+            snapshot => snapshot.PendingLines.Count == 2 && snapshot.UnseenAlertCount >= 1,
+            LiveUpdatePatience,
+            "two lines on the pass and at least one unacknowledged alert",
+            cancellationToken);
+
+        // §16.3's word is "one". Two adds in one send is one order event and therefore one
+        // kitchen_notification row and one alert (§10.1); a count of two would mean the alert had
+        // become per-line, which is how a busy service turns into a siren nobody can hear over.
+        Assert.Equal(1, board.UnseenAlertCount);
+
+        // "Lines pending", in the kitchen's own terms: one row per order line, the quantities the guest
+        // chose, and §11.2's prominent customization note against the line it belongs to.
+        KitchenBoardLine soupOnThePass =
+            Assert.Single(board.PendingLines.Where(line => line.Name == service.Soup.Name));
+        KitchenBoardLine pieOnThePass =
+            Assert.Single(board.PendingLines.Where(line => line.Name == service.Pie.Name));
+
+        Assert.Equal(1, soupOnThePass.Quantity);
+        Assert.Equal(customizationNote, soupOnThePass.Note);
+        Assert.Equal(2, pieOnThePass.Quantity);
+        Assert.Null(pieOnThePass.Note);
+
+        // (d) The same two lines from the other end, and the basket emptied — §11.1 clears it only on
+        // an accepted event, so a full basket here would mean the confirmation was about something else.
+        IReadOnlyList<GuestOrderLine> guestLines = await TableOrderJourneys.WaitForCommittedLinesAsync(
+            service.Guest,
+            lines => lines.Count == 2,
+            LiveUpdatePatience,
+            "both sent lines on the guest's own order",
+            cancellationToken);
+
+        Assert.All(guestLines, line => Assert.Equal(GuestLineBadge.WithTheKitchen, line.Badge));
+        Assert.Equal(0, await TableOrderJourneys.BasketLineCountAsync(service.Guest));
+
+        // (e) Still one. Re-read now that both broadcasts have long since landed and the guest surface
+        // has finished reacting to them, which turns "one alert so far" into "one alert, full stop".
+        KitchenBoardSnapshot settled = await KitchenJourneys.ReadBoardAsync(service.Kitchen);
+
+        Assert.Equal(1, settled.UnseenAlertCount);
     }
 
     [Fact(Skip = PendingHarnessExtension)]
@@ -67112,10 +67499,78 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         //    roster update. Needs two live circuits in two contexts at once.
     }
 
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Kitchen_FulfillsLine_GuestSeesFulfilledBadge()
+    // -------------------------------------------------------------------------------------------
+    // 6. Kitchen fulfills one line → guest sees fulfilled badge.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Kitchen_FulfillsLine_GuestSeesFulfilledBadge()
     {
-        // 6. Kitchen fulfills one line → guest sees fulfilled badge.
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Six";
+        GuestAccount guestAccount = new("e2e.guest.six", "Six Guest");
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+
+        ArrangedService service = await ArrangeServiceAsync(
+            instance, tableLabel, guestAccount, cancellationToken);
+
+        await TableOrderJourneys.StageAsync(service.Guest, service.Soup, 1);
+        await TableOrderJourneys.StageAsync(service.Guest, service.Pie, 1);
+        await TableOrderJourneys.SendAsync(service.Guest);
+
+        await KitchenJourneys.WaitForBoardAsync(
+            service.Kitchen,
+            snapshot => snapshot.PendingLines.Count == 2,
+            LiveUpdatePatience,
+            "both of the guest's lines on the pass",
+            cancellationToken);
+
+        // Both lines start with the kitchen on the guest's own screen. Asserted before the tap, so that
+        // the badge below is a change rather than a state the surface happened to be born in.
+        IReadOnlyList<GuestOrderLine> beforeFulfillment = await TableOrderJourneys.WaitForCommittedLinesAsync(
+            service.Guest,
+            lines => lines.Count == 2,
+            LiveUpdatePatience,
+            "both sent lines on the guest's own order",
+            cancellationToken);
+
+        Assert.All(beforeFulfillment, line => Assert.Equal(GuestLineBadge.WithTheKitchen, line.Badge));
+
+        // §11.2: "tap a line → one fulfillment event". One line, not the whole ticket, because the half
+        // of this scenario worth getting wrong is the other line staying where it was.
+        await KitchenJourneys.FulfillLineAsync(service.Kitchen, service.Soup.Name);
+
+        // Nobody touched the guest's phone. §9 sends LineFulfillmentChanged to the sitting's members and
+        // the surface re-reads; that path — a second circuit, in a second browser context, reacting to a
+        // commit in a first — is the whole of what this scenario proves.
+        IReadOnlyList<GuestOrderLine> afterFulfillment = await TableOrderJourneys.WaitForCommittedLinesAsync(
+            service.Guest,
+            lines => lines.Any(line => line.Badge == GuestLineBadge.AtYourTable),
+            LiveUpdatePatience,
+            "a line badged as at the table",
+            cancellationToken);
+
+        GuestOrderLine soupLine = Assert.Single(afterFulfillment
+            .Where(line => line.Name.Contains(service.Soup.Name, StringComparison.Ordinal)));
+        GuestOrderLine pieLine = Assert.Single(afterFulfillment
+            .Where(line => line.Name.Contains(service.Pie.Name, StringComparison.Ordinal)));
+
+        Assert.Equal(GuestLineBadge.AtYourTable, soupLine.Badge);
+        Assert.Equal(GuestLineBadge.WithTheKitchen, pieLine.Badge);
+
+        // And the pass is one line lighter — kitchen_pending_line excludes a fulfilled line (§8.3), so
+        // the board losing it is the same fact from the writing side rather than a second opinion.
+        KitchenBoardSnapshot board = await KitchenJourneys.WaitForBoardAsync(
+            service.Kitchen,
+            snapshot => snapshot.PendingLines.Count == 1,
+            LiveUpdatePatience,
+            "one line left on the pass",
+            cancellationToken);
+
+        Assert.Equal(service.Pie.Name, Assert.Single(board.PendingLines).Name);
     }
 
     [Fact(Skip = PendingHarnessExtension)]
@@ -67193,6 +67648,86 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     private static readonly TimeSpan InteractivityPatience = TimeSpan.FromSeconds(30);
 
     /// <summary>
+    /// How long to wait for a §9 broadcast to reach another circuit and repaint it. The broadcaster is
+    /// in-process and the queries behind each re-read are small and indexed, so the honest expectation is
+    /// milliseconds; thirty seconds is the same patience every other page operation gets, and is here to
+    /// absorb a container that is busy compiling somebody else's scenario rather than to allow for
+    /// anything this code does. A timeout at this length means the notification did not arrive at all.
+    /// </summary>
+    private static readonly TimeSpan LiveUpdatePatience = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// A restaurant mid-service: an administrator standing at the kitchen board, a guest seated at a
+    /// table with a live ordering surface, and two things on the menu to order.
+    /// </summary>
+    private sealed record ArrangedService(
+        IPage Kitchen,
+        IPage Guest,
+        Guid TableIdentifier,
+        MenuItemOnTheMenu Soup,
+        MenuItemOnTheMenu Pie);
+
+    /// <summary>
+    /// Everything §16.3 scenarios 4 and 6 need before their first interesting line, arranged the way a
+    /// restaurant would arrange it: an administrator bootstraps, puts two things on the menu and creates
+    /// a table; a guest scans it, registers, and joins; the kitchen board is opened and becomes live.
+    ///
+    /// <para><b>The kitchen board is the administrator's own browser, and that is deliberate.</b> §3.7
+    /// admits both <c>kitchen</c> and <c>administrator</c> to <c>/kitchen</c>, and an administrator
+    /// covering the pass is a real thing the application supports — <c>KitchenBoard.razor</c> goes out of
+    /// its way to record them as themselves rather than as the kitchen. Standing up a separate kitchen
+    /// account would mean <c>/administration/people/new</c>, a forced password change (§3.2), and a
+    /// second sign-in, none of which either scenario asserts on. Scenarios that are <em>about</em> a
+    /// staff account's own journey will create one.</para>
+    ///
+    /// <para><b>The board is opened before anything is sent.</b> An alert is a §9 broadcast to
+    /// subscribers and <c>KitchenBoard.razor</c> subscribes on its first interactive render. A board
+    /// opened after the send would show the queue perfectly — that comes from <c>kitchen_pending_line</c>
+    /// — and would have heard nothing, which is precisely the half of §10 these scenarios exist for.</para>
+    ///
+    /// <para>The join secret is read out of the row (<see cref="RestaurantInstance.ReadJoinSecretAsync"/>)
+    /// rather than decoded off a display: these scenarios are about what happens after the guest is
+    /// seated, and pairing a tablet to get at a QR would put scenario 2's whole apparatus in front of
+    /// them. The token computed from it is one the server really verifies.</para>
+    /// </summary>
+    private static async Task<ArrangedService> ArrangeServiceAsync(
+        RestaurantInstance instance,
+        string tableLabel,
+        GuestAccount guestAccount,
+        CancellationToken cancellationToken)
+    {
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        // Two items, with names that are not substrings of one another: every assertion below matches a
+        // line by name, and "Soup" inside "Soup of the day" would make one of them meaningless.
+        MenuItemOnTheMenu soup =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Soup of the day", 6.50m);
+        MenuItemOnTheMenu pie =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Steak pie", 14.00m);
+
+        Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
+
+        byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+        string token = JoinTokenService.ComputeCurrentToken(
+            joinSecret, tableIdentifier, DateTimeOffset.UtcNow, instance.TableJoinTokenRotationSeconds);
+
+        IPage guest = await instance.OpenIsolatedPageAsync(withVirtualAuthenticator: true);
+
+        Assert.Equal(
+            TableJourneys.JoinStage.SentToSignIn,
+            await TableJourneys.ScanAsync(guest, tableIdentifier, token));
+
+        await AccountJourneys.RegisterGuestWithPasskeyAsync(guest, guestAccount);
+        await TableJourneys.JoinAsync(guest);
+        await TableOrderJourneys.WaitForLiveSurfaceAsync(guest, InteractivityPatience);
+
+        await KitchenJourneys.OpenAsync(administrator, InteractivityPatience);
+
+        return new ArrangedService(administrator, guest, tableIdentifier, soup, pie);
+    }
+
+    /// <summary>
     /// Waits until a token minted at <paramref name="mintedAt"/> is outside §4.3's acceptance window.
     ///
     /// <para>The arithmetic, spelled out because an off-by-one here would make the assertion that
@@ -67245,7 +67780,6 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         Assert.Contains(age, JoinQrCodes.LiveAges);
     }
 }
-
 
 ################################################################################
 # FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs
@@ -67540,15 +68074,15 @@ internal static class AccountJourneys
   File name:             AdministrationJourneys.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs
-  Size:                  7.0 KiB (7203 bytes)
-  Last modified:         2026-07-29 07:57:21.000000000 -0400
+  Size:                  9.8 KiB (9989 bytes)
+  Last modified:         2026-08-01 23:46:07.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 27520857
+  Inode:                 29144374
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               1532cc4997dd1e795382d8563989bd6fa0fcdfd30e18b890dafe4e94b925d59d
-  Last git commit:       0447626 2026-07-29 08:20:23 -0400 add claude response
+  SHA-256:               5c7fbcd38e44c5a57c7e3ffbade1624ea481a89449b7c222dbb38635178d38f3
+  Last git commit:       2762659 2026-08-01 23:51:22 -0400 add claude response
 
 --- CONTENT ---
 using System.Globalization;
@@ -67558,18 +68092,26 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 
 /// <summary>
 /// The administration journeys the §16.3 scenarios walk: creating a table, issuing a display pairing
-/// code, and rotating a table's join secret (TECHNICAL_SPECIFICATION §4.1, §4.2, §11.4).
+/// code, rotating a table's join secret, and putting something on the menu
+/// (TECHNICAL_SPECIFICATION §4.1, §4.2, §7, §11.4).
 ///
-/// <para>All three go through the real static-SSR administration surfaces on a page that is signed in as
+/// <para>All of them go through the real static-SSR administration surfaces on a page that is signed in as
 /// an administrator, because that is what the scenarios are about — "admin creates table" in §16.3 means
 /// the form, the antiforgery token, the endpoint authorization and the redirect, not an
 /// <c>INSERT</c>. The one place these scenarios do reach past the UI is reading a <c>join_secret</c>
 /// (<see cref="RestaurantInstance.ReadJoinSecretAsync"/>), and only because §4.1 makes it deliberately
 /// unreachable from every surface — which is the property under test rather than an obstacle to it.</para>
 /// </summary>
+/// <summary>
+/// Something an administrator put on the menu (§7): the identifier the picker's <c>&lt;option&gt;</c>
+/// carries, and the name every surface — the guest's basket, the kitchen ticket, the bill — reads.
+/// </summary>
+internal sealed record MenuItemOnTheMenu(Guid Identifier, string Name, decimal PriceAmount);
+
 internal static class AdministrationJourneys
 {
     private const string TablesPath = "/administration/tables";
+    private const string MenuPath = "/administration/menu";
 
     /// <summary>
     /// Creates a table through <c>/administration/tables/new</c> (§4.1) and returns its identifier,
@@ -67689,6 +68231,56 @@ internal static class AdministrationJourneys
             throw new InvalidOperationException(
                 $"Rotating the join secret reported '{message}', which is some other outcome.");
         }
+    }
+
+    /// <summary>
+    /// Puts an item on the menu through <c>/administration/menu/new</c> (§7) and returns it, identifier
+    /// included — read back out of the "Manage this item" link the same way
+    /// <see cref="CreateTableAsync"/> recovers a table's, because the identifier is minted server-side
+    /// and a scenario that recovered it any other way would be reimplementing the surface.
+    ///
+    /// <para>The identifier is the part that matters downstream. The guest's picker renders one
+    /// <c>&lt;option&gt;</c> per item whose <em>label</em> is the name, the price and possibly the words
+    /// "currently unavailable" — so a scenario choosing by label would be matching on money formatting
+    /// and §7's availability copy. The <c>value</c> is the bare identifier, and that is what
+    /// <see cref="TableOrderJourneys"/> selects on.</para>
+    /// </summary>
+    internal static async Task<MenuItemOnTheMenu> CreateMenuItemAsync(IPage page, string name, decimal priceAmount)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync($"{MenuPath}/new");
+
+        await page.FillAsync("#name", name);
+        await page.FillAsync("#price", priceAmount.ToString("0.00", CultureInfo.InvariantCulture));
+        await page.ClickAsync("button:has-text('Create item')");
+
+        ILocator manageLink = page.Locator("a:has-text('Manage this item')").First;
+
+        try
+        {
+            await manageLink.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                $"Creating the menu item '{name}' did not reach the success panel. "
+                + await DescribeFailureAsync(page),
+                exception);
+        }
+
+        string? href = await manageLink.GetAttributeAsync("href");
+        string prefix = MenuPath + "/";
+
+        if (href is null
+            || !href.StartsWith(prefix, StringComparison.Ordinal)
+            || !Guid.TryParse(href[prefix.Length..], out Guid menuItemIdentifier))
+        {
+            throw new InvalidOperationException(
+                $"The item-created panel linked to '{href}', which is not a menu item management URL.");
+        }
+
+        return new MenuItemOnTheMenu(menuItemIdentifier, name, priceAmount);
     }
 
     private static string ManagePathFor(Guid tableIdentifier)
@@ -67817,15 +68409,15 @@ internal static class ContainerEngineDiscovery
   File name:             DisplayJourneys.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs
-  Size:                  12.5 KiB (12783 bytes)
-  Last modified:         2026-07-29 18:31:55.468081972 -0400
+  Size:                  12.9 KiB (13185 bytes)
+  Last modified:         2026-08-01 23:46:07.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 27977982
+  Inode:                 29144373
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               8ed90f3b6fb77d88b6ffa65d796a480a20c821fabd10ce70caddf8b8d55a0c9e
-  Last git commit:       808bc5f 2026-07-29 18:32:17 -0400 use clean raw string literal
+  SHA-256:               0647f35b3c2a7c8e958acdaa45fd03060007e2413d98794e25c99a576403f0e6
+  Last git commit:       2762659 2026-08-01 23:51:22 -0400 add claude response
 
 --- CONTENT ---
 using System.Globalization;
@@ -67940,14 +68532,16 @@ internal static class DisplayJourneys
             throw new InvalidOperationException(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"""
-                    The table display surface never became interactive within {timeout.TotalSeconds:F0}s; \
-                    it is still the prerendered markup ({surface}). Nothing on this page will ever \
-                    change — the QR cannot advance across a rotation boundary and the party-size chip \
-                    cannot move — because no Blazor circuit was established. Check that \
-                    /_framework/blazor.web.js is served (RestaurantInstance probes it at startup) and \
-                    that the browser reached /_blazor.
-                    """),
+                    // Concatenated interpolated strings rather than a raw literal: a raw string literal
+                    // processes no escape sequences at all, so the trailing backslashes that used to wrap
+                    // these lines were printed verbatim, along with the newlines they were meant to hide.
+                    // Every operand must carry the $ or the addition stops binding to the handler (CS1620).
+                    $"The table display surface never became interactive within"
+                    + $" {timeout.TotalSeconds:F0}s; it is still the prerendered markup ({surface})."
+                    + $" Nothing on this page will ever change — the QR cannot advance across a rotation"
+                    + $" boundary and the party-size chip cannot move — because no Blazor circuit was"
+                    + $" established. Check that /_framework/blazor.web.js is served (RestaurantInstance"
+                    + $" probes it at startup) and that the browser reached /_blazor."),
                 exception);
         }
     }
@@ -68271,6 +68865,332 @@ internal static class JoinQrAge
 
     /// <summary>Not produced by this table's join secret for any window recently in play.</summary>
     internal const string Unrecognised = "a code this table's join secret does not produce";
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/KitchenJourneys.cs
+################################################################################
+
+--- METADATA ---
+  File name:             KitchenJourneys.cs
+  Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/KitchenJourneys.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/KitchenJourneys.cs
+  Size:                  13.2 KiB (13555 bytes)
+  Last modified:         2026-08-01 23:46:07.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 29144375
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               dcbb77728233b4b6353804dc037388032f0d7036f42a48a174a5a38614cfb052
+  Last git commit:       2762659 2026-08-01 23:51:22 -0400 add claude response
+
+--- CONTENT ---
+using System.Globalization;
+using Microsoft.Playwright;
+
+namespace MyRestaurant.EndToEnd.Tests.Harness;
+
+/// <summary>One line waiting on the pass, as §11.2 renders it.</summary>
+internal sealed record KitchenBoardLine(int Quantity, string Name, string? Note);
+
+/// <summary>
+/// Everything the board is saying at one instant: how many alerts nobody has acknowledged (§10.3), and
+/// what is outstanding (§11.2).
+///
+/// <para>Read together on purpose. §9 publishes <c>OrderLinesChanged</c> before <c>KitchenAlert</c>, and
+/// the board handles each as it arrives — so there is a real window in which the queue has already
+/// re-read and the alert has not yet been counted. A scenario that waited for the lines and then read
+/// the count separately would sample that window and report a silent kitchen. One snapshot, one
+/// predicate over both, and the window closes.</para>
+/// </summary>
+internal sealed record KitchenBoardSnapshot(int UnseenAlertCount, IReadOnlyList<KitchenBoardLine> PendingLines);
+
+/// <summary>
+/// The kitchen journeys the §16.3 scenarios walk: opening the board, watching what arrives on it, and
+/// marking a line away (TECHNICAL_SPECIFICATION §10, §11.2).
+///
+/// <para><b>The board must be live before anything is sent to it.</b> Alerts are §9 broadcasts to
+/// subscribers, and <c>KitchenBoard.razor</c> subscribes in <c>OnAfterRender(firstRender)</c> — which
+/// only runs on a circuit. A board opened after the send would show the queue perfectly well (that comes
+/// from <c>kitchen_pending_line</c>) and would never have heard the alert, which is the half of §10 that
+/// cannot be re-derived from the database. So <see cref="OpenAsync"/> waits for interactivity, and a
+/// scenario opens the board before the guest presses Send.</para>
+///
+/// <para><b>Sound is not armed and not asserted.</b> §10.3's arm control must run inside a real user
+/// gesture to unlock browser audio, and what it unlocks is an <c>AudioContext</c> on a headless browser
+/// with no output device — so "did it beep" is a question about Chromium's audio stack rather than about
+/// this application. §10.3 names the visual badge as the fallback whenever sound is not working and
+/// makes the unseen count the record of what arrived; that count is what these scenarios assert on, and
+/// it is the same number the sound is played from.</para>
+/// </summary>
+internal static class KitchenJourneys
+{
+    /// <summary>The board's route. <c>KitchenBoard.razor</c> is <c>@page "/kitchen"</c>.</summary>
+    internal const string BoardPath = "/kitchen";
+
+    private const string SurfaceSelector = "#kitchen-board-surface";
+
+    /// <summary>
+    /// The board as rendered by a live circuit. <c>KitchenBoard.razor</c> sets <c>data-live</c> from
+    /// <c>RendererInfo.IsInteractive</c>, so this matches only markup an interactive renderer produced.
+    /// </summary>
+    private const string LiveSurfaceSelector = "#kitchen-board-surface[data-live='true']";
+
+    private const string PendingLineSelector = "#kitchen-board-surface li.kitchen-line";
+
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// Opens the board on a page already signed in as somebody §3.7 lets in (kitchen or administrator)
+    /// and returns once a circuit is behind it.
+    /// </summary>
+    internal static async Task OpenAsync(IPage page, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(BoardPath);
+        await WaitForLiveBoardAsync(page, timeout);
+    }
+
+    /// <summary>
+    /// Waits until the board on screen was rendered by a live circuit rather than by prerendering.
+    ///
+    /// <para>A prerendered board is the worst kind of broken, because it is the kind that looks right: it
+    /// lists whatever was outstanding at the moment of the request, in the right order, with the right
+    /// waiting times — and then never changes and never makes a sound. A kitchen that has had no orders
+    /// for ten minutes looks exactly the same. Waiting here means a scenario says "no circuit" rather
+    /// than "the alert never arrived".</para>
+    /// </summary>
+    internal static async Task WaitForLiveBoardAsync(IPage page, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        try
+        {
+            await page.Locator(LiveSurfaceSelector).First.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Attached,
+                Timeout = (float)timeout.TotalMilliseconds,
+            });
+        }
+        catch (PlaywrightException exception)
+        {
+            string surface = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The kitchen board never became interactive within {timeout.TotalSeconds:F0}s;"
+                    + $" it is still the prerendered markup ({surface}). It will list whatever was"
+                    + $" outstanding when the page was requested and then never change and never alert,"
+                    + $" because §9's broadcasts go to subscribers and the subscription is made on the"
+                    + $" circuit. Check that /_framework/blazor.web.js is served and that the browser"
+                    + $" reached /_blazor."),
+                exception);
+        }
+    }
+
+    /// <summary>What the board is saying right now — the unseen-alert count and the outstanding lines.</summary>
+    internal static async Task<KitchenBoardSnapshot> ReadBoardAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator surface = page.Locator(SurfaceSelector).First;
+        string? unseen = await surface.GetAttributeAsync("data-unseen-alerts");
+
+        if (!int.TryParse(unseen, NumberStyles.Integer, CultureInfo.InvariantCulture, out int unseenCount))
+        {
+            throw new InvalidOperationException(
+                $"The kitchen board published data-unseen-alerts='{unseen ?? "absent"}', which is not a"
+                + " count. KitchenBoard.razor renders it from KitchenAlertState.UnseenCount.");
+        }
+
+        ILocator lines = page.Locator(PendingLineSelector);
+        int count = await lines.CountAsync();
+
+        List<KitchenBoardLine> pending = new(count);
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator line = lines.Nth(index);
+
+            // "2×" — the multiplication sign is markup, not data, so it is trimmed off rather than
+            // parsed around.
+            string quantityText = (await line.Locator("span.kitchen-line-quantity").First.InnerTextAsync())
+                .Trim()
+                .TrimEnd('×');
+
+            string name = (await line.Locator("span.kitchen-line-name").First.InnerTextAsync()).Trim();
+
+            ILocator note = line.Locator("p.kitchen-line-note");
+            string? noteText = await note.CountAsync() > 0
+                ? (await note.First.InnerTextAsync()).Trim()
+                : null;
+
+            pending.Add(new KitchenBoardLine(
+                int.TryParse(quantityText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int quantity)
+                    ? quantity
+                    : 0,
+                name,
+                noteText));
+        }
+
+        return new KitchenBoardSnapshot(unseenCount, pending);
+    }
+
+    /// <summary>
+    /// Waits until the board satisfies <paramref name="expectation"/> and returns the snapshot that did.
+    /// The predicate is the assertion; <paramref name="whatIsExpected"/> is what the failure says was
+    /// wanted, beside what the board was actually showing when it gave up.
+    /// </summary>
+    internal static async Task<KitchenBoardSnapshot> WaitForBoardAsync(
+        IPage page,
+        Func<KitchenBoardSnapshot, bool> expectation,
+        TimeSpan timeout,
+        string whatIsExpected,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(expectation);
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        KitchenBoardSnapshot observed = new(0, []);
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            observed = await ReadBoardAsync(page);
+
+            if (expectation(observed))
+            {
+                return observed;
+            }
+
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The kitchen board never showed {whatIsExpected} within {timeout.TotalSeconds:F0}s."
+                + $" What it was showing: {Describe(observed)}."));
+    }
+
+    /// <summary>
+    /// Taps one line on the pass — §11.2's "tap a line → one <c>fulfillment</c> event" — and returns
+    /// once the board has confirmed it.
+    ///
+    /// <para>The line is found by reading the queue and matching the name, rather than by putting the
+    /// name into a CSS selector. Menu items are free text: an apostrophe in "Chef's soup" would break a
+    /// <c>:text-is('…')</c> selector, and a scenario is not the place to learn about selector escaping.</para>
+    ///
+    /// <para>Waiting for the confirmation is load-bearing. Every kitchen action goes through
+    /// <c>IOrderWorkflow</c> and can be refused under the §6.6 lock — two cooks on one line, a guest who
+    /// removed it a second earlier — and the board renders that refusal rather than throwing. A scenario
+    /// that clicked and moved on would assert against a board that had refused, and the refusal is
+    /// exactly the sentence it needs.</para>
+    /// </summary>
+    internal static async Task FulfillLineAsync(IPage page, string menuItemName)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator lines = page.Locator(PendingLineSelector);
+        int count = await lines.CountAsync();
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator line = lines.Nth(index);
+            string name = (await line.Locator("span.kitchen-line-name").First.InnerTextAsync()).Trim();
+
+            if (!string.Equals(name, menuItemName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            await line.Locator("button.kitchen-line-button").First.ClickAsync();
+            await WaitForActionConfirmationAsync(page, menuItemName);
+            return;
+        }
+
+        KitchenBoardSnapshot board = await ReadBoardAsync(page);
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"There is no line for '{menuItemName}' on the pass to fulfill."
+                + $" The board is showing: {Describe(board)}."));
+    }
+
+    /// <summary>A short, quotable rendering of the board, for a failure message.</summary>
+    internal static string Describe(KitchenBoardSnapshot board)
+    {
+        ArgumentNullException.ThrowIfNull(board);
+
+        string lines = board.PendingLines.Count == 0
+            ? "nothing outstanding"
+            : string.Join(
+                "; ",
+                board.PendingLines.Select(line => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{line.Quantity} × '{line.Name}'{(line.Note is null ? string.Empty : $" note “{line.Note}”")}")));
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{board.UnseenAlertCount} unseen alert(s), {lines}");
+    }
+
+    private static async Task WaitForActionConfirmationAsync(IPage page, string menuItemName)
+    {
+        ILocator confirmation = page.Locator($"{SurfaceSelector} p.status-success").First;
+
+        try
+        {
+            await confirmation.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            string refusal = await DescribeRefusalAsync(page);
+
+            throw new InvalidOperationException(
+                $"Fulfilling '{menuItemName}' was not confirmed. {refusal}",
+                exception);
+        }
+    }
+
+    private static async Task<string> DescribeRefusalAsync(IPage page)
+    {
+        ILocator problems = page.Locator($"{SurfaceSelector} p.status-error");
+
+        if (await problems.CountAsync() == 0)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"The board reports no refusal; the browser is at '{page.Url}'.");
+        }
+
+        string message = (await problems.First.InnerTextAsync()).Trim();
+
+        return string.Create(CultureInfo.InvariantCulture, $"The board says: {message}");
+    }
+
+    private static async Task<string> DescribeSurfaceAsync(IPage page)
+    {
+        ILocator surface = page.Locator(SurfaceSelector);
+
+        if (await surface.CountAsync() == 0)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"there is no kitchen board on the page at all; the browser is at '{page.Url}'");
+        }
+
+        string? live = await surface.First.GetAttributeAsync("data-live");
+        string? unseen = await surface.First.GetAttributeAsync("data-unseen-alerts");
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"data-live='{live ?? "absent"}', data-unseen-alerts='{unseen ?? "absent"}'");
+    }
 }
 
 ################################################################################
@@ -69210,15 +70130,15 @@ internal sealed class RestaurantInstance : IAsyncDisposable
   File name:             TableJourneys.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs
-  Size:                  6.7 KiB (6908 bytes)
-  Last modified:         2026-08-01 20:11:03.000000000 -0400
+  Size:                  7.3 KiB (7451 bytes)
+  Last modified:         2026-08-01 23:46:07.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 29043177
+  Inode:                 29144372
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               d1c76acee677c2bbb9e24707be2bc8fd73fbc165fb8763694f62b87aa62bd9f0
-  Last git commit:       17865c3 2026-08-01 21:49:29 -0400 add claude changes
+  SHA-256:               a0d84657cfad14550941062249a42fb0e74f29e833c38ac32b7ff24015c56968
+  Last git commit:       2762659 2026-08-01 23:51:22 -0400 add claude response
 
 --- CONTENT ---
 using System.Globalization;
@@ -69333,9 +70253,14 @@ internal static class TableJourneys
             throw new InvalidOperationException(
                 string.Create(
                     CultureInfo.InvariantCulture,
+                    // Every operand is an interpolated string, and that is load-bearing rather than
+                    // stylistic. string.Create's second parameter is a `ref DefaultInterpolatedStringHandler`,
+                    // and C# only converts an addition to a handler when the whole additive expression is
+                    // composed of interpolated strings; one bare "…" literal in the chain makes the result a
+                    // plain string and the call fails to bind with CS1620. A hole-less $"…" still counts.
                     $"Joining did not confirm; the table page is now showing {stage}. A grant is"
-                    + " single-use and is cleared whatever the outcome (§4.4), so if this was a"
-                    + " refusal the grant is already spent and a retry will not help."),
+                    + $" single-use and is cleared whatever the outcome (§4.4), so if this was a"
+                    + $" refusal the grant is already spent and a retry will not help."),
                 exception);
         }
     }
@@ -69367,6 +70292,403 @@ internal static class TableJourneys
         return await page.Locator("form button[type='submit']:has-text('Join')").CountAsync() > 0
             ? JoinStage.Confirm
             : JoinStage.Member;
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs
+################################################################################
+
+--- METADATA ---
+  File name:             TableOrderJourneys.cs
+  Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs
+  Size:                  16.7 KiB (17051 bytes)
+  Last modified:         2026-08-01 23:46:07.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 29144376
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               82a0a5a30ace7427d5b41943318947731936f0483a860a2ee8c942930b5faaf7
+  Last git commit:       2762659 2026-08-01 23:51:22 -0400 add claude response
+
+--- CONTENT ---
+using System.Globalization;
+using Microsoft.Playwright;
+
+namespace MyRestaurant.EndToEnd.Tests.Harness;
+
+/// <summary>
+/// One line on the guest's committed order, as the surface renders it (§11.1): what it is, and which
+/// of the two badges it is wearing. The badge is the whole of §16.3 scenario 6's assertion, so it is
+/// modelled as a value rather than left as a class name for a scenario to match on.
+/// </summary>
+internal sealed record GuestOrderLine(string Name, GuestLineBadge Badge);
+
+/// <summary>§11.1's two states for a live line, named the way the surface says them.</summary>
+internal enum GuestLineBadge
+{
+    /// <summary>Sent, not yet fulfilled — the surface says "With the kitchen".</summary>
+    WithTheKitchen,
+
+    /// <summary>The kitchen marked it done — the surface says "At your table".</summary>
+    AtYourTable,
+
+    /// <summary>Taken off the order (§11.1's struck-through line).</summary>
+    Removed,
+}
+
+/// <summary>
+/// The guest ordering journeys the §16.3 scenarios walk: staging items into the basket, sending them,
+/// and reading what came back (TECHNICAL_SPECIFICATION §6.5, §9, §11.1).
+///
+/// <para><b>Everything here is scoped to <c>#table-order-surface</c>, and that is not decoration.</b>
+/// <c>/table/{id}</c> is a static-SSR page hosting this island, and the page itself renders a
+/// <c>p.status-success</c> of its own — "You have joined Table Four" — the moment a join redirects back
+/// to it. An unscoped wait for a success message would match that one every time and report a send as
+/// having been accepted before the button was even pressed. The island's wrapper is the boundary
+/// between what the circuit owns and what the HTTP response owns, so every selector below starts at
+/// it.</para>
+///
+/// <para><b>Why the liveness wait exists.</b> Prerendering draws the whole surface — picker, basket,
+/// totals — and every control on it is an <c>@onclick</c>. On an island that never became interactive
+/// the taps below land on nothing at all, and the first thing a scenario would learn is that the basket
+/// stayed empty thirty seconds later. <see cref="WaitForLiveSurfaceAsync"/> turns that into one sentence
+/// about the circuit, at the moment the circuit was needed — the same lesson
+/// <see cref="DisplayJourneys.WaitForLiveSurfaceAsync"/> was written for.</para>
+/// </summary>
+internal static class TableOrderJourneys
+{
+    /// <summary>The ordering island, whatever state it is in.</summary>
+    private const string SurfaceSelector = "#table-order-surface";
+
+    /// <summary>
+    /// The island as rendered by a live circuit. <c>TableOrderSurface.razor</c> sets <c>data-live</c>
+    /// from <c>RendererInfo.IsInteractive</c>, so this matches only markup an interactive renderer
+    /// produced — never the prerendered pass, which is identical in every other respect.
+    /// </summary>
+    private const string LiveSurfaceSelector = "#table-order-surface[data-live='true']";
+
+    /// <summary>Staged adds only. <c>.is-removal</c> rows are ticked removals and are counted separately.</summary>
+    private const string BasketLineSelector =
+        "#table-order-surface ul.order-basket li.order-basket-line:not(.is-removal)";
+
+    /// <summary>The committed lines — what has actually reached the kitchen (§11.1's "Sent to the kitchen").</summary>
+    private const string CommittedLineSelector = "#table-order-surface ul.order-lines li.order-line";
+
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// Waits until the ordering island on screen was rendered by a live circuit rather than by
+    /// prerendering. Every other method here assumes it; a scenario calls it once after joining.
+    /// </summary>
+    internal static async Task WaitForLiveSurfaceAsync(IPage page, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        try
+        {
+            await page.Locator(LiveSurfaceSelector).First.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Attached,
+                Timeout = (float)timeout.TotalMilliseconds,
+            });
+        }
+        catch (PlaywrightException exception)
+        {
+            // Read the page BEFORE composing the message: an await inside an interpolated string that
+            // binds to a handler is CS4007, and the diagnosis is worth more than the one-liner.
+            string surface = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The ordering surface never became interactive within"
+                    + $" {timeout.TotalSeconds:F0}s; it is still the prerendered markup ({surface})."
+                    + $" Nothing on this page will respond — Add to basket, Send and every quantity box"
+                    + $" are @onclick handlers with no circuit behind them, and the kitchen will never"
+                    + $" hear anything. Check that /_framework/blazor.web.js is served"
+                    + $" (RestaurantInstance probes it at startup) and that the browser reached"
+                    + $" /_blazor."),
+                exception);
+        }
+    }
+
+    /// <summary>
+    /// Stages one item into the basket (§11.1) and returns once the basket has grown by one.
+    ///
+    /// <para>The item is chosen by <em>value</em> rather than by label. The picker's label is the name,
+    /// the formatted price, and — for a deactivated item — §7's "(currently unavailable)"; matching on
+    /// it would make this fail for a currency setting. The value is the bare identifier, which is what
+    /// <see cref="AdministrationJourneys.CreateMenuItemAsync"/> hands back.</para>
+    ///
+    /// <para>Nothing reaches the kitchen here. §11.1 is explicit that the basket is local until Send,
+    /// and the surface says so in as many words; <see cref="SendAsync"/> is the part that writes.</para>
+    /// </summary>
+    internal static async Task StageAsync(
+        IPage page,
+        MenuItemOnTheMenu item,
+        int quantity,
+        string? customizationNote = null)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(item);
+
+        int before = await page.Locator(BasketLineSelector).CountAsync();
+
+        await page.SelectOptionAsync(
+            "#order-picker-item",
+            new SelectOptionValue { Value = item.Identifier.ToString("D", CultureInfo.InvariantCulture) });
+
+        await page.FillAsync(
+            "#order-picker-quantity",
+            quantity.ToString(CultureInfo.InvariantCulture));
+
+        // Filled unconditionally, including with the empty string: the picker keeps whatever was typed
+        // for the previous item until StageItem clears it, so skipping this would silently attach the
+        // last note to the next thing staged.
+        await page.FillAsync("#order-picker-note", customizationNote ?? string.Empty);
+
+        // Focus the button before pressing it, and the order of the three fills above is not arbitrary
+        // either. All three controls are @bind, which is @bind:event="onchange" by default, and Playwright
+        // types into a text or number input rather than assigning to it — so the value is in the DOM but
+        // the change event has not fired yet, and the component has not heard about it. Moving focus is
+        // what fires it. Each fill blurs the previous field, and this focus blurs the last one, so all
+        // three bindings have been dispatched by the time the click arrives. Relying on the click's own
+        // implicit blur would work too, right up until the day the events raced.
+        string addToBasket = $"{SurfaceSelector} .order-picker button:has-text('Add to basket')";
+
+        await page.FocusAsync(addToBasket);
+        await page.ClickAsync(addToBasket);
+
+        if (await WaitForBasketCountAsync(page, before + 1, TimeSpan.FromSeconds(15)))
+        {
+            return;
+        }
+
+        // Both reads happen before the message is composed: an await inside an interpolated string that
+        // binds to a handler is CS4007.
+        int after = await page.Locator(BasketLineSelector).CountAsync();
+        string refusal = await DescribeStagingRefusalAsync(page);
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Staging {quantity} × '{item.Name}' did not put a line in the basket:"
+                + $" it holds {after} line(s) rather than {before + 1}. {refusal}"));
+    }
+
+    /// <summary>
+    /// Presses Send (§11.1) and returns the confirmation the surface rendered — the sentence that names
+    /// how many lines went, which is worth returning rather than merely waiting for because a send of
+    /// two adds and a send of one read identically to a selector.
+    ///
+    /// <para>A refusal is §6.5.9's all-or-nothing panel: nothing was written, the basket is untouched,
+    /// and each refused operation carries its own reason. Those reasons are the failure message here,
+    /// because "Send did not confirm" without them is a mystery and with them is usually the answer.</para>
+    /// </summary>
+    internal static async Task<string> SendAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.ClickAsync($"{SurfaceSelector} .order-send button");
+
+        // Scoped to the island: the parent page's own "You have joined …" success line is also a
+        // p.status-success and is still on screen from the join that got us here.
+        ILocator confirmation = page.Locator($"{SurfaceSelector} p.status-success").First;
+
+        try
+        {
+            await confirmation.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            string refusal = await DescribeSendRefusalAsync(page);
+
+            throw new InvalidOperationException(
+                $"The send was not confirmed. {refusal}",
+                exception);
+        }
+
+        return (await confirmation.InnerTextAsync()).Trim();
+    }
+
+    /// <summary>How many staged adds are sitting in the basket right now.</summary>
+    internal static Task<int> BasketLineCountAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        return page.Locator(BasketLineSelector).CountAsync();
+    }
+
+    /// <summary>
+    /// The guest's committed lines, in the order the surface lists them (§11.1). Each carries the badge
+    /// it is wearing, read from the chip's class rather than from its words: "At your table" is copy,
+    /// <c>chip-ok</c> is the state.
+    /// </summary>
+    internal static async Task<IReadOnlyList<GuestOrderLine>> ReadCommittedLinesAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator lines = page.Locator(CommittedLineSelector);
+        int count = await lines.CountAsync();
+
+        List<GuestOrderLine> committed = new(count);
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator line = lines.Nth(index);
+
+            // "2 × Soup of the day" — the quantity and the name are one span, deliberately, because
+            // that is how §11.1 words it. The scenarios match on containment, so it is kept whole.
+            string name = (await line.Locator("span.order-line-name").First.InnerTextAsync()).Trim();
+
+            bool removed = await line.Locator("span.chip-warn").CountAsync() > 0;
+            bool fulfilled = await line.Locator("span.chip-ok").CountAsync() > 0;
+
+            GuestLineBadge badge = removed
+                ? GuestLineBadge.Removed
+                : fulfilled
+                    ? GuestLineBadge.AtYourTable
+                    : GuestLineBadge.WithTheKitchen;
+
+            committed.Add(new GuestOrderLine(name, badge));
+        }
+
+        return committed;
+    }
+
+    /// <summary>
+    /// Waits until the guest's committed lines satisfy <paramref name="expectation"/>, re-reading them
+    /// as §9's broadcasts land. The predicate is the assertion — scenario 6 waits for a specific line to
+    /// be wearing a specific badge, not merely for the list to have changed — and
+    /// <paramref name="whatIsExpected"/> is what the failure says was wanted, beside what was on screen.
+    /// </summary>
+    internal static async Task<IReadOnlyList<GuestOrderLine>> WaitForCommittedLinesAsync(
+        IPage page,
+        Func<IReadOnlyList<GuestOrderLine>, bool> expectation,
+        TimeSpan timeout,
+        string whatIsExpected,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(expectation);
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        IReadOnlyList<GuestOrderLine> observed = [];
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            observed = await ReadCommittedLinesAsync(page);
+
+            if (expectation(observed))
+            {
+                return observed;
+            }
+
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The guest's order never showed {whatIsExpected} within"
+                + $" {timeout.TotalSeconds:F0}s. What it shows instead: {Describe(observed)}."));
+    }
+
+    /// <summary>A short, quotable rendering of a set of lines, for a failure message.</summary>
+    internal static string Describe(IReadOnlyList<GuestOrderLine> lines)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+
+        return lines.Count == 0
+            ? "nothing at all"
+            : string.Join(
+                "; ",
+                lines.Select(line => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"'{line.Name}' [{line.Badge}]")));
+    }
+
+    private static async Task<bool> WaitForBasketCountAsync(IPage page, int expected, TimeSpan timeout)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await page.Locator(BasketLineSelector).CountAsync() == expected)
+            {
+                return true;
+            }
+
+            await Task.Delay(PollInterval);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whatever the picker has to say about why it would not stage the item — §11.1's staging notice,
+    /// which is the surface refusing locally (an unavailable item, a quantity outside 1–100) rather than
+    /// anything the server has been asked about yet.
+    /// </summary>
+    private static async Task<string> DescribeStagingRefusalAsync(IPage page)
+    {
+        ILocator notice = page.Locator($"{SurfaceSelector} .order-picker p.status-error");
+
+        if (await notice.CountAsync() == 0)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"The picker reports no refusal; the browser is at '{page.Url}'.");
+        }
+
+        string message = (await notice.First.InnerTextAsync()).Trim();
+
+        return string.Create(CultureInfo.InvariantCulture, $"The picker says: {message}");
+    }
+
+    /// <summary>
+    /// §6.5.9's refusal panel, flattened into one sentence: the headline plus every per-operation reason.
+    /// A send is accepted or refused as a whole, so all of them are the diagnosis, not just the first.
+    /// </summary>
+    private static async Task<string> DescribeSendRefusalAsync(IPage page)
+    {
+        ILocator reasons = page.Locator($"{SurfaceSelector} ul.order-reject-list li");
+        int count = await reasons.CountAsync();
+
+        if (count == 0)
+        {
+            string surface = await DescribeSurfaceAsync(page);
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"The surface shows no refusal either ({surface}), so the send may simply never have"
+                + $" been dispatched; the browser is at '{page.Url}'.");
+        }
+
+        IReadOnlyList<string> all = await reasons.AllInnerTextsAsync();
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"Nothing was written and the surface refused it: {string.Join(" | ", all.Select(text => text.Trim()))}");
+    }
+
+    private static async Task<string> DescribeSurfaceAsync(IPage page)
+    {
+        ILocator surface = page.Locator(SurfaceSelector);
+
+        if (await surface.CountAsync() == 0)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"there is no ordering surface on the page at all; the browser is at '{page.Url}'");
+        }
+
+        string? live = await surface.First.GetAttributeAsync("data-live");
+
+        return string.Create(CultureInfo.InvariantCulture, $"data-live='{live ?? "absent"}'");
     }
 }
 
@@ -76847,10 +78169,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 308
-  Total size     : 3.2 MiB (3323888 bytes)
+  Files dumped   : 311
+  Total size     : 3.2 MiB (3390240 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-01T21:49:59-04:00
+  Completed at   : 2026-08-01T23:52:46-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
