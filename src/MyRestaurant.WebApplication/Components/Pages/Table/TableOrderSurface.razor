@@ -38,347 +38,355 @@
    that is no longer the guest's to remove — it refuses only so the answer arrives at the moment of the
    tap instead of after a round trip. *@
 
-@if (!_loaded)
-{
-    <p class="lede">Loading your table…</p>
-}
-else if (_person is null)
-{
-    @* Only reachable if the cookie expired between the page render and the circuit starting. *@
-    <p class="status-error" role="alert">
-        Your session has ended. Please <a href="@AccountRoutes.SignIn">sign in</a> again to see your order.
-    </p>
-}
-else
-{
-    <h2 class="table-heading">Who is here</h2>
-
-    @if (_sitting is not null)
+@* One element around the whole island, and the reason is the attribute on it rather than the
+   layout. §11.1's hazard is the same one §11.5 has: a surface that never became interactive looks
+   exactly like a live one. Prerendering renders the picker, the basket and the totals; what it does
+   not render is anything that responds — every control here is an @@onclick, so on a dead island
+   "Add to basket" silently does nothing and the first thing anyone learns is that the basket stayed
+   empty. data-live is the one bit that differs, published the same way TableDisplay publishes it. *@
+<div class="order-surface" id="table-order-surface" data-live="@IsLiveAttributeValue">
+    @if (!_loaded)
     {
-        <p class="lede">
-            Open since @RestaurantClock.Time(_sitting.OpenedAt) —
-            @_roster.Count @(_roster.Count == 1 ? "person" : "people") at the table.
-        </p>
+        <p class="lede">Loading your table…</p>
     }
-
-    <ul class="table-roster">
-        @foreach (SittingMemberSummary member in _roster)
-        {
-            <li @key="member.PersonIdentifier">
-                <span class="table-roster-name">@member.RosterName</span>
-                @if (member.PersonIdentifier == Person)
-                {
-                    <span class="chip">you</span>
-                }
-                <span class="table-roster-joined">joined @RestaurantClock.Time(member.JoinedAt)</span>
-            </li>
-        }
-    </ul>
-
-    <hr class="table-rule" />
-
-    @if (_sitting is null)
+    else if (_person is null)
     {
-        @* §11.1: "On SittingClosed, the surface flips to a read-only settled-bill view." *@
-        <h2 class="table-heading">This sitting has been settled</h2>
-        <p class="lede">
-            The counter has closed and settled this table, so nothing more can be ordered against it.
-            What was ordered is below, and stays on <a href="/table/history">your order history</a>.
+        @* Only reachable if the cookie expired between the page render and the circuit starting. *@
+        <p class="status-error" role="alert">
+            Your session has ended. Please <a href="@AccountRoutes.SignIn">sign in</a> again to see your order.
         </p>
     }
     else
     {
-        <h2 class="table-heading">Your order</h2>
+        <h2 class="table-heading">Who is here</h2>
 
-        @if (_sendStatus is { } sendStatus)
+        @if (_sitting is not null)
         {
-            <p class="status-success" role="status">@sendStatus</p>
-        }
-
-        @if (_rejection is { Count: > 0 })
-        {
-            @* §6.5.9 is all-or-nothing at the granularity of the event, so the honest headline is that
-               nothing at all was written — not that "some items failed". *@
-            <div class="status-error" role="alert">
-                <p class="order-reject-lede">
-                    <strong>Nothing was sent.</strong> A send is accepted or refused as a whole, so your
-                    basket is exactly as you left it. Fix these and send again.
-                </p>
-                <ul class="order-reject-list">
-                    @foreach (RejectedOperation problem in _rejection)
-                    {
-                        <li><strong>@problem.What</strong> — @problem.Reason</li>
-                    }
-                </ul>
-            </div>
-        }
-
-        @if (_pruneNotice is { } pruneNotice)
-        {
-            <p class="status-error" role="status">@pruneNotice</p>
-        }
-
-        @* ---- staging area (§11.1) ------------------------------------------------------------ *@
-        <div class="order-picker">
-            <div class="form-field">
-                <label for="order-picker-item">Item</label>
-                <select id="order-picker-item" @bind="_pickedMenuItemId">
-                    <option value="">Choose something…</option>
-                    @foreach (MenuItemSummary item in _menu)
-                    {
-                        @* §7: a deactivated item stays on the menu, marked, and cannot be picked —
-                           "the guest sees that the salmon exists and is out". *@
-                        <option value="@item.MenuItemIdentifier" disabled="@(!item.IsActive)">
-                            @item.Name — @Money(item.PriceAmount)@(item.IsActive ? string.Empty : " (currently unavailable)")
-                        </option>
-                    }
-                </select>
-            </div>
-
-            <div class="form-field order-picker-quantity">
-                <label for="order-picker-quantity">Quantity</label>
-                <input id="order-picker-quantity" type="number" inputmode="numeric"
-                       min="@OrderStaging.MinimumQuantity" max="@OrderStaging.MaximumQuantity" step="1"
-                       @bind="_pickedQuantity" />
-            </div>
-
-            <div class="form-field">
-                <label for="order-picker-note">Anything to note? <span class="optional">(optional)</span></label>
-                <input id="order-picker-note" type="text" maxlength="200" autocomplete="off"
-                       placeholder="No onions, extra hot…" @bind="_pickedNote" />
-            </div>
-
-            <div class="form-actions">
-                <button type="button" class="button-secondary" @onclick="StageItem">Add to basket</button>
-            </div>
-
-            @if (_stagingNotice is { } stagingNotice)
-            {
-                <p class="status-error" role="alert">@stagingNotice</p>
-            }
-        </div>
-
-        @if (_menu.Count == 0)
-        {
-            <p class="muted">
-                There is nothing on the menu yet. Please ask a member of staff.
+            <p class="lede">
+                Open since @RestaurantClock.Time(_sitting.OpenedAt) —
+                @_roster.Count @(_roster.Count == 1 ? "person" : "people") at the table.
             </p>
         }
 
-        @if (_staging.IsEmpty)
+        <ul class="table-roster">
+            @foreach (SittingMemberSummary member in _roster)
+            {
+                <li @key="member.PersonIdentifier">
+                    <span class="table-roster-name">@member.RosterName</span>
+                    @if (member.PersonIdentifier == Person)
+                    {
+                        <span class="chip">you</span>
+                    }
+                    <span class="table-roster-joined">joined @RestaurantClock.Time(member.JoinedAt)</span>
+                </li>
+            }
+        </ul>
+
+        <hr class="table-rule" />
+
+        @if (_sitting is null)
         {
-            <p class="muted order-basket-empty">
-                Your basket is empty. Pick something above — nothing reaches the kitchen until you press
-                <strong>Send</strong>.
+            @* §11.1: "On SittingClosed, the surface flips to a read-only settled-bill view." *@
+            <h2 class="table-heading">This sitting has been settled</h2>
+            <p class="lede">
+                The counter has closed and settled this table, so nothing more can be ordered against it.
+                What was ordered is below, and stays on <a href="/table/history">your order history</a>.
             </p>
         }
         else
         {
-            <ul class="order-basket">
-                @foreach (StagedOrderLine staged in _staging.Lines)
-                {
-                    MenuItemSummary? item = MenuItem(staged.MenuItemIdentifier);
+            <h2 class="table-heading">Your order</h2>
 
-                    <li class="order-basket-line" @key="staged.StagingIdentifier">
+            @if (_sendStatus is { } sendStatus)
+            {
+                <p class="status-success" role="status">@sendStatus</p>
+            }
+
+            @if (_rejection is { Count: > 0 })
+            {
+                @* §6.5.9 is all-or-nothing at the granularity of the event, so the honest headline is that
+                   nothing at all was written — not that "some items failed". *@
+                <div class="status-error" role="alert">
+                    <p class="order-reject-lede">
+                        <strong>Nothing was sent.</strong> A send is accepted or refused as a whole, so your
+                        basket is exactly as you left it. Fix these and send again.
+                    </p>
+                    <ul class="order-reject-list">
+                        @foreach (RejectedOperation problem in _rejection)
+                        {
+                            <li><strong>@problem.What</strong> — @problem.Reason</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (_pruneNotice is { } pruneNotice)
+            {
+                <p class="status-error" role="status">@pruneNotice</p>
+            }
+
+            @* ---- staging area (§11.1) ------------------------------------------------------------ *@
+            <div class="order-picker">
+                <div class="form-field">
+                    <label for="order-picker-item">Item</label>
+                    <select id="order-picker-item" @bind="_pickedMenuItemId">
+                        <option value="">Choose something…</option>
+                        @foreach (MenuItemSummary item in _menu)
+                        {
+                            @* §7: a deactivated item stays on the menu, marked, and cannot be picked —
+                               "the guest sees that the salmon exists and is out". *@
+                            <option value="@item.MenuItemIdentifier" disabled="@(!item.IsActive)">
+                                @item.Name — @Money(item.PriceAmount)@(item.IsActive ? string.Empty : " (currently unavailable)")
+                            </option>
+                        }
+                    </select>
+                </div>
+
+                <div class="form-field order-picker-quantity">
+                    <label for="order-picker-quantity">Quantity</label>
+                    <input id="order-picker-quantity" type="number" inputmode="numeric"
+                           min="@OrderStaging.MinimumQuantity" max="@OrderStaging.MaximumQuantity" step="1"
+                           @bind="_pickedQuantity" />
+                </div>
+
+                <div class="form-field">
+                    <label for="order-picker-note">Anything to note? <span class="optional">(optional)</span></label>
+                    <input id="order-picker-note" type="text" maxlength="200" autocomplete="off"
+                           placeholder="No onions, extra hot…" @bind="_pickedNote" />
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="button-secondary" @onclick="StageItem">Add to basket</button>
+                </div>
+
+                @if (_stagingNotice is { } stagingNotice)
+                {
+                    <p class="status-error" role="alert">@stagingNotice</p>
+                }
+            </div>
+
+            @if (_menu.Count == 0)
+            {
+                <p class="muted">
+                    There is nothing on the menu yet. Please ask a member of staff.
+                </p>
+            }
+
+            @if (_staging.IsEmpty)
+            {
+                <p class="muted order-basket-empty">
+                    Your basket is empty. Pick something above — nothing reaches the kitchen until you press
+                    <strong>Send</strong>.
+                </p>
+            }
+            else
+            {
+                <ul class="order-basket">
+                    @foreach (StagedOrderLine staged in _staging.Lines)
+                    {
+                        MenuItemSummary? item = MenuItem(staged.MenuItemIdentifier);
+
+                        <li class="order-basket-line" @key="staged.StagingIdentifier">
+                            <div class="order-line-main">
+                                <span class="order-line-name">@(item?.Name ?? staged.MenuItemName)</span>
+                                <span class="order-line-price">@Money(StagedLineTotal(staged))</span>
+                            </div>
+
+                            @if (staged.CustomizationNote is { } note)
+                            {
+                                <p class="order-line-note">“@note”</p>
+                            }
+
+                            @if (item is null || !item.IsActive)
+                            {
+                                @* §7: "guest staging areas mark newly-inactive staged items and the send
+                                   re-validates server-side regardless". Marked, not silently dropped. *@
+                                <p class="order-line-warning">
+                                    This became unavailable while it was in your basket. Take it out, or the
+                                    whole send will be refused.
+                                </p>
+                            }
+
+                            <div class="order-basket-controls">
+                                <label class="order-basket-quantity">
+                                    <span>Quantity</span>
+                                    <input type="number" inputmode="numeric"
+                                           min="@OrderStaging.MinimumQuantity" max="@OrderStaging.MaximumQuantity" step="1"
+                                           value="@staged.Quantity"
+                                           @onchange="args => ChangeStagedQuantity(staged.StagingIdentifier, args)" />
+                                </label>
+                                <button type="button" class="link-button danger"
+                                        @onclick="() => Unstage(staged.StagingIdentifier)">
+                                    Take out
+                                </button>
+                            </div>
+                        </li>
+                    }
+
+                    @foreach (StagedRemoval removal in _staging.Removals)
+                    {
+                        <li class="order-basket-line is-removal" @key="removal.OrderLineIdentifier">
+                            <div class="order-line-main">
+                                <span class="order-line-name">Remove @removal.Description</span>
+                            </div>
+                            <div class="order-basket-controls">
+                                <button type="button" class="link-button"
+                                        @onclick="() => _staging.SetMarkedForRemoval(removal.OrderLineIdentifier, removal.Description, false)">
+                                    Keep it after all
+                                </button>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+
+            <div class="form-actions order-send">
+                <button type="button" class="button-primary" disabled="@(_staging.IsEmpty || _sending)"
+                        @onclick="SendAsync">
+                    @(_sending ? "Sending…" : SendLabel)
+                </button>
+                @if (!_staging.IsEmpty && StagedTotal > 0m)
+                {
+                    <span class="order-send-total">@Money(StagedTotal) to add</span>
+                }
+            </div>
+        }
+
+        @* ---- the committed living order (§11.1) ---------------------------------------------------- *@
+        <h3 class="order-subheading">@(_sitting is null ? "What you ordered" : "Sent to the kitchen")</h3>
+
+        @if (_myLines.Count == 0)
+        {
+            <p class="muted">You have not sent anything yet.</p>
+        }
+        else
+        {
+            <ul class="order-lines">
+                @foreach (NarratedOrderLine line in _myLines)
+                {
+                    <li class="order-line @(line.IsRemoved ? "is-removed" : string.Empty)" @key="line.OrderLineIdentifier">
                         <div class="order-line-main">
-                            <span class="order-line-name">@(item?.Name ?? staged.MenuItemName)</span>
-                            <span class="order-line-price">@Money(StagedLineTotal(staged))</span>
+                            <span class="order-line-name">@line.Quantity × @MenuItemName(line.MenuItemIdentifier)</span>
+                            <span class="order-line-price">@Money(line.Quantity * line.CurrentUnitPriceAmount)</span>
                         </div>
 
-                        @if (staged.CustomizationNote is { } note)
+                        @if (line.CustomizationNote is { } note)
                         {
                             <p class="order-line-note">“@note”</p>
                         }
 
-                        @if (item is null || !item.IsActive)
+                        <p class="order-line-badges">
+                            @if (line.IsRemoved)
+                            {
+                                <span class="chip chip-warn">Removed</span>
+                            }
+                            else if (line.IsFulfilled)
+                            {
+                                <span class="chip chip-ok">At your table</span>
+                            }
+                            else
+                            {
+                                <span class="chip">With the kitchen</span>
+                            }
+                            <span class="order-line-when">sent @RestaurantClock.Time(line.AddedAt)</span>
+                        </p>
+
+                        @if (line.IsRemoved)
                         {
-                            @* §7: "guest staging areas mark newly-inactive staged items and the send
-                               re-validates server-side regardless". Marked, not silently dropped. *@
-                            <p class="order-line-warning">
-                                This became unavailable while it was in your basket. Take it out, or the
-                                whole send will be refused.
+                            @* §11.1: "removed lines struck-through with actor + reason". *@
+                            <p class="order-line-detail">
+                                Taken off by @ActorText(line.RemovedByActorRole, line.RemovedByActorPersonIdentifier, Person)@(line.RemovalReason is { } removalReason ? $" — {removalReason}" : string.Empty).
                             </p>
                         }
 
-                        <div class="order-basket-controls">
-                            <label class="order-basket-quantity">
-                                <span>Quantity</span>
-                                <input type="number" inputmode="numeric"
-                                       min="@OrderStaging.MinimumQuantity" max="@OrderStaging.MaximumQuantity" step="1"
-                                       value="@staged.Quantity"
-                                       @onchange="args => ChangeStagedQuantity(staged.StagingIdentifier, args)" />
-                            </label>
-                            <button type="button" class="link-button danger"
-                                    @onclick="() => Unstage(staged.StagingIdentifier)">
-                                Take out
-                            </button>
-                        </div>
-                    </li>
-                }
+                        @foreach (NarratedPriceAdjustment adjustment in line.PriceAdjustments)
+                        {
+                            @* §11.1: "price adjustments shown old → new with reason". *@
+                            <p class="order-line-detail">
+                                Price changed from <s>@Money(adjustment.PreviousUnitPriceAmount)</s>
+                                to <strong>@Money(adjustment.NewUnitPriceAmount)</strong>
+                                by @DescribeRole(adjustment.ActorRole) — @adjustment.Reason.
+                            </p>
+                        }
 
-                @foreach (StagedRemoval removal in _staging.Removals)
-                {
-                    <li class="order-basket-line is-removal" @key="removal.OrderLineIdentifier">
-                        <div class="order-line-main">
-                            <span class="order-line-name">Remove @removal.Description</span>
-                        </div>
-                        <div class="order-basket-controls">
-                            <button type="button" class="link-button"
-                                    @onclick="() => _staging.SetMarkedForRemoval(removal.OrderLineIdentifier, removal.Description, false)">
-                                Keep it after all
-                            </button>
-                        </div>
+                        @if (_sitting is not null && line.GuestMayRemove(Person))
+                        {
+                            <label class="order-line-remove">
+                                <input type="checkbox"
+                                       checked="@_staging.IsMarkedForRemoval(line.OrderLineIdentifier)"
+                                       @onchange="args => ToggleRemoval(line, args)" />
+                                <span>Take this off my order on the next send</span>
+                            </label>
+                        }
                     </li>
                 }
             </ul>
         }
 
-        <div class="form-actions order-send">
-            <button type="button" class="button-primary" disabled="@(_staging.IsEmpty || _sending)"
-                    @onclick="SendAsync">
-                @(_sending ? "Sending…" : SendLabel)
-            </button>
-            @if (!_staging.IsEmpty && StagedTotal > 0m)
-            {
-                <span class="order-send-total">@Money(StagedTotal) to add</span>
-            }
-        </div>
-    }
+        @* ---- totals and the rest of the party (§11.1) ---------------------------------------------- *@
+        @* A <dl> with <div> groupings — dt/dd outside a definition list is invalid HTML5, and the div
+           wrappers are what .order-totals lays out. The same shape .account-facts already uses. *@
+        <dl class="order-totals">
+            <div>
+                <dt>Your total</dt>
+                <dd>@Money(MyTotal)</dd>
+            </div>
+            <div>
+                <dt>Table total</dt>
+                <dd>@Money(TableTotal)</dd>
+            </div>
+        </dl>
 
-    @* ---- the committed living order (§11.1) ---------------------------------------------------- *@
-    <h3 class="order-subheading">@(_sitting is null ? "What you ordered" : "Sent to the kitchen")</h3>
+        <h3 class="order-subheading">@(_sitting is null ? "The settled bill" : "The rest of the table")</h3>
 
-    @if (_myLines.Count == 0)
-    {
-        <p class="muted">You have not sent anything yet.</p>
-    }
-    else
-    {
-        <ul class="order-lines">
-            @foreach (NarratedOrderLine line in _myLines)
-            {
-                <li class="order-line @(line.IsRemoved ? "is-removed" : string.Empty)" @key="line.OrderLineIdentifier">
-                    <div class="order-line-main">
-                        <span class="order-line-name">@line.Quantity × @MenuItemName(line.MenuItemIdentifier)</span>
-                        <span class="order-line-price">@Money(line.Quantity * line.CurrentUnitPriceAmount)</span>
-                    </div>
+        @if (OtherPeople.Count == 0)
+        {
+            <p class="muted">Nobody else at this table has ordered yet.</p>
+        }
+        else
+        {
+            <ul class="order-party">
+                @foreach (SittingBillEntry entry in OtherPeople)
+                {
+                    <li class="order-party-order" @key="entry.GuestOrderIdentifier">
+                        <div class="order-line-main">
+                            <span class="order-line-name">@entry.BillName</span>
+                            <span class="order-line-price">@Money(entry.PersonTotalAmount)</span>
+                        </div>
 
-                    @if (line.CustomizationNote is { } note)
-                    {
-                        <p class="order-line-note">“@note”</p>
-                    }
-
-                    <p class="order-line-badges">
-                        @if (line.IsRemoved)
-                        {
-                            <span class="chip chip-warn">Removed</span>
+                        @{
+                            IReadOnlyList<OrderLineView> theirLines = LinesFor(entry.GuestOrderIdentifier);
                         }
-                        else if (line.IsFulfilled)
+
+                        @if (theirLines.Count == 0)
                         {
-                            <span class="chip chip-ok">At your table</span>
+                            <p class="muted">Nothing on their order right now.</p>
                         }
                         else
                         {
-                            <span class="chip">With the kitchen</span>
+                            <ul class="order-party-lines">
+                                @foreach (OrderLineView theirLine in theirLines)
+                                {
+                                    <li @key="theirLine.OrderLineIdentifier">
+                                        <span>@theirLine.Quantity × @theirLine.MenuItemName</span>
+                                        @if (theirLine.IsFulfilled)
+                                        {
+                                            <span class="chip chip-ok">At the table</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="chip">With the kitchen</span>
+                                        }
+                                    </li>
+                                }
+                            </ul>
                         }
-                        <span class="order-line-when">sent @RestaurantClock.Time(line.AddedAt)</span>
-                    </p>
-
-                    @if (line.IsRemoved)
-                    {
-                        @* §11.1: "removed lines struck-through with actor + reason". *@
-                        <p class="order-line-detail">
-                            Taken off by @ActorText(line.RemovedByActorRole, line.RemovedByActorPersonIdentifier, Person)@(line.RemovalReason is { } removalReason ? $" — {removalReason}" : string.Empty).
-                        </p>
-                    }
-
-                    @foreach (NarratedPriceAdjustment adjustment in line.PriceAdjustments)
-                    {
-                        @* §11.1: "price adjustments shown old → new with reason". *@
-                        <p class="order-line-detail">
-                            Price changed from <s>@Money(adjustment.PreviousUnitPriceAmount)</s>
-                            to <strong>@Money(adjustment.NewUnitPriceAmount)</strong>
-                            by @DescribeRole(adjustment.ActorRole) — @adjustment.Reason.
-                        </p>
-                    }
-
-                    @if (_sitting is not null && line.GuestMayRemove(Person))
-                    {
-                        <label class="order-line-remove">
-                            <input type="checkbox"
-                                   checked="@_staging.IsMarkedForRemoval(line.OrderLineIdentifier)"
-                                   @onchange="args => ToggleRemoval(line, args)" />
-                            <span>Take this off my order on the next send</span>
-                        </label>
-                    }
-                </li>
-            }
-        </ul>
+                    </li>
+                }
+            </ul>
+        }
     }
-
-    @* ---- totals and the rest of the party (§11.1) ---------------------------------------------- *@
-    @* A <dl> with <div> groupings — dt/dd outside a definition list is invalid HTML5, and the div
-       wrappers are what .order-totals lays out. The same shape .account-facts already uses. *@
-    <dl class="order-totals">
-        <div>
-            <dt>Your total</dt>
-            <dd>@Money(MyTotal)</dd>
-        </div>
-        <div>
-            <dt>Table total</dt>
-            <dd>@Money(TableTotal)</dd>
-        </div>
-    </dl>
-
-    <h3 class="order-subheading">@(_sitting is null ? "The settled bill" : "The rest of the table")</h3>
-
-    @if (OtherPeople.Count == 0)
-    {
-        <p class="muted">Nobody else at this table has ordered yet.</p>
-    }
-    else
-    {
-        <ul class="order-party">
-            @foreach (SittingBillEntry entry in OtherPeople)
-            {
-                <li class="order-party-order" @key="entry.GuestOrderIdentifier">
-                    <div class="order-line-main">
-                        <span class="order-line-name">@entry.BillName</span>
-                        <span class="order-line-price">@Money(entry.PersonTotalAmount)</span>
-                    </div>
-
-                    @{
-                        IReadOnlyList<OrderLineView> theirLines = LinesFor(entry.GuestOrderIdentifier);
-                    }
-
-                    @if (theirLines.Count == 0)
-                    {
-                        <p class="muted">Nothing on their order right now.</p>
-                    }
-                    else
-                    {
-                        <ul class="order-party-lines">
-                            @foreach (OrderLineView theirLine in theirLines)
-                            {
-                                <li @key="theirLine.OrderLineIdentifier">
-                                    <span>@theirLine.Quantity × @theirLine.MenuItemName</span>
-                                    @if (theirLine.IsFulfilled)
-                                    {
-                                        <span class="chip chip-ok">At the table</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="chip">With the kitchen</span>
-                                    }
-                                </li>
-                            }
-                        </ul>
-                    }
-                </li>
-            }
-        </ul>
-    }
-}
+</div>
 
 @code {
     /// <summary>One refused operation, already turned into two readable halves for the panel (§6.5.9).</summary>
@@ -457,6 +465,20 @@ else
             return count == 0 ? "Send to the kitchen" : $"Send {count} change{(count == 1 ? string.Empty : "s")}";
         }
     }
+
+    /// <summary>
+    /// Whether a live circuit produced this markup — <c>"true"</c> only in interactive-server rendering,
+    /// <c>"false"</c> during the prerender pass. The same attribute, for the same reason, as
+    /// <c>TableDisplay</c>'s.
+    ///
+    /// <para>This island is prerendered, so the picker, the basket and the totals all appear before any
+    /// circuit exists — and every control on it is a click handler, which means a surface that never
+    /// became interactive is indistinguishable from a live one until somebody taps something and nothing
+    /// happens. "The basket stayed empty" is two steps from "no circuit was established", and the
+    /// second is the sentence worth having. One attribute is what makes it available to an operator in
+    /// dev tools and to the §16.3 scenarios that drive this surface.</para>
+    /// </summary>
+    private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {

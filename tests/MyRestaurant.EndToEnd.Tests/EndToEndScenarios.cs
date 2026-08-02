@@ -13,7 +13,7 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
 /// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// <para>Six are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
+/// <para>Eight are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
 /// WebAuthn attestation and a real TOTP confirmation), <b>13</b> (a passkey sign-in of a TOTP-enrolled
 /// person must not be challenged for a code) and <b>14</b> (the join-token window arithmetic as a guest
 /// experiences it) — chosen because between them they exercise the whole harness. M6 Slice 3 adds
@@ -22,7 +22,10 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// are the two scenarios about the rotating code as a <em>screen</em> rather than as a URL. M6 Slice 5
 /// adds <b>3</b> (a guest scans, self-registers with a passkey, and joins on the grant after the code
 /// they scanned has expired), which is the first scenario driven entirely by somebody with no account
-/// and no role — and the first that needed a product surface built before it could be written.</para>
+/// and no role — and the first that needed a product surface built before it could be written. M6
+/// Slice 6 adds <b>4</b> (a guest stages two adds and a note, sends, and the kitchen gets exactly one
+/// alert with both lines pending) and <b>6</b> (the kitchen marks one line away and the guest's own
+/// screen re-badges it), the first two that watch §9's live updates cross between two circuits.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -411,10 +414,92 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
     // -------------------------------------------------------------------------------------------
 
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Guest_StagesAddsAndSend_KitchenGetsOneAlert()
+    // -------------------------------------------------------------------------------------------
+    // 4. Guest stages 2 adds + note → Send → kitchen gets one loud alert → lines pending.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Guest_StagesAddsAndSend_KitchenGetsOneAlert()
     {
-        // 4. Guest stages 2 adds + note → Send → kitchen gets one loud alert → lines pending.
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Four";
+        const string customizationNote = "No onions, extra hot";
+        GuestAccount guestAccount = new("e2e.guest.four", "Four Guest");
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+
+        ArrangedService service = await ArrangeServiceAsync(
+            instance, tableLabel, guestAccount, cancellationToken);
+
+        // The surface under test belongs to the table the administrator created, rather than to some
+        // other sitting this guest might hold — §5.1 allows several at once, and the URL is what scopes
+        // the one on screen.
+        Assert.Contains(service.TableIdentifier.ToString("D"), service.Guest.Url, StringComparison.Ordinal);
+
+        // (a) Two adds and a note, staged. Nothing has reached the kitchen yet, and the board being
+        // live and watching is what makes that an assertion rather than an assumption: §11.1 says the
+        // basket is local until Send, and a surface that wrote as it staged would have alerted here.
+        await TableOrderJourneys.StageAsync(service.Guest, service.Soup, 1, customizationNote);
+        await TableOrderJourneys.StageAsync(service.Guest, service.Pie, 2);
+
+        Assert.Equal(2, await TableOrderJourneys.BasketLineCountAsync(service.Guest));
+
+        KitchenBoardSnapshot beforeSend = await KitchenJourneys.ReadBoardAsync(service.Kitchen);
+        Assert.Equal(0, beforeSend.UnseenAlertCount);
+        Assert.Empty(beforeSend.PendingLines);
+
+        // (b) Send. §6.5: one guest_submission owning both adds, priced inside the transaction.
+        string confirmation = await TableOrderJourneys.SendAsync(service.Guest);
+
+        Assert.Contains("2 items", confirmation, StringComparison.Ordinal);
+
+        // (c) The board, waited for as one predicate over both facts rather than two waits in a row.
+        // §9 publishes OrderLinesChanged before KitchenAlert and the board handles each as it arrives,
+        // so there is a real window in which the queue has already re-read and the alert has not yet
+        // been counted — a scenario that sampled it would report a silent kitchen.
+        KitchenBoardSnapshot board = await KitchenJourneys.WaitForBoardAsync(
+            service.Kitchen,
+            snapshot => snapshot.PendingLines.Count == 2 && snapshot.UnseenAlertCount >= 1,
+            LiveUpdatePatience,
+            "two lines on the pass and at least one unacknowledged alert",
+            cancellationToken);
+
+        // §16.3's word is "one". Two adds in one send is one order event and therefore one
+        // kitchen_notification row and one alert (§10.1); a count of two would mean the alert had
+        // become per-line, which is how a busy service turns into a siren nobody can hear over.
+        Assert.Equal(1, board.UnseenAlertCount);
+
+        // "Lines pending", in the kitchen's own terms: one row per order line, the quantities the guest
+        // chose, and §11.2's prominent customization note against the line it belongs to.
+        KitchenBoardLine soupOnThePass =
+            Assert.Single(board.PendingLines.Where(line => line.Name == service.Soup.Name));
+        KitchenBoardLine pieOnThePass =
+            Assert.Single(board.PendingLines.Where(line => line.Name == service.Pie.Name));
+
+        Assert.Equal(1, soupOnThePass.Quantity);
+        Assert.Equal(customizationNote, soupOnThePass.Note);
+        Assert.Equal(2, pieOnThePass.Quantity);
+        Assert.Null(pieOnThePass.Note);
+
+        // (d) The same two lines from the other end, and the basket emptied — §11.1 clears it only on
+        // an accepted event, so a full basket here would mean the confirmation was about something else.
+        IReadOnlyList<GuestOrderLine> guestLines = await TableOrderJourneys.WaitForCommittedLinesAsync(
+            service.Guest,
+            lines => lines.Count == 2,
+            LiveUpdatePatience,
+            "both sent lines on the guest's own order",
+            cancellationToken);
+
+        Assert.All(guestLines, line => Assert.Equal(GuestLineBadge.WithTheKitchen, line.Badge));
+        Assert.Equal(0, await TableOrderJourneys.BasketLineCountAsync(service.Guest));
+
+        // (e) Still one. Re-read now that both broadcasts have long since landed and the guest surface
+        // has finished reacting to them, which turns "one alert so far" into "one alert, full stop".
+        KitchenBoardSnapshot settled = await KitchenJourneys.ReadBoardAsync(service.Kitchen);
+
+        Assert.Equal(1, settled.UnseenAlertCount);
     }
 
     [Fact(Skip = PendingHarnessExtension)]
@@ -424,10 +509,78 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         //    roster update. Needs two live circuits in two contexts at once.
     }
 
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Kitchen_FulfillsLine_GuestSeesFulfilledBadge()
+    // -------------------------------------------------------------------------------------------
+    // 6. Kitchen fulfills one line → guest sees fulfilled badge.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Kitchen_FulfillsLine_GuestSeesFulfilledBadge()
     {
-        // 6. Kitchen fulfills one line → guest sees fulfilled badge.
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Six";
+        GuestAccount guestAccount = new("e2e.guest.six", "Six Guest");
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+
+        ArrangedService service = await ArrangeServiceAsync(
+            instance, tableLabel, guestAccount, cancellationToken);
+
+        await TableOrderJourneys.StageAsync(service.Guest, service.Soup, 1);
+        await TableOrderJourneys.StageAsync(service.Guest, service.Pie, 1);
+        await TableOrderJourneys.SendAsync(service.Guest);
+
+        await KitchenJourneys.WaitForBoardAsync(
+            service.Kitchen,
+            snapshot => snapshot.PendingLines.Count == 2,
+            LiveUpdatePatience,
+            "both of the guest's lines on the pass",
+            cancellationToken);
+
+        // Both lines start with the kitchen on the guest's own screen. Asserted before the tap, so that
+        // the badge below is a change rather than a state the surface happened to be born in.
+        IReadOnlyList<GuestOrderLine> beforeFulfillment = await TableOrderJourneys.WaitForCommittedLinesAsync(
+            service.Guest,
+            lines => lines.Count == 2,
+            LiveUpdatePatience,
+            "both sent lines on the guest's own order",
+            cancellationToken);
+
+        Assert.All(beforeFulfillment, line => Assert.Equal(GuestLineBadge.WithTheKitchen, line.Badge));
+
+        // §11.2: "tap a line → one fulfillment event". One line, not the whole ticket, because the half
+        // of this scenario worth getting wrong is the other line staying where it was.
+        await KitchenJourneys.FulfillLineAsync(service.Kitchen, service.Soup.Name);
+
+        // Nobody touched the guest's phone. §9 sends LineFulfillmentChanged to the sitting's members and
+        // the surface re-reads; that path — a second circuit, in a second browser context, reacting to a
+        // commit in a first — is the whole of what this scenario proves.
+        IReadOnlyList<GuestOrderLine> afterFulfillment = await TableOrderJourneys.WaitForCommittedLinesAsync(
+            service.Guest,
+            lines => lines.Any(line => line.Badge == GuestLineBadge.AtYourTable),
+            LiveUpdatePatience,
+            "a line badged as at the table",
+            cancellationToken);
+
+        GuestOrderLine soupLine = Assert.Single(afterFulfillment
+            .Where(line => line.Name.Contains(service.Soup.Name, StringComparison.Ordinal)));
+        GuestOrderLine pieLine = Assert.Single(afterFulfillment
+            .Where(line => line.Name.Contains(service.Pie.Name, StringComparison.Ordinal)));
+
+        Assert.Equal(GuestLineBadge.AtYourTable, soupLine.Badge);
+        Assert.Equal(GuestLineBadge.WithTheKitchen, pieLine.Badge);
+
+        // And the pass is one line lighter — kitchen_pending_line excludes a fulfilled line (§8.3), so
+        // the board losing it is the same fact from the writing side rather than a second opinion.
+        KitchenBoardSnapshot board = await KitchenJourneys.WaitForBoardAsync(
+            service.Kitchen,
+            snapshot => snapshot.PendingLines.Count == 1,
+            LiveUpdatePatience,
+            "one line left on the pass",
+            cancellationToken);
+
+        Assert.Equal(service.Pie.Name, Assert.Single(board.PendingLines).Name);
     }
 
     [Fact(Skip = PendingHarnessExtension)]
@@ -505,6 +658,86 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     private static readonly TimeSpan InteractivityPatience = TimeSpan.FromSeconds(30);
 
     /// <summary>
+    /// How long to wait for a §9 broadcast to reach another circuit and repaint it. The broadcaster is
+    /// in-process and the queries behind each re-read are small and indexed, so the honest expectation is
+    /// milliseconds; thirty seconds is the same patience every other page operation gets, and is here to
+    /// absorb a container that is busy compiling somebody else's scenario rather than to allow for
+    /// anything this code does. A timeout at this length means the notification did not arrive at all.
+    /// </summary>
+    private static readonly TimeSpan LiveUpdatePatience = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// A restaurant mid-service: an administrator standing at the kitchen board, a guest seated at a
+    /// table with a live ordering surface, and two things on the menu to order.
+    /// </summary>
+    private sealed record ArrangedService(
+        IPage Kitchen,
+        IPage Guest,
+        Guid TableIdentifier,
+        MenuItemOnTheMenu Soup,
+        MenuItemOnTheMenu Pie);
+
+    /// <summary>
+    /// Everything §16.3 scenarios 4 and 6 need before their first interesting line, arranged the way a
+    /// restaurant would arrange it: an administrator bootstraps, puts two things on the menu and creates
+    /// a table; a guest scans it, registers, and joins; the kitchen board is opened and becomes live.
+    ///
+    /// <para><b>The kitchen board is the administrator's own browser, and that is deliberate.</b> §3.7
+    /// admits both <c>kitchen</c> and <c>administrator</c> to <c>/kitchen</c>, and an administrator
+    /// covering the pass is a real thing the application supports — <c>KitchenBoard.razor</c> goes out of
+    /// its way to record them as themselves rather than as the kitchen. Standing up a separate kitchen
+    /// account would mean <c>/administration/people/new</c>, a forced password change (§3.2), and a
+    /// second sign-in, none of which either scenario asserts on. Scenarios that are <em>about</em> a
+    /// staff account's own journey will create one.</para>
+    ///
+    /// <para><b>The board is opened before anything is sent.</b> An alert is a §9 broadcast to
+    /// subscribers and <c>KitchenBoard.razor</c> subscribes on its first interactive render. A board
+    /// opened after the send would show the queue perfectly — that comes from <c>kitchen_pending_line</c>
+    /// — and would have heard nothing, which is precisely the half of §10 these scenarios exist for.</para>
+    ///
+    /// <para>The join secret is read out of the row (<see cref="RestaurantInstance.ReadJoinSecretAsync"/>)
+    /// rather than decoded off a display: these scenarios are about what happens after the guest is
+    /// seated, and pairing a tablet to get at a QR would put scenario 2's whole apparatus in front of
+    /// them. The token computed from it is one the server really verifies.</para>
+    /// </summary>
+    private static async Task<ArrangedService> ArrangeServiceAsync(
+        RestaurantInstance instance,
+        string tableLabel,
+        GuestAccount guestAccount,
+        CancellationToken cancellationToken)
+    {
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        // Two items, with names that are not substrings of one another: every assertion below matches a
+        // line by name, and "Soup" inside "Soup of the day" would make one of them meaningless.
+        MenuItemOnTheMenu soup =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Soup of the day", 6.50m);
+        MenuItemOnTheMenu pie =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Steak pie", 14.00m);
+
+        Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
+
+        byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+        string token = JoinTokenService.ComputeCurrentToken(
+            joinSecret, tableIdentifier, DateTimeOffset.UtcNow, instance.TableJoinTokenRotationSeconds);
+
+        IPage guest = await instance.OpenIsolatedPageAsync(withVirtualAuthenticator: true);
+
+        Assert.Equal(
+            TableJourneys.JoinStage.SentToSignIn,
+            await TableJourneys.ScanAsync(guest, tableIdentifier, token));
+
+        await AccountJourneys.RegisterGuestWithPasskeyAsync(guest, guestAccount);
+        await TableJourneys.JoinAsync(guest);
+        await TableOrderJourneys.WaitForLiveSurfaceAsync(guest, InteractivityPatience);
+
+        await KitchenJourneys.OpenAsync(administrator, InteractivityPatience);
+
+        return new ArrangedService(administrator, guest, tableIdentifier, soup, pie);
+    }
+
+    /// <summary>
     /// Waits until a token minted at <paramref name="mintedAt"/> is outside §4.3's acceptance window.
     ///
     /// <para>The arithmetic, spelled out because an off-by-one here would make the assertion that
@@ -557,4 +790,3 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         Assert.Contains(age, JoinQrCodes.LiveAges);
     }
 }
-

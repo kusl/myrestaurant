@@ -37,7 +37,10 @@
 
 <PageTitle>Kitchen</PageTitle>
 
-<section class="panel kitchen-board" id="kitchen-board-surface">
+@* data-live says whether a circuit produced this markup at all, and data-unseen-alerts publishes the
+   §10.3 count as a number rather than only as English inside the badge — see IsLiveAttributeValue. *@
+<section class="panel kitchen-board" id="kitchen-board-surface"
+         data-live="@IsLiveAttributeValue" data-unseen-alerts="@_alerts.UnseenCount">
     <div class="kitchen-header">
         <div>
             <p class="eyebrow">@Options.RestaurantName</p>
@@ -535,6 +538,25 @@
 
     [CascadingParameter]
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    /// <summary>
+    /// Whether a live circuit produced this markup — <c>"true"</c> only in interactive-server rendering,
+    /// <c>"false"</c> during the prerender pass. Published for the same reason <c>TableDisplay</c>
+    /// publishes it, and the stakes here are the highest of the three surfaces that do.
+    ///
+    /// <para>The board's whole job is to react. Prerendering renders the queue as it stood at the moment
+    /// of the request and then nothing ever arrives: no <c>KitchenAlert</c>, no re-read, no badge — and
+    /// a kitchen that has simply had no orders for ten minutes looks exactly the same. That is §10's
+    /// worst failure and the one nobody notices while it is happening. The attribute costs eight
+    /// characters and turns it into something an operator can see in dev tools.</para>
+    ///
+    /// <para><c>data-unseen-alerts</c> beside it is the §10.3 count as a number. The badge already says
+    /// it in English, but the count is the one piece of state on this screen that exists <em>only</em>
+    /// in circuit memory — everything else can be re-derived from the database — and reading it back out
+    /// of a sentence that also carries pluralisation and an overdue parenthetical means parsing prose to
+    /// learn a fact the component already knows.</para>
+    /// </summary>
+    private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {

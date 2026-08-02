@@ -110,9 +110,14 @@ internal static class TableJourneys
             throw new InvalidOperationException(
                 string.Create(
                     CultureInfo.InvariantCulture,
+                    // Every operand is an interpolated string, and that is load-bearing rather than
+                    // stylistic. string.Create's second parameter is a `ref DefaultInterpolatedStringHandler`,
+                    // and C# only converts an addition to a handler when the whole additive expression is
+                    // composed of interpolated strings; one bare "…" literal in the chain makes the result a
+                    // plain string and the call fails to bind with CS1620. A hole-less $"…" still counts.
                     $"Joining did not confirm; the table page is now showing {stage}. A grant is"
-                    + " single-use and is cleared whatever the outcome (§4.4), so if this was a"
-                    + " refusal the grant is already spent and a retry will not help."),
+                    + $" single-use and is cleared whatever the outcome (§4.4), so if this was a"
+                    + $" refusal the grant is already spent and a retry will not help."),
                 exception);
         }
     }

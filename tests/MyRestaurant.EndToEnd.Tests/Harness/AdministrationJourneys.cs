@@ -5,18 +5,26 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 
 /// <summary>
 /// The administration journeys the §16.3 scenarios walk: creating a table, issuing a display pairing
-/// code, and rotating a table's join secret (TECHNICAL_SPECIFICATION §4.1, §4.2, §11.4).
+/// code, rotating a table's join secret, and putting something on the menu
+/// (TECHNICAL_SPECIFICATION §4.1, §4.2, §7, §11.4).
 ///
-/// <para>All three go through the real static-SSR administration surfaces on a page that is signed in as
+/// <para>All of them go through the real static-SSR administration surfaces on a page that is signed in as
 /// an administrator, because that is what the scenarios are about — "admin creates table" in §16.3 means
 /// the form, the antiforgery token, the endpoint authorization and the redirect, not an
 /// <c>INSERT</c>. The one place these scenarios do reach past the UI is reading a <c>join_secret</c>
 /// (<see cref="RestaurantInstance.ReadJoinSecretAsync"/>), and only because §4.1 makes it deliberately
 /// unreachable from every surface — which is the property under test rather than an obstacle to it.</para>
 /// </summary>
+/// <summary>
+/// Something an administrator put on the menu (§7): the identifier the picker's <c>&lt;option&gt;</c>
+/// carries, and the name every surface — the guest's basket, the kitchen ticket, the bill — reads.
+/// </summary>
+internal sealed record MenuItemOnTheMenu(Guid Identifier, string Name, decimal PriceAmount);
+
 internal static class AdministrationJourneys
 {
     private const string TablesPath = "/administration/tables";
+    private const string MenuPath = "/administration/menu";
 
     /// <summary>
     /// Creates a table through <c>/administration/tables/new</c> (§4.1) and returns its identifier,
@@ -136,6 +144,56 @@ internal static class AdministrationJourneys
             throw new InvalidOperationException(
                 $"Rotating the join secret reported '{message}', which is some other outcome.");
         }
+    }
+
+    /// <summary>
+    /// Puts an item on the menu through <c>/administration/menu/new</c> (§7) and returns it, identifier
+    /// included — read back out of the "Manage this item" link the same way
+    /// <see cref="CreateTableAsync"/> recovers a table's, because the identifier is minted server-side
+    /// and a scenario that recovered it any other way would be reimplementing the surface.
+    ///
+    /// <para>The identifier is the part that matters downstream. The guest's picker renders one
+    /// <c>&lt;option&gt;</c> per item whose <em>label</em> is the name, the price and possibly the words
+    /// "currently unavailable" — so a scenario choosing by label would be matching on money formatting
+    /// and §7's availability copy. The <c>value</c> is the bare identifier, and that is what
+    /// <see cref="TableOrderJourneys"/> selects on.</para>
+    /// </summary>
+    internal static async Task<MenuItemOnTheMenu> CreateMenuItemAsync(IPage page, string name, decimal priceAmount)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync($"{MenuPath}/new");
+
+        await page.FillAsync("#name", name);
+        await page.FillAsync("#price", priceAmount.ToString("0.00", CultureInfo.InvariantCulture));
+        await page.ClickAsync("button:has-text('Create item')");
+
+        ILocator manageLink = page.Locator("a:has-text('Manage this item')").First;
+
+        try
+        {
+            await manageLink.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                $"Creating the menu item '{name}' did not reach the success panel. "
+                + await DescribeFailureAsync(page),
+                exception);
+        }
+
+        string? href = await manageLink.GetAttributeAsync("href");
+        string prefix = MenuPath + "/";
+
+        if (href is null
+            || !href.StartsWith(prefix, StringComparison.Ordinal)
+            || !Guid.TryParse(href[prefix.Length..], out Guid menuItemIdentifier))
+        {
+            throw new InvalidOperationException(
+                $"The item-created panel linked to '{href}', which is not a menu item management URL.");
+        }
+
+        return new MenuItemOnTheMenu(menuItemIdentifier, name, priceAmount);
     }
 
     private static string ManagePathFor(Guid tableIdentifier)
