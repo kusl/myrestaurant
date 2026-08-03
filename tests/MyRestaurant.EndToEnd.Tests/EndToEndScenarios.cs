@@ -29,7 +29,10 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// Slice 9 adds <b>5</b> (a second guest joins, the first guest's roster grows without anyone touching
 /// their phone, and the second guest watches the first guest's order grow), the first with two guests
 /// in the restaurant at once and the only one where every interesting event is raised by a browser
-/// other than the one being asserted on.</para>
+/// other than the one being asserted on. M6 Slice 10 adds <b>7</b> (a guest holding a tick on a line
+/// the kitchen then passes, an all-or-nothing refusal, and the removal that succeeds once the batch is
+/// clean), the first about §6.5.9 as a guest experiences it and the first to find that the surface
+/// refuses on the guest's behalf before the transaction ever gets the chance.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -724,15 +727,195 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     }
 
     // -------------------------------------------------------------------------------------------
+    // 7. Guest tries to remove the fulfilled line → whole batch rejected with per-op reason;
+    //    removing their pending line succeeds.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Guest_RemoveFulfilledLineRejected_RemovePendingSucceeds()
+    {
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Seven";
+        GuestAccount guestAccount = new("e2e.guest.seven", "Seven Guest");
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+
+        ArrangedService service = await ArrangeServiceAsync(
+            instance, tableLabel, guestAccount, cancellationToken);
+
+        // (a) A soup and a pie, sent and pending. Two lines rather than one because the half of §6.5.9
+        // worth proving is that the *good* operation in a refused batch does not slip through, and
+        // that needs a second line for the batch to be all-or-nothing about.
+        await TableOrderJourneys.StageAsync(service.Guest, service.Soup, 1);
+        await TableOrderJourneys.StageAsync(service.Guest, service.Pie, 1);
+        await TableOrderJourneys.SendAsync(service.Guest);
+
+        await KitchenJourneys.WaitForBoardAsync(
+            service.Kitchen,
+            snapshot => snapshot.PendingLines.Count == 2,
+            LiveUpdatePatience,
+            "both of the guest's lines on the pass",
+            cancellationToken);
+
+        IReadOnlyList<GuestOrderLine> sent = await TableOrderJourneys.WaitForCommittedLinesAsync(
+            service.Guest,
+            lines => lines.Count == 2,
+            LiveUpdatePatience,
+            "both sent lines on the guest's own order",
+            cancellationToken);
+
+        Assert.All(sent, line => Assert.Equal(GuestLineBadge.WithTheKitchen, line.Badge));
+
+        // (b) The guest ticks the soup while it is still theirs to take off (§6.5.3). Nothing is wrong
+        // yet and nothing has been sent — this is where §16.3's "tries to" begins.
+        Assert.True(await TableOrderJourneys.LineOffersRemovalAsync(service.Guest, service.Soup.Name));
+
+        await TableOrderJourneys.MarkForRemovalAsync(service.Guest, service.Soup.Name);
+
+        Assert.Equal(1, await TableOrderJourneys.BasketRemovalCountAsync(service.Guest));
+
+        // (c) ...and then the kitchen passes that very plate, in the other browser, before the guest
+        // has pressed anything.
+        await KitchenJourneys.FulfillLineAsync(service.Kitchen, service.Soup.Name);
+
+        // (d) The surface refuses on the guest's behalf. This is the honest browser answer to "guest
+        // tries to remove the fulfilled line": §9's LineFulfillmentChanged reaches this circuit,
+        // OrderStaging.PruneRemovals drops the mark that has stopped being valid, and §11.1 renders no
+        // tick box on a fulfilled line at all. A guest cannot compose the refusable batch through this
+        // surface — which is exactly why the refusal in (e) has to be reached another way, and why
+        // that is a finding rather than a workaround.
+        await TableOrderJourneys.WaitForCommittedLinesAsync(
+            service.Guest,
+            lines => lines.Any(line =>
+                line.Name.Contains(service.Soup.Name, StringComparison.Ordinal)
+                && line.Badge == GuestLineBadge.AtYourTable),
+            LiveUpdatePatience,
+            "the soup badged as at the table",
+            cancellationToken);
+
+        await TableOrderJourneys.WaitForBasketAsync(
+            service.Guest,
+            basket => basket is { StagedAdds: 0, TickedRemovals: 0 },
+            LiveUpdatePatience,
+            "the stale removal unticked",
+            cancellationToken);
+
+        // And the guest is told why the tick went. One commit raises two notifications —
+        // OrderLinesChanged and then LineFulfillmentChanged (§9, IOrderWorkflow) — and this surface
+        // re-reads on both, so this sentence used to be written by the first pass and erased by the
+        // second before any human could read it. This assertion is what keeps it surviving.
+        string? unticked = await TableOrderJourneys.ReadPruneNoticeAsync(service.Guest);
+
+        Assert.NotNull(unticked);
+        Assert.Contains("no longer yours to remove", unticked, StringComparison.Ordinal);
+
+        // §6.5.3 as the difference between two rows on one screen rather than as a rule quoted at the
+        // reader: gone from the line the kitchen passed, still there on the one it has not.
+        Assert.False(await TableOrderJourneys.LineOffersRemovalAsync(service.Guest, service.Soup.Name));
+        Assert.True(await TableOrderJourneys.LineOffersRemovalAsync(service.Guest, service.Pie.Name));
+
+        // (e) "Whole batch rejected with per-op reason", reached the one way a guest still can. §7 is
+        // explicit that a staged item which goes unavailable is *marked* and that the send
+        // "re-validates server-side regardless" — the surface does not disarm the button, because the
+        // transaction is the authority (§6.6). So: stage the soup again while it is on, let the
+        // kitchen 86 it, and tick the pie for removal in the same basket. One add the transaction must
+        // refuse, one removal that would have been perfectly fine on its own.
+        await TableOrderJourneys.StageAsync(service.Guest, service.Soup, 1);
+
+        await KitchenJourneys.EightySixAsync(service.Kitchen, service.Soup.Name);
+
+        // Waited for rather than assumed. Sending before MenuChanged arrived would still be refused,
+        // and for the right reason — but the scenario would then be about a guest who could not see it
+        // coming, which is a different claim about §7 than the one it is making.
+        await TableOrderJourneys.WaitForBasketAsync(
+            service.Guest,
+            basket => basket is { StagedAdds: 1, UnavailableMarks: 1 },
+            LiveUpdatePatience,
+            "the staged soup marked unavailable",
+            cancellationToken);
+
+        await TableOrderJourneys.MarkForRemovalAsync(service.Guest, service.Pie.Name);
+
+        IReadOnlyList<string> refusal =
+            await TableOrderJourneys.SendExpectingRefusalAsync(service.Guest);
+
+        // One reason, naming the one operation §6.5.4 refused and why. The panel is keyed by
+        // OrderMutationError.OperationIndex into the descriptions of the batch that was sent, so a
+        // reason that named the wrong line would be a real defect rather than cosmetic.
+        string only = Assert.Single(refusal);
+
+        Assert.Contains(service.Soup.Name, only, StringComparison.Ordinal);
+        Assert.Contains("currently unavailable", only, StringComparison.Ordinal);
+
+        // "Nothing was sent", in the surface's own words: the basket is exactly as the guest left it,
+        // both operations still in it.
+        await TableOrderJourneys.WaitForBasketAsync(
+            service.Guest,
+            basket => basket is { StagedAdds: 1, TickedRemovals: 1 },
+            LiveUpdatePatience,
+            "the basket exactly as the guest left it",
+            cancellationToken);
+
+        // And all-or-nothing means the good half did not go either. The pie is still on the order and
+        // still with the kitchen — a removal that had quietly committed while its batch was refused
+        // would be the worst possible outcome of §6.5.9 and the hardest to notice.
+        IReadOnlyList<GuestOrderLine> untouched =
+            await TableOrderJourneys.ReadCommittedLinesAsync(service.Guest);
+
+        Assert.Equal(2, untouched.Count);
+        Assert.Equal(
+            GuestLineBadge.WithTheKitchen,
+            Assert.Single(untouched, line => line.Name.Contains(service.Pie.Name, StringComparison.Ordinal))
+                .Badge);
+
+        // The kitchen's copy agrees, which is the same fact from the other side of the pass.
+        KitchenBoardSnapshot stillWaiting = await KitchenJourneys.ReadBoardAsync(service.Kitchen);
+
+        Assert.Equal(service.Pie.Name, Assert.Single(stillWaiting.PendingLines).Name);
+
+        // (f) "Removing their pending line succeeds." Take the 86'd soup out and send again with
+        // nothing in the basket but the tick. Same line, same guest, same tick — the only thing that
+        // changed is that the batch no longer carries an operation the transaction must refuse, which
+        // is precisely what "all-or-nothing" is supposed to mean.
+        await TableOrderJourneys.UnstageAsync(service.Guest, service.Soup.Name);
+
+        string confirmation = await TableOrderJourneys.SendAsync(service.Guest);
+
+        Assert.Contains("taken off", confirmation, StringComparison.Ordinal);
+
+        IReadOnlyList<GuestOrderLine> afterRemoval = await TableOrderJourneys.WaitForCommittedLinesAsync(
+            service.Guest,
+            lines => lines.Any(line =>
+                line.Name.Contains(service.Pie.Name, StringComparison.Ordinal)
+                && line.Badge == GuestLineBadge.Removed),
+            LiveUpdatePatience,
+            "the pie struck through as removed",
+            cancellationToken);
+
+        // §11.1 keeps a removed line on screen — "removed lines struck-through with actor + reason" —
+        // so the count does not fall. That is the whole difference between a line a guest took off and
+        // a line that was never ordered, and §6.8's history depends on it.
+        Assert.Equal(2, afterRemoval.Count);
+        Assert.Equal(
+            GuestLineBadge.AtYourTable,
+            Assert.Single(afterRemoval, line => line.Name.Contains(service.Soup.Name, StringComparison.Ordinal))
+                .Badge);
+
+        // And the pass empties: order_current_line drops a removed line in SQL (§8.3), so the kitchen
+        // is not left holding a plate nobody is going to eat.
+        await KitchenJourneys.WaitForBoardAsync(
+            service.Kitchen,
+            snapshot => snapshot.PendingLines.Count == 0,
+            LiveUpdatePatience,
+            "nothing left on the pass",
+            cancellationToken);
+    }
+
+    // -------------------------------------------------------------------------------------------
     // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
     // -------------------------------------------------------------------------------------------
-
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Guest_RemoveFulfilledLineRejected_RemovePendingSucceeds()
-    {
-        // 7. Guest removes fulfilled line → whole batch rejected with per-op reason; removing pending
-        //    line succeeds.
-    }
 
     [Fact(Skip = PendingHarnessExtension)]
     public void Send_UnfulfilledPastThreshold_YieldsExactlyOneReminder()

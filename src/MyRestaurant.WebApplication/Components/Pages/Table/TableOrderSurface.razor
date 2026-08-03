@@ -122,7 +122,14 @@
 
             @if (_pruneNotice is { } pruneNotice)
             {
-                <p class="status-error" role="status">@pruneNotice</p>
+                @* A class of its own, for the same reason .order-party-line-name got one: this is the
+                   only sentence on the surface that reports something the surface did *to the guest's
+                   basket* without being asked, and there was no way to address it. Three other
+                   p.status-error elements live inside this island — the picker's staging refusal, the
+                   §6.5.9 rejection panel's, and the expired-session line — so "the error paragraph" was
+                   never a way to name this one. No CSS rule stands behind the new class; .status-error
+                   still does all the styling, so nothing changes on screen. *@
+                <p class="status-error order-prune-notice" role="status">@pruneNotice</p>
             }
 
             @* ---- staging area (§11.1) ------------------------------------------------------------ *@
@@ -559,7 +566,15 @@
         // A tick that has gone stale — the kitchen fulfilled the line, or staff took it off — would
         // sink every subsequent send, because §6.5.9 refuses the whole event on one bad operation.
         // Drop those marks and say so, rather than letting the guest press Send into a wall.
-        _pruneNotice = null;
+        //
+        // The notice is deliberately NOT cleared here, and that is a fix rather than an oversight. One
+        // commit raises more than one notification: a fulfillment publishes OrderLinesChanged and then
+        // LineFulfillmentChanged (§9, IOrderWorkflow.AppendAsync), and this surface re-reads on both.
+        // Clearing at the top of every pass meant the second re-read erased the sentence the first had
+        // just written, microseconds later — so in practice the guest's tick vanished from the basket
+        // with no explanation at all, which is the one outcome this notice exists to prevent. It is
+        // cleared instead wherever the guest touches the basket themselves, because that is the moment
+        // it stops being news: StageItem, Unstage, ToggleRemoval and SendAsync.
         int dropped = _staging.PruneRemovals(_myLines
             .Where(line => line.GuestMayRemove(person))
             .Select(line => line.OrderLineIdentifier));
@@ -602,12 +617,25 @@
         _pickedNote = string.Empty;
         _sendStatus = null;
         _rejection = null;
+        _pruneNotice = null;
     }
 
+    /// <summary>
+    /// Takes a staged item back out (§11.1), and clears everything the previous send had to say.
+    ///
+    /// <para>The clearing is the part worth reading. §6.5.9's panel ends "Fix these and send again",
+    /// and taking the offending item out <em>is</em> fixing it — leaving the panel up would tell the
+    /// guest their basket is still broken at the moment they repaired it. <c>StageItem</c> and
+    /// <c>ToggleRemoval</c> have always cleared it for the same reason; this was the one basket edit
+    /// that did not, which is an inconsistency rather than a decision.</para>
+    /// </summary>
     private void Unstage(Guid stagingIdentifier)
     {
         _staging.Unstage(stagingIdentifier);
         _stagingNotice = null;
+        _sendStatus = null;
+        _rejection = null;
+        _pruneNotice = null;
     }
 
     private void ChangeStagedQuantity(Guid stagingIdentifier, ChangeEventArgs args)
@@ -637,6 +665,7 @@
 
         _sendStatus = null;
         _rejection = null;
+        _pruneNotice = null;
     }
 
     /// <summary>
@@ -656,6 +685,7 @@
         _sendStatus = null;
         _rejection = null;
         _stagingNotice = null;
+        _pruneNotice = null;
 
         try
         {

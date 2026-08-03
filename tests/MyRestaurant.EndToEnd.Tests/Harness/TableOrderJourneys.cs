@@ -60,9 +60,43 @@ internal sealed record TableRosterMember(string Name, bool IsYou);
 internal sealed record PartyOrder(string BillName, string TotalText, IReadOnlyList<GuestOrderLine> Lines);
 
 /// <summary>
-/// The guest ordering journeys the §16.3 scenarios walk: staging items into the basket, sending them,
-/// and reading what came back — plus who else is at the table and what they have ordered
-/// (TECHNICAL_SPECIFICATION §6.5, §9, §11.1).
+/// What the staging area is holding right now (§11.1): the adds waiting to go, the committed lines
+/// ticked to be taken off in the same batch, and how many of those adds are wearing §7's "this became
+/// unavailable while it was in your basket" mark.
+///
+/// <para>Three counts rather than three methods because §16.3 scenario 7 waits on combinations of
+/// them, and a wait that read them one at a time would be sampling a surface that re-renders all three
+/// together.</para>
+/// </summary>
+internal sealed record BasketContents(int StagedAdds, int TickedRemovals, int UnavailableMarks);
+
+/// <summary>
+/// What one press of Send left on the surface: the basket it emptied or did not, and the sentence it
+/// wrote (TECHNICAL_SPECIFICATION §6.5.9, §11.1).
+///
+/// <para>Not returned to scenarios — <see cref="TableOrderJourneys.SendAsync"/> and
+/// <see cref="TableOrderJourneys.SendExpectingRefusalAsync"/> each turn it into the one thing their
+/// caller asked for, and turn the other outcome into a failure that says what happened instead. It
+/// exists because both of those need to watch for <em>both</em> outcomes at once, and a single poll
+/// that can end two ways is easier to get right than two waits racing each other.</para>
+/// </summary>
+/// <param name="BasketIsEmpty">
+/// True once the staging area holds neither an add nor a ticked removal. This is how the harness knows
+/// a send committed. §11.1 clears the basket only on an accepted event and a refusal leaves it exactly
+/// as it was, so the basket is the surface's own record of which happened — and unlike the confirmation
+/// sentence it cannot be confused with the identical sentence a previous send left behind.
+/// </param>
+/// <param name="Confirmation">The §11.1 confirmation, or <c>null</c> when none is on screen.</param>
+/// <param name="RefusalReasons">§6.5.9's per-operation reasons, empty when the panel is absent.</param>
+internal sealed record SendOutcome(
+    bool BasketIsEmpty,
+    string? Confirmation,
+    IReadOnlyList<string> RefusalReasons);
+
+/// <summary>
+/// The guest ordering journeys the §16.3 scenarios walk: staging items into the basket, ticking a
+/// committed line for removal, sending them, and reading what came back — plus who else is at the
+/// table and what they have ordered (TECHNICAL_SPECIFICATION §6.5, §9, §11.1).
 ///
 /// <para><b>Everything here is scoped to <c>#table-order-surface</c>, and that is not decoration.</b>
 /// <c>/table/{id}</c> is a static-SSR page hosting this island, and the page itself renders a
@@ -84,6 +118,15 @@ internal sealed record PartyOrder(string BillName, string TotalText, IReadOnlyLi
 /// Send — and there is no click on this page to await. A scenario that read them once would be sampling
 /// a race it cannot see; <see cref="WaitForRosterAsync"/> and <see cref="WaitForPartyAsync"/> re-read
 /// until the predicate holds and then say, in one sentence, what was on screen when it never did.</para>
+///
+/// <para><b>Why a send is judged by the basket rather than by its confirmation.</b> §11.1 clears the
+/// staging area only on an accepted event, so an empty basket is the surface saying the transaction
+/// committed. The confirmation sentence cannot carry that weight on its own: it stays on screen until
+/// something clears it, and two sends of the same shape produce the same words — so "wait for
+/// <c>p.status-success</c>" is satisfied by the <em>previous</em> send in any scenario that sends
+/// twice. The same poll watches for §6.5.9's rejection panel, which is why a refused send now says
+/// which operation was refused and why, at the moment it happens, instead of thirty seconds later as a
+/// timeout.</para>
 /// </summary>
 internal static class TableOrderJourneys
 {
@@ -101,6 +144,10 @@ internal static class TableOrderJourneys
     private const string BasketLineSelector =
         "#table-order-surface ul.order-basket li.order-basket-line:not(.is-removal)";
 
+    /// <summary>Ticked removals — the other half of what one Send carries (§6.3's N added + M removed).</summary>
+    private const string BasketRemovalSelector =
+        "#table-order-surface ul.order-basket li.order-basket-line.is-removal";
+
     /// <summary>The committed lines — what has actually reached the kitchen (§11.1's "Sent to the kitchen").</summary>
     private const string CommittedLineSelector = "#table-order-surface ul.order-lines li.order-line";
 
@@ -110,7 +157,29 @@ internal static class TableOrderJourneys
     /// <summary>§11.1's "The rest of the table" — one entry per <em>other</em> person who has ordered.</summary>
     private const string PartyOrderSelector = "#table-order-surface ul.order-party > li.order-party-order";
 
+    /// <summary>§6.5.9's refusal panel, one list item per refused operation with its own reason.</summary>
+    private const string RefusalReasonSelector = "#table-order-surface ul.order-reject-list li";
+
+    /// <summary>
+    /// §11.1's unticking notice — the sentence the surface writes when it drops a removal mark that has
+    /// gone stale underneath the guest. It has a class of its own precisely so this can name it: three
+    /// other <c>p.status-error</c> elements live inside the island.
+    /// </summary>
+    private const string PruneNoticeSelector = "#table-order-surface p.order-prune-notice";
+
+    /// <summary>The confirmation of an accepted send (§11.1), scoped to the island — see the type remarks.</summary>
+    private const string ConfirmationSelector = "#table-order-surface p.status-success";
+
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// How long one press of Send has to produce an answer. A send is one transaction against a local
+    /// PostgreSQL under an advisory lock nothing else is holding, so the honest expectation is
+    /// milliseconds; thirty seconds is the same patience every other page operation in this harness
+    /// gets. Either outcome ends the wait, so this length is only ever reached when the click did not
+    /// dispatch at all.
+    /// </summary>
+    private static readonly TimeSpan SendPatience = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Waits until the ordering island on screen was rendered by a live circuit rather than by
@@ -195,7 +264,7 @@ internal static class TableOrderJourneys
         await page.FocusAsync(addToBasket);
         await page.ClickAsync(addToBasket);
 
-        if (await WaitForBasketCountAsync(page, before + 1, TimeSpan.FromSeconds(15)))
+        if (await WaitForCountAsync(page, BasketLineSelector, before + 1, TimeSpan.FromSeconds(15)))
         {
             return;
         }
@@ -213,38 +282,213 @@ internal static class TableOrderJourneys
     }
 
     /// <summary>
+    /// Takes a staged item back out of the basket — §11.1's "Take out" — and returns once it is gone.
+    ///
+    /// <para>Matched on the basket row's own name rather than on the menu item's identifier, because a
+    /// staged row carries no identifier in the markup: <c>StagedOrderLine.StagingIdentifier</c> is a
+    /// client-side key and never reaches the DOM. The name is what the guest sees and what they would
+    /// tap on, which makes it the right thing for a scenario to name too.</para>
+    /// </summary>
+    internal static async Task UnstageAsync(IPage page, string menuItemName)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator staged = page.Locator(BasketLineSelector);
+        int before = await staged.CountAsync();
+
+        for (int index = 0; index < before; index++)
+        {
+            ILocator line = staged.Nth(index);
+            string name = (await line.Locator("span.order-line-name").First.InnerTextAsync()).Trim();
+
+            if (!name.Contains(menuItemName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            await line.Locator("button:has-text('Take out')").First.ClickAsync();
+
+            if (await WaitForCountAsync(page, BasketLineSelector, before - 1, TimeSpan.FromSeconds(15)))
+            {
+                return;
+            }
+
+            // Read before composing: an await inside an interpolated string that binds to a handler is
+            // CS4007, because DefaultInterpolatedStringHandler is a ref struct.
+            int after = await page.Locator(BasketLineSelector).CountAsync();
+
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Taking '{menuItemName}' out of the basket left it holding {after} line(s)"
+                    + $" rather than {before - 1}."));
+        }
+
+        string basket = await DescribeBasketAsync(page);
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"There is no staged '{menuItemName}' in the basket to take out."
+                + $" What is staged: {basket}."));
+    }
+
+    /// <summary>
+    /// Ticks one committed line for removal in the next send (§11.1's
+    /// "mark-my-pending-line-for-removal") and returns once the basket shows the ticked removal.
+    ///
+    /// <para><b>A missing tick box is a diagnosis, not a timeout.</b> §11.1 renders the control only
+    /// where <c>NarratedOrderLine.GuestMayRemove</c> holds — the line is pending, it was added by a
+    /// guest submission, and that guest is this one (§6.5.3) — so a line that offers none is a line the
+    /// transaction would have refused anyway. Saying which of those it is at the moment the scenario
+    /// reaches for it is worth far more than the click that would otherwise fail somewhere else.</para>
+    /// </summary>
+    internal static async Task MarkForRemovalAsync(IPage page, string menuItemName)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        int before = await page.Locator(BasketRemovalSelector).CountAsync();
+        ILocator lines = page.Locator(CommittedLineSelector);
+        int count = await lines.CountAsync();
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator line = lines.Nth(index);
+            string name = (await line.Locator("span.order-line-name").First.InnerTextAsync()).Trim();
+
+            if (!name.Contains(menuItemName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            ILocator tick = line.Locator("label.order-line-remove input[type='checkbox']");
+
+            if (await tick.CountAsync() == 0)
+            {
+                // Read before composing: an await inside an interpolated string that binds to a handler
+                // is CS4007, because DefaultInterpolatedStringHandler is a ref struct.
+                GuestLineBadge badge = await ReadBadgeAsync(line);
+
+                throw new InvalidOperationException(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The line '{name}' offers no way to take it off: §11.1 renders the tick box"
+                        + $" only while GuestMayRemove holds (pending, added by this guest's own"
+                        + $" submission — §6.5.3), so the surface has already decided this one is not"
+                        + $" the guest's to remove. The line is badged {badge}."));
+            }
+
+            await tick.First.CheckAsync();
+
+            if (await WaitForCountAsync(page, BasketRemovalSelector, before + 1, TimeSpan.FromSeconds(15)))
+            {
+                return;
+            }
+
+            int after = await page.Locator(BasketRemovalSelector).CountAsync();
+
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Ticking '{name}' for removal did not reach the basket: it holds {after}"
+                    + $" removal(s) rather than {before + 1}."));
+        }
+
+        string committed = Describe(await ReadCommittedLinesAsync(page));
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"There is no committed line for '{menuItemName}' to take off."
+                + $" The order holds: {committed}."));
+    }
+
+    /// <summary>
+    /// Whether §11.1 is currently offering a removal control on the named committed line. False is a
+    /// fact worth asserting rather than an absence to work around: it is how the surface says a line has
+    /// stopped being the guest's to take off (§6.5.3).
+    /// </summary>
+    internal static async Task<bool> LineOffersRemovalAsync(IPage page, string menuItemName)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator lines = page.Locator(CommittedLineSelector);
+        int count = await lines.CountAsync();
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator line = lines.Nth(index);
+            string name = (await line.Locator("span.order-line-name").First.InnerTextAsync()).Trim();
+
+            if (name.Contains(menuItemName, StringComparison.Ordinal))
+            {
+                return await line.Locator("label.order-line-remove").CountAsync() > 0;
+            }
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"There is no committed line for '{menuItemName}' on this order."
+                + $" It holds: {Describe(await ReadCommittedLinesAsync(page))}."));
+    }
+
+    /// <summary>
     /// Presses Send (§11.1) and returns the confirmation the surface rendered — the sentence that names
     /// how many lines went, which is worth returning rather than merely waiting for because a send of
     /// two adds and a send of one read identically to a selector.
     ///
-    /// <para>A refusal is §6.5.9's all-or-nothing panel: nothing was written, the basket is untouched,
-    /// and each refused operation carries its own reason. Those reasons are the failure message here,
+    /// <para>Acceptance is judged by the <em>basket</em>, not by the sentence: §11.1 empties the staging
+    /// area only on an accepted event, and the sentence from a previous send is still on screen until
+    /// something clears it. A refusal ends the wait immediately with §6.5.9's per-operation reasons,
     /// because "Send did not confirm" without them is a mystery and with them is usually the answer.</para>
     /// </summary>
     internal static async Task<string> SendAsync(IPage page)
     {
         ArgumentNullException.ThrowIfNull(page);
 
-        await page.ClickAsync($"{SurfaceSelector} .order-send button");
+        SendOutcome outcome = await PressSendAsync(page);
 
-        // Scoped to the island: the parent page's own "You have joined …" success line is also a
-        // p.status-success and is still on screen from the join that got us here.
-        ILocator confirmation = page.Locator($"{SurfaceSelector} p.status-success").First;
-
-        try
+        if (outcome.RefusalReasons.Count > 0)
         {
-            await confirmation.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
-        }
-        catch (PlaywrightException exception)
-        {
-            string refusal = await DescribeSendRefusalAsync(page);
-
             throw new InvalidOperationException(
-                $"The send was not confirmed. {refusal}",
-                exception);
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The send was refused, so nothing was written and the basket is untouched (§6.5.9)."
+                    + $" The surface says: {string.Join(" | ", outcome.RefusalReasons)}"));
         }
 
-        return (await confirmation.InnerTextAsync()).Trim();
+        return outcome.Confirmation ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Presses Send expecting §6.5.9 to refuse it, and returns the per-operation reasons in the order
+    /// the panel lists them — which is the order of the operations that were sent, adds before removals
+    /// (<c>OrderStaging.Build</c>).
+    ///
+    /// <para>The mirror of <see cref="SendAsync"/>, and it exists for §16.3 scenario 7: a refusal is
+    /// that scenario's subject rather than its accident, and a scenario that expressed it as a caught
+    /// exception would be asserting on prose. An <em>accepted</em> send here is the failure, and it is
+    /// reported as one — because a batch that went through when it should have been refused is the
+    /// interesting bug, not a missing panel.</para>
+    /// </summary>
+    internal static async Task<IReadOnlyList<string>> SendExpectingRefusalAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        SendOutcome outcome = await PressSendAsync(page);
+
+        if (outcome.RefusalReasons.Count > 0)
+        {
+            return outcome.RefusalReasons;
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The send was accepted when §6.5.9 should have refused the whole batch. The surface"
+                + $" says: '{outcome.Confirmation ?? "(nothing)"}', and the staging area"
+                + $" {(outcome.BasketIsEmpty ? "has been cleared, so the event was written" : "is still full, so this is neither outcome")}."));
     }
 
     /// <summary>How many staged adds are sitting in the basket right now.</summary>
@@ -253,6 +497,47 @@ internal static class TableOrderJourneys
         ArgumentNullException.ThrowIfNull(page);
 
         return page.Locator(BasketLineSelector).CountAsync();
+    }
+
+    /// <summary>How many committed lines are ticked to be taken off in the next send.</summary>
+    internal static Task<int> BasketRemovalCountAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        return page.Locator(BasketRemovalSelector).CountAsync();
+    }
+
+    /// <summary>
+    /// Everything the staging area is holding, read in one pass.
+    ///
+    /// <para><see cref="BasketContents.UnavailableMarks"/> is the surface's half of §7 — "guest staging
+    /// areas mark newly-inactive staged items and the send re-validates server-side regardless" — and
+    /// it is the observable proof that <c>MenuChanged</c> reached this circuit at all.</para>
+    /// </summary>
+    internal static async Task<BasketContents> ReadBasketAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        return new BasketContents(
+            await page.Locator(BasketLineSelector).CountAsync(),
+            await page.Locator(BasketRemovalSelector).CountAsync(),
+            await page.Locator($"{SurfaceSelector} p.order-line-warning").CountAsync());
+    }
+
+    /// <summary>
+    /// §11.1's unticking notice, or <c>null</c> when the surface is not showing one. The sentence the
+    /// surface writes when it drops a removal mark that stopped being valid underneath the guest — the
+    /// kitchen fulfilled the line, or staff took it off (§6.5.3).
+    /// </summary>
+    internal static async Task<string?> ReadPruneNoticeAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator notice = page.Locator(PruneNoticeSelector);
+
+        return await notice.CountAsync() == 0
+            ? null
+            : (await notice.First.InnerTextAsync()).Trim();
     }
 
     /// <summary>
@@ -319,6 +604,49 @@ internal static class TableOrderJourneys
                 CultureInfo.InvariantCulture,
                 $"The guest's order never showed {whatIsExpected} within"
                 + $" {timeout.TotalSeconds:F0}s. What it shows instead: {Describe(observed)}."));
+    }
+
+    /// <summary>
+    /// Waits until the staging area satisfies <paramref name="expectation"/>, which is given the count
+    /// of staged adds and the count of ticked removals.
+    ///
+    /// <para>This is a wait rather than a read for §16.3 scenario 7's sake: a mark can be dropped by
+    /// something happening in <em>another</em> browser. The kitchen fulfills a line, §9 sends
+    /// <c>LineFulfillmentChanged</c>, this surface re-reads and <c>OrderStaging.PruneRemovals</c> unticks
+    /// what is no longer the guest's to remove — with nobody touching this page. There is no click here
+    /// to await, so the only honest thing to do is re-read.</para>
+    /// </summary>
+    internal static async Task<BasketContents> WaitForBasketAsync(
+        IPage page,
+        Func<BasketContents, bool> expectation,
+        TimeSpan timeout,
+        string whatIsExpected,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(expectation);
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        BasketContents observed = new(0, 0, 0);
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            observed = await ReadBasketAsync(page);
+
+            if (expectation(observed))
+            {
+                return observed;
+            }
+
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The basket never showed {whatIsExpected} within {timeout.TotalSeconds:F0}s."
+                + $" It holds {observed.StagedAdds} staged add(s), {observed.TickedRemovals} ticked"
+                + $" removal(s) and {observed.UnavailableMarks} unavailable mark(s)."));
     }
 
     // --- who is at the table (§5.2, §11.1) ---------------------------------------------------------
@@ -528,6 +856,101 @@ internal static class TableOrderJourneys
     // --- internals ---------------------------------------------------------------------------------
 
     /// <summary>
+    /// Presses Send and waits for the surface to answer one way or the other (§6.5.9, §11.1).
+    ///
+    /// <para>Two things are watched at once and either ends the wait: the basket emptying, which is how
+    /// §11.1 reports an accepted event, and the rejection panel appearing, which is how it reports a
+    /// refused one. Watching only for the confirmation sentence would be wrong in both directions — it
+    /// survives from a previous send, so an accepted second send is indistinguishable from no send at
+    /// all; and a refusal never writes one, so a refused send could only ever be discovered as a
+    /// timeout.</para>
+    /// </summary>
+    private static async Task<SendOutcome> PressSendAsync(IPage page)
+    {
+        int stagedBefore = await BasketLineCountAsync(page);
+        int removalsBefore = await BasketRemovalCountAsync(page);
+
+        if (stagedBefore + removalsBefore == 0)
+        {
+            throw new InvalidOperationException(
+                "Send was pressed on an empty basket. §11.1 disables the button while the staging area"
+                + " is empty, so this would have hung on an element that is never enabled — stage"
+                + " something, or tick a line for removal, first.");
+        }
+
+        // A refusal panel still on screen from an earlier send would be read as this send's answer on
+        // the very first poll. §11.1 clears it whenever the guest edits the basket — StageItem,
+        // Unstage and ToggleRemoval all do — and the basket must have been edited for the button to be
+        // enabled at all, so one being here means the surface stopped doing that rather than that the
+        // scenario was careless. Said plainly, once, instead of mis-reported for the rest of the run.
+        IReadOnlyList<string> stale = await ReadRefusalReasonsAsync(page);
+
+        if (stale.Count > 0)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"§6.5.9's refusal panel from an earlier send is still on screen at the moment Send"
+                    + $" was pressed, so this send's outcome cannot be told apart from the last one's."
+                    + $" It says: {string.Join(" | ", stale)}"));
+        }
+
+        await page.ClickAsync($"{SurfaceSelector} .order-send button");
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + SendPatience;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            IReadOnlyList<string> refusals = await ReadRefusalReasonsAsync(page);
+
+            if (refusals.Count > 0)
+            {
+                return new SendOutcome(false, await ReadConfirmationAsync(page), refusals);
+            }
+
+            if (await BasketLineCountAsync(page) == 0 && await BasketRemovalCountAsync(page) == 0)
+            {
+                return new SendOutcome(true, await ReadConfirmationAsync(page), []);
+            }
+
+            await Task.Delay(PollInterval);
+        }
+
+        string surface = await DescribeSurfaceAsync(page);
+        string basket = await DescribeBasketAsync(page);
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Send neither committed nor refused within {SendPatience.TotalSeconds:F0}s: the basket"
+                + $" still holds {basket} and there is no rejection panel, so the click may never have"
+                + $" been dispatched at all ({surface}); the browser is at '{page.Url}'."));
+    }
+
+    private static async Task<IReadOnlyList<string>> ReadRefusalReasonsAsync(IPage page)
+    {
+        ILocator reasons = page.Locator(RefusalReasonSelector);
+
+        if (await reasons.CountAsync() == 0)
+        {
+            return [];
+        }
+
+        IReadOnlyList<string> all = await reasons.AllInnerTextsAsync();
+
+        return all.Select(text => text.Trim()).ToArray();
+    }
+
+    private static async Task<string?> ReadConfirmationAsync(IPage page)
+    {
+        ILocator confirmation = page.Locator(ConfirmationSelector);
+
+        return await confirmation.CountAsync() == 0
+            ? null
+            : (await confirmation.First.InnerTextAsync()).Trim();
+    }
+
+    /// <summary>
     /// Which badge a line is wearing, from the chip's class rather than from its words. The two lists
     /// word it differently — "At your table" on your own order, "At the table" on somebody else's — and
     /// both publish <c>chip-ok</c>, which is the state rather than the copy.
@@ -544,13 +967,17 @@ internal static class TableOrderJourneys
             : GuestLineBadge.WithTheKitchen;
     }
 
-    private static async Task<bool> WaitForBasketCountAsync(IPage page, int expected, TimeSpan timeout)
+    private static async Task<bool> WaitForCountAsync(
+        IPage page,
+        string selector,
+        int expected,
+        TimeSpan timeout)
     {
         DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
 
         while (DateTimeOffset.UtcNow < deadline)
         {
-            if (await page.Locator(BasketLineSelector).CountAsync() == expected)
+            if (await page.Locator(selector).CountAsync() == expected)
             {
                 return true;
             }
@@ -559,6 +986,15 @@ internal static class TableOrderJourneys
         }
 
         return false;
+    }
+
+    private static async Task<string> DescribeBasketAsync(IPage page)
+    {
+        BasketContents basket = await ReadBasketAsync(page);
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{basket.StagedAdds} staged add(s) and {basket.TickedRemovals} ticked removal(s)");
     }
 
     /// <summary>
@@ -580,32 +1016,6 @@ internal static class TableOrderJourneys
         string message = (await notice.First.InnerTextAsync()).Trim();
 
         return string.Create(CultureInfo.InvariantCulture, $"The picker says: {message}");
-    }
-
-    /// <summary>
-    /// §6.5.9's refusal panel, flattened into one sentence: the headline plus every per-operation reason.
-    /// A send is accepted or refused as a whole, so all of them are the diagnosis, not just the first.
-    /// </summary>
-    private static async Task<string> DescribeSendRefusalAsync(IPage page)
-    {
-        ILocator reasons = page.Locator($"{SurfaceSelector} ul.order-reject-list li");
-        int count = await reasons.CountAsync();
-
-        if (count == 0)
-        {
-            string surface = await DescribeSurfaceAsync(page);
-
-            return string.Create(
-                CultureInfo.InvariantCulture,
-                $"The surface shows no refusal either ({surface}), so the send may simply never have"
-                + $" been dispatched; the browser is at '{page.Url}'.");
-        }
-
-        IReadOnlyList<string> all = await reasons.AllInnerTextsAsync();
-
-        return string.Create(
-            CultureInfo.InvariantCulture,
-            $"Nothing was written and the surface refused it: {string.Join(" | ", all.Select(text => text.Trim()))}");
     }
 
     private static async Task<string> DescribeSurfaceAsync(IPage page)
