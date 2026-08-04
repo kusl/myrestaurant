@@ -5064,3 +5064,262 @@ through a forced password change *and* a forced re-enrollment — which inherits
 `CompleteForcedPasswordChangeAsync` and needs only the second obligation added beside it).
 
 Then the backup/restore drill, and M6 is done.
+
+---
+
+### M6 Slice 13 — §16.3 scenario 10, and the write that cannot be undone
+
+Scenario **10** of the §16.3 matrix: *"Counter closes (pending-line warning shown) → table flips to
+settled read-only; totals match."* It inherits Slice 12's till harness, `data-live`, staff account and
+forced-password-change journey wholesale, and adds the close.
+
+Live after this slice: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15**. Remaining: **11** and **12**.
+
+---
+
+#### What makes this one different
+
+Every scenario before it asserts on something that could be done again. A send can be resent, a
+fulfillment re-marked, a price re-adjusted, a join secret rotated twice. §5.3 has no undo: `closed_at`,
+`closed_by_person_identifier` and `settled_total_amount` are stamped together under a `FOR UPDATE`, and
+the total *is never rewritten*. So this is the first scenario whose subject is a one-way door, and that
+shapes three decisions below.
+
+---
+
+#### Seven readings of one number
+
+"Totals match" is the part of §16.3's sentence that could most easily be satisfied by nothing at all. Six
+of the seven figures this scenario compares are computed at render time from the same `sitting_bill` view,
+so all six could agree perfectly on a close that stamped no total whatsoever. They are still worth
+comparing — they are computed by different code in two languages on three circuits — but only the seventh
+makes the claim §5.3 actually promises.
+
+| # | Where | How it is computed |
+| --- | --- | --- |
+| 1 | The till header, before the close | SQL sum over `sitting_bill` (`CurrentTotalAmount`) |
+| 2 | §11.3's confirmation prompt | `CurrentTotalAmount`, quoted directly |
+| 3 | The till header, after the close | the stamped `settled_total_amount` (`AmountToShow`) |
+| 4 | The till's settle panel | C# sum over the per-person entries |
+| 5 | The guest's "Table total" | C# sum over `sitting_bill`, on another circuit |
+| 6 | The guest's "Your total" | C# sum filtered to one person, on another circuit |
+| 7 | `table_sitting.settled_total_amount` | the column, read past every surface |
+
+Reading 2 earns its place on its own: it is the last number a person reads before an irreversible write,
+and it comes from a third expression rather than from either sum beside it. A prompt asking somebody to
+confirm a figure other than the one about to be stamped is the worst available place for a disagreement.
+
+Reading 6 is asserted rather than assumed. One guest is at the table, so their own total *is* the table's
+— which means a filter that had stopped filtering would produce the right answer for the wrong reason,
+and only in a party of one. That is exactly this scenario, so it says so.
+
+Every figure is derived in the scenario from the prices it created. `soup + 2 × pie`, not `34.50`.
+
+---
+
+#### One soup delivered, two pies that never arrive
+
+The bill is deliberately mixed, and the quantities are chosen so that no wrong arithmetic produces the
+right answer.
+
+- **The pending-line warning needs exactly one line to name.** §11.3 renders
+  `CounterSittingSummary.PendingLineCount`, which counts rows in `order_current_line` that are not
+  fulfilled. The pie line is *one* row at quantity two — so a warning that had started counting portions
+  would say "2", and the scenario asserts **1**. Getting this wrong in production means a counter being
+  told the wrong thing at the moment they decide whether to charge.
+- **The settled total has to include food nobody ate.** §5.3's "knowingly charge" is the whole point of
+  the warning: the counter is told, settles anyway, and the table is charged. A close that quietly dropped
+  the undelivered line would produce a smaller total on all seven readings and would look entirely
+  self-consistent.
+- **At one of each item, several wrong sums are the right number.** A total that added the *unit* prices
+  instead of the extensions, or one that counted the delivered line twice, is indistinguishable from the
+  correct total at quantity one. At one soup and two pies each of those is a different number.
+
+The pie is also asserted to still be undelivered *after* the close, on both the till and the guest's
+phone. A surface that re-badged it at settlement would be telling the guest their food arrived — which is
+the one fact on that bill they might want to argue about.
+
+---
+
+#### Why a counter account, when the screen does not branch on role
+
+Scenario 9 stood up a staff account because §6.2 records the actor and §11.1 renders it, so the assertion
+would otherwise have been about the wrong role and *would have passed*. Scenario 10's reason is the mirror
+image, and it is worth writing down because the assertion passes either way **today**.
+
+`CounterSitting.razor` gates every control on `_sitting.IsOpen` and never consults the principal. An
+administrator at a settled till sees the identical read-only screen. So the argument is not about today's
+markup — it is about the direction of the next failure. §6.5.8 admits nothing but an administrator's
+corrective events after a close, and §5.3 says corrections "are an administrator's". The day this surface
+grows the correction panel those sections describe, an administrator standing at a settled till will
+*correctly* see controls a counter must not. Asserting "read-only" as an administrator is asserting it for
+the one role permitted to act after a close; the counter is the role for which read-only is unconditional,
+and that is the claim §11.3 makes.
+
+The administrator still covers the pass for one tap, on scenarios 4, 6, 7 and 8's reasoning. A second
+staff account for a single fulfillment would be a sign-in and a forced password change nothing here
+asserts on.
+
+---
+
+#### The close is two harness calls
+
+`BeginCloseAsync` returns §11.3's confirmation prompt; `ConfirmCloseAsync` accepts it. Not a style
+preference: a composite would settle the table before a scenario could read the prompt, and there is no
+going back for it — a settled sitting renders no prompt at all. The same reasoning kept
+`SignInWithPasswordAsync` and `CompleteForcedPasswordChangeAsync` apart in Slice 12, and the same
+reasoning discarded a composite `SignInAsStaffForTheFirstTimeAsync` there.
+
+The barrier for the close is `p.counter-readonly`, rendered from `!_sitting.IsOpen` — that is, from
+`closed_at` being set on the row this page re-read after the transaction committed. Waiting on the
+confirmation sentence would be wrong in the way this harness keeps rediscovering: `_notice` survives until
+something clears it, so a second close of the same shape is satisfied by the first one's words.
+
+`AlreadyClosed` returns normally rather than throwing. The sitting really is settled, the view really does
+flip, and a scenario that cares which close it observed has the notice text; only `SittingNotFound` — a
+problem with no flip — is a failure. So the poll looks for the read-only note **before** the refusal, or a
+losing race would be reported as a fault.
+
+---
+
+#### Three surfaces, one flip
+
+§16.3 says "the table flips to settled read-only", and the table is on three screens at once.
+
+**The till** goes read-only in place — §11.3's "closed-sitting lookup (read-only)" is the same page, not a
+second one. The assertion is mostly an absence, counted rather than enumerated: zero `.counter-line-actions`
+blocks, no staff-add panel, no close button. A settled sitting still offering Adjust would be a door that
+only ever answers no. The total's *label* is read beside the total, because `AmountToShow` feeds one
+element in both states — so the amount alone cannot say which it is, and a close that stamped nothing
+would leave a screen that looks entirely correct. `.counter-detail-corrected` is asserted **absent**: §5.3
+shows both figures only when §6.7 corrections exist, and a corrected total seconds after a close would
+mean the stamped value and the live one had diverged on their own.
+
+**The guest's phone**, which nobody touches. §9 publishes `SittingClosed` after the commit, the circuit
+re-reads, `GetOpenSittingForMemberAsync` now answers `null` because `closed_at` is set, and §11.1's
+picker, Send row and removal ticks stop being rendered. The lines and both totals stay — the settled view
+is a bill, not an empty page.
+
+**The counter board**, where the phrase is most literally true: the table leaves the floor and appears
+under "Settled today" at the stamped amount. Both lists are read together, because a table on neither has
+vanished and a table on both is two rows for one sitting.
+
+---
+
+#### The flip is an absence, so the heading got a name
+
+Everything that identifies §11.1's settled view is something that stopped being rendered — and a surface
+whose circuit died mid-scenario has none of those either. A wait keyed on the picker disappearing would be
+satisfied by a dead page while proving nothing.
+
+`TableOrderSurface.razor`'s settled `<h2>` gains **`.order-settled-heading`**, the one positive marker
+that the flip happened. "The second `h2` on the surface" was never a way to name it: that is also the
+heading of the live ordering view. Same reasoning, and same fourth time now, as `.order-line-adjustment`,
+`.order-prune-notice` and `.order-party-line-name` — no CSS rule stands behind the class, `.table-heading`
+still does all the styling, and the tag tree is unchanged.
+
+`CounterSitting.razor`'s two close buttons gain **`#counter-close`** and **`#counter-close-confirm`**,
+because they are otherwise the same selector: "the primary button in the settle section" is *Close &
+settle* before the prompt and *Yes — close & settle* after it. Nothing outside that markup could tell "I
+opened the confirmation" from "I settled the table", and settling cannot be undone — which makes this the
+one place in the application where the distinction is most worth having in the markup rather than inferred
+from which panel happens to be on screen. The two live in exclusive branches, so each is unique in the
+document, and neither is styled by its id.
+
+---
+
+#### `ReadSettledSittingAsync`, and why it is scoped by sitting
+
+The third place this harness reaches past every surface, after `ReadJoinSecretAsync` and
+`ReadKitchenNotificationsAsync`, and for the same shape of reason: the fact being asserted is one no
+screen renders. Reading 7 is the column.
+
+Scoped by the **sitting**, unlike `ReadOpenSittingAsync`'s table. A table has at most one *open* sitting —
+the partial unique index says so — but any number of closed ones, and the next guest to scan opens
+another. "The settled sitting on this table" is not a question with one answer. The scenario has the
+identifier because `OpenSittingAsync` returns it off the URL it followed.
+
+The three stamped columns are read together because the schema will not have them any other way:
+`table_sitting` carries `CHECK ((closed_at IS NULL) = (closed_by_person_identifier IS NULL))` and the same
+paired check on the total, so a reader returning one of them would be describing a state the database
+cannot hold. The join to `person` is `INNER` for the same reason — a closed row without an actor is
+impossible, and silently reporting a dropped constraint as "still open" would be the worst available
+answer.
+
+The scenario also asserts `ReadOpenSittingAsync` now returns **null**. That is the row-level form of "the
+table left the floor", and it is what makes the next guest to scan open a new sitting rather than rejoin a
+settled one.
+
+---
+
+#### Also new in the harness
+
+`CounterJourneys` gains `ReadPendingWarningAsync` (returning `null` for "no warning", which is a real
+answer a scenario should assert on either way), `BeginCloseAsync`, `ConfirmCloseAsync`,
+`ReadSettledTillAsync`, `ReadFloorAsync`, and prose for both. The pending count is parsed off the leading
+`<strong>` the same way a bill line's quantity is parsed off its "2×": the digits are the data and the
+words around them are markup. The board's settled amount nests §5.3's "now …" corrected figure exactly as
+a bill line nests its unit price, so the existing `WithoutUnitPrice` does that separation too.
+
+`TableOrderJourneys` gains `ReadTotalsAsync`, `ReadSettledViewAsync`, `WaitForSettledViewAsync` and
+`DescribeSettledView`. The totals are found by the `<dt>` that names each figure rather than by position —
+which is how anything reading the document finds them, and is what keeps a third total added between the
+two from silently shifting the answer. A missing term is a failure naming which terms the list does hold,
+because a surface that had stopped rendering "Table total" would otherwise compare equal to one showing
+the wrong one: both produce an empty string.
+
+`ReadSettledTillAsync` is safe to call on an *open* sitting and worth doing, since every field is then the
+other value. That is how a scenario establishes that a flip happened rather than that the page always
+looked settled.
+
+---
+
+#### What this does not prove
+
+**The contended close.** §5.3's `FOR UPDATE` conflicting with §6.6's `FOR SHARE` is the guarantee that no
+event slips in after the total is computed, and nothing here contends for it — the guest sends, then the
+kitchen fulfills, then the counter closes, in sequence. That property is §16.2's, where a concurrent send
+and close are driven against a real PostgreSQL without a browser in the way; two Playwright contexts
+racing a lock would be a slower test of the same thing with a worse failure message.
+
+**The post-close correction.** §6.7's administrator-only corrective events, and the two-figure display
+§5.3 requires once they exist, are asserted here only in the negative: no correction has been made, so no
+corrected total is shown. The positive case has a surface of its own in administration (§11.4) and no
+§16.3 scenario claims it.
+
+**`AlreadyClosed`.** The harness handles it correctly and no scenario reaches it. An end-of-day pass
+(§5.4) closing a table a counter is standing at is the real shape of that race, and it belongs with a
+scenario about §5.4 rather than one about §5.3.
+
+---
+
+#### Build/test checklist for this slice
+
+```bash
+cd /home/kushal/src/dotnet/myrestaurant
+
+dotnet build
+#    expect: all seven projects succeed, 0 errors
+
+dotnet test
+#    expect: total 971, failed 0, succeeded 956, skipped 15 — unchanged from Slice 12.
+#    Scenario 10 moves from [Fact(Skip)] to [Fact] + Assert.SkipUnless; xUnit counts both as
+#    skipped, so with MYRESTAURANT_E2E unset every number is identical.
+
+bash scripts/ci_local.sh --with-all
+
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: total 15, failed 0, 13 passed, 2 skipped
+#    Scenario 10 adds roughly 25-30s: a /setup wizard, two menu items, a table, a staff account, a
+#    guest registration, a send, one fulfillment, two Argon2id verifies and two hashes, a close, and
+#    no waiting on any timer.
+```
+
+No .NET SDK in the sandbox, so none of this has been run here. What was run, on every edited file:
+brace/paren/bracket balance and a depth walk with strings and comments stripped; a CS4007 scan (no `await`
+inside any interpolation hole); a CS1620 scan confirming every additive operand inside every
+`string.Create(...)` is an interpolated string; a Razor tag-structure comparison against the pristine file
+from `dump.txt`, confirming both `.razor` edits leave the tag tree **identical**; an existence check of all
+twenty-seven selectors the new harness code depends on against the markup it targets; and a SHA-256
+comparison of all seven pre-edit files against the hashes `export.sh` recorded, so every unchanged byte is
+known to match the working tree.

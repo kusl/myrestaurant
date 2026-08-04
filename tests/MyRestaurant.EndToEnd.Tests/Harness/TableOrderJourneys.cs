@@ -119,6 +119,41 @@ internal sealed record PartyOrder(string BillName, string TotalText, IReadOnlyLi
 internal sealed record BasketContents(int StagedAdds, int TickedRemovals, int UnavailableMarks);
 
 /// <summary>
+/// §11.1's two figures at the foot of the surface: what this guest owes and what the table owes.
+///
+/// <para>Both are text for the reason every money field in this harness is — see
+/// <see cref="CounterBillLine"/> — and both matter to §16.3 scenario 10 because they are computed on the
+/// <em>guest's</em> circuit. <c>MyTotal</c> and <c>TableTotal</c> are C# sums over <c>sitting_bill</c>
+/// rows read by this component; the till's header is a SQL sum over the same view read by another
+/// process. A scenario that compares them is comparing two independent opinions about one number, which
+/// is what "totals match" has to mean if it is to mean anything.</para>
+/// </summary>
+internal sealed record GuestTotals(string YourTotalText, string TableTotalText);
+
+/// <summary>
+/// The guest's surface after §11.1's flip: "On <c>SittingClosed</c>, the surface flips to a read-only
+/// settled-bill view."
+///
+/// <para><b>The flip is mostly an absence, which is why the heading is read too.</b> No picker, no Send,
+/// no removal ticks — and a surface that has not finished loading has none of those either. §11.1's
+/// settled heading is the one positive marker that the flip happened, and it is why
+/// <c>TableOrderSurface.razor</c> gained <c>.order-settled-heading</c> in M6 Slice 13.</para>
+///
+/// <para><paramref name="Lines"/> is carried because the settled view is not an empty page: §11.1 keeps
+/// the guest's own lines with their badges, which is the record of what was charged. A line still saying
+/// "With the kitchen" on a settled bill is not a bug — it is §5.3's "knowingly charge" written down, and
+/// a surface that quietly re-badged it at close would be hiding the one fact the guest might want to
+/// argue about.</para>
+/// </summary>
+internal sealed record GuestSettledView(
+    bool SaysSettled,
+    bool OffersPicker,
+    bool OffersSend,
+    int RemovalCheckboxes,
+    GuestTotals Totals,
+    IReadOnlyList<GuestOrderLineDetail> Lines);
+
+/// <summary>
 /// What one press of Send left on the surface: the basket it emptied or did not, and the sentence it
 /// wrote (TECHNICAL_SPECIFICATION §6.5.9, §11.1).
 ///
@@ -225,6 +260,31 @@ internal static class TableOrderJourneys
 
     /// <summary>The confirmation of an accepted send (§11.1), scoped to the island — see the type remarks.</summary>
     private const string ConfirmationSelector = "#table-order-surface p.status-success";
+
+    /// <summary>
+    /// §11.1's settled heading, named as of M6 Slice 13. The one positive marker that the surface has
+    /// flipped — everything else about the settled state is the absence of something.
+    /// </summary>
+    private const string SettledHeadingSelector = "#table-order-surface h2.order-settled-heading";
+
+    /// <summary>The picker and the Send row, both rendered only while the sitting is open (§11.1).</summary>
+    private const string PickerSelector = "#table-order-surface div.order-picker";
+    private const string SendRowSelector = "#table-order-surface .order-send";
+
+    /// <summary>§11.1's per-line "take this off my order" tick, offered only on an open sitting.</summary>
+    private const string RemovalCheckboxSelector = "#table-order-surface label.order-line-remove";
+
+    /// <summary>
+    /// §11.1's totals list. A <c>&lt;dl&gt;</c> of <c>&lt;div&gt;</c> groupings, each holding one
+    /// <c>&lt;dt&gt;</c> label and its <c>&lt;dd&gt;</c> amount — so a figure is found by the term that
+    /// names it rather than by its position, which is how anything reading the document finds it and is
+    /// what keeps a third total added between them from silently shifting the answer.
+    /// </summary>
+    private const string TotalsGroupSelector = "#table-order-surface dl.order-totals > div";
+
+    /// <summary>The two <c>&lt;dt&gt;</c> terms §11.1 writes in that list.</summary>
+    private const string YourTotalTerm = "Your total";
+    private const string TableTotalTerm = "Table total";
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
@@ -705,6 +765,129 @@ internal static class TableOrderJourneys
                 CultureInfo.InvariantCulture,
                 $"The guest's line for '{menuItemName}' never showed {whatIsExpected} within"
                 + $" {timeout.TotalSeconds:F0}s. What the order shows: {DescribeOwn(observed)}."));
+    }
+
+    /// <summary>
+    /// §11.1's two totals, each found by the <c>&lt;dt&gt;</c> that names it.
+    ///
+    /// <para>A missing term is a failure rather than a blank, and it says which terms the list does hold.
+    /// A surface that had stopped rendering "Table total" would otherwise compare equal to one showing
+    /// the wrong table total, because both would produce an empty string.</para>
+    /// </summary>
+    internal static async Task<GuestTotals> ReadTotalsAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator groups = page.Locator(TotalsGroupSelector);
+        int count = await groups.CountAsync();
+
+        Dictionary<string, string> byTerm = new(StringComparer.Ordinal);
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator group = groups.Nth(index);
+
+            string term = (await group.Locator("dt").First.InnerTextAsync()).Trim();
+            string amount = (await group.Locator("dd").First.InnerTextAsync()).Trim();
+
+            byTerm[term] = amount;
+        }
+
+        if (!byTerm.TryGetValue(YourTotalTerm, out string? yourTotal)
+            || !byTerm.TryGetValue(TableTotalTerm, out string? tableTotal))
+        {
+            string terms = byTerm.Count == 0
+                ? "nothing at all"
+                : string.Join(", ", byTerm.Keys.Select(term => $"'{term}'"));
+
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"§11.1's totals list does not carry both '{YourTotalTerm}' and '{TableTotalTerm}'."
+                    + $" What it names: {terms}. The browser is at '{page.Url}'."));
+        }
+
+        return new GuestTotals(yourTotal, tableTotal);
+    }
+
+    /// <summary>The surface as it stands right now, in the shape §11.1's settled view is judged by.</summary>
+    internal static async Task<GuestSettledView> ReadSettledViewAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        return new GuestSettledView(
+            await page.Locator(SettledHeadingSelector).CountAsync() > 0,
+            await page.Locator(PickerSelector).CountAsync() > 0,
+            await page.Locator(SendRowSelector).CountAsync() > 0,
+            await page.Locator(RemovalCheckboxSelector).CountAsync(),
+            await ReadTotalsAsync(page),
+            await ReadOwnLinesAsync(page));
+    }
+
+    /// <summary>
+    /// Waits until §11.1's flip has happened on this surface, and returns it.
+    ///
+    /// <para><b>Nobody touches this page.</b> A counter presses Yes in another browser,
+    /// <c>ISittingWorkflow</c> publishes <c>SittingClosed</c> after the transaction commits (§9), this
+    /// component re-reads, <c>GetOpenSittingForMemberAsync</c> now answers <c>null</c> because
+    /// <c>closed_at</c> is set, and the picker, the Send row and every removal tick stop being rendered.
+    /// There is no click here to await, so the only honest thing to do is re-read.</para>
+    ///
+    /// <para>The wait keys on the settled heading arriving rather than on the picker leaving, and the
+    /// difference is the whole reason <c>.order-settled-heading</c> exists: a surface whose circuit died
+    /// mid-scenario also has no picker, and would satisfy a wait written the other way round while
+    /// proving nothing at all.</para>
+    /// </summary>
+    internal static async Task<GuestSettledView> WaitForSettledViewAsync(
+        IPage page,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await page.Locator(SettledHeadingSelector).CountAsync() > 0)
+            {
+                return await ReadSettledViewAsync(page);
+            }
+
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+
+        string surface = await DescribeSurfaceAsync(page);
+        IReadOnlyList<GuestOrderLineDetail> lines = await ReadOwnLinesAsync(page);
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The guest's surface never flipped to §11.1's settled view within"
+                + $" {timeout.TotalSeconds:F0}s. §9 publishes SittingClosed after the close commits and"
+                + $" this surface subscribes to it, so either the broadcast never left the till's circuit"
+                + $" or this one is not listening ({surface}). The order still shows:"
+                + $" {DescribeOwn(lines)}."));
+    }
+
+    /// <summary>A short, quotable rendering of the settled view, for a failure message.</summary>
+    internal static string DescribeSettledView(GuestSettledView view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+
+        string offered = view.OffersPicker || view.OffersSend || view.RemovalCheckboxes > 0
+            ? string.Create(
+                CultureInfo.InvariantCulture,
+                $"{(view.OffersPicker ? "the picker" : "no picker")},"
+                + $" {(view.OffersSend ? "a Send row" : "no Send row")},"
+                + $" {view.RemovalCheckboxes} removal tick(s)")
+            : "no picker, no Send row and no removal ticks";
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"settled heading {(view.SaysSettled ? "present" : "absent")}; {offered};"
+            + $" yours {view.Totals.YourTotalText}, table {view.Totals.TableTotalText};"
+            + $" lines: {DescribeOwn(view.Lines)}");
     }
 
     /// <summary>A short, quotable rendering of the guest's own lines with their adjustments.</summary>

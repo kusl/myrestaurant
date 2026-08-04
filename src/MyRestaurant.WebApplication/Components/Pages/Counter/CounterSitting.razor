@@ -348,9 +348,17 @@
                         Settle @_sitting.TableLabel at <strong>@Money(_sitting.CurrentTotalAmount)</strong>?
                         This stamps the total and stops the table ordering. It cannot be undone from here.
                     </p>
+                    @* Both close buttons carry an id, and the reason is that they are otherwise the
+                       same selector: "the primary button in the settle section" is Close & settle
+                       before the prompt and Yes — close & settle after it. Nothing outside this
+                       markup could tell "I opened the confirmation" from "I settled the table", and
+                       a close cannot be undone (§5.3) — which makes this the one place in the
+                       application where that distinction is most worth having in the markup. The two
+                       live in exclusive branches, so each is unique in the document, and neither is
+                       styled by its id. *@
                     <div class="form-actions">
-                        <button type="button" class="button-primary" disabled="@_busy"
-                                @onclick="CloseAndSettleAsync">
+                        <button id="counter-close-confirm" type="button" class="button-primary"
+                                disabled="@_busy" @onclick="CloseAndSettleAsync">
                             Yes — close &amp; settle
                         </button>
                         <button type="button" class="button-secondary" disabled="@_busy"
@@ -362,7 +370,8 @@
                 else
                 {
                     <div class="form-actions">
-                        <button type="button" class="button-primary" disabled="@_busy" @onclick="BeginClose">
+                        <button id="counter-close" type="button" class="button-primary"
+                                disabled="@_busy" @onclick="BeginClose">
                             Close &amp; settle
                         </button>
                         <a class="button-secondary" href="@JoinCodePath">Show join code</a>

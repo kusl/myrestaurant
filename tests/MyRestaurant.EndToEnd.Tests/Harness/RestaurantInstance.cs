@@ -51,6 +51,31 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 internal sealed record OpenSitting(Guid SittingIdentifier, IReadOnlyList<string> MemberUsernames);
 
 /// <summary>
+/// The three columns §5.3 stamps together when a sitting is closed, and the username behind the third.
+///
+/// <para><b>Why a scenario reads these rows.</b> §16.3 scenario 10's claim is "totals match", and the
+/// two screens it can read both compute their figure at render time — the till's header from the
+/// <c>sitting_bill</c> view, the guest's from a C# sum over the same view. Neither can distinguish "the
+/// stamped total is correct" from "both screens are summing the same live data and nothing was stamped
+/// at all", and §5.3's whole promise is about the stamped value: it is computed under the
+/// <c>FOR UPDATE</c> and is <em>never rewritten</em> afterwards. Only the column says so.</para>
+///
+/// <para>The three arrive together because the schema will not have them any other way — <c>table_sitting</c>
+/// carries <c>CHECK ((closed_at IS NULL) = (closed_by_person_identifier IS NULL))</c> and the same paired
+/// check on the total — so a reader that returned one of them would be describing a state the database
+/// cannot hold.</para>
+///
+/// <para>A username rather than a person identifier, for the reason <see cref="OpenSitting"/> carries
+/// usernames: it is what a scenario knows about the account it created, and "the counter closed it"
+/// is a claim about <em>which</em> person pressed the button.</para>
+/// </summary>
+internal sealed record SettledSitting(
+    Guid SittingIdentifier,
+    decimal SettledTotalAmount,
+    DateTimeOffset ClosedAt,
+    string ClosedByUsername);
+
+/// <summary>
 /// How many <c>kitchen_notification</c> rows of each §10 kind exist for one sitting: the
 /// <c>initial</c> ones written inside a send's own transaction (§10.1) and the <c>reminder</c> ones
 /// the background scan wrote afterwards (§8.4, §10.2).
@@ -461,6 +486,65 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         }
 
         return new OpenSitting(sittingIdentifier, members);
+    }
+
+    /// <summary>
+    /// What §5.3 stamped on a closed sitting, or <c>null</c> when that sitting is still open.
+    ///
+    /// <para>Scoped by the sitting rather than by the table, unlike <see cref="ReadOpenSittingAsync"/>,
+    /// and the difference is not stylistic. A table has at most one <em>open</em> sitting — the partial
+    /// unique index says so — but it may have any number of closed ones, and the very next guest to scan
+    /// opens another. "The settled sitting on this table" is therefore not a question with one answer,
+    /// while "this sitting, the one the counter opened the bill for" is. A scenario has that identifier:
+    /// <c>CounterJourneys.OpenSittingAsync</c> returns it off the URL it followed.</para>
+    ///
+    /// <para>An open sitting returns <c>null</c> rather than throwing, because "not closed" is a real and
+    /// interesting answer — it is precisely what a scenario asserting that a close did <em>not</em>
+    /// happen would want, and a caller that meant to close first can say so in its own words.</para>
+    /// </summary>
+    internal async Task<SettledSitting?> ReadSettledSittingAsync(
+        Guid sittingIdentifier,
+        CancellationToken cancellationToken)
+    {
+        await using NpgsqlConnection connection = new(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        // INNER JOIN on the closer rather than LEFT: the schema's paired CHECKs make a closed row
+        // without an actor impossible, so a row that failed to join would mean the constraint had been
+        // dropped — and silently reporting that as "still open" would be the worst available answer.
+        await using NpgsqlCommand command = new(
+            """
+            SELECT sitting.settled_total_amount,
+                   sitting.closed_at,
+                   closer.username
+            FROM table_sitting AS sitting
+            INNER JOIN person AS closer
+                    ON closer.person_identifier = sitting.closed_by_person_identifier
+            WHERE sitting.table_sitting_identifier = @sitting_identifier
+              AND sitting.closed_at IS NOT NULL;
+            """,
+            connection);
+
+        command.Parameters.AddWithValue("sitting_identifier", sittingIdentifier);
+
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        // Npgsql materialises `timestamptz` as a UTC DateTime, so the kind is restated rather than
+        // assumed — the same conversion every reader in the data-access layer carries.
+        decimal settledTotalAmount = reader.GetDecimal(0);
+        DateTime closedAt = reader.GetDateTime(1);
+        string closedByUsername = reader.GetString(2);
+
+        return new SettledSitting(
+            sittingIdentifier,
+            settledTotalAmount,
+            new DateTimeOffset(DateTime.SpecifyKind(closedAt, DateTimeKind.Utc)),
+            closedByUsername);
     }
 
     /// <summary>

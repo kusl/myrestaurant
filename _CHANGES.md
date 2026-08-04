@@ -1,176 +1,211 @@
-# M6 Slice 12 — §16.3 scenario 9, and the first staff account
+# M6 Slice 13 — §16.3 scenario 10, and the write that cannot be undone
 
 Every file below is a **full file** at its **repo-relative path**. Extract at the repo root and the
 contents drop straight over your working tree — no diffs, no patches, no scripts to run.
 
 ```bash
-tar -xzf m6-slice12-price-adjustment.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice13-close-and-settle.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
-**None.** Slice 11 asked for the eighteen files under `docs/_append/`, and commit `ce95628` ("delete
-append files") did it — that directory is gone from the dump, so the request is discharged. Nothing in
-this slice renames, supersedes or orphans anything: no migration, no schema change, no package change, no
-ADR edit, no `Program.cs` edit, no `.slnx` edit.
+**None.** Nothing here renames, supersedes or orphans anything: no migration, no schema change, no
+package change, no ADR edit, no `Program.cs` edit, no `.slnx` edit, no new test folder.
 
 ## About "some tests are now failing"
 
-**They aren't.** `claude-terminal.txt` is from the same session as `dump.txt` — its cloudflared
-timestamps are UTC, and 20:23 EDT is 00:23Z — and it shows `dotnet test` at **971 total / 0 failed / 956
-succeeded / 15 skipped**, `scripts/ci_local.sh --with-all` green across all six gates, and
-`MYRESTAURANT_E2E=1` at **15 total / 0 failed / 11 succeeded / 4 skipped**. Slice 11's CS4007 fix landed
-and the fifteen-test gap it explained is closed. There is no failing assertion anywhere in that output.
-The four remaining skips are the four unimplemented §16.3 scenarios, each carrying
-`PendingHarnessExtension`. This slice takes one of them.
+**They aren't.** `claude-terminal.txt` is from the same session as `dump.txt` — same commit, `b6a2892` —
+and it is green from top to bottom:
+
+- `dotnet test` — **971 total / 0 failed / 956 succeeded / 15 skipped**
+- `bash scripts/ci_local.sh --with-all` — all six gates passed
+- `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` — **15 total / 0 failed / 12 passed / 3 skipped**
+- `run.sh --smoke`, `run.sh --containers-only`, `scripts/quick_tunnel.sh` — all fine
+
+There is no failing assertion anywhere in that output. The 15 skips under a plain `dotnet test` are the
+E2E scenarios opting out because `MYRESTAURANT_E2E` is unset; the 3 under `MYRESTAURANT_E2E=1` are the
+three unimplemented §16.3 scenarios, each carrying `PendingHarnessExtension`. This slice takes one of
+them, leaving two.
 
 ## The files
 
 | File | Change |
 | --- | --- |
-| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | §16.3 scenario **9** implemented |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs` | **new** — the till: board, bill, price adjustment |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs` | `CreateStaffAccountAsync`, `StaffRoles`, `StaffAccount` |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs` | password sign-in; §3.5's forced password change; one widened selector |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | `GuestPriceAdjustment`, `GuestOrderLineDetail`, `ReadOwnLinesAsync`, `WaitForOwnLineAsync` |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs` | `CurrencyCode` named rather than a literal |
-| `src/MyRestaurant.WebApplication/Components/Pages/Counter/CounterSitting.razor` | `data-live`, a surface id, two input ids |
-| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor` | one added class |
-| `src/MyRestaurant.WebApplication/Components/Pages/Administration/CreateStaff.razor` | one added class |
-| `docs/BUILD_PROGRESS.md` | Slice 12 appended (**complete file**, 5,066 lines — I did the appending) |
+| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | §16.3 scenario **10** implemented; its placeholder removed |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs` | the close: `BeginCloseAsync`, `ConfirmCloseAsync`, `ReadPendingWarningAsync`, `ReadSettledTillAsync`, `ReadFloorAsync` |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | `ReadTotalsAsync`, `ReadSettledViewAsync`, `WaitForSettledViewAsync`, `DescribeSettledView` |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs` | `ReadSettledSittingAsync` + the `SettledSitting` record |
+| `src/MyRestaurant.WebApplication/Components/Pages/Counter/CounterSitting.razor` | two ids on the close buttons |
+| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor` | one class on the settled heading |
+| `docs/BUILD_PROGRESS.md` | Slice 13 appended (**complete file**, 5,325 lines — I did the appending) |
 | `_CHANGES.md` | this file |
 
-## Why scenario 9 needed a real staff account
+Before editing, I checked all seven pre-existing files against the SHA-256 hashes `export.sh` recorded in
+`dump.txt`. All seven matched, so every byte I did not touch is known to be identical to your working
+tree.
 
-Scenarios 4, 6, 7 and 8 deliberately put an administrator at the pass, and said why each time. That
-reasoning does not survive here.
+## Seven readings of one number
 
-The thing under test is a sentence on a guest's screen, and §6.2 binds a `price_adjustment` to counter
-**or** administrator and records which. `CounterSitting.razor` reads the actor role off the principal —
-`counter` wins when somebody holds both, because that is the capacity they are standing at the till in —
-so an administrator adjusting the price renders *"by an administrator"*. The assertion would then be
-about the wrong role, **and it would pass**. Who acted is part of the claim.
+"Totals match" is the half of §16.3's sentence that could most easily be satisfied by nothing at all. Six
+of these are computed at render time from the same `sitting_bill` view, so all six could agree perfectly
+on a close that stamped **no total whatsoever**. They are still worth comparing — different code, two
+languages, three circuits — but only the seventh makes the claim §5.3 actually promises.
 
-So the scenario walks §3.7 → §3.5 on the way in: the create-staff form, the generated temporary password,
-a sign-in that lands on `/account/change-password-required` rather than anywhere it asked for, and the
-change that clears the obligation. That landing is asserted explicitly rather than absorbed into a helper
-— a §3.7 account carries `must_change_password`, and a counter who could reach the till on a password an
-administrator can still read off a screen is a hole, not an inconvenience.
+| # | Where | How it is computed |
+| --- | --- | --- |
+| 1 | The till header, before the close | SQL sum over `sitting_bill` |
+| 2 | §11.3's confirmation prompt | `CurrentTotalAmount`, quoted directly |
+| 3 | The till header, after the close | the stamped `settled_total_amount` |
+| 4 | The till's settle panel | C# sum over the per-person entries |
+| 5 | The guest's "Table total" | C# sum over `sitting_bill`, another circuit |
+| 6 | The guest's "Your total" | C# sum filtered to one person, another circuit |
+| 7 | `table_sitting.settled_total_amount` | the column, read past every surface |
 
-## Quantity two, and why the number matters
+Reading **2** earns its place alone: it is the last number a person reads before an irreversible write,
+and it comes from a third expression rather than either sum beside it.
 
-The pie is ordered **two** at 14.00 and adjusted to 11.00. §6.5.7 adjusts a *unit* price and §11.1
-renders the *extension* — so the unit must read 11.00 **and** the line must read 22.00, and a surface that
-wrote the sentence without recomputing the money fails the second while passing the first. At quantity one
-those are the same number twice.
+Reading **6** is asserted rather than assumed. One guest is at the table, so their own total *is* the
+table's — which means a filter that had stopped filtering shows the right number for the wrong reason,
+and only in a party of one. That is exactly this scenario.
 
-The soup is the control: one line adjusted, not the ticket.
+Every figure is derived from the prices the scenario created. `soup + 2 × pie`, never `34.50`.
 
-Both totals are **derived in the scenario** from the prices it actually created, not restated as
-constants. A restated total is a second place the fixture lives, and it goes quietly wrong the day
-somebody changes a price for another scenario's sake while every assertion still passes.
+## One soup delivered, two pies that never arrive
 
-## The three product changes
+- **The warning must name one line, not two portions.** §11.3 renders `PendingLineCount`, a count of
+  unfulfilled rows in `order_current_line`. The pie is *one* row at quantity two, so a warning that had
+  started counting portions says "2" and this asserts **1**. In production that is a counter being told
+  the wrong thing at the moment they decide whether to charge somebody.
+- **The stamped total must include food nobody ate.** §5.3's "knowingly charge" is the whole point: told,
+  settled anyway, charged. A close that quietly dropped the undelivered line would be smaller on all
+  seven readings and perfectly self-consistent.
+- **At one of each item, wrong arithmetic gives the right answer.** A total summing *unit* prices instead
+  of extensions, or double-counting the delivered line, is indistinguishable from the correct total at
+  quantity one. At one soup and two pies each is a different number.
 
-All additive; no CSS stands behind any new class and nothing changes on screen.
+The pie is asserted still-undelivered *after* the close, on both the till and the phone. A surface that
+re-badged it at settlement would be telling the guest their food arrived — the one fact on that bill they
+might want to argue about.
 
-**`CounterSitting.razor` — `data-live`, and this one is worth having regardless of any test.** A
-prerendered till is the dangerous kind of broken because it is the kind that looks right: the bill is
-correct as of the request, every total adds up, and Adjust price, Remove, Add to the bill and Close &
-settle are all `@onclick` handlers with no circuit behind them. Pressing any of them does nothing —
-no refusal, no flash, no error — and the screen never hears §9 either. Same attribute, same reasoning, as
-`KitchenBoard`'s and `TableOrderSurface`'s.
+## Why a counter account, when the screen does not branch on role
 
-**`CounterSitting.razor` — `id` on each price-editor input.** They were previously distinguishable only by
-`inputmode` on one and `maxlength` on the other, which is not something outside the markup should have to
-know. Only one editor is ever open (`StartAdjust` calls `CancelEditors`, and `_adjustingLine` holds a
-single line), so an id is unique in the document; the wrapping `<label>` still associates each input
-implicitly, so no accessible name changes.
+Scenario 9 needed one because §6.2 records the actor and §11.1 renders it, so the assertion would
+otherwise have been about the wrong role **and would have passed**. This is the mirror image, and worth
+stating plainly: `CounterSitting.razor` gates every control on `_sitting.IsOpen` and never consults the
+principal, so an administrator sees the identical read-only screen and the assertion passes either way
+**today**.
 
-**`.order-line-adjustment`** — the removal sentence directly above carries the identical
-`.order-line-detail`, so "the detail paragraph under this line" was never a way to name this one, and on a
-line both adjusted and removed it would have named both.
+It is the direction of the *next* failure that decides it. §6.5.8 admits nothing but an administrator's
+corrective events after a close, and §5.3 says corrections "are an administrator's". The day this surface
+grows the correction panel those sections describe, an administrator at a settled till will *correctly*
+see controls a counter must not. Asserting "read-only" as an administrator is asserting it for the one
+role permitted to act after a close; the counter is the role for which read-only is unconditional, and
+that is the claim §11.3 makes.
 
-**`.staff-temporary-password`** — that element holds a password and borrowed `.totp-secret` for its
-monospaced treatment. Reading a password out of something named for a TOTP secret breaks silently the day
-that page grows a real authenticator panel.
+The administrator still covers the pass for the single fulfillment, on scenarios 4, 6, 7 and 8's
+reasoning. A second staff account for one tap would be a sign-in and a forced password change nothing
+here asserts on.
 
-## Two things I found while reviewing my own code
+## The two product changes
 
-**A CS4007, caught and fixed before packaging.** `ReadPriceAdjustmentsAsync` had
-`{(await previous.CountAsync() == 0 ? … : …)}` inside an interpolation hole of a string binding to
-`DefaultInterpolatedStringHandler`. Same class of error as Slice 11's, in code written the same day I
-wrote about it. Both counts are now hoisted into locals first. I re-scanned every `.cs` file in the
-project afterwards: no `await` inside any interpolation hole remains.
+Both additive, no CSS behind either new name, and both `.razor` tag trees verified **identical** to the
+pristine files from `dump.txt`. Nothing changes on screen.
 
-**A selector that could never have matched.** `AccountJourneys.DescribeSurfaceAsync` looked for
-`p.status-error`, but `ChangePasswordRequired.razor` renders its refusals as a `ul.status-error` of `<li>`
-elements because Identity hands back a list — so the one page whose entire job is to refuse would have
-described itself as reporting no error, on the exact journey this slice adds. Widened to `.status-error`;
-the old match set is a subset, so no existing caller changes.
+**`CounterSitting.razor` — `#counter-close` and `#counter-close-confirm`.** The two buttons are otherwise
+the same selector: "the primary button in the settle section" is *Close & settle* before the prompt and
+*Yes — close & settle* after it. Nothing outside the markup could tell "I opened the confirmation" from
+"I settled the table", and settling cannot be undone (§5.3) — which makes this the one place in the
+application where that distinction is most worth having in the markup rather than inferred from which
+panel happens to be on screen. They live in exclusive branches, so each is unique in the document.
 
-I also dropped a composite `SignInAsStaffForTheFirstTimeAsync` I had written: scenario 9 asserts on the
-page in between the two halves, scenario 12 will want the same granularity, and shipping an unused
-`internal` method is clutter.
+**`TableOrderSurface.razor` — `.order-settled-heading`.** Everything else identifying §11.1's settled view
+is an *absence* — no picker, no Send row, no removal ticks — and a surface whose circuit died has none of
+those either, so a wait keyed on the picker leaving is satisfied by a dead page while proving nothing.
+This heading is the one positive marker. "The second `h2` on the surface" was never a way to name it:
+that is also the heading of the live ordering view. Fourth time now, after `.order-line-adjustment`,
+`.order-prune-notice` and `.order-party-line-name`.
+
+## Two harness decisions worth knowing about
+
+**The close is two calls.** `BeginCloseAsync` returns the prompt, `ConfirmCloseAsync` accepts it. A
+composite would settle the table before the scenario could read the prompt, and a settled sitting renders
+no prompt to go back for. Same reasoning that kept `SignInWithPasswordAsync` and
+`CompleteForcedPasswordChangeAsync` apart in Slice 12.
+
+**`AlreadyClosed` returns normally.** The sitting really is settled and the view really does flip; only
+`SittingNotFound` — a problem with no flip — is a failure. So `ConfirmCloseAsync` polls for the read-only
+note **before** the refusal, or a losing race would be reported as a fault.
 
 ## Build/test checklist
 
 ```bash
 cd /home/kushal/src/dotnet/myrestaurant
 
-# 1. Three .razor files and six .cs files.
+# 1. Two .razor files and four .cs files.
 dotnet build
 #    expect: all seven projects succeed, 0 errors
 
-# 2. Unchanged from Slice 11's baseline.
+# 2. Unchanged from Slice 12's baseline.
 dotnet test
 #    expect: total 971, failed 0, succeeded 956, skipped 15
-#    Scenario 9 moves from [Fact(Skip = ...)] to [Fact] + Assert.SkipUnless; xUnit counts both as
+#    Scenario 10 moves from [Fact(Skip = ...)] to [Fact] + Assert.SkipUnless; xUnit counts both as
 #    skipped, so with MYRESTAURANT_E2E unset every number is identical.
 
-# 3. The strict build - warnings are errors under ContinuousIntegrationBuild.
+# 3. The strict build — warnings are errors under ContinuousIntegrationBuild.
 bash scripts/ci_local.sh --with-all
 
 # 4. The point of the slice.
 MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
-#    expect: total 15, failed 0, 12 passed, 3 skipped
-#    Scenario 9 adds roughly 20-25s: a /setup wizard, two menu items, a table, a staff account, a
-#    guest registration, two Argon2id verifies and two hashes, and no waiting on any timer.
+#    expect: total 15, failed 0, 13 passed, 2 skipped
+#    Scenario 10 adds roughly 25-30s and waits on no timer.
 ```
 
 There is no .NET SDK in my sandbox; I have run none of this. What I did run, on every edited file:
 brace/paren/bracket balance **and a depth walk** (never negative, ends at zero) with strings and comments
-stripped; a Razor tag-structure comparison against the pristine file from `dump.txt`, confirming all three
-`.razor` edits leave the tag tree **identical**; the CS4007 scan above; a CS1620 scan confirming every
-additive operand inside every `string.Create(...)` is an interpolated string; and an existence check of all
-sixteen selectors the new harness code depends on against the markup it targets.
+stripped; a CS4007 scan (no `await` inside any interpolation hole); a CS1620 scan confirming every
+additive operand inside every `string.Create(...)` is an interpolated string; the Razor tag-tree
+comparison above; an existence check of all **twenty-seven** selectors the new harness code depends on
+against the markup it targets; and the SHA-256 comparison of all seven pre-edit files.
 
 ## If it goes red
 
 | Message begins | What it means |
 | --- | --- |
-| `The till never became interactive within 30s...` | `data-live` did not land on `CounterSitting.razor`, or `IsLiveAttributeValue` is missing from its `@code` block. Check the `<section class="panel counter-sitting-page" id="counter-sitting-surface"` opening tag has both new attributes. |
-| `The counter board has no open table labelled 'E2E Nine'...` | The guest's join never opened a sitting, or `/counter` refused the principal. §3.7 admits counter and administrator; a failed policy shows the access-denied panel instead, and the message quotes the URL. |
-| `The browser is not on /account/change-password-required...` | §3.5's obligation (1) did not fire for a §3.7 account. That is a real defect — `CreateStaffAsync` writes `must_change_password = true`, and `ObligationsMiddleware` must intercept the sign-in's own navigation. |
-| `Pressing Adjust price on 'Steak pie' did not open the editor.` | The two input ids did not land, or the sitting is already settled (§11.3 renders no line controls on a closed sitting). |
-| `Adjusting 'Steak pie' to $11.00 was refused...` | A real refusal under the §6.6 lock, with the till's own reasons quoted. Nothing else in this scenario writes concurrently, so this would be genuine. |
-| `Assert.Equal() Failure: Expected $22.00, Actual $28.00` on `adjusted.PriceText` | The sentence was written but the extension was not recomputed — the exact failure quantity two exists to separate. |
-| `Assert.Contains() Failure ... "the counter"` | The actor role was recorded or rendered as something other than `counter`. Check `CounterSitting.razor`'s `_actorRole` and `TableOrderSurface.razor`'s `DescribeRole`. |
-| `§11.1 requires a price adjustment to be shown old -> new, and this one is missing...` | One of the two amounts stopped rendering. The message names which, and quotes the sentence on screen. |
-| `Assert.Equal() Failure` on `RunningTotalText` but the guest's line is right | The fold and the view disagree — `sitting_bill` / `order_current_line` versus `OrderNarrative`. That is the §16.2 equivalence property, and it is the most serious thing this scenario can find. |
+| `The counter board has no open table labelled 'E2E Ten'…` | The guest's join never opened a sitting, or `/counter` refused the counter principal. §3.7 admits counter and administrator; a failed policy shows the access-denied panel and the message quotes the URL. |
+| `The browser is not on /account/change-password-required…` | §3.5's obligation (1) did not fire for a §3.7 account. A real defect — `CreateStaffAsync` writes `must_change_password` and `ObligationsMiddleware` must intercept the sign-in's own navigation. |
+| `Assert.NotNull` on `warning` | §5.3's pending-line warning is absent while a line is unfulfilled. That is the section's central requirement — a counter settling a bill without being told what has not arrived. |
+| `Assert.Equal() Failure: Expected 1, Actual 2` on `warning.LineCount` | The warning is counting portions rather than unfulfilled rows. Check `CounterSittingSummary.PendingLineCount`. |
+| `The till is not offering Close & settle…` | The sitting was already settled — an end-of-day pass (§5.4) or another till. Nothing else in this scenario closes anything, so this would be genuine. |
+| `Pressing Close & settle did not raise §11.3's confirmation.` | `#counter-close` did not land, or there is no circuit. The button sets one field and cannot be refused. |
+| `The close was refused and the sitting is still open…` | `CloseSittingOutcome.SittingNotFound`, with the till's own words quoted. |
+| `The sitting neither settled nor refused within 30s…` | Either the click never dispatched, or the §6.6 `FOR SHARE`/`FOR UPDATE` pair is genuinely contended — and nothing else here is writing. |
+| `Assert.Equal() Failure: Expected "Settled total", Actual "Running total"` | `closed_at` was not set, or the page did not re-read after the commit. |
+| `no §6.7 correction has been made, so no corrected total should be shown` | The stamped total and the live total diverged on their own, which §5.3 says cannot happen. The most serious thing this scenario can find. |
+| `Assert.Equal() Failure` on `settled.TableTotalText` but the header is right | The SQL view and the C# sum disagree — `sitting_bill` versus `_bill.Sum(…)`. |
+| `a settled sitting must offer the guest nothing to order` | §11.1's flip did not remove the ordering apparatus. The message names what is still on screen. |
+| `The guest's surface never flipped to §11.1's settled view…` | §9's `SittingClosed` never left the till's circuit, or the guest's is not listening. |
+| `Assert.Equal() Failure` on `row.SettledTotalAmount` | The stamped column disagrees with every screen. This is reading 7 and the only one that is not another rendering of the same query. |
+| `Assert.Null` on `ReadOpenSittingAsync` | `closed_at` was not set, so the table still has an open sitting and the next guest to scan would rejoin a settled one. |
+| `Assert.Single() Failure` on `floor.Settled` | The table is missing from §11.3's "Settled today" list, or is on it twice. |
 
 `RestaurantInstance.DiagnosticOutput` carries the web application's console tail if a page 500s.
 
 ## What is next
 
-Scenario **10** — a counter closes with the pending-line warning shown, the table flips to settled
-read-only, and the totals match. It inherits this slice's till harness and `data-live` wholesale and
-needs `CloseAndSettleAsync` plus the read-only assertions. Then **11** (hide / filter / unhide, which will
-meet `EnhancedNavigation` again on an administrator following a filter link) and **12** (a TOTP reset,
-which inherits `CompleteForcedPasswordChangeAsync` and needs only the second obligation beside it). Then
-the backup/restore drill.
+Scenario **11** — a guest hides a closed order, it leaves their own history while staff and admin views
+are unchanged, an administrator filters the hidden-records view by username, and Unhide restores it. It
+inherits this slice's close directly: a hideable order is a *settled* one, so scenario 11's arrangement
+is scenario 10's ending. It will also meet `EnhancedNavigation` again, on an administrator following a
+filter link.
+
+Then **12** — a TOTP reset driving §3.5's pipeline through a forced password change *and* a forced
+re-enrollment, which inherits `CompleteForcedPasswordChangeAsync` and needs only the second obligation
+beside it.
+
+Then the backup/restore drill, and M6 is done.
 
 ## The one-line why
 
-Every earlier scenario could let an administrator stand in for staff; this one could not, because the
-thing it asserts is *who* changed a number on somebody's bill.
+Every scenario before this one asserts on something that could be done again; this is the first whose
+subject is a one-way door, which is why it checks the number against the column it was stamped into
+rather than against another rendering of the same query.
