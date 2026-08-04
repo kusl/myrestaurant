@@ -5439,3 +5439,134 @@ scan (no `await` inside any interpolation hole); a CS1620 scan confirming every 
 every `string.Create(...)` is an interpolated string; a Razor tag-tree walk of both edited components; an
 existence check of all **36** selectors the two new journey classes depend on against the markup they
 target; and a check that none of the four new names has a CSS rule anywhere, so nothing changes on screen.
+
+### M6 Slice 15 — §16.3 scenario 12, and the last placeholder in the matrix
+
+Scenario 12 is the fifteenth and last of §16.3, so `PendingHarnessExtension` is deleted with it: there are
+no skipped placeholders left in `EndToEndScenarios.cs`.
+
+The spec's sentence is *"Admin resets a TOTP-enrolled user → user password sign-in → forced password
+change → forced TOTP re-enrollment → lands home; passkey sign-in path also hits the pipeline."* Every
+clause is walked in that order, through the real surfaces, and two of them needed something the harness
+did not have.
+
+**Two browsers for one person, and it is not tidiness.** A WebAuthn private key never leaves the
+authenticator that minted it, so the passkey this scenario registers belongs to one browser context for
+good. That context cannot also be where the password sign-ins happen: `passkey.js` fires a
+conditional-mediation `navigator.credentials.get()` on *every* sign-in page load, and the CDP virtual
+authenticator reports a resident key and simulates presence automatically — so once a discoverable
+credential exists in that context, a "password sign-in" there may be answered by the authenticator before
+a password is ever typed. It would still land on the forced-change page, and the scenario would pass for
+the wrong reason. So the staff member gets a *device* (authenticator, holds the passkey, does the passkey
+sign-ins) and a *terminal* (no authenticator, does the password walk). The first password sign-in is on the
+device and is safe there for a stated reason rather than by luck: the authenticator is still empty at that
+point, so the conditional request has nothing to answer with.
+
+**`SignOutAsync` could not sign a trapped principal out.** `ObligationsEnforcement.IsExemptPath` exempts
+sign-out and the two obligation pages and nothing else — `/sign-in` is not on that list — so a principal
+holding an obligation cannot reach the sign-in page at all, and sign-out is the only way to a fresh cookie.
+But both obligation pages render a sign-out form of their own beside the header's ("Not ready right now?",
+"Done for now?"), because §3.5 promises leaving is always possible. `SignOutAsync` held a bare
+`Locator("form.sign-out-form button[type='submit']")` — a strict locator — which resolves to two elements
+there and throws a strict-mode violation on every method that acts on one. `.First` fixes it, and taking
+the first is safe rather than merely convenient: the two forms are identical in effect (same endpoint, same
+token, neither carries a `returnUrl`, so `SafeLocalReturnUrl(null)` sends both to `/`), and the header's
+comes first in document order. Scenario 12 signs a trapped principal out twice.
+
+**Why the sign-out ordering is load-bearing.** `ObligationsMiddleware` decides from the cookie's claims,
+not from the row. So the device is signed out *before* the terminal clears the two flags. Left signed in,
+its cookie would still carry `must_change_password` and it would still be redirected — and the closing
+assertion that the pipeline *releases* a passkey session could not then tell a fresh cookie from
+`ChangePasswordRequired.razor`'s own stale-claim guard firing. That closing assertion is the point: without
+it, *"the passkey path hits the pipeline"* is satisfied equally well by a middleware that refuses passkey
+sessions permanently, which would be a worse defect than the one it guards against.
+
+**Four form posts of arrangement, and no shortcut available.** §3.7's create-staff form writes
+`must_change_password` and nothing else — no secret, no passkey, and deliberately not `must_enroll_totp` —
+so an enrolled account with a passkey cannot be arranged by an administrator. It could have been arranged
+by `INSERT`, and that would have been the wrong move: the reset under test *probes*
+`totp_secret_protected` to decide whether to clear an authenticator at all, so a fixture that got that one
+column wrong would produce a password-only reset and the scenario's second obligation would never exist.
+The account enrols itself through §3.4's voluntary page and adds its own passkey through §3.3's, which is
+what a real staff member does.
+
+**Chips rather than columns.** Every flag this scenario asserts on has a row in `person` a fixture could
+read directly, and reading it directly would prove nothing about §3.7: that `must_change_password` is set
+is one claim, and that an administrator can *see* it is another. So the flags are read as the chips
+`ManagePerson.razor` renders, found by the `span.manage-label` beside each group rather than by position —
+the same reasoning as `TickRoleAsync`, and for the same reason: indexing works today and silently starts
+reading roles as credentials the day a fourth fact is added above an existing one. The Credentials group is
+the interesting one, because it is *derived* rather than stored: "Authenticator" appears iff
+`totp_secret_protected IS NOT NULL` (§3.4 has no enrolled column), so the chip's absence after the reset is
+the surface agreeing the secret is gone, and its return at the end is the surface agreeing a new one
+landed.
+
+**Declared text, at two new sites.** `.manage-label` is upcased for the eyebrow treatment, so the label
+this reader matches on comes back as `STATUS` through `InnerTextAsync` and every lookup would miss; and
+`.chip-role` is capitalized, so a role chip whose markup says `kitchen` — the stored vocabulary, which is
+what `person_role.role_name`'s CHECK constrains — reads back as `Kitchen`. Both go through Slice 14's
+`ScreenText.DeclaredAsync`. That helper was written for a failure that had already happened; this is the
+first slice where it prevented two.
+
+**The state assertions are pairs, never singletons.** Every claim in the post-reset block is of the form
+"this chip is there now", which a chip that had always been there satisfies perfectly. So the same three
+groups are read before the reset as well, and the pair is the assertion. The same shape applies to the
+recovery codes: two sets of ten, asserted disjoint. §3.7's reset deletes every `totp_recovery_code` row and
+§3.4 replaces the set on confirmation, so an overlap of even one code would mean a code the reset was
+supposed to have destroyed is still live — and nothing else in the suite would notice.
+
+**One non-default `ReturnUrl`, deliberately placed.** The pipeline's destination in this scenario is `/`,
+which is also `SafeLocalReturnUrl`'s fallback — so "lands home" on its own cannot separate *carried the
+destination across two redirects and two cookie re-issues* from *dropped it*. The trapped device therefore
+asks for `/kitchen`, the one board its role could otherwise walk straight into, and the redirect is
+asserted to carry `ReturnUrl=%2Fkitchen`. That is both §3.5's "no authenticated endpoint is reachable" on a
+real area page rather than on a sign-in navigation, and the one place in the scenario where step (3)'s
+carry is distinguishable from the default.
+
+**One product change, additive.** `ManagePerson.razor`'s reset panel wrote the temporary password into
+`<p class="totp-secret">`, which is the same collision Slice 12 fixed on `CreateStaff.razor` — an element
+holding a password, addressable only by a class named for an authenticator key. It mattered more here: the
+account this panel just reset is on its way to `/account/enroll-totp-required`, whose own `p.totp-secret`
+holds a *real* authenticator key, so one selector meant two different secrets on two consecutive screens.
+The element gains `.staff-temporary-password` beside the class it already had. There is no CSS rule for
+that name anywhere in `src/`, so nothing changes on screen, and the harness reuses the constant Slice 12
+introduced.
+
+**The kitchen role, chosen rather than defaulted.** §3.4's authenticator is a staff credential — §17
+accepts a password-only counter and nothing asks a guest to carry TOTP — so a staff account is the faithful
+subject of "a TOTP-enrolled user". And the role gives the closing claim something to point at: `MainLayout`
+renders the kitchen link to the kitchen role and to nobody else, not even to administrators, so "lands
+home" becomes "landed home as this person, with this role's door on screen". Scenarios 9 and 10 use the
+counter role; a fixture of its own keeps a failure here unambiguous.
+
+```bash
+dotnet build
+#    expect: all seven projects succeed, 0 errors
+
+dotnet test
+#    expect: total 971, failed 0, succeeded 957, skipped 14 — one fewer skip than Slice 14.
+#    Scenario 12 moves from [Fact(Skip)] to [Fact] + Assert.SkipUnless, and xUnit counts an
+#    Assert.Skip as skipped too — so the total is unchanged and one test moves from the
+#    unconditionally-skipped column into the conditionally-skipped one. With MYRESTAURANT_E2E unset
+#    every scenario still skips.
+
+bash scripts/ci_local.sh --with-all
+
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: total 15, failed 0, 15 passed, 0 skipped — the first fully green E2E run.
+#    Scenario 12 adds roughly 40-50s: a /setup wizard, a staff account, four Argon2id hashes across
+#    three password sign-ins and two forced changes, two TOTP confirmations, two passkey ceremonies
+#    (one attestation, two assertions), a reset, four reads of the management page, and no waiting on
+#    any timer.
+```
+
+No .NET SDK in the sandbox, so none of this has been run here. What was run: SHA-256 comparison of all five
+pre-edit files against the hashes `export.sh` recorded in `dump.txt` — all five matched, so every byte not
+touched is known identical to the working tree; brace/paren/bracket balance and a depth walk (never
+negative, ends at zero) with strings, chars, raw string literals and comments stripped, across all three
+edited C# files; a CS4007 scan (no `await` inside any interpolation hole); a CS1620 scan over every
+`string.Create(...)`; a Razor tag-tree walk of `ManagePerson.razor`'s markup region and a brace check of its
+`@code` block; an existence check of all 30 selectors and rendered phrases the new journeys depend on
+against the markup they target; a count confirming both obligation pages carry exactly one sign-out form of
+their own beside the layout's, which is the strict-mode violation `.First` resolves; and a check that
+`.staff-temporary-password` has no CSS rule anywhere, so nothing changes on screen.

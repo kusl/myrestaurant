@@ -15,14 +15,36 @@ internal sealed record AdministratorAccount(string Username, string DisplayName,
 internal sealed record GuestAccount(string Username, string DisplayName);
 
 /// <summary>
-/// The account journeys more than one §16.3 scenario walks: the first-administrator wizard, sign-out,
-/// and passkey sign-in. Kept out of the scenario file so a scenario reads as its own assertion rather
-/// than as thirty lines of form filling — and so that when a surface changes, one place changes.
+/// The account journeys more than one §16.3 scenario walks: the first-administrator wizard, guest
+/// registration, sign-out, both sign-in paths, both halves of §3.5's obligations pipeline, and the two
+/// voluntary credential surfaces (§3.3's passkeys, §3.4's authenticator). Kept out of the scenario file
+/// so a scenario reads as its own assertion rather than as thirty lines of form filling — and so that
+/// when a surface changes, one place changes.
+///
+/// <para>The pipeline's two obligations sit next to each other here on purpose. They are one mechanism
+/// with a fixed order — a reset wipes the password and, if one was enrolled, the authenticator, so the
+/// password is re-established first and the authenticator second — and a harness that split them across
+/// two files would make that order look like a coincidence of call sites.</para>
 /// </summary>
 internal static class AccountJourneys
 {
-    /// <summary>Ten single-use recovery codes are minted by the §3.6 bootstrap.</summary>
+    /// <summary>
+    /// Ten single-use recovery codes are minted by the §3.6 bootstrap — and by every other set this
+    /// application issues, because they all come from the Domain's <c>RecoveryCode.GenerateSet</c> and
+    /// <c>RecoveryCode.CodesPerSet</c> is ten. So this is the expected size of a voluntary enrollment's
+    /// set (§3.4) and of a forced re-enrollment's (§3.5) as much as of the wizard's.
+    /// </summary>
     internal const int ExpectedRecoveryCodeCount = 10;
+
+    /// <summary>
+    /// An element the landing page has and no account surface does, for use as an arrival barrier when
+    /// something in this file follows a link home (see <see cref="EnhancedNavigation"/>).
+    ///
+    /// <para><c>Home.razor</c> is the only page in the application whose <c>h1</c> carries a class. Every
+    /// account panel renders a bare one, so this cannot be satisfied by the page being left — which is
+    /// the single property an arrival selector has to have.</para>
+    /// </summary>
+    internal const string LandingPageMarker = "h1.landing-title";
 
     /// <summary>
     /// A field the registration details step renders and the sign-in page does not, used as the arrival
@@ -228,16 +250,34 @@ internal static class AccountJourneys
     }
 
     /// <summary>
-    /// Signs out through the header's antiforgery-protected POST form, then waits for the header to
-    /// offer a sign-in link again. That link exists only in the layout's <c>NotAuthorized</c> branch,
-    /// so it is positive proof the cookie is gone rather than a guess about the redirect — and waiting
-    /// for it also settles the navigation the click started.
+    /// Signs out through an antiforgery-protected POST form, then waits for the header to offer a
+    /// sign-in link again. That link exists only in the layout's <c>NotAuthorized</c> branch, so it is
+    /// positive proof the cookie is gone rather than a guess about the redirect — and waiting for it
+    /// also settles the navigation the click started.
+    ///
+    /// <para><b>Works from inside §3.5's pipeline, and that took <c>.First</c>.</b> A principal with an
+    /// outstanding obligation cannot reach <c>/</c> — <see cref="ObligationsEnforcement.IsExemptPath"/>
+    /// exempts sign-out and the two obligation pages and nothing else, so the <c>GotoAsync</c> below is
+    /// redirected to whichever obligation page is next. Both of those render a sign-out form of their
+    /// own beside the header's ("Not ready right now?", "Done for now?"), because §3.5 promises that
+    /// leaving is always possible; a bare <c>Locator</c> then matches two elements and every Locator
+    /// method that acts on one throws a strict-mode violation. Taking the first is safe rather than
+    /// merely convenient: the two forms are identical in effect — same endpoint, same token, neither
+    /// carries a <c>returnUrl</c> — so <c>SafeLocalReturnUrl(null)</c> sends both to <c>/</c>. The
+    /// header's comes first in document order, and it is the one a person would use.</para>
+    ///
+    /// <para>Signing a <em>trapped</em> principal out is not a corner case. §16.3 scenario 12 has to do
+    /// it twice, and it has to be a real sign-out rather than an abandoned tab: the middleware decides
+    /// from the cookie's claims, not from the row, so a session left holding stale obligation claims
+    /// would keep being redirected after the obligations were cleared elsewhere — and an assertion that
+    /// the pipeline had <em>released</em> that account could not then tell a fresh cookie from a page
+    /// noticing its own claim was stale.</para>
     /// </summary>
     internal static async Task SignOutAsync(IPage page)
     {
         await page.GotoAsync("/");
 
-        ILocator signOutButton = page.Locator("form.sign-out-form button[type='submit']");
+        ILocator signOutButton = page.Locator("form.sign-out-form button[type='submit']").First;
         await signOutButton.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
         await signOutButton.ClickAsync();
 
@@ -377,6 +417,245 @@ internal static class AccountJourneys
         }
     }
 
+    /// <summary>
+    /// Clears §3.5's obligation (2) on the page it traps a principal on: scans the authenticator the
+    /// page is offering, confirms a code computed from it, and follows the panel's Continue link to
+    /// wherever the pipeline said the principal was originally headed. Returns the fresh recovery-code
+    /// set, read off the panel before the link is followed — the one moment those exist in the clear.
+    ///
+    /// <para><b>The destination is the caller's to name, not this method's.</b> §3.5 step (3) is
+    /// "continue to the originally requested URL", and <c>EnrollTotpRequired.razor</c> honours that by
+    /// pointing Continue at the <c>ReturnUrl</c> the middleware carried across. Baking <c>/</c> in here
+    /// would work for the one scenario that asks for nothing and would quietly stop being a barrier for
+    /// any scenario that asks for something — which is the single way to get an
+    /// <see cref="EnhancedNavigation"/> arrival selector wrong.</para>
+    ///
+    /// <para>Being on the right page is asserted rather than assumed, for the reason
+    /// <see cref="CompleteForcedPasswordChangeAsync"/> gives: a caller that landed elsewhere means the
+    /// obligation did not fire, and an account whose authenticator an administrator wiped yet which
+    /// reached a destination anyway is a §3.5 hole rather than a harness inconvenience.</para>
+    /// </summary>
+    /// <param name="page">A page held on the forced re-enrollment surface.</param>
+    /// <param name="destinationSelector">
+    /// Something only the destination renders — see <see cref="EnhancedNavigation.FollowAsync"/>. For a
+    /// principal who asked for nothing in particular that is <see cref="LandingPageMarker"/>.
+    /// </param>
+    /// <param name="destinationDescription">What that selector means, in words, for the failure message.</param>
+    internal static async Task<IReadOnlyList<string>> CompleteForcedTotpEnrollmentAsync(
+        IPage page,
+        string destinationSelector,
+        string destinationDescription)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentException.ThrowIfNullOrEmpty(destinationSelector);
+
+        if (!IsForcedTotpEnrollmentUrl(page.Url))
+        {
+            string surface = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                $"The browser is not on {AccountRoutes.ForcedTotpEnrollment}, so there is no forced"
+                + " authenticator re-enrollment to complete. §3.7's reset clears an enrolled secret and"
+                + " sets must_enroll_totp, and §3.5 admits such a principal to no authenticated endpoint"
+                + $" except sign-out and the pipeline's own pages until it clears. {surface}");
+        }
+
+        IReadOnlyList<string> recoveryCodes = await ConfirmDisplayedAuthenticatorAsync(
+            page, AccountRoutes.ForcedTotpEnrollment);
+
+        // §3.5's release, as the surface offers it. Confirmation cleared must_enroll_totp, rotated the
+        // stamp and re-issued the cookie in that order, so the obligation claim is gone from this
+        // session and the middleware lets the next request through — which is what makes following this
+        // link a claim about the pipeline rather than about a hyperlink.
+        ILocator continueLink = page.Locator("div.form-actions a:has-text('Continue')").First;
+
+        try
+        {
+            await continueLink.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            string surface = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                "The forced re-enrollment panel showed its recovery codes but offered no way onward, so"
+                + $" a principal §3.5 has just released has nowhere to go. {surface}",
+                exception);
+        }
+
+        await EnhancedNavigation.FollowAsync(
+            page, continueLink, destinationSelector, destinationDescription, SurfacePatience);
+
+        return recoveryCodes;
+    }
+
+    /// <summary>
+    /// Enrolls an authenticator through the <em>voluntary</em> §3.4 surface and returns the recovery-code
+    /// set it shows once. Leaves the browser on that panel: its "Done" link goes to <c>/</c> and nothing
+    /// here needs to be there, so the caller's next <c>GotoAsync</c> is both cheaper and clearer than a
+    /// link click with an arrival barrier attached to it.
+    ///
+    /// <para><b>Why a scenario would want the voluntary page at all.</b> §3.7's create-staff form writes
+    /// <c>must_change_password</c> and nothing else — no secret, and deliberately not
+    /// <c>must_enroll_totp</c> — so an administrator cannot arrange a TOTP-enrolled account and neither
+    /// can a fixture. The account has to enrol itself, exactly as a real staff member does, which is why
+    /// §16.3 scenario 12 spends four form posts getting to the state its first sentence starts from.</para>
+    ///
+    /// <para>Requires the principal to be past §3.5's pipeline: this page is a normal authenticated
+    /// destination and is <em>not</em> in the exempt list, so a principal with an outstanding obligation
+    /// is redirected to the obligation page instead of reaching it. That redirect is what the failure
+    /// message below reads out.</para>
+    /// </summary>
+    internal static async Task<IReadOnlyList<string>> EnrollAuthenticatorAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(AccountRoutes.TotpEnrollment);
+
+        return await ConfirmDisplayedAuthenticatorAsync(page, AccountRoutes.TotpEnrollment);
+    }
+
+    /// <summary>
+    /// Registers a passkey on the <em>voluntary</em> §3.3 surface and returns how many the account holds
+    /// afterwards, counted off the list the page re-renders.
+    ///
+    /// <para>Requires a virtual authenticator on <paramref name="page"/>'s own context, and a credential
+    /// minted here belongs to <em>that</em> context for good — a WebAuthn private key never leaves the
+    /// authenticator that made it. So the browser that registers a passkey is the only browser that can
+    /// later sign in with it, which is the whole reason §16.3 scenario 12 gives its staff member two:
+    /// a device that holds the passkey, and a terminal that does not and therefore signs in by password
+    /// without <c>passkey.js</c>'s conditional-mediation request quietly answering first.</para>
+    ///
+    /// <para>Completion is the page's own confirmation rather than the row appearing. The add is a
+    /// post/redirect/get carrying a one-line status, and the row is written in the redirected-from
+    /// request; waiting only on the list would also be satisfied by a passkey that was already there,
+    /// which for a caller that intends to assert on the count is the wrong barrier.</para>
+    /// </summary>
+    internal static async Task<int> AddPasskeyAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(AccountRoutes.Passkeys);
+
+        ILocator addPasskey = page.Locator("button[name='__passkeySubmit']").First;
+
+        try
+        {
+            await addPasskey.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            string surface = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                $"{AccountRoutes.Passkeys} offered no way to add a passkey. It is a normal authenticated"
+                + " destination rather than a §3.5 pipeline page, so the usual cause is an outstanding"
+                + $" obligation having redirected the browser somewhere else entirely. {surface}",
+                exception);
+        }
+
+        await addPasskey.ClickAsync();
+
+        ILocator confirmation = page.Locator("p.status-success").First;
+
+        try
+        {
+            await confirmation.WaitForAsync(new LocatorWaitForOptions { Timeout = 60_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            string surface = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                "Registering a passkey was not confirmed, so either the ceremony produced nothing or the"
+                + " attestation was refused. A virtual authenticator on this page's own context is"
+                + $" required; see RestaurantInstance.OpenIsolatedPageAsync. {surface}",
+                exception);
+        }
+
+        string message = await ScreenText.DeclaredAsync(confirmation);
+
+        if (!message.Contains("Passkey added", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Registering a passkey reported '{message}', which is some other outcome — the page"
+                + " flashes a rename and a removal through the same element.");
+        }
+
+        return await page.Locator("li.passkey-row").CountAsync();
+    }
+
+    /// <summary>
+    /// The half the two authenticator surfaces share: read the secret the page is displaying, compute a
+    /// code from it, post it, and come back with the recovery codes the confirmation shows.
+    ///
+    /// <para>The secret is taken off the screen rather than generated here, and that is the point of the
+    /// exercise. §3.4 persists nothing until a code verifies — the unconfirmed secret lives only in a
+    /// Data-Protection-protected ticket in the page's own markup — so a harness that invented its own
+    /// secret would be confirming an enrollment the server had never proposed. Reading it back is what
+    /// makes this the ceremony a person performs.</para>
+    ///
+    /// <para>The page renders the Base32 secret grouped in fours for manual entry and
+    /// <c>Base32Text.TryDecode</c> is forgiving of exactly that grouping, so it is passed verbatim.
+    /// §3.4's provider allows ±1 thirty-second step, so computing the code now and posting it a moment
+    /// later survives a step boundary.</para>
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> ConfirmDisplayedAuthenticatorAsync(
+        IPage page,
+        string surfacePath)
+    {
+        ILocator secret = page.Locator("p.totp-secret").First;
+
+        try
+        {
+            await secret.WaitForAsync(new LocatorWaitForOptions { Timeout = 60_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            string surface = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                $"{surfacePath} displayed no authenticator key to scan, so there is nothing to confirm."
+                + $" {surface}",
+                exception);
+        }
+
+        string displayedSecret = await secret.InnerTextAsync();
+
+        if (!Base32Text.TryDecode(displayedSecret, out byte[] totpSecret))
+        {
+            throw new InvalidOperationException(
+                $"{surfacePath} displayed an authenticator key that is not Base32: '{displayedSecret}'.");
+        }
+
+        await page.FillAsync("#totp-code", Rfc6238Totp.ComputeCode(totpSecret, DateTimeOffset.UtcNow));
+        await page.ClickAsync("button:has-text('Confirm enrollment')");
+
+        ILocator recoveryCodes = page.Locator("ul.recovery-codes li");
+
+        try
+        {
+            await recoveryCodes.First.WaitForAsync(new LocatorWaitForOptions { Timeout = 60_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            // Both surfaces refuse a bad code in place, with the QR still on screen, so the page a
+            // caller is looking at when this throws is the same one it was looking at before — and the
+            // refusal it is showing is the only thing that explains why.
+            string surface = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                $"{surfacePath} did not accept the code computed from the key it had just displayed, so"
+                + " no secret was written and no recovery codes were issued. Either the ticket carrying"
+                + $" the unconfirmed secret was rejected, or the code itself did not verify. {surface}",
+                exception);
+        }
+
+        IReadOnlyList<string> issued = await recoveryCodes.AllTextContentsAsync();
+
+        return [.. issued.Select(ScreenText.Collapse)];
+    }
+
     private static async Task<bool> IsStillOnSignInPageAsync(IPage page, TimeSpan grace)
     {
         try
@@ -450,6 +729,18 @@ internal static class AccountJourneys
         => Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)
             && string.Equals(
                 parsed.AbsolutePath, AccountRoutes.ForcedPasswordChange, StringComparison.Ordinal);
+
+    /// <summary>
+    /// True while the browser is on §3.5's forced re-enrollment page. Path compared exactly, query
+    /// ignored, for the same reason as above — and deliberately not by prefix, so that the voluntary
+    /// <c>/account/enroll-totp</c> can never be mistaken for its obligation counterpart. The two render
+    /// nearly the same form and differ in the one thing that matters: only the forced page clears a flag,
+    /// and only it records <c>forced_totp_enrollment_completed</c>.
+    /// </summary>
+    private static bool IsForcedTotpEnrollmentUrl(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)
+            && string.Equals(
+                parsed.AbsolutePath, AccountRoutes.ForcedTotpEnrollment, StringComparison.Ordinal);
 
     /// <summary>
     /// Whatever the account surface has to say about why it did not proceed: which step it is showing,

@@ -5,8 +5,9 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 
 /// <summary>
 /// The administration journeys the §16.3 scenarios walk: creating a table, issuing a display pairing
-/// code, rotating a table's join secret, and putting something on the menu
-/// (TECHNICAL_SPECIFICATION §4.1, §4.2, §7, §11.4).
+/// code, rotating a table's join secret, putting something on the menu, and — on the people side —
+/// creating a staff account, reading one's facts back, and resetting its credentials
+/// (TECHNICAL_SPECIFICATION §3.7, §4.1, §4.2, §7, §11.4).
 ///
 /// <para>All of them go through the real static-SSR administration surfaces on a page that is signed in as
 /// an administrator, because that is what the scenarios are about — "admin creates table" in §16.3 means
@@ -67,6 +68,47 @@ internal sealed record StaffAccount(
     string Username,
     string DisplayName,
     string TemporaryPassword);
+
+/// <summary>
+/// What an administrative credential reset (§3.7) handed back: the temporary password the panel showed
+/// once, and whether the account had an authenticator that was cleared with it.
+///
+/// <para><see cref="ClearedAuthenticator"/> is read off the panel's own sentence rather than inferred.
+/// §3.7 makes the TOTP half <em>conditional</em> — <c>ResetCredentialsAsync</c> probes
+/// <c>totp_secret_protected</c> and only then nulls it, deletes the recovery codes, sets
+/// <c>must_enroll_totp</c> and records <c>totp_cleared_by_administrator</c> — so the flag is the
+/// difference between the reset §16.3 scenario 12 is about and a password-only one that would leave the
+/// scenario's second obligation permanently unreachable. A caller asserting on it is asserting that the
+/// account really was enrolled at the moment the administrator pressed the button.</para>
+///
+/// <para>Like <see cref="StaffAccount.TemporaryPassword"/>, the password here exists in exactly one HTTP
+/// response and nowhere else — <c>ManagePerson.razor</c> generates it, hashes it, and renders the
+/// plaintext without a redirect precisely so there is no second chance to read it.</para>
+/// </summary>
+internal sealed record CredentialReset(string TemporaryPassword, bool ClearedAuthenticator);
+
+/// <summary>
+/// One account as §3.7's management surface describes it: the chips under Status, the roles it holds, and
+/// the credentials it carries.
+///
+/// <para><b>Chips rather than columns, deliberately.</b> Every fact here has a row in <c>person</c> that
+/// a fixture could read directly, and reading it directly would prove nothing about §3.7: that
+/// <c>must_change_password</c> is set is one claim, and that an administrator can <em>see</em> it is
+/// another, and only the second is a product behaviour. The same argument applies in reverse to
+/// <see cref="Credentials"/>, which is derived rather than stored — "Authenticator" appears iff
+/// <c>totp_secret_protected IS NOT NULL</c> (§3.4 has no enrolled column), so the absence of that chip
+/// after a reset is the surface agreeing that the secret is gone.</para>
+///
+/// <para>An empty list means the surface said "None" in prose rather than in a chip: no role at all
+/// ("None (guest)"), or no credentials. Both are rendered as a <c>span.muted</c>, which is not a chip
+/// and is not collected — so <c>Roles.Count == 0</c> reads as "a guest" and not as "the reader
+/// missed them".</para>
+/// </summary>
+internal sealed record ManagedAccount(
+    string Username,
+    IReadOnlyList<string> StatusChips,
+    IReadOnlyList<string> Roles,
+    IReadOnlyList<string> Credentials);
 
 internal static class AdministrationJourneys
 {
@@ -342,6 +384,168 @@ internal static class AdministrationJourneys
     }
 
     /// <summary>
+    /// Resets one account's credentials from its management page (§3.7) and returns the temporary
+    /// password the panel showed, together with whether an enrolled authenticator was cleared with it.
+    ///
+    /// <para><b>No redirect to wait on, and that is the design rather than an omission.</b> Every other
+    /// action on this page is a post/redirect/get carrying a one-word outcome, so a refresh cannot
+    /// re-post it. This one renders in place, because the plaintext password exists only in the response
+    /// that generated it — a redirect would either lose it or park it in a query string. So the barrier
+    /// below is the panel appearing, not a URL changing.</para>
+    ///
+    /// <para><b>The outcome sentence is matched, not merely found.</b> §3.7 writes one of two, and the
+    /// difference is exactly whether <c>must_enroll_totp</c> was set — which decides whether §3.5's
+    /// second obligation exists at all. A caller that assumed the authenticator branch and got the
+    /// password-only one would go on to wait out a timeout on a page no principal was ever going to be
+    /// sent to.</para>
+    /// </summary>
+    internal static async Task<CredentialReset> ResetCredentialsAsync(IPage page, Guid personIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(ManagePersonPathFor(personIdentifier));
+        await page.ClickAsync("button:has-text('Reset credentials')");
+
+        // p.staff-temporary-password rather than p.totp-secret, which the element also carries for its
+        // monospaced treatment. The distinction is load-bearing here in a way it was only prudent on the
+        // create-staff panel: the very next surface this account sees is §3.5's re-enrollment page, whose
+        // own p.totp-secret holds a real authenticator key, so the narrower name is what keeps "read the
+        // secret off the screen" from meaning two different secrets in one scenario.
+        ILocator temporaryPassword = page.Locator(TemporaryPasswordSelector).First;
+
+        try
+        {
+            await temporaryPassword.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                "Resetting the account's credentials did not reach the panel that shows the temporary"
+                + " password, so there is nothing to hand over — and there will never be another chance"
+                + " to read one, because the plaintext is written into that response and nowhere else. "
+                + await DescribeFailureAsync(page),
+                exception);
+        }
+
+        string issued = (await temporaryPassword.InnerTextAsync()).Trim();
+
+        if (issued.Length == 0)
+        {
+            throw new InvalidOperationException(
+                "The credentials-reset panel rendered its temporary password element empty.");
+        }
+
+        string sentence = await ScreenText.DeclaredAsync(page.Locator("p.status-success").First);
+
+        // Both sentences open the same way; only one of them mentions the authenticator. Matched on the
+        // clause rather than on the whole sentence so a copy edit elsewhere in it is not a test failure.
+        bool clearedAuthenticator =
+            sentence.Contains("the authenticator was cleared", StringComparison.Ordinal);
+
+        if (!clearedAuthenticator && !sentence.Contains("The password was reset", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"The credentials-reset panel reported '{sentence}', which is neither of the two outcomes"
+                + " §3.7 defines for a reset.");
+        }
+
+        return new CredentialReset(issued, clearedAuthenticator);
+    }
+
+    /// <summary>
+    /// Reads one account's facts off its management page (§3.7): the Status chips, the roles, and the
+    /// credentials.
+    ///
+    /// <para><b>Groups are found by the label beside them, never by position</b> — the same reasoning as
+    /// <see cref="TickRoleAsync"/>. The three <c>div</c>s inside <c>.manage-facts</c> carry no ids, and
+    /// indexing into them would work today and silently start reading roles as credentials the day a
+    /// fourth fact is added above an existing one, which is precisely the kind of failure a scenario would
+    /// blame on the application.</para>
+    ///
+    /// <para><b>Declared text rather than rendered text, for two independent reasons.</b>
+    /// <c>.manage-label</c> is upcased for the eyebrow treatment, so the label this method matches on
+    /// reads back as <c>STATUS</c> through <c>InnerTextAsync</c> and the lookup would miss every time.
+    /// And <c>.chip-role</c> is capitalized, so a role chip whose markup says <c>kitchen</c> — the stored
+    /// vocabulary, which is what <c>person_role.role_name</c>'s CHECK constrains and what a caller will
+    /// want to compare against — would read back as <c>Kitchen</c>. See <see cref="ScreenText"/>; this is
+    /// the second site in the harness where a stylesheet was in a position to fail a correct assertion.</para>
+    ///
+    /// <para>Waiting on <c>.manage-facts</c> is also what tells this page apart from the two other things
+    /// the same route renders: the not-found panel, and the credentials-reset panel a caller might still
+    /// be looking at from <see cref="ResetCredentialsAsync"/>. Neither has one.</para>
+    /// </summary>
+    internal static async Task<ManagedAccount> ReadAccountFactsAsync(IPage page, Guid personIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(ManagePersonPathFor(personIdentifier));
+
+        ILocator facts = page.Locator("div.manage-facts").First;
+
+        try
+        {
+            await facts.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                $"The management page for {personIdentifier:D} rendered no facts panel, so it is either"
+                + " reporting that no such account exists or showing some other panel entirely. "
+                + await DescribeFailureAsync(page),
+                exception);
+        }
+
+        string username = (await page.Locator("section.account-panel h1").First.InnerTextAsync()).Trim();
+
+        ILocator groups = page.Locator("div.manage-facts > div");
+        int count = await groups.CountAsync();
+
+        Dictionary<string, IReadOnlyList<string>> byLabel = new(StringComparer.Ordinal);
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator group = groups.Nth(index);
+            string label = await ScreenText.DeclaredAsync(group.Locator("span.manage-label").First);
+
+            IReadOnlyList<string> raw = await group.Locator("span.chip").AllTextContentsAsync();
+            byLabel[label] = [.. raw.Select(ScreenText.Collapse)];
+        }
+
+        return new ManagedAccount(
+            username,
+            ChipsUnder(byLabel, "Status", personIdentifier),
+            ChipsUnder(byLabel, "Roles", personIdentifier),
+            ChipsUnder(byLabel, "Credentials", personIdentifier));
+    }
+
+    /// <summary>
+    /// One fact group's chips, or a sentence naming every group the page did offer.
+    ///
+    /// <para>A missing group is a failure rather than an empty list. An empty list already means
+    /// something specific on this page — the surface said "None" in prose — and letting a group that was
+    /// never rendered collapse into the same value would turn a renamed heading into a silently passing
+    /// assertion about an account having no roles.</para>
+    /// </summary>
+    private static IReadOnlyList<string> ChipsUnder(
+        Dictionary<string, IReadOnlyList<string>> byLabel,
+        string label,
+        Guid personIdentifier)
+    {
+        if (byLabel.TryGetValue(label, out IReadOnlyList<string>? chips))
+        {
+            return chips;
+        }
+
+        string offered = byLabel.Count == 0
+            ? "nothing at all"
+            : string.Join("; ", byLabel.Keys.Select(key => $"'{key}'"));
+
+        throw new InvalidOperationException(
+            $"The management page for {personIdentifier:D} has no '{label}' group of facts. What it"
+            + $" offers: {offered}.");
+    }
+
+    /// <summary>
     /// Ticks one role checkbox on the create-staff form, found by the name rendered beside it.
     ///
     /// <para><c>CheckAsync</c> rather than <c>ClickAsync</c>: it is a no-op on a box that is already
@@ -397,6 +601,14 @@ internal static class AdministrationJourneys
 
     private static string ManagePathFor(Guid tableIdentifier)
         => string.Create(CultureInfo.InvariantCulture, $"{TablesPath}/{tableIdentifier:D}");
+
+    /// <summary>
+    /// §3.7's per-account management route. Built from <see cref="PeoplePath"/> and formatted <c>D</c>,
+    /// which is what <c>CreateStaffAccountAsync</c> parsed the identifier out of, so a round trip through
+    /// this and back is exact.
+    /// </summary>
+    private static string ManagePersonPathFor(Guid personIdentifier)
+        => string.Create(CultureInfo.InvariantCulture, $"{PeoplePath}/{personIdentifier:D}");
 
     private static string DisplaysPathFor(Guid tableIdentifier)
         => string.Create(CultureInfo.InvariantCulture, $"{TablesPath}/{tableIdentifier:D}/displays");

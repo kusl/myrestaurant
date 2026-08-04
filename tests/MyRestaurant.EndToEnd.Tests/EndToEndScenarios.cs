@@ -14,7 +14,8 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
 /// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// <para>Fourteen are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
+/// <para><b>All fifteen are live as of M6 Slice 15, and there are no placeholders left.</b> M6 Slice 2
+/// brought <b>1</b> (the first-administrator bootstrap, including a real
 /// WebAuthn attestation and a real TOTP confirmation), <b>13</b> (a passkey sign-in of a TOTP-enrolled
 /// person must not be challenged for a code) and <b>14</b> (the join-token window arithmetic as a guest
 /// experiences it) — chosen because between them they exercise the whole harness. M6 Slice 3 adds
@@ -49,7 +50,12 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// own history while the till's bill and another guest's history are untouched, and an administrator
 /// finds it by username and puts it back) — the first scenario whose subject is a record that is
 /// <em>still there</em>, and therefore the first whose central assertion is about what did
-/// <em>not</em> change.</para>
+/// <em>not</em> change. M6 Slice 15 closes the matrix with <b>12</b> (an administrator resets a
+/// TOTP-enrolled account, and it is held by §3.5's pipeline on both credentials, clears both obligations
+/// in order, and lands where it was headed) — the first whose subject is authentication itself rather
+/// than something reached through it, the only one that drives one person through two browsers because a
+/// WebAuthn key cannot be in both, and the only one that asserts a mechanism is <em>released</em> as well
+/// as that it fires.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -58,10 +64,6 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// </summary>
 public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 {
-    private const string PendingHarnessExtension =
-        "Awaiting a later M6 slice: the harness is in place (Harness/RestaurantHarness.cs), but this"
-        + " scenario needs surface plumbing it does not have yet.";
-
     /// <summary>
     /// The rotation window for the two scenarios that must watch a boundary go past (§13's floor is ten
     /// seconds; the application's own default is sixty). Twenty is a compromise with a reason on each
@@ -157,6 +159,23 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
     /// <summary>How many lines §16.3 scenario 11's hider ends up with: the soup and the pies.</summary>
     private const int HiddenOrderLineCount = 2;
+
+    /// <summary>
+    /// The password §16.3 scenario 12's kitchen account chooses the first time §3.5 forces it off a
+    /// temporary one — before the administrator resets it again.
+    ///
+    /// <para>Twelve characters and nothing else, per §3.2. Distinct from
+    /// <see cref="ReenrolledKitchenPassword"/> and that is the whole reason there are two: the scenario
+    /// walks §3.5's obligation (1) twice, and a single shared passphrase would let a forced-change page
+    /// that had accepted the <em>wrong</em> current password pass both times.</para>
+    /// </summary>
+    private const string FirstKitchenPassword = "hot pass and a clean board";
+
+    /// <summary>
+    /// The password §16.3 scenario 12's kitchen account chooses on the far side of the administrative
+    /// reset — the one it holds when it finally lands home.
+    /// </summary>
+    private const string ReenrolledKitchenPassword = "a new pass for a new week";
 
     private readonly RestaurantHarness _harness;
 
@@ -1933,11 +1952,219 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         Assert.Equal(bystanderOrder.GuestOrderIdentifier, stillOne.GuestOrderIdentifier);
     }
 
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Admin_ResetsTotpUser_ForcesPasswordThenTotpReenrollment()
+    // -------------------------------------------------------------------------------------------
+    // 12. Admin resets a TOTP-enrolled user → password sign-in → forced password change → forced
+    //     TOTP re-enrollment → lands home; the passkey sign-in path also hits the pipeline.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Admin_ResetsTotpUser_ForcesPasswordThenTotpReenrollment()
     {
-        // 12. Admin resets TOTP-enrolled user → password sign-in → forced password change → forced
-        //     TOTP re-enroll → lands home; the passkey path hits the pipeline too.
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+
+        // (a) An administrator, and a staff account for them to reset.
+        //
+        // The kitchen role, chosen for two reasons rather than arbitrarily. §3.4's authenticator is a
+        // staff credential — §17 accepts a password-only counter but nothing in the specification asks a
+        // guest to carry TOTP — so a staff account is the faithful subject of "a TOTP-enrolled user". And
+        // the role gives the closing claim something to point at: MainLayout renders the kitchen link to
+        // the kitchen role and to nobody else (not even to administrators), so "landed home" can be
+        // "landed home as this person, with this role's door on screen" rather than "reached a page".
+        // Scenarios 9 and 10 use the counter role; a fixture of its own keeps a failure here unambiguous.
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        StaffAccount kitchenAccount = await AdministrationJourneys.CreateStaffAccountAsync(
+            administrator, "e2e.kitchen.twelve", "Twelve Kitchen", StaffRoles.Kitchen);
+
+        // (b) The account has to enrol itself, and it takes four form posts to get there.
+        //
+        // §3.7's create-staff form writes must_change_password and nothing else: no secret, no passkey,
+        // and deliberately not must_enroll_totp. So the state this scenario's first sentence starts from
+        // — an enrolled account, with a passkey — cannot be arranged by an administrator and would not be
+        // worth arranging by INSERT: the reset under test probes totp_secret_protected to decide whether
+        // to clear an authenticator at all, so a fixture that got that column wrong would produce a
+        // password-only reset and the scenario's second obligation would never exist.
+        //
+        // Two browsers for one person, and the split is not tidiness. A WebAuthn private key never leaves
+        // the authenticator that minted it, so the passkey registered below belongs to this context for
+        // good. It cannot be the same context that later signs in by password: passkey.js fires a
+        // conditional-mediation credentials.get() on every sign-in page load, and this authenticator
+        // reports a resident key and simulates presence automatically — so once a discoverable credential
+        // exists here, a "password sign-in" on this page may be answered by the authenticator before a
+        // password is ever typed, and would still land on the forced-change page. The scenario would pass
+        // for the wrong reason. The terminal in (f) has no authenticator, so its conditional request is
+        // never satisfied and the password path is genuinely the password path.
+        IPage device = await instance.OpenIsolatedPageAsync(withVirtualAuthenticator: true);
+
+        await AccountJourneys.SignInWithPasswordAsync(
+            device, kitchenAccount.Username, kitchenAccount.TemporaryPassword);
+
+        // This first sign-in is safe on the passkey-bearing context precisely because the authenticator
+        // is still empty: there is no credential for this relying party, so the conditional request has
+        // nothing to answer with. Everything after (d) is on the other browser.
+        Assert.Contains(AccountRoutes.ForcedPasswordChange, device.Url, StringComparison.Ordinal);
+
+        await AccountJourneys.CompleteForcedPasswordChangeAsync(
+            device, kitchenAccount.TemporaryPassword, FirstKitchenPassword);
+
+        IReadOnlyList<string> codesBeforeReset = await AccountJourneys.EnrollAuthenticatorAsync(device);
+
+        Assert.Equal(AccountJourneys.ExpectedRecoveryCodeCount, codesBeforeReset.Count);
+        Assert.All(codesBeforeReset, code => Assert.False(string.IsNullOrWhiteSpace(code)));
+
+        Assert.Equal(1, await AccountJourneys.AddPasskeyAsync(device));
+
+        await AccountJourneys.SignOutAsync(device);
+
+        // (c) The account as administration sees it, before anything is reset.
+        //
+        // Asserted first, and it is not scene-setting: every claim in (d) is of the form "this chip is
+        // there now", and a chip that had always been there would satisfy it. The pair is the assertion.
+        ManagedAccount before = await AdministrationJourneys.ReadAccountFactsAsync(
+            administrator, kitchenAccount.PersonIdentifier);
+
+        Assert.Equal(kitchenAccount.Username, before.Username);
+        Assert.Equal("Active", Assert.Single(before.StatusChips));
+        Assert.Equal("kitchen", Assert.Single(before.Roles));
+        Assert.Contains("Password", before.Credentials);
+        Assert.Contains("Authenticator", before.Credentials);
+
+        // (d) The reset. Both halves of §3.7's conditional fire, because (b) left an authenticator to
+        // clear — and the panel saying so is what makes the rest of this scenario reachable.
+        CredentialReset reset = await AdministrationJourneys.ResetCredentialsAsync(
+            administrator, kitchenAccount.PersonIdentifier);
+
+        Assert.True(reset.ClearedAuthenticator);
+        Assert.NotEqual(string.Empty, reset.TemporaryPassword);
+
+        // A fresh one, not the creation password shown back. The two are minted by different code paths
+        // for different reasons and confusing them would be invisible from any other assertion here.
+        Assert.NotEqual(kitchenAccount.TemporaryPassword, reset.TemporaryPassword);
+
+        ManagedAccount afterReset = await AdministrationJourneys.ReadAccountFactsAsync(
+            administrator, kitchenAccount.PersonIdentifier);
+
+        Assert.Contains("Must change password", afterReset.StatusChips);
+        Assert.Contains("Must set up authenticator", afterReset.StatusChips);
+
+        // The account is still signable-into and still holds its role: §3.7's reset is a credential
+        // change, and a reset that had quietly deactivated an account or dropped a grant would clear
+        // every obligation assertion below and be caught by nothing else.
+        Assert.Contains("Active", afterReset.StatusChips);
+        Assert.Equal("kitchen", Assert.Single(afterReset.Roles));
+
+        // Derived rather than stored (§3.4 has no enrolled column), so the missing chip is the surface
+        // agreeing that totp_secret_protected really is NULL — and the password chip still being there is
+        // what says the temporary one above was written rather than the row being emptied.
+        Assert.Contains("Password", afterReset.Credentials);
+        Assert.DoesNotContain("Authenticator", afterReset.Credentials);
+
+        // (e) The passkey path hits the pipeline too — §16.3 scenario 12's last clause, and the one that
+        // could most plausibly have been missed.
+        //
+        // A passkey sign-in is the credential that skips §3.5's second factor by construction (scenario
+        // 13), and ObligationsMiddleware is credential-agnostic on purpose: it reads the obligation claims
+        // off whatever cookie the sign-in issued. Nothing about the passkey was touched by the reset, so
+        // this signs in successfully and is then held anyway.
+        await AccountJourneys.SignInWithPasskeyAsync(device, kitchenAccount.Username);
+
+        Assert.Contains(AccountRoutes.ForcedPasswordChange, device.Url, StringComparison.Ordinal);
+        Assert.DoesNotContain(AccountRoutes.SignInTwoFactor, device.Url, StringComparison.Ordinal);
+
+        // And "hits the pipeline" means §3.5's actual promise: no authenticated endpoint is reachable.
+        // Asked for the one board this role could otherwise walk straight into, which is what makes the
+        // refusal mean something — and the redirect carries the destination rather than defaulting, which
+        // is the only place in this scenario where step (3)'s ReturnUrl is a non-trivial value and can
+        // therefore be told apart from SafeLocalReturnUrl's fallback.
+        await device.GotoAsync("/kitchen");
+
+        Assert.Contains(AccountRoutes.ForcedPasswordChange, device.Url, StringComparison.Ordinal);
+        Assert.Contains("ReturnUrl=%2Fkitchen", device.Url, StringComparison.Ordinal);
+
+        // Signed out before the obligations are cleared elsewhere, and the order matters for (g). The
+        // middleware decides from this cookie's claims, not from the row, so a session left open here
+        // would still be redirected after (f) cleared both flags — and (g) could then not tell a released
+        // principal from a page noticing its own claim had gone stale.
+        await AccountJourneys.SignOutAsync(device);
+
+        // (f) The password walk, all the way home, on a terminal that holds no passkey.
+        IPage terminal = await instance.OpenIsolatedPageAsync();
+
+        await AccountJourneys.SignInWithPasswordAsync(
+            terminal, kitchenAccount.Username, reset.TemporaryPassword);
+
+        Assert.Contains(AccountRoutes.ForcedPasswordChange, terminal.Url, StringComparison.Ordinal);
+
+        // No challenge, and this is a real claim rather than a restatement of scenario 13's. This account
+        // was enrolled ten seconds ago; §3.7's reset nulled the secret, and two-factor in §3.4 is derived
+        // from that column — so a password sign-in landing here rather than at /sign-in/two-factor is the
+        // observable consequence of the clearing having actually happened.
+        Assert.DoesNotContain(AccountRoutes.SignInTwoFactor, terminal.Url, StringComparison.Ordinal);
+
+        await AccountJourneys.CompleteForcedPasswordChangeAsync(
+            terminal, reset.TemporaryPassword, ReenrolledKitchenPassword);
+
+        // Obligation (1) cleared, obligation (2) immediately taken up. ObligationsPipeline's order is
+        // fixed and this is the whole of it observed from outside: the forced-change page re-issued the
+        // cookie without must_change_password, and the very next request was intercepted for the flag
+        // that is still set.
+        Assert.Contains(AccountRoutes.ForcedTotpEnrollment, terminal.Url, StringComparison.Ordinal);
+
+        IReadOnlyList<string> codesAfterReset = await AccountJourneys.CompleteForcedTotpEnrollmentAsync(
+            terminal, AccountJourneys.LandingPageMarker, "the landing page");
+
+        Assert.Equal(AccountJourneys.ExpectedRecoveryCodeCount, codesAfterReset.Count);
+
+        // A genuinely fresh set. §3.7's reset deletes every totp_recovery_code row and §3.4 replaces the
+        // set on confirmation, so an overlap of even one code would mean a code the administrator's reset
+        // was supposed to have destroyed is still live — which no other assertion in this scenario or any
+        // other would notice.
+        Assert.Empty(codesAfterReset.Intersect(codesBeforeReset, StringComparer.Ordinal));
+
+        // Lands home. "/" is also SafeLocalReturnUrl's fallback, so this landing on its own does not
+        // separate "carried the destination across two redirects and two cookie re-issues" from "dropped
+        // it"; (e)'s ReturnUrl=%2Fkitchen is where that is separable, and this is §16.3's own sentence.
+        Assert.Equal("/", new Uri(terminal.Url).AbsolutePath);
+
+        // A real session at the end of it, and the right person's. §3.5 step (3) is reached by a principal
+        // whose password and authenticator were both replaced en route, through three cookie writes.
+        ILocator sessionName = terminal.Locator("span.session-name").First;
+        await sessionName.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+
+        Assert.Equal(kitchenAccount.Username, (await sessionName.InnerTextAsync()).Trim());
+
+        await terminal
+            .Locator("nav.app-session a.session-link[href='/kitchen']")
+            .First
+            .WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+
+        // (g) Released. Without this, "the passkey path hits the pipeline" is satisfied just as well by a
+        // middleware that refuses passkey sessions permanently, which would be a far worse defect than
+        // the one (e) is guarding against.
+        //
+        // Freshly signed in, so the cookie is built from the cleared flags rather than from a claim that
+        // happens to have gone stale — and the account is TOTP-enrolled again by now, so this incidentally
+        // re-states scenario 13's property on a re-enrolled secret.
+        await AccountJourneys.SignInWithPasskeyAsync(device, kitchenAccount.Username);
+
+        Assert.Equal("/", new Uri(device.Url).AbsolutePath);
+        Assert.DoesNotContain(AccountRoutes.SignInTwoFactor, device.Url, StringComparison.Ordinal);
+        Assert.DoesNotContain(AccountRoutes.ForcedPasswordChange, device.Url, StringComparison.Ordinal);
+        Assert.DoesNotContain(AccountRoutes.ForcedTotpEnrollment, device.Url, StringComparison.Ordinal);
+
+        // (h) And the surface the reset was ordered from agrees the account is whole again — read from the
+        // administrator's own browser, which has watched none of the last two minutes and is answering
+        // from the row rather than from any document the staff member's screens are holding.
+        ManagedAccount restored = await AdministrationJourneys.ReadAccountFactsAsync(
+            administrator, kitchenAccount.PersonIdentifier);
+
+        Assert.Equal("Active", Assert.Single(restored.StatusChips));
+        Assert.Contains("Password", restored.Credentials);
+        Assert.Contains("Authenticator", restored.Credentials);
     }
 
     // --- helpers ---------------------------------------------------------------------------------

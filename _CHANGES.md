@@ -1,275 +1,240 @@
-# M6 Slice 14 — §16.3 scenario 11, and a red test that was reading the stylesheet
+# M6 Slice 15 — §16.3 scenario 12, and the last placeholder in the matrix
 
 Every file below is a **full file** at its **repo-relative path**. Extract at the repo root and the
 contents drop straight over your working tree — no diffs, no patches, no scripts to run.
 
 ```bash
-tar -xzf m6-slice14-hide-and-unhide.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice15-reset-and-reenroll.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
 **None.** Nothing here renames, supersedes or orphans anything: no migration, no schema change, no
-package change, no ADR edit, no `Program.cs` edit, no `.slnx` edit, no new test folder.
-
-## About the failing test — this time it is real
-
-Slice 13's `_CHANGES.md` argued that "some tests are now failing" was mistaken, and for that dump it was.
-It is not for this one. `claude-terminal.txt` on commit `aee8e40` shows, twice:
-
-- `dotnet test` — **971 total / 0 failed** (still green; the E2E scenarios skip when `MYRESTAURANT_E2E` is unset)
-- `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` — **15 total / 1 failed / 12 passed / 2 skipped**
-
-```
-MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch [FAIL]
-  Assert.Equal() Failure: Strings differ
-              ↓ (pos 1)
-  Expected: "Settled total"
-  Actual:   "SETTLED TOTAL"
-```
+package change, no ADR edit, no `Program.cs` edit, no `.slnx` edit, no new file and therefore no new
+test folder.
 
 ## The files
 
 | File | Change |
 | --- | --- |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/ScreenText.cs` | **new** — reads declared text rather than rendered text |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/HistoryJourneys.cs` | **new** — the guest's own history and §6.8's Hide |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/HiddenRecordJourneys.cs` | **new** — §11.4's list, its filter, its expanded record, its Unhide |
-| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | §16.3 scenario **11** implemented; its placeholder removed |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs` | the label fix; `OpenSettledSittingAsync` + `PathFor` |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | the totals-term fix (one line) |
-| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableHistory.razor` | two additive markup names |
-| `src/MyRestaurant.WebApplication/Components/Pages/Administration/HiddenRecords.razor` | two additive markup names |
-| `docs/BUILD_PROGRESS.md` | Slice 14 appended (**complete file**, 5,441 lines — I did the appending) |
+| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | §16.3 scenario **12** implemented; its placeholder and the now-unused `PendingHarnessExtension` removed |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs` | `SignOutAsync` strict-mode fix; §3.5 obligation (2); §3.4 and §3.3 voluntary surfaces |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs` | §3.7 credential reset; the management page's fact chips read by label |
+| `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManagePerson.razor` | one additive class on the reset panel's password (**one line** plus its comment) |
+| `docs/BUILD_PROGRESS.md` | Slice 15 appended (**complete file**, 5,572 lines — I did the appending) |
 | `_CHANGES.md` | this file |
 
-Before editing, all six pre-existing files were checked against the SHA-256 hashes `export.sh` recorded
-in `dump.txt`. All six matched, so every byte I did not touch is known identical to your working tree.
+All five pre-edit files were checked against the SHA-256 hashes `export.sh` recorded in `dump.txt`
+before anything was touched. **All five matched**, so every byte I did not edit is known identical to
+your working tree.
 
-## Part one: the red test, and the second one behind it
+**Scenario 12 is the fifteenth and last of §16.3.** There are no `[Fact(Skip)]` placeholders left in
+`EndToEndScenarios.cs`, which is why `PendingHarnessExtension` goes with it — a `private const` with
+no remaining reference is an IDE0051 waiting for the next CI run, where
+`EnforceCodeStyleInBuild` meets `TreatWarningsAsErrors`.
 
-`InnerTextAsync` returns the browser's own `innerText`, which is **defined in terms of layout** and
-therefore has `text-transform` already applied. `CounterSitting.razor` upcases
-`.counter-detail-total-label` for the eyebrow treatment. The label the component wrote really is
-`Settled total`; the harness was reading the presentation layer.
+## Two harness problems this scenario found before it could be written
 
-**Forty lines further on, the same mistake was waiting.** `TableOrderJourneys.ReadTotalsAsync` reads each
-`<dt>` of §11.1's totals list with `InnerTextAsync` and looks the result up in a dictionary keyed on
-`"Your total"` and `"Table total"` — and `app.css` line 1120 upcases `.order-totals dt`. Both lookups
-would have missed, and the method would have thrown
+### 1. `SignOutAsync` could not sign a trapped principal out
 
-> §11.1's totals list does not carry both 'Your total' and 'Table total'
+This is a real bug in the existing harness, not a shortcoming of the new code, and it would have
+surfaced as a strict-mode violation thirty seconds into the run.
 
-about a totals list that was entirely correct. It is reached from `WaitForSettledViewAsync` at
-`EndToEndScenarios.cs:1528` — forty-four lines past the assertion that failed first. **Fixing only line
-1484 would have moved the red rather than cleared it**, and the second failure would have looked like a
-product defect in §11.1.
+`ObligationsEnforcement.IsExemptPath` exempts sign-out and the two obligation pages and nothing else
+— **`/sign-in` is not on that list.** So a principal holding an obligation cannot reach the sign-in
+page at all, and sign-out is the only route to a fresh cookie. But both obligation pages render a
+sign-out form of their own beside the header's — *"Not ready right now?"* on
+`ChangePasswordRequired.razor`, *"Done for now?"* on `EnrollTotpRequired.razor` — because §3.5
+promises leaving is always possible. `SignOutAsync` held a bare
 
-So the whole surface was swept before either fix: **24** `text-transform` declarations in `src/` against
-**66** `InnerTextAsync` calls in the harness. Those two are the only collisions. `.eyebrow`,
-`.chip-role`, `.manage-label`, `.hidden-facts dt`, `.event-stream-badge`, `.restaurant-clock-label`,
-`.kitchen-menu-state`, `.display-eyebrow` and the rest are never read; `p.pairing-code`, `p.totp-secret`
-and `p.staff-temporary-password` carry no transform.
+```csharp
+ILocator signOutButton = page.Locator("form.sign-out-form button[type='submit']");
+```
 
-`ScreenText.DeclaredAsync` reads `TextContentAsync` and collapses whitespace runs, which makes it exactly
-`InnerTextAsync` minus the transform. **It is deliberately not a blanket replacement.** The distinction is
-what the comparison is about: a *label* read — holding the phrase the component was expected to choose,
-"Running total" against "Settled total" — is a claim about which branch it took, and presentation casing
-is noise in it. A read of *content* — a table's label, a person's name, an amount through
-`MoneyText.Format` — is data that no rule in this application transforms, and `InnerTextAsync`'s
-whitespace normalisation is genuinely convenient there. Two sites changed; sixty-odd left alone.
+which resolves to two elements on exactly those pages, and every `Locator` method that acts on a
+single element throws a strict-mode violation when it does. `.First` fixes it, and taking the first
+is safe rather than merely convenient: the two forms are identical in effect — same endpoint, same
+antiforgery token, neither carries a `returnUrl`, so `SafeLocalReturnUrl(null)` sends both to `/` —
+and the header's comes first in document order. I counted the forms on both pages to confirm it is
+exactly one page-level form beside the layout's, not more.
 
-## Part two: scenario 11
+Scenario 12 signs a trapped principal out twice, so this was not optional.
 
-### Why there are two guests
+### 2. One person needs two browsers, and the reason is `passkey.js`
 
-With a single guest, *"their history is empty afterwards"* is satisfied equally well by:
+A WebAuthn private key never leaves the authenticator that minted it, so the passkey this scenario
+registers belongs to one browser context for good. That context **cannot also be where the password
+sign-ins happen.** `passkey.js`'s `tryAutofillPasskey` fires a conditional-mediation
+`navigator.credentials.get()` on *every* sign-in page load, and `VirtualAuthenticator` is configured
+with `hasResidentKey: true` and `automaticPresenceSimulation: true` — so once a discoverable
+credential exists in that context, a "password sign-in" there may be answered by the authenticator
+before a password is ever typed.
 
-- a page that stopped rendering its list,
-- a reader that started returning nothing for everybody,
-- a hide that hid the whole **sitting** rather than one order.
+It would still land on the forced-change page. **The scenario would pass, for the wrong reason, and
+the clause about the password path would be asserting nothing.** `SignInWithPasskeyAsync`'s existing
+comment already anticipates this happening — *"an authenticator that simulates presence can satisfy
+it with no gesture at all"* — it just had not yet mattered.
 
-All three are catastrophic and all three pass. A bystander whose own history is unchanged across the same
-write separates *this order was hidden* from *history broke* — and costs one registration rather than the
-second sitting a per-order claim would otherwise need.
+So the staff member gets a **device** (virtual authenticator; holds the passkey; does the passkey
+sign-ins) and a **terminal** (no authenticator, so its conditional request is never satisfied; does
+the password walk). The one password sign-in that happens on the device is the first one, and it is
+safe there for a stated reason rather than by luck: the authenticator is still empty at that point,
+so the conditional request has nothing to answer with.
 
-### Four numbers, none of which can be confused with another
+## Why the sign-out ordering is load-bearing
 
-| Figure | Value from the prices this scenario created |
-| --- | --- |
-| The hider's own share | `soup + 3 × pie` |
-| The bystander's share | one `soup` |
-| The table's stamped total | their sum |
-| The pie's unit price | neither of the above |
+`ObligationsMiddleware` decides from the cookie's claims, not from the row. So the device signs out
+**before** the terminal clears the two flags. Left signed in, its cookie would still carry
+`must_change_password` and it would still be redirected — and the closing assertion that the pipeline
+*releases* a passkey session could not then tell a fresh cookie from
+`ChangePasswordRequired.razor`'s own stale-claim guard firing on the way past.
 
-A history page showing the **table's** total where a **person's** belongs cannot pass by coincidence, and
-a page showing a unit price where an extension belongs reads `14.00` against a quantity of three.
+That closing assertion is the point of including it. Without it, *"the passkey path hits the
+pipeline"* is satisfied equally well by a middleware that refuses passkey sessions **permanently**,
+which would be a considerably worse defect than the one the earlier assertion guards against.
 
-### The identifiers
+## Four form posts of arrangement, and no shortcut available
 
-Both come off links the surfaces rendered — `?hide=` on the guest's Hide link, `?record=` on
-administration's expand link — which is the same recovery `AdministrationJourneys.CreateTableAsync` already
-does from a "Manage this table" link. Nothing is read out of the database and no `data-` attribute was
-added for the harness.
+§3.7's create-staff form writes `must_change_password` and nothing else — no secret, no passkey, and
+deliberately not `must_enroll_totp` — so an enrolled account with a passkey cannot be arranged by an
+administrator. It could have been arranged by `INSERT`, and that would have been the wrong move:
+**the reset under test probes `totp_secret_protected`** to decide whether to clear an authenticator at
+all, so a fixture that got that one column wrong would produce a password-only reset and the
+scenario's second obligation would never exist. The account enrols itself through §3.4's voluntary
+page and adds its own passkey through §3.3's, which is what a real staff member does.
 
-*"A row appeared"* is satisfied by any hidden order in the restaurant. That the row administration found
-**is** the order this guest hid is a claim about those two identifiers agreeing, and it is the reason the
-apparatus exists.
+## Chips rather than columns
 
-### The filter, in both directions
+Every flag this scenario asserts on has a row in `person` that could be read directly, and reading it
+directly would prove nothing about §3.7: that `must_change_password` is set is one claim, and that an
+administrator can *see* it is another. Only the second is a product behaviour.
 
-§16.3 names the positive case. The negative one is what stops it being vacuous: a filter that had quietly
-stopped filtering would return this row for every username there is, and would satisfy the positive case
-perfectly. The two usernames are chosen so neither is a substring of the other — §6.8's match is a literal
-substring (`DapperOrderHistoryReads.SubstringPattern`), and `.one` against `.one.b` would make the
-assertion pass or fail for reasons of spelling.
+So the flags are read as the chips `ManagePerson.razor` renders, found by the `span.manage-label`
+beside each group rather than by position — the same reasoning as `TickRoleAsync`, and for the same
+reason: indexing works today and silently starts reading roles as credentials the day a fourth fact
+is added above an existing one, which is exactly the kind of failure a scenario would blame on
+authorization.
 
-The filter is **typed into the form and submitted**, not appended to the URL. §16.3 says the administrator
-*filters*; a query string assembled by the harness would exercise `[SupplyParameterFromQuery]` while
-skipping the form, the labels and the round trip.
+The **Credentials** group is the interesting one, because it is *derived* rather than stored.
+"Authenticator" appears iff `totp_secret_protected IS NOT NULL` (§3.4 has no enrolled column), so the
+chip's absence after the reset is the surface agreeing the secret is gone, and its return at the end
+is the surface agreeing a new one landed.
 
-### Three things re-read from the server rather than from a DOM already on screen
+Two new sites needed **declared** text rather than rendered text, and Slice 14's
+`ScreenText.DeclaredAsync` is why they are not two more red tests: `.manage-label` is upcased for the
+eyebrow treatment, so the label the reader matches on comes back as `STATUS` and every lookup would
+miss; and `.chip-role` is capitalized, so a role chip whose markup says `kitchen` — the stored
+vocabulary, which is what `person_role.role_name`'s CHECK constrains — reads back as `Kitchen`.
 
-A stale document agrees with *"nothing changed"* without having been asked. So:
+## Assertions in pairs, never singletons
 
-- **the bystander's history** — nothing broadcasts a hide to another guest's circuit, and the page is
-  static SSR anyway;
-- **the till's bill** — through §11.3's closed-sitting lookup, because the administrator's browser has
-  been on that page since the close;
-- **`table_sitting.settled_total_amount`** — past every surface, because §6.8 changes a visibility flag
-  and §5.3 promises the stamped total is never rewritten. A hide that had reached the money would be a
-  defect no screen above could distinguish from correct behaviour, because all of them would agree.
+Every claim in the post-reset block is of the form *"this chip is there now"*, which a chip that had
+always been there satisfies perfectly. So the same three groups are read **before** the reset as
+well, and the pair is the assertion.
 
-### Why no counter account, when scenarios 9 and 10 both made one
+The recovery codes take the same shape: two sets of ten, asserted **disjoint**. §3.7's reset deletes
+every `totp_recovery_code` row and §3.4 replaces the set on confirmation, so an overlap of even one
+code would mean a code the administrator's reset was supposed to have destroyed is still live — and
+nothing else in the suite would notice.
 
-There the role was load-bearing: §6.2 records who adjusted a price and §11.1 renders it, and §11.3 makes
-read-only unconditional for a counter and conditional for an administrator. Here the close is
-*arrangement* rather than subject — §6.8 refuses a hide on an open sitting, so this scenario needs a
-settled one and does not care who settled it. §3.7 admits administrators to `/counter`, and a staff account
-would add a sign-in and a forced password change this scenario never looks at.
+Three things are also asserted **not** to have moved across the reset, because a reset that had
+quietly deactivated the account or dropped its grant would clear every obligation assertion below it
+and be caught by nothing else: the account is still `Active`, it still holds `kitchen`, and it still
+carries a `Password`.
 
-## The four product changes
+## One non-default `ReturnUrl`, deliberately placed
 
-All additive, no CSS behind any of the new names, **nothing changes on screen**. Both `.razor` tag trees
-were walked and are balanced and unchanged in structure.
+The pipeline's destination in this scenario is `/`, which is also `SafeLocalReturnUrl`'s fallback — so
+*"lands home"* on its own cannot separate **carried the destination across two redirects and two
+cookie re-issues** from **dropped it**. The trapped device therefore asks for `/kitchen`, the one
+board its role could otherwise walk straight into, and the redirect is asserted to carry
+`ReturnUrl=%2Fkitchen`.
 
-**An `id` on each `section.panel`** — `#table-history-surface`, `#hidden-records-surface`. Every other
-surface the harness reads has one (`#table-order-surface`, `#counter-sitting-surface`,
-`#kitchen-board-surface`, `#table-display-surface`), and these two pages carry `p.status-success` and
-`p.status-error`, which are the same classes every surface in the application uses — a document-wide match
-would read whatever the layout happened to be saying. `#table-history-surface` also gives the enhanced-nav
-click on the Hide link a scoping root that is genuinely absent from every other page.
+That is two things at once: §3.5's *"no authenticated endpoint is reachable"* asserted on a real area
+page rather than on a sign-in navigation, and the one place in the scenario where step (3)'s carry is
+distinguishable from the default. `Assert.Equal("/", new Uri(url).AbsolutePath)` stays where §16.3
+put it, and the comment says which of the two it is and is not evidence for.
 
-**A class on each empty-list sentence** — `.history-none`, `.hidden-none`. Each was a `p.lede` among the
-page's other `p.lede`s, reachable only by position. On `HiddenRecords.razor` that one element carries two
-different sentences through a ternary, and the difference is load-bearing: *"Nothing hidden matches that"*
-says the filter excluded everything, while *"Nothing is hidden anywhere in the restaurant"* is the stronger
-claim and the one an unhide has to produce. The scenario asserts both, separately.
+## The one product change
 
-Note also that `Orders.Count == 0` and *the page says it has nothing* are two claims, not one. A list that
-failed to render is also empty.
+`ManagePerson.razor`'s reset panel wrote the temporary password into `<p class="totp-secret">`, which
+is the same collision Slice 12 fixed on `CreateStaff.razor`: an element holding a password,
+addressable only by a class named for an authenticator key.
 
-## Two harness decisions worth knowing about
+It mattered more here than there. The account this panel just reset is on its way to
+`/account/enroll-totp-required`, whose own `p.totp-secret` holds a **real** authenticator key — so one
+selector meant two different secrets on two consecutive screens of one scenario. The element gains
+`.staff-temporary-password` beside the class it already had, and the harness reuses the constant Slice
+12 introduced rather than adding a second name for the same thing: both panels show "the one-time
+temporary password this administration surface just minted", and one selector for one meaning is the
+point.
 
-**Two facts were deliberately not given fields.** §11.4 renders a hidden row's table label between a
-username and a timestamp in one sentence, and its line count as the second of two
-`span.hidden-record-note`s — so reaching either means splitting prose or indexing siblings. Both are
-asserted where they have elements of their own, on the guest's history page. A harness field that could
-only be filled by counting siblings starts lying the day a third note is added.
+There is **no CSS rule for that name anywhere in `src/`** — I checked — so nothing changes on screen.
+That is the whole of the product diff: one line, plus its comment.
 
-**The two `ol.hidden-events` lists are told apart by content, not position.** An expanded record draws the
-visibility log and the event log under the same class. The obvious separator is the heading above —
-`h3:has-text('Visibility log') + ol` works today, and `h3:has-text('The record') + ol` already does not,
-because a paragraph sits between them. The stable difference is structural: a stored event wraps its
-metadata in `div.hidden-event-head` because it has a sequence number to put beside the type, and a
-visibility event has no such wrapper. So every `li` is walked once and sorted by whether it contains that
-element — no `:has()`, no `:not()`, no sibling combinators, nothing for a selector engine to disagree
-about.
+## The kitchen role, chosen rather than defaulted
 
-## One new method on CounterJourneys
+§3.4's authenticator is a staff credential — §17 accepts a password-only counter and nothing in the
+specification asks a guest to carry TOTP — so a staff account is the faithful subject of "a
+TOTP-enrolled user". And the role gives the closing claim something to point at: `MainLayout` renders
+the kitchen link to the kitchen role and to nobody else, **not even to administrators**, so "lands
+home" becomes "landed home as this person, with this role's door on screen" rather than "reached a
+page". Scenarios 9 and 10 use the counter role; a fixture of its own keeps a failure here
+unambiguous.
 
-`OpenSettledSittingAsync(page, sittingIdentifier, timeout)`. `OpenSittingAsync` finds a table on §11.3's
-**open**-sittings list and a settled table has left it, so this is by identifier — which the caller holds,
-because `OpenSittingAsync` returned it.
-
-It waits on the read-only note as **part of the barrier**, not as a bonus assertion: the route renders the
-identical component for an open sitting, so waiting only on the surface would return happily from a bill
-that had never been settled — and every caller is re-reading one *because* it is settled, to establish that
-something which happened elsewhere left it alone.
-
-## Build/test checklist
+## Build and test
 
 ```bash
-cd /home/kushal/src/dotnet/myrestaurant
-
-# 1. Two .razor files, three new .cs files, three edited .cs files.
 dotnet build
 #    expect: all seven projects succeed, 0 errors
 
-# 2. Unchanged from Slice 13's baseline.
 dotnet test
-#    expect: total 971, failed 0, succeeded 956, skipped 15
-#    Scenario 11 moves from [Fact(Skip = ...)] to [Fact] + Assert.SkipUnless; xUnit counts both as
-#    skipped, so with MYRESTAURANT_E2E unset every number is identical.
+#    expect: total 971, failed 0, succeeded 957, skipped 14 — one fewer skip than Slice 14.
+#    Scenario 12 moves from [Fact(Skip)] to [Fact] + Assert.SkipUnless, and xUnit counts an
+#    Assert.Skip as skipped too — so the total does not move and one test crosses from the
+#    unconditionally-skipped column into the conditionally-skipped one.
 
-# 3. The strict build — warnings are errors under ContinuousIntegrationBuild.
 bash scripts/ci_local.sh --with-all
 
-# 4. The point of the slice.
 MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
-#    expect: total 15, failed 0, 14 passed, 1 skipped
-#    Scenario 10 goes green on the ScreenText fix. Scenario 11 adds roughly 35-40s and waits on no timer.
-#    The one remaining skip is scenario 12.
+#    expect: total 15, failed 0, 15 passed, 0 skipped — the first fully green E2E run.
+#    Scenario 12 adds roughly 40-50s: a /setup wizard, a staff account, four Argon2id hashes across
+#    three password sign-ins and two forced changes, two TOTP confirmations, two passkey ceremonies
+#    (one attestation, two assertions), a reset, four reads of the management page, and no waiting
+#    on any timer.
 ```
 
-There is no .NET SDK in my sandbox; I have run none of this. What I did run:
+Note that `dotnet test` at Slice 14 was **971 / 0 failed / 956 succeeded / 15 skipped** and I have
+not seen a run since — the `claude-terminal.txt` in this dump predates Slice 14 (it still shows the
+`SETTLED TOTAL` failure and two skips). If Slice 14's own numbers came out differently, adjust these
+by the same offset: this slice moves exactly one test from skipped to run.
 
-- **SHA-256** comparison of all six pre-edit files against the hashes `export.sh` recorded — all six matched;
-- brace/paren/bracket **balance and a depth walk** (never negative, ends at zero) with strings and comments
-  stripped, across every file in the test project;
-- a **CS4007** scan — no `await` inside any interpolation hole;
-- a **CS1620** scan — every additive operand inside every `string.Create(...)` is an interpolated string;
-- a **Razor tag-tree walk** of both edited components;
-- an **existence check of all 36 selectors** the two new journey classes depend on, against the markup they
-  target;
-- a check that **none of the four new names has a CSS rule anywhere**, so nothing changes on screen.
+## Where to look if this breaks
 
-## If it goes red
+**A strict-mode violation on a sign-out.** Something else has grown a second `form.sign-out-form`, or
+the `.First` did not survive the merge. The message names the selector and the count.
 
-| Message begins | What it means |
-| --- | --- |
-| `Assert.Equal() Failure: Expected "Settled total", Actual "SETTLED TOTAL"` | `ScreenText` did not take effect — check that `CounterJourneys.ReadSettledTillAsync` is calling `DeclaredAsync` for the label. |
-| `§11.1's totals list does not carry both 'Your total' and 'Table total'` | The same, on the second site: `TableOrderJourneys.ReadTotalsAsync` line ~794. |
-| `/table/history never rendered its own surface…` | Either the `id` did not land on `section.panel`, or the guest's cookie failed the §11.1 table policy — the message quotes the URL, and the access-denied panel is what a policy failure looks like. |
-| `The order at position N offers no Hide link…` | The list was read while a confirmation panel was open. §11.1 withholds the link from exactly that row. |
-| `The confirmation on screen would post order 'X' rather than Y` | §6.8's confirmation opened on the wrong row. A real defect, and the serious kind: there is no undo from the guest's account. |
-| `Hiding … was refused, so nothing was written` | One of §6.8's three refusals, quoted verbatim. `SittingStillOpen` would mean the close in step (c) did not commit. |
-| `Assert.Contains("Nothing here yet")` on `alphaAfter.EmptySentence` | The order is gone from the list but the page draws no sentence — which means the list failed to render rather than that the order was hidden. |
-| `Assert.Single()` on `bravoAfter.Orders` | The hide reached somebody else's history. §6.8 scopes it to one order and one owner. |
-| `Assert.Equal(2, afterHide.People.Count)` | The hide reached the till. §6.8: the order is "still on its sitting's bill". |
-| `Assert.Equal` on `row.SettledTotalAmount` | The hide reached the money. §5.3 says the stamped total is never rewritten, and this is the only reading that can tell. |
-| `Narrowing the hidden-records list to '…' never left '…'` | The GET form did not navigate. The one benign cause is two consecutive filters by the same username, which this scenario does not do. |
-| `The hidden-records filter came back holding '…'` | The server disagrees about what it was asked, so the list is answering a different question. |
-| `Assert.Empty` on `wrongOwner.Rows` | The username filter is not filtering — it returned another owner's hidden order. |
-| `There is no hidden order … in the list to expand` | The row left the list between the read and the expand, or the filter excludes it. |
-| `Assert.Equal("Hidden by the owner", onlyEvent.Description)` | The visibility log records the wrong event type, or more than one row exists for a single hide. |
-| `§11.4 must show the order's stored events under a hidden record` | The hide took the event log with it. ADR-0002 says the log outlives the state. |
-| `Assert.Contains("anywhere in the restaurant")` | The unfiltered list still holds something after the unhide, or the empty sentence chose the narrowed branch with no filter set. |
-| `Assert.Single()` on `restored.Orders` | The unhide did not restore visibility — `order_visibility_current` should now answer false for this order. |
+**`The browser is not on /account/enroll-totp-required`.** The forced password change cleared
+obligation (1) and the pipeline did *not* pick up obligation (2). Either `must_enroll_totp` was never
+set — check `reset.ClearedAuthenticator`, which is asserted true one screen earlier, and the panel
+sentence it reads — or `RefreshSignInAsync` issued a cookie that dropped the second claim.
 
-`RestaurantInstance.DiagnosticOutput` carries the web application's console tail if a page 500s.
+**A password sign-in that lands somewhere unexpected on the device.** The two-browser split has
+collapsed. The device holds a discoverable credential from step (b) onwards; if a password sign-in is
+attempted there after that point, `passkey.js`'s conditional request may answer it first.
 
-## What is next
+**`ReturnUrl=%2Fkitchen` missing.** `RedirectTargetFor` stopped composing `{PathBase}{Path}{QueryString}`,
+or `/kitchen` became exempt. The former is the interesting one — it is what §3.5 step (3) rests on.
 
-Scenario **12** — an administrator resets a TOTP-enrolled user, who then signs in with a password and is
-driven through §3.5's pipeline twice: a forced password change *and* a forced TOTP re-enrollment, landing
-home. It inherits `CompleteForcedPasswordChangeAsync` from Slice 12 and needs only the second obligation
-beside it, plus the passkey path hitting the same pipeline.
+**Recovery-code sets overlapping.** `ResetCredentialsAsync` stopped deleting
+`totp_recovery_code` rows, or `TotpEnrollment.IssueRecoveryCodesAsync` stopped replacing the set.
+Either way a code an administrator's reset was meant to destroy is still live.
 
-Then the backup/restore drill, and M6 is done.
+**A chip lookup failing with *"has no 'Credentials' group of facts"*.** A `span.manage-label` was
+reworded or a fourth fact group was added. The message lists every label the page did offer, so the
+fix is a one-word edit at the call site.
 
-## The one-line why
-
-Every scenario before this one asserts that something happened; this is the first whose subject is a record
-that is still there, which makes its central claim a list of things that did **not** move — and the reason
-it needed a second guest, three server re-reads and a column read past every screen to say anything at all.
+**A passkey ceremony failing on the device only.** `OpenIsolatedPageAsync(withVirtualAuthenticator: true)`
+is what makes that context capable of one, and a credential minted in one context is invisible in every
+other. If `SignInWithPasskeyAsync` starts failing in step (e) or (g) but the `/setup` wizard's
+attestation still works, the credential and the browser have been separated.
