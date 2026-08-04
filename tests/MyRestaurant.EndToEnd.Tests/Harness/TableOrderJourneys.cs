@@ -426,11 +426,17 @@ internal static class TableOrderJourneys
             }
         }
 
+        // Read before composing: an await inside an interpolated string that binds to a handler is
+        // CS4007, because DefaultInterpolatedStringHandler is a ref struct and cannot be held across
+        // the suspension point. Four other failure paths in this file already hoist the read into a
+        // local for exactly this reason; this one was written inline and did not compile.
+        string committed = Describe(await ReadCommittedLinesAsync(page));
+
         throw new InvalidOperationException(
             string.Create(
                 CultureInfo.InvariantCulture,
                 $"There is no committed line for '{menuItemName}' on this order."
-                + $" It holds: {Describe(await ReadCommittedLinesAsync(page))}."));
+                + $" It holds: {committed}."));
     }
 
     /// <summary>

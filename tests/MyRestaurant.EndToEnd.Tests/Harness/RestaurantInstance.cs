@@ -50,6 +50,19 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 /// </summary>
 internal sealed record OpenSitting(Guid SittingIdentifier, IReadOnlyList<string> MemberUsernames);
 
+/// <summary>
+/// How many <c>kitchen_notification</c> rows of each §10 kind exist for one sitting: the
+/// <c>initial</c> ones written inside a send's own transaction (§10.1) and the <c>reminder</c> ones
+/// the background scan wrote afterwards (§8.4, §10.2).
+///
+/// <para><b>Why a scenario reads rows at all here.</b> §16.3 scenario 8's whole claim is the word
+/// "exactly", and the board cannot carry it: its unseen count is circuit memory that a cook clears
+/// with one tap, so "the badge never went up again" is consistent with a second reminder having been
+/// written and broadcast to nobody. The <c>UNIQUE (order_event_identifier, kind)</c> constraint is
+/// what actually makes a reminder singular, and this is the only way to see it hold.</para>
+/// </summary>
+internal sealed record KitchenNotificationTally(int Initial, int Reminder);
+
 internal sealed class RestaurantInstance : IAsyncDisposable
 {
     /// <summary>
@@ -60,6 +73,18 @@ internal sealed class RestaurantInstance : IAsyncDisposable
     /// window whatever their width.
     /// </summary>
     internal const int DefaultTableJoinTokenRotationSeconds = 3600;
+
+    /// <summary>
+    /// <c>KITCHEN_SUBMISSION_REMINDER_SECONDS</c> unless a scenario asks for something else — the
+    /// application's own default, and the number §16.3 scenario 8 is literally written in terms of.
+    ///
+    /// <para>Every scenario but that one wants it left alone rather than merely left long. §8.4's scan
+    /// is the only thing in the system that writes because <em>nobody</em> acted, and a scenario that
+    /// sends and then spends thirty seconds asserting on something else would, at a short setting,
+    /// acquire a reminder alert it never asked for and never mentions. At sixty it cannot: no scenario
+    /// here holds a send untouched for a minute except the one that means to.</para>
+    /// </summary>
+    internal const int DefaultKitchenSubmissionReminderSeconds = 60;
 
     private const string RestaurantName = "End To End Restaurant";
     private const int DiagnosticOutputCharacterLimit = 8000;
@@ -106,6 +131,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         string baseUrl,
         string publicOrigin,
         int tableJoinTokenRotationSeconds,
+        int kitchenSubmissionReminderSeconds,
         IBrowser browser,
         IBrowserContext context,
         IPage page,
@@ -122,6 +148,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         BaseUrl = baseUrl;
         PublicOrigin = publicOrigin;
         TableJoinTokenRotationSeconds = tableJoinTokenRotationSeconds;
+        KitchenSubmissionReminderSeconds = kitchenSubmissionReminderSeconds;
         Page = page;
         Authenticator = authenticator;
     }
@@ -141,6 +168,14 @@ internal sealed class RestaurantInstance : IAsyncDisposable
 
     /// <summary>The <c>TABLE_JOIN_TOKEN_ROTATION_SECONDS</c> this instance was configured with (§13).</summary>
     internal int TableJoinTokenRotationSeconds { get; }
+
+    /// <summary>
+    /// The <c>KITCHEN_SUBMISSION_REMINDER_SECONDS</c> this instance was configured with (§13). Read
+    /// back rather than restated so a scenario's patience is computed from what the application was
+    /// actually given, the way every window computation is computed from
+    /// <see cref="TableJoinTokenRotationSeconds"/>.
+    /// </summary>
+    internal int KitchenSubmissionReminderSeconds { get; }
 
     /// <summary>The one page in this instance's context; relative URLs resolve against <see cref="BaseUrl"/>.</summary>
     internal IPage Page { get; }
@@ -169,6 +204,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         WebApplicationLaunch launch,
         int ordinal,
         int tableJoinTokenRotationSeconds,
+        int kitchenSubmissionReminderSeconds,
         CancellationToken cancellationToken)
     {
         string databaseName = string.Create(
@@ -194,7 +230,8 @@ internal sealed class RestaurantInstance : IAsyncDisposable
             publicOrigin,
             connectionString,
             dataProtectionKeysDirectory,
-            tableJoinTokenRotationSeconds);
+            tableJoinTokenRotationSeconds,
+            kitchenSubmissionReminderSeconds);
 
         process.OutputDataReceived += (_, arguments) => Append(output, outputGate, arguments.Data);
         process.ErrorDataReceived += (_, arguments) => Append(output, outputGate, arguments.Data);
@@ -225,6 +262,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
                 baseUrl,
                 publicOrigin,
                 tableJoinTokenRotationSeconds,
+                kitchenSubmissionReminderSeconds,
                 browser,
                 context,
                 page,
@@ -411,6 +449,83 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         return new OpenSitting(sittingIdentifier, members);
     }
 
+    /// <summary>
+    /// Counts the <c>kitchen_notification</c> rows for a sitting, by kind (§10.1's <c>initial</c>,
+    /// §10.2's <c>reminder</c>).
+    ///
+    /// <para>The second place this harness reaches past every surface, and for a reason of the same
+    /// shape as <see cref="ReadJoinSecretAsync"/>'s: the fact being asserted is one no screen renders.
+    /// A reminder's singularity is enforced by <c>UNIQUE (order_event_identifier, kind)</c> and
+    /// observed by §8.4's <c>RETURNING</c>, and the board's badge is a count in circuit memory that a
+    /// cook clears with one tap — so a board that stayed quiet is consistent with a row that was
+    /// written twice, and only the rows tell those apart.</para>
+    ///
+    /// <para>Scoped by sitting rather than by order event, because a scenario knows which table it sat
+    /// at and does not know what identifier the send it pressed was given. The join is the §8.2 chain
+    /// the reminder scan itself walks: notification → event → order → sitting.</para>
+    /// </summary>
+    internal async Task<KitchenNotificationTally> ReadKitchenNotificationsAsync(
+        Guid sittingIdentifier,
+        CancellationToken cancellationToken)
+    {
+        await using NpgsqlConnection connection = new(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        // `notified_event` rather than `event`: the latter is a PostgreSQL keyword and an alias that
+        // needs quoting to be legal is an alias waiting to be edited into a syntax error.
+        await using NpgsqlCommand command = new(
+            """
+            SELECT notification.kind AS kind, COUNT(*) AS tally
+            FROM kitchen_notification AS notification
+            INNER JOIN order_event AS notified_event
+                    ON notified_event.order_event_identifier = notification.order_event_identifier
+            INNER JOIN guest_order
+                    ON guest_order.guest_order_identifier = notified_event.guest_order_identifier
+            WHERE guest_order.table_sitting_identifier = @sitting_identifier
+            GROUP BY notification.kind;
+            """,
+            connection);
+
+        command.Parameters.AddWithValue("sitting_identifier", sittingIdentifier);
+
+        int initial = 0;
+        int reminder = 0;
+
+        await using (NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                string kind = reader.GetString(0);
+
+                // COUNT(*) is bigint. Narrowed here rather than carried as a long: a sitting with more
+                // than int.MaxValue kitchen notifications is not a case worth a wider type.
+                int tally = (int)reader.GetInt64(1);
+
+                switch (kind)
+                {
+                    case "initial":
+                        initial = tally;
+                        break;
+
+                    case "reminder":
+                        reminder = tally;
+                        break;
+
+                    default:
+                        // The column has a CHECK constraint listing exactly those two, so this is
+                        // unreachable until a migration adds a third — at which point a scenario
+                        // counting the old two silently would be worse than one that says so.
+                        throw new InvalidOperationException(
+                            $"kitchen_notification.kind held '{kind}', which is neither 'initial' nor"
+                            + " 'reminder'. §8.2's CHECK constraint allowed exactly those two when this"
+                            + " was written; a migration has widened it and this read needs updating.");
+                }
+            }
+        }
+
+        return new KitchenNotificationTally(initial, reminder);
+    }
+
     public async ValueTask DisposeAsync()
     {
         // Authenticators first: each one holds a CDP session on a context that is about to close.
@@ -440,7 +555,8 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         string publicOrigin,
         string connectionString,
         string dataProtectionKeysDirectory,
-        int tableJoinTokenRotationSeconds)
+        int tableJoinTokenRotationSeconds,
+        int kitchenSubmissionReminderSeconds)
     {
         ProcessStartInfo startInfo = new()
         {
@@ -475,7 +591,8 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         variables["RESTAURANT_CURRENCY_CODE"] = "USD";
         variables["RESTAURANT_DATABASE_CONNECTION_STRING"] = connectionString;
         variables["DATA_PROTECTION_KEYS_DIRECTORY"] = dataProtectionKeysDirectory;
-        variables["KITCHEN_SUBMISSION_REMINDER_SECONDS"] = "60";
+        variables["KITCHEN_SUBMISSION_REMINDER_SECONDS"] =
+            kitchenSubmissionReminderSeconds.ToString(CultureInfo.InvariantCulture);
         variables["TABLE_JOIN_TOKEN_ROTATION_SECONDS"] =
             tableJoinTokenRotationSeconds.ToString(CultureInfo.InvariantCulture);
         variables["TABLE_JOIN_GRANT_MINUTES"] = "10";
@@ -709,4 +826,3 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         }
     }
 }
-

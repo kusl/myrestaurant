@@ -143,8 +143,16 @@ public sealed class RestaurantHarness : IAsyncLifetime
     /// that a boundary is actually crossed inside a test's patience. §4.3 accepts the current and
     /// previous window whatever their width, so nothing an assertion depends on changes with it.
     /// </param>
+    /// <param name="kitchenSubmissionReminderSeconds">
+    /// <c>KITCHEN_SUBMISSION_REMINDER_SECONDS</c> for this instance (§13). A parameter for the same
+    /// reason the rotation is one, and with the opposite bias: exactly one scenario — §16.3's
+    /// eighth — wants it short enough to sit through, and every other wants it left at the
+    /// application's own sixty so that §8.4's scan cannot fire during a wait about something else.
+    /// The reminder <em>rule</em> does not change with it; only how long a send has to be ignored.
+    /// </param>
     internal async Task<RestaurantInstance> StartInstanceAsync(
         int tableJoinTokenRotationSeconds = RestaurantInstance.DefaultTableJoinTokenRotationSeconds,
+        int kitchenSubmissionReminderSeconds = RestaurantInstance.DefaultKitchenSubmissionReminderSeconds,
         CancellationToken cancellationToken = default)
     {
         if (SkipReason is not null || _browser is null || _administrativeConnectionString is null || _launch is null)
@@ -162,6 +170,7 @@ public sealed class RestaurantHarness : IAsyncLifetime
             _launch,
             ordinal,
             tableJoinTokenRotationSeconds,
+            kitchenSubmissionReminderSeconds,
             cancellationToken);
     }
 

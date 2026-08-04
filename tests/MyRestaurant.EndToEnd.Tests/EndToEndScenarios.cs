@@ -5,6 +5,7 @@ using MyRestaurant.EndToEnd.Tests.Harness;
 using MyRestaurant.WebApplication.Configuration;
 using MyRestaurant.WebApplication.Displays;
 using MyRestaurant.WebApplication.Identity;
+using MyRestaurant.WebApplication.Orders;
 using Xunit;
 
 namespace MyRestaurant.EndToEnd.Tests;
@@ -13,7 +14,7 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
 /// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// <para>Nine are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
+/// <para>Eleven are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
 /// WebAuthn attestation and a real TOTP confirmation), <b>13</b> (a passkey sign-in of a TOTP-enrolled
 /// person must not be challenged for a code) and <b>14</b> (the join-token window arithmetic as a guest
 /// experiences it) — chosen because between them they exercise the whole harness. M6 Slice 3 adds
@@ -32,7 +33,11 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// other than the one being asserted on. M6 Slice 10 adds <b>7</b> (a guest holding a tick on a line
 /// the kitchen then passes, an all-or-nothing refusal, and the removal that succeeds once the batch is
 /// clean), the first about §6.5.9 as a guest experiences it and the first to find that the surface
-/// refuses on the guest's behalf before the transaction ever gets the chance.</para>
+/// refuses on the guest's behalf before the transaction ever gets the chance. M6 Slice 11 adds
+/// <b>8</b> (a send left untouched past the threshold draws one reminder, and only one), the first
+/// scenario in the matrix whose subject is something no browser did — and the first whose closing
+/// assertion is that nothing further happened, which is a different shape of claim from every other
+/// one here.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -63,6 +68,19 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     /// boundary-watching scenarios above need a window that cannot be crossed twice by accident.
     /// </summary>
     private const int ShortestRotationSeconds = RestaurantOptions.MinimumTableJoinTokenRotationSeconds;
+
+    /// <summary>
+    /// <c>KITCHEN_SUBMISSION_REMINDER_SECONDS</c> for the one scenario that has to sit through the
+    /// threshold. §16.3 writes scenario 8 as "sits unfulfilled 60 s", and §13's floor is 1.
+    ///
+    /// <para>Five, for a reason on each side. §8.4's scan is what decides a reminder and it compares
+    /// <c>occurred_at</c> against a threshold it is handed — the rule is identical at five seconds and
+    /// at sixty, so the number is a duration to wait rather than a parameter under test. Shorter than
+    /// <c>KitchenReminderService.ScanInterval</c> would be pointless, because the scan's five-second
+    /// resolution then dominates and the configured threshold stops being the thing that fires it;
+    /// longer buys nothing this scenario asserts on and costs the whole difference in wall clock.</para>
+    /// </summary>
+    private const int ImpatientReminderSeconds = 5;
 
     private readonly RestaurantHarness _harness;
 
@@ -116,7 +134,8 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         const string tableLabel = "E2E Two";
 
         await using RestaurantInstance instance =
-            await _harness.StartInstanceAsync(BoundaryWatchingRotationSeconds, cancellationToken);
+            await _harness.StartInstanceAsync(
+                BoundaryWatchingRotationSeconds, cancellationToken: cancellationToken);
 
         // The whole scenario is an administrator's doing, so it needs an administrator; §3.6's wizard is
         // the only way one comes into existence and it signs them in on the same response.
@@ -191,7 +210,8 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         // and the previous window, so two windows and a moment — long before they finish. At the
         // default hour there would be nothing to outlive and the assertion would be vacuous.
         await using RestaurantInstance instance =
-            await _harness.StartInstanceAsync(ShortestRotationSeconds, cancellationToken);
+            await _harness.StartInstanceAsync(
+                ShortestRotationSeconds, cancellationToken: cancellationToken);
 
         int rotationSeconds = instance.TableJoinTokenRotationSeconds;
 
@@ -303,7 +323,7 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         const int rotationSeconds = RestaurantInstance.DefaultTableJoinTokenRotationSeconds;
 
         await using RestaurantInstance instance =
-            await _harness.StartInstanceAsync(rotationSeconds, cancellationToken);
+            await _harness.StartInstanceAsync(rotationSeconds, cancellationToken: cancellationToken);
         IPage page = instance.Page;
 
         // Real signing material, held only here and in the row — the server reads it back through
@@ -346,7 +366,8 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         const string tableLabel = "E2E Fifteen";
 
         await using RestaurantInstance instance =
-            await _harness.StartInstanceAsync(BoundaryWatchingRotationSeconds, cancellationToken);
+            await _harness.StartInstanceAsync(
+                BoundaryWatchingRotationSeconds, cancellationToken: cancellationToken);
 
         // Read back rather than restated: every window computation below is against the value the
         // application was actually configured with, not the value it was asked for.
@@ -914,15 +935,117 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     }
 
     // -------------------------------------------------------------------------------------------
+    // 8. A send sits unfulfilled past the reminder threshold → exactly one reminder alert.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Send_UnfulfilledPastThreshold_YieldsExactlyOneReminder()
+    {
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Eight";
+        GuestAccount guestAccount = new("e2e.guest.eight", "Eight Guest");
+
+        // The only scenario that moves this dial. §16.3 says sixty seconds and means "long enough that
+        // a kitchen has plainly ignored it"; the rule under test is the §8.4 scan, and the scan does
+        // not know or care what the threshold is set to. Five seconds buys the same rule for a tenth of
+        // the wall clock. See RestaurantInstance.DefaultKitchenSubmissionReminderSeconds for why every
+        // other scenario deliberately leaves it at sixty.
+        await using RestaurantInstance instance = await _harness.StartInstanceAsync(
+            kitchenSubmissionReminderSeconds: ImpatientReminderSeconds,
+            cancellationToken: cancellationToken);
+
+        ArrangedService service = await ArrangeServiceAsync(
+            instance, tableLabel, guestAccount, cancellationToken);
+
+        // (a) One line, sent, and then nobody in the kitchen does a thing. One rather than two because
+        // §8.4 reminds per *send* — the reminder is about the ticket having been ignored, not about how
+        // much was on it — and a second line would only give the scenario something else to explain.
+        await TableOrderJourneys.StageAsync(service.Guest, service.Soup, 1);
+        await TableOrderJourneys.SendAsync(service.Guest);
+
+        KitchenBoardSnapshot afterSend = await KitchenJourneys.WaitForBoardAsync(
+            service.Kitchen,
+            snapshot => snapshot.PendingLines.Count == 1 && snapshot.UnseenAlertCount == 1,
+            LiveUpdatePatience,
+            "the sent line on the pass under §10.1's single initial alert",
+            cancellationToken);
+
+        // The alert on the badge right now is the send's own. Asserted before the wait below so that
+        // the reminder, when it lands, is a second thing arriving rather than the first thing being
+        // reinterpreted — without this, a board that had somehow alerted twice at the send would
+        // satisfy every remaining assertion in this scenario.
+        Assert.Equal(0, afterSend.UnseenReminderCount);
+        Assert.Equal(service.Soup.Name, Assert.Single(afterSend.PendingLines).Name);
+
+        OpenSitting? sitting =
+            await instance.ReadOpenSittingAsync(service.TableIdentifier, cancellationToken);
+
+        Assert.NotNull(sitting);
+
+        // §10.1's row, written inside the send's own transaction. The reminder's absence here is the
+        // half of §8.4 that says a reminder is not merely a second copy of the initial alert: nothing
+        // has written one, because nothing has yet been ignored for long enough.
+        Assert.Equal(
+            new KitchenNotificationTally(Initial: 1, Reminder: 0),
+            await instance.ReadKitchenNotificationsAsync(sitting!.SittingIdentifier, cancellationToken));
+
+        // (b) The threshold passes, and the board alerts a second time with nobody having touched
+        // anything anywhere. This is the one event in the whole matrix that no browser causes: §10.2's
+        // background service scans every five seconds, finds a guest submission older than the
+        // threshold with nothing fulfilled or removed off it, writes one row, and broadcasts.
+        KitchenBoardSnapshot reminded = await KitchenJourneys.WaitForBoardAsync(
+            service.Kitchen,
+            snapshot => snapshot.UnseenReminderCount >= 1,
+            ReminderPatience(instance.KitchenSubmissionReminderSeconds),
+            "the overdue send's reminder counted on the badge",
+            cancellationToken);
+
+        // Two alerts, one of them overdue — not two overdue, and not one alert that changed its mind.
+        // §10.3 keeps the reminder count as a subset of the unseen count precisely so the badge can say
+        // "2 new alerts (1 overdue)", and both halves of that sentence are load-bearing to a cook
+        // deciding what to pick up next.
+        Assert.Equal(1, reminded.UnseenReminderCount);
+        Assert.Equal(2, reminded.UnseenAlertCount);
+
+        // And the line is still exactly where it was. A reminder is a nudge, not a mutation: it must
+        // not touch kitchen_pending_line, and a board that quietly dropped the ticket it was reminding
+        // about would be the worst possible reading of §10.2.
+        Assert.Equal(service.Soup.Name, Assert.Single(reminded.PendingLines).Name);
+
+        Assert.Equal(
+            new KitchenNotificationTally(Initial: 1, Reminder: 1),
+            await instance.ReadKitchenNotificationsAsync(sitting.SittingIdentifier, cancellationToken));
+
+        // (c) "Exactly one." The count on the badge cannot carry that word on its own — it only ever
+        // rises, so two is two whether the second arrived a second ago or a minute ago. Clearing it
+        // first (§10.3's "tap to clear") turns any further alert into a rise from zero, which is a
+        // thing that can be watched for rather than inferred.
+        await KitchenJourneys.AcknowledgeAlertsAsync(service.Kitchen);
+
+        // Three §8.4 scans go by with the send still sitting there, still overdue, still matching every
+        // clause of the query except the one that matters: the NOT EXISTS on a prior reminder row. The
+        // returned counts are the high-water mark over the whole stretch, not a reading at the end, so
+        // an alert that arrived and was somehow cleared inside the window still fails this.
+        KitchenBoardSnapshot quiet = await KitchenJourneys.WatchBoardAsync(
+            service.Kitchen, QuietWatch, cancellationToken);
+
+        Assert.Equal(0, quiet.UnseenReminderCount);
+        Assert.Equal(0, quiet.UnseenAlertCount);
+        Assert.Equal(service.Soup.Name, Assert.Single(quiet.PendingLines).Name);
+
+        // The rows say it too, and they are the ones that actually enforce it: UNIQUE
+        // (order_event_identifier, kind) is what makes a reminder singular, and §8.4's RETURNING is how
+        // the scan learns its insert was swallowed and declines to broadcast. A quiet board with two
+        // reminder rows behind it would mean the constraint had gone and the silence was luck.
+        Assert.Equal(
+            new KitchenNotificationTally(Initial: 1, Reminder: 1),
+            await instance.ReadKitchenNotificationsAsync(sitting.SittingIdentifier, cancellationToken));
+    }
+
+    // -------------------------------------------------------------------------------------------
     // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
     // -------------------------------------------------------------------------------------------
-
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Send_UnfulfilledPastThreshold_YieldsExactlyOneReminder()
-    {
-        // 8. A send sits unfulfilled 60 s → exactly one reminder alert. Wants a short
-        //    KITCHEN_SUBMISSION_REMINDER_SECONDS rather than sixty seconds of waiting.
-    }
 
     [Fact(Skip = PendingHarnessExtension)]
     public void Counter_AdjustsPriceWithReason_GuestSeesOldToNew()
@@ -975,6 +1098,32 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     /// </summary>
     private static TimeSpan RefreshPatience(int rotationSeconds)
         => TimeSpan.FromSeconds((rotationSeconds * 2) + 20);
+
+    /// <summary>
+    /// How long to give §10.2's reminder to arrive after a send goes untouched.
+    ///
+    /// <para>The threshold itself, plus two scan intervals, plus twenty seconds. Two intervals because
+    /// the scan is a <c>PeriodicTimer</c> started with the process rather than with the send, so a send
+    /// landing an instant after a tick waits a whole extra interval before it is even looked at — and a
+    /// second interval because the tick that finally sees it may be the one a busy container skipped.
+    /// The twenty seconds are the same slack every other wait here carries, and are why a timeout at
+    /// this length means the reminder service is not running rather than that it is running late.</para>
+    /// </summary>
+    private static TimeSpan ReminderPatience(int reminderSeconds)
+        => TimeSpan.FromSeconds(reminderSeconds)
+            + (KitchenReminderService.ScanInterval * 2)
+            + TimeSpan.FromSeconds(20);
+
+    /// <summary>
+    /// How long to watch a cleared board before calling a reminder singular.
+    ///
+    /// <para>Three §8.4 scans. One would be enough to catch the obvious regression — the guard clause
+    /// dropped, the constraint gone — but a scenario that watched exactly one tick would be asserting
+    /// on whether the timer had woken up at all, and would pass just as happily against a reminder
+    /// service that had died. Three is short enough to cost fifteen seconds and long enough that the
+    /// loop has demonstrably run and demonstrably declined.</para>
+    /// </summary>
+    private static readonly TimeSpan QuietWatch = KitchenReminderService.ScanInterval * 3;
 
     /// <summary>
     /// How long to give a page to become interactive. Independent of the rotation window, because this is

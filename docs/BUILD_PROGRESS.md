@@ -4575,6 +4575,9 @@ a settled read-only view), **11** (hide, the hidden-records filter, unhide — t
 the obligations pipeline through a forced password change and a forced re-enrollment).
 
 Then the backup/restore drill, and M6 is done.
+
+---
+
 ### M6 Slice 10 — the refusal a guest cannot reach (landed)
 
 §16.3 scenario **7**: *"Guest tries to remove the fulfilled line → whole batch rejected with per-op reason;
@@ -4699,3 +4702,178 @@ Then the backup/restore drill, and M6 is done.
 this document, and this slice ships the whole of `docs/BUILD_PROGRESS.md` instead of a block to append —
 which also removes the duplicated **M5 Slice 3** section that had been sitting at line 1550, between M4
 Slice 1's tail and M4 Slice 2's head, byte-identical to the copy at its proper place after M5 Slice 1.
+
+
+---
+
+### M6 Slice 11 — the alert nobody raised (landed)
+
+§16.3 scenario **8**: *"A send sits unfulfilled 60 s → exactly one reminder alert."*
+
+It is the first scenario in the matrix whose subject is something **no browser did**, and the first whose
+closing assertion is that *nothing further happened* — a different shape of claim from every other one
+here, and one no wait can conclude on its own.
+
+`MYRESTAURANT_E2E=1` goes from **10 passed / 5 skipped** to **11 passed / 4 skipped**. `dotnet test` stays
+at **971 total / 0 failed**.
+
+---
+
+#### First: the build error Slice 10 shipped
+
+`Harness/TableOrderJourneys.cs`, `LineOffersRemovalAsync`, reported at line 412 and caused at line 433:
+
+```csharp
++ $" It holds: {Describe(await ReadCommittedLinesAsync(page))}."
+```
+
+**CS4007.** An `await` inside an interpolation hole of a string that binds to
+`DefaultInterpolatedStringHandler` — the handler is a `ref struct` and cannot be held across the
+suspension point. The rest of that file already hoists the read into a local in four places and says why
+in a comment each time; this one was written inline and did not compile. Fixed the same way.
+
+The whole tree was re-scanned for the pattern: **this was the only occurrence in 317 files.** With the
+end-to-end project failing to build, `dotnet test` had been reporting 956 rather than 971 — the missing
+fifteen were that project's scenarios, never discovered rather than failing.
+
+---
+
+#### What the scenario does
+
+An administrator bootstraps, puts soup and a steak pie on the menu, creates a table; a guest scans,
+registers with a passkey, joins; the kitchen board is opened and becomes live. (`ArrangeServiceAsync`, as
+scenarios 4, 6 and 7 use it.) Then:
+
+1. **The guest sends one soup, and the kitchen ignores it.** One line rather than two, because §8.4
+   reminds per *send* — the reminder is about a ticket having been ignored, not about how much was on it.
+2. **One alert, and it is not a reminder.** Asserted before anything waits, so that the reminder below is
+   a second thing arriving rather than the first thing being reinterpreted. Without it, a board that had
+   somehow alerted twice at the send would satisfy every remaining assertion.
+3. **The `kitchen_notification` rows say `initial: 1, reminder: 0`.** §10.1's row is written inside the
+   send's own transaction; the reminder's absence here is the half of §8.4 that says a reminder is not
+   merely a second copy of the initial alert.
+4. **The threshold passes and the badge goes to two, one of them overdue.** Nobody has touched anything
+   in any browser. §10.2's background service scans, finds a submission older than the threshold with
+   nothing fulfilled or removed off it, writes one row, and broadcasts.
+5. **The line is still on the pass.** A reminder is a nudge, not a mutation: it must not touch
+   `kitchen_pending_line`, and a board that quietly dropped the ticket it was reminding about would be
+   the worst possible reading of §10.2.
+6. **The badge is cleared, and three more scans go by in silence** — with the send still sitting there,
+   still overdue, still matching every clause of §8.4's query except the `NOT EXISTS` on a prior reminder
+   row.
+7. **The rows still say `initial: 1, reminder: 1`.** Which is the assertion that actually means
+   "exactly one" — see below.
+
+---
+
+#### Why "exactly one" needed three separate things
+
+§16.3's word is *exactly*, and none of the obvious readings carries it alone.
+
+**The badge cannot.** `KitchenAlertState.UnseenCount` only ever rises, so two is two whether the second
+alert landed a second ago or a minute ago. Clearing it first (§10.3's *"tap to clear"*) turns any further
+alert into a rise from zero, which is something that can be watched for rather than inferred.
+
+**A sleep-then-read cannot.** Waiting fifteen seconds and reading once would miss an alert that arrived
+and was cleared again inside the window — which is not an exotic failure but precisely the bug being
+watched for: a second reminder that a re-render swallowed. `KitchenJourneys.WatchBoardAsync` polls for the
+duration and returns the **high-water mark**, so a scenario asserting the counts are zero is asserting
+about the whole stretch rather than about its last instant.
+
+**The board cannot, at all.** Its count is circuit state that a cook clears with one tap, so a quiet board
+is consistent with a second row having been written and broadcast to nobody. The `UNIQUE
+(order_event_identifier, kind)` constraint is what actually makes a reminder singular and §8.4's
+`RETURNING` is how the scan learns its insert was swallowed. Hence
+`RestaurantInstance.ReadKitchenNotificationsAsync` — the second place this harness deliberately reaches
+past every surface, for a reason of the same shape as `ReadJoinSecretAsync`'s: the fact being asserted is
+one no screen renders.
+
+---
+
+#### Five seconds instead of sixty
+
+`KITCHEN_SUBMISSION_REMINDER_SECONDS` now threads through the harness the way
+`TABLE_JOIN_TOKEN_ROTATION_SECONDS` already did — `RestaurantHarness.StartInstanceAsync` →
+`RestaurantInstance.StartAsync` → the child process's environment, where it had been the literal `"60"`.
+
+Scenario 8 asks for **5**. §8.4's scan compares `occurred_at` against a threshold it is handed, so the
+rule is identical at five seconds and at sixty and the number is a duration to wait rather than a
+parameter under test. Shorter would be pointless: `KitchenReminderService.ScanInterval` is a fixed five
+seconds, and below that the scan's own resolution dominates and the configured threshold stops being the
+thing that fires it.
+
+**Every other scenario keeps sixty, and that default is load-bearing rather than lazy.** §8.4 is the only
+thing in the system that writes because *nobody* acted. At a short setting, any scenario that sends and
+then spends thirty seconds asserting on something else would acquire a reminder alert it never asked for
+and never mentions — scenario 4's *"still one"* re-read being the obvious casualty. At sixty it cannot: no
+scenario holds a send untouched for a minute except the one that means to.
+
+Patience is computed from what the application was actually given
+(`instance.KitchenSubmissionReminderSeconds`) rather than from what it was asked for, the same discipline
+every window computation already follows: threshold + two scan intervals + twenty seconds. Two intervals
+because the `PeriodicTimer` starts with the process rather than with the send, so a send landing an
+instant after a tick waits a whole extra interval before it is even looked at — and a second because the
+tick that finally sees it may be the one a busy container skipped.
+
+---
+
+#### The one product change: naming a number
+
+`KitchenBoard.razor` published `data-unseen-alerts` and not its §10.2 half. It now also publishes
+`data-unseen-reminders="@_alerts.UnseenReminderCount"`.
+
+The count was already on screen, inside the badge, as `" (1 overdue)"` — and that parenthetical appears
+only when the number is non-zero, so its absence is ambiguous between *"no reminders"* and *"no badge at
+all"*. Reading it back out of a sentence that also carries pluralisation would be parsing prose to learn a
+fact the component already knows. Purely additive; the value is `KitchenAlertState.UnseenReminderCount`,
+which the badge already renders, and nothing on screen changes. Same reasoning as Slice 9's
+`.order-party-line-name` and Slice 10's `.order-prune-notice`.
+
+Nothing else under `src/` moved. No migration, no schema change, no package, no ADR, no `Program.cs`, no
+`.slnx`.
+
+---
+
+#### Harness
+
+`KitchenBoardSnapshot` gains `UnseenReminderCount` — a **subset** of `UnseenAlertCount`, not a second
+tally beside it, because a reminder increments both. "One alert" after a send and "two alerts, one of them
+overdue" a threshold later are the same board to anything that can only count alerts.
+
+`KitchenJourneys` gains `AcknowledgeAlertsAsync` (§10.3's badge; a call on an already-clear board is a
+named mistake rather than a tolerated no-op, because it means the alert the scenario meant to acknowledge
+never arrived) and `WatchBoardAsync`. Attribute reads went through a shared
+`ReadCountAttributeAsync` that names the component property it came from, because *absent* has a
+different cause from *garbage* and the first is what a renamed attribute looks like.
+
+One stale `<see cref>` corrected while in the file: `TableOrderJourneys.BasketWarningCountAsync` has not
+existed since Slice 10 folded it into `BasketContents.UnavailableMarks`. Silent today only because
+`GenerateDocumentationFile` is `false`; it would be CS1574 — and therefore an error under CI's
+`ContinuousIntegrationBuild` — the day that changes.
+
+---
+
+#### What this does not prove
+
+The scan's idempotence under **overlapping ticks** is not exercised here, and cannot be from a browser:
+one process, one `PeriodicTimer`, one tick at a time. `ON CONFLICT DO NOTHING` against two concurrent
+scans belongs to `KitchenNotificationsTests` against a real PostgreSQL, which already drives it. What this
+scenario covers is the thing only a browser can: that the reminder **reaches a cook**, distinguishably,
+once.
+
+Nor does it prove the *sound*. §10.3's arm control needs a real user gesture and unlocks an `AudioContext`
+on a headless browser with no output device, so "did it beep" is a question about Chromium. §10.3 names
+the visual badge as the fallback whenever sound is not working and makes the unseen count the record of
+what arrived; that count is what is asserted, and it is the same number the sound is played from.
+
+---
+
+#### Where scenario 8 sits in the matrix
+
+Live after this slice: **1, 2, 3, 4, 5, 6, 7, 8, 13, 14, 15**. Remaining: **9** (a counter price
+adjustment read old → new on the guest's screen), **10** (a close, the pending-line warning, and the flip
+to a settled read-only view), **11** (hide, the hidden-records filter, unhide — the one that will meet
+`EnhancedNavigation` again, on an administrator following a filter link), and **12** (a TOTP reset driving
+the obligations pipeline through a forced password change and a forced re-enrollment).
+
+Then the backup/restore drill, and M6 is done.
