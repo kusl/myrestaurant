@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-04T13:26:09-04:00
+  Generated at   : 2026-08-04T14:02:32-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : aee8e405f9f02d3c959d872d22f725998ccc7b73
-  Commit (short) : aee8e40
-  Commit date    : 2026-08-04 05:24:13 -0400
-  Commit message : update prompt
+  Commit (full)  : 0c5e86d9f5354395e3c239e2dba93ad420c8b695
+  Commit (short) : 0c5e86d
+  Commit date    : 2026-08-04 14:02:17 -0400
+  Commit message : add claude changes
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 299
+  Files included : 302
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (299 included files)
+# FILE TREE  (302 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -853,10 +853,13 @@ cat "$OUTPUT_FILE"
     │   │   ├── CounterJourneys.cs
     │   │   ├── DisplayJourneys.cs
     │   │   ├── EnhancedNavigation.cs
+    │   │   ├── HiddenRecordJourneys.cs
+    │   │   ├── HistoryJourneys.cs
     │   │   ├── JoinQrCodes.cs
     │   │   ├── KitchenJourneys.cs
     │   │   ├── RestaurantHarness.cs
     │   │   ├── RestaurantInstance.cs
+    │   │   ├── ScreenText.cs
     │   │   ├── TableJourneys.cs
     │   │   ├── TableOrderJourneys.cs
     │   │   ├── VirtualAuthenticator.cs
@@ -3034,24 +3037,24 @@ scripts/ci_local.sh --with-all
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  14.0 KiB (14328 bytes)
-  Last modified:         2026-08-04 05:13:46.000000000 -0400
+  Size:                  17.4 KiB (17838 bytes)
+  Last modified:         2026-08-04 13:56:48.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 30791593
+  Inode:                 31147985
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               e2eea8221543a46b235953d35730bc7f766521eae9d8561c6f3437128a597867
-  Last git commit:       fab65f0 2026-08-04 05:16:36 -0400 add claude changes
+  SHA-256:               c3c7f9ef8331a9c060f2aa5e0f9da33e1be976b5a89dca5ecb3eb7ec2e93b1c2
+  Last git commit:       0c5e86d 2026-08-04 14:02:17 -0400 add claude changes
 
 --- CONTENT ---
-# M6 Slice 13 — §16.3 scenario 10, and the write that cannot be undone
+# M6 Slice 14 — §16.3 scenario 11, and a red test that was reading the stylesheet
 
 Every file below is a **full file** at its **repo-relative path**. Extract at the repo root and the
 contents drop straight over your working tree — no diffs, no patches, no scripts to run.
 
 ```bash
-tar -xzf m6-slice13-close-and-settle.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice14-hide-and-unhide.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
@@ -3059,143 +3062,204 @@ tar -xzf m6-slice13-close-and-settle.tar.gz -C /home/kushal/src/dotnet/myrestaur
 **None.** Nothing here renames, supersedes or orphans anything: no migration, no schema change, no
 package change, no ADR edit, no `Program.cs` edit, no `.slnx` edit, no new test folder.
 
-## About "some tests are now failing"
+## About the failing test — this time it is real
 
-**They aren't.** `claude-terminal.txt` is from the same session as `dump.txt` — same commit, `b6a2892` —
-and it is green from top to bottom:
+Slice 13's `_CHANGES.md` argued that "some tests are now failing" was mistaken, and for that dump it was.
+It is not for this one. `claude-terminal.txt` on commit `aee8e40` shows, twice:
 
-- `dotnet test` — **971 total / 0 failed / 956 succeeded / 15 skipped**
-- `bash scripts/ci_local.sh --with-all` — all six gates passed
-- `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` — **15 total / 0 failed / 12 passed / 3 skipped**
-- `run.sh --smoke`, `run.sh --containers-only`, `scripts/quick_tunnel.sh` — all fine
+- `dotnet test` — **971 total / 0 failed** (still green; the E2E scenarios skip when `MYRESTAURANT_E2E` is unset)
+- `MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests` — **15 total / 1 failed / 12 passed / 2 skipped**
 
-There is no failing assertion anywhere in that output. The 15 skips under a plain `dotnet test` are the
-E2E scenarios opting out because `MYRESTAURANT_E2E` is unset; the 3 under `MYRESTAURANT_E2E=1` are the
-three unimplemented §16.3 scenarios, each carrying `PendingHarnessExtension`. This slice takes one of
-them, leaving two.
+```
+MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch [FAIL]
+  Assert.Equal() Failure: Strings differ
+              ↓ (pos 1)
+  Expected: "Settled total"
+  Actual:   "SETTLED TOTAL"
+```
 
 ## The files
 
 | File | Change |
 | --- | --- |
-| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | §16.3 scenario **10** implemented; its placeholder removed |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs` | the close: `BeginCloseAsync`, `ConfirmCloseAsync`, `ReadPendingWarningAsync`, `ReadSettledTillAsync`, `ReadFloorAsync` |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | `ReadTotalsAsync`, `ReadSettledViewAsync`, `WaitForSettledViewAsync`, `DescribeSettledView` |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs` | `ReadSettledSittingAsync` + the `SettledSitting` record |
-| `src/MyRestaurant.WebApplication/Components/Pages/Counter/CounterSitting.razor` | two ids on the close buttons |
-| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor` | one class on the settled heading |
-| `docs/BUILD_PROGRESS.md` | Slice 13 appended (**complete file**, 5,325 lines — I did the appending) |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/ScreenText.cs` | **new** — reads declared text rather than rendered text |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/HistoryJourneys.cs` | **new** — the guest's own history and §6.8's Hide |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/HiddenRecordJourneys.cs` | **new** — §11.4's list, its filter, its expanded record, its Unhide |
+| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | §16.3 scenario **11** implemented; its placeholder removed |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs` | the label fix; `OpenSettledSittingAsync` + `PathFor` |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | the totals-term fix (one line) |
+| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableHistory.razor` | two additive markup names |
+| `src/MyRestaurant.WebApplication/Components/Pages/Administration/HiddenRecords.razor` | two additive markup names |
+| `docs/BUILD_PROGRESS.md` | Slice 14 appended (**complete file**, 5,441 lines — I did the appending) |
 | `_CHANGES.md` | this file |
 
-Before editing, I checked all seven pre-existing files against the SHA-256 hashes `export.sh` recorded in
-`dump.txt`. All seven matched, so every byte I did not touch is known to be identical to your working
-tree.
+Before editing, all six pre-existing files were checked against the SHA-256 hashes `export.sh` recorded
+in `dump.txt`. All six matched, so every byte I did not touch is known identical to your working tree.
 
-## Seven readings of one number
+## Part one: the red test, and the second one behind it
 
-"Totals match" is the half of §16.3's sentence that could most easily be satisfied by nothing at all. Six
-of these are computed at render time from the same `sitting_bill` view, so all six could agree perfectly
-on a close that stamped **no total whatsoever**. They are still worth comparing — different code, two
-languages, three circuits — but only the seventh makes the claim §5.3 actually promises.
+`InnerTextAsync` returns the browser's own `innerText`, which is **defined in terms of layout** and
+therefore has `text-transform` already applied. `CounterSitting.razor` upcases
+`.counter-detail-total-label` for the eyebrow treatment. The label the component wrote really is
+`Settled total`; the harness was reading the presentation layer.
 
-| # | Where | How it is computed |
-| --- | --- | --- |
-| 1 | The till header, before the close | SQL sum over `sitting_bill` |
-| 2 | §11.3's confirmation prompt | `CurrentTotalAmount`, quoted directly |
-| 3 | The till header, after the close | the stamped `settled_total_amount` |
-| 4 | The till's settle panel | C# sum over the per-person entries |
-| 5 | The guest's "Table total" | C# sum over `sitting_bill`, another circuit |
-| 6 | The guest's "Your total" | C# sum filtered to one person, another circuit |
-| 7 | `table_sitting.settled_total_amount` | the column, read past every surface |
+**Forty lines further on, the same mistake was waiting.** `TableOrderJourneys.ReadTotalsAsync` reads each
+`<dt>` of §11.1's totals list with `InnerTextAsync` and looks the result up in a dictionary keyed on
+`"Your total"` and `"Table total"` — and `app.css` line 1120 upcases `.order-totals dt`. Both lookups
+would have missed, and the method would have thrown
 
-Reading **2** earns its place alone: it is the last number a person reads before an irreversible write,
-and it comes from a third expression rather than either sum beside it.
+> §11.1's totals list does not carry both 'Your total' and 'Table total'
 
-Reading **6** is asserted rather than assumed. One guest is at the table, so their own total *is* the
-table's — which means a filter that had stopped filtering shows the right number for the wrong reason,
-and only in a party of one. That is exactly this scenario.
+about a totals list that was entirely correct. It is reached from `WaitForSettledViewAsync` at
+`EndToEndScenarios.cs:1528` — forty-four lines past the assertion that failed first. **Fixing only line
+1484 would have moved the red rather than cleared it**, and the second failure would have looked like a
+product defect in §11.1.
 
-Every figure is derived from the prices the scenario created. `soup + 2 × pie`, never `34.50`.
+So the whole surface was swept before either fix: **24** `text-transform` declarations in `src/` against
+**66** `InnerTextAsync` calls in the harness. Those two are the only collisions. `.eyebrow`,
+`.chip-role`, `.manage-label`, `.hidden-facts dt`, `.event-stream-badge`, `.restaurant-clock-label`,
+`.kitchen-menu-state`, `.display-eyebrow` and the rest are never read; `p.pairing-code`, `p.totp-secret`
+and `p.staff-temporary-password` carry no transform.
 
-## One soup delivered, two pies that never arrive
+`ScreenText.DeclaredAsync` reads `TextContentAsync` and collapses whitespace runs, which makes it exactly
+`InnerTextAsync` minus the transform. **It is deliberately not a blanket replacement.** The distinction is
+what the comparison is about: a *label* read — holding the phrase the component was expected to choose,
+"Running total" against "Settled total" — is a claim about which branch it took, and presentation casing
+is noise in it. A read of *content* — a table's label, a person's name, an amount through
+`MoneyText.Format` — is data that no rule in this application transforms, and `InnerTextAsync`'s
+whitespace normalisation is genuinely convenient there. Two sites changed; sixty-odd left alone.
 
-- **The warning must name one line, not two portions.** §11.3 renders `PendingLineCount`, a count of
-  unfulfilled rows in `order_current_line`. The pie is *one* row at quantity two, so a warning that had
-  started counting portions says "2" and this asserts **1**. In production that is a counter being told
-  the wrong thing at the moment they decide whether to charge somebody.
-- **The stamped total must include food nobody ate.** §5.3's "knowingly charge" is the whole point: told,
-  settled anyway, charged. A close that quietly dropped the undelivered line would be smaller on all
-  seven readings and perfectly self-consistent.
-- **At one of each item, wrong arithmetic gives the right answer.** A total summing *unit* prices instead
-  of extensions, or double-counting the delivered line, is indistinguishable from the correct total at
-  quantity one. At one soup and two pies each is a different number.
+## Part two: scenario 11
 
-The pie is asserted still-undelivered *after* the close, on both the till and the phone. A surface that
-re-badged it at settlement would be telling the guest their food arrived — the one fact on that bill they
-might want to argue about.
+### Why there are two guests
 
-## Why a counter account, when the screen does not branch on role
+With a single guest, *"their history is empty afterwards"* is satisfied equally well by:
 
-Scenario 9 needed one because §6.2 records the actor and §11.1 renders it, so the assertion would
-otherwise have been about the wrong role **and would have passed**. This is the mirror image, and worth
-stating plainly: `CounterSitting.razor` gates every control on `_sitting.IsOpen` and never consults the
-principal, so an administrator sees the identical read-only screen and the assertion passes either way
-**today**.
+- a page that stopped rendering its list,
+- a reader that started returning nothing for everybody,
+- a hide that hid the whole **sitting** rather than one order.
 
-It is the direction of the *next* failure that decides it. §6.5.8 admits nothing but an administrator's
-corrective events after a close, and §5.3 says corrections "are an administrator's". The day this surface
-grows the correction panel those sections describe, an administrator at a settled till will *correctly*
-see controls a counter must not. Asserting "read-only" as an administrator is asserting it for the one
-role permitted to act after a close; the counter is the role for which read-only is unconditional, and
-that is the claim §11.3 makes.
+All three are catastrophic and all three pass. A bystander whose own history is unchanged across the same
+write separates *this order was hidden* from *history broke* — and costs one registration rather than the
+second sitting a per-order claim would otherwise need.
 
-The administrator still covers the pass for the single fulfillment, on scenarios 4, 6, 7 and 8's
-reasoning. A second staff account for one tap would be a sign-in and a forced password change nothing
-here asserts on.
+### Four numbers, none of which can be confused with another
 
-## The two product changes
+| Figure | Value from the prices this scenario created |
+| --- | --- |
+| The hider's own share | `soup + 3 × pie` |
+| The bystander's share | one `soup` |
+| The table's stamped total | their sum |
+| The pie's unit price | neither of the above |
 
-Both additive, no CSS behind either new name, and both `.razor` tag trees verified **identical** to the
-pristine files from `dump.txt`. Nothing changes on screen.
+A history page showing the **table's** total where a **person's** belongs cannot pass by coincidence, and
+a page showing a unit price where an extension belongs reads `14.00` against a quantity of three.
 
-**`CounterSitting.razor` — `#counter-close` and `#counter-close-confirm`.** The two buttons are otherwise
-the same selector: "the primary button in the settle section" is *Close & settle* before the prompt and
-*Yes — close & settle* after it. Nothing outside the markup could tell "I opened the confirmation" from
-"I settled the table", and settling cannot be undone (§5.3) — which makes this the one place in the
-application where that distinction is most worth having in the markup rather than inferred from which
-panel happens to be on screen. They live in exclusive branches, so each is unique in the document.
+### The identifiers
 
-**`TableOrderSurface.razor` — `.order-settled-heading`.** Everything else identifying §11.1's settled view
-is an *absence* — no picker, no Send row, no removal ticks — and a surface whose circuit died has none of
-those either, so a wait keyed on the picker leaving is satisfied by a dead page while proving nothing.
-This heading is the one positive marker. "The second `h2` on the surface" was never a way to name it:
-that is also the heading of the live ordering view. Fourth time now, after `.order-line-adjustment`,
-`.order-prune-notice` and `.order-party-line-name`.
+Both come off links the surfaces rendered — `?hide=` on the guest's Hide link, `?record=` on
+administration's expand link — which is the same recovery `AdministrationJourneys.CreateTableAsync` already
+does from a "Manage this table" link. Nothing is read out of the database and no `data-` attribute was
+added for the harness.
+
+*"A row appeared"* is satisfied by any hidden order in the restaurant. That the row administration found
+**is** the order this guest hid is a claim about those two identifiers agreeing, and it is the reason the
+apparatus exists.
+
+### The filter, in both directions
+
+§16.3 names the positive case. The negative one is what stops it being vacuous: a filter that had quietly
+stopped filtering would return this row for every username there is, and would satisfy the positive case
+perfectly. The two usernames are chosen so neither is a substring of the other — §6.8's match is a literal
+substring (`DapperOrderHistoryReads.SubstringPattern`), and `.one` against `.one.b` would make the
+assertion pass or fail for reasons of spelling.
+
+The filter is **typed into the form and submitted**, not appended to the URL. §16.3 says the administrator
+*filters*; a query string assembled by the harness would exercise `[SupplyParameterFromQuery]` while
+skipping the form, the labels and the round trip.
+
+### Three things re-read from the server rather than from a DOM already on screen
+
+A stale document agrees with *"nothing changed"* without having been asked. So:
+
+- **the bystander's history** — nothing broadcasts a hide to another guest's circuit, and the page is
+  static SSR anyway;
+- **the till's bill** — through §11.3's closed-sitting lookup, because the administrator's browser has
+  been on that page since the close;
+- **`table_sitting.settled_total_amount`** — past every surface, because §6.8 changes a visibility flag
+  and §5.3 promises the stamped total is never rewritten. A hide that had reached the money would be a
+  defect no screen above could distinguish from correct behaviour, because all of them would agree.
+
+### Why no counter account, when scenarios 9 and 10 both made one
+
+There the role was load-bearing: §6.2 records who adjusted a price and §11.1 renders it, and §11.3 makes
+read-only unconditional for a counter and conditional for an administrator. Here the close is
+*arrangement* rather than subject — §6.8 refuses a hide on an open sitting, so this scenario needs a
+settled one and does not care who settled it. §3.7 admits administrators to `/counter`, and a staff account
+would add a sign-in and a forced password change this scenario never looks at.
+
+## The four product changes
+
+All additive, no CSS behind any of the new names, **nothing changes on screen**. Both `.razor` tag trees
+were walked and are balanced and unchanged in structure.
+
+**An `id` on each `section.panel`** — `#table-history-surface`, `#hidden-records-surface`. Every other
+surface the harness reads has one (`#table-order-surface`, `#counter-sitting-surface`,
+`#kitchen-board-surface`, `#table-display-surface`), and these two pages carry `p.status-success` and
+`p.status-error`, which are the same classes every surface in the application uses — a document-wide match
+would read whatever the layout happened to be saying. `#table-history-surface` also gives the enhanced-nav
+click on the Hide link a scoping root that is genuinely absent from every other page.
+
+**A class on each empty-list sentence** — `.history-none`, `.hidden-none`. Each was a `p.lede` among the
+page's other `p.lede`s, reachable only by position. On `HiddenRecords.razor` that one element carries two
+different sentences through a ternary, and the difference is load-bearing: *"Nothing hidden matches that"*
+says the filter excluded everything, while *"Nothing is hidden anywhere in the restaurant"* is the stronger
+claim and the one an unhide has to produce. The scenario asserts both, separately.
+
+Note also that `Orders.Count == 0` and *the page says it has nothing* are two claims, not one. A list that
+failed to render is also empty.
 
 ## Two harness decisions worth knowing about
 
-**The close is two calls.** `BeginCloseAsync` returns the prompt, `ConfirmCloseAsync` accepts it. A
-composite would settle the table before the scenario could read the prompt, and a settled sitting renders
-no prompt to go back for. Same reasoning that kept `SignInWithPasswordAsync` and
-`CompleteForcedPasswordChangeAsync` apart in Slice 12.
+**Two facts were deliberately not given fields.** §11.4 renders a hidden row's table label between a
+username and a timestamp in one sentence, and its line count as the second of two
+`span.hidden-record-note`s — so reaching either means splitting prose or indexing siblings. Both are
+asserted where they have elements of their own, on the guest's history page. A harness field that could
+only be filled by counting siblings starts lying the day a third note is added.
 
-**`AlreadyClosed` returns normally.** The sitting really is settled and the view really does flip; only
-`SittingNotFound` — a problem with no flip — is a failure. So `ConfirmCloseAsync` polls for the read-only
-note **before** the refusal, or a losing race would be reported as a fault.
+**The two `ol.hidden-events` lists are told apart by content, not position.** An expanded record draws the
+visibility log and the event log under the same class. The obvious separator is the heading above —
+`h3:has-text('Visibility log') + ol` works today, and `h3:has-text('The record') + ol` already does not,
+because a paragraph sits between them. The stable difference is structural: a stored event wraps its
+metadata in `div.hidden-event-head` because it has a sequence number to put beside the type, and a
+visibility event has no such wrapper. So every `li` is walked once and sorted by whether it contains that
+element — no `:has()`, no `:not()`, no sibling combinators, nothing for a selector engine to disagree
+about.
+
+## One new method on CounterJourneys
+
+`OpenSettledSittingAsync(page, sittingIdentifier, timeout)`. `OpenSittingAsync` finds a table on §11.3's
+**open**-sittings list and a settled table has left it, so this is by identifier — which the caller holds,
+because `OpenSittingAsync` returned it.
+
+It waits on the read-only note as **part of the barrier**, not as a bonus assertion: the route renders the
+identical component for an open sitting, so waiting only on the surface would return happily from a bill
+that had never been settled — and every caller is re-reading one *because* it is settled, to establish that
+something which happened elsewhere left it alone.
 
 ## Build/test checklist
 
 ```bash
 cd /home/kushal/src/dotnet/myrestaurant
 
-# 1. Two .razor files and four .cs files.
+# 1. Two .razor files, three new .cs files, three edited .cs files.
 dotnet build
 #    expect: all seven projects succeed, 0 errors
 
-# 2. Unchanged from Slice 12's baseline.
+# 2. Unchanged from Slice 13's baseline.
 dotnet test
 #    expect: total 971, failed 0, succeeded 956, skipped 15
-#    Scenario 10 moves from [Fact(Skip = ...)] to [Fact] + Assert.SkipUnless; xUnit counts both as
+#    Scenario 11 moves from [Fact(Skip = ...)] to [Fact] + Assert.SkipUnless; xUnit counts both as
 #    skipped, so with MYRESTAURANT_E2E unset every number is identical.
 
 # 3. The strict build — warnings are errors under ContinuousIntegrationBuild.
@@ -3203,59 +3267,62 @@ bash scripts/ci_local.sh --with-all
 
 # 4. The point of the slice.
 MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
-#    expect: total 15, failed 0, 13 passed, 2 skipped
-#    Scenario 10 adds roughly 25-30s and waits on no timer.
+#    expect: total 15, failed 0, 14 passed, 1 skipped
+#    Scenario 10 goes green on the ScreenText fix. Scenario 11 adds roughly 35-40s and waits on no timer.
+#    The one remaining skip is scenario 12.
 ```
 
-There is no .NET SDK in my sandbox; I have run none of this. What I did run, on every edited file:
-brace/paren/bracket balance **and a depth walk** (never negative, ends at zero) with strings and comments
-stripped; a CS4007 scan (no `await` inside any interpolation hole); a CS1620 scan confirming every
-additive operand inside every `string.Create(...)` is an interpolated string; the Razor tag-tree
-comparison above; an existence check of all **twenty-seven** selectors the new harness code depends on
-against the markup it targets; and the SHA-256 comparison of all seven pre-edit files.
+There is no .NET SDK in my sandbox; I have run none of this. What I did run:
+
+- **SHA-256** comparison of all six pre-edit files against the hashes `export.sh` recorded — all six matched;
+- brace/paren/bracket **balance and a depth walk** (never negative, ends at zero) with strings and comments
+  stripped, across every file in the test project;
+- a **CS4007** scan — no `await` inside any interpolation hole;
+- a **CS1620** scan — every additive operand inside every `string.Create(...)` is an interpolated string;
+- a **Razor tag-tree walk** of both edited components;
+- an **existence check of all 36 selectors** the two new journey classes depend on, against the markup they
+  target;
+- a check that **none of the four new names has a CSS rule anywhere**, so nothing changes on screen.
 
 ## If it goes red
 
 | Message begins | What it means |
 | --- | --- |
-| `The counter board has no open table labelled 'E2E Ten'…` | The guest's join never opened a sitting, or `/counter` refused the counter principal. §3.7 admits counter and administrator; a failed policy shows the access-denied panel and the message quotes the URL. |
-| `The browser is not on /account/change-password-required…` | §3.5's obligation (1) did not fire for a §3.7 account. A real defect — `CreateStaffAsync` writes `must_change_password` and `ObligationsMiddleware` must intercept the sign-in's own navigation. |
-| `Assert.NotNull` on `warning` | §5.3's pending-line warning is absent while a line is unfulfilled. That is the section's central requirement — a counter settling a bill without being told what has not arrived. |
-| `Assert.Equal() Failure: Expected 1, Actual 2` on `warning.LineCount` | The warning is counting portions rather than unfulfilled rows. Check `CounterSittingSummary.PendingLineCount`. |
-| `The till is not offering Close & settle…` | The sitting was already settled — an end-of-day pass (§5.4) or another till. Nothing else in this scenario closes anything, so this would be genuine. |
-| `Pressing Close & settle did not raise §11.3's confirmation.` | `#counter-close` did not land, or there is no circuit. The button sets one field and cannot be refused. |
-| `The close was refused and the sitting is still open…` | `CloseSittingOutcome.SittingNotFound`, with the till's own words quoted. |
-| `The sitting neither settled nor refused within 30s…` | Either the click never dispatched, or the §6.6 `FOR SHARE`/`FOR UPDATE` pair is genuinely contended — and nothing else here is writing. |
-| `Assert.Equal() Failure: Expected "Settled total", Actual "Running total"` | `closed_at` was not set, or the page did not re-read after the commit. |
-| `no §6.7 correction has been made, so no corrected total should be shown` | The stamped total and the live total diverged on their own, which §5.3 says cannot happen. The most serious thing this scenario can find. |
-| `Assert.Equal() Failure` on `settled.TableTotalText` but the header is right | The SQL view and the C# sum disagree — `sitting_bill` versus `_bill.Sum(…)`. |
-| `a settled sitting must offer the guest nothing to order` | §11.1's flip did not remove the ordering apparatus. The message names what is still on screen. |
-| `The guest's surface never flipped to §11.1's settled view…` | §9's `SittingClosed` never left the till's circuit, or the guest's is not listening. |
-| `Assert.Equal() Failure` on `row.SettledTotalAmount` | The stamped column disagrees with every screen. This is reading 7 and the only one that is not another rendering of the same query. |
-| `Assert.Null` on `ReadOpenSittingAsync` | `closed_at` was not set, so the table still has an open sitting and the next guest to scan would rejoin a settled one. |
-| `Assert.Single() Failure` on `floor.Settled` | The table is missing from §11.3's "Settled today" list, or is on it twice. |
+| `Assert.Equal() Failure: Expected "Settled total", Actual "SETTLED TOTAL"` | `ScreenText` did not take effect — check that `CounterJourneys.ReadSettledTillAsync` is calling `DeclaredAsync` for the label. |
+| `§11.1's totals list does not carry both 'Your total' and 'Table total'` | The same, on the second site: `TableOrderJourneys.ReadTotalsAsync` line ~794. |
+| `/table/history never rendered its own surface…` | Either the `id` did not land on `section.panel`, or the guest's cookie failed the §11.1 table policy — the message quotes the URL, and the access-denied panel is what a policy failure looks like. |
+| `The order at position N offers no Hide link…` | The list was read while a confirmation panel was open. §11.1 withholds the link from exactly that row. |
+| `The confirmation on screen would post order 'X' rather than Y` | §6.8's confirmation opened on the wrong row. A real defect, and the serious kind: there is no undo from the guest's account. |
+| `Hiding … was refused, so nothing was written` | One of §6.8's three refusals, quoted verbatim. `SittingStillOpen` would mean the close in step (c) did not commit. |
+| `Assert.Contains("Nothing here yet")` on `alphaAfter.EmptySentence` | The order is gone from the list but the page draws no sentence — which means the list failed to render rather than that the order was hidden. |
+| `Assert.Single()` on `bravoAfter.Orders` | The hide reached somebody else's history. §6.8 scopes it to one order and one owner. |
+| `Assert.Equal(2, afterHide.People.Count)` | The hide reached the till. §6.8: the order is "still on its sitting's bill". |
+| `Assert.Equal` on `row.SettledTotalAmount` | The hide reached the money. §5.3 says the stamped total is never rewritten, and this is the only reading that can tell. |
+| `Narrowing the hidden-records list to '…' never left '…'` | The GET form did not navigate. The one benign cause is two consecutive filters by the same username, which this scenario does not do. |
+| `The hidden-records filter came back holding '…'` | The server disagrees about what it was asked, so the list is answering a different question. |
+| `Assert.Empty` on `wrongOwner.Rows` | The username filter is not filtering — it returned another owner's hidden order. |
+| `There is no hidden order … in the list to expand` | The row left the list between the read and the expand, or the filter excludes it. |
+| `Assert.Equal("Hidden by the owner", onlyEvent.Description)` | The visibility log records the wrong event type, or more than one row exists for a single hide. |
+| `§11.4 must show the order's stored events under a hidden record` | The hide took the event log with it. ADR-0002 says the log outlives the state. |
+| `Assert.Contains("anywhere in the restaurant")` | The unfiltered list still holds something after the unhide, or the empty sentence chose the narrowed branch with no filter set. |
+| `Assert.Single()` on `restored.Orders` | The unhide did not restore visibility — `order_visibility_current` should now answer false for this order. |
 
 `RestaurantInstance.DiagnosticOutput` carries the web application's console tail if a page 500s.
 
 ## What is next
 
-Scenario **11** — a guest hides a closed order, it leaves their own history while staff and admin views
-are unchanged, an administrator filters the hidden-records view by username, and Unhide restores it. It
-inherits this slice's close directly: a hideable order is a *settled* one, so scenario 11's arrangement
-is scenario 10's ending. It will also meet `EnhancedNavigation` again, on an administrator following a
-filter link.
-
-Then **12** — a TOTP reset driving §3.5's pipeline through a forced password change *and* a forced
-re-enrollment, which inherits `CompleteForcedPasswordChangeAsync` and needs only the second obligation
-beside it.
+Scenario **12** — an administrator resets a TOTP-enrolled user, who then signs in with a password and is
+driven through §3.5's pipeline twice: a forced password change *and* a forced TOTP re-enrollment, landing
+home. It inherits `CompleteForcedPasswordChangeAsync` from Slice 12 and needs only the second obligation
+beside it, plus the passkey path hitting the same pipeline.
 
 Then the backup/restore drill, and M6 is done.
 
 ## The one-line why
 
-Every scenario before this one asserts on something that could be done again; this is the first whose
-subject is a one-way door, which is why it checks the number against the column it was stamped into
-rather than against another rendering of the same query.
+Every scenario before this one asserts that something happened; this is the first whose subject is a record
+that is still there, which makes its central claim a list of things that did **not** move — and the reason
+it needed a second guest, three server re-reads and a column read past every screen to say anything at all.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3394,15 +3461,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  353.6 KiB (362092 bytes)
-  Last modified:         2026-08-04 05:13:46.000000000 -0400
+  Size:                  361.7 KiB (370415 bytes)
+  Last modified:         2026-08-04 13:55:32.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 30791595
+  Inode:                 31147987
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               bf3bf79fd06ba15c5185ddcd7507620d7d38e63ed103b82d3c69d1f0ca758a3f
-  Last git commit:       fab65f0 2026-08-04 05:16:36 -0400 add claude changes
+  SHA-256:               697a28a7e76b1a573d72890b0ec9891866af8e249edd9f4a65a6eeecb3b627f2
+  Last git commit:       0c5e86d 2026-08-04 14:02:17 -0400 add claude changes
 
 --- CONTENT ---
 # Build progress
@@ -8730,6 +8797,122 @@ from `dump.txt`, confirming both `.razor` edits leave the tag tree **identical**
 twenty-seven selectors the new harness code depends on against the markup it targets; and a SHA-256
 comparison of all seven pre-edit files against the hashes `export.sh` recorded, so every unchanged byte is
 known to match the working tree.
+
+### M6 Slice 14 — §16.3 scenario 11, and a red test that was reading the stylesheet
+
+Two things, and they belong in one slice because the second one was hiding inside the first.
+
+**The red test.** Slice 13 shipped scenario 10 with `Assert.Equal("Settled total", settled.TotalLabel)`.
+It went red on the first character: `Expected "Settled total"`, `Actual "SETTLED TOTAL"`. Playwright's
+`InnerTextAsync` returns the browser's own `innerText`, which is defined in terms of layout and therefore
+has `text-transform` already applied — and `CounterSitting.razor` upcases
+`.counter-detail-total-label` for the eyebrow treatment. The label the component wrote really is
+`Settled total`; the harness was reading the presentation layer.
+
+Forty lines further on, the same mistake was waiting. `TableOrderJourneys.ReadTotalsAsync` reads each
+`<dt>` of §11.1's totals list with `InnerTextAsync` and looks the result up in a dictionary keyed on
+`"Your total"` and `"Table total"`, and `app.css` upcases `.order-totals dt`. Both lookups would have
+missed and the method would have thrown *"§11.1's totals list does not carry both 'Your total' and 'Table
+total'"* about a totals list that was entirely correct. Fixing only the first failure would have moved the
+red rather than cleared it.
+
+The whole surface was swept before either fix: 24 `text-transform` declarations in `src/` against 66
+`InnerTextAsync` calls in the harness. Those two are the only collisions. `.eyebrow`, `.chip-role`,
+`.manage-label`, `.hidden-facts dt`, `.event-stream-badge`, `.restaurant-clock-label` and the rest are
+never read by the harness, and `p.pairing-code`, `p.totp-secret` and `p.staff-temporary-password` carry no
+transform at all.
+
+`Harness/ScreenText.cs` is the fix: `DeclaredAsync` reads `TextContentAsync` and collapses whitespace runs,
+which makes it exactly `InnerTextAsync` minus the transform. It is deliberately **not** a blanket
+replacement. The distinction is what the comparison is about — a *label* read is a claim about which branch
+a component took, and casing is noise in it; a read of *content* (a table's label, a person's name, an
+amount through `MoneyText.Format`) is data no rule here transforms. Two sites changed; sixty-odd were left
+alone.
+
+**Scenario 11.** A guest hides a settled order, it leaves their own history, and an administrator finds it
+by username and puts it back.
+
+The second guest is what makes the central assertion mean anything. With one guest, *"their history is
+empty afterwards"* is satisfied equally well by a page that stopped rendering, by a reader that started
+returning nothing, and by a hide that hid the sitting — and all three are catastrophic. A bystander whose
+own history is unchanged across the same write separates *this order was hidden* from *history broke*, and
+costs one registration rather than the second sitting a per-order claim would otherwise need.
+
+Four figures, all derived from the prices the scenario created and all different from one another: the
+hider's share (`soup + 3 × pie`), the bystander's (one soup), the table's stamped total, and the pie's unit
+price. A history page showing the table's total where a person's belongs cannot pass by coincidence.
+
+Both identifiers come off links the surfaces rendered — `?hide=` on the guest's Hide link, `?record=` on
+administration's expand link — the same recovery `AdministrationJourneys` already does from a
+"Manage this…" link. *"A row appeared"* is satisfied by any hidden order in the restaurant; that the row
+administration found **is** the order this guest hid is a claim about those two identifiers agreeing.
+
+The filter is asserted in both directions, and the negative one is not decoration: a filter that had
+quietly stopped filtering would return this row for every username there is and would satisfy the positive
+case perfectly.
+
+Three product-facing facts are re-read from the server rather than from a DOM already on screen, because a
+stale document agrees with *"nothing changed"* without having been asked: the bystander's history, the
+till's bill (through §11.3's closed-sitting lookup, since a settled table has left the open list), and
+`table_sitting.settled_total_amount` past every surface.
+
+**No counter account**, and the contrast with scenarios 9 and 10 is the reason to say so. There the role
+was load-bearing — §6.2 records who adjusted a price and §11.1 renders it; §11.3 makes read-only
+unconditional for a counter and conditional for an administrator. Here the close is arrangement rather than
+subject: §6.8 refuses a hide on an open sitting, so this needs a settled one and does not care who settled
+it.
+
+**Four additive markup changes, no CSS behind any of the new names, nothing changes on screen.**
+`TableHistory.razor` and `HiddenRecords.razor` each get an `id` on their `section.panel` — every other
+surface in the harness has one, and the two status paragraphs are `p.status-success` and `p.status-error`,
+which a document-wide match would confuse with whatever the layout was saying. Each also gets a class on
+its empty-list sentence, which was otherwise a `p.lede` among the page's other `p.lede`s and reachable only
+by position. On `HiddenRecords.razor` that one element carries two different sentences through a ternary,
+and the difference is load-bearing: *"nothing matches that filter"* and *"nothing is hidden anywhere in the
+restaurant"* are different facts, and only the second says the restaurant is back where it started.
+
+Two facts were deliberately **not** given fields. §11.4 renders the hidden row's table label between a
+username and a timestamp in one sentence, and its line count as the second of two
+`span.hidden-record-note`s — so reaching either means splitting prose or indexing siblings. Both are
+asserted where they have elements of their own, on the guest's history page. A harness field that could
+only be filled by counting siblings starts lying the day a third note is added.
+
+The two `ol.hidden-events` lists an expanded record draws are told apart by what their entries *contain*
+rather than by where they sit: a stored event wraps its metadata in `div.hidden-event-head` because it has
+a sequence number to put beside the type, and a visibility event has no such wrapper. The heading-sibling
+route works today and stops working when a paragraph is added.
+
+`CounterJourneys.OpenSettledSittingAsync` is new and waits on the read-only note as part of its barrier,
+not as a bonus: the route renders the identical component for an open sitting, so waiting only on the
+surface would return happily from a bill that had never been settled — and every caller is re-reading one
+*because* it is settled.
+
+```bash
+dotnet build
+#    expect: all seven projects succeed, 0 errors
+
+dotnet test
+#    expect: total 971, failed 0, succeeded 956, skipped 15 — unchanged from Slice 13.
+#    Scenario 11 moves from [Fact(Skip)] to [Fact] + Assert.SkipUnless; xUnit counts both as skipped,
+#    so with MYRESTAURANT_E2E unset every number is identical.
+
+bash scripts/ci_local.sh --with-all
+
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: total 15, failed 0, 14 passed, 1 skipped
+#    Scenario 10 goes green on the ScreenText fix; scenario 11 adds roughly 35-40s — a /setup wizard,
+#    two menu items, a table, two guest registrations with real WebAuthn attestations, two sends, a
+#    close, a hide, two filters, an expand and an unhide, and no waiting on any timer.
+```
+
+No .NET SDK in the sandbox, so none of this has been run here. What was run: SHA-256 comparison of all six
+pre-edit files against the hashes `export.sh` recorded in `dump.txt` — all six matched, so every byte not
+touched is known identical to the working tree; brace/paren/bracket balance and a depth walk (never
+negative, ends at zero) with strings and comments stripped, across every file in the test project; a CS4007
+scan (no `await` inside any interpolation hole); a CS1620 scan confirming every additive operand inside
+every `string.Create(...)` is an interpolated string; a Razor tag-tree walk of both edited components; an
+existence check of all **36** selectors the two new journey classes depend on against the markup they
+target; and a check that none of the four new names has a CSS rule anywhere, so nothing changes on screen.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -31317,15 +31500,15 @@ else
   File name:             HiddenRecords.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Administration/HiddenRecords.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Administration/HiddenRecords.razor
-  Size:                  36.0 KiB (36894 bytes)
-  Last modified:         2026-07-28 20:25:38.000000000 -0400
+  Size:                  36.1 KiB (36934 bytes)
+  Last modified:         2026-08-04 13:48:23.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 26814443
+  Inode:                 31147975
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               9d46239e73afa3410592aa94a920df9a4f1b049f6d5b74e2f3fb7ac4cd133d65
-  Last git commit:       d1c3566 2026-07-28 20:54:09 -0400 add claude changes
+  SHA-256:               138a4c79fb95718133fdf276e5a774afc8fd039d05005c425e11c8882f314cd0
+  Last git commit:       0c5e86d 2026-08-04 14:02:17 -0400 add claude changes
 
 --- CONTENT ---
 @page "/administration/hidden-records"
@@ -31369,7 +31552,7 @@ else
 
 <PageTitle>Administration — hidden records</PageTitle>
 
-<section class="panel">
+<section id="hidden-records-surface" class="panel">
     <div class="admin-header">
         <div>
             <p class="eyebrow">Administration</p>
@@ -31452,7 +31635,7 @@ else
     }
     else if (_hidden.Count == 0)
     {
-        <p class="lede">
+        <p class="lede hidden-none">
             @(_filter.IsNarrowed
                 ? "Nothing hidden matches that. Widen the filter, or show everything."
                 : "Nothing is hidden anywhere in the restaurant.")
@@ -39915,15 +40098,15 @@ else
   File name:             TableHistory.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Table/TableHistory.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Table/TableHistory.razor
-  Size:                  16.5 KiB (16907 bytes)
-  Last modified:         2026-07-28 15:26:01.000000000 -0400
+  Size:                  16.5 KiB (16947 bytes)
+  Last modified:         2026-08-04 13:48:23.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 26706696
+  Inode:                 31147973
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               44a3ddd0b8eb190765aa81f365f7dcc1c1d48f1d52323dc776e973be030d074d
-  Last git commit:       35d7749 2026-07-28 16:07:14 -0400 add claude changes
+  SHA-256:               3391be78ccffe581462185ebaa5afc50b8a255f48477cfe02c00f58fff8e1bd2
+  Last git commit:       0c5e86d 2026-08-04 14:02:17 -0400 add claude changes
 
 --- CONTENT ---
 @page "/table/history"
@@ -39958,7 +40141,7 @@ else
 
 <PageTitle>Your order history</PageTitle>
 
-<section class="panel">
+<section id="table-history-surface" class="panel">
     <div class="history-header">
         <div>
             <p class="eyebrow">Your account</p>
@@ -39990,7 +40173,7 @@ else
     }
     else if (_entries.Count == 0)
     {
-        <p class="lede">
+        <p class="lede history-none">
             Nothing here yet. An order joins your history once the counter has settled the table — while a
             meal is still going, it lives on <a href="/table">your table</a> instead.
         </p>
@@ -65535,15 +65718,15 @@ public sealed class UuidV7IdentifierFactoryTests
   File name:             EndToEndScenarios.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
-  Size:                  106.4 KiB (108955 bytes)
-  Last modified:         2026-08-04 05:13:46.000000000 -0400
+  Size:                  125.0 KiB (128013 bytes)
+  Last modified:         2026-08-04 13:53:49.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 30791588
+  Inode:                 31147978
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               57bfd979b9c8321d10a365622ad233eeb0dfbbe95f9614608aa8ecd3a54c8689
-  Last git commit:       fab65f0 2026-08-04 05:16:36 -0400 add claude changes
+  SHA-256:               cbe912d43aad0865d79bec5967f9ab810c8f0015f001804905e4cd12856b5921
+  Last git commit:       0c5e86d 2026-08-04 14:02:17 -0400 add claude changes
 
 --- CONTENT ---
 using System.Security.Cryptography;
@@ -65562,7 +65745,7 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
 /// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// <para>Thirteen are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
+/// <para>Fourteen are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
 /// WebAuthn attestation and a real TOTP confirmation), <b>13</b> (a passkey sign-in of a TOTP-enrolled
 /// person must not be challenged for a code) and <b>14</b> (the join-token window arithmetic as a guest
 /// experiences it) — chosen because between them they exercise the whole harness. M6 Slice 3 adds
@@ -65593,7 +65776,11 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// settles anyway, and the table becomes read-only on three screens at once while seven independent
 /// computations of one total agree) — the first whose subject is a write that cannot be undone, and the
 /// only one that asserts a number against the column it was stamped into rather than against another
-/// rendering of the same query.</para>
+/// rendering of the same query. M6 Slice 14 adds <b>11</b> (a guest hides a settled order, it leaves their
+/// own history while the till's bill and another guest's history are untouched, and an administrator
+/// finds it by username and puts it back) — the first scenario whose subject is a record that is
+/// <em>still there</em>, and therefore the first whose central assertion is about what did
+/// <em>not</em> change.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -65686,6 +65873,21 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     /// pies every wrong sum is a different number from the right one.</para>
     /// </summary>
     private const int UndeliveredLineQuantity = 2;
+
+    /// <summary>
+    /// How many pies §16.3 scenario 11's hider orders, beside one soup.
+    ///
+    /// <para>Three, and the number's only job is to make four amounts on four screens mutually
+    /// distinguishable. The hider's own share is <c>soup + 3 × pie</c>, the bystander's is one soup, and
+    /// the table's stamped total is their sum — so the figure §11.1's history page shows the hider cannot
+    /// be confused with the table's total, with the other guest's, or with any unit price. A hide that
+    /// quietly narrowed a bill, or a history that quietly showed the table's figure instead of the
+    /// person's, would be a different number here rather than the same one.</para>
+    /// </summary>
+    private const int HiddenOrderPieQuantity = 3;
+
+    /// <summary>How many lines §16.3 scenario 11's hider ends up with: the soup and the pies.</summary>
+    private const int HiddenOrderLineCount = 2;
 
     private readonly RestaurantHarness _harness;
 
@@ -67143,11 +67345,323 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
     // -------------------------------------------------------------------------------------------
 
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Guest_HidesClosedOrder_AdminCanUnhide()
+    // -------------------------------------------------------------------------------------------
+    // 11. Guest hides a closed order → gone from own history (staff/admin unchanged); admin
+    //     filters the hidden-records view by username → Unhide restores it.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Guest_HidesClosedOrder_AdminCanUnhide()
     {
-        // 11. Guest hides a closed order → gone from own history (staff/admin unchanged); admin
-        //     filters the hidden-records view by username → Unhide restores it.
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Eleven";
+
+        // Two guests, and neither username is a substring of the other. §6.8's filter is a literal
+        // substring match (DapperOrderHistoryReads.SubstringPattern), so a pair like ".one" and ".one.b"
+        // would make "filtering by the bystander finds nothing" pass or fail for reasons of spelling.
+        GuestAccount hider = new("e2e.guest.eleven.alpha", "Eleven Alpha");
+        GuestAccount bystander = new("e2e.guest.eleven.bravo", "Eleven Bravo");
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+
+        // (a) An administrator, two things on the menu, a table.
+        //
+        // No counter account this time, and the contrast with scenarios 9 and 10 is the reason to say so.
+        // There the role was load-bearing — §6.2 records who adjusted a price and §11.1 renders it; §11.3
+        // makes read-only unconditional for a counter and conditional for an administrator. Here the
+        // close is arrangement rather than subject: §6.8 refuses a hide on an open sitting, so this
+        // scenario needs a settled one and does not care who settled it. §3.7 admits administrators to
+        // /counter, and standing up a staff account would add a sign-in and a forced password change to a
+        // scenario that asserts on neither.
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        MenuItemOnTheMenu soup =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Soup of the day", 6.50m);
+        MenuItemOnTheMenu pie =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Steak pie", 14.00m);
+
+        Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
+        byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+
+        // Three figures, all derived from the prices this scenario created, and all different from one
+        // another. The whole point of the third is that a page showing the table's total where a person's
+        // belongs cannot pass by coincidence.
+        decimal hiderTotal = soup.PriceAmount + (HiddenOrderPieQuantity * pie.PriceAmount);
+        decimal bystanderTotal = soup.PriceAmount;
+
+        string expectedHiderTotal = Money(hiderTotal);
+        string expectedBystanderTotal = Money(bystanderTotal);
+        string expectedTableTotal = Money(hiderTotal + bystanderTotal);
+
+        // (b) Two guests at one table with two different bills.
+        //
+        // <b>The second guest is what makes the central assertion mean anything.</b> §6.8's promise is
+        // that a hide removes one order from one person's own view and touches nothing else. With a
+        // single guest, "their history is empty afterwards" is satisfied equally well by a page that
+        // stopped rendering, by a reader that started returning nothing, and by a hide that hid the
+        // sitting — and all three are catastrophic. A bystander whose own history is unchanged across the
+        // same write separates "this order was hidden" from "history broke", and costs one registration
+        // rather than the second sitting a per-order claim would otherwise need.
+        IPage alpha = await SeatGuestAsync(
+            instance, tableIdentifier, joinSecret, hider, cancellationToken);
+
+        await TableOrderJourneys.StageAsync(alpha, soup, 1);
+        await TableOrderJourneys.StageAsync(alpha, pie, HiddenOrderPieQuantity);
+        await TableOrderJourneys.SendAsync(alpha);
+
+        await TableOrderJourneys.WaitForCommittedLinesAsync(
+            alpha,
+            lines => lines.Count == HiddenOrderLineCount,
+            LiveUpdatePatience,
+            "both of the hider's sent lines",
+            cancellationToken);
+
+        IPage bravo = await SeatGuestAsync(
+            instance, tableIdentifier, joinSecret, bystander, cancellationToken);
+
+        await TableOrderJourneys.StageAsync(bravo, soup, 1);
+        await TableOrderJourneys.SendAsync(bravo);
+
+        await TableOrderJourneys.WaitForCommittedLinesAsync(
+            bravo,
+            lines => lines.Count == 1,
+            LiveUpdatePatience,
+            "the bystander's one sent line",
+            cancellationToken);
+
+        // (c) The close, because §6.8 refuses a hide while the sitting is open — "that table is still
+        // open, so its order is not history yet". Nothing is fulfilled first: §5.3's pending-line warning
+        // is scenario 10's subject and a close over undelivered food is exactly as valid here.
+        Guid sittingIdentifier =
+            await CounterJourneys.OpenSittingAsync(administrator, tableLabel, InteractivityPatience);
+
+        CounterBill beforeClose = await CounterJourneys.ReadBillAsync(administrator);
+
+        Assert.Equal(2, beforeClose.People.Count);
+        Assert.Equal(expectedTableTotal, beforeClose.RunningTotalText);
+
+        await CounterJourneys.BeginCloseAsync(administrator);
+
+        SettledTill settled = await CounterJourneys.ConfirmCloseAsync(administrator, InteractivityPatience);
+
+        Assert.Equal("Settled total", settled.TotalLabel);
+        Assert.Equal(expectedTableTotal, settled.TotalText);
+
+        // (d) Both histories, before anything is hidden. §11.1: "the guest's own past orders at this
+        // restaurant — cross-member history is never shown", so each of these lists holds exactly one
+        // order and it is that person's.
+        await HistoryJourneys.OpenAsync(alpha, InteractivityPatience);
+
+        GuestHistory alphaBefore = await HistoryJourneys.ReadAsync(alpha);
+        HistoryOrder theirs = Assert.Single(alphaBefore.Orders);
+
+        Assert.Equal(tableLabel, theirs.TableLabel);
+        Assert.Equal(expectedHiderTotal, theirs.PersonTotalText);
+        Assert.Equal(HiddenOrderLineCount, theirs.LineCount);
+
+        // The pies at three, on the line the history renders. §11.1 shows the projection rather than the
+        // log, so this is the extension — and a history that had started showing unit prices would read
+        // 14.00 against a quantity of three.
+        HistoryLine pieInHistory =
+            Assert.Single(theirs.Lines, line => line.Name == pie.Name);
+
+        Assert.Equal(HiddenOrderPieQuantity, pieInHistory.Quantity);
+        Assert.Equal(Money(pie.PriceAmount * HiddenOrderPieQuantity), pieInHistory.LineTotalText);
+
+        await HistoryJourneys.OpenAsync(bravo, InteractivityPatience);
+
+        GuestHistory bravoBefore = await HistoryJourneys.ReadAsync(bravo);
+        HistoryOrder bystanderOrder = Assert.Single(bravoBefore.Orders);
+
+        Assert.Equal(expectedBystanderTotal, bystanderOrder.PersonTotalText);
+        Assert.NotEqual(theirs.GuestOrderIdentifier, bystanderOrder.GuestOrderIdentifier);
+
+        // (e) The hide, confirmed the way §6.8 requires: not a browser dialog but a step that "states
+        // plainly that this cannot be undone from the guest's account".
+        await HistoryJourneys.HideAsync(alpha, theirs.GuestOrderIdentifier, InteractivityPatience);
+
+        GuestHistory alphaAfter = await HistoryJourneys.ReadAsync(alpha);
+
+        Assert.Empty(alphaAfter.Orders);
+
+        // Gone <em>and</em> the page saying it has nothing, which are two claims. A list that failed to
+        // render is also empty, and §11.1 draws this sentence only when the reader came back with
+        // nothing — so its absence beside an empty list would mean the page broke rather than that the
+        // order was hidden.
+        Assert.NotNull(alphaAfter.EmptySentence);
+        Assert.Contains("Nothing here yet", alphaAfter.EmptySentence!, StringComparison.Ordinal);
+
+        Assert.NotNull(alphaAfter.Notice);
+        Assert.Contains("a manager can restore it", alphaAfter.Notice!, StringComparison.Ordinal);
+
+        // (f) Nobody else's history moved. Re-read from the server rather than from the DOM the
+        // bystander's browser was already holding: nothing broadcasts a hide to another guest's circuit,
+        // and this page is static SSR anyway, so a stale document would agree with this assertion without
+        // having been asked.
+        await HistoryJourneys.OpenAsync(bravo, InteractivityPatience);
+
+        GuestHistory bravoAfter = await HistoryJourneys.ReadAsync(bravo);
+        HistoryOrder untouched = Assert.Single(bravoAfter.Orders);
+
+        Assert.Equal(bystanderOrder.GuestOrderIdentifier, untouched.GuestOrderIdentifier);
+        Assert.Equal(expectedBystanderTotal, untouched.PersonTotalText);
+
+        // (g) §16.3's "staff/admin unchanged", which is §6.8's own sentence from the other end: the order
+        // is "still on its sitting's bill, still in the kitchen's and the counter's records, and still in
+        // the settled total". Re-opened by identifier so the bill is a fresh server read — §11.3's
+        // closed-sitting lookup — because the administrator's browser has been on that page since the
+        // close and a stale DOM would pass this without being asked either.
+        await CounterJourneys.OpenSettledSittingAsync(
+            administrator, sittingIdentifier, InteractivityPatience);
+
+        CounterBill afterHide = await CounterJourneys.ReadBillAsync(administrator);
+
+        Assert.Equal(2, afterHide.People.Count);
+        Assert.Equal(expectedTableTotal, afterHide.RunningTotalText);
+
+        CounterBillEntry hidersBill =
+            Assert.Single(afterHide.People, entry => entry.BillName == hider.DisplayName);
+
+        Assert.Equal(expectedHiderTotal, hidersBill.PersonTotalText);
+        Assert.Equal(HiddenOrderLineCount, hidersBill.Lines.Count);
+
+        // The stamped column too, past every surface. §6.8 changes a visibility flag and §5.3 promises the
+        // settled total is never rewritten; a hide that had reached the money would be a defect no screen
+        // above could distinguish from correct behaviour, because all of them would agree.
+        SettledSitting? row =
+            await instance.ReadSettledSittingAsync(sittingIdentifier, cancellationToken);
+
+        Assert.NotNull(row);
+        Assert.Equal(hiderTotal + bystanderTotal, row!.SettledTotalAmount);
+
+        // (h) §11.4's hidden-records view, which §6.8 calls the only way anyone can find a hidden order
+        // again. Unfiltered first, because §11.4 says administration starts complete and narrows "only on
+        // explicit request".
+        await HiddenRecordJourneys.OpenAsync(administrator, InteractivityPatience);
+
+        HiddenRecordList everything = await HiddenRecordJourneys.ReadAsync(administrator);
+
+        Assert.False(
+            everything.IsNarrowed,
+            "§11.4's view must open unfiltered: " + HiddenRecordJourneys.Describe(everything));
+
+        HiddenRecordRow found = Assert.Single(everything.Rows);
+
+        // The identifier, and this is the assertion the whole apparatus exists for. "A row appeared" is
+        // satisfied by any hidden order in the restaurant; that the row administration found is the order
+        // this guest hid is a claim about two identifiers, both read off links the surfaces rendered.
+        Assert.Equal(theirs.GuestOrderIdentifier, found.GuestOrderIdentifier);
+        Assert.Equal(sittingIdentifier, found.SittingIdentifier);
+        Assert.Equal(hider.Username, found.Username);
+        Assert.Equal(hider.DisplayName, found.OwnerName);
+        Assert.Equal(expectedHiderTotal, found.PersonTotalText);
+
+        // (i) §6.8's username filter, in both directions. One of the two is the assertion §16.3 names;
+        // the other is what stops it being vacuous — a filter that had quietly stopped filtering would
+        // return this row for every username there is, and would satisfy the positive case perfectly.
+        await HiddenRecordJourneys.FilterByUsernameAsync(
+            administrator, bystander.Username, InteractivityPatience);
+
+        HiddenRecordList wrongOwner = await HiddenRecordJourneys.ReadAsync(administrator);
+
+        Assert.Empty(wrongOwner.Rows);
+        Assert.True(
+            wrongOwner.IsNarrowed,
+            "the list must know it is filtered: " + HiddenRecordJourneys.Describe(wrongOwner));
+
+        Assert.NotNull(wrongOwner.EmptySentence);
+        Assert.Contains("matches that", wrongOwner.EmptySentence!, StringComparison.Ordinal);
+
+        await HiddenRecordJourneys.FilterByUsernameAsync(
+            administrator, hider.Username, InteractivityPatience);
+
+        HiddenRecordList rightOwner = await HiddenRecordJourneys.ReadAsync(administrator);
+        HiddenRecordRow filtered = Assert.Single(rightOwner.Rows);
+
+        Assert.Equal(theirs.GuestOrderIdentifier, filtered.GuestOrderIdentifier);
+
+        // (j) The complete record §6.8 requires the row to expand to: "full event log, visibility log,
+        // sitting context, unprojected".
+        HiddenRecordDetail detail = await HiddenRecordJourneys.ExpandAsync(
+            administrator, theirs.GuestOrderIdentifier, InteractivityPatience);
+
+        HiddenVisibilityEntry onlyEvent = Assert.Single(detail.VisibilityLog);
+
+        Assert.Equal("Hidden by the owner", onlyEvent.Description);
+
+        // Who hid it, which is the one place §6.8's actor is nameable. The stored word is "hidden" for
+        // both the guest's act and, by symmetry with "unhidden", carries no actor of its own — so a
+        // surface that had recorded the wrong person here would read identically.
+        Assert.Contains(hider.DisplayName, onlyEvent.ActorAndTime, StringComparison.Ordinal);
+
+        // The order's own history survived being hidden. §6.8 hides a record from one view; ADR-0002 says
+        // the log outlives the state, and a hide that had taken the events with it would leave an
+        // administrator holding the one screen that is supposed to be able to answer for it and nothing
+        // to answer with.
+        Assert.True(
+            detail.EventCount >= 1,
+            "§11.4 must show the order's stored events under a hidden record; the visibility log holds "
+                + HiddenRecordJourneys.DescribeVisibilityLog(detail.VisibilityLog));
+
+        Assert.True(detail.OffersUnhide);
+
+        // (k) The unhide. The row leaves the list, which is what makes the button's effect visible.
+        await HiddenRecordJourneys.UnhideAsync(administrator, InteractivityPatience);
+
+        HiddenRecordList afterUnhide = await HiddenRecordJourneys.ReadAsync(administrator);
+
+        Assert.Empty(afterUnhide.Rows);
+        Assert.NotNull(afterUnhide.Notice);
+        Assert.Contains("back on its owner's history", afterUnhide.Notice!, StringComparison.Ordinal);
+
+        // Still filtered, because §11.4 redirects back to the same question it was asked — so the sentence
+        // above is the narrowed one. The stronger claim needs the filter cleared, and it is worth making
+        // separately: "nothing matches this username" and "nothing is hidden anywhere" are different
+        // facts, and only the second one says the restaurant is back where it started.
+        Assert.True(afterUnhide.IsNarrowed);
+
+        await HiddenRecordJourneys.OpenAsync(administrator, InteractivityPatience);
+
+        HiddenRecordList clean = await HiddenRecordJourneys.ReadAsync(administrator);
+
+        Assert.Empty(clean.Rows);
+        Assert.False(clean.IsNarrowed);
+        Assert.NotNull(clean.EmptySentence);
+        Assert.Contains(
+            "anywhere in the restaurant", clean.EmptySentence!, StringComparison.Ordinal);
+
+        // (l) And back on the owner's history, whole. §6.8's "unhidden" row is now the latest visibility
+        // event, so order_visibility_current answers false and the reader stops excluding it — the same
+        // query that omitted it four steps ago, on the same person, with a different answer.
+        await HistoryJourneys.OpenAsync(alpha, InteractivityPatience);
+
+        GuestHistory restored = await HistoryJourneys.ReadAsync(alpha);
+        HistoryOrder back = Assert.Single(restored.Orders);
+
+        Assert.Equal(theirs.GuestOrderIdentifier, back.GuestOrderIdentifier);
+        Assert.Equal(tableLabel, back.TableLabel);
+        Assert.Equal(expectedHiderTotal, back.PersonTotalText);
+        Assert.Equal(HiddenOrderLineCount, back.LineCount);
+
+        // Restored rather than merely listed: the lines are the ones that were there before, at the
+        // quantities they were at. A visibility flag is not supposed to be able to touch any of this, and
+        // this is the assertion that says so.
+        HistoryLine pieRestored = Assert.Single(back.Lines, line => line.Name == pie.Name);
+
+        Assert.Equal(HiddenOrderPieQuantity, pieRestored.Quantity);
+        Assert.Equal(Money(pie.PriceAmount * HiddenOrderPieQuantity), pieRestored.LineTotalText);
+
+        // Nobody else's history moved across the unhide either, for the same reason it mattered across the
+        // hide — one is a claim about a write and this is a claim about its inverse.
+        await HistoryJourneys.OpenAsync(bravo, InteractivityPatience);
+
+        GuestHistory bravoFinal = await HistoryJourneys.ReadAsync(bravo);
+        HistoryOrder stillOne = Assert.Single(bravoFinal.Orders);
+
+        Assert.Equal(bystanderOrder.GuestOrderIdentifier, stillOne.GuestOrderIdentifier);
     }
 
     [Fact(Skip = PendingHarnessExtension)]
@@ -68454,15 +68968,15 @@ internal static class ContainerEngineDiscovery
   File name:             CounterJourneys.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs
-  Size:                  51.4 KiB (52662 bytes)
-  Last modified:         2026-08-04 05:13:46.000000000 -0400
+  Size:                  54.8 KiB (56078 bytes)
+  Last modified:         2026-08-04 13:49:21.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 30791591
+  Inode:                 31147983
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               42e62189bd96fe35f2a189b7abe136e74a6ba08bd34941a54b28fa10baa3ce78
-  Last git commit:       fab65f0 2026-08-04 05:16:36 -0400 add claude changes
+  SHA-256:               82af31a761906178ff5017e81ec93acf723c80bdad229647687661a7a89a8b9c
+  Last git commit:       0c5e86d 2026-08-04 14:02:17 -0400 add claude changes
 
 --- CONTENT ---
 using System.Globalization;
@@ -68755,6 +69269,57 @@ internal static class CounterJourneys
                 $"The counter board has no open table labelled '{tableLabel}'. §5.1 opens a sitting on"
                 + $" the first join and §11.3 lists every open one, so either nobody has joined that"
                 + $" table or it has already been settled. What the board shows: {board}."));
+    }
+
+    /// <summary>
+    /// Re-opens a sitting that has already been settled — §11.3's "closed-sitting lookup (read-only)",
+    /// which is this same page rather than a second one — and returns once a circuit is behind it and
+    /// the read-only note is on screen.
+    ///
+    /// <para><b>By identifier rather than off the board, and that is forced.</b>
+    /// <see cref="OpenSittingAsync"/> finds a table on §11.3's open-sittings list, and a settled table
+    /// has left it; the "Settled today" list links to the sitting but is bounded to the day and ordered
+    /// by close time, which makes it a way of finding <em>a</em> settled sitting rather than a named one.
+    /// A caller that has just closed a bill holds the identifier <see cref="OpenSittingAsync"/> returned,
+    /// and that is the thing it means.</para>
+    ///
+    /// <para><b>The read-only note is part of the barrier, not a bonus assertion.</b> This route renders
+    /// the identical component for an open sitting, so waiting only on the surface would return happily
+    /// from a page that had not been settled at all — and every caller here is re-reading a bill
+    /// <em>because</em> it is settled, to establish that something which happened elsewhere left it
+    /// alone. A sitting that is still open is a different scenario failing quietly.</para>
+    /// </summary>
+    internal static async Task OpenSettledSittingAsync(
+        IPage page,
+        Guid sittingIdentifier,
+        TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(PathFor(sittingIdentifier));
+        await WaitForLiveSittingAsync(page, timeout);
+
+        try
+        {
+            await page.Locator(ReadOnlyNoteSelector).First.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Visible,
+                Timeout = (float)timeout.TotalMilliseconds,
+            });
+        }
+        catch (PlaywrightException exception)
+        {
+            string settle = await DescribeSettleSectionAsync(page);
+
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The till opened sitting {sittingIdentifier:D} but does not say it is settled."
+                    + $" §11.3 renders the read-only note from !_sitting.IsOpen — that is, from"
+                    + $" closed_at being set on the row — so either this sitting is still open or the"
+                    + $" identifier names a different one. {settle}"),
+                exception);
+        }
     }
 
     /// <summary>
@@ -69111,7 +69676,12 @@ internal static class CounterJourneys
         ILocator notice = page.Locator(NoticeSelector);
 
         return new SettledTill(
-            (await page.Locator(TotalLabelSelector).First.InnerTextAsync()).Trim(),
+            // The label alone goes through ScreenText: .counter-detail-total-label is upcased for the
+            // eyebrow treatment, and InnerTextAsync returns rendered text with text-transform already
+            // applied — so a scenario comparing against the phrase the component chose reads
+            // "SETTLED TOTAL" and fails on the stylesheet. Every other read below is content that no
+            // rule in this application transforms.
+            await ScreenText.DeclaredAsync(page.Locator(TotalLabelSelector).First),
             (await page.Locator(TotalAmountSelector).First.InnerTextAsync()).Trim(),
             (await page.Locator(SettlePanelTotalSelector).First.InnerTextAsync()).Trim(),
             (await page.Locator(HeaderMetaSelector).First.InnerTextAsync()).Trim(),
@@ -69547,6 +70117,13 @@ internal static class CounterJourneys
     /// under enhanced navigation the address bar can be ahead of the document, so a scenario that means
     /// to cross-check which sitting it opened deserves to be told when the URL is not one at all.
     /// </summary>
+    /// <summary>
+    /// A sitting's own URL at the till. The inverse of <see cref="SittingIdentifierFrom"/>, and beside it
+    /// so the prefix is written once.
+    /// </summary>
+    private static string PathFor(Guid sittingIdentifier)
+        => string.Create(CultureInfo.InvariantCulture, $"{SittingPathPrefix}{sittingIdentifier:D}");
+
     private static Guid SittingIdentifierFrom(string url)
     {
         if (Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)
@@ -69990,6 +70567,1009 @@ internal static class EnhancedNavigation
                     + $" than this selector, or the fetch behind it failed."),
                 exception);
         }
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/HiddenRecordJourneys.cs
+################################################################################
+
+--- METADATA ---
+  File name:             HiddenRecordJourneys.cs
+  Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/HiddenRecordJourneys.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/HiddenRecordJourneys.cs
+  Size:                  24.9 KiB (25536 bytes)
+  Last modified:         2026-08-04 13:52:21.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 31147980
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               3b834704c1b0e28fc33e799925080edf0cbc5d8f26fbd5a5de7c25e7812e86f9
+  Last git commit:       0c5e86d 2026-08-04 14:02:17 -0400 add claude changes
+
+--- CONTENT ---
+using System.Globalization;
+using Microsoft.Playwright;
+
+namespace MyRestaurant.EndToEnd.Tests.Harness;
+
+/// <summary>
+/// One row of §11.4's hidden-records list.
+///
+/// <para>Both identifiers come off the row's own two links — <c>?record=</c> on "Open the complete
+/// record" and <c>/administration/sittings/{id}</c> on "The whole sitting" — rather than out of the
+/// database or out of a <c>data-</c> attribute added for the harness. That is the same recovery
+/// <c>AdministrationJourneys</c> already does from a "Manage this…" link, and it makes the row's identity
+/// a thing the surface asserts rather than a thing the test supplies.</para>
+///
+/// <para><b>The table label and the line count are deliberately absent.</b> §11.4 renders both inside
+/// paragraphs that carry other metadata under the same class — the label sits between a username and a
+/// timestamp in one sentence, and the line count is the second of two <c>span.hidden-record-note</c>s —
+/// so reaching either means splitting prose or indexing by position. Both facts are asserted where they
+/// have elements of their own: the label on the guest's own history page, the line count there too. A
+/// harness field that could only be filled by counting siblings is a field that starts lying the day a
+/// third note is added.</para>
+/// </summary>
+/// <param name="GuestOrderIdentifier">The hidden order, off the expand link.</param>
+/// <param name="SittingIdentifier">The sitting it belongs to, off the sitting link.</param>
+/// <param name="OwnerName">The row's heading — the display name, or the username when none is set.</param>
+/// <param name="Username">The thing §6.8's filter matches on, rendered in its own element.</param>
+/// <param name="PersonTotalText">The owner's own share, formatted the way the surface formatted it.</param>
+internal sealed record HiddenRecordRow(
+    Guid GuestOrderIdentifier,
+    Guid SittingIdentifier,
+    string OwnerName,
+    string Username,
+    string PersonTotalText);
+
+/// <summary>
+/// One entry of an order's visibility log, as §11.4's expanded record renders it.
+///
+/// <para>Two fields because the surface gives them two elements, and because they answer two questions
+/// §6.8 keeps separate: <paramref name="Description"/> is which of the two stored event types this is,
+/// and <paramref name="ActorAndTime"/> names who did it. §6.8 gives the hide to the owner and the unhide
+/// to an administrator, and the stored word does not distinguish them — the prose calls the
+/// administrator's row <c>unhidden_by_administrator</c> while the column holds <c>unhidden</c> — so the
+/// actor beside it is the only place the distinction lives.</para>
+/// </summary>
+internal sealed record HiddenVisibilityEntry(string Description, string ActorAndTime);
+
+/// <summary>
+/// One order's complete stored record, as far as §16.3 scenario 11 judges it.
+///
+/// <para><paramref name="EventCount"/> is a count rather than a list because §11.4's requirement here is
+/// completeness — "full event log … unprojected" — and a scenario that enumerated the log would be
+/// re-asserting §6.5's vocabulary, which the data-access tests own. What this can say that nothing else
+/// can is that hiding an order did not take its history with it.</para>
+/// </summary>
+internal sealed record HiddenRecordDetail(
+    IReadOnlyList<HiddenVisibilityEntry> VisibilityLog,
+    int EventCount,
+    bool OffersUnhide);
+
+/// <summary>
+/// The hidden-records view at one instant.
+///
+/// <para><paramref name="IsNarrowed"/> is read from the surface rather than tracked by the caller.
+/// §11.4's rule is that administration starts complete and narrows "only on explicit request", and the
+/// page publishes which of those it is in by offering a "Show everything" escape or not — so a filter
+/// that silently failed to apply, or one that stuck when it should have cleared, is visible here rather
+/// than inferred from a row count that would look identical either way.</para>
+///
+/// <para><paramref name="EmptySentence"/> carries whichever of §11.4's two empty sentences is on screen,
+/// and the difference between them is the point. "Nothing hidden matches that" says the filter excluded
+/// everything; "Nothing is hidden anywhere in the restaurant" is the stronger claim, and is the one an
+/// unhide has to produce.</para>
+/// </summary>
+internal sealed record HiddenRecordList(
+    IReadOnlyList<HiddenRecordRow> Rows,
+    string? CountSentence,
+    string? EmptySentence,
+    bool IsNarrowed,
+    string? Notice,
+    string? Problem);
+
+/// <summary>
+/// Administration's hidden-records view (TECHNICAL_SPECIFICATION §6.8, §11.4) — the only unhide path in
+/// the application.
+///
+/// <para><b>Three different kinds of navigation live on this one page, and each needs its own barrier.</b>
+/// The list is reached by URL. The filter is a plain <c>method="get"</c> form with no
+/// <c>data-enhance</c>, so submitting it is an ordinary browser navigation. The expand link is an in-app
+/// link on a static-SSR page, so <c>blazor.web.js</c> intercepts it and the address bar moves before the
+/// document does — see <see cref="EnhancedNavigation"/>. The Unhide is an ordinary form post that
+/// redirects. Getting any of the four wrong produces a read of the previous page, which on a screen whose
+/// subject is <em>absence</em> is the failure that most reliably passes.</para>
+///
+/// <para><b>Why the filter waits on the URL changing rather than on anything in the markup.</b> The
+/// obvious barrier is the "Show everything" link, which §11.4 renders exactly when the filter is
+/// narrowed — and it is a perfect barrier for the first filter and no barrier at all for the second,
+/// because it is already there. The list itself cannot serve either: a filter that correctly matches
+/// nothing leaves a page whose rows are unchanged from a filter that has not applied yet, which is
+/// precisely the assertion §16.3 scenario 11 makes. The URL is the one thing that always moves, and for
+/// an ordinary navigation it moves when the new document commits rather than before it. The single
+/// precondition is that two consecutive filters differ; a caller that filtered twice by the same
+/// username would be asking a question it already had the answer to.</para>
+/// </summary>
+internal static class HiddenRecordJourneys
+{
+    /// <summary>The route. <c>HiddenRecords.razor</c> is <c>@page "/administration/hidden-records"</c>.</summary>
+    internal const string HiddenRecordsPath = "/administration/hidden-records";
+
+    /// <summary>The surface, named as of M6 Slice 14 — the scoping root for the two status paragraphs.</summary>
+    private const string SurfaceSelector = "#hidden-records-surface";
+
+    private const string RowSelector = SurfaceSelector + " article.hidden-record";
+    private const string ExpandLinkSelector = "a:has-text('Open the complete record')";
+    private const string SittingLinkSelector = "a:has-text('The whole sitting')";
+
+    private const string FilterUsernameSelector = SurfaceSelector + " form.hidden-filter #filter-username";
+    private const string FilterSubmitSelector =
+        SurfaceSelector + " form.hidden-filter button[type='submit']";
+
+    /// <summary>
+    /// §11.4's escape from a narrowed list. Rendered from <c>_filter.IsNarrowed</c> and from nothing else,
+    /// which makes its presence the surface's own answer to "is this list filtered".
+    /// </summary>
+    private const string ShowEverythingSelector =
+        SurfaceSelector + " form.hidden-filter .hidden-filter-actions a";
+
+    private const string CountSelector = SurfaceSelector + " p.hidden-count";
+
+    /// <summary>
+    /// §11.4's empty sentence, given a class of its own as of M6 Slice 14. It carries two different
+    /// sentences through a ternary and was otherwise one <c>p.lede</c> among several.
+    /// </summary>
+    private const string EmptySelector = SurfaceSelector + " p.hidden-none";
+
+    private const string UnhidePanelSelector = SurfaceSelector + " div.hidden-unhide";
+    private const string UnhideSubmitSelector = UnhidePanelSelector + " button[type='submit']";
+
+    private const string VisibilityEventSelector = SurfaceSelector + " ol.hidden-events > li";
+    private const string RecordEventHeadSelector = "div.hidden-event-head";
+
+    private const string NoticeSelector = SurfaceSelector + " p.status-success";
+    private const string ProblemSelector = SurfaceSelector + " p.status-error";
+
+    private const string RecordQuery = "record=";
+    private const string SittingPathPrefix = "/administration/sittings/";
+
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>Opens the view unfiltered — the state §11.4 says it starts in.</summary>
+    internal static async Task OpenAsync(IPage page, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(HiddenRecordsPath);
+        await WaitForSurfaceAsync(page, timeout);
+    }
+
+    /// <summary>
+    /// §6.8's username filter, typed into the form and submitted — not appended to the URL.
+    ///
+    /// <para>The distinction matters because §16.3 words scenario 11 as an administrator who
+    /// <em>filters</em>, and a query string assembled by the harness would exercise
+    /// <c>[SupplyParameterFromQuery]</c> while skipping the form, the labels, and the round trip. The
+    /// filter being a GET is itself part of §11.4: a filter is a bookmarkable question rather than a
+    /// mutation, which is why there is no antiforgery token on it and no handler behind it.</para>
+    /// </summary>
+    internal static async Task FilterByUsernameAsync(IPage page, string username, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.FillAsync(FilterUsernameSelector, username);
+
+        // Captured before the click, because that is the whole barrier: an ordinary form GET commits its
+        // new document and only then moves the address bar, so a URL that differs from this one is a page
+        // that has arrived.
+        string before = page.Url;
+
+        await page.Locator(FilterSubmitSelector).First.ClickAsync();
+
+        try
+        {
+            await page.WaitForURLAsync(
+                url => !string.Equals(url, before, StringComparison.Ordinal),
+                new PageWaitForURLOptions { Timeout = (float)timeout.TotalMilliseconds });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Narrowing the hidden-records list to '{username}' never left '{before}' within"
+                    + $" {timeout.TotalSeconds:F0}s. §11.4's filter is a plain GET form with no"
+                    + $" data-enhance, so this is an ordinary navigation and the URL must carry the"
+                    + $" username — unless the previous filter was already the same one, in which case"
+                    + $" there is no navigation to wait for and nothing to learn from it."),
+                exception);
+        }
+
+        await WaitForSurfaceAsync(page, timeout);
+
+        // The rendered field, not the one that was typed into: the value comes back from the query string
+        // through [SupplyParameterFromQuery], so this is the server agreeing about what it was asked.
+        string? applied = await page.Locator(FilterUsernameSelector).First.InputValueAsync();
+
+        if (!string.Equals(applied?.Trim(), username, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The hidden-records filter came back holding '{applied}' rather than '{username}',"
+                    + $" so the list on screen is answering a different question. The browser is at"
+                    + $" '{page.Url}'."));
+        }
+    }
+
+    /// <summary>The list as it stands right now.</summary>
+    internal static async Task<HiddenRecordList> ReadAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator rows = page.Locator(RowSelector);
+        int count = await rows.CountAsync();
+
+        List<HiddenRecordRow> read = new(count);
+
+        for (int index = 0; index < count; index++)
+        {
+            read.Add(await ReadRowAsync(page, rows.Nth(index), index));
+        }
+
+        return new HiddenRecordList(
+            read,
+            await TextIfPresentAsync(page, CountSelector),
+            await TextIfPresentAsync(page, EmptySelector),
+            await page.Locator(ShowEverythingSelector).CountAsync() > 0,
+            await TextIfPresentAsync(page, NoticeSelector),
+            await TextIfPresentAsync(page, ProblemSelector));
+    }
+
+    /// <summary>
+    /// Opens one row's complete record (§11.4) and returns it.
+    ///
+    /// <para>The barrier is the Unhide panel rather than one of the three section headings, and for a
+    /// reason worth stating: the headings are drawn whether or not the reads behind them came back with
+    /// anything, so waiting on one would return from a record that had rendered its own failure prose.
+    /// The Unhide panel is the last thing in the expanded article and is drawn from the same
+    /// <c>IsExpanded</c> branch, so its arrival means the whole record is on screen.</para>
+    /// </summary>
+    internal static async Task<HiddenRecordDetail> ExpandAsync(
+        IPage page,
+        Guid guestOrderIdentifier,
+        TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator expandLink = await LocateExpandLinkAsync(page, guestOrderIdentifier);
+
+        await EnhancedNavigation.FollowAsync(
+            page,
+            expandLink,
+            UnhidePanelSelector,
+            "§11.4's complete stored record with its per-record Unhide",
+            timeout);
+
+        return await ReadDetailAsync(page);
+    }
+
+    /// <summary>
+    /// §6.8's per-record Unhide, on a row that is already expanded, returning once §11.4 has said what
+    /// happened.
+    ///
+    /// <para>Both of the outcomes that mean "this order is visible again" redirect and flash —
+    /// <c>Unhidden</c> because this administrator did it, <c>NotHidden</c> because another one got there
+    /// first, which §6.8 treats as the system working rather than as a failure. Only a vanished order
+    /// writes a problem, and that is what this refuses on. The distinction between the first two is in the
+    /// notice, and a caller that cares has it.</para>
+    /// </summary>
+    internal static async Task UnhideAsync(IPage page, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator submit = page.Locator(UnhideSubmitSelector);
+
+        try
+        {
+            await submit.First.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"There is no Unhide to press. §11.4 renders it only inside an expanded record, so"
+                    + $" ExpandAsync either was not called or the row has since left the list. The"
+                    + $" browser is at '{page.Url}'."),
+                exception);
+        }
+
+        await submit.First.ClickAsync();
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await TextIfPresentAsync(page, ProblemSelector) is { } refusal)
+            {
+                throw new InvalidOperationException(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The unhide was refused, so no unhidden row was appended. §11.4 says:"
+                        + $" {refusal}"));
+            }
+
+            if (await TextIfPresentAsync(page, NoticeSelector) is not null)
+            {
+                return;
+            }
+
+            await Task.Delay(PollInterval);
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The unhide neither succeeded nor was refused within {timeout.TotalSeconds:F0}s. It is"
+                + $" an ordinary form post that redirects on both Unhidden and NotHidden, so a missing"
+                + $" flash means the post never left. The browser is at '{page.Url}'."));
+    }
+
+    /// <summary>A short, quotable rendering of the list, for a failure message.</summary>
+    internal static string Describe(HiddenRecordList list)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+
+        string rows = list.Rows.Count == 0
+            ? "no rows"
+            : string.Join(
+                " | ",
+                list.Rows.Select(row => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"'{row.Username}' ({row.OwnerName}) {row.PersonTotalText}"
+                    + $" order {row.GuestOrderIdentifier:D}")));
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{rows}; {(list.IsNarrowed ? "narrowed" : "unfiltered")};"
+            + $" count sentence {list.CountSentence ?? "(none)"};"
+            + $" empty sentence {list.EmptySentence ?? "(none)"};"
+            + $" notice {list.Notice ?? "(none)"}; problem {list.Problem ?? "(none)"}");
+    }
+
+    /// <summary>A short, quotable rendering of a visibility log, for a failure message.</summary>
+    internal static string DescribeVisibilityLog(IReadOnlyList<HiddenVisibilityEntry> log)
+    {
+        ArgumentNullException.ThrowIfNull(log);
+
+        return log.Count == 0
+            ? "no visibility events at all"
+            : string.Join(
+                "; ",
+                log.Select(entry => string.Create(
+                    CultureInfo.InvariantCulture, $"'{entry.Description}' ({entry.ActorAndTime})")));
+    }
+
+    // --- internals ---------------------------------------------------------------------------------
+
+    private static async Task WaitForSurfaceAsync(IPage page, TimeSpan timeout)
+    {
+        try
+        {
+            await page.Locator(SurfaceSelector).First.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Visible,
+                Timeout = (float)timeout.TotalMilliseconds,
+            });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{HiddenRecordsPath} never rendered its own surface within"
+                    + $" {timeout.TotalSeconds:F0}s. §3.7 admits administrators only, so a principal"
+                    + $" that failed the policy is looking at the access-denied panel; the browser is at"
+                    + $" '{page.Url}'."),
+                exception);
+        }
+    }
+
+    /// <summary>
+    /// The two logs an expanded record draws, told apart by what their entries contain rather than by
+    /// where they sit.
+    ///
+    /// <para>§11.4 renders both as <c>ol.hidden-events</c>, and the obvious way to separate them is by
+    /// position or by the heading above — the visibility log's list is the heading's next sibling and the
+    /// event log's is not, which is true today and is exactly the kind of thing that stops being true
+    /// when a paragraph is added. The stable difference is structural: a stored event wraps its metadata
+    /// in <c>div.hidden-event-head</c> because it has a sequence number to put beside the type, and a
+    /// visibility event has no such wrapper. So every <c>li</c> is walked once and sorted by whether it
+    /// contains that element.</para>
+    /// </summary>
+    private static async Task<HiddenRecordDetail> ReadDetailAsync(IPage page)
+    {
+        ILocator entries = page.Locator(VisibilityEventSelector);
+        int count = await entries.CountAsync();
+
+        List<HiddenVisibilityEntry> visibility = [];
+        int events = 0;
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator entry = entries.Nth(index);
+
+            if (await entry.Locator(RecordEventHeadSelector).CountAsync() > 0)
+            {
+                events++;
+                continue;
+            }
+
+            visibility.Add(new HiddenVisibilityEntry(
+                await ScreenText.DeclaredAsync(entry.Locator("span.hidden-event-type").First),
+                await ScreenText.DeclaredAsync(entry.Locator("span.hidden-muted-inline").First)));
+        }
+
+        return new HiddenRecordDetail(
+            visibility,
+            events,
+            await page.Locator(UnhideSubmitSelector).CountAsync() > 0);
+    }
+
+    private static async Task<HiddenRecordRow> ReadRowAsync(IPage page, ILocator row, int index)
+    {
+        Guid guestOrderIdentifier = await OrderIdentifierFromExpandLinkAsync(page, row, index);
+
+        string? sittingHref = await row.Locator(SittingLinkSelector).First.GetAttributeAsync("href");
+        int at = sittingHref?.IndexOf(SittingPathPrefix, StringComparison.Ordinal) ?? -1;
+
+        if (sittingHref is null
+            || at < 0
+            || !Guid.TryParse(sittingHref[(at + SittingPathPrefix.Length)..], out Guid sittingIdentifier))
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The row at position {index} links its sitting as '{sittingHref}', which is not a"
+                    + $" sitting record URL."));
+        }
+
+        return new HiddenRecordRow(
+            guestOrderIdentifier,
+            sittingIdentifier,
+            (await row.Locator("h2.hidden-record-title").First.InnerTextAsync()).Trim(),
+            (await row.Locator("span.hidden-username").First.InnerTextAsync()).Trim(),
+            (await row.Locator("span.hidden-amount").First.InnerTextAsync()).Trim());
+    }
+
+    private static async Task<Guid> OrderIdentifierFromExpandLinkAsync(
+        IPage page,
+        ILocator row,
+        int index)
+    {
+        ILocator expandLink = row.Locator(ExpandLinkSelector);
+
+        if (await expandLink.CountAsync() == 0)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The row at position {index} offers no \"Open the complete record\" link, so its"
+                    + $" order cannot be named. §11.4 replaces it with \"Close the record\" on exactly"
+                    + $" one row — the expanded one — and that link carries no identifier, so this list"
+                    + $" is being read while a record is open. Read it before expanding anything. The"
+                    + $" browser is at '{page.Url}'."));
+        }
+
+        string? href = await expandLink.First.GetAttributeAsync("href");
+        int at = href?.IndexOf(RecordQuery, StringComparison.Ordinal) ?? -1;
+
+        if (href is null
+            || at < 0
+            || !Guid.TryParse(href[(at + RecordQuery.Length)..], out Guid guestOrderIdentifier))
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The expand link on the row at position {index} points at '{href}', which does not"
+                    + $" name an order. §11.4 builds it from the current filter plus record=, so a"
+                    + $" filter value containing an ampersand would land here."));
+        }
+
+        return guestOrderIdentifier;
+    }
+
+    private static async Task<ILocator> LocateExpandLinkAsync(IPage page, Guid guestOrderIdentifier)
+    {
+        ILocator rows = page.Locator(RowSelector);
+        int count = await rows.CountAsync();
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator row = rows.Nth(index);
+            ILocator expandLink = row.Locator(ExpandLinkSelector);
+
+            if (await expandLink.CountAsync() == 0)
+            {
+                continue;
+            }
+
+            string? href = await expandLink.First.GetAttributeAsync("href");
+
+            if (href is not null
+                && href.EndsWith(
+                    string.Create(
+                        CultureInfo.InvariantCulture, $"{RecordQuery}{guestOrderIdentifier:D}"),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return expandLink.First;
+            }
+        }
+
+        string list = Describe(await ReadAsync(page));
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"There is no hidden order {guestOrderIdentifier:D} in the list to expand. §11.4 lists"
+                + $" every currently-hidden order system-wide, narrowed only by the filter on screen —"
+                + $" so it has either been unhidden or the filter excludes it. The list holds: {list}."));
+    }
+
+    private static async Task<string?> TextIfPresentAsync(IPage page, string selector)
+    {
+        ILocator located = page.Locator(selector);
+
+        return await located.CountAsync() > 0
+            ? await ScreenText.DeclaredAsync(located.First)
+            : null;
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/HistoryJourneys.cs
+################################################################################
+
+--- METADATA ---
+  File name:             HistoryJourneys.cs
+  Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/HistoryJourneys.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/HistoryJourneys.cs
+  Size:                  19.7 KiB (20143 bytes)
+  Last modified:         2026-08-04 13:50:43.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 31147981
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               1debc542093e97aba4805315ee3bc4d0c483165c48713a37a855407bc86b739e
+  Last git commit:       0c5e86d 2026-08-04 14:02:17 -0400 add claude changes
+
+--- CONTENT ---
+using System.Globalization;
+using Microsoft.Playwright;
+
+namespace MyRestaurant.EndToEnd.Tests.Harness;
+
+/// <summary>One line on a past order, as §11.1's history renders it.</summary>
+/// <param name="Quantity">How many, off the "2 ×" prefix — the digits are the data and the multiplication sign is markup.</param>
+/// <param name="Name">The menu item's name, as the projection stored it.</param>
+/// <param name="Note">§6.5.2's customization note, quoted by the surface, or <c>null</c> when there is none.</param>
+/// <param name="LineTotalText">The extension, formatted the way the surface formatted it.</param>
+internal sealed record HistoryLine(int Quantity, string Name, string? Note, string LineTotalText);
+
+/// <summary>
+/// One settled order on the owner's own history page (§11.1, §6.8).
+///
+/// <para><paramref name="GuestOrderIdentifier"/> is read off the Hide link's own <c>?hide=</c> query
+/// rather than out of the database, on the same reasoning
+/// <c>AdministrationJourneys.CreateTableAsync</c> recovers a table's identifier from the "Manage this
+/// table" link: the identifier is minted server-side, and a harness that went round the surface to get
+/// it would be reimplementing the surface instead of testing it. It is also the identifier §16.3
+/// scenario 11 needs in order to say that the row an administrator later finds in the hidden-records
+/// view <em>is</em> the order this guest hid, rather than merely that a row appeared.</para>
+///
+/// <para><paramref name="LineCount"/> is read off the summary row's "3 items" rather than counted from
+/// <paramref name="Lines"/>, deliberately. §11.1 renders it from
+/// <c>PersonOrderHistoryEntry.LineCount</c>, which is the length of the list the reader projected; the
+/// list below is what the markup actually drew. They are the same number until something stops being
+/// rendered, and that is precisely the failure worth catching on a page whose whole promise is that a
+/// meal is either all there or deliberately hidden.</para>
+/// </summary>
+internal sealed record HistoryOrder(
+    Guid GuestOrderIdentifier,
+    string TableLabel,
+    string PersonTotalText,
+    int LineCount,
+    IReadOnlyList<HistoryLine> Lines);
+
+/// <summary>
+/// The owner's history page at one instant.
+///
+/// <para><paramref name="EmptySentence"/> is not the same claim as <c>Orders.Count == 0</c>, and both are
+/// worth having. §11.1 draws the sentence only when the reader came back with nothing, so a page
+/// carrying neither orders nor the sentence is one whose list failed to render at all — which would
+/// satisfy "the hidden order is gone" for entirely the wrong reason.</para>
+///
+/// <para><paramref name="Notice"/> is §6.8's flash after a hide, which arrives through a
+/// post/redirect/get and therefore survives a refresh; <paramref name="Problem"/> is a refusal, which
+/// does not redirect. They are mutually exclusive on this page.</para>
+/// </summary>
+internal sealed record GuestHistory(
+    IReadOnlyList<HistoryOrder> Orders,
+    string? Notice,
+    string? Problem,
+    string? EmptySentence);
+
+/// <summary>
+/// The guest's own order history and §6.8's Hide (TECHNICAL_SPECIFICATION §6.8, §11.1).
+///
+/// <para><b>Reached by URL rather than by following a link, and that is a decision rather than a
+/// shortcut.</b> Three surfaces link here — the home page, <c>/table</c>, and the settled order surface
+/// — but <c>/table/{id}</c> and <c>/table</c> are interactive-server pages while <c>/table/history</c>
+/// carries <c>[ExcludeFromInteractiveRouting]</c>, so a link click from either crosses a render-mode
+/// boundary. Whatever that does is worth knowing about on its own terms; it is not what §16.3 scenario
+/// 11 is about, and a scenario that went red there would be reporting a routing question as a
+/// visibility bug. A history page is a bookmarkable thing and this is how somebody returns to one.</para>
+///
+/// <para><b>The Hide link, on the other hand, does go through
+/// <see cref="EnhancedNavigation"/>.</b> This page <em>is</em> static SSR, so
+/// <c>blazor.web.js</c> intercepts in-app clicks on it, and the destination is the same route with
+/// <c>?hide=</c> set — the confirmation §6.8 requires to \"state plainly that this cannot be undone\".
+/// The address bar therefore moves before the confirmation exists, and the barrier is the panel.</para>
+///
+/// <para><b>Why the confirmation's hidden field is checked.</b> <c>TableHistory.razor</c> renders the
+/// panel inside the article it belongs to and posts the order in a hidden input rather than re-reading
+/// the query string. A confirmation that opened on the wrong row would look entirely convincing —
+/// correct copy, correct buttons — and would hide a meal the guest was not looking at. §6.8 gives this
+/// no undo from the guest's account, which makes it the one write in the application where confirming
+/// the subject is worth a line of its own.</para>
+/// </summary>
+internal static class HistoryJourneys
+{
+    /// <summary>The route. <c>TableHistory.razor</c> is <c>@page "/table/history"</c>.</summary>
+    internal const string HistoryPath = "/table/history";
+
+    /// <summary>
+    /// The surface, named as of M6 Slice 14. Everything below is scoped through it: the page's flash and
+    /// its refusal are <c>p.status-success</c> and <c>p.status-error</c>, which are the same two classes
+    /// every other surface in the application uses, and a reader that matched them document-wide would
+    /// be reading whatever the layout happened to be saying.
+    /// </summary>
+    private const string SurfaceSelector = "#table-history-surface";
+
+    private const string OrderSelector = SurfaceSelector + " article.history-order";
+    private const string HideLinkSelector = "a.history-hide-link";
+    private const string ConfirmSelector = SurfaceSelector + " div.history-confirm";
+    private const string ConfirmSubmitSelector = ConfirmSelector + " button[type='submit']";
+    private const string ConfirmOrderFieldSelector = ConfirmSelector + " input[name='order']";
+    private const string NoticeSelector = SurfaceSelector + " p.status-success";
+    private const string ProblemSelector = SurfaceSelector + " p.status-error";
+
+    /// <summary>
+    /// §11.1's \"nothing here yet\" sentence, given a class of its own as of M6 Slice 14 — it was
+    /// otherwise a <c>p.lede</c> among the page's other <c>p.lede</c>s and could only be reached by
+    /// position.
+    /// </summary>
+    private const string EmptySelector = SurfaceSelector + " p.history-none";
+
+    /// <summary>What <c>TableHistory.HidePath</c> puts in front of the order identifier.</summary>
+    private const string HideQuery = "?hide=";
+
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// Opens the history page and returns once it is on screen.
+    ///
+    /// <para>Static SSR, so <c>OnInitializedAsync</c> has already run server-side and the list is in the
+    /// response — there is nothing to settle after the navigation. The wait is here for what it says
+    /// when it fails: a §3.7 policy refusal renders the access-denied panel and an expired cookie
+    /// redirects to sign-in, and both of those look exactly like an empty history to a reader that
+    /// went straight to counting articles.</para>
+    /// </summary>
+    internal static async Task OpenAsync(IPage page, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(HistoryPath);
+
+        try
+        {
+            await page.Locator(SurfaceSelector).First.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Visible,
+                Timeout = (float)timeout.TotalMilliseconds,
+            });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{HistoryPath} never rendered its own surface within {timeout.TotalSeconds:F0}s."
+                    + $" §11.1 puts the history behind the table policy, so a principal that failed it"
+                    + $" is looking at the access-denied panel and an expired cookie is at the sign-in"
+                    + $" page; the browser is at '{page.Url}'."),
+                exception);
+        }
+    }
+
+    /// <summary>
+    /// The page as it stands right now.
+    ///
+    /// <para><b>Do not call this while a confirmation is open.</b> §11.1 replaces a row's Hide link with
+    /// the confirmation panel, and the link is where the order identifier comes from — so a row without
+    /// one is unreadable here and says so rather than reporting <c>Guid.Empty</c>. Reading a list
+    /// mid-confirmation is not something a scenario has a reason to do, and quietly answering it with a
+    /// sentinel is how an assertion ends up passing against nothing.</para>
+    /// </summary>
+    internal static async Task<GuestHistory> ReadAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator orders = page.Locator(OrderSelector);
+        int count = await orders.CountAsync();
+
+        List<HistoryOrder> read = new(count);
+
+        for (int index = 0; index < count; index++)
+        {
+            read.Add(await ReadOrderAsync(page, orders.Nth(index), index));
+        }
+
+        return new GuestHistory(
+            read,
+            await TextIfPresentAsync(page, NoticeSelector),
+            await TextIfPresentAsync(page, ProblemSelector),
+            await TextIfPresentAsync(page, EmptySelector));
+    }
+
+    /// <summary>
+    /// §6.8's hide, all the way through: opens the confirmation for one order, checks it is about that
+    /// order, accepts it, and returns once the page has said so.
+    ///
+    /// <para><b>The refusal is looked for first.</b> §6.8's three refusals — the order is gone, it is not
+    /// yours, its sitting is still open — leave the list exactly as it was and write a sentence, while a
+    /// hide that landed redirects and writes a different one. They are mutually exclusive, so the order
+    /// of the two checks does not change the outcome; looking at the refusal first means a scenario that
+    /// hits one is told what the surface said rather than being told the flash never arrived.</para>
+    /// </summary>
+    internal static async Task HideAsync(IPage page, Guid guestOrderIdentifier, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator hideLink = await LocateHideLinkAsync(page, guestOrderIdentifier);
+
+        await EnhancedNavigation.FollowAsync(
+            page,
+            hideLink,
+            ConfirmSelector,
+            "§6.8's confirmation that a hide cannot be undone from the guest's account",
+            timeout);
+
+        string? posting = await page.Locator(ConfirmOrderFieldSelector).First.GetAttributeAsync("value");
+
+        if (!Guid.TryParse(posting, out Guid confirming) || confirming != guestOrderIdentifier)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The confirmation on screen would post order '{posting}' rather than"
+                    + $" {guestOrderIdentifier:D}. §6.8 gives a guest no undo, so hiding the wrong meal"
+                    + $" is not a recoverable mistake — this is refused rather than submitted."));
+        }
+
+        await page.Locator(ConfirmSubmitSelector).First.ClickAsync();
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await TextIfPresentAsync(page, ProblemSelector) is { } refusal)
+            {
+                throw new InvalidOperationException(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Hiding {guestOrderIdentifier:D} was refused, so nothing was written. §11.1"
+                        + $" says: {refusal}"));
+            }
+
+            if (await TextIfPresentAsync(page, NoticeSelector) is not null)
+            {
+                return;
+            }
+
+            await Task.Delay(PollInterval);
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Hiding {guestOrderIdentifier:D} neither succeeded nor was refused within"
+                + $" {timeout.TotalSeconds:F0}s. The confirmation is an ordinary form post — no"
+                + $" data-enhance, so no enhanced navigation — and it redirects on both Hidden and"
+                + $" AlreadyHidden, so a missing flash means the post never left. The browser is at"
+                + $" '{page.Url}'."));
+    }
+
+    /// <summary>A short, quotable rendering of a history page, for a failure message.</summary>
+    internal static string Describe(GuestHistory history)
+    {
+        ArgumentNullException.ThrowIfNull(history);
+
+        string orders = history.Orders.Count == 0
+            ? "no orders"
+            : string.Join(
+                " | ",
+                history.Orders.Select(order => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"'{order.TableLabel}' {order.PersonTotalText} ({order.LineCount} line(s):"
+                    + $" {DescribeLines(order.Lines)})")));
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{orders}; empty sentence {history.EmptySentence ?? "(none)"};"
+            + $" notice {history.Notice ?? "(none)"}; problem {history.Problem ?? "(none)"}");
+    }
+
+    /// <summary>A short, quotable rendering of a past order's lines, for a failure message.</summary>
+    internal static string DescribeLines(IReadOnlyList<HistoryLine> lines)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+
+        return lines.Count == 0
+            ? "nothing was left on it"
+            : string.Join(
+                "; ",
+                lines.Select(line => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{line.Quantity} × '{line.Name}' {line.LineTotalText}"
+                    + $"{(line.Note is null ? string.Empty : $" — “{line.Note}”")}")));
+    }
+
+    // --- internals ---------------------------------------------------------------------------------
+
+    private static async Task<HistoryOrder> ReadOrderAsync(IPage page, ILocator order, int index)
+    {
+        ILocator hideLink = order.Locator(HideLinkSelector);
+
+        if (await hideLink.CountAsync() == 0)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The order at position {index} offers no Hide link, so its identifier cannot be"
+                    + $" read. §11.1 withholds the link from exactly one row — the one whose"
+                    + $" confirmation panel is open — so this page is mid-confirmation and reading its"
+                    + $" list is not a meaningful thing to do. The browser is at '{page.Url}'."));
+        }
+
+        string? href = await hideLink.First.GetAttributeAsync("href");
+        int at = href?.IndexOf(HideQuery, StringComparison.Ordinal) ?? -1;
+
+        if (href is null
+            || at < 0
+            || !Guid.TryParse(href[(at + HideQuery.Length)..], out Guid guestOrderIdentifier))
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The Hide link on the order at position {index} points at '{href}', which does"
+                    + $" not name an order."));
+        }
+
+        string countText = await ScreenText.DeclaredAsync(
+            order.Locator("span.history-order-count").First);
+
+        ILocator lines = order.Locator("ul.history-lines li");
+        int lineCount = await lines.CountAsync();
+
+        List<HistoryLine> read = new(lineCount);
+
+        for (int index2 = 0; index2 < lineCount; index2++)
+        {
+            read.Add(await ReadLineAsync(lines.Nth(index2)));
+        }
+
+        return new HistoryOrder(
+            guestOrderIdentifier,
+            (await order.Locator("h2.history-order-title").First.InnerTextAsync()).Trim(),
+            (await order.Locator("span.history-amount").First.InnerTextAsync()).Trim(),
+            LeadingCount(countText),
+            read);
+    }
+
+    private static async Task<HistoryLine> ReadLineAsync(ILocator line)
+    {
+        // "2 ×" — the multiplication sign is markup rather than data, the same treatment
+        // CounterJourneys and KitchenJourneys give their own quantities.
+        string quantityText = (await line.Locator("span.history-line-quantity").First.InnerTextAsync())
+            .Trim()
+            .TrimEnd('×')
+            .Trim();
+
+        ILocator note = line.Locator("span.history-line-note");
+
+        return new HistoryLine(
+            int.TryParse(
+                quantityText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int quantity)
+                ? quantity
+                : 0,
+            (await line.Locator("span.history-line-item").First.InnerTextAsync()).Trim(),
+            await note.CountAsync() > 0 ? (await note.First.InnerTextAsync()).Trim() : null,
+            (await line.Locator("span.history-line-amount").First.InnerTextAsync()).Trim());
+    }
+
+    private static async Task<ILocator> LocateHideLinkAsync(IPage page, Guid guestOrderIdentifier)
+    {
+        ILocator orders = page.Locator(OrderSelector);
+        int count = await orders.CountAsync();
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator hideLink = orders.Nth(index).Locator(HideLinkSelector);
+
+            if (await hideLink.CountAsync() == 0)
+            {
+                continue;
+            }
+
+            string? href = await hideLink.First.GetAttributeAsync("href");
+
+            if (href is not null
+                && href.EndsWith(
+                    string.Create(CultureInfo.InvariantCulture, $"{HideQuery}{guestOrderIdentifier:D}"),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return hideLink.First;
+            }
+        }
+
+        string history = Describe(await ReadAsync(page));
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"There is no order {guestOrderIdentifier:D} on this history page to hide. §11.1 lists"
+                + $" only the owner's own settled, not-already-hidden orders, so it is absent for one of"
+                + $" those three reasons. The page holds: {history}."));
+    }
+
+    /// <summary>
+    /// The declared text of the first match, or <c>null</c> when the element is not on the page. Used for
+    /// the three paragraphs whose <em>absence</em> is as much a fact as their contents.
+    /// </summary>
+    private static async Task<string?> TextIfPresentAsync(IPage page, string selector)
+    {
+        ILocator located = page.Locator(selector);
+
+        return await located.CountAsync() > 0
+            ? await ScreenText.DeclaredAsync(located.First)
+            : null;
+    }
+
+    /// <summary>
+    /// The leading integer of "3 items", or <c>0</c> when the copy does not start with one. Zero is
+    /// unambiguous rather than a plausible value: §11.1 draws the summary row only for an order it is
+    /// also drawing, and an order with no lines renders "0 items" — so a zero from a row that says
+    /// something else means the copy changed shape.
+    /// </summary>
+    private static int LeadingCount(string sentence)
+    {
+        int end = 0;
+
+        while (end < sentence.Length && char.IsAsciiDigit(sentence[end]))
+        {
+            end++;
+        }
+
+        return end > 0
+            && int.TryParse(
+                sentence[..end], NumberStyles.Integer, CultureInfo.InvariantCulture, out int count)
+            ? count
+            : 0;
     }
 }
 
@@ -71987,6 +73567,122 @@ internal sealed class RestaurantInstance : IAsyncDisposable
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/ScreenText.cs
+################################################################################
+
+--- METADATA ---
+  File name:             ScreenText.cs
+  Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/ScreenText.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/ScreenText.cs
+  Size:                  4.8 KiB (4871 bytes)
+  Last modified:         2026-08-04 13:48:51.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 31147982
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               ba9c032e7b8e2e1e263d46c9b154e6dce2a108e77eb0be0474670b924065e8ba
+  Last git commit:       0c5e86d 2026-08-04 14:02:17 -0400 add claude changes
+
+--- CONTENT ---
+using System.Text;
+using Microsoft.Playwright;
+
+namespace MyRestaurant.EndToEnd.Tests.Harness;
+
+/// <summary>
+/// Reading the text a component <em>declared</em>, rather than the text a browser <em>painted</em>.
+///
+/// <para><b>Why this exists.</b> Playwright's <c>InnerTextAsync</c> returns rendered text — the browser's
+/// own <c>HTMLElement.innerText</c>, which is defined in terms of layout and therefore has
+/// <c>text-transform</c> already applied to it. An element styled
+/// <c>text-transform: uppercase</c> whose markup says <c>Settled total</c> reads back as
+/// <c>SETTLED TOTAL</c>, and a harness comparing that against the phrase in the component fails on a
+/// stylesheet rather than on the application.</para>
+///
+/// <para>That is not a hypothetical. M6 Slice 13 asserted <c>"Settled total"</c> against
+/// <c>.counter-detail-total-label</c>, which <c>CounterSitting.razor</c> upcases for the eyebrow
+/// treatment, and §16.3 scenario 10 went red on the first character. Forty lines further on,
+/// <c>ReadTotalsAsync</c> was about to look <c>"Your total"</c> up in a dictionary keyed on the same
+/// element's rendered text, with <c>.order-totals dt</c> upcased in <c>app.css</c> — a second instance
+/// of the same mistake that the first one was hiding.</para>
+///
+/// <para><b>Which reads belong here and which do not.</b> The distinction is what the comparison is
+/// about. A <em>label</em> read — one where the harness holds the phrase the component is expected to
+/// have chosen, such as \"Running total\" against \"Settled total\" — is a claim about the component's
+/// branch, and presentation casing is noise in it. A read of <em>content</em> — a table's label, a
+/// person's name, an amount through <c>MoneyText.Format</c> — is data that no stylesheet in this
+/// application transforms, and <c>InnerTextAsync</c>'s whitespace normalisation is genuinely convenient
+/// there. So this is deliberately not a blanket replacement: it is used at the label sites, and the
+/// sixty-odd content reads elsewhere are left alone.</para>
+///
+/// <para><b>Why the whitespace has to be collapsed here.</b> <c>textContent</c> is the raw concatenation
+/// of the descendant text nodes, newlines and indentation included, where <c>innerText</c> has already
+/// been through layout and comes back tidy. Razor's default whitespace handling removes whitespace-only
+/// nodes that lead or trail inside an element, so in practice most of these read cleanly — but
+/// \"in practice\" is not a thing to assert on, and collapsing runs to a single space makes the result
+/// identical to what <c>InnerTextAsync</c> would have produced minus the transform. That is the whole
+/// intended difference between the two.</para>
+/// </summary>
+internal static class ScreenText
+{
+    /// <summary>
+    /// The text <paramref name="locator"/>'s markup declares, with runs of whitespace collapsed to a
+    /// single space and the ends trimmed.
+    ///
+    /// <para>An element that exists and holds nothing reads as the empty string. A locator matching
+    /// nothing throws from Playwright, which is the right outcome: every caller here is reading a label
+    /// it has already established should be on screen, and \"the element is missing\" is a different
+    /// failure from \"the label says something else\".</para>
+    /// </summary>
+    internal static async Task<string> DeclaredAsync(ILocator locator)
+    {
+        ArgumentNullException.ThrowIfNull(locator);
+
+        return Collapse(await locator.TextContentAsync());
+    }
+
+    /// <summary>
+    /// Runs of whitespace to a single space, ends trimmed, <c>null</c> to the empty string.
+    ///
+    /// <para>Separate from <see cref="DeclaredAsync"/> and not private, because a caller that has
+    /// already read a string some other way — an attribute, a value, a sentence assembled from two
+    /// elements — should be able to normalise it the same way rather than approximately.</para>
+    /// </summary>
+    internal static string Collapse(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        StringBuilder collapsed = new(text.Length);
+        bool pendingSpace = false;
+
+        foreach (char character in text)
+        {
+            if (char.IsWhiteSpace(character))
+            {
+                // Deferred rather than appended: a trailing run then costs nothing to remove, and the
+                // leading one is never written at all because nothing has been appended to space from.
+                pendingSpace = collapsed.Length > 0;
+                continue;
+            }
+
+            if (pendingSpace)
+            {
+                collapsed.Append(' ');
+                pendingSpace = false;
+            }
+
+            collapsed.Append(character);
+        }
+
+        return collapsed.ToString();
+    }
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs
 ################################################################################
 
@@ -72167,15 +73863,15 @@ internal static class TableJourneys
   File name:             TableOrderJourneys.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs
-  Size:                  67.6 KiB (69244 bytes)
-  Last modified:         2026-08-04 05:13:46.000000000 -0400
+  Size:                  68.0 KiB (69647 bytes)
+  Last modified:         2026-08-04 13:49:02.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 30791592
+  Inode:                 31147984
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               b55262bb2fb3872272bdd8e73820cd64cc72b1769cb096dbe9dc4b3617e7ac09
-  Last git commit:       fab65f0 2026-08-04 05:16:36 -0400 add claude changes
+  SHA-256:               ac6868b1558ddad81713a08435575b1cc502aecb4e348fc59aa3225852ae8c31
+  Last git commit:       0c5e86d 2026-08-04 14:02:17 -0400 add claude changes
 
 --- CONTENT ---
 using System.Globalization;
@@ -72967,7 +74663,11 @@ internal static class TableOrderJourneys
         {
             ILocator group = groups.Nth(index);
 
-            string term = (await group.Locator("dt").First.InnerTextAsync()).Trim();
+            // The term is the dictionary key this method looks YourTotalTerm and TableTotalTerm up by,
+            // and app.css upcases .order-totals dt — so read as declared rather than as rendered, or
+            // both lookups miss and the honest failure below reports a totals list that is in fact
+            // perfectly correct. The amount beside it is money and is transformed by nothing.
+            string term = await ScreenText.DeclaredAsync(group.Locator("dt").First);
             string amount = (await group.Locator("dd").First.InnerTextAsync()).Trim();
 
             byTerm[term] = amount;
@@ -81104,10 +82804,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 299
-  Total size     : 3.4 MiB (3542972 bytes)
+  Files dumped   : 302
+  Total size     : 3.5 MiB (3628312 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-04T13:26:19-04:00
+  Completed at   : 2026-08-04T14:02:42-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
