@@ -21,10 +21,66 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 /// </summary>
 internal sealed record MenuItemOnTheMenu(Guid Identifier, string Name, decimal PriceAmount);
 
+/// <summary>
+/// The roles §3.7's create-staff form offers, as the flags an administrator ticks. A flags enum rather
+/// than three booleans at every call site, because "counter only" and "counter and kitchen" are the two
+/// interesting shapes and a scenario should be able to say which it means.
+///
+/// <para><c>guest</c> is deliberately absent, and so is <c>table_display</c>: the first is the implicit
+/// capacity of any authenticated person on their own order and the second is a device principal —
+/// neither is a stored role, which is exactly what <c>RestaurantRoles</c> says.</para>
+/// </summary>
+[Flags]
+internal enum StaffRoles
+{
+    /// <summary>No role at all. §3.7: such an account "behaves like a guest until a role is granted".</summary>
+    None = 0,
+
+    /// <summary>Close and settle sittings, adjust prices, show a table's join QR.</summary>
+    Counter = 1,
+
+    /// <summary>Fulfil lines, edit orders, turn menu items off and on.</summary>
+    Kitchen = 2,
+
+    /// <summary>Everything, including the administration area itself.</summary>
+    Administrator = 4,
+}
+
+/// <summary>
+/// A staff account an administrator created (§3.7), with the temporary password the surface showed once.
+///
+/// <para><b>The temporary password is the interesting field, and it is fragile by design.</b>
+/// <c>CreateStaff.razor</c> generates it, hashes it immediately, and writes the plaintext into exactly
+/// one HTTP response — there is no second chance to read it and nothing in the database that could
+/// answer the question later. So the journey that creates the account is also the only place that can
+/// capture it.</para>
+///
+/// <para>It is not the password the account ends up with. The row is written with
+/// <c>must_change_password</c>, so §3.5's pipeline forces a real one before the account can reach any
+/// authenticated endpoint — see <see cref="AccountJourneys.SignInWithPasswordAsync"/> and
+/// <see cref="AccountJourneys.CompleteForcedPasswordChangeAsync"/>. Those are two calls rather than one
+/// because the page a staff member lands on in between is itself worth asserting on: a §3.7 account that
+/// walked straight past the obligation would be a hole rather than a convenience.</para>
+/// </summary>
+internal sealed record StaffAccount(
+    Guid PersonIdentifier,
+    string Username,
+    string DisplayName,
+    string TemporaryPassword);
+
 internal static class AdministrationJourneys
 {
     private const string TablesPath = "/administration/tables";
     private const string MenuPath = "/administration/menu";
+    private const string PeoplePath = "/administration/people";
+
+    /// <summary>
+    /// The element that carries the one-time temporary password on the create-staff success panel. A
+    /// class of its own as of M6 Slice 12: the element also carries <c>.totp-secret</c>, which it
+    /// borrowed for the monospaced treatment, and reading a password out of something named for a TOTP
+    /// secret is a dependency that breaks silently the day that page grows a real authenticator panel.
+    /// </summary>
+    private const string TemporaryPasswordSelector = "p.staff-temporary-password";
 
     /// <summary>
     /// Creates a table through <c>/administration/tables/new</c> (§4.1) and returns its identifier,
@@ -194,6 +250,149 @@ internal static class AdministrationJourneys
         }
 
         return new MenuItemOnTheMenu(menuItemIdentifier, name, priceAmount);
+    }
+
+    /// <summary>
+    /// Creates a staff account through <c>/administration/people/new</c> (§3.7) and returns it, including
+    /// the temporary password the success panel showed — the only moment that plaintext exists anywhere.
+    ///
+    /// <para><b>Through the form, for the reason §16.3 keeps insisting on.</b> "Admin creates staff
+    /// account" is the antiforgery token, the administrator-only endpoint authorization, the duplicate
+    /// username check, the generated password, the Argon2id hash, the role grants recording <em>this</em>
+    /// administrator as grantor, and the <c>must_change_password</c> flag — all in one transaction. An
+    /// <c>INSERT</c> would arrange an account with none of that and would then prove nothing about the
+    /// forced-change journey the caller is about to walk.</para>
+    ///
+    /// <para><b>Roles are ticked by name rather than by position.</b> The three checkboxes are
+    /// <c>InputCheckbox</c> components inside <c>label.choice</c> elements and carry no id, so the row is
+    /// found by the <c>span.choice-name</c> beside it. Indexing into the list would work today and would
+    /// silently grant the wrong role the day a fourth role is added above an existing one — which is
+    /// exactly the kind of failure a scenario would blame on authorization.</para>
+    ///
+    /// <para>The identifier comes back off the "Manage this account" link, the same way
+    /// <see cref="CreateTableAsync"/> and <see cref="CreateMenuItemAsync"/> recover theirs.</para>
+    /// </summary>
+    internal static async Task<StaffAccount> CreateStaffAccountAsync(
+        IPage page,
+        string username,
+        string displayName,
+        StaffRoles roles)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync($"{PeoplePath}/new");
+
+        await page.FillAsync("#username", username);
+        await page.FillAsync("#display-name", displayName);
+
+        if (roles.HasFlag(StaffRoles.Counter))
+        {
+            await TickRoleAsync(page, "Counter");
+        }
+
+        if (roles.HasFlag(StaffRoles.Kitchen))
+        {
+            await TickRoleAsync(page, "Kitchen");
+        }
+
+        if (roles.HasFlag(StaffRoles.Administrator))
+        {
+            await TickRoleAsync(page, "Administrator");
+        }
+
+        await page.ClickAsync("button:has-text('Create account')");
+
+        ILocator temporaryPassword = page.Locator(TemporaryPasswordSelector).First;
+
+        try
+        {
+            await temporaryPassword.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                $"Creating the staff account '{username}' did not reach the success panel, so there is"
+                + " no temporary password to hand over — and there will never be another chance to read"
+                + " one, because the plaintext is written into that response and nowhere else. "
+                + await DescribeFailureAsync(page),
+                exception);
+        }
+
+        string issued = (await temporaryPassword.InnerTextAsync()).Trim();
+
+        if (issued.Length == 0)
+        {
+            throw new InvalidOperationException(
+                $"The staff-account panel for '{username}' rendered its temporary password element empty.");
+        }
+
+        ILocator manageLink = page.Locator("a:has-text('Manage this account')").First;
+        string? href = await manageLink.GetAttributeAsync("href");
+        string prefix = PeoplePath + "/";
+
+        if (href is null
+            || !href.StartsWith(prefix, StringComparison.Ordinal)
+            || !Guid.TryParse(href[prefix.Length..], out Guid personIdentifier))
+        {
+            throw new InvalidOperationException(
+                $"The staff-account panel linked to '{href}', which is not a person management URL.");
+        }
+
+        return new StaffAccount(personIdentifier, username, displayName, issued);
+    }
+
+    /// <summary>
+    /// Ticks one role checkbox on the create-staff form, found by the name rendered beside it.
+    ///
+    /// <para><c>CheckAsync</c> rather than <c>ClickAsync</c>: it is a no-op on a box that is already
+    /// ticked, where a click would untick it. The form is static SSR so nothing is bound live — the
+    /// checkbox state at submit is the whole of what is read — but a helper that quietly meant "toggle"
+    /// would be a trap for the first caller who asked for the same role twice.</para>
+    /// </summary>
+    private static async Task TickRoleAsync(IPage page, string roleName)
+    {
+        ILocator choices = page.Locator("fieldset.choice-fieldset label.choice");
+        int count = await choices.CountAsync();
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator choice = choices.Nth(index);
+            string name = (await choice.Locator("span.choice-name").First.InnerTextAsync()).Trim();
+
+            if (!string.Equals(name, roleName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            await choice.Locator("input[type='checkbox']").First.CheckAsync();
+            return;
+        }
+
+        // Read before composing: an await inside an interpolation hole of a string that binds to
+        // DefaultInterpolatedStringHandler is CS4007, because the handler is a ref struct.
+        string offered = await DescribeRoleChoicesAsync(page);
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The create-staff form offers no '{roleName}' role to grant. What it offers: {offered}."));
+    }
+
+    /// <summary>The role names the form is offering, for a failure message.</summary>
+    private static async Task<string> DescribeRoleChoicesAsync(IPage page)
+    {
+        ILocator names = page.Locator("fieldset.choice-fieldset label.choice span.choice-name");
+
+        if (await names.CountAsync() == 0)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"nothing at all; the browser is at '{page.Url}'");
+        }
+
+        IReadOnlyList<string> all = await names.AllInnerTextsAsync();
+
+        return string.Join("; ", all.Select(text => $"'{text.Trim()}'"));
     }
 
     private static string ManagePathFor(Guid tableIdentifier)

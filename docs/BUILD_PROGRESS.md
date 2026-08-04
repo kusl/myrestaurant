@@ -4877,3 +4877,190 @@ to a settled read-only view), **11** (hide, the hidden-records filter, unhide �
 the obligations pipeline through a forced password change and a forced re-enrollment).
 
 Then the backup/restore drill, and M6 is done.
+
+---
+
+### M6 Slice 12 — §16.3 scenario 9, and the first staff account
+
+`Counter_AdjustsPriceWithReason_GuestSeesOldToNew`. §16.3 words it *"counter adjusts a price with reason
+→ guest sees old → new with reason"*, and the sentence has a subject that no earlier scenario in the
+matrix could supply.
+
+**Twelve of fifteen are now live.** Remaining: **10**, **11**, **12**.
+
+---
+
+#### Why this one needed a real staff account
+
+Scenarios 4, 6, 7 and 8 all put an administrator at the pass on purpose, and the reasoning was recorded
+each time: §3.7 admits both `kitchen` and `administrator` to `/kitchen`, an administrator covering a
+station is a thing the application really supports, and standing up a staff account would have added
+`/administration/people/new`, a forced password change and a second sign-in that none of those scenarios
+asserts on. That reasoning does not survive contact with scenario 9.
+
+The thing under test here is a *sentence on a guest's screen*, and §6.2 binds a `price_adjustment` to
+counter **or** administrator and records which. `CounterSitting.razor` reads the actor role off the
+principal rather than assuming it — `counter` wins when somebody holds both, because that is the capacity
+they are standing at the till in — so an administrator adjusting the price renders *"by an
+administrator"*. The assertion would then be about the wrong role, and it would pass. **Who acted is part
+of the claim**, which is what makes this the first scenario that has to create a staff account and sign
+in as one.
+
+So it walks the whole of §3.7 → §3.5 on the way to the interesting part: the create-staff form, the
+generated temporary password, the sign-in that lands on `/account/change-password-required` rather than
+anywhere it asked for, and the change that clears the obligation. The landing page is asserted
+explicitly rather than absorbed into a journey helper — a §3.7 account carries `must_change_password`,
+and a counter who could reach the till on a password an administrator can still read off a screen is a
+hole rather than an inconvenience.
+
+---
+
+#### Quantity two, and why the number is load-bearing
+
+The pie is ordered **two** at 14.00 and adjusted to 11.00. §6.5.7 adjusts a *unit* price and §11.1
+renders the *extension*, so at any quantity above one those are separable observations: the unit price
+must read 11.00, the line must read 22.00, and a surface that wrote the sentence without recomputing the
+money fails the second while passing the first. At quantity one they are the same number twice and the
+weaker claim passes for both.
+
+The soup is the control. One line adjusted, not the ticket — the same discipline scenario 6 applies to
+fulfillment, and the half worth getting wrong.
+
+Both totals are **derived in the scenario** from the prices it actually put on the menu, rather than
+restated as constants. A restated total is a second place the fixture lives, and the day somebody changes
+the soup's price to make another scenario read better, a restated total goes quietly wrong while every
+assertion still passes for the wrong reason.
+
+---
+
+#### Two independent opinions about the same money
+
+The guest's own lines come from `OrderNarrative.FromEvents` — the event fold, in C#. The till's figures
+come from `sitting_bill`, which sums `order_current_line`'s extended prices — in SQL. §16.2 has a
+view ≡ fold equivalence test over randomized sequences precisely because those two must never disagree;
+this scenario asserts both from a browser, on the same adjustment, which is that property seen from a
+screen rather than from a property test.
+
+Money is asserted as **formatted text**, through `MoneyText.Format` and the currency code the instance
+was configured with (`RestaurantInstance.CurrencyCode`, named this slice rather than left a literal
+inside `CreateProcess`). Hard-coding `"$11.00"` would be a claim about `RESTAURANT_CURRENCY_CODE` that
+silently becomes a claim about nothing the day it moves; formatting it the way the surface did makes the
+assertion be about the adjustment. Comparing formatted strings is also stricter than comparing decimals,
+because it catches a formatter that has started dropping its symbol — which §13 makes display-only and
+therefore has no other test above it.
+
+---
+
+#### Three product changes, all additive
+
+| File | Change |
+| --- | --- |
+| `CounterSitting.razor` | `id="counter-sitting-surface"`, `data-live`, and an `id` on each of the two price-editor inputs |
+| `TableOrderSurface.razor` | `.order-line-adjustment` beside `.order-line-detail` |
+| `CreateStaff.razor` | `.staff-temporary-password` beside `.totp-secret` |
+
+**`data-live` on the till is the one that is worth having regardless of any test.** A prerendered till is
+the dangerous kind of broken, because it is the kind that looks right: the bill is correct as of the
+request, every total adds up, and Adjust price, Remove, Add to the bill and Close & settle are all
+`@onclick` handlers with no circuit behind them. Pressing any of them does nothing at all — no refusal,
+no flash, no error — and the screen never hears §9 either, so a guest sending while somebody stands at
+the till changes nothing on it. Same attribute, same reasoning, as `KitchenBoard`'s and
+`TableOrderSurface`'s.
+
+**The two editor `id`s** replace the only way the fields were previously distinguishable: `inputmode` on
+one and `maxlength` on the other. That is not a thing anything outside the markup should have to know.
+Only one editor is ever open — `StartAdjust` calls `CancelEditors` first and `_adjustingLine` holds a
+single line — so an id is unique in the document, and the wrapping `<label>` still associates each input
+implicitly, so no accessible name changes.
+
+**`.order-line-adjustment`** exists because the removal sentence directly above it carries the identical
+`.order-line-detail`, so *"the detail paragraph under this line"* was never a way to name this one — and
+on a line that had been both adjusted and removed, it would have named both. **`.staff-temporary-password`**
+exists because that element holds a password and borrowed the TOTP class for its monospaced treatment;
+reading a password out of something named for a TOTP secret breaks silently the day that page grows a
+real authenticator panel. No CSS stands behind either new class, and nothing changes on screen. Same
+reasoning as Slice 9's `.order-party-line-name`, Slice 10's `.order-prune-notice` and Slice 11's
+`data-unseen-reminders`.
+
+No migration, no schema change, no package, no ADR, no `Program.cs`, no `.slnx`, and no normative
+specification change — §16.3's wording of scenario 9 is what was implemented, not amended.
+
+---
+
+#### Harness
+
+A new `Harness/CounterJourneys.cs`: the board, opening a bill, adjusting a price, and reading the whole
+bill back. Three things in it are worth naming.
+
+**An adjustment is judged by the unit price, not by the confirmation.** §11.3 writes a flash sentence
+naming the new price and that sentence survives until something clears it, so a second adjustment of the
+same shape is satisfied by the first one's words. The unit price on the line is the state the transaction
+wrote. The same reasoning `SendAsync` uses for the basket and `FulfillLineAsync` uses for the pass.
+
+**The refusal is polled for first, and that ordering is deliberate.** Every button at the till goes
+through `IOrderWorkflow` and can be refused under the §6.6 lock — a guest sending, the kitchen
+fulfilling, somebody closing a second earlier — and a refusal leaves the unit price exactly as it was. A
+poll that only watched the price would spend the whole patience failing to notice that the answer had
+already arrived.
+
+**The two money figures on a bill line share one element.** §11.3 nests `span.counter-line-unit` *inside*
+`span.counter-line-price`, so the parent's inner text carries both. The child's text is removed from the
+parent's rather than the pair being split on a line break, because how a flex column becomes line breaks
+is a browser detail and this is exact.
+
+`AdministrationJourneys` gains `CreateStaffAccountAsync` and a `StaffRoles` flags enum. Roles are ticked
+**by the name rendered beside the checkbox** rather than by position: indexing would work today and would
+silently grant the wrong role the day a fourth role is added above an existing one — which is a failure a
+scenario would blame on authorization. `CheckAsync` rather than `ClickAsync`, so asking for the same role
+twice is a no-op rather than an untick.
+
+`AccountJourneys` gains `SignInWithPasswordAsync` and `CompleteForcedPasswordChangeAsync`, kept as two
+methods rather than one because the page a staff member lands on in between is itself the assertion. The
+submit button is named by **exclusion** — `button[type='submit']:not([name='__passkeySubmit'])` — because
+this form carries two and "Sign in" as text matches both, the second being "Sign in with a passkey".
+
+`TableOrderJourneys` gains `GuestPriceAdjustment` and `GuestOrderLineDetail`. The two amounts are read
+from the elements that carry them — the old one struck through in an `<s>`, the new one in a `<strong>` —
+rather than pulled back out of prose, because a single string could satisfy *"the new price appears"*
+while the old one had quietly vanished, and that is the half of "old → new" whose loss costs a guest the
+ability to see what changed. A missing half is reported as a failure naming which one went.
+`ReadCommittedLinesAsync` now **projects** from the fuller read rather than walking the DOM a second
+time; two walks that drifted out of step would be a worse price than a few extra locator round trips
+against a local browser.
+
+---
+
+#### One widened selector, corrected in passing
+
+`AccountJourneys.DescribeSurfaceAsync` looked for `p.status-error`. `ChangePasswordRequired.razor`
+renders its refusals as a `ul.status-error` of `<li>` elements, because Identity hands back a list — so
+the one page in this application whose entire job is to refuse would have described itself as reporting
+no error. Widened to `.status-error`; the old match set is a subset, so no existing caller changes, and
+any element carrying the class now reads out whole.
+
+---
+
+#### What this does not prove
+
+The **post-close** half of §6.7 is untouched. §6.5.8 admits nothing but an administrator's corrective
+events after a close, and `CounterSitting.razor` renders no Adjust button on a settled sitting at all —
+so a counter's price adjustment and an administrator's correction are two different mechanisms and this
+scenario exercises the first. The second belongs with scenario 10, which is where a close exists to
+correct after.
+
+Nor does it read the `order_event` row. The guest's own lines *are* the event fold, so the assertion in
+(f) is already an assertion about what was written; a third opinion from `RestaurantInstance` would have
+been a query that could only agree.
+
+---
+
+#### Where scenario 9 sits in the matrix
+
+Live: **1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 15**. Remaining: **10** (a close, the pending-line warning,
+and the flip to a settled read-only view — which inherits this slice's till harness and `data-live`),
+**11** (hide, the hidden-records filter, unhide — the one that will meet `EnhancedNavigation` again, on
+an administrator following a filter link), and **12** (a TOTP reset driving the obligations pipeline
+through a forced password change *and* a forced re-enrollment — which inherits this slice's
+`CompleteForcedPasswordChangeAsync` and needs only the second obligation added beside it).
+
+Then the backup/restore drill, and M6 is done.

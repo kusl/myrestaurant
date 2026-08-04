@@ -1,194 +1,176 @@
-# M6 Slice 11 — the CS4007 fix, and §16.3 scenario 8
+# M6 Slice 12 — §16.3 scenario 9, and the first staff account
 
 Every file below is a **full file** at its **repo-relative path**. Extract at the repo root and the
 contents drop straight over your working tree — no diffs, no patches, no scripts to run.
 
 ```bash
-tar -xzf m6-slice11-reminder.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice12-price-adjustment.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
-**Eighteen, all documentation, all in `docs/_append/`.** Slice 10 asked for these and they are still on
-disk, so the request stands. Nothing in `src/` or `tests/` is renamed, superseded or orphaned; no
-migration, no schema change, no package change, no ADR edit, no `Program.cs` edit, no `.slnx` edit.
+**None.** Slice 11 asked for the eighteen files under `docs/_append/`, and commit `ce95628` ("delete
+append files") did it — that directory is gone from the dump, so the request is discharged. Nothing in
+this slice renames, supersedes or orphans anything: no migration, no schema change, no package change, no
+ADR edit, no `Program.cs` edit, no `.slnx` edit.
 
-```
-docs/_append/BUILD_PROGRESS-m4-slice-2.md
-docs/_append/BUILD_PROGRESS-m4-slice-3.md
-docs/_append/BUILD_PROGRESS-m4-slice-4.md
-docs/_append/BUILD_PROGRESS-m5-slice-1.md
-docs/_append/BUILD_PROGRESS-m5-slice-2.md
-docs/_append/BUILD_PROGRESS-m5-slice-3.md
-docs/_append/BUILD_PROGRESS-m5-slice-4.md
-docs/_append/BUILD_PROGRESS-m5-slice-5.md
-docs/_append/BUILD_PROGRESS-m6-slice-1.md
-docs/_append/BUILD_PROGRESS-m6-slice-2.md
-docs/_append/BUILD_PROGRESS-m6-slice-3.md
-docs/_append/BUILD_PROGRESS-m6-slice-4.md
-docs/_append/BUILD_PROGRESS-m6-slice-5.md
-docs/_append/BUILD_PROGRESS-m6-slice-6.md
-docs/_append/BUILD_PROGRESS-m6-slice-7.md
-docs/_append/BUILD_PROGRESS-m6-slice-8.md
-docs/_append/BUILD_PROGRESS-m6-slice-9.md
-docs/_append/M6-SLICE-9-CHANGES.md
-```
+## About "some tests are now failing"
 
-The archive does not contain `docs/_append/`, so after extracting, the whole directory can go:
+**They aren't.** `claude-terminal.txt` is from the same session as `dump.txt` — its cloudflared
+timestamps are UTC, and 20:23 EDT is 00:23Z — and it shows `dotnet test` at **971 total / 0 failed / 956
+succeeded / 15 skipped**, `scripts/ci_local.sh --with-all` green across all six gates, and
+`MYRESTAURANT_E2E=1` at **15 total / 0 failed / 11 succeeded / 4 skipped**. Slice 11's CS4007 fix landed
+and the fifteen-test gap it explained is closed. There is no failing assertion anywhere in that output.
+The four remaining skips are the four unimplemented §16.3 scenarios, each carrying
+`PendingHarnessExtension`. This slice takes one of them.
 
-```bash
-git rm -r docs/_append
-```
-
-I re-verified all seventeen `BUILD_PROGRESS-*.md` files against the `docs/BUILD_PROGRESS.md` in this
-archive — first line, middle line and last line of each, by exact substring. **All seventeen are already
-merged**; deleting them loses nothing. The eighteenth, `M6-SLICE-9-CHANGES.md`, is a stray copy of Slice
-9's delivery note rather than a ledger entry, and its content is not in `BUILD_PROGRESS.md` because it
-was never meant to be.
-
-## The seven files
+## The files
 
 | File | Change |
 | --- | --- |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | **CS4007 fixed** |
-| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | §16.3 scenario **8** implemented |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/KitchenJourneys.cs` | reminder count on the snapshot; acknowledge; watch-for-silence |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs` | `KITCHEN_SUBMISSION_REMINDER_SECONDS` parameterised; `kitchen_notification` read |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs` | the new parameter, defaulted to 60 |
-| `src/MyRestaurant.WebApplication/Components/Pages/Kitchen/KitchenBoard.razor` | one added data attribute |
-| `docs/BUILD_PROGRESS.md` | Slice 11 appended; Slice 10's glued heading separated |
+| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | §16.3 scenario **9** implemented |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs` | **new** — the till: board, bill, price adjustment |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs` | `CreateStaffAccountAsync`, `StaffRoles`, `StaffAccount` |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs` | password sign-in; §3.5's forced password change; one widened selector |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | `GuestPriceAdjustment`, `GuestOrderLineDetail`, `ReadOwnLinesAsync`, `WaitForOwnLineAsync` |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs` | `CurrencyCode` named rather than a literal |
+| `src/MyRestaurant.WebApplication/Components/Pages/Counter/CounterSitting.razor` | `data-live`, a surface id, two input ids |
+| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor` | one added class |
+| `src/MyRestaurant.WebApplication/Components/Pages/Administration/CreateStaff.razor` | one added class |
+| `docs/BUILD_PROGRESS.md` | Slice 12 appended (**complete file**, 5,066 lines — I did the appending) |
 | `_CHANGES.md` | this file |
 
-## The build error
+## Why scenario 9 needed a real staff account
 
-`Harness/TableOrderJourneys.cs`, `LineOffersRemovalAsync`. The compiler pointed at **line 412** — the
-method's opening brace, which is always where CS4007 is reported — and the cause was at **line 433**:
+Scenarios 4, 6, 7 and 8 deliberately put an administrator at the pass, and said why each time. That
+reasoning does not survive here.
 
-```csharp
-+ $" It holds: {Describe(await ReadCommittedLinesAsync(page))}."
-```
+The thing under test is a sentence on a guest's screen, and §6.2 binds a `price_adjustment` to counter
+**or** administrator and records which. `CounterSitting.razor` reads the actor role off the principal —
+`counter` wins when somebody holds both, because that is the capacity they are standing at the till in —
+so an administrator adjusting the price renders *"by an administrator"*. The assertion would then be
+about the wrong role, **and it would pass**. Who acted is part of the claim.
 
-The `await` sits inside an interpolation hole of a string that binds to
-`DefaultInterpolatedStringHandler`. That handler is a `ref struct` and cannot be held across a suspension
-point. Hoisting the read into a local first is the fix, and it is the pattern this file already uses in
-four other places with a comment explaining it each time — this one was written inline.
+So the scenario walks §3.7 → §3.5 on the way in: the create-staff form, the generated temporary password,
+a sign-in that lands on `/account/change-password-required` rather than anywhere it asked for, and the
+change that clears the obligation. That landing is asserted explicitly rather than absorbed into a helper
+— a §3.7 account carries `must_change_password`, and a counter who could reach the till on a password an
+administrator can still read off a screen is a hole, not an inconvenience.
 
-I re-scanned all 317 files for `await` inside an interpolation hole. **One occurrence, this one.**
+## Quantity two, and why the number matters
 
-## "Some tests are now failing"
+The pie is ordered **two** at 14.00 and adjusted to 11.00. §6.5.7 adjusts a *unit* price and §11.1
+renders the *extension* — so the unit must read 11.00 **and** the line must read 22.00, and a surface that
+wrote the sentence without recomputing the money fails the second while passing the first. At quantity one
+those are the same number twice.
 
-They aren't, and this is worth being precise about rather than fixing something that is not broken.
-`claude-terminal.txt` shows `dotnet test` at **956 total / 0 failed**. Slice 9's note put the total at
-**971**. The fifteen-test gap is exactly the end-to-end project's fifteen scenarios — the project failed
-to build, so they were never *discovered*, let alone run. There is no failing assertion anywhere in that
-output. Fix the CS4007 and the total returns to 971.
+The soup is the control: one line adjusted, not the ticket.
 
-## What scenario 8 asserts, and why it took three things
+Both totals are **derived in the scenario** from the prices it actually created, not restated as
+constants. A restated total is a second place the fixture lives, and it goes quietly wrong the day
+somebody changes a price for another scenario's sake while every assertion still passes.
 
-§16.3 asks for *"a send sits unfulfilled 60 s → exactly one reminder alert."* The word carrying the
-weight is **exactly**, and no single observation carries it:
+## The three product changes
 
-- **The badge only ever rises.** Two is two whether the second alert landed a second ago or a minute ago.
-  So the scenario clears it first (§10.3's *"tap to clear"*), which turns any further alert into a rise
-  from zero — something that can be watched for rather than inferred.
-- **A sleep-then-read would miss the interesting failure.** An alert that arrived and was cleared again
-  inside the window is precisely the bug being looked for. `WatchBoardAsync` polls for the whole duration
-  and returns the **high-water mark**, so asserting zero is an assertion about the stretch, not its last
-  instant.
-- **The board cannot settle it at all.** Its count is circuit state. A quiet board is consistent with a
-  second reminder row having been written and broadcast to nobody. `UNIQUE (order_event_identifier,
-  kind)` is what makes a reminder singular, so the scenario reads `kitchen_notification` grouped by kind
-  — `initial: 1, reminder: 1`, before and after the quiet watch.
+All additive; no CSS stands behind any new class and nothing changes on screen.
 
-## Five seconds, and why every other scenario keeps sixty
+**`CounterSitting.razor` — `data-live`, and this one is worth having regardless of any test.** A
+prerendered till is the dangerous kind of broken because it is the kind that looks right: the bill is
+correct as of the request, every total adds up, and Adjust price, Remove, Add to the bill and Close &
+settle are all `@onclick` handlers with no circuit behind them. Pressing any of them does nothing —
+no refusal, no flash, no error — and the screen never hears §9 either. Same attribute, same reasoning, as
+`KitchenBoard`'s and `TableOrderSurface`'s.
 
-`KITCHEN_SUBMISSION_REMINDER_SECONDS` was the literal `"60"` in `RestaurantInstance.CreateProcess`. It now
-threads through the harness exactly as `TABLE_JOIN_TOKEN_ROTATION_SECONDS` does, defaulting to 60.
+**`CounterSitting.razor` — `id` on each price-editor input.** They were previously distinguishable only by
+`inputmode` on one and `maxlength` on the other, which is not something outside the markup should have to
+know. Only one editor is ever open (`StartAdjust` calls `CancelEditors`, and `_adjustingLine` holds a
+single line), so an id is unique in the document; the wrapping `<label>` still associates each input
+implicitly, so no accessible name changes.
 
-Scenario 8 asks for 5. §8.4's scan compares `occurred_at` against a threshold it is handed, so the rule is
-identical at either value — the number is a duration to wait, not a parameter under test. Going below 5
-would be pointless, because `KitchenReminderService.ScanInterval` is a fixed five seconds and the scan's
-own resolution would then dominate.
+**`.order-line-adjustment`** — the removal sentence directly above carries the identical
+`.order-line-detail`, so "the detail paragraph under this line" was never a way to name this one, and on a
+line both adjusted and removed it would have named both.
 
-**The 60 default is load-bearing.** §8.4 is the only thing in the system that writes because nobody acted.
-At a short global setting, any scenario that sends and then spends thirty seconds asserting on something
-else would pick up a reminder alert it never asked for — scenario 4's *"still one alert"* re-read being
-the first casualty. Documented on the constant so it is not "tidied" later.
+**`.staff-temporary-password`** — that element holds a password and borrowed `.totp-secret` for its
+monospaced treatment. Reading a password out of something named for a TOTP secret breaks silently the day
+that page grows a real authenticator panel.
 
-## The one product change
+## Two things I found while reviewing my own code
 
-`KitchenBoard.razor` gains `data-unseen-reminders="@_alerts.UnseenReminderCount"` beside the existing
-`data-unseen-alerts`. The number was already on screen inside the badge as `" (1 overdue)"`, but that
-parenthetical renders only when non-zero, so its absence is ambiguous between *no reminders* and *no badge
-at all*. Purely additive — same value the badge already shows, no CSS behind it, nothing changes visually.
-Same reasoning as Slice 9's `.order-party-line-name` and Slice 10's `.order-prune-notice`.
+**A CS4007, caught and fixed before packaging.** `ReadPriceAdjustmentsAsync` had
+`{(await previous.CountAsync() == 0 ? … : …)}` inside an interpolation hole of a string binding to
+`DefaultInterpolatedStringHandler`. Same class of error as Slice 11's, in code written the same day I
+wrote about it. Both counts are now hoisted into locals first. I re-scanned every `.cs` file in the
+project afterwards: no `await` inside any interpolation hole remains.
 
-## One stale doc reference, corrected in passing
+**A selector that could never have matched.** `AccountJourneys.DescribeSurfaceAsync` looked for
+`p.status-error`, but `ChangePasswordRequired.razor` renders its refusals as a `ul.status-error` of `<li>`
+elements because Identity hands back a list — so the one page whose entire job is to refuse would have
+described itself as reporting no error, on the exact journey this slice adds. Widened to `.status-error`;
+the old match set is a subset, so no existing caller changes.
 
-`KitchenJourneys.cs` referenced `<see cref="TableOrderJourneys.BasketWarningCountAsync"/>`, which has not
-existed since Slice 10 folded it into `BasketContents.UnavailableMarks`. Silent today only because
-`GenerateDocumentationFile` is `false` — it would be CS1574, and therefore an **error** under CI's
-`ContinuousIntegrationBuild=true`, the day that changes.
-
-## Also in `docs/BUILD_PROGRESS.md`
-
-Slice 10's heading was glued to the previous paragraph (`…M6 is done.` immediately followed by
-`### M6 Slice 10`), so it did not render as a heading. Separated with a blank line and a rule, matching
-every other slice boundary in the file. That is the only edit to existing content; Slice 11 is appended.
+I also dropped a composite `SignInAsStaffForTheFirstTimeAsync` I had written: scenario 9 asserts on the
+page in between the two halves, scenario 12 will want the same granularity, and shipping an unused
+`internal` method is clutter.
 
 ## Build/test checklist
 
 ```bash
 cd /home/kushal/src/dotnet/myrestaurant
 
-# 1. The build error is gone. This is the one that has been red.
+# 1. Three .razor files and six .cs files.
 dotnet build
 #    expect: all seven projects succeed, 0 errors
 
-# 2. Back to the pre-Slice-10 total.
+# 2. Unchanged from Slice 11's baseline.
 dotnet test
 #    expect: total 971, failed 0, succeeded 956, skipped 15
-#    Scenario 8 moves from [Fact(Skip = …)] to [Fact] + Assert.SkipUnless; xUnit counts both as
-#    skipped, so with MYRESTAURANT_E2E unset every number is unchanged from Slice 9's baseline.
+#    Scenario 9 moves from [Fact(Skip = ...)] to [Fact] + Assert.SkipUnless; xUnit counts both as
+#    skipped, so with MYRESTAURANT_E2E unset every number is identical.
 
-# 3. The strict build. One .razor hunk (two, counting the doc comment) and five C# files.
+# 3. The strict build - warnings are errors under ContinuousIntegrationBuild.
 bash scripts/ci_local.sh --with-all
 
 # 4. The point of the slice.
 MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
-#    expect: total 15, failed 0, 11 passed, 4 skipped
-#    Scenario 8 adds roughly 30s of wall clock: ~10s waiting for the reminder, 15s watching silence.
+#    expect: total 15, failed 0, 12 passed, 3 skipped
+#    Scenario 9 adds roughly 20-25s: a /setup wizard, two menu items, a table, a staff account, a
+#    guest registration, two Argon2id verifies and two hashes, and no waiting on any timer.
 ```
 
-**11 passed / 4 skipped is arithmetic, not observation.** It assumes Slice 10's scenario 7 goes green now
-that the project compiles — nothing in this slice touches scenario 7's assertions, and if it is red the
-number is 10 and scenario 8 is unaffected either way. There is no .NET SDK in my sandbox; I have run none
-of this. What I did run: brace/paren/bracket balance on every edited file compared against the original,
-a razor tag-balance check, and the CS4007 scan described above.
+There is no .NET SDK in my sandbox; I have run none of this. What I did run, on every edited file:
+brace/paren/bracket balance **and a depth walk** (never negative, ends at zero) with strings and comments
+stripped; a Razor tag-structure comparison against the pristine file from `dump.txt`, confirming all three
+`.razor` edits leave the tag tree **identical**; the CS4007 scan above; a CS1620 scan confirming every
+additive operand inside every `string.Create(...)` is an interpolated string; and an existence check of all
+sixteen selectors the new harness code depends on against the markup it targets.
 
 ## If it goes red
 
 | Message begins | What it means |
 | --- | --- |
-| `The kitchen board published data-unseen-reminders='absent'…` | The `.razor` attribute did not land. Check the `<section id="kitchen-board-surface">` opening tag has all three attributes. |
-| `The kitchen board never showed the overdue send's reminder counted on the badge…` | The reminder never arrived. Either `KitchenReminderService` is not running (its startup line — *"scanning every 5s for guest submissions older than 5s"* — is in `RestaurantInstance.DiagnosticOutput`), or the threshold did not reach the child process. |
-| `Assert.Equal() Failure: Expected 1, Actual 2` on `UnseenReminderCount` | Two reminders for one send. That is the `UNIQUE (order_event_identifier, kind)` constraint or §8.4's `RETURNING` guard, and it is a real defect. |
-| `Assert.Equal() Failure` on `KitchenNotificationTally { Initial = 1, Reminder = 1 }` after the quiet watch | Same defect, seen at the row rather than at the badge — and this is the one that matters, because it holds even when the broadcast went nowhere. |
-| `There is no alert badge to clear…` | The board had nothing unseen at the acknowledge step, which means step (b)'s reminder never actually reached the badge despite the wait passing. Shouldn't be reachable; if it is, tell me. |
-| `kitchen_notification.kind held '…'` | A migration widened §8.2's CHECK constraint and `ReadKitchenNotificationsAsync` needs a third case. |
+| `The till never became interactive within 30s...` | `data-live` did not land on `CounterSitting.razor`, or `IsLiveAttributeValue` is missing from its `@code` block. Check the `<section class="panel counter-sitting-page" id="counter-sitting-surface"` opening tag has both new attributes. |
+| `The counter board has no open table labelled 'E2E Nine'...` | The guest's join never opened a sitting, or `/counter` refused the principal. §3.7 admits counter and administrator; a failed policy shows the access-denied panel instead, and the message quotes the URL. |
+| `The browser is not on /account/change-password-required...` | §3.5's obligation (1) did not fire for a §3.7 account. That is a real defect — `CreateStaffAsync` writes `must_change_password = true`, and `ObligationsMiddleware` must intercept the sign-in's own navigation. |
+| `Pressing Adjust price on 'Steak pie' did not open the editor.` | The two input ids did not land, or the sitting is already settled (§11.3 renders no line controls on a closed sitting). |
+| `Adjusting 'Steak pie' to $11.00 was refused...` | A real refusal under the §6.6 lock, with the till's own reasons quoted. Nothing else in this scenario writes concurrently, so this would be genuine. |
+| `Assert.Equal() Failure: Expected $22.00, Actual $28.00` on `adjusted.PriceText` | The sentence was written but the extension was not recomputed — the exact failure quantity two exists to separate. |
+| `Assert.Contains() Failure ... "the counter"` | The actor role was recorded or rendered as something other than `counter`. Check `CounterSitting.razor`'s `_actorRole` and `TableOrderSurface.razor`'s `DescribeRole`. |
+| `§11.1 requires a price adjustment to be shown old -> new, and this one is missing...` | One of the two amounts stopped rendering. The message names which, and quotes the sentence on screen. |
+| `Assert.Equal() Failure` on `RunningTotalText` but the guest's line is right | The fold and the view disagree — `sitting_bill` / `order_current_line` versus `OrderNarrative`. That is the §16.2 equivalence property, and it is the most serious thing this scenario can find. |
 
-`RestaurantInstance.DiagnosticOutput` carries the web application's console tail, including every
-`"Kitchen reminder issued for order event …"` line the service logged.
+`RestaurantInstance.DiagnosticOutput` carries the web application's console tail if a page 500s.
 
 ## What is next
 
-Scenario **9** — a counter adjusts a price with a reason and the guest's screen reads old → new. It is the
-first scenario to need a counter, which means `/administration/people/new`, a forced password change
-(§3.2) and a second sign-in before the interesting part starts — the staff-account journey scenarios 4
-and 6 deliberately skipped by putting an administrator at the pass. Then 10 through 12, and the
-backup/restore drill.
+Scenario **10** — a counter closes with the pending-line warning shown, the table flips to settled
+read-only, and the totals match. It inherits this slice's till harness and `data-live` wholesale and
+needs `CloseAndSettleAsync` plus the read-only assertions. Then **11** (hide / filter / unhide, which will
+meet `EnhancedNavigation` again on an administrator following a filter link) and **12** (a TOTP reset,
+which inherits `CompleteForcedPasswordChangeAsync` and needs only the second obligation beside it). Then
+the backup/restore drill.
 
 ## The one-line why
 
-The failing build was one `await` in the wrong place; the scenario it was blocking turned out to need
-three separate observations to say the single word §16.3 asks for.
+Every earlier scenario could let an administrator stand in for staff; this one could not, because the
+thing it asserts is *who* changed a number on somebody's bill.

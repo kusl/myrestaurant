@@ -271,6 +271,112 @@ internal static class AccountJourneys
             new PageWaitForURLOptions { Timeout = 60_000 });
     }
 
+    /// <summary>
+    /// Signs in with a username and a password (§3.3) and returns once the sign-in page has been left —
+    /// wherever it led, which the caller asserts on.
+    ///
+    /// <para><b>Where it leads is often not the destination.</b> A password sign-in that succeeds
+    /// navigates to the return URL, and <c>ObligationsMiddleware</c> intercepts that navigation whenever
+    /// a §3.5 flag is set — so a staff account signing in on its temporary password lands on the
+    /// forced-change page rather than anywhere it asked for. That is the behaviour §16.3 scenario 12 is
+    /// about and scenario 9 walks through on its way to the till, and it is why this returns on "left the
+    /// sign-in page" rather than on any particular arrival.</para>
+    ///
+    /// <para>The submit button is named by exclusion rather than by its class or its words: this form
+    /// carries two, and the other is the <c>&lt;passkey-submit&gt;</c> one, which is the only one with a
+    /// <c>name</c> attribute. "Sign in" as text matches both, because the second says "Sign in with a
+    /// passkey".</para>
+    ///
+    /// <para>No virtual authenticator is needed on the page's context. <c>passkey.js</c> does start a
+    /// conditional-mediation request on load, but a context with no authenticator simply never satisfies
+    /// it and the password path is untouched — which is also §17's accepted position that "counter role
+    /// may operate password-only".</para>
+    /// </summary>
+    internal static async Task SignInWithPasswordAsync(IPage page, string username, string password)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(AccountRoutes.SignIn);
+
+        await page.FillAsync("#username", username);
+        await page.FillAsync("#password", password);
+
+        await page.ClickAsync("form button[type='submit']:not([name='__passkeySubmit'])");
+
+        try
+        {
+            await page.WaitForURLAsync(
+                HasLeftSignInPage,
+                new PageWaitForURLOptions { Timeout = 60_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            string refusal = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                $"Signing '{username}' in with a password never left {AccountRoutes.SignIn}. {refusal}",
+                exception);
+        }
+    }
+
+    /// <summary>
+    /// Clears §3.5's obligation (1) on the page it traps a principal on: replaces the temporary password
+    /// with a real one and returns once the pipeline has released the principal.
+    ///
+    /// <para><b>Being on the right page is asserted rather than assumed, and that is the point.</b> A
+    /// caller reaching here having landed somewhere else means the obligation did not fire — an account
+    /// created with <c>must_change_password</c> walked straight past it on a temporary password, which
+    /// is a §3.5 hole rather than a harness inconvenience. It deserves a sentence naming where the
+    /// browser actually is.</para>
+    ///
+    /// <para>Completion is "the browser left the forced-change page". <c>ChangePasswordRequired.razor</c>
+    /// clears the flag in the same store update that persists the new hash, records a
+    /// <c>forced_password_change_completed</c> event, re-issues the cookie so the obligation claim
+    /// disappears with it, and only then navigates — so leaving is the whole of that sequence having
+    /// happened, and a page that refused the new password stays exactly where it was with its reasons
+    /// on screen.</para>
+    /// </summary>
+    internal static async Task CompleteForcedPasswordChangeAsync(
+        IPage page,
+        string temporaryPassword,
+        string newPassword)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        if (!IsForcedPasswordChangeUrl(page.Url))
+        {
+            string surface = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                $"The browser is not on {AccountRoutes.ForcedPasswordChange}, so there is no forced"
+                + " password change to complete. An account created by §3.7 carries"
+                + " must_change_password, and §3.5 admits such a principal to no authenticated endpoint"
+                + $" except sign-out and the pipeline's own pages until it clears. {surface}");
+        }
+
+        await page.FillAsync("#current-password", temporaryPassword);
+        await page.FillAsync("#new-password", newPassword);
+        await page.FillAsync("#confirm-password", newPassword);
+
+        await page.ClickAsync("button:has-text('Set new password')");
+
+        try
+        {
+            await page.WaitForURLAsync(
+                url => !IsForcedPasswordChangeUrl(url),
+                new PageWaitForURLOptions { Timeout = 60_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            string refusal = await DescribeSurfaceAsync(page);
+
+            throw new InvalidOperationException(
+                $"The forced password change was never accepted, so the principal is still held by"
+                + $" §3.5's pipeline. {refusal}",
+                exception);
+        }
+    }
+
     private static async Task<bool> IsStillOnSignInPageAsync(IPage page, TimeSpan grace)
     {
         try
@@ -336,6 +442,16 @@ internal static class AccountJourneys
             && string.Equals(parsed.AbsolutePath, AccountRoutes.Register, StringComparison.Ordinal);
 
     /// <summary>
+    /// True while the browser is on §3.5's forced password-change page. The path is compared exactly and
+    /// the query string is ignored on purpose: the middleware appends <c>?ReturnUrl=…</c>, and the
+    /// destination being carried across is a fact about the redirect rather than about which page this is.
+    /// </summary>
+    private static bool IsForcedPasswordChangeUrl(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)
+            && string.Equals(
+                parsed.AbsolutePath, AccountRoutes.ForcedPasswordChange, StringComparison.Ordinal);
+
+    /// <summary>
     /// Whatever the account surface has to say about why it did not proceed: which step it is showing,
     /// every refusal and validation message on it, and the URL it is sitting on.
     ///
@@ -346,7 +462,14 @@ internal static class AccountJourneys
     private static async Task<string> DescribeSurfaceAsync(IPage page)
     {
         string heading = await HeadingOrNothingAsync(page);
-        ILocator problems = page.Locator("p.status-error, .validation-message");
+
+        // `.status-error` rather than `p.status-error`, and the widening is load-bearing rather than
+        // tidying: ChangePasswordRequired.razor renders its refusals as a `ul.status-error` of `li`
+        // elements, because Identity hands back a list. The narrower selector matched none of them, so
+        // the one page in this application whose whole job is to refuse would have described itself as
+        // reporting no error. Every existing caller is unaffected — the old set is a subset — and any
+        // element carrying the class now reads out whole, list items included.
+        ILocator problems = page.Locator(".status-error, .validation-message");
 
         if (await problems.CountAsync() == 0)
         {

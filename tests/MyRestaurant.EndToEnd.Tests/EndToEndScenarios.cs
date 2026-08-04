@@ -14,7 +14,7 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
 /// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// <para>Eleven are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
+/// <para>Twelve are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
 /// WebAuthn attestation and a real TOTP confirmation), <b>13</b> (a passkey sign-in of a TOTP-enrolled
 /// person must not be challenged for a code) and <b>14</b> (the join-token window arithmetic as a guest
 /// experiences it) — chosen because between them they exercise the whole harness. M6 Slice 3 adds
@@ -37,7 +37,11 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// <b>8</b> (a send left untouched past the threshold draws one reminder, and only one), the first
 /// scenario in the matrix whose subject is something no browser did — and the first whose closing
 /// assertion is that nothing further happened, which is a different shape of claim from every other
-/// one here.</para>
+/// one here. M6 Slice 12 adds <b>9</b> (a counter adjusts a unit price with a reason and the guest's own
+/// screen reads old → new), the first driven by a <em>staff</em> account rather than by the
+/// administrator standing in for one — which means the first to walk §3.7's create-staff form and §3.5's
+/// forced password change on the way to the thing under test, and the only one where who acted is itself
+/// part of the assertion.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -81,6 +85,36 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     /// longer buys nothing this scenario asserts on and costs the whole difference in wall clock.</para>
     /// </summary>
     private const int ImpatientReminderSeconds = 5;
+
+    /// <summary>
+    /// The password §16.3 scenario 9's counter chooses when §3.5 forces them off the temporary one. A
+    /// passphrase rather than a short scramble because §3.2 requires twelve characters and refuses
+    /// nothing else — and because a fixture that failed the policy would fail inside a validation list
+    /// on the forced-change page, which is a tedious thing to diagnose from a timeout two steps later.
+    /// </summary>
+    private const string CounterPassword = "settle up at the till please";
+
+    /// <summary>
+    /// The unit price §16.3 scenario 9's counter adjusts the pie to. Three below its menu price of
+    /// fourteen, on a line of two, so that the extension has to move by six — a difference no rounding
+    /// and no coincidence produces, and one that cannot be confused with the unit price itself.
+    /// </summary>
+    private const decimal AdjustedPieUnitPrice = 11.00m;
+
+    /// <summary>
+    /// §6.5.7 requires a reason and the <c>order_event</c> CHECK enforces it, so this is the one
+    /// mutation in the system that cannot be made silently. Worded like something a person would
+    /// actually type, because §11.1 shows it to the guest verbatim.
+    /// </summary>
+    private const string PriceAdjustmentReason = "Small bowl, agreed at the till";
+
+    /// <summary>
+    /// How many pies §16.3 scenario 9's guest orders. Two, and the number is the whole reason the
+    /// scenario can tell one claim from another: §6.5.7 adjusts a <em>unit</em> price and §11.1 renders
+    /// the extension, so at any quantity above one "the adjustment landed" and "the bill was
+    /// recalculated" are separable observations. At one they are the same number twice.
+    /// </summary>
+    private const int AdjustedLineQuantity = 2;
 
     private readonly RestaurantHarness _harness;
 
@@ -1044,14 +1078,216 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     }
 
     // -------------------------------------------------------------------------------------------
+    // 9. Counter adjusts a price with reason → guest sees old → new with reason.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Counter_AdjustsPriceWithReason_GuestSeesOldToNew()
+    {
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Nine";
+        GuestAccount guestAccount = new("e2e.guest.nine", "Nine Guest");
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+
+        // (a) An administrator, two things on the menu, a table — and a counter account, which is what
+        // makes this scenario different from every one before it. Scenarios 4, 6, 7 and 8 deliberately
+        // put an administrator at the pass rather than stand up a staff account (§3.7 admits both, and
+        // an administrator covering a station is a real thing the application supports). This one
+        // cannot: the sentence under test names who changed the price, and §6.2 records counter and
+        // administrator as different actors. An administrator adjusting the price would produce "by an
+        // administrator" and the assertion would be about the wrong role.
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        MenuItemOnTheMenu soup =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Soup of the day", 6.50m);
+        MenuItemOnTheMenu pie =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Steak pie", 14.00m);
+
+        Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
+        byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+
+        // Created before the guest is seated, so §8.4's clock — which starts at the send — spends none
+        // of itself on an Argon2id hash and four form posts. Nothing here asserts on a reminder, and at
+        // the default sixty seconds one could not arrive anyway; it is simply the right order.
+        StaffAccount counterAccount = await AdministrationJourneys.CreateStaffAccountAsync(
+            administrator, "e2e.counter.nine", "Nine Counter", StaffRoles.Counter);
+
+        Assert.NotEqual(string.Empty, counterAccount.TemporaryPassword);
+
+        // The two figures the till must show, derived from the prices this scenario actually put on the
+        // menu rather than restated as constants. A restated total is a second place the fixture lives,
+        // and the day somebody adjusts the soup's price to make another scenario read better, a restated
+        // total goes quietly wrong while every assertion still passes for the wrong reason.
+        decimal unadjustedTableTotal = soup.PriceAmount + (AdjustedLineQuantity * pie.PriceAmount);
+        decimal adjustedTableTotal = soup.PriceAmount + (AdjustedLineQuantity * AdjustedPieUnitPrice);
+
+        // (b) The guest, seated, with two lines on the pass. Two quantities rather than two of the same,
+        // because the pie is the one about to be adjusted and its quantity is what makes the adjustment
+        // legible: a unit price that moves by three on a line of two has to move the money by six. At
+        // quantity one, "the unit price changed" and "the extension was recomputed" are the same
+        // observation and the weaker of the two claims would pass for both.
+        IPage guest = await SeatGuestAsync(
+            instance, tableIdentifier, joinSecret, guestAccount, cancellationToken);
+
+        await TableOrderJourneys.StageAsync(guest, soup, 1);
+        await TableOrderJourneys.StageAsync(guest, pie, AdjustedLineQuantity);
+        await TableOrderJourneys.SendAsync(guest);
+
+        IReadOnlyList<GuestOrderLine> sent = await TableOrderJourneys.WaitForCommittedLinesAsync(
+            guest,
+            lines => lines.Count == 2,
+            LiveUpdatePatience,
+            "both sent lines on the guest's own order",
+            cancellationToken);
+
+        Assert.All(sent, line => Assert.Equal(GuestLineBadge.WithTheKitchen, line.Badge));
+
+        // The pie at its menu price, asserted before anything moves it. Without this the assertion in
+        // (f) would be about a number the surface might always have been showing.
+        GuestOrderLineDetail beforeAdjustment = await TableOrderJourneys.WaitForOwnLineAsync(
+            guest,
+            pie.Name,
+            line => line.PriceAdjustments.Count == 0,
+            LiveUpdatePatience,
+            "the pie at its unadjusted menu price",
+            cancellationToken);
+
+        Assert.Equal(Money(pie.PriceAmount * AdjustedLineQuantity), beforeAdjustment.PriceText);
+
+        // (c) The counter arrives, on a temporary password, in a browser of its own. No virtual
+        // authenticator: §17 accepts in as many words that the "counter role may operate password-only",
+        // and this is the first scenario that exercises that shape end to end.
+        IPage counter = await instance.OpenIsolatedPageAsync();
+
+        await AccountJourneys.SignInWithPasswordAsync(
+            counter, counterAccount.Username, counterAccount.TemporaryPassword);
+
+        // §3.5's obligation (1), and worth its own assertion rather than being absorbed into the journey:
+        // an account created by §3.7 carries must_change_password, and a counter who could reach the till
+        // on a password an administrator can still read off a screen would be a real hole. The middleware
+        // intercepts the sign-in's own navigation, so this is where it lands rather than somewhere it
+        // asked for.
+        Assert.Contains(
+            AccountRoutes.ForcedPasswordChange, counter.Url, StringComparison.Ordinal);
+
+        await AccountJourneys.CompleteForcedPasswordChangeAsync(
+            counter, counterAccount.TemporaryPassword, CounterPassword);
+
+        // (d) The till. Found the way a counter finds it — the board, the open-sittings query, the link —
+        // and cross-checked against the row, because a screen showing a bill cannot tell "opened this
+        // table's sitting" from "opened a sitting".
+        Guid openedSitting = await CounterJourneys.OpenSittingAsync(
+            counter, tableLabel, InteractivityPatience);
+
+        OpenSitting? sitting = await instance.ReadOpenSittingAsync(tableIdentifier, cancellationToken);
+
+        Assert.NotNull(sitting);
+        Assert.Equal(sitting!.SittingIdentifier, openedSitting);
+
+        // The bill as the till reads it, before the adjustment. This figure comes from the sitting_bill
+        // view in SQL while the guest's own lines come from the event fold, so the two are genuinely
+        // independent opinions about the same money — which is the whole reason both are asserted.
+        CounterBill onArrival = await CounterJourneys.ReadBillAsync(counter);
+
+        Assert.Equal(tableLabel, onArrival.TableLabel);
+        Assert.Equal(Money(unadjustedTableTotal), onArrival.RunningTotalText);
+
+        CounterBillEntry theirBill = Assert.Single(onArrival.People);
+
+        Assert.Equal(guestAccount.DisplayName, theirBill.BillName);
+        Assert.Equal(Money(unadjustedTableTotal), theirBill.PersonTotalText);
+
+        CounterBillLine pieAtTheTill = Assert.Single(theirBill.Lines, line => line.Name == pie.Name);
+
+        Assert.Equal(AdjustedLineQuantity, pieAtTheTill.Quantity);
+        Assert.Equal(Money(pie.PriceAmount), pieAtTheTill.UnitPriceText);
+        Assert.False(pieAtTheTill.IsDelivered);
+
+        // (e) The adjustment. §11.3's dialog demands a reason and §6.5.7 requires one, so this is the one
+        // mutation in the system that cannot be made silently — which is exactly what makes it worth
+        // showing the guest.
+        await CounterJourneys.AdjustPriceAsync(
+            counter, pie.Name, AdjustedPieUnitPrice, PriceAdjustmentReason);
+
+        // (f) "Guest sees old → new with reason." Nobody has touched the guest's phone: no reload, no
+        // click, no navigation. The workflow published OrderLinesChanged after the transaction committed
+        // (§9), the guest's circuit re-read, and §11.1 wrote a sentence under the line. This is the
+        // assertion the scenario exists for.
+        GuestOrderLineDetail adjusted = await TableOrderJourneys.WaitForOwnLineAsync(
+            guest,
+            pie.Name,
+            line => line.PriceAdjustments.Count == 1,
+            LiveUpdatePatience,
+            "the counter's price adjustment written under the pie",
+            cancellationToken);
+
+        GuestPriceAdjustment shown = Assert.Single(adjusted.PriceAdjustments);
+
+        // Both halves, from the elements that carry them rather than from the prose around them. "Old"
+        // is the price the line was at when the adjustment was applied, which OrderNarrative captures
+        // as it folds — not the menu price, though here they are the same because nothing had moved it
+        // before.
+        Assert.Equal(Money(pie.PriceAmount), shown.PreviousPriceText);
+        Assert.Equal(Money(AdjustedPieUnitPrice), shown.NewPriceText);
+
+        // "With reason", and with the right actor. §6.2 binds a price_adjustment to counter or
+        // administrator and the surface renders whichever it was; a bill that named the wrong one is a
+        // bill nobody can ask a question about. This is what the staff account in (a) was for.
+        Assert.Contains(PriceAdjustmentReason, shown.Sentence, StringComparison.Ordinal);
+        Assert.Contains("the counter", shown.Sentence, StringComparison.Ordinal);
+
+        // The money moved with the sentence. A unit price is what was adjusted (§6.5.7), so a line of two
+        // must move by twice the difference — the arithmetic being visible on the guest's own screen is
+        // the difference between an audit trail and a note.
+        Assert.Equal(Money(AdjustedPieUnitPrice * AdjustedLineQuantity), adjusted.PriceText);
+
+        // And nothing else about the line changed. A price adjustment is not a fulfillment and not a
+        // removal: §6.5.7 touches the price and the price only, and a badge that flipped here would mean
+        // the guest had been told their food was on the table by somebody changing its price.
+        Assert.Equal(GuestLineBadge.WithTheKitchen, adjusted.Badge);
+
+        // (g) The soup is the control, and it is the half of "one line, not the ticket" worth getting
+        // wrong. It carries no adjustment and still costs what the menu said.
+        GuestOrderLineDetail untouched = await TableOrderJourneys.WaitForOwnLineAsync(
+            guest,
+            soup.Name,
+            line => line.PriceAdjustments.Count == 0,
+            LiveUpdatePatience,
+            "the soup with no adjustment against it",
+            cancellationToken);
+
+        Assert.Equal(Money(soup.PriceAmount), untouched.PriceText);
+        Assert.Equal(GuestLineBadge.WithTheKitchen, untouched.Badge);
+
+        // (h) And the till agrees, through SQL rather than through the fold. sitting_bill sums
+        // order_current_line's extended prices, so this is the same adjustment observed by the other of
+        // the two paths §8.3 keeps — a number that moved on one and not the other would be the view/fold
+        // divergence §16.2 exists to prevent, seen from a screen.
+        CounterBill afterAdjustment = await CounterJourneys.ReadBillAsync(counter);
+
+        Assert.Equal(Money(adjustedTableTotal), afterAdjustment.RunningTotalText);
+
+        CounterBillEntry rebilled = Assert.Single(afterAdjustment.People);
+
+        Assert.Equal(Money(adjustedTableTotal), rebilled.PersonTotalText);
+
+        CounterBillLine pieRebilled = Assert.Single(rebilled.Lines, line => line.Name == pie.Name);
+
+        Assert.Equal(Money(AdjustedPieUnitPrice), pieRebilled.UnitPriceText);
+        Assert.Equal(Money(AdjustedPieUnitPrice * AdjustedLineQuantity), pieRebilled.LineTotalText);
+
+        CounterBillLine soupRebilled = Assert.Single(rebilled.Lines, line => line.Name == soup.Name);
+
+        Assert.Equal(Money(soup.PriceAmount), soupRebilled.UnitPriceText);
+    }
+
+    // -------------------------------------------------------------------------------------------
     // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
     // -------------------------------------------------------------------------------------------
-
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Counter_AdjustsPriceWithReason_GuestSeesOldToNew()
-    {
-        // 9. Counter adjusts a price with reason → guest sees old → new with reason.
-    }
 
     [Fact(Skip = PendingHarnessExtension)]
     public void Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch()
@@ -1089,6 +1325,20 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
     private static string JoinPath(Guid tableIdentifier, string token)
         => $"/table/{tableIdentifier:D}?token={Uri.EscapeDataString(token)}";
+
+    /// <summary>
+    /// An amount as the application would have rendered it, through the application's own formatter and
+    /// the currency code the instance was configured with (<see cref="RestaurantInstance.CurrencyCode"/>).
+    ///
+    /// <para>There are two ways to assert on money here and only one of them says anything. Writing
+    /// <c>"$11.00"</c> hard-codes a claim about <c>RESTAURANT_CURRENCY_CODE</c> that silently becomes a
+    /// claim about nothing the day it moves; formatting it the way the surface did makes the assertion be
+    /// about the adjustment. Comparing formatted strings is also stricter than comparing decimals would
+    /// be, because it catches a formatter that has started dropping its symbol — which §13 says is
+    /// display-only and therefore has no other test above it.</para>
+    /// </summary>
+    private static string Money(decimal amount)
+        => MoneyText.Format(amount, RestaurantInstance.CurrencyCode);
 
     /// <summary>
     /// How long to wait for §4.3's window-aligned refresh. Two full rotations plus slack: one window

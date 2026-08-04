@@ -41,7 +41,10 @@
 
 <PageTitle>@(_sitting is null ? "Sitting" : $"Counter — {_sitting.TableLabel}")</PageTitle>
 
-<section class="panel counter-sitting-page">
+@* data-live says whether a circuit produced this markup at all — see IsLiveAttributeValue. The same
+   attribute, for the same reason, as KitchenBoard's and TableOrderSurface's. *@
+<section class="panel counter-sitting-page" id="counter-sitting-surface"
+         data-live="@IsLiveAttributeValue">
     <p class="eyebrow">Counter</p>
 
     @if (!_loaded)
@@ -178,14 +181,24 @@
                                        demanded here rather than discovered on refusal. *@
                                     <div class="counter-editor">
                                         <p class="counter-editor-heading">Adjust the unit price</p>
+                                        @* Both inputs carry an id, and only these two do. Only one
+                                           editor is ever open (StartAdjust calls CancelEditors first,
+                                           and _adjustingLine holds a single line), so an id here is
+                                           unique in the document — while without one the two are
+                                           distinguishable only by inputmode and maxlength, which is
+                                           not a thing anything outside this markup should have to
+                                           know. The wrapping label still associates each one
+                                           implicitly, so nothing about the accessible name changes. *@
                                         <label class="form-field">
                                             <span>New unit price (@Options.CurrencyCode)</span>
-                                            <input type="text" inputmode="decimal" disabled="@_busy"
+                                            <input id="counter-adjust-price" type="text"
+                                                   inputmode="decimal" disabled="@_busy"
                                                    @bind="_adjustPriceText" @bind:event="oninput" />
                                         </label>
                                         <label class="form-field">
                                             <span>Reason (shown on the bill)</span>
-                                            <input type="text" maxlength="200" disabled="@_busy"
+                                            <input id="counter-adjust-reason" type="text"
+                                                   maxlength="200" disabled="@_busy"
                                                    @bind="_adjustReason" @bind:event="oninput" />
                                         </label>
                                         <div class="form-actions">
@@ -707,6 +720,20 @@
 
     private string JoinCodePath
         => _sitting is null ? "/counter" : $"/counter/tables/{_sitting.TableIdentifier}/join-code";
+
+    /// <summary>
+    /// <c>"true"</c> when a circuit rendered this markup, <c>"false"</c> during the prerender pass. The
+    /// same attribute, for the same reason, as <c>KitchenBoard</c>'s and <c>TableOrderSurface</c>'s.
+    ///
+    /// <para>A prerendered till is the dangerous kind of broken, because it is the kind that looks
+    /// right: the bill is correct as of the request, every total adds up, and Adjust price, Remove, Add
+    /// to the bill and Close &amp; settle are all <c>@onclick</c> handlers with no circuit behind them.
+    /// Pressing any of them does nothing at all — no refusal, no flash, no error — and the screen also
+    /// never hears §9, so a guest sending while somebody stands at the till changes nothing on it. The
+    /// attribute costs eight characters and turns that into something an operator can see in dev tools
+    /// and a scenario can name in one sentence.</para>
+    /// </summary>
+    private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {

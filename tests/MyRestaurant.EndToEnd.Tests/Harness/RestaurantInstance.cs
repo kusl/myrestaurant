@@ -86,6 +86,20 @@ internal sealed class RestaurantInstance : IAsyncDisposable
     /// </summary>
     internal const int DefaultKitchenSubmissionReminderSeconds = 60;
 
+    /// <summary>
+    /// <c>RESTAURANT_CURRENCY_CODE</c> for every instance (§13), named rather than left as a literal
+    /// inside <see cref="CreateProcess"/> so that a scenario asserting on money can format its
+    /// expectation through <c>MoneyText.Format</c> with the same code the application was handed.
+    ///
+    /// <para>§16.3 scenario 9's whole subject is two amounts on a screen, and there are exactly two ways
+    /// to write that assertion: hard-code <c>"$11.00"</c>, which is a claim about this constant that
+    /// silently becomes a claim about nothing the day it changes; or compute it, which is a claim about
+    /// the adjustment. Reading it back is the same discipline
+    /// <see cref="TableJoinTokenRotationSeconds"/> and <see cref="KitchenSubmissionReminderSeconds"/>
+    /// already follow.</para>
+    /// </summary>
+    internal const string CurrencyCode = "USD";
+
     private const string RestaurantName = "End To End Restaurant";
     private const int DiagnosticOutputCharacterLimit = 8000;
     private const int PageTimeoutMilliseconds = 30_000;
@@ -588,7 +602,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         variables["RESTAURANT_TRUSTED_ORIGIN_PATTERNS"] = "https://*.trycloudflare.com";
         variables["RESTAURANT_TIME_ZONE"] = "America/New_York";
         variables["RESTAURANT_CLOCK_FORMAT"] = "12-hour";
-        variables["RESTAURANT_CURRENCY_CODE"] = "USD";
+        variables["RESTAURANT_CURRENCY_CODE"] = CurrencyCode;
         variables["RESTAURANT_DATABASE_CONNECTION_STRING"] = connectionString;
         variables["DATA_PROTECTION_KEYS_DIRECTORY"] = dataProtectionKeysDirectory;
         variables["KITCHEN_SUBMISSION_REMINDER_SECONDS"] =

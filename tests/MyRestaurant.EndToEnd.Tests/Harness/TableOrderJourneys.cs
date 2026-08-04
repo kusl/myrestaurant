@@ -33,6 +33,54 @@ internal enum GuestLineBadge
 }
 
 /// <summary>
+/// One price adjustment as §11.1 shows it to the guest whose line it is: "price adjustments shown
+/// old → new with reason" (§6.5.7, §11.3).
+///
+/// <para><b>Three fields rather than a parsed sentence.</b> The two amounts have elements of their own —
+/// the old one struck through in an <c>&lt;s&gt;</c>, the new one in a <c>&lt;strong&gt;</c> — so they are
+/// read as themselves rather than pulled back out of prose. §16.3 scenario 9's claim is precisely that
+/// <em>both</em> are on screen and in the right places; a single string could satisfy "the new price
+/// appears" while the old one had quietly vanished, which is the half of "old → new" that costs a guest
+/// the ability to see what changed.</para>
+///
+/// <para><paramref name="Sentence"/> is the whole paragraph, and it carries the two things that have no
+/// element of their own: the reason (§6.5.7 requires one, and the table's own CHECK enforces it) and the
+/// actor's role. The role matters more than it looks — §6.2 binds a <c>price_adjustment</c> to counter or
+/// administrator, and a surface that said "an administrator" for a counter's act would be misreporting
+/// who to ask about a number on a bill.</para>
+///
+/// <para>Both amounts are kept as text for the same reason <see cref="PartyOrder.TotalText"/> is: they
+/// are rendered through <c>MoneyText.Format(amount, CurrencyCode)</c>, and parsing them back into
+/// decimals would mean reimplementing a currency formatter inside a test in order to compare against a
+/// number the test already knew.</para>
+/// </summary>
+internal sealed record GuestPriceAdjustment(
+    string PreviousPriceText,
+    string NewPriceText,
+    string Sentence);
+
+/// <summary>
+/// One of the guest's <em>own</em> committed lines with everything §11.1 renders under it — the badge, the
+/// extended price, and any price adjustments in the order they were applied.
+///
+/// <para><b>A separate record from <see cref="GuestOrderLine"/>, on purpose.</b> That one is shared with
+/// the party list, and the two extra fields here have no meaning there: §11.1 renders somebody else's
+/// line as a name and a chip and nothing more. Widening the shared record would have meant two fields
+/// that are always empty on half its uses, which is how a record stops describing anything.</para>
+///
+/// <para><paramref name="PriceText"/> is the <em>extended</em> price — quantity × current unit price —
+/// because that is what §11.1 puts beside the line. It is the number that makes an adjustment's
+/// arithmetic visible: a line at quantity two whose unit price moved by three has to move by six, and a
+/// surface that changed the sentence without recomputing the money would pass every other assertion
+/// here.</para>
+/// </summary>
+internal sealed record GuestOrderLineDetail(
+    string Name,
+    GuestLineBadge Badge,
+    string PriceText,
+    IReadOnlyList<GuestPriceAdjustment> PriceAdjustments);
+
+/// <summary>
 /// One person on the sitting's roster, as §11.1's "Who is here" list renders them (§5.2).
 ///
 /// <para><paramref name="IsYou" /> is read from the "you" chip beside the name rather than from a
@@ -150,6 +198,14 @@ internal static class TableOrderJourneys
 
     /// <summary>The committed lines — what has actually reached the kitchen (§11.1's "Sent to the kitchen").</summary>
     private const string CommittedLineSelector = "#table-order-surface ul.order-lines li.order-line";
+
+    /// <summary>
+    /// §11.1's "old → new with reason" sentence, relative to a committed line. A class of its own as of
+    /// M6 Slice 12: the removal sentence directly above it carries the identical
+    /// <c>.order-line-detail</c>, so "the detail paragraph under this line" was never a way to name this
+    /// one — and on a line that had been both adjusted and removed, it would have named both.
+    /// </summary>
+    private const string PriceAdjustmentSelector = "p.order-line-adjustment";
 
     /// <summary>§11.1's "Who is here" list — every member of the sitting, in join order (§5.2).</summary>
     private const string RosterMemberSelector = "#table-order-surface ul.table-roster > li";
@@ -555,10 +611,31 @@ internal static class TableOrderJourneys
     {
         ArgumentNullException.ThrowIfNull(page);
 
+        IReadOnlyList<GuestOrderLineDetail> detailed = await ReadOwnLinesAsync(page);
+
+        return detailed
+            .Select(line => new GuestOrderLine(line.Name, line.Badge))
+            .ToArray();
+    }
+
+    /// <summary>
+    /// The guest's own committed lines with everything §11.1 renders under each — the badge, the extended
+    /// price, and every price adjustment in the order they were applied.
+    ///
+    /// <para>The one DOM walk over <c>ul.order-lines</c>, which
+    /// <see cref="ReadCommittedLinesAsync"/> now projects from rather than duplicating. The extra cost is
+    /// two locator round trips per line plus three per adjustment, which against a local browser is
+    /// microseconds beside the 250 ms poll interval every wait here uses — and a second walk that drifted
+    /// out of step with this one would be a worse price to pay.</para>
+    /// </summary>
+    internal static async Task<IReadOnlyList<GuestOrderLineDetail>> ReadOwnLinesAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
         ILocator lines = page.Locator(CommittedLineSelector);
         int count = await lines.CountAsync();
 
-        List<GuestOrderLine> committed = new(count);
+        List<GuestOrderLineDetail> committed = new(count);
 
         for (int index = 0; index < count; index++)
         {
@@ -567,11 +644,81 @@ internal static class TableOrderJourneys
             // "2 × Soup of the day" — the quantity and the name are one span, deliberately, because
             // that is how §11.1 words it. The scenarios match on containment, so it is kept whole.
             string name = (await line.Locator("span.order-line-name").First.InnerTextAsync()).Trim();
+            string price = (await line.Locator("span.order-line-price").First.InnerTextAsync()).Trim();
 
-            committed.Add(new GuestOrderLine(name, await ReadBadgeAsync(line)));
+            committed.Add(new GuestOrderLineDetail(
+                name,
+                await ReadBadgeAsync(line),
+                price,
+                await ReadPriceAdjustmentsAsync(line)));
         }
 
         return committed;
+    }
+
+    /// <summary>
+    /// Waits until the guest's own line for <paramref name="menuItemName"/> satisfies
+    /// <paramref name="expectation"/>, and returns the reading that did.
+    ///
+    /// <para>This is the wait §16.3 scenario 9 is built on, and it is the same shape as
+    /// <see cref="WaitForRosterAsync"/>'s: nobody touches the guest's phone. A counter presses Adjust in
+    /// another browser, <c>IOrderWorkflow</c> publishes <c>OrderLinesChanged</c> after the transaction
+    /// commits (§9: "fired on any order event commit"), this surface re-reads, and a sentence appears
+    /// under a line. There is no click here to await, so the only honest thing to do is re-read — and to
+    /// say what the line was showing if it never arrived, because "the adjustment did not appear" and
+    /// "the broadcast never left the other circuit" look identical from a timeout.</para>
+    ///
+    /// <para>The line is matched by containment rather than equality, because §11.1 renders the quantity
+    /// and the name as one span — "2 × Steak pie" — and a scenario knows only the name.</para>
+    /// </summary>
+    internal static async Task<GuestOrderLineDetail> WaitForOwnLineAsync(
+        IPage page,
+        string menuItemName,
+        Func<GuestOrderLineDetail, bool> expectation,
+        TimeSpan timeout,
+        string whatIsExpected,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(expectation);
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        IReadOnlyList<GuestOrderLineDetail> observed = [];
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            observed = await ReadOwnLinesAsync(page);
+
+            GuestOrderLineDetail? named = observed.FirstOrDefault(
+                line => line.Name.Contains(menuItemName, StringComparison.Ordinal));
+
+            if (named is not null && expectation(named))
+            {
+                return named;
+            }
+
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The guest's line for '{menuItemName}' never showed {whatIsExpected} within"
+                + $" {timeout.TotalSeconds:F0}s. What the order shows: {DescribeOwn(observed)}."));
+    }
+
+    /// <summary>A short, quotable rendering of the guest's own lines with their adjustments.</summary>
+    internal static string DescribeOwn(IReadOnlyList<GuestOrderLineDetail> lines)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+
+        return lines.Count == 0
+            ? "nothing at all"
+            : string.Join(
+                "; ",
+                lines.Select(line => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"'{line.Name}' {line.PriceText} [{line.Badge}]{DescribeAdjustments(line)}")));
     }
 
     /// <summary>
@@ -961,6 +1108,82 @@ internal static class TableOrderJourneys
     /// word it differently — "At your table" on your own order, "At the table" on somebody else's — and
     /// both publish <c>chip-ok</c>, which is the state rather than the copy.
     /// </summary>
+    /// <summary>
+    /// Every price adjustment §11.1 has written under one committed line, oldest first — which is the
+    /// order <c>OrderNarrative</c> folds them in, and therefore the order they happened.
+    ///
+    /// <para>The two amounts are read from the elements that carry them rather than from the sentence:
+    /// the previous price is the struck-through <c>&lt;s&gt;</c> and the new one is the <c>&lt;strong&gt;</c>.
+    /// A missing element is a real failure rather than a blank — a surface that stopped rendering the old
+    /// price would still read perfectly as prose — so this says which half went, and on which line.</para>
+    /// </summary>
+    private static async Task<IReadOnlyList<GuestPriceAdjustment>> ReadPriceAdjustmentsAsync(ILocator line)
+    {
+        ILocator paragraphs = line.Locator(PriceAdjustmentSelector);
+        int count = await paragraphs.CountAsync();
+
+        if (count == 0)
+        {
+            return [];
+        }
+
+        List<GuestPriceAdjustment> adjustments = new(count);
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator paragraph = paragraphs.Nth(index);
+
+            string sentence = (await paragraph.InnerTextAsync()).Trim();
+
+            ILocator previous = paragraph.Locator("s");
+            ILocator current = paragraph.Locator("strong");
+
+            // Both counts are read into locals first. An await inside an interpolation hole of a string
+            // that binds to DefaultInterpolatedStringHandler is CS4007 — the handler is a ref struct and
+            // cannot be held across a suspension point — and the message below needs to say which half
+            // is missing, so the branch has to be over values rather than over awaits.
+            int previousCount = await previous.CountAsync();
+            int currentCount = await current.CountAsync();
+
+            if (previousCount == 0 || currentCount == 0)
+            {
+                string missing = previousCount == 0
+                    ? "the struck-through old price"
+                    : "the new price";
+
+                throw new InvalidOperationException(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"§11.1 requires a price adjustment to be shown old → new, and this one is"
+                        + $" missing {missing}. The sentence on screen reads: '{sentence}'."));
+            }
+
+            adjustments.Add(new GuestPriceAdjustment(
+                (await previous.First.InnerTextAsync()).Trim(),
+                (await current.First.InnerTextAsync()).Trim(),
+                sentence));
+        }
+
+        return adjustments;
+    }
+
+    /// <summary>The adjustments on one line, as a tail for a failure message, or nothing when there are none.</summary>
+    private static string DescribeAdjustments(GuestOrderLineDetail line)
+    {
+        if (line.PriceAdjustments.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        string adjustments = string.Join(
+            ", ",
+            line.PriceAdjustments.Select(adjustment => string.Create(
+                CultureInfo.InvariantCulture,
+                $"{adjustment.PreviousPriceText} → {adjustment.NewPriceText}")));
+
+        return string.Create(CultureInfo.InvariantCulture, $" adjusted {adjustments}");
+    }
+
     private static async Task<GuestLineBadge> ReadBadgeAsync(ILocator line)
     {
         if (await line.Locator("span.chip-warn").CountAsync() > 0)
