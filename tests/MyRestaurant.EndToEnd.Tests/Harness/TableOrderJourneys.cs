@@ -787,7 +787,11 @@ internal static class TableOrderJourneys
         {
             ILocator group = groups.Nth(index);
 
-            string term = (await group.Locator("dt").First.InnerTextAsync()).Trim();
+            // The term is the dictionary key this method looks YourTotalTerm and TableTotalTerm up by,
+            // and app.css upcases .order-totals dt — so read as declared rather than as rendered, or
+            // both lookups miss and the honest failure below reports a totals list that is in fact
+            // perfectly correct. The amount beside it is money and is transformed by nothing.
+            string term = await ScreenText.DeclaredAsync(group.Locator("dt").First);
             string amount = (await group.Locator("dd").First.InnerTextAsync()).Trim();
 
             byTerm[term] = amount;

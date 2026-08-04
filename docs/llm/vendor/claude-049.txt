@@ -243,3 +243,242 @@ Claude is AI and can make mistakes. Please double-check responses.
 45
 
 Please continue
+
+
+/
+Claude finished the response
+Please continue with the next step 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+some tests are now failing 
+please fix those as well 
+please avoid giving me bespoke scripts to manipulate text in code / documentation 
+remember to give full files for all files that need to change 
+I will likely miss those bespoke scripts
+
+
+Thinking about continuing project setup with structured packaging and fixing failing tests
+Thinking about continuing project setup with structured packaging and fixing failing tests
+I'll start by getting the current state of the repo.
+
+
+Rectifying failing tests and resolving CSS formatting bugs
+Rectifying failing tests and resolving CSS formatting bugs
+Now let me look at the harness pieces I'll need for scenario 11.
+
+
+Architected navigation strategy across render modes and form submission barriers
+Architected navigation strategy across render modes and form submission barriers
+I hit the tool-use limit before I could write the deliverable. Here's exactly where I got to, so the next session can pick it straight up — and one thing worth correcting up front.
+
+The failing test, diagnosed
+Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch at EndToEndScenarios.cs:1484:
+
+Expected: "Settled total"
+Actual:   "SETTLED TOTAL"
+Root cause: CounterSitting.razor styles .counter-detail-total-label with text-transform: uppercase. CounterJourneys.ReadSettledTillAsync reads that element with InnerTextAsync(), which returns the rendered text — CSS transform applied. TextContentAsync() returns what the markup declared. The label the component wrote really is "Settled total"; the harness is reading the presentation layer.
+
+And there is a second, latent instance of the same bug, which that scenario would have hit about forty lines later had it got past 1484:
+
+app.css line 1120: .order-totals dt { text-transform: uppercase }
+TableOrderJourneys.ReadTotalsAsync (line 790) reads each <dt> with InnerTextAsync() and looks the result up in a dictionary keyed on "Your total" / "Table total" (lines 286–287).
+It would get "YOUR TOTAL" / "TABLE TOTAL", both TryGetValue calls would miss, and it would throw "§11.1's totals list does not carry both 'Your total' and 'Table total'" from WaitForSettledViewAsync, reached at EndToEndScenarios.cs:1528.
+So fixing only line 1484 moves the failure rather than clearing it. I swept every text-transform rule in src/ (24 of them) against every InnerTextAsync call in the harness (66 of them) — those two are the only collisions. .eyebrow, .chip-role, .manage-label, .hidden-facts dt, .event-stream-badge, .restaurant-clock-label and the rest are never read by the harness, and p.pairing-code, p.totp-secret and p.staff-temporary-password carry no transform.
+
+Planned fix: a new Harness/ScreenText.cs with a DeclaredAsync(ILocator) that reads TextContentAsync(), collapses whitespace runs and trims — then use it at exactly those two sites. TextContentAsync doesn't normalise whitespace the way InnerTextAsync does, which is why the helper exists rather than an inline call.
+
+One correction to your prompt
+The _CHANGES.md in this dump is Slice 13's, and it argues at some length that "some tests are now failing" was mistaken. That was true of that dump. It is not true of this one: claude-terminal.txt here shows the E2E suite at 15 total / 1 failed / 12 passed / 2 skipped, twice, on commit aee8e40. The plain dotnet test is still green at 971/0 — the failure is only under MYRESTAURANT_E2E=1. So the failure is real and it is scenario 10's.
+
+What I'd established for the next step (scenario 11)
+Slice 13 named scenario 11 as next: guest hides a closed order → gone from own history (staff/admin unchanged); admin filters hidden-records by username → Unhide restores it. I read both surfaces (TableHistory.razor, HiddenRecords.razor), DapperOrderHistoryReads, and the existing journey classes, and had settled these design points:
+
+Two guests at one table, not one, and not two sittings. Hiding guest alpha's order must leave guest bravo's intact — that separates "the hide targeted one order" from "the page broke" for the price of one registration rather than a second close. It also makes the username filter assertable in both directions: filter by alpha → one row, filter by bravo → none.
+Identifiers come off hrefs, not from a data- attribute or the database. The guest's hide link carries ?hide={order}; the admin row's expand link carries ?record={order}. Cross-checking those two is the assertion that administration found the order the guest hid. This also matches how CreateTableAsync/CreateMenuItemAsync/CreateStaffAccountAsync already recover identifiers.
+Product changes: four, all additive, no CSS behind any of them — id="table-history-surface" and a history-none class on the empty-history paragraph; id="hidden-records-surface" and a hidden-none class on the empty-list paragraph. The last one matters because that element carries two different sentences via a ternary, and "nothing matches that filter" versus "nothing is hidden anywhere" is the distinction the unhide assertion turns on.
+Both pages are [ExcludeFromInteractiveRouting], so Routes renders static and enhanced navigation intercepts their link clicks — the Hide link and "Open the complete record" both need EnhancedNavigation.FollowAsync. The filter is a plain GET form with no data-enhance, so it's an ordinary navigation; the barrier there is a URL change captured before the click, because "Show everything" is present on every narrowed page and so can't serve as one twice in a row.
+I deliberately ruled out reaching the history by following the link on the settled order surface. /table/{id} is interactive and /table/history is not, and a client-side route change across that boundary would hand TableHistory a null HttpContext. Whether that's a real product bug is worth knowing — but it isn't scenario 11's subject, and a scenario that fails on it would be failing for the wrong reason. GotoAsync instead.
+If you start a new turn I'll produce the tar.gz — the two harness fixes plus scenario 11, full files at repo-relative paths, with the deletes section and the _CHANGES.md. Worth saying plainly: the fix and the new scenario are separable, and if you'd rather have the red test cleared on its own first, say so and I'll ship just ScreenText.cs, CounterJourneys.cs and TableOrderJourneys.cs.
+
+Please continue
+
+
+Architected comprehensive test scenario with strategic file modifications and verification
+Architected comprehensive test scenario with strategic file modifications and verification
+Strategizing retrieval of large files efficiently.
+
+Orchestrating scenario 11 flow and verifying sitting closure mechanics.
+
+Verifying visibility logic and guest history display elements.
+
+Architected comprehensive test scenario with strategic file modifications and verification.
+
+Done
+Continuing. I'll build the archive in the sandbox so the files inside it are genuinely full files at exact paths.
+
+
+Ran 2 commands
+Ran 2 commands
+
+Extract recorded SHA-256 for files to edit
+
+Compare reconstructed hashes against recorded ones
+Done
+All six reconstructions match the recorded hashes byte-for-byte. Now the pieces of TableOrderJourneys I still need:
+
+
+Architected test scenarios and refined selector strategies comprehensively
+Architected test scenarios and refined selector strategies comprehensively
+
+Get TableOrderJourneys public API
+Architecting ScreenText utility and staging implementation.
+
+Disambiguating visibility logs and extracting event types.
+
+Extracting owner names and usernames from hidden records.
+
+Pinpointing selectors for table history and hidden records surfaces.
+
+Navigating test assertions and circuit re-render uncertainties.
+
+Architected test scenarios and refined selector strategies comprehensively.
+
+
+Verify record shapes and edit-site uniqueness
+Done
+Everything checks out. Now staging the tree and applying the edits.
+
+
+Stage the files that will change
+Stage the files that will change
+
+Stage the files that will change
+Done
+Now the four product markup changes:
+
+
+Apply the four additive markup changes
+Apply the four additive markup changes
+
+Apply the four additive markup changes
+Done
+Now the two harness read-site fixes and the new ScreenText helper:
+
+
+Created a file, ran a command
+Created a file, ran a command
+
+New harness helper reading declared rather than rendered text
+
+Fix the two text-transform read sites
+Done
+Now the settled-sitting lookup that scenario 11 needs on the till:
+
+
+Add the closed-sitting lookup to CounterJourneys
+Add the closed-sitting lookup to CounterJourneys
+
+Add the closed-sitting lookup to CounterJourneys
+Done
+Now the two new journey classes — the guest's history and administration's hidden records:
+
+
+Created 2 files
+Created 2 files
+
+Guest order-history journeys including §6.8's irreversible hide
+
+Administration hidden-records journeys: filter, expand, unhide
+Done
+Now the scenario itself, replacing the placeholder:
+
+
+Insert scenario 11 and update the roll call
+Insert scenario 11 and update the roll call
+
+Insert scenario 11 and update the roll call
+Done
+Now the static checks I can actually run without an SDK — balance, depth walk, CS4007/CS1620 scans, and selector existence against the real markup:
+
+
+Ran 4 commands
+Ran 4 commands
+
+Balance, depth, CS4007 and CS1620 scans on all test sources
+
+Verify every new selector exists and the new names carry no styling
+
+Confirm edits are exactly and only what was intended
+
+Show the exact razor and TableOrderJourneys diffs
+Done
+Exactly four one-line markup changes and one changed read. Now the ledger and the changes doc:
+
+
+Ran 5 commands, created a file, read a file
+Ran 5 commands, created a file, read a file
+
+Inspect BUILD_PROGRESS tail and heading convention
+
+Find slice heading convention in the ledger
+
+Append Slice 14 to the ledger
+
+Session changes document at the repo root
+
+Final balance check and tree listing
+
+Build the deliverable archive
+
+Presented file
+Done
+M6 Slice 14. Extract at the repo root; every entry is a full file at its exact path.
+
+bash
+tar -xzf m6-slice14-hide-and-unhide.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+Files to DELETE: none. No migration, no schema change, no package change, no ADR edit, no Program.cs edit, no .slnx edit, no new test folder.
+
+The failing test — and the second one hiding behind it
+InnerTextAsync returns the browser's innerText, which is defined in terms of layout and so has text-transform already applied. CounterSitting.razor upcases .counter-detail-total-label. The label the component wrote really is Settled total; the harness was reading the stylesheet.
+
+Forty-four lines further on, the same mistake was waiting. ReadTotalsAsync reads §11.1's totals <dt>s with InnerTextAsync and looks them up in a dictionary keyed on "Your total" / "Table total" — and app.css:1120 upcases .order-totals dt. Both lookups would have missed and it would have thrown "§11.1's totals list does not carry both…" about a list that was entirely correct. Fixing only line 1484 would have moved the red rather than cleared it, and the next failure would have read like a product defect.
+
+So I swept first: 24 text-transform rules against 66 InnerTextAsync calls. Those two are the only collisions. New ScreenText.DeclaredAsync reads TextContentAsync and collapses whitespace — InnerTextAsync minus the transform. Applied at two sites, not sixty-six: a label read is a claim about which branch a component took, where casing is noise; a read of content (names, labels, money) is data nothing here transforms.
+
+Scenario 11
+Two guests at one table, and the second one is what makes the assertion mean anything — with one guest, "their history is empty afterwards" is satisfied equally well by a page that stopped rendering, a reader returning nothing, or a hide that hid the whole sitting. All three are catastrophic and all three pass.
+
+Both identifiers come off links the surfaces rendered (?hide=, ?record=), so "the row administration found is the order this guest hid" is a claim about two identifiers agreeing rather than about a row appearing. The username filter is asserted both ways — a filter that stopped filtering would satisfy the positive case perfectly. Three facts are re-read from the server rather than from DOM already on screen, because a stale document agrees that nothing changed without being asked: the bystander's history, the till's bill, and settled_total_amount past every surface.
+
+Four additive markup changes, an id and an empty-sentence class on each of the two pages. No CSS behind any of the new names; the razor diffs are four single lines and I've included them in _CHANGES.md.
+
+Expected
+dotnet test                                   → 971 / 0 failed / 956 / 15 skipped   (unchanged)
+MYRESTAURANT_E2E=1 dotnet test …EndToEnd.Tests → 15 / 0 failed / 14 passed / 1 skipped
+Scenario 10 goes green on the ScreenText fix; scenario 11 adds ~35–40s and waits on no timer. The one remaining skip is scenario 12.
+
+No SDK in my sandbox, so none of it has been run here. What I did run: SHA-256 against the hashes export.sh recorded for all six pre-edit files (all six matched, so every untouched byte is known identical to your tree); balance and depth walks across the whole test project; CS4007 and CS1620 scans; a Razor tag-tree walk of both components; existence checks on all 36 selectors the new journey classes depend on; and a check that none of the four new names has a CSS rule anywhere.
+
+_CHANGES.md carries a 19-row "if it goes red" table keyed on the opening words of each failure. Next is scenario 12, then the backup/restore drill.
+
+
+M6 slice14 hide and unhide.tar
+GZ 
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+50
+48

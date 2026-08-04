@@ -5323,3 +5323,119 @@ from `dump.txt`, confirming both `.razor` edits leave the tag tree **identical**
 twenty-seven selectors the new harness code depends on against the markup it targets; and a SHA-256
 comparison of all seven pre-edit files against the hashes `export.sh` recorded, so every unchanged byte is
 known to match the working tree.
+
+### M6 Slice 14 — §16.3 scenario 11, and a red test that was reading the stylesheet
+
+Two things, and they belong in one slice because the second one was hiding inside the first.
+
+**The red test.** Slice 13 shipped scenario 10 with `Assert.Equal("Settled total", settled.TotalLabel)`.
+It went red on the first character: `Expected "Settled total"`, `Actual "SETTLED TOTAL"`. Playwright's
+`InnerTextAsync` returns the browser's own `innerText`, which is defined in terms of layout and therefore
+has `text-transform` already applied — and `CounterSitting.razor` upcases
+`.counter-detail-total-label` for the eyebrow treatment. The label the component wrote really is
+`Settled total`; the harness was reading the presentation layer.
+
+Forty lines further on, the same mistake was waiting. `TableOrderJourneys.ReadTotalsAsync` reads each
+`<dt>` of §11.1's totals list with `InnerTextAsync` and looks the result up in a dictionary keyed on
+`"Your total"` and `"Table total"`, and `app.css` upcases `.order-totals dt`. Both lookups would have
+missed and the method would have thrown *"§11.1's totals list does not carry both 'Your total' and 'Table
+total'"* about a totals list that was entirely correct. Fixing only the first failure would have moved the
+red rather than cleared it.
+
+The whole surface was swept before either fix: 24 `text-transform` declarations in `src/` against 66
+`InnerTextAsync` calls in the harness. Those two are the only collisions. `.eyebrow`, `.chip-role`,
+`.manage-label`, `.hidden-facts dt`, `.event-stream-badge`, `.restaurant-clock-label` and the rest are
+never read by the harness, and `p.pairing-code`, `p.totp-secret` and `p.staff-temporary-password` carry no
+transform at all.
+
+`Harness/ScreenText.cs` is the fix: `DeclaredAsync` reads `TextContentAsync` and collapses whitespace runs,
+which makes it exactly `InnerTextAsync` minus the transform. It is deliberately **not** a blanket
+replacement. The distinction is what the comparison is about — a *label* read is a claim about which branch
+a component took, and casing is noise in it; a read of *content* (a table's label, a person's name, an
+amount through `MoneyText.Format`) is data no rule here transforms. Two sites changed; sixty-odd were left
+alone.
+
+**Scenario 11.** A guest hides a settled order, it leaves their own history, and an administrator finds it
+by username and puts it back.
+
+The second guest is what makes the central assertion mean anything. With one guest, *"their history is
+empty afterwards"* is satisfied equally well by a page that stopped rendering, by a reader that started
+returning nothing, and by a hide that hid the sitting — and all three are catastrophic. A bystander whose
+own history is unchanged across the same write separates *this order was hidden* from *history broke*, and
+costs one registration rather than the second sitting a per-order claim would otherwise need.
+
+Four figures, all derived from the prices the scenario created and all different from one another: the
+hider's share (`soup + 3 × pie`), the bystander's (one soup), the table's stamped total, and the pie's unit
+price. A history page showing the table's total where a person's belongs cannot pass by coincidence.
+
+Both identifiers come off links the surfaces rendered — `?hide=` on the guest's Hide link, `?record=` on
+administration's expand link — the same recovery `AdministrationJourneys` already does from a
+"Manage this…" link. *"A row appeared"* is satisfied by any hidden order in the restaurant; that the row
+administration found **is** the order this guest hid is a claim about those two identifiers agreeing.
+
+The filter is asserted in both directions, and the negative one is not decoration: a filter that had
+quietly stopped filtering would return this row for every username there is and would satisfy the positive
+case perfectly.
+
+Three product-facing facts are re-read from the server rather than from a DOM already on screen, because a
+stale document agrees with *"nothing changed"* without having been asked: the bystander's history, the
+till's bill (through §11.3's closed-sitting lookup, since a settled table has left the open list), and
+`table_sitting.settled_total_amount` past every surface.
+
+**No counter account**, and the contrast with scenarios 9 and 10 is the reason to say so. There the role
+was load-bearing — §6.2 records who adjusted a price and §11.1 renders it; §11.3 makes read-only
+unconditional for a counter and conditional for an administrator. Here the close is arrangement rather than
+subject: §6.8 refuses a hide on an open sitting, so this needs a settled one and does not care who settled
+it.
+
+**Four additive markup changes, no CSS behind any of the new names, nothing changes on screen.**
+`TableHistory.razor` and `HiddenRecords.razor` each get an `id` on their `section.panel` — every other
+surface in the harness has one, and the two status paragraphs are `p.status-success` and `p.status-error`,
+which a document-wide match would confuse with whatever the layout was saying. Each also gets a class on
+its empty-list sentence, which was otherwise a `p.lede` among the page's other `p.lede`s and reachable only
+by position. On `HiddenRecords.razor` that one element carries two different sentences through a ternary,
+and the difference is load-bearing: *"nothing matches that filter"* and *"nothing is hidden anywhere in the
+restaurant"* are different facts, and only the second says the restaurant is back where it started.
+
+Two facts were deliberately **not** given fields. §11.4 renders the hidden row's table label between a
+username and a timestamp in one sentence, and its line count as the second of two
+`span.hidden-record-note`s — so reaching either means splitting prose or indexing siblings. Both are
+asserted where they have elements of their own, on the guest's history page. A harness field that could
+only be filled by counting siblings starts lying the day a third note is added.
+
+The two `ol.hidden-events` lists an expanded record draws are told apart by what their entries *contain*
+rather than by where they sit: a stored event wraps its metadata in `div.hidden-event-head` because it has
+a sequence number to put beside the type, and a visibility event has no such wrapper. The heading-sibling
+route works today and stops working when a paragraph is added.
+
+`CounterJourneys.OpenSettledSittingAsync` is new and waits on the read-only note as part of its barrier,
+not as a bonus: the route renders the identical component for an open sitting, so waiting only on the
+surface would return happily from a bill that had never been settled — and every caller is re-reading one
+*because* it is settled.
+
+```bash
+dotnet build
+#    expect: all seven projects succeed, 0 errors
+
+dotnet test
+#    expect: total 971, failed 0, succeeded 956, skipped 15 — unchanged from Slice 13.
+#    Scenario 11 moves from [Fact(Skip)] to [Fact] + Assert.SkipUnless; xUnit counts both as skipped,
+#    so with MYRESTAURANT_E2E unset every number is identical.
+
+bash scripts/ci_local.sh --with-all
+
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: total 15, failed 0, 14 passed, 1 skipped
+#    Scenario 10 goes green on the ScreenText fix; scenario 11 adds roughly 35-40s — a /setup wizard,
+#    two menu items, a table, two guest registrations with real WebAuthn attestations, two sends, a
+#    close, a hide, two filters, an expand and an unhide, and no waiting on any timer.
+```
+
+No .NET SDK in the sandbox, so none of this has been run here. What was run: SHA-256 comparison of all six
+pre-edit files against the hashes `export.sh` recorded in `dump.txt` — all six matched, so every byte not
+touched is known identical to the working tree; brace/paren/bracket balance and a depth walk (never
+negative, ends at zero) with strings and comments stripped, across every file in the test project; a CS4007
+scan (no `await` inside any interpolation hole); a CS1620 scan confirming every additive operand inside
+every `string.Create(...)` is an interpolated string; a Razor tag-tree walk of both edited components; an
+existence check of all **36** selectors the two new journey classes depend on against the markup they
+target; and a check that none of the four new names has a CSS rule anywhere, so nothing changes on screen.

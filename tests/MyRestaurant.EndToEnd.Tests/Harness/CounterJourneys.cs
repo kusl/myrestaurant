@@ -291,6 +291,57 @@ internal static class CounterJourneys
     }
 
     /// <summary>
+    /// Re-opens a sitting that has already been settled — §11.3's "closed-sitting lookup (read-only)",
+    /// which is this same page rather than a second one — and returns once a circuit is behind it and
+    /// the read-only note is on screen.
+    ///
+    /// <para><b>By identifier rather than off the board, and that is forced.</b>
+    /// <see cref="OpenSittingAsync"/> finds a table on §11.3's open-sittings list, and a settled table
+    /// has left it; the "Settled today" list links to the sitting but is bounded to the day and ordered
+    /// by close time, which makes it a way of finding <em>a</em> settled sitting rather than a named one.
+    /// A caller that has just closed a bill holds the identifier <see cref="OpenSittingAsync"/> returned,
+    /// and that is the thing it means.</para>
+    ///
+    /// <para><b>The read-only note is part of the barrier, not a bonus assertion.</b> This route renders
+    /// the identical component for an open sitting, so waiting only on the surface would return happily
+    /// from a page that had not been settled at all — and every caller here is re-reading a bill
+    /// <em>because</em> it is settled, to establish that something which happened elsewhere left it
+    /// alone. A sitting that is still open is a different scenario failing quietly.</para>
+    /// </summary>
+    internal static async Task OpenSettledSittingAsync(
+        IPage page,
+        Guid sittingIdentifier,
+        TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(PathFor(sittingIdentifier));
+        await WaitForLiveSittingAsync(page, timeout);
+
+        try
+        {
+            await page.Locator(ReadOnlyNoteSelector).First.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Visible,
+                Timeout = (float)timeout.TotalMilliseconds,
+            });
+        }
+        catch (PlaywrightException exception)
+        {
+            string settle = await DescribeSettleSectionAsync(page);
+
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The till opened sitting {sittingIdentifier:D} but does not say it is settled."
+                    + $" §11.3 renders the read-only note from !_sitting.IsOpen — that is, from"
+                    + $" closed_at being set on the row — so either this sitting is still open or the"
+                    + $" identifier names a different one. {settle}"),
+                exception);
+        }
+    }
+
+    /// <summary>
     /// Waits until the counter board on screen was rendered by a live circuit. A board that never
     /// became interactive lists the floor as it stood at the moment of the request and then never
     /// changes — which for a screen whose whole job is to show a total moving is the failure that looks
@@ -644,7 +695,12 @@ internal static class CounterJourneys
         ILocator notice = page.Locator(NoticeSelector);
 
         return new SettledTill(
-            (await page.Locator(TotalLabelSelector).First.InnerTextAsync()).Trim(),
+            // The label alone goes through ScreenText: .counter-detail-total-label is upcased for the
+            // eyebrow treatment, and InnerTextAsync returns rendered text with text-transform already
+            // applied — so a scenario comparing against the phrase the component chose reads
+            // "SETTLED TOTAL" and fails on the stylesheet. Every other read below is content that no
+            // rule in this application transforms.
+            await ScreenText.DeclaredAsync(page.Locator(TotalLabelSelector).First),
             (await page.Locator(TotalAmountSelector).First.InnerTextAsync()).Trim(),
             (await page.Locator(SettlePanelTotalSelector).First.InnerTextAsync()).Trim(),
             (await page.Locator(HeaderMetaSelector).First.InnerTextAsync()).Trim(),
@@ -1080,6 +1136,13 @@ internal static class CounterJourneys
     /// under enhanced navigation the address bar can be ahead of the document, so a scenario that means
     /// to cross-check which sitting it opened deserves to be told when the URL is not one at all.
     /// </summary>
+    /// <summary>
+    /// A sitting's own URL at the till. The inverse of <see cref="SittingIdentifierFrom"/>, and beside it
+    /// so the prefix is written once.
+    /// </summary>
+    private static string PathFor(Guid sittingIdentifier)
+        => string.Create(CultureInfo.InvariantCulture, $"{SittingPathPrefix}{sittingIdentifier:D}");
+
     private static Guid SittingIdentifierFrom(string url)
     {
         if (Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)

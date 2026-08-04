@@ -14,7 +14,7 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
 /// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// <para>Thirteen are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
+/// <para>Fourteen are live. M6 Slice 2 brought <b>1</b> (the first-administrator bootstrap, including a real
 /// WebAuthn attestation and a real TOTP confirmation), <b>13</b> (a passkey sign-in of a TOTP-enrolled
 /// person must not be challenged for a code) and <b>14</b> (the join-token window arithmetic as a guest
 /// experiences it) — chosen because between them they exercise the whole harness. M6 Slice 3 adds
@@ -45,7 +45,11 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// settles anyway, and the table becomes read-only on three screens at once while seven independent
 /// computations of one total agree) — the first whose subject is a write that cannot be undone, and the
 /// only one that asserts a number against the column it was stamped into rather than against another
-/// rendering of the same query.</para>
+/// rendering of the same query. M6 Slice 14 adds <b>11</b> (a guest hides a settled order, it leaves their
+/// own history while the till's bill and another guest's history are untouched, and an administrator
+/// finds it by username and puts it back) — the first scenario whose subject is a record that is
+/// <em>still there</em>, and therefore the first whose central assertion is about what did
+/// <em>not</em> change.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -138,6 +142,21 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     /// pies every wrong sum is a different number from the right one.</para>
     /// </summary>
     private const int UndeliveredLineQuantity = 2;
+
+    /// <summary>
+    /// How many pies §16.3 scenario 11's hider orders, beside one soup.
+    ///
+    /// <para>Three, and the number's only job is to make four amounts on four screens mutually
+    /// distinguishable. The hider's own share is <c>soup + 3 × pie</c>, the bystander's is one soup, and
+    /// the table's stamped total is their sum — so the figure §11.1's history page shows the hider cannot
+    /// be confused with the table's total, with the other guest's, or with any unit price. A hide that
+    /// quietly narrowed a bill, or a history that quietly showed the table's figure instead of the
+    /// person's, would be a different number here rather than the same one.</para>
+    /// </summary>
+    private const int HiddenOrderPieQuantity = 3;
+
+    /// <summary>How many lines §16.3 scenario 11's hider ends up with: the soup and the pies.</summary>
+    private const int HiddenOrderLineCount = 2;
 
     private readonly RestaurantHarness _harness;
 
@@ -1595,11 +1614,323 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     // Still to come. Each is one required §16.3 scenario, named so the matrix stays legible.
     // -------------------------------------------------------------------------------------------
 
-    [Fact(Skip = PendingHarnessExtension)]
-    public void Guest_HidesClosedOrder_AdminCanUnhide()
+    // -------------------------------------------------------------------------------------------
+    // 11. Guest hides a closed order → gone from own history (staff/admin unchanged); admin
+    //     filters the hidden-records view by username → Unhide restores it.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Guest_HidesClosedOrder_AdminCanUnhide()
     {
-        // 11. Guest hides a closed order → gone from own history (staff/admin unchanged); admin
-        //     filters the hidden-records view by username → Unhide restores it.
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Eleven";
+
+        // Two guests, and neither username is a substring of the other. §6.8's filter is a literal
+        // substring match (DapperOrderHistoryReads.SubstringPattern), so a pair like ".one" and ".one.b"
+        // would make "filtering by the bystander finds nothing" pass or fail for reasons of spelling.
+        GuestAccount hider = new("e2e.guest.eleven.alpha", "Eleven Alpha");
+        GuestAccount bystander = new("e2e.guest.eleven.bravo", "Eleven Bravo");
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+
+        // (a) An administrator, two things on the menu, a table.
+        //
+        // No counter account this time, and the contrast with scenarios 9 and 10 is the reason to say so.
+        // There the role was load-bearing — §6.2 records who adjusted a price and §11.1 renders it; §11.3
+        // makes read-only unconditional for a counter and conditional for an administrator. Here the
+        // close is arrangement rather than subject: §6.8 refuses a hide on an open sitting, so this
+        // scenario needs a settled one and does not care who settled it. §3.7 admits administrators to
+        // /counter, and standing up a staff account would add a sign-in and a forced password change to a
+        // scenario that asserts on neither.
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        MenuItemOnTheMenu soup =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Soup of the day", 6.50m);
+        MenuItemOnTheMenu pie =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, "Steak pie", 14.00m);
+
+        Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
+        byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+
+        // Three figures, all derived from the prices this scenario created, and all different from one
+        // another. The whole point of the third is that a page showing the table's total where a person's
+        // belongs cannot pass by coincidence.
+        decimal hiderTotal = soup.PriceAmount + (HiddenOrderPieQuantity * pie.PriceAmount);
+        decimal bystanderTotal = soup.PriceAmount;
+
+        string expectedHiderTotal = Money(hiderTotal);
+        string expectedBystanderTotal = Money(bystanderTotal);
+        string expectedTableTotal = Money(hiderTotal + bystanderTotal);
+
+        // (b) Two guests at one table with two different bills.
+        //
+        // <b>The second guest is what makes the central assertion mean anything.</b> §6.8's promise is
+        // that a hide removes one order from one person's own view and touches nothing else. With a
+        // single guest, "their history is empty afterwards" is satisfied equally well by a page that
+        // stopped rendering, by a reader that started returning nothing, and by a hide that hid the
+        // sitting — and all three are catastrophic. A bystander whose own history is unchanged across the
+        // same write separates "this order was hidden" from "history broke", and costs one registration
+        // rather than the second sitting a per-order claim would otherwise need.
+        IPage alpha = await SeatGuestAsync(
+            instance, tableIdentifier, joinSecret, hider, cancellationToken);
+
+        await TableOrderJourneys.StageAsync(alpha, soup, 1);
+        await TableOrderJourneys.StageAsync(alpha, pie, HiddenOrderPieQuantity);
+        await TableOrderJourneys.SendAsync(alpha);
+
+        await TableOrderJourneys.WaitForCommittedLinesAsync(
+            alpha,
+            lines => lines.Count == HiddenOrderLineCount,
+            LiveUpdatePatience,
+            "both of the hider's sent lines",
+            cancellationToken);
+
+        IPage bravo = await SeatGuestAsync(
+            instance, tableIdentifier, joinSecret, bystander, cancellationToken);
+
+        await TableOrderJourneys.StageAsync(bravo, soup, 1);
+        await TableOrderJourneys.SendAsync(bravo);
+
+        await TableOrderJourneys.WaitForCommittedLinesAsync(
+            bravo,
+            lines => lines.Count == 1,
+            LiveUpdatePatience,
+            "the bystander's one sent line",
+            cancellationToken);
+
+        // (c) The close, because §6.8 refuses a hide while the sitting is open — "that table is still
+        // open, so its order is not history yet". Nothing is fulfilled first: §5.3's pending-line warning
+        // is scenario 10's subject and a close over undelivered food is exactly as valid here.
+        Guid sittingIdentifier =
+            await CounterJourneys.OpenSittingAsync(administrator, tableLabel, InteractivityPatience);
+
+        CounterBill beforeClose = await CounterJourneys.ReadBillAsync(administrator);
+
+        Assert.Equal(2, beforeClose.People.Count);
+        Assert.Equal(expectedTableTotal, beforeClose.RunningTotalText);
+
+        await CounterJourneys.BeginCloseAsync(administrator);
+
+        SettledTill settled = await CounterJourneys.ConfirmCloseAsync(administrator, InteractivityPatience);
+
+        Assert.Equal("Settled total", settled.TotalLabel);
+        Assert.Equal(expectedTableTotal, settled.TotalText);
+
+        // (d) Both histories, before anything is hidden. §11.1: "the guest's own past orders at this
+        // restaurant — cross-member history is never shown", so each of these lists holds exactly one
+        // order and it is that person's.
+        await HistoryJourneys.OpenAsync(alpha, InteractivityPatience);
+
+        GuestHistory alphaBefore = await HistoryJourneys.ReadAsync(alpha);
+        HistoryOrder theirs = Assert.Single(alphaBefore.Orders);
+
+        Assert.Equal(tableLabel, theirs.TableLabel);
+        Assert.Equal(expectedHiderTotal, theirs.PersonTotalText);
+        Assert.Equal(HiddenOrderLineCount, theirs.LineCount);
+
+        // The pies at three, on the line the history renders. §11.1 shows the projection rather than the
+        // log, so this is the extension — and a history that had started showing unit prices would read
+        // 14.00 against a quantity of three.
+        HistoryLine pieInHistory =
+            Assert.Single(theirs.Lines, line => line.Name == pie.Name);
+
+        Assert.Equal(HiddenOrderPieQuantity, pieInHistory.Quantity);
+        Assert.Equal(Money(pie.PriceAmount * HiddenOrderPieQuantity), pieInHistory.LineTotalText);
+
+        await HistoryJourneys.OpenAsync(bravo, InteractivityPatience);
+
+        GuestHistory bravoBefore = await HistoryJourneys.ReadAsync(bravo);
+        HistoryOrder bystanderOrder = Assert.Single(bravoBefore.Orders);
+
+        Assert.Equal(expectedBystanderTotal, bystanderOrder.PersonTotalText);
+        Assert.NotEqual(theirs.GuestOrderIdentifier, bystanderOrder.GuestOrderIdentifier);
+
+        // (e) The hide, confirmed the way §6.8 requires: not a browser dialog but a step that "states
+        // plainly that this cannot be undone from the guest's account".
+        await HistoryJourneys.HideAsync(alpha, theirs.GuestOrderIdentifier, InteractivityPatience);
+
+        GuestHistory alphaAfter = await HistoryJourneys.ReadAsync(alpha);
+
+        Assert.Empty(alphaAfter.Orders);
+
+        // Gone <em>and</em> the page saying it has nothing, which are two claims. A list that failed to
+        // render is also empty, and §11.1 draws this sentence only when the reader came back with
+        // nothing — so its absence beside an empty list would mean the page broke rather than that the
+        // order was hidden.
+        Assert.NotNull(alphaAfter.EmptySentence);
+        Assert.Contains("Nothing here yet", alphaAfter.EmptySentence!, StringComparison.Ordinal);
+
+        Assert.NotNull(alphaAfter.Notice);
+        Assert.Contains("a manager can restore it", alphaAfter.Notice!, StringComparison.Ordinal);
+
+        // (f) Nobody else's history moved. Re-read from the server rather than from the DOM the
+        // bystander's browser was already holding: nothing broadcasts a hide to another guest's circuit,
+        // and this page is static SSR anyway, so a stale document would agree with this assertion without
+        // having been asked.
+        await HistoryJourneys.OpenAsync(bravo, InteractivityPatience);
+
+        GuestHistory bravoAfter = await HistoryJourneys.ReadAsync(bravo);
+        HistoryOrder untouched = Assert.Single(bravoAfter.Orders);
+
+        Assert.Equal(bystanderOrder.GuestOrderIdentifier, untouched.GuestOrderIdentifier);
+        Assert.Equal(expectedBystanderTotal, untouched.PersonTotalText);
+
+        // (g) §16.3's "staff/admin unchanged", which is §6.8's own sentence from the other end: the order
+        // is "still on its sitting's bill, still in the kitchen's and the counter's records, and still in
+        // the settled total". Re-opened by identifier so the bill is a fresh server read — §11.3's
+        // closed-sitting lookup — because the administrator's browser has been on that page since the
+        // close and a stale DOM would pass this without being asked either.
+        await CounterJourneys.OpenSettledSittingAsync(
+            administrator, sittingIdentifier, InteractivityPatience);
+
+        CounterBill afterHide = await CounterJourneys.ReadBillAsync(administrator);
+
+        Assert.Equal(2, afterHide.People.Count);
+        Assert.Equal(expectedTableTotal, afterHide.RunningTotalText);
+
+        CounterBillEntry hidersBill =
+            Assert.Single(afterHide.People, entry => entry.BillName == hider.DisplayName);
+
+        Assert.Equal(expectedHiderTotal, hidersBill.PersonTotalText);
+        Assert.Equal(HiddenOrderLineCount, hidersBill.Lines.Count);
+
+        // The stamped column too, past every surface. §6.8 changes a visibility flag and §5.3 promises the
+        // settled total is never rewritten; a hide that had reached the money would be a defect no screen
+        // above could distinguish from correct behaviour, because all of them would agree.
+        SettledSitting? row =
+            await instance.ReadSettledSittingAsync(sittingIdentifier, cancellationToken);
+
+        Assert.NotNull(row);
+        Assert.Equal(hiderTotal + bystanderTotal, row!.SettledTotalAmount);
+
+        // (h) §11.4's hidden-records view, which §6.8 calls the only way anyone can find a hidden order
+        // again. Unfiltered first, because §11.4 says administration starts complete and narrows "only on
+        // explicit request".
+        await HiddenRecordJourneys.OpenAsync(administrator, InteractivityPatience);
+
+        HiddenRecordList everything = await HiddenRecordJourneys.ReadAsync(administrator);
+
+        Assert.False(
+            everything.IsNarrowed,
+            "§11.4's view must open unfiltered: " + HiddenRecordJourneys.Describe(everything));
+
+        HiddenRecordRow found = Assert.Single(everything.Rows);
+
+        // The identifier, and this is the assertion the whole apparatus exists for. "A row appeared" is
+        // satisfied by any hidden order in the restaurant; that the row administration found is the order
+        // this guest hid is a claim about two identifiers, both read off links the surfaces rendered.
+        Assert.Equal(theirs.GuestOrderIdentifier, found.GuestOrderIdentifier);
+        Assert.Equal(sittingIdentifier, found.SittingIdentifier);
+        Assert.Equal(hider.Username, found.Username);
+        Assert.Equal(hider.DisplayName, found.OwnerName);
+        Assert.Equal(expectedHiderTotal, found.PersonTotalText);
+
+        // (i) §6.8's username filter, in both directions. One of the two is the assertion §16.3 names;
+        // the other is what stops it being vacuous — a filter that had quietly stopped filtering would
+        // return this row for every username there is, and would satisfy the positive case perfectly.
+        await HiddenRecordJourneys.FilterByUsernameAsync(
+            administrator, bystander.Username, InteractivityPatience);
+
+        HiddenRecordList wrongOwner = await HiddenRecordJourneys.ReadAsync(administrator);
+
+        Assert.Empty(wrongOwner.Rows);
+        Assert.True(
+            wrongOwner.IsNarrowed,
+            "the list must know it is filtered: " + HiddenRecordJourneys.Describe(wrongOwner));
+
+        Assert.NotNull(wrongOwner.EmptySentence);
+        Assert.Contains("matches that", wrongOwner.EmptySentence!, StringComparison.Ordinal);
+
+        await HiddenRecordJourneys.FilterByUsernameAsync(
+            administrator, hider.Username, InteractivityPatience);
+
+        HiddenRecordList rightOwner = await HiddenRecordJourneys.ReadAsync(administrator);
+        HiddenRecordRow filtered = Assert.Single(rightOwner.Rows);
+
+        Assert.Equal(theirs.GuestOrderIdentifier, filtered.GuestOrderIdentifier);
+
+        // (j) The complete record §6.8 requires the row to expand to: "full event log, visibility log,
+        // sitting context, unprojected".
+        HiddenRecordDetail detail = await HiddenRecordJourneys.ExpandAsync(
+            administrator, theirs.GuestOrderIdentifier, InteractivityPatience);
+
+        HiddenVisibilityEntry onlyEvent = Assert.Single(detail.VisibilityLog);
+
+        Assert.Equal("Hidden by the owner", onlyEvent.Description);
+
+        // Who hid it, which is the one place §6.8's actor is nameable. The stored word is "hidden" for
+        // both the guest's act and, by symmetry with "unhidden", carries no actor of its own — so a
+        // surface that had recorded the wrong person here would read identically.
+        Assert.Contains(hider.DisplayName, onlyEvent.ActorAndTime, StringComparison.Ordinal);
+
+        // The order's own history survived being hidden. §6.8 hides a record from one view; ADR-0002 says
+        // the log outlives the state, and a hide that had taken the events with it would leave an
+        // administrator holding the one screen that is supposed to be able to answer for it and nothing
+        // to answer with.
+        Assert.True(
+            detail.EventCount >= 1,
+            "§11.4 must show the order's stored events under a hidden record; the visibility log holds "
+                + HiddenRecordJourneys.DescribeVisibilityLog(detail.VisibilityLog));
+
+        Assert.True(detail.OffersUnhide);
+
+        // (k) The unhide. The row leaves the list, which is what makes the button's effect visible.
+        await HiddenRecordJourneys.UnhideAsync(administrator, InteractivityPatience);
+
+        HiddenRecordList afterUnhide = await HiddenRecordJourneys.ReadAsync(administrator);
+
+        Assert.Empty(afterUnhide.Rows);
+        Assert.NotNull(afterUnhide.Notice);
+        Assert.Contains("back on its owner's history", afterUnhide.Notice!, StringComparison.Ordinal);
+
+        // Still filtered, because §11.4 redirects back to the same question it was asked — so the sentence
+        // above is the narrowed one. The stronger claim needs the filter cleared, and it is worth making
+        // separately: "nothing matches this username" and "nothing is hidden anywhere" are different
+        // facts, and only the second one says the restaurant is back where it started.
+        Assert.True(afterUnhide.IsNarrowed);
+
+        await HiddenRecordJourneys.OpenAsync(administrator, InteractivityPatience);
+
+        HiddenRecordList clean = await HiddenRecordJourneys.ReadAsync(administrator);
+
+        Assert.Empty(clean.Rows);
+        Assert.False(clean.IsNarrowed);
+        Assert.NotNull(clean.EmptySentence);
+        Assert.Contains(
+            "anywhere in the restaurant", clean.EmptySentence!, StringComparison.Ordinal);
+
+        // (l) And back on the owner's history, whole. §6.8's "unhidden" row is now the latest visibility
+        // event, so order_visibility_current answers false and the reader stops excluding it — the same
+        // query that omitted it four steps ago, on the same person, with a different answer.
+        await HistoryJourneys.OpenAsync(alpha, InteractivityPatience);
+
+        GuestHistory restored = await HistoryJourneys.ReadAsync(alpha);
+        HistoryOrder back = Assert.Single(restored.Orders);
+
+        Assert.Equal(theirs.GuestOrderIdentifier, back.GuestOrderIdentifier);
+        Assert.Equal(tableLabel, back.TableLabel);
+        Assert.Equal(expectedHiderTotal, back.PersonTotalText);
+        Assert.Equal(HiddenOrderLineCount, back.LineCount);
+
+        // Restored rather than merely listed: the lines are the ones that were there before, at the
+        // quantities they were at. A visibility flag is not supposed to be able to touch any of this, and
+        // this is the assertion that says so.
+        HistoryLine pieRestored = Assert.Single(back.Lines, line => line.Name == pie.Name);
+
+        Assert.Equal(HiddenOrderPieQuantity, pieRestored.Quantity);
+        Assert.Equal(Money(pie.PriceAmount * HiddenOrderPieQuantity), pieRestored.LineTotalText);
+
+        // Nobody else's history moved across the unhide either, for the same reason it mattered across the
+        // hide — one is a claim about a write and this is a claim about its inverse.
+        await HistoryJourneys.OpenAsync(bravo, InteractivityPatience);
+
+        GuestHistory bravoFinal = await HistoryJourneys.ReadAsync(bravo);
+        HistoryOrder stillOne = Assert.Single(bravoFinal.Orders);
+
+        Assert.Equal(bystanderOrder.GuestOrderIdentifier, stillOne.GuestOrderIdentifier);
     }
 
     [Fact(Skip = PendingHarnessExtension)]
