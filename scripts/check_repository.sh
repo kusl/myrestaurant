@@ -86,6 +86,7 @@ RECORD_FILES=(
     "docs/DOCUMENTATION_REVIEW.md"
     "docs/BUILD_PROGRESS.md"
     "scripts/check_repository.sh"
+    "docs/llm/*"
 )
 
 # Assertions about GitHub repository settings, which a file in the tree cannot verify. Case
@@ -132,7 +133,9 @@ note_warning_detail() {
 is_record_file() {
     local candidate="$1" record
     for record in "${RECORD_FILES[@]}"; do
-        [[ "$candidate" == "$record" ]] && return 0
+        # Removing quotes around $record allows glob wildcards like 'docs/llm/*'
+        # shellcheck disable=SC2053
+        [[ "$candidate" == $record ]] && return 0
     done
     return 1
 }
