@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-05T10:19:34-04:00
+  Generated at   : 2026-08-05T11:32:05-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 825b8175ad19af7cfda710995ec4d8099d906aa4
-  Commit (short) : 825b817
-  Commit date    : 2026-08-05 10:18:21 -0400
-  Commit message : run scripts
+  Commit (full)  : 834b26acb1c56075a3ced10e645782c3802436ec
+  Commit (short) : 834b26a
+  Commit date    : 2026-08-05 11:31:52 -0400
+  Commit message : add claude changes
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 311
+  Files included : 312
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (311 included files)
+# FILE TREE  (312 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -561,6 +561,8 @@ cat "$OUTPUT_FILE"
 │   ├── OPERATIONS.md
 │   ├── REQUIREMENTS.md
 │   ├── TECHNICAL_SPECIFICATION.md
+│   ├── _append
+│   │   └── BUILD_PROGRESS-M6-Slice-21.md
 │   └── adr
 │       ├── 0001-single-application-with-areas.md
 │       ├── 0002-relational-append-only-event-logs.md
@@ -978,15 +980,15 @@ indent_size = 2
   File name:             .env.example
   Relative path:         .env.example
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/.env.example
-  Size:                  6.0 KiB (6156 bytes)
-  Last modified:         2026-08-05 03:33:12.000000000 -0400
+  Size:                  6.6 KiB (6761 bytes)
+  Last modified:         2026-08-05 10:54:28.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31773472
+  Inode:                 32568395
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               ae917a19dfb0702e13f94828c5ad589496a9062cb3712d5390823aa8fd184dfd
-  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
+  SHA-256:               95d93767d9154ffbe5664d4ba974dec6fe39f87fdc0b1dcd81c0b0320b3b7b3d
+  Last git commit:       eb80cdf 2026-08-05 11:31:04 -0400 add claude changes
 
 --- CONTENT ---
 # Copy to `.env` and adjust. `.env` is git-ignored; never commit a populated one.
@@ -1065,6 +1067,13 @@ BACKUP_RETENTION_COUNT=14
 # starts one on purpose).
 # POSTGRES_CONTAINER=myrestaurant_postgres_1
 # WEB_CONTAINER=myrestaurant_web_1
+# Which container engine scripts/backup.sh and scripts/restore_drill.sh use. Unset is right on a host
+# with one engine. On a host with BOTH — every GitHub Actions runner is one, since its image installs
+# a static podman bundle next to Docker — the two scripts differ in what they can work out for
+# themselves: backup.sh asks each engine whether it can see the container it was told to dump and uses
+# the one that can, while the drill creates its own container and so has nothing to infer from. Set
+# this when the containers you mean belong to a specific engine (F-43).
+# CONTAINER_ENGINE=podman
 # The scratch image the drill restores into. Fully qualified so a short-name registry prompt cannot
 # hang an unattended run.
 # DRILL_POSTGRES_IMAGE=docker.io/library/postgres:17-alpine
@@ -1080,6 +1089,7 @@ OTEL_SERVICE_NAME=myrestaurant
 # --- Production tunnel (production profile only, §14.1) ------------------------------------------
 # PRODUCTION: set to your Cloudflare named-tunnel token. Required by `--profile production`.
 # CLOUDFLARE_TUNNEL_TOKEN=
+
 
 ################################################################################
 # FILE: .github/dependabot.yml
@@ -1157,15 +1167,15 @@ updates:
   File name:             ci.yml
   Relative path:         .github/workflows/ci.yml
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/.github/workflows/ci.yml
-  Size:                  21.5 KiB (22014 bytes)
-  Last modified:         2026-08-05 09:43:57.951113564 -0400
+  Size:                  22.7 KiB (23294 bytes)
+  Last modified:         2026-08-05 10:51:57.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 32093342
+  Inode:                 32568398
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               f5360284147b04973cbbc3d4e1676efdc1ce195e8d57d81189c825703fae97ac
-  Last git commit:       7beb57b 2026-08-05 09:44:01 -0400 use new token
+  SHA-256:               4494311b913393010f851ce0aeee7b9e1a7da14ccc3c6d023e8b9e1332ea5dcf
+  Last git commit:       eb80cdf 2026-08-05 11:31:04 -0400 add claude changes
 
 --- CONTENT ---
 # Continuous integration (TECHNICAL_SPECIFICATION §16.4).
@@ -1524,11 +1534,21 @@ jobs:
       # container matches its filter — which is exactly the situation the drill's own scratch
       # container creates a few seconds later.
       #
+      # CONTAINER_ENGINE=docker is the load-bearing line here (F-43). This runner image installs a
+      # static podman bundle alongside Docker, so `command -v podman` succeeds on it — and every
+      # container in this job, the service database included, belongs to the Docker daemon. Without
+      # this, scripts/backup.sh reached for podman, `podman exec <a docker container id>` failed with
+      # "no such container", and the script reported it as the database not answering pg_isready:
+      # a message that sends a reader to PostgreSQL for a fault that is entirely in engine selection.
+      # The script now also infers the engine from the container it was given, so this is belt and
+      # braces — but it is the half that is obvious from the job, which is where it belongs.
+      #
       # The backup set is deliberately NOT uploaded as an artifact. The -dataprotection.tar is key
       # material in the clear; it is throwaway here, but publishing one is not a habit worth forming.
       - name: back up the booted instance
         env:
           BACKUP_DIRECTORY: ${{ github.workspace }}/ci-backups
+          CONTAINER_ENGINE: docker
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
           WEB_CONTAINER: myrestaurant_web_ci
         run: bash scripts/backup.sh
@@ -1537,9 +1557,15 @@ jobs:
       # ignored pg_restore errors and an empty key ring also fail, and neither number has been
       # observed on a real run yet. Once a few runs report "pg_restore completed with no errors",
       # tightening this is a one-word edit.
+      #
+      # CONTAINER_ENGINE=docker for a second reason as well as the first. The drill creates its own
+      # scratch container, so either engine would work — but postgres:17-alpine is already in the
+      # Docker daemon's store, because the service container above pulled it. Left to its default the
+      # drill would pull the same image again into podman's store, and pay for it on every push.
       - name: drill the restore
         env:
           BACKUP_DIRECTORY: ${{ github.workspace }}/ci-backups
+          CONTAINER_ENGINE: docker
           DRILL_POSTGRES_IMAGE: postgres:17-alpine
         run: bash scripts/restore_drill.sh
 
@@ -1628,6 +1654,7 @@ jobs:
           path: TestResults/**/*.trx
           if-no-files-found: warn
           retention-days: 14
+
 
 ################################################################################
 # FILE: .github/workflows/release.yml
@@ -3613,251 +3640,133 @@ This document describes how a report gets handled, not what anyone is entitled t
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  12.6 KiB (12865 bytes)
-  Last modified:         2026-08-05 09:07:39.000000000 -0400
+  Size:                  7.2 KiB (7345 bytes)
+  Last modified:         2026-08-05 10:56:36.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 32093347
+  Inode:                 32568394
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               586d841410c8b8557198b73939fc66eaae7300b0b50a0395c0defd3c4a158f29
-  Last git commit:       9ef9500 2026-08-05 09:20:06 -0400 add claude changes
+  SHA-256:               add6679e476508938ccd92bbc377d1a834ecbc36a2e920f1596db70554bb8a20
+  Last git commit:       f90723b 2026-08-05 11:29:33 -0400 add changes by claude
 
 --- CONTENT ---
-# M6 Slice 20 — the door nobody left open
+# M6 Slice 21 — two green gates that were never green
 
 Every file below is a **full file** at its **repo-relative path**. Extract at the repository root and
-the contents drop straight over your working tree — no diffs, no patches, no scripts to run against
-your own documents.
+the contents drop straight over your working tree — no diffs, no patches, no scripts that edit your
+code or your documents.
 
 ```bash
-tar -xzf m6-slice-20-disclosure-channel.tar.gz -C /home/kushal/src/dotnet/myrestaurant
-git add SECURITY.md scripts/check_repository.sh
+tar -xzf m6-slice-21-ci-engine-and-board-barrier.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
-Then:
+## Files in this delivery
 
-```bash
-bash scripts/check_tree.sh
-bash scripts/check_repository.sh
-```
+| Path | Why |
+| --- | --- |
+| `scripts/backup.sh` | F-43: engine chosen by the container, `CONTAINER_ENGINE` honoured, the two failure conditions split |
+| `scripts/restore_drill.sh` | F-43: `CONTAINER_ENGINE` honoured; the chosen engine reported in the preamble |
+| `.github/workflows/ci.yml` | F-43: `CONTAINER_ENGINE: docker` on the backup and drill steps |
+| `src/MyRestaurant.WebApplication/Components/Pages/Counter/CounterBoard.razor` | F-44: publishes `id`, `data-live`, `data-loaded` |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs` | F-44: board barrier demands both bits; new describer for the failure message |
+| `.env.example` | documents `CONTAINER_ENGINE` |
+| `docs/OPERATIONS.md` | §6 documents engine selection and the message change |
+| `docs/_append/BUILD_PROGRESS-M6-Slice-21.md` | the ledger entry, to append |
 
 ## Files to DELETE
 
-**None.** Nothing here renames, supersedes or orphans anything: no migration, no schema change, no
-package change, no ADR edit, no `.slnx` edit, no `Program.cs` edit, no `.csproj` edit, no C# at all.
-Two files are new, nine are replaced in place.
+**None.** Nothing here renames, supersedes or orphans anything. No migration, no schema change, no
+package change, no ADR edit, no `.slnx` edit, no `Program.cs` edit, no `.csproj` edit, no new test
+project, no new folder under `tests/`.
 
-**The `git add` above is not optional.** `ci_local.sh`, CI's `shell-scripts` job and `check_tree.sh`
-all enumerate with `git ls-files`, so an untracked new file is silently unchecked by all three — and
-`check_repository.sh` asks `git ls-files --error-unmatch` about `SECURITY.md` specifically, so an
-unstaged policy file fails its own gate.
+`docs/_append/BUILD_PROGRESS-M6-Slice-21.md` is the one file that is meant to stop existing — after
+it has been appended, exactly as the eleven before it did. It is a delivery vehicle, not part of the
+tree.
 
-## What happened
+## The one append
 
-Your last run was green everywhere. 996 tests, 0 failed. All fifteen §16.3 scenarios passing.
-`ci_local.sh --with-all` clearing every gate. Tree hygiene clean over 310 authored files. Nothing
-outdated.
-
-So I read the tree against what a tag makes true, which is the habit F-39 established. The defect is
-not in the tree. I asked the published repository what it looks like from outside:
-
-```
-has_issues                       : true
-SECURITY.md                      : 404 at the root, in .github/, and in docs/
-private vulnerability reporting  : disabled
-has_wiki                         : true
-description                      : null
-open issues / pull requests      : 0
-```
-
-`CONTRIBUTING.md` had said since rev 1, in the indicative mood, that the issue tracker was switched
-off. It was not. It never had been — the setting was on for the entire life of the sentence.
-
-## Four doors, none of them working
-
-A person who reads this source — which is what the AGPL is *for*, and which is exactly the population
-that finds security defects — had these options:
-
-- an Issues tab that was **open**, and that the only document addressing the question denied existed;
-- no Security tab entry, because no policy file existed anywhere GitHub looks;
-- no private reporting form, because the setting was off;
-- no address, anywhere in the tree, in any file;
-- and a notice that pull requests are closed unreviewed whatever their merit.
-
-The only channel that worked was the one the documentation said did not exist, **and it was public.**
-So the first thing anybody would have done with a forgeable join token is publish it — not out of
-malice, but because there was nowhere else to put it.
-
-Nothing has been lost yet, for one reason: nobody tried. Zero issues, zero pull requests, on the day
-I looked. That is luck, not a channel.
-
-## Why this is a finding rather than a chore
-
-It is a category this ledger had not recorded, and each shape has a different guard:
-
-| Shape | Example | What was wrong |
-| --- | --- | --- |
-| a capability a requirement stated and no milestone claimed | F-35, F-37, F-39 | the build order |
-| a rule four documents agreed on and no code honoured | F-38 | intent recorded in a column reserved for fact |
-| the transport between a correct spec and correct code | F-40 | twenty-one files damaged in delivery |
-| **the repository disagreeing with its own documents** | **F-42** | **a layer nothing in the tree can see** |
-
-`check_tree.sh` reads `git ls-files`. A test process cannot see a settings page. And the one document
-that made a claim about that page made it in a mood that cannot be checked from inside the
-repository. Every gate you have built was green, correctly, about the wrong thing.
-
-**The rule that came out of it**, narrower and more useful than *check your settings*:
-
-> A document in this tree states policy, never platform state.
-
-"Nothing filed here is triaged" is a commitment — true wherever it is read, surviving a checkbox
-toggle, and yours to keep. "The issue tracker is off" is a claim about a checkbox, and it went wrong
-in the one direction that mattered.
-
-## The files
-
-| File | Change |
-| --- | --- |
-| `SECURITY.md` | **NEW.** The policy: private channel, no bounty said up front, scope both ways, single-maintainer timelines as targets, newest-tag-only support, and §17 as required reading |
-| `scripts/check_repository.sh` | **NEW.** The sixth gate. Blocking tree half, advisory platform half |
-| `CONTRIBUTING.md` | the false sentence replaced with policy; the security carve-out and its reason |
-| `README.md` | a *Reporting a security problem* section, the `governance` gate row, the checklist |
-| `scripts/ci_local.sh` | governance as gate 2; the four gates behind it renumbered |
-| `.github/workflows/ci.yml` | a `governance` job with `administration: read` scoped to it |
-| `docs/REQUIREMENTS.md` | **rev 4**: one new §8 principle, §10's carve-out, a revision-history row |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.6**: §16.4 the gate, §17 disclosure, §18 the rule, Appendix A **F-42** |
-| `docs/DOCUMENTATION_REVIEW.md` | **F-42** and a *Going forward* section |
-| `docs/OPERATIONS.md` | new **§16** — the runbook for receiving a report — plus §13 and §14 rows |
-| `docs/BUILD_PROGRESS.md` | Slice 20 appended. **Full file**, 431 KB, nothing to run |
-| `_CHANGES.md` | this file |
-
-`docs/OPERATIONS.md`'s new section is **§16, at the end**, deliberately: its section numbers are
-referenced from the specification and the ADRs, so inserting one anywhere else would have been a
-silent break. I read the numbering back after the edit rather than assuming it.
-
-## What you have to do that I cannot
-
-Two things in this finding are not files, and no archive can contain them:
-
-1. **Enable private vulnerability reporting** — Settings → Advanced Security. `SECURITY.md` sends
-   reporters there, so until this is on, the policy names a door that is locked. This is the one item
-   here that leaves a real gap rather than an untidy one.
-2. **Set the repository description.** It is the first line anybody reads, and your release note
-   tells people to `podman pull` from it.
-
-Optional, reported with reasons and left to you: the wiki is on, and every document in this project
-is in the tree under the atomic-documentation rule. And the Issues tab can stay open or be closed —
-**the documents are now true either way**, which is the whole point of the policy-not-platform rule.
-
-The gate will WARN about the first two on every CI run until you click them, and will never fail on
-them.
-
-## Three decisions worth being able to veto
-
-**The platform half is advisory, not blocking.** A WARN nobody clears is a WARN people learn to
-ignore — you have argued exactly that twice, in Slices 18 and 19. The argument does not transfer:
-those gates reported on files, so a commit could always clear them. This one reports on something
-outside the tree, where no commit can, and a *fork* cannot satisfy an assertion about your settings
-at all. Failing their build over your disclosure preferences would be wrong about the licence this
-project ships under.
-
-**A separate gate rather than a sixth check in `check_tree.sh`.** That script's five gates are all
-offline, all blocking, and all assertions that a file somebody wrote is machine-readable. Half of
-this one is none of those, and a gate whose halves carry different authority should not answer to one
-exit code.
-
-**The exemption list has three entries.** `docs/DOCUMENTATION_REVIEW.md`, `docs/BUILD_PROGRESS.md`
-and the gate script itself may contain the forbidden sentence, because quoting a defect is what a
-ledger does and the gate has to hold the pattern list. Exempted by literal path, the way `export.sh`
-is exempt from the separator gate. I kept `_CHANGES.md` off the list and paraphrased instead, so the
-hole stays three files wide.
-
-## Build and test
+`docs/BUILD_PROGRESS.md` is 434 KiB and is never regenerated as a whole file, so the ledger entry
+arrives as its own file. Merging it is a **plain concatenation of one whole file onto the end of
+another** — nothing is rewritten, substituted or matched inside either document:
 
 ```bash
-bash scripts/check_repository.sh
-#    expect: 4 gates, exit 0, and "passed, with 3 advisory warning(s)". The warnings are the
-#    real state of your repository, and the assertion that matters in this slice is that they
-#    exit 0 — a finding about a settings page must not be able to fail a build.
-
-bash scripts/check_repository.sh --offline
-#    expect: 3 gates plus a SKIP, exit 0, no token needed. This is the half that blocks.
-
-bash scripts/check_tree.sh
-#    expect: 5 gates, "tree hygiene passed.", exit 0. The count rises from 310 to 312 — the two
-#    new authored files. Under two seconds, no SDK.
-
-bash scripts/ci_local.sh --with-all
-#    expect: 8 numbered gates; governance is the new second one and gates 3-8 are unchanged.
-
-dotnet test
-#    expect: 996 total, 0 failed, 981 succeeded, 15 skipped. UNCHANGED. No C#, no .csproj, no
-#    migration, no Program.cs is touched here. If this number moves, the cause is not this slice.
-
-MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
-#    expect: 15 passed, 0 skipped. Unchanged.
+cat docs/_append/BUILD_PROGRESS-M6-Slice-21.md >> docs/BUILD_PROGRESS.md
+rm docs/_append/BUILD_PROGRESS-M6-Slice-21.md
 ```
 
-`dotnet build` is not in that list on purpose: no compiled file is touched.
+The append file opens with a blank line so the heading lands with a blank line above it whatever the
+last byte of `BUILD_PROGRESS.md` is.
 
-## What was actually verified here
+## Build and test checklist
 
-No .NET SDK in the sandbox — but everything in this slice is a shell script or a document, and both
-were executed rather than reasoned about.
+```bash
+bash scripts/check_tree.sh
+#    5 gates, "tree hygiene passed.", exit 0. The two edited scripts and the edited Razor file are
+#    already in scope; no new authored file joins it. Run this BEFORE the append and again after —
+#    a mid-document separator is exactly what this gate exists for, and appending is when one
+#    would arrive.
 
-- **The finding was measured, not inferred.** Every number above came from the live GitHub API
-  against `kusl/myrestaurant`: the repository object, the private-vulnerability-reporting endpoint,
-  the community profile, and a 404 probe for the policy file at all three paths GitHub reads.
-- **`scripts/check_repository.sh` was run against a real git tree**, both halves, against your real
-  repository — and it passes with three advisory warnings and exit 0.
-- **Sensitivity proven for every blocking gate individually**, because a gate that passes by
-  asserting nothing is worthless. Seven damage cases, each reverted before the next: the forbidden
-  sentence reintroduced into `CONTRIBUTING.md` (reported by file and line); the policy untracked and
-  deleted; `§17` removed from it; the reporting-channel phrase removed; `README.md` stopped pointing
-  at it; the policy stopped pointing back at `CONTRIBUTING.md`; the policy emptied. Every one exits
-  1 and names the file.
-- **The exemption proven narrow.** The same forbidden sentence appended to `docs/OPERATIONS.md` and
-  to `docs/BUILD_PROGRESS.md` in one run: the first is reported at `docs/OPERATIONS.md:355`, the
-  second is not.
-- `bash -n` plus `shellcheck` at **both** `--severity=warning` and `--severity=style`, clean over all
-  eight tracked scripts, which keeps `ci.yml`'s claim that every script in this tree is style-clean
-  true. Your existing scripts were baselined clean first, so any finding would have been
-  attributable to this slice.
-- `scripts/check_tree.sh` run over the delivered tree, edited documents and new files included: 5
-  gates, 0 findings, 312 authored files. The new prose was checked for separator lines and
-  whitespace-only lines rather than assumed innocent.
-- `.github/workflows/ci.yml` parsed with PyYAML, and the job list plus the `governance` job's
-  permissions read back out of the parsed document rather than eyeballed.
-- Every documentation edit applied by exact-match replacement with an assertion that the anchor
-  appears **exactly once**, so nothing was edited by position. `OPERATIONS.md`'s section numbering
-  read back afterwards.
+bash scripts/ci_local.sh
+#    8 numbered gates, green. Gate 3 is the one this slice can break: both edited scripts must pass
+#    bash -n and shellcheck --severity=warning. Both were checked at --severity=style here and are
+#    clean, which is one notch stricter than the blocking gate.
+
+dotnet build MyRestaurant.slnx -c Release -p:ContinuousIntegrationBuild=true
+#    all seven projects, 0 errors.
+
+dotnet test
+#    996 total, 0 failed, 981 succeeded, 15 skipped — UNCHANGED from Slice 20.
+
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    15 passed, 0 skipped.
+```
+
+Then push, because the two failures this slice fixes are only observable on a runner.
+
+## What each fix actually turns on
+
+**F-43, `boot-smoke`.** The runner image installs a static podman bundle next to Docker, so
+`command -v podman` succeeds on it, and every container in that job belongs to the Docker daemon.
+`podman exec <a docker container id>` fails with "no such container", and `backup.sh` had one message
+for every way that command could fail — so it reported a database that would not answer for its own
+credentials, two steps after `/healthz/ready` had answered 200 from an application talking to that
+database.
+
+The job now pins `CONTAINER_ENGINE: docker` (the obvious half) and the script now asks each available
+engine whether it can see the container it was told to dump (the half that helps a future host with
+both engines). Ambiguity on discovery is still fatal — F-38's rule is untouched.
+
+**F-44, `end-to-end`.** `WaitForBoardAsync` waited on `section.counter-board`, which is present in
+every state of the component including "Loading the floor…", so the wait was satisfied by the first
+paint. Prerendering emits fully loaded markup, which is why this passed locally; the window is the
+circuit hand-over, when the component is rebuilt from nothing and the DOM goes back to loading for as
+long as two queries take. `ReadFloorAsync` landed there and read two empty lists — which also made
+the `Assert.DoesNotContain` on the line above pass, for the wrong reason, off the same empty screen.
 
 ## Where to look if this breaks
 
-**`check_repository.sh` fails at gate 1.** The extract landed but the `git add` did not.
-`git ls-files SECURITY.md` should print the path.
+| Symptom | Look at |
+| --- | --- |
+| `boot-smoke` still fails at the backup step | the step's `env:` block in `ci.yml` — `CONTAINER_ENGINE: docker` must be present alongside `POSTGRES_CONTAINER`. The new log line names the engine it used; if it says `podman`, the variable did not arrive. |
+| `[backup] error: no available engine has a container '…'` | the id in `POSTGRES_CONTAINER` is stale or the service container is gone. This message replaced the misleading `pg_isready` one; it means engine selection worked and found nothing to select. |
+| `[backup] error: <engine> knows '…' but it is not running` | the container exited. Previously indistinguishable from wrong credentials. |
+| the drill pulls `postgres:17-alpine` on every run | `CONTAINER_ENGINE` is missing from the *drill* step too; it creates its own container and cannot infer an engine. |
+| `The counter board was not live and loaded within 30s (data-live='false', …)` | the circuit never started. Check `/_framework/blazor.web.js` — this is M6 Slice 4's static-web-assets manifest failure, not this one. |
+| `… (data-loaded='false')` | `ListOpenSittingsAsync` / `ListRecentlyClosedSittingsAsync` are not returning. A database problem, reported as one. |
+| `… (there is no counter board on the page at all)` | §3.7 refused the principal, or the route did not resolve. The surface is absent rather than inert. |
+| `CS0103: RendererInfo` in `CounterBoard.razor` | it is a `ComponentBase` property, no `@using` needed — the same call exists in `KitchenBoard.razor`, `CounterSitting.razor`, `TableOrderSurface.razor` and `TableDisplay.razor`. If it fails here it would fail in all five. |
+| any scenario that used to find a table on the board now cannot | `OpenSittingSelector` and `SettledRowSelector` still key on `section.counter-board`, and that class is unchanged — only an `id` and two `data-` attributes were added. |
 
-**It fails at gate 3 on a file I did not touch.** Then that file already contained one of the
-forbidden phrasings and I missed it. The message names the file and line; state the policy instead,
-or tell me the path and I will record it.
+## Deliberately not done
 
-**Gate 4 says `private vulnerability reporting=unknown`.** The token lacks `administration:read`.
-Expected on a fork's pull request and reported as unknown rather than as a finding; on your own
-machine, `gh auth refresh -s admin:repo_hook` or just accept the unknown — the tree half is the half
-that blocks.
+`data-loaded` on `KitchenBoard`, `CounterSitting`, `TableOrderSurface` and `TableDisplay`. All four
+publish `data-live` and none publishes a loaded bit, so all four carry the same latent race; they pass
+because their callers go on to wait for specific content, which waits out the reload incidentally. That
+is recorded in the ledger entry rather than fixed here — four surfaces is roughly 4,000 lines of Razor
+edited against a race none of them is currently losing, in the same delivery as two that are.
 
-**Gate 4 skips entirely on your machine.** No token in the environment. `GITHUB_TOKEN`, `GH_TOKEN`,
-or an authenticated `gh` — and CI passes one, so this half runs there regardless.
-
-**CI's `governance` job is red.** It can only be the tree half; the platform half cannot fail. Run
-`bash scripts/check_repository.sh --offline` locally and you will get the identical output with no
-network at all.
-
-**`ci_local.sh` reports 8 gates and you expected 7.** Correct. Governance is the new gate 2.
-
-**Test count is not 996.** Nothing in this slice touches a test, a project file, or any compiled
-source. Look at what changed between your last run and now.
+`scripts/check_repository.sh` is untouched, `docs/llm/` stays exempt.
 
 ################################################################################
 # FILE: compose.yaml
@@ -10643,15 +10552,15 @@ New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodimen
   File name:             OPERATIONS.md
   Relative path:         docs/OPERATIONS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/OPERATIONS.md
-  Size:                  35.1 KiB (35892 bytes)
-  Last modified:         2026-08-05 09:06:35.000000000 -0400
+  Size:                  36.0 KiB (36859 bytes)
+  Last modified:         2026-08-05 10:54:37.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 32093352
+  Inode:                 32568400
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               122c6fc3698ac8b6480b49bfcdb1d87aec92f09773cccf9d5b72f9c061d3e2a4
-  Last git commit:       9ef9500 2026-08-05 09:20:06 -0400 add claude changes
+  SHA-256:               57cc00cc93633370559dc95e0fbfe9a0efcdbe89d1587a1274530bb522347cf4
+  Last git commit:       eb80cdf 2026-08-05 11:31:04 -0400 add claude changes
 
 --- CONTENT ---
 # myrestaurant — Operations
@@ -10736,6 +10645,8 @@ Run it as-is in production. In **dev** the application runs on the host under `r
 Schedule at `BACKUP_SCHEDULE_TIME` (default 03:30 host-local) with a systemd **user** timer or cron; with a user timer, `loginctl enable-linger` is what keeps it running with nobody logged in. Retention keeps the newest `BACKUP_RETENTION_COUNT` sets (default 14) and prunes **only after** a new set has landed, so a failing backup never eats old ones. The dump is written to a hidden `.partial` file and renamed into place only once it is complete, which is what stops a half-written dump from counting as the newest backup and evicting a good one on the *next* run.
 
 Container discovery **refuses when more than one container matches** rather than picking the first, and names what it found. Set `POSTGRES_CONTAINER` / `WEB_CONTAINER` to settle it. This matters more than it sounds: dumping the wrong database succeeds, comes out roughly the right size, and is worthless.
+
+**On a host with both podman and docker, the container chooses the engine.** `backup.sh` asks each available engine whether it can see the container it was told to dump, and uses the one that can — rather than taking the first engine on `PATH`, which is what it used to do. Set `CONTAINER_ENGINE` to skip the question entirely; `scripts/restore_drill.sh` honours the same variable and *needs* it more, because the drill creates its own scratch container and therefore has nothing to infer an engine from. Worth knowing because of how the old behaviour presented (F-43): `podman exec` against a container belonging to the Docker daemon fails with "no such container", the script reported that as the database not answering `pg_isready`, and the message sends you to PostgreSQL for a fault entirely in engine selection. The two conditions are now said separately — "knows it but it is not running" is a different line from "did not answer for these credentials".
 
 ### The drill
 
@@ -11008,6 +10919,7 @@ comment, respond privately, and treat the clock as having started at the public 
 Whether the tab is open or closed is not the interesting variable; a determined reporter with no
 private channel will use whatever is available, which is the argument for the private channel existing
 at all.
+
 
 ################################################################################
 # FILE: docs/REQUIREMENTS.md
@@ -12244,6 +12156,213 @@ Nothing else moved. §11.7 keeps its number — a dozen source files cite it —
 **v1.0 — 2026-07-17.** Initial accepted specification.
 
 ################################################################################
+# FILE: docs/_append/BUILD_PROGRESS-M6-Slice-21.md
+################################################################################
+
+--- METADATA ---
+  File name:             BUILD_PROGRESS-M6-Slice-21.md
+  Relative path:         docs/_append/BUILD_PROGRESS-M6-Slice-21.md
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/_append/BUILD_PROGRESS-M6-Slice-21.md
+  Size:                  10.1 KiB (10320 bytes)
+  Last modified:         2026-08-05 10:55:56.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 32568402
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               0018b88086383104100f5b04400db9c935f664f7feac0d33814896fb9becaf52
+  Last git commit:       eb80cdf 2026-08-05 11:31:04 -0400 add claude changes
+
+--- CONTENT ---
+
+## M6 Slice 21 — two green gates that were never green
+
+Slice 20 closed on a table of results in which everything passed. Two of those rows were reporting on a
+workstation, and the two CI jobs that have no workstation equivalent — `boot-smoke`, which boots the
+production image, and `end-to-end`, which drives Chromium — were red on the same push. They stayed red.
+Neither failure was in the thing its message named.
+
+| Job | What it said | Where the defect was |
+| --- | --- | --- |
+| `boot smoke (container image)` | the database did not answer `pg_isready` | which container engine the script chose (**F-43**) |
+| `end to end (Playwright)` | `Assert.Single()`: the collection was empty | when the harness was allowed to read the screen (**F-44**) |
+
+Both are the same shape at one remove: a check that passed for years on one machine and could not pass on
+another, because what it actually asserted was narrower than what it appeared to assert.
+
+### F-43 — the engine the container did not belong to
+
+`scripts/backup.sh` and `scripts/restore_drill.sh` both opened with the same four lines:
+
+```bash
+if command -v podman >/dev/null 2>&1; then
+    ENGINE="podman"
+elif command -v docker >/dev/null 2>&1; then
+    ENGINE="docker"
+```
+
+podman first because ADR-0004 makes rootless Podman canonical, which is right — and on a host with one
+engine the block is also correct, which is why it survived. A GitHub Actions `ubuntu-24.04` runner is not
+that host. Its image runs `scripts/build/install-container-tools.sh`, which installs a pinned static
+podman bundle into `/usr/local/bin` alongside buildah and skopeo, next to a working Docker daemon. So
+`command -v podman` succeeds there, and every container in the `boot-smoke` job — the service database,
+the image under test — belongs to Docker.
+
+What the job printed:
+
+```
+[backup] using POSTGRES_CONTAINER='f35d0ec9fc2d3f…'.
+[backup] error: 'f35d0ec9fc2d3f…' did not answer pg_isready for user 'myrestaurant' database 'myrestaurant'.
+```
+
+`podman exec <a docker container id>` fails with "no such container". The script had one message for
+every way that command could fail, so a fault entirely in engine selection was reported as a database
+that would not answer for its own credentials — and reported it two steps after `/healthz/ready` had
+returned 200 from an application talking to that very database. **A diagnostic that names the wrong
+subsystem is worse than no diagnostic**, because it is followed.
+
+Three changes, and the order matters:
+
+1. **`CONTAINER_ENGINE`** is honoured by both scripts and set to `docker` on the two `boot-smoke` steps.
+   Explicit, visible in the job, and the half a reader will find first.
+2. **The container chooses the engine.** When `POSTGRES_CONTAINER` is set, `backup.sh` asks each
+   available engine `container inspect` and uses the one that answers. This is not a guess dressed up as
+   a heuristic: the only reason the script needs an engine is to reach one named container, and whether a
+   given engine can see that container is a fact. `container inspect` rather than `ps --filter name=`
+   because CI passes an id, and `ps` filters do not match ids. Discovery without a name works the same
+   way, per engine, and still **refuses** on ambiguity rather than picking — F-38's rule, unchanged.
+3. **The two conditions are said separately.** "Knows it but it is not running" and "did not answer
+   `pg_isready` for these credentials" are fixed in different places, so they are now different lines,
+   and both name the engine they were asked of.
+
+`restore_drill.sh` gets the variable but not the inference, and the asymmetry is the point: the drill
+creates its own scratch container, so there is nothing to infer from. On the runner that also costs a
+second pull of `postgres:17-alpine` into podman's store while Docker already holds it — slow rather than
+wrong, and one more reason the job pins the engine.
+
+### F-44 — a barrier that was satisfied by the first paint
+
+§16.3 scenario 10 closes a sitting, walks back to `/counter`, and asserts the table left the floor and
+appeared under "Settled today". It failed on the second half:
+
+```
+Assert.Single() Failure: The collection did not contain any matching items
+Collection: []
+```
+
+`ListRecentlyClosedSittingsAsync` filters `closed_at >= now − 12h` against a sitting closed seconds
+earlier, so the query was never in question. The harness was reading the board before either list
+existed.
+
+`WaitForBoardAsync` waited on `section.counter-board` becoming visible. **That element is present in
+every state of the component**, including:
+
+```razor
+@if (!_loaded)
+{
+    <p class="lede">Loading the floor…</p>
+}
+```
+
+So the wait was satisfied by the first paint and asserted nothing at all. And the state it failed to
+wait past is not the prerender — prerendering runs the whole lifecycle before it emits, so the first HTML
+a browser receives is fully loaded, which is exactly why this passed locally for as long as it did. It is
+the **hand-over**. `blazor.web.js` opens the circuit, the component is constructed again from nothing,
+`ComponentBase` renders the moment `OnInitializedAsync` yields, and the DOM returns to "Loading the
+floor…" for as long as two queries take. Milliseconds on a workstation. Long enough on a loaded runner.
+
+The failure is quiet in a way worth naming. The assertion one line above the failing one is
+
+```csharp
+Assert.DoesNotContain(tableLabel, floor.OpenTableLabels);
+```
+
+and an empty list satisfies it. So the reading that produced the failure had already produced a pass, for
+the wrong reason, out of the same empty screen.
+
+`CounterBoard.razor` now publishes what the other four live surfaces publish, plus one more bit:
+
+| Attribute | From | Says |
+| --- | --- | --- |
+| `data-live` | `RendererInfo.IsInteractive` | a circuit produced this markup |
+| `data-loaded` | `_loaded` | §11.3's two queries have answered |
+
+and `BoardSurfaceSelector` demands both. **Either alone is wrong, in opposite directions.** `data-live`
+by itself steers a reader *to* the circuit's first render — the one instant when neither list is in the
+document — so it would have made this worse rather than better. `data-loaded` by itself matches the
+prerendered markup, which is loaded and inert: correct as of the request and never again, on the one
+screen in the application whose entire purpose is a number that moves while somebody stands reading it.
+
+Until now `/counter` was also the only one of the five live surfaces that published nothing, so nothing
+anywhere asserted a circuit was behind it.
+
+### What is deliberately not in this slice
+
+**`data-loaded` on the other four surfaces.** `KitchenBoard`, `CounterSitting`, `TableOrderSurface` and
+`TableDisplay` all publish `data-live` and none publishes a loaded bit, so all four carry the same latent
+race. They pass today because their callers go on to wait for specific content — a bill line, a badge, a
+menu item — and that wait incidentally waits out the reload. The board is where it bites because
+`ReadFloorAsync` asks about membership of a list, and absence is indistinguishable from a list that has
+not rendered.
+
+That is a real finding, and it is recorded rather than fixed here: four surfaces is ~4,000 lines of Razor
+edited against a race none of them is currently losing, in the same delivery as two failures that are
+losing. Scenario 10 is the evidence that the class is real; a scenario that fails is the evidence needed
+to justify the other four.
+
+### Build and test
+
+```bash
+bash scripts/check_tree.sh
+#    expect: 5 gates, "tree hygiene passed.", exit 0. No new authored file lands in its scope —
+#    docs/_append/ is a delivery convenience, merged and removed — so the count is unchanged.
+
+bash scripts/ci_local.sh
+#    expect: 8 numbered gates, green. Gate 3 (shell scripts) is the one that matters here: both
+#    edited scripts must pass bash -n and shellcheck --severity=warning.
+
+dotnet build MyRestaurant.slnx -c Release -p:ContinuousIntegrationBuild=true
+#    expect: all seven projects, 0 errors. CounterBoard.razor is the only compiled file that changed
+#    on the src side, and Razor is where a delivery like this would break.
+
+dotnet test
+#    expect: 996 total, 0 failed, 981 succeeded, 15 skipped. UNCHANGED. No test is added, renamed or
+#    moved; the harness edit changes a selector and a message. If this number moves, the cause is
+#    not here.
+
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: 15 passed, 0 skipped. Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch is the
+#    one that was failing in CI and has never failed locally, so a local pass proves the selector
+#    still matches — not that the race is closed. The runner proves that.
+```
+
+The drill and the backup cannot be rehearsed against the CI topology from a workstation, so the two
+things worth doing locally are the ones that would catch a typo:
+
+```bash
+BACKUP_DIRECTORY=/tmp/mr-backup-check bash scripts/backup.sh --no-keys
+#    expect: on a dev stack, the postgres container found and named with the engine it was found
+#    through — "[backup] using 'myrestaurant_postgres_1', discovered via podman." That line is new
+#    and it is the whole of F-43's fix reporting itself.
+
+CONTAINER_ENGINE=nosuchengine bash scripts/backup.sh --no-keys
+#    expect: exit 1, "CONTAINER_ENGINE='nosuchengine' is not on PATH." A bad override must fail on
+#    the override rather than fall back to guessing, which is the behaviour this slice removed.
+```
+
+### Ledger
+
+| Shape | Finding | What was wrong |
+| --- | --- | --- |
+| a script correct on one host and wrong on another, reporting the wrong subsystem | **F-43** | engine chosen by `PATH` order rather than by the container it had to reach |
+| a test barrier satisfied by markup present in every state | **F-44** | `section.counter-board` exists while loading, so the wait asserted nothing |
+
+Both rows belong to a category this ledger has recorded twice before — a check whose *name* was true and
+whose *content* was narrower than its name. F-40's separator gate and F-42's governance gate were both
+about layers nothing then looked at. These two are about looking at the right layer and asking it the
+wrong question, which is harder to notice because the gate is green.
+
+################################################################################
 # FILE: docs/adr/0001-single-application-with-areas.md
 ################################################################################
 
@@ -13256,15 +13375,15 @@ exec dotnet watch --project src/MyRestaurant.WebApplication run --launch-profile
   File name:             backup.sh
   Relative path:         scripts/backup.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/backup.sh
-  Size:                  11.9 KiB (12227 bytes)
-  Last modified:         2026-08-04 20:48:52.000000000 -0400
-  Permissions:           -rwxr-xr-x
+  Size:                  16.4 KiB (16816 bytes)
+  Last modified:         2026-08-05 10:57:02.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31516877
+  Inode:                 32568404
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               a368018c14ac561af4229c7a7357f154a00ad1b36c6e8fc4a2118d3478dd52f6
-  Last git commit:       b3cc457 2026-08-04 22:33:01 -0400 add claude response
+  SHA-256:               289d6e12b393ec019f5d004c5aa4c46dabd58e81720c0be6b56fcd74424e4637
+  Last git commit:       eb80cdf 2026-08-05 11:31:04 -0400 add claude changes
 
 --- CONTENT ---
 #!/usr/bin/env bash
@@ -13307,12 +13426,26 @@ exec dotnet watch --project src/MyRestaurant.WebApplication run --launch-profile
 #   1   no usable backup was produced (nothing was written, or what was written was removed)
 #   2   the database dump landed but the key ring did not — recoverable, but not a complete set
 #
+# ENGINE SELECTION IS A REAL DECISION, not a formality, and getting it wrong reports as a database
+# fault (F-43). This script used to take the first of podman/docker on PATH. A host with both — every
+# GitHub Actions ubuntu runner is one, because its image installs a static podman bundle alongside
+# Docker — would therefore run `podman exec <a docker container>`, which fails with "no such
+# container", which arrived here as "did not answer pg_isready" and sent the reader to PostgreSQL.
+#
+# So the container chooses the engine rather than PATH order choosing it. The only reason this script
+# needs an engine at all is to reach one named container; whether a given engine can see that
+# container is a fact it can check, not a preference. CONTAINER_ENGINE overrides the whole question.
+#
 # Environment:
 #   BACKUP_DIRECTORY                where sets are written (default /var/lib/myrestaurant/backups)
 #   BACKUP_RETENTION_COUNT          how many sets to keep (default 14; must be a positive integer)
 #   POSTGRES_USER / POSTGRES_DB     database credentials (default myrestaurant / myrestaurant)
 #   POSTGRES_CONTAINER              skip discovery and use this container for pg_dump
 #   WEB_CONTAINER                   skip discovery and use this container for the key ring
+#   CONTAINER_ENGINE                force the engine (podman or docker) instead of deciding. Honoured
+#                                   by scripts/restore_drill.sh too, and by nothing else here — the
+#                                   compose-driven scripts (run.sh, restore.sh, quick_tunnel.sh)
+#                                   choose a compose command, which is a different question.
 #   DATA_PROTECTION_KEYS_DIRECTORY  the key-ring path inside the web container
 #                                   (default /var/lib/myrestaurant/dataprotection)
 
@@ -13357,54 +13490,109 @@ fi
 
 # ---------------------------------------------------------------------------------------------------
 # Container engine, then containers.
+#
+# CANDIDATES first, one engine second. podman leads the list because ADR-0004 makes rootless Podman
+# canonical, but leading the list is all that preference buys: which candidate is used is settled
+# below by which one can actually see the database container.
 # ---------------------------------------------------------------------------------------------------
-if command -v podman >/dev/null 2>&1; then
-    ENGINE="podman"
-elif command -v docker >/dev/null 2>&1; then
-    ENGINE="docker"
+ENGINE_CANDIDATES=()
+
+if [[ -n "${CONTAINER_ENGINE:-}" ]]; then
+    command -v "$CONTAINER_ENGINE" >/dev/null 2>&1 \
+        || die "CONTAINER_ENGINE='$CONTAINER_ENGINE' is not on PATH."
+    ENGINE_CANDIDATES=("$CONTAINER_ENGINE")
 else
-    die "need podman or docker on PATH."
+    for candidate in podman docker; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            ENGINE_CANDIDATES+=("$candidate")
+        fi
+    done
+    (( ${#ENGINE_CANDIDATES[@]} > 0 )) || die "need podman or docker on PATH (or set CONTAINER_ENGINE)."
 fi
 
-# Discovery prints exactly one container name or fails. `grep -m1 postgres` used to stand here, and
-# it silently picked whichever container the engine happened to list first — which is fine until a
-# second one exists, and `scripts/restore_drill.sh` creates a second postgres container on purpose.
-# A backup that dumps the drill's scratch database instead of the real one would succeed, be the
-# right size, and be worthless. Ambiguity is now an error you can act on.
-discover_container() {
-    local fragment="$1" label="$2"
-    local -a names=()
+# Prints every running container name an engine reports for a name fragment, one per line, and
+# nothing else — no warnings, no exit codes to interpret. It is called once per candidate engine
+# during selection, and a function that complained on its own would complain about the engine that
+# was about to lose. The caller counts the lines and decides.
+running_containers() {
+    local engine="$1" fragment="$2"
 
-    mapfile -t names < <("$ENGINE" ps --filter "name=$fragment" --format '{{.Names}}' 2>/dev/null \
-        | tr -d '[]' | awk '{ print $1 }' | awk 'NF' | sort -u)
+    "$engine" ps --filter "name=$fragment" --format '{{.Names}}' 2>/dev/null \
+        | tr -d '[]' | awk '{ print $1 }' | awk 'NF' | sort -u
+}
 
-    if (( ${#names[@]} == 0 )); then
-        warn "no running container matching '$fragment' (the $label)."
-        return 1
-    fi
-
-    if (( ${#names[@]} > 1 )); then
-        warn "more than one running container matches '$fragment' (the $label):"
-        printf '           %s\n' "${names[@]}" >&2
-        warn "set ${label^^}_CONTAINER to name the one you mean."
-        return 1
-    fi
-
-    printf '%s\n' "${names[0]}"
+# True when this engine has a container of that name OR id, running or not. `container inspect` rather
+# than `ps` because POSTGRES_CONTAINER is frequently an id (CI passes job.services.postgres.id), and
+# `ps --filter name=` does not match ids.
+engine_knows() {
+    "$1" container inspect "$2" >/dev/null 2>&1
 }
 
 if [[ -n "${POSTGRES_CONTAINER:-}" ]]; then
     DATABASE_CONTAINER="$POSTGRES_CONTAINER"
-    info "using POSTGRES_CONTAINER='$DATABASE_CONTAINER'."
+    ENGINE=""
+
+    for candidate in "${ENGINE_CANDIDATES[@]}"; do
+        if engine_knows "$candidate" "$DATABASE_CONTAINER"; then
+            ENGINE="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$ENGINE" ]]; then
+        warn "no available engine has a container '$DATABASE_CONTAINER' (POSTGRES_CONTAINER)."
+        warn "asked: ${ENGINE_CANDIDATES[*]}"
+        die "either the name is wrong, or the container belongs to an engine not on PATH (set CONTAINER_ENGINE)."
+    fi
+
+    info "using POSTGRES_CONTAINER='$DATABASE_CONTAINER' via $ENGINE."
 else
-    DATABASE_CONTAINER="$(discover_container postgres postgres || true)"
-    [[ -n "$DATABASE_CONTAINER" ]] || die "could not identify the postgres container (set POSTGRES_CONTAINER)."
+    # Discovery must name exactly one container. `grep -m1 postgres` used to stand here, and it
+    # silently picked whichever container the engine happened to list first — which is fine until a
+    # second one exists, and `scripts/restore_drill.sh` creates a second postgres container on
+    # purpose. A backup that dumps the drill's scratch database instead of the real one would
+    # succeed, be the right size, and be worthless. Ambiguity is an error you can act on.
+    ENGINE=""
+    DATABASE_CONTAINER=""
+
+    for candidate in "${ENGINE_CANDIDATES[@]}"; do
+        candidate_names=()
+        mapfile -t candidate_names < <(running_containers "$candidate" postgres)
+
+        if (( ${#candidate_names[@]} > 1 )); then
+            warn "more than one running container matches 'postgres' under $candidate:"
+            printf '           %s\n' "${candidate_names[@]}" >&2
+            die "set POSTGRES_CONTAINER to name the one you mean."
+        fi
+
+        if (( ${#candidate_names[@]} == 1 )); then
+            ENGINE="$candidate"
+            DATABASE_CONTAINER="${candidate_names[0]}"
+            break
+        fi
+    done
+
+    if [[ -z "$DATABASE_CONTAINER" ]]; then
+        warn "no running container matching 'postgres' under any of: ${ENGINE_CANDIDATES[*]}"
+        die "could not identify the postgres container (set POSTGRES_CONTAINER, or CONTAINER_ENGINE, or both)."
+    fi
+
+    info "using '$DATABASE_CONTAINER', discovered via $ENGINE."
 fi
 
 # Prove it is the database, and prove the credentials work, BEFORE creating a file that would
 # otherwise look like a backup. A dump that fails after the redirect has opened leaves bytes behind.
+#
+# Two failures, said separately. "Not running" and "running but not answering for these credentials"
+# are fixed in different places, and one message covering both is how an engine-selection fault came
+# to read as a PostgreSQL fault in the first place.
+if ! "$ENGINE" container inspect --format '{{.State.Running}}' "$DATABASE_CONTAINER" 2>/dev/null \
+        | grep --quiet true; then
+    die "$ENGINE knows '$DATABASE_CONTAINER' but it is not running."
+fi
+
 if ! "$ENGINE" exec "$DATABASE_CONTAINER" pg_isready --username "$PGUSER" --dbname "$PGDB" >/dev/null 2>&1; then
-    die "'$DATABASE_CONTAINER' did not answer pg_isready for user '$PGUSER' database '$PGDB'."
+    die "'$DATABASE_CONTAINER' ($ENGINE) did not answer pg_isready for user '$PGUSER' database '$PGDB'."
 fi
 
 # ---------------------------------------------------------------------------------------------------
@@ -13452,17 +13640,33 @@ info "database dump: $DUMP_FILE ($(du -h -- "$DUMP_FILE" | cut -f1))"
 KEYS_CAPTURED=0
 
 if (( WITH_KEYS )); then
+    APPLICATION_CONTAINER=""
+
     if [[ -n "${WEB_CONTAINER:-}" ]]; then
         APPLICATION_CONTAINER="$WEB_CONTAINER"
         info "using WEB_CONTAINER='$APPLICATION_CONTAINER'."
     else
-        APPLICATION_CONTAINER="$(discover_container web web || true)"
+        # The same engine the database was reached through, deliberately: the two containers are one
+        # stack, and a tree where they live under different engines is not a topology this project
+        # has. Ambiguity is fatal for the dump and only a warning for the key ring, because §15's
+        # three-valued exit already has a word for "database dumped, ring not captured".
+        web_names=()
+        mapfile -t web_names < <(running_containers "$ENGINE" web)
+
+        if (( ${#web_names[@]} > 1 )); then
+            warn "more than one running container matches 'web' under $ENGINE:"
+            printf '           %s\n' "${web_names[@]}" >&2
+            warn "set WEB_CONTAINER to name the one you mean."
+        elif (( ${#web_names[@]} == 1 )); then
+            APPLICATION_CONTAINER="${web_names[0]}"
+        fi
     fi
 
     if [[ -z "$APPLICATION_CONTAINER" ]]; then
-        warn "could not identify the web container, so the Data Protection key ring was NOT captured."
-        warn "in dev the application runs on the host (run.sh), where there is no container to read"
-        warn "from — pass --no-keys there. In production this is a real problem: see OPERATIONS §8."
+        warn "could not identify the web container under $ENGINE, so the Data Protection key ring"
+        warn "was NOT captured. In dev the application runs on the host (run.sh), where there is no"
+        warn "container to read from — pass --no-keys there. In production this is a real problem:"
+        warn "see OPERATIONS §8."
     elif ! "$ENGINE" cp "$APPLICATION_CONTAINER:$KEYS_DIRECTORY/." - > "$PARTIAL_KEYS" 2>/dev/null; then
         warn "could not read '$KEYS_DIRECTORY' out of '$APPLICATION_CONTAINER' — key ring NOT captured."
         warn "check DATA_PROTECTION_KEYS_DIRECTORY matches the container's mount point."
@@ -13503,6 +13707,7 @@ if (( WITH_KEYS )) && (( ! KEYS_CAPTURED )); then
     exit 2
 fi
 exit 0
+
 
 ################################################################################
 # FILE: scripts/check_repository.sh
@@ -15058,15 +15263,15 @@ fi
   File name:             restore_drill.sh
   Relative path:         scripts/restore_drill.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/restore_drill.sh
-  Size:                  21.3 KiB (21857 bytes)
-  Last modified:         2026-08-04 20:59:48.000000000 -0400
-  Permissions:           -rwxr-xr-x
+  Size:                  23.0 KiB (23545 bytes)
+  Last modified:         2026-08-05 10:51:34.000000000 -0400
+  Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31516878
+  Inode:                 32568405
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               54e63468b5f440f80bd384af4425b5c715266c85f56337573b1fb7ad4650e00c
-  Last git commit:       b3cc457 2026-08-04 22:33:01 -0400 add claude response
+  SHA-256:               92d810fcfde981ef5dbb638b440ad1c2bcc1e4e26dd528268543661c6346dd45
+  Last git commit:       eb80cdf 2026-08-05 11:31:04 -0400 add claude changes
 
 --- CONTENT ---
 #!/usr/bin/env bash
@@ -15121,6 +15326,13 @@ fi
 #   POSTGRES_USER / POSTGRES_DB  credentials the scratch database is created with
 #   DRILL_POSTGRES_IMAGE         scratch image (default docker.io/library/postgres:17-alpine —
 #                                fully qualified so a short-name registry prompt cannot hang a drill)
+#   CONTAINER_ENGINE             force the engine (podman or docker) instead of taking the first of
+#                                podman/docker on PATH. Unlike scripts/backup.sh, this script has no
+#                                container to identify — it creates its own — so nothing here can
+#                                infer the engine from the work. On a host with both engines the
+#                                default costs a second image pull into the losing engine's store,
+#                                and `--from-live` delegates to scripts/backup.sh, which honours the
+#                                same variable; setting it keeps the whole drill on one engine.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -15182,14 +15394,26 @@ reserve() {
 }
 
 # ---------------------------------------------------------------------------------------------------
-# 0. Engine.
+# 0. Engine. CONTAINER_ENGINE wins outright; otherwise podman leads because ADR-0004 makes rootless
+#    Podman canonical.
+#
+#    Every container this script touches is one it created, so unlike scripts/backup.sh — where the
+#    engine is decided by which one can see the named database container (F-43) — there is nothing
+#    here to infer from. A host with both engines is therefore the case worth naming: the drill will
+#    pull DRILL_POSTGRES_IMAGE into whichever store it picked, which on a CI runner means pulling an
+#    image the other engine already has. That is slow rather than wrong, and CONTAINER_ENGINE is how
+#    a caller that knows better says so.
 # ---------------------------------------------------------------------------------------------------
-if command -v podman >/dev/null 2>&1; then
+if [[ -n "${CONTAINER_ENGINE:-}" ]]; then
+    command -v "$CONTAINER_ENGINE" >/dev/null 2>&1 \
+        || die "CONTAINER_ENGINE='$CONTAINER_ENGINE' is not on PATH."
+    ENGINE="$CONTAINER_ENGINE"
+elif command -v podman >/dev/null 2>&1; then
     ENGINE="podman"
 elif command -v docker >/dev/null 2>&1; then
     ENGINE="docker"
 else
-    die "need podman or docker on PATH."
+    die "need podman or docker on PATH (or set CONTAINER_ENGINE)."
 fi
 
 # ---------------------------------------------------------------------------------------------------
@@ -15229,6 +15453,7 @@ info "drilling      $DUMP  ($(du -h -- "$DUMP" | cut -f1))"
 info "key ring      ${KEYS_ARCHIVE}$( [[ -f "$KEYS_ARCHIVE" ]] && echo "" || echo "  (missing)" )"
 info "migrations    ${#MIGRATIONS[@]} file(s) in $MIGRATION_DIRECTORY"
 info "scratch image $DRILL_IMAGE"
+info "engine        $ENGINE$( [[ -n "${CONTAINER_ENGINE:-}" ]] && echo "  (CONTAINER_ENGINE)" || echo "" )"
 info "strict mode   $( (( STRICT )) && echo "on" || echo "off" )"
 info "on exit       $( (( KEEP )) && echo "the scratch container is KEPT (--keep)" || echo "the scratch container is removed" )"
 
@@ -15543,6 +15768,7 @@ fi
 
 info "drilled without touching the live database."
 exit 0
+
 
 ################################################################################
 # FILE: src/MyRestaurant.DataAccess/Displays/DisplayDeviceAuthenticator.cs
@@ -39426,15 +39652,15 @@ else
   File name:             CounterBoard.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Counter/CounterBoard.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Counter/CounterBoard.razor
-  Size:                  15.2 KiB (15567 bytes)
-  Last modified:         2026-07-27 19:13:49.000000000 -0400
+  Size:                  17.8 KiB (18265 bytes)
+  Last modified:         2026-08-05 10:52:23.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 26266036
+  Inode:                 32568411
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               10e1b502a5d9e5b4f6eccbe4ed0c00ad66362fd505d67eae83b75d6d77ee1521
-  Last git commit:       3faac2d 2026-07-27 19:56:57 -0400 add claude changes
+  SHA-256:               5fb32761f52389e49934adb1b5b87b10318c8f71a5564a64650cce8fc9911d9f
+  Last git commit:       eb80cdf 2026-08-05 11:31:04 -0400 add claude changes
 
 --- CONTENT ---
 @page "/counter"
@@ -39463,7 +39689,14 @@ else
 
 <PageTitle>Counter</PageTitle>
 
-<section class="panel counter-board">
+@* data-live says whether a circuit produced this markup at all, and data-loaded whether the two
+   queries behind it have answered yet — see IsLiveAttributeValue and IsLoadedAttributeValue. The pair
+   is what the §16.3 harness waits on, and the second half is not optional: the circuit's very first
+   render happens with _loaded still false, so data-live alone names the one moment when neither list
+   below exists. *@
+<section class="panel counter-board" id="counter-board-surface"
+         data-live="@IsLiveAttributeValue"
+         data-loaded="@IsLoadedAttributeValue">
     <div class="counter-header">
         <div>
             <p class="eyebrow">@Options.RestaurantName</p>
@@ -39773,6 +40006,38 @@ else
     private decimal _openTotal;
     private int _openPendingLines;
 
+    /// <summary>
+    /// Whether a circuit produced this markup, published as an attribute — the same bit
+    /// <c>KitchenBoard</c>, <c>CounterSitting</c>, <c>TableOrderSurface</c> and <c>TableDisplay</c> all
+    /// publish, and for the same reason.
+    ///
+    /// <para>This board is the one screen in the application whose entire purpose is a number that
+    /// moves while somebody stands reading it (§11.3, §9). A prerendered copy of it is correct as of the
+    /// request and then correct forever, which is the failure mode that looks most like success — so
+    /// "a circuit is behind this" has to be assertable from outside, and until now it was the only one
+    /// of the five live surfaces that did not say.</para>
+    /// </summary>
+    private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
+
+    /// <summary>
+    /// Whether <see cref="LoadAsync"/> has answered, published alongside <c>data-live</c>.
+    ///
+    /// <para><b>Why both, rather than either.</b> <c>ComponentBase</c> renders the moment
+    /// <c>OnInitializedAsync</c> yields, so the circuit's first render is <c>data-live="true"</c> with
+    /// <c>_loaded</c> still false — the one state in which neither the open-sittings list nor "Settled
+    /// today" is in the document. A reader that waited on <c>data-live</c> alone would be steered
+    /// <em>towards</em> that instant rather than past it, and would see two empty lists and believe
+    /// them.</para>
+    ///
+    /// <para>The window is real rather than theoretical, and it is not the prerender: prerendering runs
+    /// the whole lifecycle before it emits, so the first HTML a browser gets is fully loaded. It is the
+    /// hand-over. The circuit builds this component again from nothing, and the DOM goes back to
+    /// "Loading the floor…" for as long as two queries take — milliseconds on a workstation, long
+    /// enough on a loaded CI runner for §16.3 scenario 10 to read the board mid-reload and find a
+    /// settled table on neither list (F-44).</para>
+    /// </summary>
+    private string IsLoadedAttributeValue => _loaded ? "true" : "false";
+
     protected override async Task OnInitializedAsync()
     {
         _stopping = _lifetime.Token;
@@ -39892,6 +40157,7 @@ else
         _lifetime.Dispose();
     }
 }
+
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/Pages/Counter/CounterJoinCode.razor
@@ -73900,15 +74166,15 @@ internal static class ContainerEngineDiscovery
   File name:             CounterJourneys.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs
-  Size:                  54.8 KiB (56078 bytes)
-  Last modified:         2026-08-04 13:49:21.000000000 -0400
+  Size:                  59.0 KiB (60399 bytes)
+  Last modified:         2026-08-05 10:53:33.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31147983
+  Inode:                 32568415
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               82af31a761906178ff5017e81ec93acf723c80bdad229647687661a7a89a8b9c
-  Last git commit:       0c5e86d 2026-08-04 14:02:17 -0400 add claude changes
+  SHA-256:               2fe2a77f899a421cda713a3d6b41e9cf26ce61cfb2148ff073257dbd91579e22
+  Last git commit:       eb80cdf 2026-08-05 11:31:04 -0400 add claude changes
 
 --- CONTENT ---
 using System.Globalization;
@@ -74047,6 +74313,16 @@ internal sealed record CounterFloor(
 /// does nothing at all. So <see cref="OpenSittingAsync"/> waits on <c>data-live</c>, published by
 /// <c>CounterSitting.razor</c> as of M6 Slice 12 for exactly this reason.</para>
 ///
+/// <para><b>A circuit is half of it, and the board is where the other half showed.</b> Waiting for a
+/// live renderer steers a reader to the circuit's <em>first</em> render, which happens the instant
+/// <c>OnInitializedAsync</c> yields — before the queries behind the screen have answered. On a page
+/// read for its controls that is invisible, because the next thing a caller does is wait for a
+/// specific control. On <c>/counter</c>, where <see cref="ReadFloorAsync"/> asks which tables are on
+/// which of two lists, it is fatal and silent: both lists are empty, "this table is not on the floor"
+/// is satisfied by nothing being on the floor, and "this table is under Settled today" fails. So
+/// <c>CounterBoard.razor</c> publishes <c>data-loaded</c> beside <c>data-live</c> and
+/// <see cref="WaitForBoardAsync"/> demands both (M6 Slice 21, F-44).</para>
+///
 /// <para><b>Why the board's link is followed rather than typed.</b> A scenario knows the sitting
 /// identifier only if it reads the database for it, and §16.3's "counter adjusts a price" means the
 /// counter found the table — the board, the open-sittings query, and the link. Following it also means
@@ -74077,7 +74353,26 @@ internal static class CounterJourneys
     /// <summary>The board's route. <c>CounterBoard.razor</c> is <c>@page "/counter"</c>.</summary>
     internal const string BoardPath = "/counter";
 
-    private const string BoardSurfaceSelector = "section.counter-board";
+    /// <summary>
+    /// The board as rendered by a live circuit that has finished loading. <c>CounterBoard.razor</c>
+    /// publishes both bits (M6 Slice 21); this selector demands both, and each half is load-bearing.
+    ///
+    /// <para><c>section.counter-board</c> on its own — which is what stood here — is not a barrier at
+    /// all. That element exists in every state of the component, the "Loading the floor…" state
+    /// included, so waiting for it to become visible was satisfied by the first paint and asserted
+    /// nothing. The two lists it wraps are what a caller came for, and neither exists yet.</para>
+    ///
+    /// <para><c>[data-live='true']</c> alone would be worse than useless: the circuit's first render is
+    /// live with <c>_loaded</c> still false, so that selector matches the <em>only</em> instant when
+    /// both lists are absent. <c>[data-loaded='true']</c> alone would happily match the prerendered
+    /// markup, which is loaded and inert — correct as of the request and never again, on the one screen
+    /// whose job is a total that moves.</para>
+    /// </summary>
+    private const string BoardSurfaceSelector =
+        "#counter-board-surface[data-live='true'][data-loaded='true']";
+
+    /// <summary>The board surface in any state, for describing what went wrong rather than waiting.</summary>
+    private const string BoardSurfaceAnyStateSelector = "#counter-board-surface";
 
     /// <summary>One open table on the board (§11.3). Settled ones are rows in a list, not articles.</summary>
     private const string OpenSittingSelector = "section.counter-board article.counter-sitting";
@@ -74255,10 +74550,18 @@ internal static class CounterJourneys
     }
 
     /// <summary>
-    /// Waits until the counter board on screen was rendered by a live circuit. A board that never
-    /// became interactive lists the floor as it stood at the moment of the request and then never
-    /// changes — which for a screen whose whole job is to show a total moving is the failure that looks
-    /// most like success.
+    /// Waits until the counter board on screen was rendered by a live circuit <em>and</em> has finished
+    /// loading. A board that never became interactive lists the floor as it stood at the moment of the
+    /// request and then never changes — which for a screen whose whole job is to show a total moving is
+    /// the failure that looks most like success. A board caught mid-load shows two empty lists, which is
+    /// the failure that looks most like an empty restaurant.
+    ///
+    /// <para><b>Both halves of that, because this is a barrier every reader here depends on.</b>
+    /// <see cref="ReadFloorAsync"/> answers questions of the form "is this table on that list", and an
+    /// absence is indistinguishable from a list that has not rendered yet. The prerendered HTML is
+    /// fully loaded, so on a fast machine this wait appeared to work for reasons that had nothing to do
+    /// with what it asserted; on a loaded runner the circuit's hand-over re-rendered the board empty
+    /// first, and §16.3 scenario 10 read it there (F-44).</para>
     /// </summary>
     internal static async Task WaitForBoardAsync(IPage page, TimeSpan timeout)
     {
@@ -74274,13 +74577,17 @@ internal static class CounterJourneys
         }
         catch (PlaywrightException exception)
         {
+            string surface = await DescribeBoardSurfaceAsync(page);
+
             throw new InvalidOperationException(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The counter board never rendered within {timeout.TotalSeconds:F0}s. §3.7 admits"
-                    + $" counter and administrator to /counter, so a principal that failed the policy"
-                    + $" would be looking at the access-denied panel instead; the browser is at"
-                    + $" '{page.Url}'."),
+                    $"The counter board was not live and loaded within {timeout.TotalSeconds:F0}s"
+                    + $" ({surface}). §3.7 admits counter and administrator to /counter, so a principal"
+                    + $" that failed the policy would be looking at the access-denied panel and the"
+                    + $" surface would be absent entirely; a surface that is present with"
+                    + $" data-live='false' never got a circuit, and one stuck at data-loaded='false' is"
+                    + $" waiting on §11.3's two queries."),
                 exception);
         }
     }
@@ -75028,6 +75335,30 @@ internal static class CounterJourneys
         return string.Join("; ", described);
     }
 
+    /// <summary>
+    /// What the board surface says about itself, for a message rather than for an assertion. The two
+    /// attributes are read separately because they fail for unrelated reasons and are fixed in unrelated
+    /// places — no circuit is a routing or authorization question, not loaded is a database one.
+    /// </summary>
+    private static async Task<string> DescribeBoardSurfaceAsync(IPage page)
+    {
+        ILocator surface = page.Locator(BoardSurfaceAnyStateSelector);
+
+        if (await surface.CountAsync() == 0)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"there is no counter board on the page at all; the browser is at '{page.Url}'");
+        }
+
+        string? live = await surface.First.GetAttributeAsync("data-live");
+        string? loaded = await surface.First.GetAttributeAsync("data-loaded");
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"data-live='{live ?? "absent"}', data-loaded='{loaded ?? "absent"}'");
+    }
+
     private static async Task<string> DescribeSurfaceAsync(IPage page)
     {
         ILocator surface = page.Locator(SittingSurfaceSelector);
@@ -75075,6 +75406,7 @@ internal static class CounterJourneys
     private static string Money(decimal amount)
         => MoneyText.Format(amount, RestaurantInstance.CurrencyCode);
 }
+
 
 ################################################################################
 # FILE: tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs
@@ -87966,10 +88298,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 311
-  Total size     : 3.8 MiB (3951411 bytes)
+  Files dumped   : 312
+  Total size     : 3.8 MiB (3972359 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-05T10:19:45-04:00
+  Completed at   : 2026-08-05T11:32:16-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
