@@ -81,6 +81,8 @@ Schedule at `BACKUP_SCHEDULE_TIME` (default 03:30 host-local) with a systemd **u
 
 Container discovery **refuses when more than one container matches** rather than picking the first, and names what it found. Set `POSTGRES_CONTAINER` / `WEB_CONTAINER` to settle it. This matters more than it sounds: dumping the wrong database succeeds, comes out roughly the right size, and is worthless.
 
+**On a host with both podman and docker, the container chooses the engine.** `backup.sh` asks each available engine whether it can see the container it was told to dump, and uses the one that can — rather than taking the first engine on `PATH`, which is what it used to do. Set `CONTAINER_ENGINE` to skip the question entirely; `scripts/restore_drill.sh` honours the same variable and *needs* it more, because the drill creates its own scratch container and therefore has nothing to infer an engine from. Worth knowing because of how the old behaviour presented (F-43): `podman exec` against a container belonging to the Docker daemon fails with "no such container", the script reported that as the database not answering `pg_isready`, and the message sends you to PostgreSQL for a fault entirely in engine selection. The two conditions are now said separately — "knows it but it is not running" is a different line from "did not answer for these credentials".
+
 ### The drill
 
 ```bash
@@ -352,3 +354,4 @@ comment, respond privately, and treat the clock as having started at the public 
 Whether the tab is open or closed is not the interesting variable; a determined reporter with no
 private channel will use whatever is available, which is the argument for the private channel existing
 at all.
+

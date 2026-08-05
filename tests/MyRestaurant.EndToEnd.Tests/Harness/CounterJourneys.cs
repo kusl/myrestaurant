@@ -134,6 +134,16 @@ internal sealed record CounterFloor(
 /// does nothing at all. So <see cref="OpenSittingAsync"/> waits on <c>data-live</c>, published by
 /// <c>CounterSitting.razor</c> as of M6 Slice 12 for exactly this reason.</para>
 ///
+/// <para><b>A circuit is half of it, and the board is where the other half showed.</b> Waiting for a
+/// live renderer steers a reader to the circuit's <em>first</em> render, which happens the instant
+/// <c>OnInitializedAsync</c> yields — before the queries behind the screen have answered. On a page
+/// read for its controls that is invisible, because the next thing a caller does is wait for a
+/// specific control. On <c>/counter</c>, where <see cref="ReadFloorAsync"/> asks which tables are on
+/// which of two lists, it is fatal and silent: both lists are empty, "this table is not on the floor"
+/// is satisfied by nothing being on the floor, and "this table is under Settled today" fails. So
+/// <c>CounterBoard.razor</c> publishes <c>data-loaded</c> beside <c>data-live</c> and
+/// <see cref="WaitForBoardAsync"/> demands both (M6 Slice 21, F-44).</para>
+///
 /// <para><b>Why the board's link is followed rather than typed.</b> A scenario knows the sitting
 /// identifier only if it reads the database for it, and §16.3's "counter adjusts a price" means the
 /// counter found the table — the board, the open-sittings query, and the link. Following it also means
@@ -164,7 +174,26 @@ internal static class CounterJourneys
     /// <summary>The board's route. <c>CounterBoard.razor</c> is <c>@page "/counter"</c>.</summary>
     internal const string BoardPath = "/counter";
 
-    private const string BoardSurfaceSelector = "section.counter-board";
+    /// <summary>
+    /// The board as rendered by a live circuit that has finished loading. <c>CounterBoard.razor</c>
+    /// publishes both bits (M6 Slice 21); this selector demands both, and each half is load-bearing.
+    ///
+    /// <para><c>section.counter-board</c> on its own — which is what stood here — is not a barrier at
+    /// all. That element exists in every state of the component, the "Loading the floor…" state
+    /// included, so waiting for it to become visible was satisfied by the first paint and asserted
+    /// nothing. The two lists it wraps are what a caller came for, and neither exists yet.</para>
+    ///
+    /// <para><c>[data-live='true']</c> alone would be worse than useless: the circuit's first render is
+    /// live with <c>_loaded</c> still false, so that selector matches the <em>only</em> instant when
+    /// both lists are absent. <c>[data-loaded='true']</c> alone would happily match the prerendered
+    /// markup, which is loaded and inert — correct as of the request and never again, on the one screen
+    /// whose job is a total that moves.</para>
+    /// </summary>
+    private const string BoardSurfaceSelector =
+        "#counter-board-surface[data-live='true'][data-loaded='true']";
+
+    /// <summary>The board surface in any state, for describing what went wrong rather than waiting.</summary>
+    private const string BoardSurfaceAnyStateSelector = "#counter-board-surface";
 
     /// <summary>One open table on the board (§11.3). Settled ones are rows in a list, not articles.</summary>
     private const string OpenSittingSelector = "section.counter-board article.counter-sitting";
@@ -342,10 +371,18 @@ internal static class CounterJourneys
     }
 
     /// <summary>
-    /// Waits until the counter board on screen was rendered by a live circuit. A board that never
-    /// became interactive lists the floor as it stood at the moment of the request and then never
-    /// changes — which for a screen whose whole job is to show a total moving is the failure that looks
-    /// most like success.
+    /// Waits until the counter board on screen was rendered by a live circuit <em>and</em> has finished
+    /// loading. A board that never became interactive lists the floor as it stood at the moment of the
+    /// request and then never changes — which for a screen whose whole job is to show a total moving is
+    /// the failure that looks most like success. A board caught mid-load shows two empty lists, which is
+    /// the failure that looks most like an empty restaurant.
+    ///
+    /// <para><b>Both halves of that, because this is a barrier every reader here depends on.</b>
+    /// <see cref="ReadFloorAsync"/> answers questions of the form "is this table on that list", and an
+    /// absence is indistinguishable from a list that has not rendered yet. The prerendered HTML is
+    /// fully loaded, so on a fast machine this wait appeared to work for reasons that had nothing to do
+    /// with what it asserted; on a loaded runner the circuit's hand-over re-rendered the board empty
+    /// first, and §16.3 scenario 10 read it there (F-44).</para>
     /// </summary>
     internal static async Task WaitForBoardAsync(IPage page, TimeSpan timeout)
     {
@@ -361,13 +398,17 @@ internal static class CounterJourneys
         }
         catch (PlaywrightException exception)
         {
+            string surface = await DescribeBoardSurfaceAsync(page);
+
             throw new InvalidOperationException(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The counter board never rendered within {timeout.TotalSeconds:F0}s. §3.7 admits"
-                    + $" counter and administrator to /counter, so a principal that failed the policy"
-                    + $" would be looking at the access-denied panel instead; the browser is at"
-                    + $" '{page.Url}'."),
+                    $"The counter board was not live and loaded within {timeout.TotalSeconds:F0}s"
+                    + $" ({surface}). §3.7 admits counter and administrator to /counter, so a principal"
+                    + $" that failed the policy would be looking at the access-denied panel and the"
+                    + $" surface would be absent entirely; a surface that is present with"
+                    + $" data-live='false' never got a circuit, and one stuck at data-loaded='false' is"
+                    + $" waiting on §11.3's two queries."),
                 exception);
         }
     }
@@ -1115,6 +1156,30 @@ internal static class CounterJourneys
         return string.Join("; ", described);
     }
 
+    /// <summary>
+    /// What the board surface says about itself, for a message rather than for an assertion. The two
+    /// attributes are read separately because they fail for unrelated reasons and are fixed in unrelated
+    /// places — no circuit is a routing or authorization question, not loaded is a database one.
+    /// </summary>
+    private static async Task<string> DescribeBoardSurfaceAsync(IPage page)
+    {
+        ILocator surface = page.Locator(BoardSurfaceAnyStateSelector);
+
+        if (await surface.CountAsync() == 0)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"there is no counter board on the page at all; the browser is at '{page.Url}'");
+        }
+
+        string? live = await surface.First.GetAttributeAsync("data-live");
+        string? loaded = await surface.First.GetAttributeAsync("data-loaded");
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"data-live='{live ?? "absent"}', data-loaded='{loaded ?? "absent"}'");
+    }
+
     private static async Task<string> DescribeSurfaceAsync(IPage page)
     {
         ILocator surface = page.Locator(SittingSurfaceSelector);
@@ -1162,3 +1227,4 @@ internal static class CounterJourneys
     private static string Money(decimal amount)
         => MoneyText.Format(amount, RestaurantInstance.CurrencyCode);
 }
+

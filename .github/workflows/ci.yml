@@ -354,11 +354,21 @@ jobs:
       # container matches its filter — which is exactly the situation the drill's own scratch
       # container creates a few seconds later.
       #
+      # CONTAINER_ENGINE=docker is the load-bearing line here (F-43). This runner image installs a
+      # static podman bundle alongside Docker, so `command -v podman` succeeds on it — and every
+      # container in this job, the service database included, belongs to the Docker daemon. Without
+      # this, scripts/backup.sh reached for podman, `podman exec <a docker container id>` failed with
+      # "no such container", and the script reported it as the database not answering pg_isready:
+      # a message that sends a reader to PostgreSQL for a fault that is entirely in engine selection.
+      # The script now also infers the engine from the container it was given, so this is belt and
+      # braces — but it is the half that is obvious from the job, which is where it belongs.
+      #
       # The backup set is deliberately NOT uploaded as an artifact. The -dataprotection.tar is key
       # material in the clear; it is throwaway here, but publishing one is not a habit worth forming.
       - name: back up the booted instance
         env:
           BACKUP_DIRECTORY: ${{ github.workspace }}/ci-backups
+          CONTAINER_ENGINE: docker
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
           WEB_CONTAINER: myrestaurant_web_ci
         run: bash scripts/backup.sh
@@ -367,9 +377,15 @@ jobs:
       # ignored pg_restore errors and an empty key ring also fail, and neither number has been
       # observed on a real run yet. Once a few runs report "pg_restore completed with no errors",
       # tightening this is a one-word edit.
+      #
+      # CONTAINER_ENGINE=docker for a second reason as well as the first. The drill creates its own
+      # scratch container, so either engine would work — but postgres:17-alpine is already in the
+      # Docker daemon's store, because the service container above pulled it. Left to its default the
+      # drill would pull the same image again into podman's store, and pay for it on every push.
       - name: drill the restore
         env:
           BACKUP_DIRECTORY: ${{ github.workspace }}/ci-backups
+          CONTAINER_ENGINE: docker
           DRILL_POSTGRES_IMAGE: postgres:17-alpine
         run: bash scripts/restore_drill.sh
 
@@ -458,3 +474,4 @@ jobs:
           path: TestResults/**/*.trx
           if-no-files-found: warn
           retention-days: 14
+

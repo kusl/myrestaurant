@@ -24,7 +24,14 @@
 
 <PageTitle>Counter</PageTitle>
 
-<section class="panel counter-board">
+@* data-live says whether a circuit produced this markup at all, and data-loaded whether the two
+   queries behind it have answered yet — see IsLiveAttributeValue and IsLoadedAttributeValue. The pair
+   is what the §16.3 harness waits on, and the second half is not optional: the circuit's very first
+   render happens with _loaded still false, so data-live alone names the one moment when neither list
+   below exists. *@
+<section class="panel counter-board" id="counter-board-surface"
+         data-live="@IsLiveAttributeValue"
+         data-loaded="@IsLoadedAttributeValue">
     <div class="counter-header">
         <div>
             <p class="eyebrow">@Options.RestaurantName</p>
@@ -334,6 +341,38 @@
     private decimal _openTotal;
     private int _openPendingLines;
 
+    /// <summary>
+    /// Whether a circuit produced this markup, published as an attribute — the same bit
+    /// <c>KitchenBoard</c>, <c>CounterSitting</c>, <c>TableOrderSurface</c> and <c>TableDisplay</c> all
+    /// publish, and for the same reason.
+    ///
+    /// <para>This board is the one screen in the application whose entire purpose is a number that
+    /// moves while somebody stands reading it (§11.3, §9). A prerendered copy of it is correct as of the
+    /// request and then correct forever, which is the failure mode that looks most like success — so
+    /// "a circuit is behind this" has to be assertable from outside, and until now it was the only one
+    /// of the five live surfaces that did not say.</para>
+    /// </summary>
+    private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
+
+    /// <summary>
+    /// Whether <see cref="LoadAsync"/> has answered, published alongside <c>data-live</c>.
+    ///
+    /// <para><b>Why both, rather than either.</b> <c>ComponentBase</c> renders the moment
+    /// <c>OnInitializedAsync</c> yields, so the circuit's first render is <c>data-live="true"</c> with
+    /// <c>_loaded</c> still false — the one state in which neither the open-sittings list nor "Settled
+    /// today" is in the document. A reader that waited on <c>data-live</c> alone would be steered
+    /// <em>towards</em> that instant rather than past it, and would see two empty lists and believe
+    /// them.</para>
+    ///
+    /// <para>The window is real rather than theoretical, and it is not the prerender: prerendering runs
+    /// the whole lifecycle before it emits, so the first HTML a browser gets is fully loaded. It is the
+    /// hand-over. The circuit builds this component again from nothing, and the DOM goes back to
+    /// "Loading the floor…" for as long as two queries take — milliseconds on a workstation, long
+    /// enough on a loaded CI runner for §16.3 scenario 10 to read the board mid-reload and find a
+    /// settled table on neither list (F-44).</para>
+    /// </summary>
+    private string IsLoadedAttributeValue => _loaded ? "true" : "false";
+
     protected override async Task OnInitializedAsync()
     {
         _stopping = _lifetime.Token;
@@ -453,3 +492,4 @@
         _lifetime.Dispose();
     }
 }
+

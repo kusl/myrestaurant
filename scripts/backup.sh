@@ -38,12 +38,26 @@
 #   1   no usable backup was produced (nothing was written, or what was written was removed)
 #   2   the database dump landed but the key ring did not — recoverable, but not a complete set
 #
+# ENGINE SELECTION IS A REAL DECISION, not a formality, and getting it wrong reports as a database
+# fault (F-43). This script used to take the first of podman/docker on PATH. A host with both — every
+# GitHub Actions ubuntu runner is one, because its image installs a static podman bundle alongside
+# Docker — would therefore run `podman exec <a docker container>`, which fails with "no such
+# container", which arrived here as "did not answer pg_isready" and sent the reader to PostgreSQL.
+#
+# So the container chooses the engine rather than PATH order choosing it. The only reason this script
+# needs an engine at all is to reach one named container; whether a given engine can see that
+# container is a fact it can check, not a preference. CONTAINER_ENGINE overrides the whole question.
+#
 # Environment:
 #   BACKUP_DIRECTORY                where sets are written (default /var/lib/myrestaurant/backups)
 #   BACKUP_RETENTION_COUNT          how many sets to keep (default 14; must be a positive integer)
 #   POSTGRES_USER / POSTGRES_DB     database credentials (default myrestaurant / myrestaurant)
 #   POSTGRES_CONTAINER              skip discovery and use this container for pg_dump
 #   WEB_CONTAINER                   skip discovery and use this container for the key ring
+#   CONTAINER_ENGINE                force the engine (podman or docker) instead of deciding. Honoured
+#                                   by scripts/restore_drill.sh too, and by nothing else here — the
+#                                   compose-driven scripts (run.sh, restore.sh, quick_tunnel.sh)
+#                                   choose a compose command, which is a different question.
 #   DATA_PROTECTION_KEYS_DIRECTORY  the key-ring path inside the web container
 #                                   (default /var/lib/myrestaurant/dataprotection)
 
@@ -88,54 +102,109 @@ fi
 
 # ---------------------------------------------------------------------------------------------------
 # Container engine, then containers.
+#
+# CANDIDATES first, one engine second. podman leads the list because ADR-0004 makes rootless Podman
+# canonical, but leading the list is all that preference buys: which candidate is used is settled
+# below by which one can actually see the database container.
 # ---------------------------------------------------------------------------------------------------
-if command -v podman >/dev/null 2>&1; then
-    ENGINE="podman"
-elif command -v docker >/dev/null 2>&1; then
-    ENGINE="docker"
+ENGINE_CANDIDATES=()
+
+if [[ -n "${CONTAINER_ENGINE:-}" ]]; then
+    command -v "$CONTAINER_ENGINE" >/dev/null 2>&1 \
+        || die "CONTAINER_ENGINE='$CONTAINER_ENGINE' is not on PATH."
+    ENGINE_CANDIDATES=("$CONTAINER_ENGINE")
 else
-    die "need podman or docker on PATH."
+    for candidate in podman docker; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            ENGINE_CANDIDATES+=("$candidate")
+        fi
+    done
+    (( ${#ENGINE_CANDIDATES[@]} > 0 )) || die "need podman or docker on PATH (or set CONTAINER_ENGINE)."
 fi
 
-# Discovery prints exactly one container name or fails. `grep -m1 postgres` used to stand here, and
-# it silently picked whichever container the engine happened to list first — which is fine until a
-# second one exists, and `scripts/restore_drill.sh` creates a second postgres container on purpose.
-# A backup that dumps the drill's scratch database instead of the real one would succeed, be the
-# right size, and be worthless. Ambiguity is now an error you can act on.
-discover_container() {
-    local fragment="$1" label="$2"
-    local -a names=()
+# Prints every running container name an engine reports for a name fragment, one per line, and
+# nothing else — no warnings, no exit codes to interpret. It is called once per candidate engine
+# during selection, and a function that complained on its own would complain about the engine that
+# was about to lose. The caller counts the lines and decides.
+running_containers() {
+    local engine="$1" fragment="$2"
 
-    mapfile -t names < <("$ENGINE" ps --filter "name=$fragment" --format '{{.Names}}' 2>/dev/null \
-        | tr -d '[]' | awk '{ print $1 }' | awk 'NF' | sort -u)
+    "$engine" ps --filter "name=$fragment" --format '{{.Names}}' 2>/dev/null \
+        | tr -d '[]' | awk '{ print $1 }' | awk 'NF' | sort -u
+}
 
-    if (( ${#names[@]} == 0 )); then
-        warn "no running container matching '$fragment' (the $label)."
-        return 1
-    fi
-
-    if (( ${#names[@]} > 1 )); then
-        warn "more than one running container matches '$fragment' (the $label):"
-        printf '           %s\n' "${names[@]}" >&2
-        warn "set ${label^^}_CONTAINER to name the one you mean."
-        return 1
-    fi
-
-    printf '%s\n' "${names[0]}"
+# True when this engine has a container of that name OR id, running or not. `container inspect` rather
+# than `ps` because POSTGRES_CONTAINER is frequently an id (CI passes job.services.postgres.id), and
+# `ps --filter name=` does not match ids.
+engine_knows() {
+    "$1" container inspect "$2" >/dev/null 2>&1
 }
 
 if [[ -n "${POSTGRES_CONTAINER:-}" ]]; then
     DATABASE_CONTAINER="$POSTGRES_CONTAINER"
-    info "using POSTGRES_CONTAINER='$DATABASE_CONTAINER'."
+    ENGINE=""
+
+    for candidate in "${ENGINE_CANDIDATES[@]}"; do
+        if engine_knows "$candidate" "$DATABASE_CONTAINER"; then
+            ENGINE="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$ENGINE" ]]; then
+        warn "no available engine has a container '$DATABASE_CONTAINER' (POSTGRES_CONTAINER)."
+        warn "asked: ${ENGINE_CANDIDATES[*]}"
+        die "either the name is wrong, or the container belongs to an engine not on PATH (set CONTAINER_ENGINE)."
+    fi
+
+    info "using POSTGRES_CONTAINER='$DATABASE_CONTAINER' via $ENGINE."
 else
-    DATABASE_CONTAINER="$(discover_container postgres postgres || true)"
-    [[ -n "$DATABASE_CONTAINER" ]] || die "could not identify the postgres container (set POSTGRES_CONTAINER)."
+    # Discovery must name exactly one container. `grep -m1 postgres` used to stand here, and it
+    # silently picked whichever container the engine happened to list first — which is fine until a
+    # second one exists, and `scripts/restore_drill.sh` creates a second postgres container on
+    # purpose. A backup that dumps the drill's scratch database instead of the real one would
+    # succeed, be the right size, and be worthless. Ambiguity is an error you can act on.
+    ENGINE=""
+    DATABASE_CONTAINER=""
+
+    for candidate in "${ENGINE_CANDIDATES[@]}"; do
+        candidate_names=()
+        mapfile -t candidate_names < <(running_containers "$candidate" postgres)
+
+        if (( ${#candidate_names[@]} > 1 )); then
+            warn "more than one running container matches 'postgres' under $candidate:"
+            printf '           %s\n' "${candidate_names[@]}" >&2
+            die "set POSTGRES_CONTAINER to name the one you mean."
+        fi
+
+        if (( ${#candidate_names[@]} == 1 )); then
+            ENGINE="$candidate"
+            DATABASE_CONTAINER="${candidate_names[0]}"
+            break
+        fi
+    done
+
+    if [[ -z "$DATABASE_CONTAINER" ]]; then
+        warn "no running container matching 'postgres' under any of: ${ENGINE_CANDIDATES[*]}"
+        die "could not identify the postgres container (set POSTGRES_CONTAINER, or CONTAINER_ENGINE, or both)."
+    fi
+
+    info "using '$DATABASE_CONTAINER', discovered via $ENGINE."
 fi
 
 # Prove it is the database, and prove the credentials work, BEFORE creating a file that would
 # otherwise look like a backup. A dump that fails after the redirect has opened leaves bytes behind.
+#
+# Two failures, said separately. "Not running" and "running but not answering for these credentials"
+# are fixed in different places, and one message covering both is how an engine-selection fault came
+# to read as a PostgreSQL fault in the first place.
+if ! "$ENGINE" container inspect --format '{{.State.Running}}' "$DATABASE_CONTAINER" 2>/dev/null \
+        | grep --quiet true; then
+    die "$ENGINE knows '$DATABASE_CONTAINER' but it is not running."
+fi
+
 if ! "$ENGINE" exec "$DATABASE_CONTAINER" pg_isready --username "$PGUSER" --dbname "$PGDB" >/dev/null 2>&1; then
-    die "'$DATABASE_CONTAINER' did not answer pg_isready for user '$PGUSER' database '$PGDB'."
+    die "'$DATABASE_CONTAINER' ($ENGINE) did not answer pg_isready for user '$PGUSER' database '$PGDB'."
 fi
 
 # ---------------------------------------------------------------------------------------------------
@@ -183,17 +252,33 @@ info "database dump: $DUMP_FILE ($(du -h -- "$DUMP_FILE" | cut -f1))"
 KEYS_CAPTURED=0
 
 if (( WITH_KEYS )); then
+    APPLICATION_CONTAINER=""
+
     if [[ -n "${WEB_CONTAINER:-}" ]]; then
         APPLICATION_CONTAINER="$WEB_CONTAINER"
         info "using WEB_CONTAINER='$APPLICATION_CONTAINER'."
     else
-        APPLICATION_CONTAINER="$(discover_container web web || true)"
+        # The same engine the database was reached through, deliberately: the two containers are one
+        # stack, and a tree where they live under different engines is not a topology this project
+        # has. Ambiguity is fatal for the dump and only a warning for the key ring, because §15's
+        # three-valued exit already has a word for "database dumped, ring not captured".
+        web_names=()
+        mapfile -t web_names < <(running_containers "$ENGINE" web)
+
+        if (( ${#web_names[@]} > 1 )); then
+            warn "more than one running container matches 'web' under $ENGINE:"
+            printf '           %s\n' "${web_names[@]}" >&2
+            warn "set WEB_CONTAINER to name the one you mean."
+        elif (( ${#web_names[@]} == 1 )); then
+            APPLICATION_CONTAINER="${web_names[0]}"
+        fi
     fi
 
     if [[ -z "$APPLICATION_CONTAINER" ]]; then
-        warn "could not identify the web container, so the Data Protection key ring was NOT captured."
-        warn "in dev the application runs on the host (run.sh), where there is no container to read"
-        warn "from — pass --no-keys there. In production this is a real problem: see OPERATIONS §8."
+        warn "could not identify the web container under $ENGINE, so the Data Protection key ring"
+        warn "was NOT captured. In dev the application runs on the host (run.sh), where there is no"
+        warn "container to read from — pass --no-keys there. In production this is a real problem:"
+        warn "see OPERATIONS §8."
     elif ! "$ENGINE" cp "$APPLICATION_CONTAINER:$KEYS_DIRECTORY/." - > "$PARTIAL_KEYS" 2>/dev/null; then
         warn "could not read '$KEYS_DIRECTORY' out of '$APPLICATION_CONTAINER' — key ring NOT captured."
         warn "check DATA_PROTECTION_KEYS_DIRECTORY matches the container's mount point."
@@ -234,3 +319,4 @@ if (( WITH_KEYS )) && (( ! KEYS_CAPTURED )); then
     exit 2
 fi
 exit 0
+

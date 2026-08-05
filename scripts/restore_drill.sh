@@ -50,6 +50,13 @@
 #   POSTGRES_USER / POSTGRES_DB  credentials the scratch database is created with
 #   DRILL_POSTGRES_IMAGE         scratch image (default docker.io/library/postgres:17-alpine —
 #                                fully qualified so a short-name registry prompt cannot hang a drill)
+#   CONTAINER_ENGINE             force the engine (podman or docker) instead of taking the first of
+#                                podman/docker on PATH. Unlike scripts/backup.sh, this script has no
+#                                container to identify — it creates its own — so nothing here can
+#                                infer the engine from the work. On a host with both engines the
+#                                default costs a second image pull into the losing engine's store,
+#                                and `--from-live` delegates to scripts/backup.sh, which honours the
+#                                same variable; setting it keeps the whole drill on one engine.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -111,14 +118,26 @@ reserve() {
 }
 
 # ---------------------------------------------------------------------------------------------------
-# 0. Engine.
+# 0. Engine. CONTAINER_ENGINE wins outright; otherwise podman leads because ADR-0004 makes rootless
+#    Podman canonical.
+#
+#    Every container this script touches is one it created, so unlike scripts/backup.sh — where the
+#    engine is decided by which one can see the named database container (F-43) — there is nothing
+#    here to infer from. A host with both engines is therefore the case worth naming: the drill will
+#    pull DRILL_POSTGRES_IMAGE into whichever store it picked, which on a CI runner means pulling an
+#    image the other engine already has. That is slow rather than wrong, and CONTAINER_ENGINE is how
+#    a caller that knows better says so.
 # ---------------------------------------------------------------------------------------------------
-if command -v podman >/dev/null 2>&1; then
+if [[ -n "${CONTAINER_ENGINE:-}" ]]; then
+    command -v "$CONTAINER_ENGINE" >/dev/null 2>&1 \
+        || die "CONTAINER_ENGINE='$CONTAINER_ENGINE' is not on PATH."
+    ENGINE="$CONTAINER_ENGINE"
+elif command -v podman >/dev/null 2>&1; then
     ENGINE="podman"
 elif command -v docker >/dev/null 2>&1; then
     ENGINE="docker"
 else
-    die "need podman or docker on PATH."
+    die "need podman or docker on PATH (or set CONTAINER_ENGINE)."
 fi
 
 # ---------------------------------------------------------------------------------------------------
@@ -158,6 +177,7 @@ info "drilling      $DUMP  ($(du -h -- "$DUMP" | cut -f1))"
 info "key ring      ${KEYS_ARCHIVE}$( [[ -f "$KEYS_ARCHIVE" ]] && echo "" || echo "  (missing)" )"
 info "migrations    ${#MIGRATIONS[@]} file(s) in $MIGRATION_DIRECTORY"
 info "scratch image $DRILL_IMAGE"
+info "engine        $ENGINE$( [[ -n "${CONTAINER_ENGINE:-}" ]] && echo "  (CONTAINER_ENGINE)" || echo "" )"
 info "strict mode   $( (( STRICT )) && echo "on" || echo "off" )"
 info "on exit       $( (( KEEP )) && echo "the scratch container is KEPT (--keep)" || echo "the scratch container is removed" )"
 
@@ -472,3 +492,4 @@ fi
 
 info "drilled without touching the live database."
 exit 0
+
