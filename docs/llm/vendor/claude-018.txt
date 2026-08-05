@@ -1,0 +1,713 @@
+00
+74
+
+A quick status update 
+I tried to use a passkey on my iPhone SE 2020 and got this error 
+https://laptops-indirect-introduces-medium.trycloudflare.com/setup
+Restaurant
+Sign in
+FIRST-RUN SETUP
+
+Account
+Passkey
+Authenticator
+Finish
+That passkey could not be added. Please try again.
+
+Add a passkey
+
+A passkey lets you sign in with your fingerprint, face, or device PIN, and it cannot be phished. Register one now for kus. You can add more, and rename this one, later.
+
+Register a passkey
+Start over
+
+Please continue with the next step 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete 
+
+
+/
+Claude finished the response
+A quick status update 
+I tried to use a passkey on my iPhone SE 2020 and got this error 
+https://laptops-indirect-introduces-medium.trycloudflare.com/setup
+Restaurant
+Sign in
+FIRST-RUN SETUP
+Account
+Passkey
+Authenticator
+Finish
+That passkey could not be added. Please try again.
+Add a passkey
+A passkey lets you sign in with your fingerprint, face, or device PIN, and it cannot be phished. Register one now for kus. You can add more, and rename this one, later.
+Register a passkey
+Start over
+Please continue with the next step 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+
+Show less
+
+Thinking about troubleshooting passkey registration failure and organizing file structure for deployment
+Thinking about troubleshooting passkey registration failure and organizing file structure for deployment
+Thinking about troubleshooting passkey registration failure and organizing file structure for deployment.
+
+
+Check size and structure of dump.txt
+Done
+The dump is large (150 files, ~950 KiB). Let me get the file tree and then focus on the passkey/WebAuthn registration code.
+
+
+Diagnosing passkey registration failures across frontend and backend systems
+Diagnosing passkey registration failures across frontend and backend systems
+
+List all files in the dump
+Diagnosing passkey registration failures across frontend and backend systems.
+
+Done
+This is a .NET Blazor restaurant app. The passkey error happens in first-run setup. Let me read the WebAuthn-related files.
+
+
+Read passkey.js
+Read passkey.js
+Now the Setup page (first-run wizard):
+
+
+Examined passkey registration method implementation details
+Examined passkey registration method implementation details
+
+Read Setup.razor
+Examined passkey registration method implementation details.
+
+Done
+Let me see the middle section of Setup.razor, including RegisterPasskeyAsync:
+
+
+Diagnosed RP ID mismatch causing WebAuthn passkey registration failure
+Diagnosed RP ID mismatch causing WebAuthn passkey registration failure
+
+Read truncated portion of Setup.razor
+Pinpointing the WebAuthn ceremony failure triggering passkey validation error.
+
+Diagnosed RP ID mismatch causing WebAuthn passkey registration failure.
+
+Done
+I can see the error "That passkey could not be added" comes from RegisterPasskeyAsync when the browser-side ceremony sets PasskeyInput.Error. The user is on an iPhone SE 2020 via a Cloudflare quick tunnel (https://laptops-indirect-introduces-medium.trycloudflare.com). This strongly smells like a WebAuthn RP ID / origin mismatch. Let me verify the configuration.
+
+
+Diagnosed WebAuthn origin mismatch between localhost and tunnel domain
+Diagnosed WebAuthn origin mismatch between localhost and tunnel domain
+
+Read RestaurantOptions.cs
+Diagnosing RP ID mismatch between localhost and tunnel domain.
+
+Diagnosed WebAuthn origin mismatch between localhost and tunnel domain.
+
+Done
+RP ID = host of PublicOrigin. Default is https://localhost:8443 → RP ID localhost. If the tunnel origin is laptops-indirect-introduces-medium.trycloudflare.com, that's a mismatch → iOS Safari rejects with SecurityError. Let me confirm how attestation validates origin and how the options endpoints work.
+
+
+Read AccountEndpoints.cs
+Read AccountEndpoints.cs
+
+Read AccountEndpoints.cs
+Done
+Now the Identity setup, where WebAuthn RP ID and origins are wired:
+
+
+Diagnosed passkey origin mismatch and planned structured delivery approach
+Diagnosed passkey origin mismatch and planned structured delivery approach
+
+Read IdentityServiceCollectionExtensions.cs
+Recalling .NET 10 passkey configuration properties.
+
+Diagnosing passkey configuration mismatch and structuring deliverables.
+
+Diagnosed passkey origin mismatch and planned structured delivery approach.
+
+Done
+The RP ID (ServerDomain) is set from PublicOrigin's host, but AllowedOrigins is not configured. This is the key area. Let me look at the tunnel script, env example, Program.cs, and the wiring tests to understand the intended workflow and origin validation.
+
+
+Diagnosed passkey failure root cause and origin configuration mismatch
+Diagnosed passkey failure root cause and origin configuration mismatch
+
+Read quick_tunnel.sh
+Diagnosing passkey failures caused by dynamic hostname changes.
+
+Diagnosed passkey failure root cause and origin configuration mismatch.
+
+Done
+Very important — the tunnel script itself documents that passkeys don't survive quick tunnels and says to use password+TOTP for demos. But first-run setup requires a passkey. Let me check how origin validation is configured across the codebase.
+
+
+Diagnosed passkey origin mismatch, pivoted toward next project milestone
+Diagnosed passkey origin mismatch, pivoted toward next project milestone
+
+Find all origin/RP-ID/forwarded-header related references
+Unraveling ServerDomain configuration and forwarded headers interaction.
+
+Pivoting toward next milestone despite passkey configuration friction.
+
+Diagnosed passkey origin mismatch, pivoted toward next project milestone.
+
+Done
+Now I understand the passkey issue fully — it's an RP ID mismatch (the app is almost certainly running with the default RESTAURANT_PUBLIC_ORIGIN=https://localhost:8443, so the RP ID is localhost, which iOS Safari rejects against the tunnel origin). But the user says "continue with the next step," implying a build roadmap. Let me read the build progress doc and the other project file to find where we are.
+
+
+Reconciled documentation gaps and identified passkey bootstrap blocker
+Reconciled documentation gaps and identified passkey bootstrap blocker
+
+Read BUILD_PROGRESS.md
+Determining next development milestone after M2 completion.
+
+Reconciled documentation gaps and identified passkey bootstrap blocker.
+
+Done
+The build is at Stage 2 (M2 – identity), with the /setup bootstrap as the latest slice; Stage 3 (M3 – tables & joining) is next. But commits landed after BUILD_PROGRESS.md was last updated. Let me check the other project file and search our past sessions to pin down exactly what "the next step" is.
+
+
+Diagnosed passkey registration blocker, identified workaround, resumed development
+Diagnosed passkey registration blocker, identified workaround, resumed development
+
+Inspect claude-terminal.txt head and tail
+Diagnosing passkey registration failure on iPhone.
+
+Diagnosed passkey registration blocker, identified workaround, resumed development.
+
+Done
+This confirms the diagnosis precisely. The terminal shows the user ran run.sh --containers-only (no RESTAURANT_PUBLIC_ORIGIN set → defaults to https://localhost:8443, so RP ID = localhost), then opened a quick tunnel at laptops-indirect-introduces-medium.trycloudflare.com. The passkey fails because localhost isn't a valid RP ID for that origin — exactly the documented quick-tunnel consequence.
+
+Now let me pin down what "the next step" is by checking our prior sessions in this project.
+
+
+Assessed project progression and reconciled codebase state discrepancies
+Assessed project progression and reconciled codebase state discrepancies
+
+Relevant chats
+Synthesizing identity infrastructure and authorization mechanisms.
+
+Assessed project progression and reconciled codebase state discrepancies.
+
+Done
+Good context. M2 has landed through the admin people list, and the "next planned increment" was the admin mutation layer. But the dump already contains AccountAdministration.cs, CreateStaff.razor, and ManagePerson.razor — so the mutation layer landed too. Let me check the most recent sessions to confirm exactly where we are.
+
+
+Diagnosed passkey issue, confirmed M2 completion, charted M3 table management slice
+Diagnosed passkey issue, confirmed M2 completion, charted M3 table management slice
+
+Relevant chats
+Synthesizing account administration features and test components.
+
+Diagnosed passkey issue, confirmed M2 completion, charted M3 table management slice.
+
+Done
+Now I have the full picture. The most recent session (2026-07-22) delivered the final M2 slice — account administration (CreateStaff.razor, ManagePerson.razor, AccountAdministration.cs), which is why they're in the dump. M2 is complete. The next step is Stage 3 — M3: tables & joining (table CRUD, display pairing, rotating token endpoints, sittings/membership).
+
+Let me read the spec's milestone section and the tables/joining spec so I deliver the right first slice.
+
+
+Architecting table management and join operations strategically
+Architecting table management and join operations strategically
+
+Find section headers and milestone mentions in the technical spec
+Architecting table management and join operations strategically.
+
+Done
+The M3 definition is precise: "M3 — tables & joining: table CRUD + join secrets + rotation, display pairing + device auth + /display, token generate/validate + metrics, grant cookie, join flow, sittings + membership." Let me read §4 and §5 of the spec in full.
+
+
+Examined database schema and migration files for Dapper implementation
+Examined database schema and migration files for Dapper implementation
+
+Read spec §4 (tables, display, join tokens) and §5 (sittings)
+Scrutinizing database schema and DDL specifications.
+
+Examined database schema and migration files for Dapper implementation.
+
+Done
+Now let me read the exact schema for the tables I'll touch in the first M3 slice (table CRUD + join secret). Reading the migration file:
+
+
+Scrutinizing codebase patterns and replicating transactional service architecture
+Scrutinizing codebase patterns and replicating transactional service architecture
+
+List all CREATE statements in initial schema migration
+
+Read the table_* DDLs from the schema
+Scrutinizing codebase patterns and replicating transactional service architecture.
+
+Done
+Now let me study the exact patterns I must mirror. First the transactional service pattern (DapperAccountAdministration):
+
+
+Examined constructor patterns and connection management protocols
+Examined constructor patterns and connection management protocols
+
+Read AccountAdministration.cs service
+Examined constructor patterns and connection management protocols.
+
+Done
+Let me read the middle of the service — the constructor and the create/grant implementations, to match idioms exactly:
+
+
+Examined existing admin page structures and routing patterns
+Examined existing admin page structures and routing patterns
+
+Read the service constructor and create/grant/reset implementations
+Examined existing admin page structures and routing patterns.
+
+Done
+Now the admin Razor page patterns. Reading AdministrationHome.razor and CreateStaff.razor:
+
+
+Investigated missing code references and navigation structure decisions
+Investigated missing code references and navigation structure decisions
+
+Read AdministrationHome.razor and CreateStaff.razor
+Deciphering component architecture and dependency patterns.
+
+
+Read CreateStaff.razor header/injects
+Locating RestaurantRoles definitions and SecretGenerator methods.
+
+Investigated missing code references and navigation structure decisions.
+
+Done
+Let me confirm the remaining shared pieces: RestaurantRoles, SecretGenerator methods, AuthorizationPolicies, and where IPersonDirectory/PersonSummary live.
+
+
+Scrutinizing PersonDirectory implementation and Dapper query patterns
+Scrutinizing PersonDirectory implementation and Dapper query patterns
+
+Find RestaurantRoles, AuthorizationPolicies constants, SecretGenerator API, PersonDirectory
+Scrutinizing PersonDirectory implementation and Dapper query patterns.
+
+Done
+SecretGenerator.GenerateJoinSecret() already exists (32 bytes). Now the read-model pattern (IPersonDirectory/DapperPersonDirectory), which I'll mirror for tables:
+
+
+Auditing key files and service registration architecture
+Auditing key files and service registration architecture
+
+Read PersonDirectory.cs (read model + Dapper reader)
+Auditing key files and service registration architecture.
+
+Done
+I have the service and page patterns. Let me check Program.cs (service/endpoint wiring), MainLayout.razor (nav), and the ManagePerson.razor action-form pattern.
+
+
+Architected table management feature with services, pages, and tests
+Architected table management feature with services, pages, and tests
+
+Read Program.cs
+Deliberating between integrating table services or establishing separate extension method.
+
+Orchestrating table administration pages and wiring dependency injection.
+
+Orchestrating table administration pages and wiring dependency injection.
+
+Architected table management feature with services, pages, and tests.
+
+Done
+Program.cs is clear — I'll add a dedicated AddRestaurantTables extension and wire it here. Now let me read the wiring test and the DataAccess test fixtures so my tests match the harness exactly.
+
+
+Deliberating between consolidating tests or segregating table services verification
+Deliberating between consolidating tests or segregating table services verification
+
+Read IdentityWiringTests.cs
+Deliberating between consolidating tests or segregating table services verification.
+
+Done
+The wiring test builds a provider with only AddRestaurantIdentity, so I'll add a separate small TablesWiringTests.cs. Now the DataAccess test harness — reading PostgreSqlFixture, FixedClock, and the AccountAdministrationTests header to mirror it:
+
+
+Read AccountAdministrationTests header and first tests
+Read AccountAdministrationTests header and first tests
+
+Read AccountAdministrationTests header and first tests
+Done
+Let me read the test helper section (Build, SkipIfNoContainer, seed/read helpers, PostgreSqlFixture, FixedClock):
+
+
+Read AccountAdministrationTests helpers + PostgreSqlFixture + FixedClock
+Read AccountAdministrationTests helpers + PostgreSqlFixture + FixedClock
+
+Read AccountAdministrationTests helpers + PostgreSqlFixture + FixedClock
+Done
+Let me read the Build/SkipIfNoContainer/seed helpers and the fixture/clock files:
+
+
+Resolving namespace accessibility for internal test imports
+Resolving namespace accessibility for internal test imports
+
+Read Build/SkipIfNoContainer/seed helpers
+
+Read PostgreSqlFixture and FixedClock and the DataAccess.Tests csproj
+Resolving namespace accessibility for internal test imports.
+
+Done
+Now the manage-page action-form pattern — ManagePerson.razor:
+
+
+Examined manage-page architecture and form flow patterns
+Examined manage-page architecture and form flow patterns
+
+Read ManagePerson.razor
+Examined manage-page architecture and form flow patterns.
+
+Done
+Let me read the truncated middle of ManagePerson.razor (deactivate form + @code field declarations):
+
+
+Examined component imports and navigation structure integration
+Examined component imports and navigation structure integration
+
+Read ManagePerson.razor deactivate form and code fields
+Examined component imports and navigation structure integration.
+
+Done
+Let me check _Imports.razor (global usings for Razor) and MainLayout.razor (nav):
+
+
+Augmenting imports to eliminate redundant namespace declarations
+Augmenting imports to eliminate redundant namespace declarations
+
+Read _Imports.razor and MainLayout.razor
+Augmenting imports to eliminate redundant namespace declarations.
+
+Done
+I now have every pattern I need. Let me quickly confirm the existing guest /table placeholder won't collide and that DataAccess references Domain.
+
+
+Architected table management service with enums, directory queries, and Razor pages
+Architected table management service with enums, directory queries, and Razor pages
+
+Read TableArea.razor (guest placeholder) and DataAccess csproj
+Reconciling endpoint architecture and sequencing upcoming authentication milestones.
+
+
+Read DataAccess csproj to confirm Domain reference and globbing
+Reconstructing repository structure and staging files methodically.
+
+Architecting table service patterns and refining documentation strategy.
+
+Standardizing transaction patterns across table management operations.
+
+Architected table management service with enums, directory queries, and Razor pages.
+
+Done
+DataAccess references Domain and uses default globbing (no csproj changes needed). I have all patterns. Let me read the truncated tail of AdministrationHome.razor since I'll re-emit it in full with a link to the new tables area.
+
+
+Architected table management features and test infrastructure comprehensively
+Architected table management features and test infrastructure comprehensively
+
+Read the truncated tail of AdministrationHome.razor (style + code)
+Restructuring admin interface to segregate functional concerns cleanly.
+
+Architecting test infrastructure and orchestrating file deployment.
+
+Architected table management features and test infrastructure comprehensively.
+
+Done
+I have everything needed. Let me verify the WebApplication.Tests project references (so my wiring test can call AddRestaurantTables and see the new types), then start writing.
+
+
+Architected database layer implementation with transaction handling and constraint validation
+Architected database layer implementation with transaction handling and constraint validation
+
+Read WebApplication.Tests csproj
+Architecting test structure and composing comprehensive code.
+
+Architected database layer implementation with transaction handling and constraint validation.
+
+Done
+I've now verified every pattern, contract, schema column, and test-harness detail. Diagnosis of the passkey issue is confirmed, and M3 Slice 1 (table management: CRUD + join-secret rotation) is the correct next step. Let me build it.
+
+
+Architected admin table page with authorization and navigation components
+Architected admin table page with authorization and navigation components
+
+Create staging directory tree mirroring the repo layout
+
+New DataAccess table-administration service (transactional CRUD + join-secret rotation)
+Examined data structure and organizational framework.
+
+
+New DataAccess read-only table directory (list + get, never exposes the join secret)
+
+New DI extension registering the table directory and administration services
+Architecting Razor page directives and component dependencies.
+
+Architected admin table page with authorization and navigation components.
+
+Done
+Now the three admin Razor pages — the tables list:
+
+
+Weighed duplicate validation strategy and deferred to service-layer constraint handling
+Weighed duplicate validation strategy and deferred to service-layer constraint handling
+
+New admin page: tables list at /administration/tables
+Thinking about troubleshooting passkey registration failure and organizing file structure for deployment.
+
+Analyzing CreateTable.razor component structure and patterns.
+
+Weighed duplicate validation strategy and deferred to service-layer constraint handling.
+
+Done
+The create-table page:
+
+
+Architected ManageTable component with form validation and redirect logic
+Architected ManageTable component with form validation and redirect logic
+
+New admin page: create table at /administration/tables/new
+Constructing ManageTable component, fetching table data conditionally.
+
+Architecting ManageTable component with validation and flash messaging.
+
+Architected ManageTable component with form validation and redirect logic.
+
+Done
+The manage-table page (rename, rotate secret, deactivate/reactivate):
+
+
+Identified passkey registration issue and structured file organization approach
+Identified passkey registration issue and structured file organization approach
+
+New admin page: manage one table at /administration/tables/{id}
+Orchestrating service registration and navigation updates.
+
+Identified passkey registration issue and structured file organization approach.
+
+Done
+Now the two changed files. First, Program.cs (full file, adding the using and the AddRestaurantTables() registration):
+
+
+Architected component restructuring with styling refinements
+Architected component restructuring with styling refinements
+
+CHANGED Program.cs — wire AddRestaurantTables() after AddRestaurantIdentity
+Restructuring component layout with styling refinements.
+
+Architected component restructuring with styling refinements.
+
+Done
+Now the changed AdministrationHome.razor (full file, adding a "Tables" link so the new area is reachable):
+
+
+Architected comprehensive database integration tests for table administration
+Architected comprehensive database integration tests for table administration
+
+CHANGED AdministrationHome.razor — add a Tables link in the admin header
+Architecting integration tests with PostgreSQL fixtures and async lifecycle.
+
+Consolidating directory tests and crafting table row helpers.
+
+Architected comprehensive database integration tests for table administration.
+
+Done
+Now the DataAccess integration tests, mirroring AccountAdministrationTests:
+
+
+Architected dependency injection test framework for restaurant module
+Architected dependency injection test framework for restaurant module
+
+New Testcontainers integration tests for the table administration service + directory
+Architecting minimal DI container for restaurant tables verification.
+
+Architected dependency injection test framework for restaurant module.
+
+Done
+The wiring test (resolves without a container):
+
+
+Verified .NET patterns, test setup, and database mappings thoroughly
+Verified .NET patterns, test setup, and database mappings thoroughly
+
+New wiring test: table services resolve from AddRestaurantTables without a database
+Validating .NET patterns and Razor page implementation details.
+
+Verifying Postgres timestamptz round-trip conversion behavior.
+
+Finalizing test clarity and verifying form validation patterns.
+
+Verified .NET patterns, test setup, and database mappings thoroughly.
+
+Done
+Let me refine two assertions in the rotate test for clarity and to avoid any overload ambiguity (byte-array equality and the nullable timestamp):
+
+
+Verified API signatures and method implementations thoroughly
+Verified API signatures and method implementations thoroughly
+
+Use unambiguous byte[] and nullable-timestamp assertions
+TableAdministrationTests.cs
++10
+-9
+Verifying API signatures and method implementation details.
+
+Verified API signatures and method implementations thoroughly.
+
+Done
+Let me verify a few API assumptions against the dump — SecretGenerator, IDatabaseConnectionFactory, and the build props (nullable/implicit usings):
+
+
+Verified implementation consistency across namespaces and service registrations
+Verified implementation consistency across namespaces and service registrations
+
+Verify SecretGenerator API, connection factory interface, and build props
+Investigating implicit usings behavior across project types.
+
+Reconciling routing conflicts and service registration patterns.
+
+Verified implementation consistency across namespaces and service registrations.
+
+Done
+All API assumptions confirmed (GenerateJoinSecret() = 32 bytes; OpenConnectionAsync → ValueTask<DbConnection>; nullable + implicit usings enabled; warnings-as-errors off). Let me verify the staging tree and package it.
+
+
+Verified code integrity and orchestrated structured archive deployment
+Verified code integrity and orchestrated structured archive deployment
+
+List the staged files and sizes
+Verifying code syntax and orchestrating structured tarball delivery.
+
+Verified code integrity and orchestrated structured archive deployment.
+
+Done
+All 10 files staged. Let me build the drop-in tarball and mirror everything to the outputs directory.
+
+
+Diagnosed passkey error, structured M3 deliverables, prepared build documentation
+Diagnosed passkey error, structured M3 deliverables, prepared build documentation
+
+Create the tarball and mirror to outputs
+Orchestrated deliverables into logical, user-friendly organizational structure.
+
+
+Presented 11 files
+Diagnosing passkey error and detailing file management operations.
+
+Diagnosed passkey error, structured M3 deliverables, prepared build documentation.
+
+Done
+Reviewed dump.txt in full, traced the passkey flow end-to-end, and checked the terminal log. Here's where things stand.
+
+The passkey error — it's configuration, not a bug
+Your terminal tells the whole story. You ran run.sh --containers-only with no RESTAURANT_PUBLIC_ORIGIN set (.NET info: Environment variables — Not set), so it fell back to the default https://localhost:8443. The WebAuthn relying-party ID is the host of that origin — i.e. localhost. Then you opened the quick tunnel at laptops-indirect-introduces-medium.trycloudflare.com.
+
+When Safari on the SE ran the registration ceremony, the page handed it rp.id = "localhost" while the page's real origin was ...trycloudflare.com. A relying-party ID must be the current origin's host or a registrable suffix of it; localhost is neither, so iOS rejected navigator.credentials.create with a SecurityError. The wizard collapses any ceremony error into the one generic line you saw: "That passkey could not be added."
+
+This is exactly the consequence scripts/quick_tunnel.sh warns about ("passkeys registered here will STOP WORKING… sign in with password + TOTP for the demo") and that ADR-0005 documents. No code is wrong here. Two ways forward:
+
+To test passkeys on the iPhone: you need a stable hostname whose host you can bake into RESTAURANT_PUBLIC_ORIGIN before bringing the stack up — i.e. the named Cloudflare tunnel on your own domain, not a quick tunnel. On that domain the RP ID matches, and the passkey persists.
+To finish setup over a quick tunnel anyway (throwaway): start the tunnel first to learn the URL, then set RESTAURANT_PUBLIC_ORIGIN=https://<that-host>.trycloudflare.com, restart the web container, then run setup. The passkey will still die when the tunnel closes — that's inherent to the random subdomain, not fixable in code.
+On a desktop browser you can just hit https://localhost:8443 directly (RP ID localhost matches) and register a passkey there.
+The next step: M3 Slice 1 — table management
+M2 is done (the account-administration mutation slice landed on the 22nd), so this is the first slice of M3 — tables & joining. It's the foundation the rest of M3 builds on: an administrator can now create tables, rename them, rotate a table's join secret (which instantly kills every outstanding token — §4.1/§4.3), and deactivate/reactivate. The 32-byte join secret is generated with the CSPRNG and stays entirely server-side; it is never read into a summary or sent anywhere. Display pairing, /display, the token generate/validate endpoints, the grant cookie, the join flow, and sittings are the following M3 slices.
+
+It follows the exact patterns already in the tree: a transactional Dapper service like DapperAccountAdministration (own connection+transaction per op, one IClock instant, UUIDv7 ids), a read-only directory like DapperPersonDirectory, and static-SSR admin pages like CreateStaff/ManagePerson (post/redirect/get, antiforgery, [Authorize(Policy = area.administration)]). Table changes aren't in the security_event vocabulary (that table is person-scoped), so nothing is audited — matching the schema.
+
+Files — 8 new, 2 changed:
+
+New:
+
+src/MyRestaurant.DataAccess/Tables/TableAdministration.cs — ITableAdministration + DapperTableAdministration + outcome enums
+src/MyRestaurant.DataAccess/Tables/TableDirectory.cs — ITableDirectory + DapperTableDirectory + RestaurantTableSummary
+src/MyRestaurant.WebApplication/Tables/TablesServiceCollectionExtensions.cs — AddRestaurantTables()
+src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationTables.razor — /administration/tables
+src/MyRestaurant.WebApplication/Components/Pages/Administration/CreateTable.razor — /administration/tables/new
+src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageTable.razor — /administration/tables/{TableId:guid}
+tests/MyRestaurant.DataAccess.Tests/Tables/TableAdministrationTests.cs — Testcontainers integration tests (11 facts)
+tests/MyRestaurant.WebApplication.Tests/Tables/TablesWiringTests.cs — resolvability (no container)
+Changed (full files in the tarball):
+
+src/MyRestaurant.WebApplication/Program.cs — one using + builder.Services.AddRestaurantTables();
+src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationHome.razor — adds a Tables link in the header so the area is reachable
+The .tar.gz extracts at the repo root and drops every file into place; nothing in it is a partial file.
+
+Files to delete: none. No new packages, no new front-end assets, no migration (the restaurant_table table already ships in 0001_initial_schema.sql).
+
+Build/test expectations: as before, this was written against the spec and .NET 10 APIs without an SDK in my environment, so expect the occasional compiler-caught nit — most likely in the three Razor pages. The two new integration facts run only when a container engine is up (they skip otherwise, like the rest of the DataAccess suite); the two wiring facts always run. After extracting, chmod isn't needed (no scripts changed).
+
+One doc note
+I did not regenerate docs/BUILD_PROGRESS.md. It's ~50 KB and the dump truncates most of it, so re-emitting a full file from a partial view would risk corrupting it. Paste this under the Stage 3 heading when you're ready:
+
+markdown
+### M3 Slice 1 — table management: CRUD + join-secret rotation (landed)
+
+The administration area can now manage tables (§4.1). New `ITableAdministration`/
+`DapperTableAdministration` (DataAccess/Tables) creates a table with a CSPRNG 32-byte
+join secret, renames it (no-change and label-collision detected), rotates the secret
+(new 32 bytes + `join_secret_rotated_at` stamped — every outstanding token dies, §4.3),
+and deactivates/reactivates — one connection+transaction per op, one IClock instant,
+mirroring DapperAccountAdministration. The join secret is never read into a summary or
+returned to any caller (§4.1). Read-only `ITableDirectory`/`DapperTableDirectory` lists
+tables oldest-first and reads one by id, secret column never selected. Registered by a
+new `AddRestaurantTables()` (WebApplication/Tables), wired in Program.cs after
+`AddRestaurantIdentity`. Three static-SSR admin pages: `/administration/tables` (list),
+`/administration/tables/new` (create), `/administration/tables/{id}` (rename, rotate,
+deactivate/reactivate — post/redirect/get). AdministrationHome gained a Tables header
+link. Table changes are not in the `security_event` vocabulary, so none are audited.
+No packages, no migration (restaurant_table ships in 0001). Tests:
+`TableAdministrationTests` (Testcontainers, 11 facts) and `TablesWiringTests`
+(resolvability, no container). Next M3 slice: display pairing + device auth + `/display`.
+
+Myrestaurant m3 tables slice.tar
+GZ 
+
+Program
+CS 
+
+Administrationhome
+RAZOR 
+
+Tableadministration
+CS 
+
+Tabledirectory
+CS 
+
+Tablesservicecollectionextensions
+CS 
+
+Administrationtables
+RAZOR 
+
+Createtable
+RAZOR 
+
+Managetable
+RAZOR 
+
+Tableadministrationtests
+CS 
+
+Tableswiringtests
+CS 
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+76
+81

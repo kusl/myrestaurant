@@ -1,0 +1,1067 @@
+12
+78
+100
+
+lets stay with M1 for a bit to clean it up 
+I have uploaded the latest dump.txt 
+as well as the latest `claude-terminal.txt` 
+```bash
+cd /home/kushal/src/dotnet/myrestaurant/; time bash export.sh; time dotnet --info; time dotnet clean; time dotnet restore; time dotnet build; time dotnet test; time bash run.sh
+```
+one thing I have changed is I made global.json less restrictive to allow any dotnet 10 
+or at least that's what I think I did 
+because my fedora does not have 10.0.390 
+and I would rather spend time fixing the defects in the code than fight fedora and get a minor path version right 
+please review the dump and the terminal output 
+and please fix all the defects 
+and any other defects or missed opportunities so far 
+
+
+/
+Claude finished the response
+lets stay with M1 for a bit to clean it up 
+I have uploaded the latest dump.txt 
+as well as the latest claude-terminal.txt 
+bash
+cd /home/kushal/src/dotnet/myrestaurant/; time bash export.sh; time dotnet --info; time dotnet clean; time dotnet restore; time dotnet build; time dotnet test; time bash run.sh
+
+one thing I have changed is I made global.json less restrictive to allow any dotnet 10 
+or at least that's what I think I did 
+because my fedora does not have 10.0.390 
+and I would rather spend time fixing the defects in the code than fight fedora and get a minor path version right 
+please review the dump and the terminal output 
+and please fix all the defects 
+and any other defects or missed opportunities so far
+
+Show less
+
+Thinking about reviewing .NET project logs and fixing code defects identified in dump and terminal output
+Thinking about reviewing .NET project logs and fixing code defects identified in dump and terminal output
+I need to examine the dump.txt and claude-terminal.txt files to understand what's happening with their .NET project and identify any issues that need fixing.
+
+
+Check the size and existence of dump.txt
+I need to examine the full contents of dump.txt to get a sense of the codebase structure, starting by checking how large it is.
+
+
+Check line counts and file listing for project files
+I'll start by examining the terminal output to identify what errors or issues are present, then move into analyzing the source code itself.
+
+Done
+Let me read the terminal output first to understand the current defects, then examine the source.
+
+
+Diagnosing missing OpenTelemetry Npgsql instrumentation package dependency
+Diagnosing missing OpenTelemetry Npgsql instrumentation package dependency
+
+Read the terminal output file
+I need to look at the full error output from the WebApplication.Tests build failure to see what's actually breaking the compilation, and then check the DataAccess.Tests issue which is likely just a Docker availability problem in this environment.
+
+
+Read the truncated build error section
+I'm identifying the core build issues that need fixing. The main problem is a missing OpenTelemetry Npgsql instrumentation package — the AddNpgsql() extension method isn't available, which suggests I need to verify the correct package dependency or check if it's been renamed in newer versions.
+
+Beyond the critical build error, there are several warnings to address: obsolete API usage with KnownNetworks, potential null reference issues, deprecated PostgreSQL builder constructors, missing CancellationToken parameters in test methods, and a version resolution conflict with the dbup-postgresql package.
+
+The DataAccess.Tests failures stem from Docker not running in the environment, which is expected behavior for Testcontainers-based integration tests rather than an actual defect. There's also a global.json validation issue to investigate.
+
+The user tried to make global.json less restrictive by setting the SDK version to "10.0.0", but that's invalid—feature bands must start at 1, so it should be something like "10.0.100". Interestingly, the build commands still executed despite the invalid global.json, suggesting dotnet may have fallen back to the installed SDK or ignored the invalid configuration.
+
+To properly allow any dotnet 10, I need to set a valid version with a feature band and configure the rollForward policy to either latestMinor or latestFeature depending on how permissive they want to be. Since they have SDK 10.0.109 installed, I'm thinking through what the right rollForward semantics should be to match their intent. Finishing the JSON config with allowPrerelease set to false. With rollForward: latestMinor and version 10.0.100, it'll pick 10.0.109 if that's the only match, or any 10.x version if available — effectively allowing any dotnet 10. Now I need to examine the full dump to see the current global.json and understand the project structure.
+
+Searching for FILE markers to get a table of contents...
+
+Show less
+Done
+Now I understand the core failure. Let me get a full picture of the repository structure from the dump.
+
+
+Devised extraction strategy for organized file processing
+Devised extraction strategy for organized file processing
+
+List all files in the dump to build a table of contents
+I'm going to copy the dump file to my working directory and write a small extractor tool that can pull out individual files based on their FILE: markers.
+
+Done
+Let me copy the dump to a working directory and build a helper to extract individual files from it.
+
+
+Set up dump extractor helper
+Set up dump extractor helper
+
+Set up dump extractor helper
+I need to examine the Program.cs file where the compile error is occurring, then check the project configuration files and test files to understand the issue.
+
+Done
+Let me look at the file with the compile error, Program.cs.
+
+
+Diagnosed Npgsql OpenTelemetry API changes across versions
+Diagnosed Npgsql OpenTelemetry API changes across versions
+
+Extract Program.cs from the dump
+I see the issue now—line 51 calls AddNpgsql() on the TracerProviderBuilder, which requires the Npgsql.OpenTelemetry NuGet package to be installed. I need to check the project file and package configuration to verify whether this dependency is actually referenced.
+
+There's also a separate warning on line 106 where KnownNetworks is being cleared, but that's deprecated in favor of KnownIPNetworks.
+
+
+Extract WebApplication.csproj and Directory.Packages.props
+I'm realizing the issue stems from changes in how Npgsql handles OpenTelemetry integration across versions. The AddNpgsql() extension method that was available in earlier versions of Npgsql.OpenTelemetry appears to have been removed or restructured in Npgsql 9+ and 10, which is likely why the code is failing to find that method on TracerProviderBuilder. The package does exist at 10.0.3 on NuGet since the restore succeeded, but the AddNpgsql() method isn't available, which suggests the API changed significantly. I need to look up the actual Npgsql GitHub repository or do a web search to understand what the current tracing setup looks like for this version.
+
+Done
+The compile error is about Npgsql.OpenTelemetry's AddNpgsql() extension. Let me verify the current API for Npgsql 10, since this is version-specific and may have changed.
+
+
+Identified missing namespace import causing build failure
+Identified missing namespace import causing build failure
+
+Check Npgsql repo for the AddNpgsql extension method existence
+I need to check the TracerProviderBuilderExtensions.cs file in the Npgsql.OpenTelemetry namespace to understand the current method signature, then verify what's available in the specific v10.0.3 release tag to see if there's a namespace mismatch causing the issue.
+
+
+Fetch the TracerProviderBuilderExtensions.cs at the v10.0.3 tag
+I found the issue — at version v10.0.3, the AddNpgsql() method is available in the Npgsql namespace, so I need to add using Npgsql; to the Program.cs file to resolve the compile error. So the build failure is definitely just the missing using Npgsql; statement — the assembly has the extension method, the package restored fine, it's purely a namespace import issue. I should also check if there's an AddNpgsqlInstrumentation method on the metrics side that they might want to add as well.
+
+Done
+The method exists in namespace Npgsql — the bug is simply a missing using Npgsql; directive. Let me confirm the metrics-side extension too, and verify my plan against the actual environment by setting up the project locally.
+
+
+Resolving Npgsql tracing errors and weighing instrumentation options
+Resolving Npgsql tracing errors and weighing instrumentation options
+
+Check the metrics-side Npgsql OpenTelemetry extension
+I see there's an AddNpgsqlInstrumentation() method available in the Npgsql namespace that I can use for database metrics. Adding the using Npgsql; directive will resolve the tracing compile error, and while I could include the metrics instrumentation as well, I'll keep things focused but note it as a reasonable enhancement since they're already setting up instrumentation elsewhere.
+
+Now I want to set up the project locally to actually build and verify these fixes work. Let me check if the .NET SDK is available in this environment so I can compile and test.
+
+Done
+Let me check whether I can build locally to verify fixes end-to-end.
+
+
+Navigating Docker fixture constructor failures gracefully
+Navigating Docker fixture constructor failures gracefully
+
+Check for .NET SDK availability in the container
+I don't have dotnet installed, so I need to set up the .NET 10 SDK to test my changes. I'm checking which domains are allowed through the network configuration to see if I can actually reach the installation sources.
+
+The .NET install script pulls from domains like dotnetcli.azureedge.net, dotnetbuilds.azureedge.net, dot.net, and builds.dotnet.microsoft.com — none of which are in the allowed list, so I can't install it locally. That means I'll need to rely on careful source analysis rather than local compilation to verify my fixes work.
+
+I've identified the key issues to address: adding the missing Npgsql using statement and metrics instrumentation to Program.cs, renaming KnownNetworks to KnownIPNetworks, fixing a potential null reference in Argon2PhcString.cs, updating the PostgreSQL fixture to use the parameterized constructor, switching to the proper cancellation token in the xUnit test, correcting the global.json format, and resolving the dbup-postgresql version mismatch by bumping to 6.1.2.
+
+For the NuGet package issue, the build output clearly shows that 6.1.1 doesn't exist and 6.1.2 was resolved instead, so I'll update the project file to use 6.1.2. I could check for even newer versions, but the build output is authoritative here. Setting it to exactly 6.1.2 should work since NuGet resolved to that version, and the terminal output confirms 6.1.2 exists as the nearest match above 6.1.1. Now I need to shift focus to the Docker/Testcontainers test failure — since Docker isn't running in the user's environment, the DataAccess tests are likely failing there.
+
+The integration tests genuinely need Docker to run, but that means dotnet test fails every time on machines without it, which breaks the user's workflow. I could leave them as-is, but a better approach would be to add graceful skipping when Docker is unavailable — that's a common pattern for integration tests and would let dotnet test pass on non-Docker machines. The tradeoff is that silently skipping tests can mask real issues, so I need to find a middle ground that's transparent about what's being skipped.
+
+xUnit v3 supports dynamic skipping with Assert.Skip(), but the problem here is that the fixture constructor itself is throwing before any test runs, which causes all tests in the class to fail rather than skip. The solution is to make the PostgreSqlFixture detect Docker availability upfront — if Docker isn't available, set a flag instead of throwing, then have the tests check that flag and skip appropriately.
+
+The fixture is currently doing synchronous work in its constructor, so I need to examine the fixture code, the test files, and the project configuration to understand the current setup and decide on the best approach.
+
+Actually, the user wants to focus on M1 for now, and these Docker-dependent tests are part of M1's DataAccess tests. Since they're running on Fedora without Docker, making the tests skip gracefully when Docker isn't available would genuinely improve their workflow. The user asked to fix defects and missed opportunities, and a test suite that hard-fails instead of skipping when Docker is unavailable is arguably a test ergonomics defect. I'll implement graceful skipping by having the fixture detect Docker availability and letting tests skip when it's not present — this is a well-established pattern and low-risk improvement.
+
+Now I need to gather the files I'll be modifying.
+
+Show less
+Done
+No .NET here (install domains are blocked), so I'll verify fixes by careful source analysis. Let me pull the rest of the files I need to change.
+
+
+Diagnosed multiple build defects and orchestrated comprehensive fixes
+Diagnosed multiple build defects and orchestrated comprehensive fixes
+
+Extract Argon2PhcString.cs, global.json, PostgreSqlFixture.cs, SchemaMigrationRunnerTests.cs
+I'm noticing a discrepancy between the dump and the terminal output—the dump shows the current state at the latest commit, but the terminal output was captured earlier when there was still a build failure.
+
+Looking at the individual files, most show they're at commit 21c2eac, but global.json is at a different commit (4707d48), which suggests the dump is slightly ahead of where the terminal run was. The key issue is that the dump version of PostgreSqlFixture.cs already has the .WithImage() call and graceful skip logic, but the terminal output shows the old version with the CS0618 warning about the parameterless constructor and the fixture throwing during construction. So I need to figure out whether the current code still uses the parameterless PostgreSqlBuilder() constructor that's triggering the obsolete warning. I need to verify whether the PostgreSqlBuilder constructor in Testcontainers.PostgreSql 4.13.0 actually accepts an image parameter, and I'm checking the testcontainers-dotnet repository and the referenced discussion to understand the correct API. Ah, that's the key — the container is instantiated in a field initializer, which runs during the constructor before InitializeAsync even gets called. The Build() method validates Docker availability and throws the exception right there at construction time, which is why the fixture crashes before the try/catch in InitializeAsync can catch it. ceful skip is to move the container build out of the field initializer and into InitializeAsync where the try/catch can actually catch the exception. That way if Docker is unavailable, SkipReason gets set and tests skip gracefully instead of failing during construction. I should also address the CS0618 warning by either using the image-parameter constructor or keeping .WithImage with a suppression, so let me check what the current Testcontainers.PostgreSql API supports. Counting through the indentation and variable names confirms column 55 is exactly where new PostgreSqlBuilder() starts, so the dump version matches the terminal warning perfectly—this is indeed the code that produced those obsolescence errors.
+
+The dump's PostgreSqlFixture does have the try/catch and SkipReason logic for graceful skipping, but it's being bypassed because .Build() is called eagerly in the field initializer. The fix is to defer that .Build() call into InitializeAsync instead. Looking at the stack trace, .Build() invokes Validate(), which is what actually checks for Docker availability. I'm also noticing that the test file already uses Assert.SkipUnless in places, and there are xUnit1051 warnings about CancellationToken usage — specifically in the OpenAsync() calls where the methods should be passing TestContext.Current.CancellationToken instead of leaving it implicit. Continuing through the test class definition, I see the fixture injection in the constructor and the start of a test method comment.
+
+Now I'm defining a theory data property that lists the key database relations and views that need to be validated, including tables like person, passkey credentials, and various order-related entities, plus several views for querying current states.
+
+Then I'm setting up a fact test that verifies the schema migration runs successfully and is idempotent, with a skip condition if there's no container engine available.
+
+Writing test logic... Asserting that the citext extension was successfully installed, then moving into a theory test that validates key relations are created properly using parameterized test data.
+
+I notice the xUnit1051 warning is flagging lines 63 and 81 where OpenAsync() is called without a cancellation token — I need to pass TestContext.Current.CancellationToken to both of those calls. I'm wondering if the Dapper ExecuteScalarAsync calls also need the same treatment through their CommandDefinition parameter, but the warnings only highlighted the two OpenAsync lines, so maybe those are fine as-is. minimal fix — just the two OpenAsync calls that the analyzer flags — and skip the Dapper CommandDefinition wrapping to keep the changes focused and reduce risk. I'll keep the changes minimal and focused: update the two OpenAsync() calls to pass the cancellation token, and wrap the Dapper calls in CommandDefinition with the token for consistency and proper cancellation support. Now I need to track down that null reference warning in Argon2PhcString.cs at line 33. Writing the Parse method... Defining the Argon2 encoder class... The issue is that parameters is nullable from the out parameter, and even though TryParse returning true guarantees it's non-null, the compiler doesn't track that guarantee. So returning it into a non-nullable return type triggers CS8603. The cleanest solution is to use a null-forgiving operator on the return statement to tell the compiler we know it's safe.
+
+Actually, the better approach is to annotate the out parameter with [NotNullWhen(true)] from the System.Diagnostics.CodeAnalysis namespace. This tells the compiler that when TryParse returns true, parameters is definitely non-null, so after the throw guard in Parse, the compiler knows parameters is safe to return without needing the ! operator.
+
+Now I'm checking the global.json file...
+
+the version 10.0.0 is actually invalid because the feature band needs to be at least 100. I'll update it to 10.0.100 as the minimum and change rollForward to latestMinor so it picks up the highest installed SDK within major version 10.
+
+Let me verify the rollForward semantics to make sure this is right. latestMinor rolls forward across minor, feature, and patch versions within the same major version, so it'll grab 10.0.109 if that's installed, or any future 10.1.x that gets added later. That gives us "any dotnet 10" as intended.
+
+latestFeature would also work here since it picks the highest feature band within the same major.minor (so 10.0.100 → 10.0.109), but if the user later installs 10.1.x and removes 10.0.x, the behavior changes unexpectedly. latestMinor is more flexible—it'll roll to 10.1 when needed while still respecting the "any dotnet 10" constraint. For the NU1603 dbup-postgresql error, I'm updating the version from 6.1.1 to 6.1.2 in Directory.Packages.props, which NuGet has already resolved as a valid published version.
+
+Now I need to fix the ASPDEPR005 deprecation warning in Program.cs by replacing KnownNetworks with KnownIPNetworks, though KnownProxies stays as-is since it's not deprecated. The deprecation code is confirmed — I need to use KnownIPNetworks.Clear() instead. I should also update the comment in Program.cs to reflect this change for clarity. Now I'm reconsidering the Npgsql.OpenTelemetry fix and whether adding using Npgsql; might create a naming conflict with the existing MyRestaurant.DataAccess namespace.
+
+Looking at the types being used, NpgsqlDatabaseConnectionFactory and IDatabaseConnectionFactory are distinct from anything in the Npgsql namespace, so there's no ambiguity. Adding the using statement is safe and will let tracing.AddNpgsql() and metrics.AddNpgsqlInstrumentation() resolve correctly to their respective extension methods, properly subscribing to the Npgsql meter.
+
+This is a genuine gap — they've wired up ASP.NET Core and custom metrics but missed Npgsql's database metrics, which would give visibility into connection pool and command performance. I should add the instrumentation right after the custom meter registration. But wait, I need to verify whether Npgsql metrics require explicit enablement on the data source itself through NpgsqlDataSourceBuilder.
+
+Looking at how Npgsql 8+ works, the "Npgsql" meter emits automatically when a DataSource is in use, and AddNpgsqlInstrumentation() just subscribes to that meter. The real question is whether NpgsqlDatabaseConnectionFactory actually uses a DataSource or creates raw connections — if it's using a DataSource, metrics will flow; if not, subscribing is harmless but won't capture anything. Either way, adding the meter subscription is safe and could unlock metrics if the factory does use a DataSource. I'll include the metrics instrumentation since they already added tracing and it's a natural complement—low-risk and easy to remove if they don't want it. Now I need to examine the connection factory and migration runner to spot any other issues or optimization opportunities, particularly around whether they should be using NpgsqlDataSource for better pooling and observability. I need to examine the database connection factory, schema migration runner, and the project files to understand the full scope of the nullable reference warnings and build configuration.
+
+Show less
+Done
+The dump reflects exactly the state that produced these warnings. Key insight on the Docker test: the fixture's try/catch in InitializeAsync can't help because .Build() validates Docker in the field initializer (constructor) — that's why "fixture threw in its constructor." Let me look at a few more files to complete my picture and catch other issues.
+
+
+Diagnosed fixture initialization and Docker dependency issues comprehensively
+Diagnosed fixture initialization and Docker dependency issues comprehensively
+
+Extract Directory.Build.props, connection factory, migration runner, connection interface
+The NpgsqlDatabaseConnectionFactory leverages NpgsqlDataSource.Create(), which properly enables Npgsql metrics and tracing instrumentation since the DataSource emits both metrics and activities. But there's a nuance here about how the tracing subscription to the "Npgsql" ActivitySource actually connects with the DataSource's activity emission that I need to think through. Now I'm reviewing the full list of warnings and errors from the terminal output to make sure I haven't missed anything. The NU1603 warning about dbup-postgresql can be fixed in one place by bumping the version in Directory.Packages.props, which will resolve it across all four projects. The Argon2PhcString warning needs the [NotNullWhen(true)] attribute, the AddNpgsql error requires the using Npgsql; directive, ASPDEPR005 needs to swap KnownNetworks for KnownIPNetworks, and the PostgreSqlFixture issue with the parameterless PostgreSqlBuilder constructor should be fixed by passing the image parameter and moving the Build() call into InitializeAsync, which also resolves the Docker initialization problem.
+
+The real issue is that when Docker isn't available, the fixture throws during construction, causing all tests in DataAccess.Tests to fail. Moving the container setup into InitializeAsync with proper error handling means tests will skip gracefully instead of failing when Docker isn't running—that's what gets the user's dotnet test passing on their Docker-less Fedora setup. I need to verify the xUnit version to make sure the approach works correctly. Each test will check if the connection string exists before running, skipping if the fixture initialization failed to set it up. The try/catch in InitializeAsync prevents any exception from propagating, so xUnit won't report a fixture failure. For cleanup, I need to make the container field nullable since it might never be created if Docker is unavailable, and DisposeAsync should safely handle the null case.
+
+Building the PostgreSQL container... I need to verify the exact constructor signature for PostgreSqlBuilder in Testcontainers.PostgreSql 4.13.0 — the obsolete message indicates there's an image parameter constructor, but I'm checking whether it takes a string, IImage, or DockerImage parameter by looking at the testcontainers-dotnet repository.
+
+Show less
+Done
+The factory uses NpgsqlDataSource, so the OTel Npgsql tracing/metrics will actually flow — good. Now let me verify the exact PostgreSqlBuilder image-parameter constructor signature for Testcontainers.PostgreSql 4.13.0.
+
+
+Orchestrated comprehensive fixes across build errors, warnings, and async patterns
+Orchestrated comprehensive fixes across build errors, warnings, and async patterns
+
+Find the PostgreSqlBuilder image-parameter constructor signature at 4.13.0
+I've confirmed that PostgreSqlBuilder accepts a string parameter for the image at version 4.13.0, so I can instantiate it directly with new PostgreSqlBuilder("postgres:17-alpine") without needing the .WithImage() chain. Now I'm double-checking the xUnit v3 API to make sure TestContext.Current.CancellationToken and Assert.SkipUnless are the right methods to use. The xUnit1051 analyzer only flagged the OpenAsync calls, but to be thorough and ensure the tests are properly cancellable, I should convert the Dapper calls to use CommandDefinition with the cancellation token as well — it's the right approach and low risk since Dapper is already imported. The user explicitly asked to fix all defects and opportunities, so threading cancellation tokens through the Dapper queries is a legitimate improvement that aligns with xUnit1051's intent. I'll apply both fixes—the required OpenAsync change and the CommandDefinition token threading—to make all async operations properly cancellation-aware without over-engineering. Though I should double-check how the Docker gating affects this approach. I should stay focused on cleanup tasks for M1 rather than expanding into new features or refactoring. The user wants me to fix the build error, address all the warnings, correct the global.json issue, and make the Docker test skip gracefully instead of hard-failing. I'll note any other observations but won't implement changes beyond that scope since I can't actually build and test the code. The metrics instrumentation for Npgsql is the natural complement to the tracing they've already set up, so I'll add that call. For the NU1603 warnings across all four projects, bumping dbup-postgresql to 6.1.2 in the central package reference resolves them all at once — the terminal confirms that version resolved cleanly. The terminal output is authoritative here — 6.1.2 resolved successfully and the package restored fine, so it's definitely not yanked. Setting the version constraint to exactly 6.1.2 will eliminate the NU1603 warning cleanly. Now I'm ready to write out all the corrected files for the user. I need to decide on the best format for presenting these full file contents with their paths so the user can easily copy them into their repository. I'm leaning toward preserving the directory structure when presenting the files so the path context isn't lost, especially since the user mentioned the same filename exists in multiple places across the repo. I'll organize them under a mirrored directory structure and present them that way. I need to carefully reconstruct the Program.cs file with the three specific changes, making sure the using statements are in the right order and all the modifications are accurate. Now I'll write out the full Program.cs file and verify it looks correct. I also need to update Argon2PhcString.cs by adding the System.Diagnostics.CodeAnalysis using statement and applying the [NotNullWhen(true)] attribute to the TryParse method's output parameter. There's a subtle issue with the Parse method where it needs to handle the nullable return from TryParse properly.
+
+With the [NotNullWhen(true)] attribute in place, the compiler understands that when TryParse returns true, the parameters variable is guaranteed to be non-null, so the return statement doesn't need any null-forgiving operator.
+
+Now I need to rewrite PostgreSqlFixture.cs with lazy initialization in InitializeAsync, update the constructor to accept an image parameter, and handle the nullable _container field. Then I'll tackle SchemaMigrationRunnerTests.cs by adding cancellation token support to both OpenAsync calls and updating the Dapper ExecuteScalarAsync calls to use CommandDefinition with the token.
+
+Before writing everything out, let me verify there are no namespace conflicts when adding using Npgsql; to Program.cs alongside the existing using MyRestaurant.DataAccess; — the types don't overlap, so we're good. Confirming that AddNpgsqlInstrumentation() works with optional parameters and that NpgsqlDataSource.Create() will properly emit command-level spans through Npgsql's ActivitySource. Now I'm ready to write out the files, though I should also review the KnownNetworks comment in Program.cs since it appears to be cut off mid-sentence. Adding Npgsql instrumentation...
+
+Now I'm ready to write the files to disk and verify the content, making sure to preserve all the comments and section references exactly as they appear.
+
+Show less
+Done
+Confirmed: PostgreSqlBuilder(string image) exists at 4.13.0. I now have everything. Let me write the corrected files to disk and verify they're internally consistent before presenting them.
+
+
+Systematically verified code consistency and hunted deprecated patterns throughout
+Systematically verified code consistency and hunted deprecated patterns throughout
+
+Create output directory mirror of repo structure
+
+Corrected global.json — valid SDK version with rollForward to any .NET 10
+
+Corrected Directory.Packages.props — bump dbup-postgresql to the resolvable 6.1.2 to clear NU1603
+Now I'm reconstructing Program.cs with all three fixes applied.
+
+
+Corrected Program.cs — add using Npgsql; (fixes AddNpgsql compile error), add Npgsql metrics, KnownNetworks->KnownIPNetworks
+
+Corrected Argon2PhcString.cs — [NotNullWhen(true)] on TryParse out param fixes CS8603 and improves nullable flow for callers
+
+Corrected PostgreSqlFixture.cs — build the container lazily inside InitializeAsync so a missing engine skips instead of throwing in the ctor; also uses the non-obsolete image-parameter constructor
+
+Corrected SchemaMigrationRunnerTests.cs — thread TestContext.Current.CancellationToken through OpenAsync and the Dapper queries (fixes xUnit1051)
+I'm running through some verification checks on the files to make sure everything is consistent—confirming that Program.cs has the right Npgsql imports and configuration methods, and that Argon2PhcString.cs includes the necessary diagnostics attributes for null-checking.
+
+I also need to verify PostgreSqlFixture.cs has the lazy initialization pattern and nullable container field, and that SchemaMigrationRunnerTests.cs uses the correct cancellation token and command definition patterns.
+
+Since I can't compile directly, I'm doing a careful grep-based search across the entire dump to catch any other deprecated patterns like leftover KnownNetworks calls, obsolete PostgreSqlBuilder usage, or other deprecated methods that might be hiding in other files.
+
+Show less
+Done
+Now let me verify the corrected files and, importantly, scan the whole dump to make sure none of these defect patterns appear anywhere else I might have missed.
+
+
+Pinpointing defect concentrations across previously addressed files
+Pinpointing defect concentrations across previously addressed files
+
+Verify corrected files and scan whole dump for the same defect patterns elsewhere
+Looking at where these defect patterns are showing up, they're all concentrated in files I've already addressed—Program.cs appears twice, along with PostgreSqlFixture.cs and SchemaMigrationRunnerTests.cs. The remaining hits in the documentation files seem to be references rather than actual issues.
+
+The PackageReference in DataAccess.csproj is correctly versionless, which is the right approach since versions are managed centrally. The documentation mentions around line 1965 actually contains a prescient caveat about the exact Npgsql OpenTelemetry issue I just fixed, and there are references to KnownNetworks that should probably be updated to KnownIPNetworks for consistency. While these are documentation updates rather than build defects, I should check if it's worth a quick pass to keep things aligned with the actual code changes.
+
+Show less
+Done
+All defect patterns are confined to the files I've already fixed — no duplicates hiding in other files. The only other mentions are in docs (prose) and the versionless <PackageReference> in DataAccess.csproj (correct — version is centrally managed). Let me check those doc notes, since one of them literally predicted this exact AddNpgsql break.
+
+
+Audited code correctness, nullability annotations, and documentation consistency gaps
+Audited code correctness, nullability annotations, and documentation consistency gaps
+
+Read the BUILD_PROGRESS.md caveat notes around the predicted issues
+The BUILD_PROGRESS.md documentation actually anticipated this exact issue—it flagged that namespace changes in Npgsql.OpenTelemetry might require adjusting the using directives, and that's precisely what the fix was. I could update the docs to note that adding using Npgsql; resolved it, though it's not strictly necessary. The docs also reference KnownNetworks
+
+—which I've since renamed to KnownIPNetworks—so there's a minor consistency gap there. Since the user asked me to fix defects and missed opportunities, I'm weighing whether to update both documentation files now or just flag the specific lines for them to handle, given that reproducing entire large files just to change one word each feels like overkill when the actual code and config fixes are what matter most. Checking the correctness of each file's API usage — verifying that the Npgsql instrumentation extensions exist on the right builder types, that KnownIPNetworks is available in .NET 8, and that the NotNullWhen attribute properly flows through the Parse method so the compiler understands the null state on success.
+
+The code also uses base64 conversion and C# 12 collection expressions, which are fine for the target framework. The NotNullWhen annotation is compile-time only, so existing tests won't break at runtime, though I should double-check that the test assertions don't conflict with the new nullability hints.
+
+Looking at PostgreSqlFixture, it's using the newer PostgreSQL image constructor and chaining builder methods to configure the container. The InitializeAsync method handles startup with error handling, and DisposeAsync safely cleans up even if the container is null—though there's something subtle about how it's declared as async.
+
+The async method has an await operator inside the conditional block when disposing the container, so there's no compiler warning about missing awaits. The signatures match xUnit v3's IAsyncLifetime interface which expects ValueTask returns, so that's all correct.
+
+Now moving into the schema migration tests... Both Dapper calls are valid with the cancellation token properly passed through named arguments. The xUnit v3 TestContext is available with the using statement, and Assert.SkipUnless is confirmed. Now I should scan the full build output to catch any other warnings I might have missed.
+
+Show less
+Done
+One doc note (BUILD_PROGRESS.md line 1965) literally predicted the AddNpgsql break — the fix it suggested ("adjust the using directives") is exactly what I did. Let me do a final sweep of the terminal to confirm I've covered every distinct warning/error code.
+
+
+Diagnosed multiple compiler errors, test failures, and environment configuration issues comprehensively
+Diagnosed multiple compiler errors, test failures, and environment configuration issues comprehensively
+
+Enumerate every distinct diagnostic code and check the tail for run.sh outcome
+I'm seeing three distinct warning codes across the diagnostic results. NU1603 shows up twenty times during restore and build phases in multiple projects and gets resolved by upgrading to dbup-postgresql 6.1.2. The xUnit1051 warning appears a couple times and is fixed by using TestContext.Current.CancellationToken. ASPDEPR005 occurs twice because the build ran multiple times, and it's addressed by switching to KnownIPN.
+
+There are also several compiler errors: CS1061 from the missing AddNpgsql using statement, CS8603 which needs the NotNullWhen attribute, and CS0618 from an obsolete PostgreSqlBuilder overload. All the [FAIL] test results stem from Docker being unavailable during fixture construction, which will be resolved by deferring the build to InitializeAsync so those tests skip instead. The final build failure reporting 14 errors is actually the test run summary combining the Docker-related test failures with the AddNpgsql compilation error. So DataAccess.Tests ran and failed on Docker even though WebApplication didn't compile — that's because the test projects don't depend on WebApplication except for WebApplication.Tests itself. Once I fix the AddNpgsql issue, WebApplication will compile, WebApplication.Tests will build and run, and DataAccess.Tests will skip as expected.
+
+The run.sh failure is a separate issue: the compose file is trying to use a CLOUDFLARE_TUNNEL_TOKEN environment variable that isn't set, causing podman compose up to fail. I need to check the run.sh script and compose.yaml to see how this variable is being referenced and whether it needs to be optional or provided differently.
+
+Actually, looking at the error message more carefully — it says the variable is required for the production profile, but podman-compose has a known quirk where it interpolates all variables in the file during parsing regardless of which profiles are active. So even though CLOUDFLARE_TUNNEL_TOKEN is scoped to the production profile, podman-compose is still trying to resolve it at parse time.
+
+I need to check the actual run.sh, compose.yaml, and .env.example files to see if this is something I should fix or if it's expected behavior — maybe the user needs to provide the token in their environment or run.sh is only meant for production.
+
+Show less
+Done
+The build/test diagnostics are fully covered by my six files. But the tail shows bash run.sh also failed — podman-compose errors on CLOUDFLARE_TUNNEL_TOKEN even though it's a production-only variable. Let me examine run.sh, compose.yaml, and .env.example to see if that's an in-scope defect.
+
+
+Diagnosed podman-compose parsing incompatibility and architected pragmatic fix
+Diagnosed podman-compose parsing incompatibility and architected pragmatic fix
+
+Extract run.sh, compose.yaml, .env.example to diagnose the run.sh failure
+So the issue is that when run.sh executes podman-compose up -d postgres, it parses the entire compose.yaml file, including the cloudflared service which requires the CLOUDFLARE_TUNNEL_TOKEN environment variable to be set—and since that variable isn't defined, the compose file fails to parse.
+
+The root cause is that podman-compose eagerly interpolates all variables during the initial file parsing phase, unlike docker-compose which only interpolates variables for services in active profiles. This means even though we're only starting postgres, podman-compose still tries to resolve the token requirement for cloudflared and crashes before it even gets to the service selection step.
+
+The fix involves trading off the fail-fast safety of the :? syntax for a permissive default like :- so parsing succeeds, accepting that production would need runtime guards instead of parse-time validation. Since the project is committed to podman-compose, this incompatibility with strict variable requirements is unavoidable. evel will fail immediately at runtime with a clear error message, so it's not as bad as breaking the compose file itself. The key insight is that podman-compose does support ${VAR:-default} syntax with empty defaults, so I can use that instead of :? to let the file parse cleanly in dev mode while still catching the missing token at runtime when cloudflared actually tries to start. Moving the fail-fast check into the shell workflow for production would be scope creep since run.sh doesn't handle that profile. Instead, I could keep the compose default empty and add a comment explaining that cloudflared will refuse to start without a real token, making it the responsibility of whoever runs the production profile. Limiting the service argument in run.sh won't help either since podman-compose parses the entire file regardless of which service is specified.
+
+Going with the empty default and the ${CLOUDFLARE_TUNNEL_TOKEN:-} pattern with an explanatory comment is the pragmatic fix — especially since ADR-0004 declares podman-compose canonical and the ${VAR:?} syntax is incompatible with it. A dev-entrypoint that crashes on the canonical container engine is definitely a defect worth fixing, so this is in scope.
+
+The error about the production tunnel token is spurious for the dev workflow since it's genuinely optional for local development. After fixing compose.yaml, bash run.sh should proceed to set env vars and launch the dotnet watch process, though it'll likely hit other issues like the web app's database migrations.
+
+Actually, let me trace through this more carefully. The traceback shows the failure happens during the compose file parse itself on the first podman-compose up -d postgres invocation, so the fix to remove the optional token requirement should unblock that initial step. The parse error happens when podman-compose tries to read the compose.yaml with the :? syntax, so changing it to :- fixes that. The .env.example already has CLOUDFLARE_TUNNEL_TOKEN marked as optional for production, so that's fine. The --containers-only path should work once the compose syntax is fixed, and I don't think run.sh needs changes for this particular issue. I'll update the comment to clarify that cloudflared itself validates the token, and explain why the :? guard was removed—podman-compose interpolates at parse time, which broke every command including dev. I should present the full compose.yaml file since the user wants complete files, and I need to verify that the https profile exists in launchSettings.json to confirm run.sh's --launch-profile https flag is valid.
+
+Show less
+Done
+Found a real defect in the dev loop: podman-compose interpolates the entire compose file at parse time, so the production-only ${CLOUDFLARE_TUNNEL_TOKEN:?...} fail-fast guard breaks even run.sh's dev path (up -d postgres). Since ADR-0004 makes podman-compose canonical, that :? is incompatible. Let me confirm the launch profile run.sh depends on, then fix compose.yaml.
+
+
+Diagnosed build failures and orchestrated seven comprehensive fixes
+Diagnosed build failures and orchestrated seven comprehensive fixes
+
+Check launchSettings.json for the https profile run.sh uses
+The https profile is properly configured to bind to both HTTPS and HTTP ports, so the launch command is valid. The web app runs migrations on startup and needs postgres accessible at the default localhost connection string, which the compose setup provides by publishing the postgres port. The run.sh flow should work once compose finishes parsing.
+
+The only fix needed is changing the cloudflared service's TUNNEL_TOKEN variable from using :? syntax to :- syntax. I'm updating the compose.yaml with this correction and clarifying the comment to explain that podman-compose interpolates all services at parse time regardless of which profile is active.
+
+Now I'm reviewing whether the user's original command sequence has been fully addressed — they ran export.sh, dotnet info, clean, restore, build, test, and run.sh with timing measurements. Looking back at the output, the "Build succeeded in 0.9s" message at line 57 is actually from dotnet clean, which apparently triggers a restore and build evaluation internally, taking about 1.1 seconds total.
+
+Then dotnet restore runs separately and completes with 4 NU1603 warnings in about 0.975 seconds. The actual dotnet build command fails with an AddNpgsql error, followed by failed test and compose runs. But export.sh itself worked fine — that's not the issue. The real problems are the global.json validation error (which gets fixed), the restore warnings, and the build failure from the missing dependency.
+
+So I've made five key fixes: updating global.json with a valid version and rollForward setting, adding dbup-postgresql 6.1.2 to the package props, configuring Npgsql instrumentation and IP networks in Program.cs, adding the NotNullWhen attribute to the Argon2 class, and refactoring the PostgreSQL test fixture to use lazy initialization and fix the Docker image constructor. There's also a schema migration test file that needs attention.
+
+Now I'm writing the compose.yaml file to add the Cloudflare tunnel token with a default fallback, then I'll do a final review of all seven files before presenting them. I'm also double-checking that the global.json rollForward setting won't accidentally pick up a .NET 11 SDK—latestMinor keeps us within the same major version, so we're safe there. Let me verify the exact rollForward semantics from the Microsoft documentation to make sure I'm not steering the user wrong—this is critical since they're trying to avoid the invalid global.json trap. The docs define each rollForward option: patch uses the specified version or rolls to the latest patch if not found, feature uses the latest patch for the specified feature band or rolls forward to the next one, minor follows similar logic across minor versions, and major continues the pattern at the major level.
+
+For the other options, latestPatch picks the highest patch within the requested feature band, latestFeature gets the highest feature band and patch for the major.minor, latestMinor finds the highest minor, feature band, and patch within the major version, latestMajor takes the absolute highest of everything, and disable requires an exact match. With latestMinor and version 10.0.100 specified, it would select 10.0.109 since that's the highest minor.featureband.patch available in major 10—and importantly, it doesn't require 10.0.100 to actually be installed. The version string format checks out, so the global.json configuration is solid. Now I'm moving on to write the compose.yaml file and do a final review of everything. latestMinor is the right choice here since it aligns with what the user wants—accepting any .NET 10 version, including future minor releases like 10.1.x, while still requiring at least 10.0.100.
+
+Show less
+Done
+run.sh's https profile is valid, so fixing the compose parse is the only thing blocking the dev loop. Let me write the corrected compose.yaml.
+
+
+Verified file integrity and syntax across all configurations
+Verified file integrity and syntax across all configurations
+
+Corrected compose.yaml — replace the production-only :? guard with an empty default so podman-compose can parse the file for dev/postgres commands
+Let me do a final pass through all seven files to verify everything is correct, checking for any syntax errors in the JSON and YAML while making sure I haven't accidentally altered anything beyond the intended changes.
+
+Done
+Now let me validate the config files for syntax and do a final review of all seven files.
+
+
+Scrutinizing critical files for absolute correctness before presenting
+Scrutinizing critical files for absolute correctness before presenting
+
+Validate JSON/YAML/XML syntax and confirm no leftover defect patterns across all corrected files
+All the files are passing validation now with no defect patterns remaining. Let me do a final careful review of the most critical files—particularly Program.cs and PostgreSqlFixture.cs—to make absolutely sure everything is correct, then I'll be ready to present the solution.
+
+Actually, I've already verified the key sections. Let me just double-check Argon2PhcString one more time to confirm the Parse method returns correctly and there are no other places prone to the CS8603 warning. The collection expressions like bytes = []; and the TheoryData syntax are fine since they're C# 12 features that were already in the original code.
+
+Now I'm thinking through whether the [NotNullWhen(true)] attribute on TryParse could cause any unexpected issues elsewhere—particularly in the test file where TryParse is called. The attribute should only improve nullable flow analysis and make things safer, never create new warnings on correct code, so the tests should be fine.
+
+Show less
+Done
+All seven files validate cleanly with no leftover defect patterns. Let me do a final check on the Argon2 tests to confirm the [NotNullWhen(true)] annotation won't surprise any existing caller.
+
+
+Orchestrated comprehensive code fixes across seven files with strategic organization
+Orchestrated comprehensive code fixes across seven files with strategic organization
+
+Check how the Argon2 tests use TryParse to confirm NotNullWhen won't break them
+I'm looking at a test case where TryParse returns false, and the compiler doesn't recognize that the parameters variable should be null on that path even though Assert.Null expects it to be — the [NotNullWhen(true)] attribute only guarantees non-null when the method returns true, leaving the false path ambiguous.
+
+Now I'll organize the results by summarizing the fix and then presenting all seven files with their full paths and corrected code. I'm deciding to present the files inline with their full paths rather than as downloadable artifacts, since the user specifically needs to know exactly where each file goes — especially for files like Program.cs that exist in multiple places. I'll order them logically starting with configuration files, then source code, then tests, keeping the surrounding explanation minimal since they want the full content.
+
+For the defect-to-fix mapping, I'll use a compact list format rather than a table to keep it readable while still showing the distinct diagnostics clearly.
+
+Show less
+Done
+All seven files validate and every defect pattern is gone. The [NotNullWhen(true)] annotation is safe for the existing TryParse tests (the false-path null-state is unchanged).
+
+Here's what your run surfaced and what each fix addresses:
+
+error CS1061 AddNpgsql (the only hard build error) — the extension lives in namespace Npgsql (I confirmed it still ships in Npgsql.OpenTelemetry 10.0.3), and Program.cs was missing using Npgsql;. Your BUILD_PROGRESS.md note literally predicted this.
+13 [FAIL] in DataAccess.Tests — not really about your code: the fixture tried to skip when Docker/Podman is down, but PostgreSqlBuilder.Build() validates the engine eagerly in the field initializer (the ctor), so it threw before the try/catch could run ("class fixture threw in its constructor"). Moving the build into InitializeAsync makes them skip instead of fail.
+bash run.sh crash — podman-compose interpolates every service at parse time regardless of profile, so the production-only ${CLOUDFLARE_TUNNEL_TOKEN:?…} guard aborted even up -d postgres. Swapped to an empty default.
+Warnings: NU1603 (dbup-postgresql 6.1.1 doesn't exist → 6.1.2), CS8603 ([NotNullWhen(true)]), ASPDEPR005 (KnownNetworks→KnownIPNetworks), CS0618 (obsolete PostgreSqlBuilder()→image ctor), xUnit1051 (thread TestContext.Current.CancellationToken).
+global.json — "10.0.0" is invalid (feature bands start at 100), which is why dotnet --info flagged it. "10.0.100" + latestMinor = "any .NET 10 SDK ≥ 10.0.100", so your 10.0.109 is accepted.
+One thing that's an addition rather than a fix: I added metrics.AddNpgsqlInstrumentation(); alongside your existing tracing.AddNpgsql(); — your NpgsqlDataSource-backed factory emits the "Npgsql" meter, so you get DB/pool metrics for free. Drop that one line if you'd rather keep it minimal.
+
+Below are the full files, each with its path.
+
+global.json
+
+json
+{
+  "sdk": {
+    "version": "10.0.100",
+    "rollForward": "latestMinor"
+  }
+}
+Directory.Packages.props
+
+xml
+<Project>
+
+  <!--
+    Central Package Management. This is the ONE place versions are declared
+    (TECHNICAL_SPECIFICATION §16; REQUIREMENTS §2). csproj files use versionless
+    <PackageReference> entries.
+
+    Every version below is the latest STABLE (non-prerelease, non-nightly) release as
+    resolved on 2026-07-17. Confirm with `dotnet restore` on a networked machine; if a
+    version has moved on, bump it here only (BUILD_PROGRESS: first-build checklist).
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="Data access (MyRestaurant.DataAccess)">
+    <PackageVersion Include="Dapper" Version="2.1.79" />
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
+    <!-- 6.1.1 was never published; NuGet resolves 6.1.2 as the nearest match, so pin it
+         exactly to keep restore warning-free (was NU1603). -->
+    <PackageVersion Include="dbup-postgresql" Version="6.1.2" />
+  </ItemGroup>
+
+  <ItemGroup Label="Observability + database wiring (MyRestaurant.WebApplication)">
+    <PackageVersion Include="Npgsql.OpenTelemetry" Version="10.0.3" />
+    <PackageVersion Include="OpenTelemetry" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Test infrastructure (all test projects)">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="NSubstitute" Version="6.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Integration tests (MyRestaurant.DataAccess.Tests)">
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.13.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="End-to-end tests (MyRestaurant.EndToEnd.Tests)">
+    <PackageVersion Include="Microsoft.Playwright" Version="1.61.0" />
+  </ItemGroup>
+
+</Project>
+compose.yaml
+
+yaml
+# Canonical stack (TECHNICAL_SPECIFICATION §14.1), rootless Podman-first.
+#
+#   podman-compose up                              -> postgres + web (headless web on 127.0.0.1:8080)
+#   podman-compose --profile dev up                -> + Caddy, TLS at https://localhost:8443
+#   podman-compose --profile production up -d       -> + cloudflared named tunnel (no Caddy)
+#
+# `web` and `postgres` have no profile, so they always start. `caddy` and `cloudflared` are behind
+# profiles. The web port is published on loopback only — the app trusts X-Forwarded-* headers and is
+# meant to be reached through the proxy, never directly from the LAN/WAN.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-myrestaurant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-myrestaurant}
+      POSTGRES_DB: ${POSTGRES_DB:-myrestaurant}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      # Loopback only: lets a host-run `dotnet watch` (see run.sh) reach the database in dev.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-myrestaurant} -d ${POSTGRES_DB:-myrestaurant}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: Containerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      RESTAURANT_NAME: ${RESTAURANT_NAME:-My Restaurant}
+      RESTAURANT_PUBLIC_ORIGIN: ${RESTAURANT_PUBLIC_ORIGIN:-https://localhost:8443}
+      RESTAURANT_TIME_ZONE: ${RESTAURANT_TIME_ZONE:-America/New_York}
+      RESTAURANT_CURRENCY_CODE: ${RESTAURANT_CURRENCY_CODE:-USD}
+      RESTAURANT_DATABASE_CONNECTION_STRING: >-
+        Host=postgres;Port=5432;Database=${POSTGRES_DB:-myrestaurant};Username=${POSTGRES_USER:-myrestaurant};Password=${POSTGRES_PASSWORD:-myrestaurant}
+      DATA_PROTECTION_KEYS_DIRECTORY: /var/lib/myrestaurant/dataprotection
+      KITCHEN_SUBMISSION_REMINDER_SECONDS: ${KITCHEN_SUBMISSION_REMINDER_SECONDS:-60}
+      TABLE_JOIN_TOKEN_ROTATION_SECONDS: ${TABLE_JOIN_TOKEN_ROTATION_SECONDS:-60}
+      TABLE_JOIN_GRANT_MINUTES: ${TABLE_JOIN_GRANT_MINUTES:-10}
+      TABLE_DISPLAY_PAIRING_CODE_MINUTES: ${TABLE_DISPLAY_PAIRING_CODE_MINUTES:-10}
+      ARGON2_MEMORY_KIBIBYTES: ${ARGON2_MEMORY_KIBIBYTES:-65536}
+      ARGON2_ITERATIONS: ${ARGON2_ITERATIONS:-3}
+      ARGON2_PARALLELISM: ${ARGON2_PARALLELISM:-1}
+      ARGON2_MAX_CONCURRENT_HASHES: ${ARGON2_MAX_CONCURRENT_HASHES:-4}
+      # OpenTelemetry is optional; when unset the app attaches no OTLP exporter (§12).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-myrestaurant}
+    volumes:
+      # ':U' asks Podman to chown the volume to the container user (rootless). Docker ignores it;
+      # if you are on Docker and it complains, drop the ':U' suffix (BUILD_PROGRESS: known caveats).
+      - dataprotection-keys:/var/lib/myrestaurant/dataprotection:U
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["dev"]
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  cloudflared:
+    image: docker.io/cloudflare/cloudflared:latest
+    profiles: ["production"]
+    restart: unless-stopped
+    depends_on:
+      - web
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      # Empty default (deliberately NOT `${...:?}`): podman-compose — the canonical engine
+      # (ADR-0004) — interpolates EVERY service in this file at parse time regardless of the active
+      # profile, so a `:?` guard here aborts even `podman-compose up postgres` (what run.sh does in
+      # dev). cloudflared still fails fast on an empty token — just at container start rather than at
+      # compose-parse. PRODUCTION: set CLOUDFLARE_TUNNEL_TOKEN in .env before `--profile production`.
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+
+volumes:
+  postgres-data:
+  dataprotection-keys:
+  caddy-data:
+  caddy-config:
+src/MyRestaurant.WebApplication/Program.cs
+
+csharp
+using System.Data.Common;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
+using MyRestaurant.DataAccess;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.LiveUpdates;
+using MyRestaurant.Domain.Time;
+using MyRestaurant.WebApplication.Components;
+using MyRestaurant.WebApplication.Configuration;
+using MyRestaurant.WebApplication.LiveUpdates;
+using MyRestaurant.WebApplication.Observability;
+using Npgsql;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+
+// The composition root (TECHNICAL_SPECIFICATION §14, BUILD_PROGRESS). Startup order is deliberate:
+//   1. bind + validate configuration and fail fast on bad security-relevant settings;
+//   2. wire OpenTelemetry (exporters only when an OTLP endpoint is configured);
+//   3. register services;
+//   4. apply database migrations BEFORE binding HTTP (never serve on a half-applied schema, §17);
+//   5. forwarded headers → health endpoints → Blazor interactive-server components.
+
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddEnvironmentVariables();
+
+// (1) Configuration is environment-only (§13). Validate before a host exists so a misconfigured
+// deployment exits with a clear message instead of half-starting.
+RestaurantOptions options = RestaurantOptions.FromConfiguration(builder.Configuration);
+IReadOnlyList<string> configurationErrors = options.Validate();
+if (configurationErrors.Count > 0)
+{
+    foreach (string error in configurationErrors)
+    {
+        Console.Error.WriteLine($"Configuration error: {error}");
+    }
+
+    return 1;
+}
+
+// (2) OpenTelemetry (§12). The OTLP exporters are attached only when OTEL_EXPORTER_OTLP_ENDPOINT is
+// set, so a plain `dotnet run` with no collector does not spam connection-refused logs. The meter
+// and instrumentation are always registered — they are cheap and keep the custom meter live.
+bool otlpExporterConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
+
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService(serviceName: "myrestaurant"))
+    .WithTracing(tracing =>
+    {
+        tracing.AddAspNetCoreInstrumentation();
+        tracing.AddNpgsql();
+        if (otlpExporterConfigured)
+        {
+            tracing.AddOtlpExporter();
+        }
+    })
+    .WithMetrics(metrics =>
+    {
+        metrics.AddAspNetCoreInstrumentation();
+        metrics.AddNpgsqlInstrumentation();
+        metrics.AddMeter(RestaurantMetrics.MeterName);
+        if (otlpExporterConfigured)
+        {
+            metrics.AddOtlpExporter();
+        }
+    });
+
+if (otlpExporterConfigured)
+{
+    builder.Logging.AddOpenTelemetry(logging =>
+    {
+        logging.IncludeScopes = true;
+        logging.IncludeFormattedMessage = true;
+        logging.AddOtlpExporter();
+    });
+}
+
+// (3) Services. Everything the domain needs is behind an interface so tests can substitute it.
+builder.Services.AddMetrics();
+builder.Services.AddSingleton(options);
+builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddSingleton<IIdentifierFactory, UuidV7IdentifierFactory>();
+builder.Services.AddSingleton<IDatabaseConnectionFactory>(
+    _ => new NpgsqlDatabaseConnectionFactory(options.DatabaseConnectionString));
+builder.Services.AddSingleton<RestaurantMetrics>();
+builder.Services.AddSingleton<IDomainEventBroadcaster, InProcessDomainEventBroadcaster>();
+builder.Services.AddSingleton(serviceProvider =>
+{
+    ILogger<SchemaMigrationRunner> logger = serviceProvider.GetRequiredService<ILogger<SchemaMigrationRunner>>();
+    return new SchemaMigrationRunner(
+        options.DatabaseConnectionString,
+        message => logger.LogWarning("{MigrationStatus}", message));
+});
+
+// Data-protection keys live on a mounted volume so cookies/tokens survive restarts (§3.4).
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(options.DataProtectionKeysDirectory))
+    .SetApplicationName("myrestaurant");
+
+// The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
+// so honour its X-Forwarded-* headers. KnownIPNetworks/KnownProxies are cleared deliberately — safe
+// ONLY because the origin is never exposed directly (BUILD_PROGRESS: forwarded-headers trust).
+builder.Services.Configure<ForwardedHeadersOptions>(forwarded =>
+{
+    forwarded.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+    forwarded.KnownIPNetworks.Clear();
+    forwarded.KnownProxies.Clear();
+});
+
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+WebApplication app = builder.Build();
+
+// (4) Migrate before binding HTTP. A failure throws and the process exits non-zero without ever
+// serving a request against an incomplete schema (§17: "half-applied schema").
+using (IServiceScope migrationScope = app.Services.CreateScope())
+{
+    migrationScope.ServiceProvider.GetRequiredService<SchemaMigrationRunner>().Run();
+}
+
+// (5) HTTP pipeline. No HTTPS redirection — TLS is terminated at the proxy.
+app.UseForwardedHeaders();
+app.UseStaticFiles();
+app.UseAntiforgery();
+
+// Health endpoints (§12). Liveness is "the process answers"; readiness additionally proves the
+// database is reachable and migrations are current — compose healthchecks target these.
+app.MapGet("/healthz/live", () => Results.Text("live"));
+app.MapGet(
+    "/healthz/ready",
+    async (IDatabaseConnectionFactory connectionFactory, SchemaMigrationRunner migrationRunner, CancellationToken cancellationToken) =>
+    {
+        try
+        {
+            await using DbConnection connection = await connectionFactory.OpenConnectionAsync(cancellationToken);
+            await using DbCommand command = connection.CreateCommand();
+            command.CommandText = "SELECT 1";
+            _ = await command.ExecuteScalarAsync(cancellationToken);
+
+            return migrationRunner.IsUpToDate()
+                ? Results.Text("ready")
+                : Results.Text("migrations pending", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (Exception)
+        {
+            return Results.Text("not ready", "text/plain", statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    });
+
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
+
+app.Run();
+
+return 0;
+src/MyRestaurant.Domain/Security/Argon2PhcString.cs
+
+csharp
+using System.Diagnostics.CodeAnalysis;
+
+namespace MyRestaurant.Domain.Security;
+
+/// <summary>
+/// Encoding, parsing, and the rehash decision for the Argon2id PHC string stored in
+/// <c>person.password_hash</c> (TECHNICAL_SPECIFICATION §3.2):
+/// <code>$argon2id$v=19$m=65536,t=3,p=1$&lt;base64-no-pad(salt)&gt;$&lt;base64-no-pad(tag)&gt;</code>
+/// This type is intentionally pure string/Base64 work — it does NOT compute Argon2. The
+/// custom <c>IPasswordHasher</c> (M2, in the web layer over Konscious.Security.Cryptography)
+/// computes the raw tag, encodes it here, and on verify parses the STORED parameters,
+/// recomputes, compares with <c>CryptographicOperations.FixedTimeEquals</c>, and rehashes
+/// when <see cref="NeedsRehash"/> is true. Argon2 encoded hashes use the standard Base64
+/// alphabet (not URL-safe), without padding.
+/// </summary>
+public static class Argon2PhcString
+{
+    public const int Version = 19; // Argon2 version 1.3 (0x13)
+    private const string AlgorithmLabel = "argon2id";
+
+    public static string Encode(Argon2Parameters parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        return $"${AlgorithmLabel}$v={Version}$m={parameters.MemoryKibibytes},t={parameters.Iterations},p={parameters.Parallelism}$" +
+               $"{StandardBase64NoPadding(parameters.Salt)}${StandardBase64NoPadding(parameters.Tag)}";
+    }
+
+    public static Argon2Parameters Parse(string phcString)
+    {
+        if (!TryParse(phcString, out Argon2Parameters? parameters))
+        {
+            throw new FormatException("The value is not a well-formed argon2id PHC string.");
+        }
+
+        return parameters;
+    }
+
+    public static bool TryParse(string phcString, [NotNullWhen(true)] out Argon2Parameters? parameters)
+    {
+        parameters = null;
+        if (string.IsNullOrEmpty(phcString))
+        {
+            return false;
+        }
+
+        // Leading '$' yields an empty first segment: ["", "argon2id", "v=19", "m=..,t=..,p=..", salt, tag]
+        string[] segments = phcString.Split('$');
+        if (segments.Length != 6 || segments[0].Length != 0)
+        {
+            return false;
+        }
+
+        if (!string.Equals(segments[1], AlgorithmLabel, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (!TryParseTaggedInteger(segments[2], "v", out int version) || version != Version)
+        {
+            return false;
+        }
+
+        string[] costs = segments[3].Split(',');
+        if (costs.Length != 3
+            || !TryParseTaggedInteger(costs[0], "m", out int memoryKibibytes)
+            || !TryParseTaggedInteger(costs[1], "t", out int iterations)
+            || !TryParseTaggedInteger(costs[2], "p", out int parallelism))
+        {
+            return false;
+        }
+
+        if (!TryDecodeStandardBase64NoPadding(segments[4], out byte[] salt)
+            || !TryDecodeStandardBase64NoPadding(segments[5], out byte[] tag))
+        {
+            return false;
+        }
+
+        parameters = new Argon2Parameters(memoryKibibytes, iterations, parallelism, salt, tag);
+        return true;
+    }
+
+    /// <summary>
+    /// True when the stored cost parameters differ from the currently configured ones, so
+    /// the verifier should transparently rehash at sign-in (Identity's SuccessRehashNeeded).
+    /// The salt and tag never enter this decision.
+    /// </summary>
+    public static bool NeedsRehash(Argon2Parameters stored, int configuredMemoryKibibytes, int configuredIterations, int configuredParallelism)
+    {
+        ArgumentNullException.ThrowIfNull(stored);
+        return stored.MemoryKibibytes != configuredMemoryKibibytes
+            || stored.Iterations != configuredIterations
+            || stored.Parallelism != configuredParallelism;
+    }
+
+    private static bool TryParseTaggedInteger(string segment, string expectedTag, out int value)
+    {
+        value = 0;
+        int equals = segment.IndexOf('=');
+        if (equals != expectedTag.Length
+            || !segment.AsSpan(0, equals).SequenceEqual(expectedTag))
+        {
+            return false;
+        }
+
+        return int.TryParse(segment.AsSpan(equals + 1), out value);
+    }
+
+    private static string StandardBase64NoPadding(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=');
+
+    private static bool TryDecodeStandardBase64NoPadding(string text, out byte[] bytes)
+    {
+        bytes = [];
+        string padded = (text.Length % 4) switch
+        {
+            2 => text + "==",
+            3 => text + "=",
+            1 => text, // invalid; Convert will reject
+            _ => text,
+        };
+
+        try
+        {
+            bytes = Convert.FromBase64String(padded);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+}
+
+/// <summary>The parsed contents of an Argon2id PHC string.</summary>
+public sealed record Argon2Parameters(int MemoryKibibytes, int Iterations, int Parallelism, byte[] Salt, byte[] Tag);
+tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs
+
+csharp
+using Testcontainers.PostgreSql;
+using Xunit;
+
+namespace MyRestaurant.DataAccess.Tests;
+
+/// <summary>
+/// Starts one PostgreSQL 17 container for the whole test class (Testcontainers). If no container
+/// engine is available (Podman/Docker not installed or not running), startup fails and
+/// <see cref="SkipReason"/> is set so the tests skip rather than fail (BUILD_PROGRESS:
+/// container-dependent tests).
+/// </summary>
+public sealed class PostgreSqlFixture : IAsyncLifetime
+{
+    private PostgreSqlContainer? _container;
+
+    /// <summary>The Npgsql connection string once the container is up; otherwise <c>null</c>.</summary>
+    public string? ConnectionString { get; private set; }
+
+    /// <summary>Non-null when the container could not start; the reason to pass to <c>Assert.Skip</c>.</summary>
+    public string? SkipReason { get; private set; }
+
+    public async ValueTask InitializeAsync()
+    {
+        try
+        {
+            // Build here rather than in a field initializer: PostgreSqlBuilder.Build() validates
+            // container-engine connectivity eagerly, so constructing the container in the field
+            // initializer (i.e. the fixture ctor) would throw a DockerUnavailableException BEFORE
+            // this try/catch — reporting every test as a "class fixture threw in its constructor"
+            // failure instead of the intended skip.
+            _container = new PostgreSqlBuilder("postgres:17-alpine")
+                .WithDatabase("myrestaurant")
+                .WithUsername("myrestaurant")
+                .WithPassword("myrestaurant")
+                .Build();
+
+            await _container.StartAsync();
+            ConnectionString = _container.GetConnectionString();
+        }
+        catch (Exception exception)
+        {
+            SkipReason = "A container engine (Podman/Docker) is required but was unavailable: " + exception.Message;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_container is not null)
+        {
+            await _container.DisposeAsync();
+        }
+    }
+}
+tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs
+
+csharp
+using Dapper;
+using MyRestaurant.DataAccess;
+using Npgsql;
+using Xunit;
+
+namespace MyRestaurant.DataAccess.Tests;
+
+/// <summary>
+/// Integration tests for the DbUp migration runner (TECHNICAL_SPECIFICATION §14/§16) against a real
+/// PostgreSQL 17 container: the initial schema applies cleanly, a second run is a no-op (idempotent),
+/// <see cref="SchemaMigrationRunner.IsUpToDate"/> reports current, and the key relations and the
+/// <c>citext</c> extension exist afterwards.
+/// </summary>
+public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture>
+{
+    private readonly PostgreSqlFixture _fixture;
+
+    public SchemaMigrationRunnerTests(PostgreSqlFixture fixture) => _fixture = fixture;
+
+    // A representative subset of the 22 tables and 5 views — enough to prove the script ran to the end.
+    public static TheoryData<string> KeyRelations =>
+    [
+        "public.person",
+        "public.passkey_credential",
+        "public.menu_item",
+        "public.guest_order",
+        "public.order_event",
+        "public.order_operation_line_added",
+        "public.table_sitting",
+        "public.order_current_line",   // view
+        "public.order_current_state",  // view
+        "public.sitting_bill",         // view
+        "public.kitchen_pending_line", // view
+    ];
+
+    [Fact]
+    public void Run_AppliesSchema_AndIsIdempotent()
+    {
+        Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+        string connectionString = _fixture.ConnectionString!;
+
+        SchemaMigrationRunner runner = BuildRunner(connectionString);
+
+        // First run applies everything and reports current.
+        runner.Run();
+        Assert.True(runner.IsUpToDate());
+
+        // Second run must be a harmless no-op (DbUp journals executed scripts).
+        Exception? secondRun = Record.Exception(() => runner.Run());
+        Assert.Null(secondRun);
+        Assert.True(runner.IsUpToDate());
+    }
+
+    [Fact]
+    public async Task Run_CreatesCitextExtension()
+    {
+        Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+        string connectionString = _fixture.ConnectionString!;
+
+        BuildRunner(connectionString).Run();
+
+        await using NpgsqlConnection connection = new(connectionString);
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+
+        bool citextInstalled = await connection.ExecuteScalarAsync<bool>(
+            new CommandDefinition(
+                "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'citext')",
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.True(citextInstalled);
+    }
+
+    [Theory]
+    [MemberData(nameof(KeyRelations))]
+    public async Task Run_CreatesKeyRelation(string relation)
+    {
+        Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+        string connectionString = _fixture.ConnectionString!;
+
+        BuildRunner(connectionString).Run();
+
+        await using NpgsqlConnection connection = new(connectionString);
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+
+        bool exists = await connection.ExecuteScalarAsync<bool>(
+            new CommandDefinition(
+                "SELECT to_regclass(@Relation) IS NOT NULL",
+                new { Relation = relation },
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.True(exists, $"Expected relation '{relation}' to exist after migration.");
+    }
+
+    private static SchemaMigrationRunner BuildRunner(string connectionString)
+        => new(connectionString)
+        {
+            // Keep the test snappy: the container is already up, so no long connection-retry budget.
+            MaximumAttempts = 3,
+            DelayBetweenAttempts = TimeSpan.FromMilliseconds(200),
+        };
+}
+After dropping these in, your loop should go: dotnet build clean, dotnet test green with the DataAccess.Tests skipped (they'll run for real once Podman is up), and bash run.sh past the compose step into dotnet watch.
+
+Two optional, non-blocking cleanups I left alone (they're prose, not defects) — happy to hand you full files if you want them:
+
+docs/BUILD_PROGRESS.md line ~1967 and docs/DOCUMENTATION_REVIEW.md line ~2216 still say KnownNetworks; they should read KnownIPNetworks to match the code.
+docs/BUILD_PROGRESS.md lines ~1965–1966 (the AddNpgsql caveat) could note the resolution was adding using Npgsql;.
+One thing worth deciding for later M-milestones: the DataAccess.Tests now silently skip without an engine, which is friendly for your Fedora loop but does mean CI could go green having tested nothing. When you set up CI, you'll want it to run with Podman/Docker present so those skips become real runs.
+
+
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+61
+82
+100
