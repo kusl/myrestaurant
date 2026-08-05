@@ -10,3 +10,76 @@ remember to tell me which files if any I would need to delete
 please avoid giving me bespoke scripts to manipulate text in code / documentation 
 remember to give full files for all files that need to change 
 I will likely miss those bespoke scripts 
+
+
+/
+Claude finished the response
+Please continue with the next step 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+please avoid giving me bespoke scripts to manipulate text in code / documentation 
+remember to give full files for all files that need to change 
+I will likely miss those bespoke scripts
+
+
+Architecting schema validation queries across restored database tables
+Architecting schema validation queries across restored database tables
+Now let me write the deliverables. Starting with the backup script.
+
+
+Ran 2 commands, created a file
+Ran 2 commands, created a file
+I hit my tool budget mid-slice, so rather than hand you a half-built archive I'll stop and report. Here's where things stand.
+
+Where the project actually is
+dump.txt is at commit 7271ebb, 302 files. Contrary to what I had in mind coming in, all fifteen §16.3 Playwright scenarios are live — Slice 15 landed scenario 12 and deleted the last [Fact(Skip)] placeholder along with PendingHarnessExtension. There are eleven fewer loose ends than I expected: no unmerged docs/_append/ files either, and docs/BUILD_PROGRESS.md is a single 5,572-line file you already appended to.
+
+So the next step is the one BUILD_PROGRESS names four separate times: the backup/restore drill, and M6 is done.
+
+What I found while reading the two scripts that drill would exercise
+This is the useful part, and it's why the slice is worth doing properly rather than as a documentation edit.
+
+1. scripts/restore.sh could not have completed a restore. I verified pg_restore's exit-code contract against the PostgreSQL 17 source (src/bin/pg_dump/pg_restore.c, lines 458–466): it sets exit_code = AH->n_errors ? 1 : 0, so it returns 1 whenever it ignored any error at all — which --clean --if-exists routinely does. The script runs under set -euo pipefail with web already stopped, and the compose up -d web is the line after the pg_restore. The most likely outcome of the documented recovery procedure is a database that came back and an application that stayed down, with no message saying so. This has almost certainly never been run.
+
+2. backup.sh can leave a poison file that evicts a good backup. F-16's ledger row promises "retention prunes only after a successful new dump." True for the failing run — set -e skips the prune. But the redirect has already created the file, so a truncated dump survives as the newest .dump, and the next successful run counts it toward BACKUP_RETENTION_COUNT and prunes a real one to make room. The guarantee holds for one run and breaks on the following one.
+
+3. grep -m1 postgres picks whichever container the engine lists first. Harmless today; actively dangerous the moment a drill exists, because a drill needs a second postgres container. A backup that dumps the scratch database would succeed, be roughly the right size, and be worthless.
+
+4. Nothing in the tree backs up the Data Protection key ring. §15 says it "must be backed up alongside the database"; F-16's row asserts it as embodied. Both scripts only print a reminder. That is a normative rule with no mechanism — and it's the half that matters, since a database without the key ring returns every account and no enrolled authenticator.
+
+That set is coherent enough to be one ledger finding, F-38 (F-37 is the current high-water mark).
+
+Design decisions I settled, with the verification behind them
+pg_restore -l and -d both read stdin for custom-format archives — documented, so the drill needs no container-side temp file.
+DbUp's journal is schemaversions (lowercase, columns schemaversionsid/scriptname/applied), confirmed from DbUp/dbup-postgresql's PostgresqlTableJournal.cs and the PostgresqlExtensions.cs:116 default. scriptname holds the embedded resource name, so the drill can assert one journal row per migration file — a check that extends itself with every future migration.
+The web container runs as root. I chased this because restoring a key ring is ownership-sensitive. mcr.microsoft.com/dotnet/aspnet:10.0 resolves to the Ubuntu noble/resolute variant; runtime-deps' Dockerfile creates the app user (UID 1654) but never issues USER app, and your Containerfile doesn't either. So ownership is a non-issue on both engines, and compose.yaml's :U is belt-and-braces. That's what makes the key-ring restore safe to automate rather than leave as a manual step — and it's the one thing that would have made me not ship it.
+podman cp / docker cp with - streams a tar through the engine's archive API, so the key ring needs no tools inside the runtime image.
+The migrations parse cleanly to 22 tables and 5 views via anchored ^CREATE TABLE|VIEW, so a schema census is reliable rather than fragile.
+The slice as scoped
+scripts/restore_drill.sh (new) — non-destructive, spins its own scratch postgres with no published port, and gates: archive listable → restores → 22 tables and 5 views present → one journal row per migration file → every view still resolves → row census → key ring present and non-empty. Teardown by trap. Plus full rewrites of backup.sh and restore.sh, the drill wired into ci.yml's boot-smoke job (the image and migrated database are already there, so it's nearly free), a .gitignore addition that makes O§6's "git-ignored" claim actually true, and the doc set: S§15, O§6/§8/§14, F-38, BUILD_PROGRESS, _CHANGES.md. REQUIREMENTS.md deliberately untouched — §15 already states the key-ring rule normatively, so this is a defect fix at the mechanism level, not new intent.
+
+backup.sh is written and passes bash -n; shellcheck flags only SC2317 (info, and a false positive on the EXIT-trap body — the existing scripts pass at --severity=style, so I'll restructure it rather than add a directive). I have shellcheck 0.9.0 installed here, so everything will be linted before it goes in the archive.
+
+Say "continue" and I'll finish the remaining scripts and docs and hand you the single .tar.gz that extracts at the repo root — full files, exact paths, explicit "Files to DELETE" section, no text-manipulation scripts. One thing to note for that delivery: scripts/restore_drill.sh is a new file, and both ci_local.sh and CI's shell-scripts gate enumerate via git ls-files '*.sh' — so it won't be linted until you git add it.
+
+Claude reached its tool-use limit for this turn.
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+28
+55
+
+please continue
