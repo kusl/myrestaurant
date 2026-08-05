@@ -170,12 +170,13 @@ Migrations are append-only and roll forward only — the same philosophy as the 
 | Suspected join-token abuse | Rotate the affected table's join secret — in-flight tokens die instantly; watch the `table_join_tokens_validated_total{result}` metric |
 | Administrator's authenticator lost | Another administrator resets them (same flow as any user; TOTP re-enrollment is forced — administrators cannot exist unenrolled). Single-admin instances: this is why the bootstrap made you save **recovery codes** |
 | Lockout complaints | 5 failed attempts locks 5 minutes, automatically clears; no admin action needed |
+| Somebody reports a vulnerability | §16 — and note that the private channel `SECURITY.md` names is a **repository setting**, so §16's first table is worth checking before you need it |
 
 ## 14. Continuous integration and releases
 
 CI is not an operations concern until the day you need to know *which build* is on the box and whether anyone verified it. This section is that day.
 
-**What every push is checked against.** `.github/workflows/ci.yml` runs five gates on every push and pull request against `main`: `tree` (the checkout is machine-readable at all — see below), `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), `end-to-end` (the §16.3 Playwright scenarios in Chromium, all fifteen of them), and `boot-smoke` (the production `Containerfile` is built, the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200, and then that instance is backed up and the backup is put through `scripts/restore_drill.sh`).
+**What every push is checked against.** `.github/workflows/ci.yml` runs six gates on every push and pull request against `main`: `tree` (the checkout is machine-readable at all — see below), `governance` (a security policy exists and no document asserts a repository setting — the blocking half; the advisory half reports the settings themselves), `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), `end-to-end` (the §16.3 Playwright scenarios in Chromium, all fifteen of them), and `boot-smoke` (the production `Containerfile` is built, the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200, and then that instance is backed up and the backup is put through `scripts/restore_drill.sh`).
 
 `boot-smoke` is the gate that matters operationally, because it is the only one that exercises what a deployment exercises: DbUp applying every migration to an empty database, `RestaurantOptions.Validate()` accepting the configuration, and the composition root resolving. A green `boot-smoke` now says "this commit starts, **and its data comes back**". Nothing else in the suite says either half.
 
@@ -197,6 +198,7 @@ It is also the first gate of `scripts/ci_local.sh`, so `--with-all` already cove
 
 ```bash
 bash scripts/check_tree.sh                # seconds, no SDK; run this first (F-40)
+bash scripts/check_repository.sh          # seconds; the governance surface, and the settings (F-42)
 scripts/ci_local.sh --with-all            # optional, but far cheaper than a failed tag
 ```
 
@@ -271,3 +273,82 @@ Three things worth knowing:
 - **There is no setting that removes the offer.** That is deliberate. If you want it gone you have the source and the freedom to remove it — which is, precisely, the arrangement this licence exists to guarantee. Just be aware of what you are removing and from whom.
 
 None of this is legal advice; it is the mechanism. `LICENSE` is the text that governs.
+
+## 16. Somebody reported a vulnerability
+
+This is the receiving end of `SECURITY.md`. It exists because the alternative to writing it down is
+improvising the first time, and the first time is the worst possible moment to be deciding what the
+process is.
+
+### The settings this depends on, which are not in the tree
+
+`SECURITY.md` sends a reporter to GitHub's private advisory form. That form is a **repository setting**,
+not a file, so no gate in this project can turn it on and `scripts/check_repository.sh` can only tell
+you it is off. Check these once, and re-check them after any repository migration or transfer:
+
+| Setting | Where | Wanted |
+|---|---|---|
+| Private vulnerability reporting | Settings → Advanced Security | **enabled** — this is the channel the policy names |
+| Security policy detected | Security tab | `SECURITY.md` shows up (it is read from the repository root) |
+| Repository description | the About box | set — it is the first line anybody reads |
+| Issues | Settings → Features | either way; `SECURITY.md`'s fallback wants it on, and nothing in the tree claims a state for it |
+| Wiki | Settings → Features | **off** is the intent — every document here is in the tree and under the atomic-documentation rule, so a wiki is a second place for documentation to be wrong with no gate over it |
+
+```bash
+bash scripts/check_repository.sh
+```
+
+The tree half of that script is blocking and offline. The platform half needs a token
+(`GITHUB_TOKEN`, `GH_TOKEN`, or an authenticated `gh`) and is advisory — it reports these settings and
+never fails on them, because a fork's settings are the fork's business.
+
+### Triage
+
+1. **Acknowledge within seven days.** Even "received, looking at it, expect an assessment in a
+   fortnight" — the target that gets missed most is this one, and missing it is what turns a
+   coordinated report into an uncoordinated one.
+2. **Decide whether it is a defect or §17.** The accepted-risks register is the first question, not the
+   last. If the report restates a ruled risk, answer with the paragraph that ruled it and say the
+   argument is welcome on the merits. If it argues the ruling was wrong, that is a specification
+   question and it goes through the atomic-documentation rule like any other.
+3. **Reproduce it before believing it, and before disbelieving it.** The end-to-end harness is the
+   right tool: a scenario that demonstrates the problem is worth more than a paragraph describing it,
+   and it becomes the regression test for free.
+4. **Write the draft advisory as you go**, in the GitHub Security Advisory on the report. It is private
+   until published, so it is the natural place for the working notes, and it means the note is not
+   being written from memory on the day of the fix.
+
+### Fixing it
+
+The fix is an ordinary commit under the ordinary rule — behaviour, `REQUIREMENTS.md`, the
+specification, a `DOCUMENTATION_REVIEW.md` row, and any affected ADR, in one commit. Two additions:
+
+- **A regression test lands with it**, and preferably a §16.3 scenario rather than a unit test, because
+  a security defect that a unit test can see is usually one a unit test would already have seen.
+- **The ledger row names the reporter**, unless they asked otherwise. The register is the project's
+  memory and an outside finding is worth being visibly outside.
+
+Then tag it. §14's release procedure is unchanged — bump `VersionPrefix`, tag, push — and the pipeline
+publishes the image and opens the release. **Publish the advisory when the tag exists**, not before:
+the advisory is what tells operators to upgrade, and it should never point at a version that is not in
+the registry yet.
+
+### Telling operators
+
+You cannot. There is no callback from a running instance to this repository, by design — no telemetry
+home, no update check, nothing that phones anywhere. The advisory and the release note are the whole
+notification mechanism, and a fork operator has to be the one looking. `SECURITY.md` says so in the
+fork section rather than leaving it as an unpleasant surprise.
+
+This is a real limitation and it is worth being clear-eyed about rather than defensive: the same
+property that makes this software safe to self-host — it talks to nobody — is what makes it impossible
+to warn its operators. If that trade ever looks wrong, the thing to change is §17 and this paragraph,
+not to quietly add a version check.
+
+### If a report arrives on the issue tracker anyway
+
+Somebody will eventually post a security problem publicly, having read nothing. Delete or hide the
+comment, respond privately, and treat the clock as having started at the public post — because it did.
+Whether the tab is open or closed is not the interesting variable; a determined reporter with no
+private channel will use whatever is available, which is the argument for the private channel existing
+at all.

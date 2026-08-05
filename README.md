@@ -45,7 +45,8 @@ the web layer depends on data-access and the domain; the domain depends on nothi
   and every reader/mutation over real PostgreSQL, web-layer configuration/wiring/enforcement tests,
   and the end-to-end scenario matrix with its Playwright harness (see *End-to-end scenarios*).
 - `scripts/` — the operational scripts: `check_tree.sh` (repository hygiene, the first CI gate),
-  `ci_local.sh` (every CI gate, locally), `backup.sh` / `restore.sh` / `restore_drill.sh` (§15
+  `check_repository.sh` (the governance surface, and an advisory read of the published repository's
+  settings), `ci_local.sh` (every CI gate, locally), `backup.sh` / `restore.sh` / `restore_drill.sh` (§15
   recovery sets and the rehearsal CI runs on every push), and `quick_tunnel.sh` (a demo origin).
 - `.github/workflows/` — the CI and release pipelines (see *Continuous integration*).
 
@@ -194,11 +195,12 @@ browser, no build output. A missing tool is not a broken product.
 
 ## Continuous integration
 
-Every push and pull request against `main` runs five gates (`.github/workflows/ci.yml`):
+Every push and pull request against `main` runs six gates (`.github/workflows/ci.yml`):
 
 | Gate | What it proves |
 | --- | --- |
 | `tree` | the checkout is machine-readable at all: no context-dump separator lines, no whitespace-only lines, LF endings with a final newline, every MSBuild and solution file well-formed XML, every YAML file parsing (`scripts/check_tree.sh`). Asserted over authored text only — generated dumps under `docs/llm/` and binary files are skipped, and the counts are reported |
+| `governance` | a security policy exists, `README`/`CONTRIBUTING`/`SECURITY` each point at the others, and **no tracked file asserts a repository setting** (`scripts/check_repository.sh`). That half is blocking; a second, advisory half reads the GitHub API and reports the settings themselves, because a fork's settings are the fork's business |
 | `shell-scripts` | every tracked `*.sh` parses under `bash -n` and passes shellcheck |
 | `build-and-test` | a Release build with **warnings escalated to errors**, then all ~970 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
 | `boot-smoke` | the production `Containerfile` builds, the image boots against a real PostgreSQL until `/healthz/ready` answers 200, `/source` names the commit it was built from, and then that instance is backed up and the backup is put through a full restore drill |
@@ -228,7 +230,7 @@ bash scripts/check_tree.sh
 Run the same gates locally before pushing:
 
 ```bash
-scripts/ci_local.sh                # tree, shell lint, restore, strict build, full suite
+scripts/ci_local.sh                # tree, governance, shell lint, restore, strict build, full suite
 scripts/ci_local.sh --with-e2e     # ...and the §16.3 scenarios in a real browser
 scripts/ci_local.sh --with-smoke   # ...and boot once against the dev database
 scripts/ci_local.sh --with-all     # both of the optional gates
@@ -328,17 +330,37 @@ deliberately no setting that removes the offer; if you want it gone, you have th
 freedom to remove it, which is the arrangement. Details in `docs/OPERATIONS.md` §15, and none of it is
 legal advice — `LICENSE` is the text that governs.
 
+## Reporting a security problem
+
+**Use the private channel, not the issue tracker:** the Security tab → **Report a vulnerability**.
+`SECURITY.md` is the policy — what is in scope, what is out, what happens next, and the honest
+timelines of a project one person maintains. There is no bounty, which it says in its second paragraph
+rather than leaving you to find out.
+
+Read `docs/TECHNICAL_SPECIFICATION.md` **§17** first. It is the accepted-risks register: the ≤120 s join
+token replay window, the ruled absence of a `/register` rate limit, guests seeing their table-mates'
+orders, and half a dozen others are decisions that were argued and written down, each with what bounds
+it. An argument that one of them should be re-ruled is welcome. Presenting one as news is an evening
+nobody gets back.
+
+`CONTRIBUTING.md` refuses outside contributions; a vulnerability report is the one exception, and the
+reason is that refusing a feature costs the person who wanted it — who has the source and the freedom to
+build it — while refusing a report costs an operator's guests, who never chose this software and have no
+fork to run.
+
 ## First-build checklist
 
 The code in each milestone slice is written carefully but has not been compiled in its authoring
 environment (no toolchain or package feed there). On a networked machine:
 
 1. `bash scripts/check_tree.sh` — seconds, no SDK; confirms the tree arrived intact.
-2. `dotnet restore` — resolve or adjust any package versions in `Directory.Packages.props`.
-3. `dotnet build` — fix any analyzer/compiler findings.
-4. `dotnet test` — domain and web-layer tests need no services; the data-access tests need the
+2. `bash scripts/check_repository.sh` — seconds; the governance surface, and an advisory read of the
+   repository's own settings.
+3. `dotnet restore` — resolve or adjust any package versions in `Directory.Packages.props`.
+4. `dotnet build` — fix any analyzer/compiler findings.
+5. `dotnet test` — domain and web-layer tests need no services; the data-access tests need the
    container engine socket (see *Testing*).
-5. `./run.sh --smoke` — confirm migrations apply and `/healthz/ready` returns 200.
+6. `./run.sh --smoke` — confirm migrations apply and `/healthz/ready` returns 200.
 
 Or, in one command that mirrors what CI will say about the same tree:
 
@@ -411,5 +433,11 @@ scripts/ci_local.sh --with-all
   §16.3 scenarios against a real browser; guest self-registration at `/register` (F-37); the
   backup/restore drill, rehearsed by CI on every push rather than written down as a procedure
   (F-38); and the close-out that stamped the build and shipped the source offer (F-39).
+
+The last thing M6 found was not in the code. Asked what it looked like from outside, the repository
+had no security policy, private vulnerability reporting switched off, and a `CONTRIBUTING.md` that told
+every reader the issue tracker was closed — while it was open, and had always been. The AGPL exists to
+produce readers, readers are who find security defects, and the only channel that worked was a public
+one the documentation denied. `SECURITY.md` and `scripts/check_repository.sh` are the answer (F-42).
 
 Every milestone is complete. What follows is maintenance and whatever the restaurant asks for next.

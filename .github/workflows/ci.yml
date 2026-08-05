@@ -1,12 +1,21 @@
 # Continuous integration (TECHNICAL_SPECIFICATION §16.4).
 #
-# Five gates. None of them can be satisfied by a tree that merely looks right:
+# Six gates. None of them can be satisfied by a tree that merely looks right:
 #
 #   tree            The tree is machine-readable at all: no context-dump separators, no
 #                   whitespace-only lines, LF endings with a final newline, and every MSBuild and
 #                   YAML file parses. Cheapest gate in the workflow and the one that catches the
 #                   damage that disguises itself as a toolchain fault — see scripts/check_tree.sh
 #                   for the incident that put it here.
+#
+#   governance      A security policy exists, README/CONTRIBUTING/SECURITY each point at the
+#                   others, and no tracked file asserts a GitHub repository setting. That half is
+#                   blocking and needs only git and grep. A second, advisory half reads the API and
+#                   reports what the published repository actually says — advisory because a fork's
+#                   settings are the fork's business. See scripts/check_repository.sh for the
+#                   finding that put it here: every gate was green while the repository offered a
+#                   reader nowhere to report a defect, and the one document that addressed the
+#                   question was wrong about it.
 #
 #   shell-scripts   Every tracked *.sh parses (`bash -n`) and passes shellcheck. This is the
 #                   project's own pre-delivery discipline, enforced instead of remembered.
@@ -86,7 +95,39 @@ jobs:
         run: bash scripts/check_tree.sh
 
   # -----------------------------------------------------------------------------------------------
-  # 2. Shell scripts. Also cheap, so it runs alongside everything else and fails in ~30 seconds.
+  # 2. Repository governance. The layer every other gate in this file is blind to.
+  #
+  # Its own job for the same reason `tree` has one: a distinct check name makes a failure
+  # attributable from the commit list. But the deeper reason it is separate is that half of it is
+  # advisory, and a job that mixes a blocking assertion with an advisory report teaches nobody
+  # which one just spoke.
+  #
+  # administration:read is requested for exactly one call — the private-vulnerability-reporting
+  # endpoint — and is scoped to this job rather than the workflow. On a fork's pull request the
+  # token will not carry it; the script reports that as unknown rather than as a finding, which is
+  # why this job stays green there.
+  # -----------------------------------------------------------------------------------------------
+  governance:
+    name: repository governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      administration: read
+    steps:
+      - name: check out
+        uses: actions/checkout@v7
+
+      # The tree half blocks. The platform half warns and never moves the exit code, so a
+      # repository setting nobody has clicked yet cannot hold up a build — it just says so, on
+      # every run, until somebody clicks it.
+      - name: the governance surface, and the published settings
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/check_repository.sh
+
+  # -----------------------------------------------------------------------------------------------
+  # 3. Shell scripts. Also cheap, so it runs alongside everything else and fails in ~30 seconds.
   # -----------------------------------------------------------------------------------------------
   shell-scripts:
     name: shell scripts
@@ -131,7 +172,7 @@ jobs:
           shellcheck --severity=style --color=always "${scripts[@]}"
 
   # -----------------------------------------------------------------------------------------------
-  # 3. Build and the full test suite, with warnings as errors.
+  # 4. Build and the full test suite, with warnings as errors.
   # -----------------------------------------------------------------------------------------------
   build-and-test:
     name: build and test
@@ -203,7 +244,7 @@ jobs:
         run: dotnet list MyRestaurant.slnx package --vulnerable --include-transitive
 
   # -----------------------------------------------------------------------------------------------
-  # 4. Boot the actual production image against an actual PostgreSQL, then rehearse recovery from it.
+  # 5. Boot the actual production image against an actual PostgreSQL, then rehearse recovery from it.
   # -----------------------------------------------------------------------------------------------
   boot-smoke:
     name: boot smoke (container image)
@@ -342,7 +383,7 @@ jobs:
         run: docker rm --force myrestaurant_web_ci || true
 
   # -----------------------------------------------------------------------------------------------
-  # 5. The §16.3 end-to-end scenarios, in a real browser.
+  # 6. The §16.3 end-to-end scenarios, in a real browser.
   # -----------------------------------------------------------------------------------------------
   end-to-end:
     name: end to end (Playwright)

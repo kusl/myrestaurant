@@ -1,196 +1,234 @@
-# M6 Slice 19 — the gate that could not pass
+# M6 Slice 20 — the door nobody left open
 
 Every file below is a **full file** at its **repo-relative path**. Extract at the repository root and
-the contents drop straight over your working tree — no diffs, no patches, nothing to run.
+the contents drop straight over your working tree — no diffs, no patches, no scripts to run against
+your own documents.
 
 ```bash
-tar -xzf m6-slice-19-gate-scope.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice-20-disclosure-channel.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+git add SECURITY.md scripts/check_repository.sh
 ```
 
 Then:
 
 ```bash
 bash scripts/check_tree.sh
+bash scripts/check_repository.sh
 ```
 
 ## Files to DELETE
 
 **None.** Nothing here renames, supersedes or orphans anything: no migration, no schema change, no
-package change, no ADR edit, no `.slnx` edit, no `Program.cs` edit, no `.csproj` edit, no new file. Five
-existing files are replaced in place.
+package change, no ADR edit, no `.slnx` edit, no `Program.cs` edit, no `.csproj` edit, no C# at all.
+Two files are new, nine are replaced in place.
+
+**The `git add` above is not optional.** `ci_local.sh`, CI's `shell-scripts` job and `check_tree.sh`
+all enumerate with `git ls-files`, so an untracked new file is silently unchecked by all three — and
+`check_repository.sh` asks `git ls-files --error-unmatch` about `SECURITY.md` specifically, so an
+unstaged policy file fails its own gate.
 
 ## What happened
 
-Slice 18's gate landed, and the next full run said this:
+Your last run was green everywhere. 996 tests, 0 failed. All fifteen §16.3 scenarios passing.
+`ci_local.sh --with-all` clearing every gate. Tree hygiene clean over 310 authored files. Nothing
+outdated.
+
+So I read the tree against what a tag makes true, which is the habit F-39 established. The defect is
+not in the tree. I asked the published repository what it looks like from outside:
 
 ```
-tree hygiene FAILED: 1321 problem(s). Nothing was modified.
+has_issues                       : true
+SECURITY.md                      : 404 at the root, in .github/, and in docs/
+private vulnerability reporting  : disabled
+has_wiki                         : true
+description                      : null
+open issues / pull requests      : 0
 ```
 
-On a tree in which every file was correct. Tree hygiene is gate 1, so **the four gates behind it never
-ran** — shell lint, strict Release build, the full test suite, the end-to-end scenarios. CI's `tree` job
-is red right now for the same reason, on the same files.
+`CONTRIBUTING.md` had said since rev 1, in the indicative mood, that the issue tracker was switched
+off. It was not. It never had been — the setting was on for the entire life of the sentence.
 
-Everything else in that run was green, and that is what locates the defect rather than being scene-setting:
+## Four doors, none of them working
 
-| | Result |
-| --- | --- |
-| `dotnet build` | all seven projects, 0 errors |
-| `dotnet test` | **996 total, 0 failed, 981 succeeded, 15 skipped** |
-| `MYRESTAURANT_E2E=1` | **15 passed, 0 skipped** — the whole §16.3 matrix |
-| `run.sh --smoke` | `/healthz/ready` 200 |
-| `run.sh --containers-only` | stack up and healthy |
-| `dotnet list package --outdated` | nothing outdated |
-| `scripts/quick_tunnel.sh` | tunnel up, prechecks pass |
-| `scripts/ci_local.sh --with-all` | **failed at gate 1** |
+A person who reads this source — which is what the AGPL is *for*, and which is exactly the population
+that finds security defects — had these options:
 
-The only thing wrong with the repository was the gate inspecting it.
+- an Issues tab that was **open**, and that the only document addressing the question denied existed;
+- no Security tab entry, because no policy file existed anywhere GitHub looks;
+- no private reporting form, because the setting was off;
+- no address, anywhere in the tree, in any file;
+- and a notice that pull requests are closed unreviewed whatever their merit.
 
-## The 1321, which resolve exactly
+The only channel that worked was the one the documentation said did not exist, **and it was public.**
+So the first thing anybody would have done with a forgeable join token is publish it — not out of
+malice, but because there was nowhere else to put it.
 
-| Count | Files | What the gate said | What was true |
-| --- | --- | --- | --- |
-| 638 | `docs/llm/dump.txt` | gate 1: separator, not content | it is a context dump; the separator **is** its structure |
-| 638 | `docs/llm/vendor/claude-output.txt` | gate 1: separator, not content | same |
-| 45 | every `.tar.gz` / `.zip` under `docs/llm/vendor/` | gate 3: "no final newline (truncated…)" | a gzip stream ends where it ends; a trailing `0x0A` would corrupt it |
+Nothing has been lost yet, for one reason: nobody tried. Zero issues, zero pull requests, on the day
+I looked. That is luck, not a channel.
 
-1276 + 45 = 1321. **Two independent bugs, not one** — and each one alone would have left a real hole.
+## Why this is a finding rather than a chore
 
-### Bug 1 — the exemption was half a rule
+It is a category this ledger had not recorded, and each shape has a different guard:
 
-Gate 1 exempted `export.sh`, because writing separators is that script's job. It did not exempt
-`docs/llm/` — the directory `export.sh` writes them **into**, and which `export.sh` itself has always
-excluded from its own output as `EXCLUDED_DIRECTORY="docs/llm"`. The gate knew about the producer and not
-about the product.
+| Shape | Example | What was wrong |
+| --- | --- | --- |
+| a capability a requirement stated and no milestone claimed | F-35, F-37, F-39 | the build order |
+| a rule four documents agreed on and no code honoured | F-38 | intent recorded in a column reserved for fact |
+| the transport between a correct spec and correct code | F-40 | twenty-one files damaged in delivery |
+| **the repository disagreeing with its own documents** | **F-42** | **a layer nothing in the tree can see** |
 
-The second reason is stronger and generalises: a dump is a *copy* of the authored files, so every property
-the gate asserts is asserted twice over the same content. A real finding is reported twice; a correct
-separator is reported as a defect.
+`check_tree.sh` reads `git ls-files`. A test process cannot see a settings page. And the one document
+that made a claim about that page made it in a mood that cannot be checked from inside the
+repository. Every gate you have built was green, correctly, about the wrong thing.
 
-### Bug 2 — three gates, two beliefs about what a file is
+**The rule that came out of it**, narrower and more useful than *check your settings*:
 
-Gates 1 and 2 are `grep -I`, and `-I` makes grep report no match in a binary file. They were binary-safe
-**by accident**. Gate 3's final-newline half is `tail -c 1 | wc -l`, which has no such notion — so it
-failed every archive in the tree, and its message, *"truncated, or an editor that does not add one"*, is
-exactly backwards about a file that is intact.
+> A document in this tree states policy, never platform state.
 
-The fix is not a third guard. It is **one predicate, `is_authored_text`, that all three gates consult**, so
-they cannot disagree about a file. Binary-ness is asked of `grep -I` rather than read off an extension
-list, because an extension list is a list somebody has to remember to update — and it would have been
-wrong about the `.zip` files on the day they were added.
+"Nothing filed here is triaged" is a commitment — true wherever it is read, surviving a checkbox
+toggle, and yours to keep. "The issue tracker is off" is a claim about a checkbox, and it went wrong
+in the one direction that mattered.
 
 ## The files
 
 | File | Change |
 | --- | --- |
-| `scripts/check_tree.sh` | **the fix.** Scope decided once; gates 1–3 all consult it; skip counts reported |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.5**: §16.4 gains the scope rule; Appendix A gains **F-41** |
-| `docs/DOCUMENTATION_REVIEW.md` | **F-41** — status line and the closing prose |
-| `docs/BUILD_PROGRESS.md` | Slice 19 section appended. **Full file**, not an append block |
-| `README.md` | the `tree` row of the gate table says what the gate skips |
+| `SECURITY.md` | **NEW.** The policy: private channel, no bounty said up front, scope both ways, single-maintainer timelines as targets, newest-tag-only support, and §17 as required reading |
+| `scripts/check_repository.sh` | **NEW.** The sixth gate. Blocking tree half, advisory platform half |
+| `CONTRIBUTING.md` | the false sentence replaced with policy; the security carve-out and its reason |
+| `README.md` | a *Reporting a security problem* section, the `governance` gate row, the checklist |
+| `scripts/ci_local.sh` | governance as gate 2; the four gates behind it renumbered |
+| `.github/workflows/ci.yml` | a `governance` job with `administration: read` scoped to it |
+| `docs/REQUIREMENTS.md` | **rev 4**: one new §8 principle, §10's carve-out, a revision-history row |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.6**: §16.4 the gate, §17 disclosure, §18 the rule, Appendix A **F-42** |
+| `docs/DOCUMENTATION_REVIEW.md` | **F-42** and a *Going forward* section |
+| `docs/OPERATIONS.md` | new **§16** — the runbook for receiving a report — plus §13 and §14 rows |
+| `docs/BUILD_PROGRESS.md` | Slice 20 appended. **Full file**, 431 KB, nothing to run |
 | `_CHANGES.md` | this file |
 
-Five tracked files and this one. **I compared all 310 files in the delivered tree against yours: 305 are
-byte-identical and the 5 above are the only ones that differ.**
+`docs/OPERATIONS.md`'s new section is **§16, at the end**, deliberately: its section numbers are
+referenced from the specification and the ADRs, so inserting one anywhere else would have been a
+silent break. I read the numbering back after the edit rather than assuming it.
 
-`docs/BUILD_PROGRESS.md` is a complete 421 KB file this time rather than a `docs/_append/` block and a
-`cat >>` line — you asked not to be handed scripts that edit documentation, and that was the last of them.
-There is nothing in `docs/_append/` to merge and nothing to run.
+## What you have to do that I cannot
 
-## What the gate says now
+Two things in this finding are not files, and no archive can contain them:
 
-```
-checking 310 authored text file(s) of 327 tracked
-  skipped: 17 generated (docs/llm), 0 binary, 0 empty
-```
+1. **Enable private vulnerability reporting** — Settings → Advanced Security. `SECURITY.md` sends
+   reporters there, so until this is on, the policy names a door that is locked. This is the one item
+   here that leaves a real gap rather than an untidy one.
+2. **Set the repository description.** It is the first line anybody reads, and your release note
+   tells people to `podman pull` from it.
 
-"Checking 412 tracked file(s)" was true on the run that failed 1321 times, and the least useful true
-sentence available. A gate whose silence is meant to mean something has to say what it looked at.
+Optional, reported with reasons and left to you: the wiki is on, and every document in this project
+is in the tree under the atomic-documentation rule. And the Issues tab can stay open or be closed —
+**the documents are now true either way**, which is the whole point of the policy-not-platform rule.
+
+The gate will WARN about the first two on every CI run until you click them, and will never fail on
+them.
 
 ## Three decisions worth being able to veto
 
-**`docs/llm/` is excluded by the gate, not untracked by me.** The tempting fix is
-`git rm -r --cached docs/llm/`. That directory is your deliberate working record and what the repository
-keeps is not the gate's business; the gate's *scope* is what was wrong. If you would rather untrack it,
-the `GENERATED_DIRECTORIES` entry becomes harmless rather than wrong, so nothing here has to change either
-way.
+**The platform half is advisory, not blocking.** A WARN nobody clears is a WARN people learn to
+ignore — you have argued exactly that twice, in Slices 18 and 19. The argument does not transfer:
+those gates reported on files, so a commit could always clear them. This one reports on something
+outside the tree, where no commit can, and a *fork* cannot satisfy an assertion about your settings
+at all. Failing their build over your disclosure preferences would be wrong about the licence this
+project ships under.
 
-**Binary detection by `grep -I`, not by `.gitattributes`.** Marking the archives `binary` is the idiomatic
-git answer and would fix bug 2. Rejected because it also changes how git diffs, merges and archives those
-paths — a larger change than this needs — and because it does nothing about bug 1, a context dump being
-text.
+**A separate gate rather than a sixth check in `check_tree.sh`.** That script's five gates are all
+offline, all blocking, and all assertions that a file somebody wrote is machine-readable. Half of
+this one is none of those, and a gate whose halves carry different authority should not answer to one
+exit code.
 
-**Gate 1 stays blocking.** Slice 18 argued that a gate reporting findings on every run is a gate people
-learn to ignore. That argument points here too, harder: a gate that cannot pass on a correct tree has to
-be bypassed, and the four real gates behind it go with it.
+**The exemption list has three entries.** `docs/DOCUMENTATION_REVIEW.md`, `docs/BUILD_PROGRESS.md`
+and the gate script itself may contain the forbidden sentence, because quoting a defect is what a
+ledger does and the gate has to hold the pattern list. Exempted by literal path, the way `export.sh`
+is exempt from the separator gate. I kept `_CHANGES.md` off the list and paraphrased instead, so the
+hole stays three files wide.
 
 ## Build and test
 
 ```bash
+bash scripts/check_repository.sh
+#    expect: 4 gates, exit 0, and "passed, with 3 advisory warning(s)". The warnings are the
+#    real state of your repository, and the assertion that matters in this slice is that they
+#    exit 0 — a finding about a settings page must not be able to fail a build.
+
+bash scripts/check_repository.sh --offline
+#    expect: 3 gates plus a SKIP, exit 0, no token needed. This is the half that blocks.
+
 bash scripts/check_tree.sh
-#    expect: 5 gates, "tree hygiene passed.", exit 0, and a skip line reporting 17 generated files.
-#    This is the assertion that matters in this slice. Under two seconds, no SDK needed.
+#    expect: 5 gates, "tree hygiene passed.", exit 0. The count rises from 310 to 312 — the two
+#    new authored files. Under two seconds, no SDK.
 
 bash scripts/ci_local.sh --with-all
-#    expect: all 5 numbered gates RUN. Gates 2-5 have never executed under this script, so if
-#    there is a surprise anywhere in this delivery it will be here rather than in gate 1.
+#    expect: 8 numbered gates; governance is the new second one and gates 3-8 are unchanged.
 
 dotnet test
-#    expect: 996 total, 0 failed, 981 succeeded, 15 skipped. UNCHANGED — and now an observation
-#    rather than a prediction, because your last run reported exactly this. No test is touched.
+#    expect: 996 total, 0 failed, 981 succeeded, 15 skipped. UNCHANGED. No C#, no .csproj, no
+#    migration, no Program.cs is touched here. If this number moves, the cause is not this slice.
 
 MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
 #    expect: 15 passed, 0 skipped. Unchanged.
 ```
 
-`dotnet build` is not in that list on purpose: no compiled file is touched in this slice.
+`dotnet build` is not in that list on purpose: no compiled file is touched.
 
 ## What was actually verified here
 
-No .NET SDK in the sandbox — but this slice's subject is a shell script, and it was executed.
+No .NET SDK in the sandbox — but everything in this slice is a shell script or a document, and both
+were executed rather than reasoned about.
 
-- The 1321 accounted for exactly, by file and by gate, from your run's own output: 638 + 638 + 45.
-- **`docs/llm/` reconstructed in a scratch tree** at its real shape — both committed dumps at full size
-  and seventeen archives — so the gate faced the input that produced the failure rather than a
-  description of it. Result: 5 gates, exit 0, 17 skipped as generated.
-- **Sensitivity re-proven, which matters more than the pass.** A gate that passes by skipping everything
-  is worthless. All five damage patterns re-introduced *outside* `docs/llm/` — the separator appended to
-  `Directory.Build.props`, to `Program.cs`, and buried at line 3000 of `BUILD_PROGRESS.md`; a
-  whitespace-only line in `compose.yaml`; a truncated flow sequence in `ci.yml`; a CRLF in
-  `scripts/backup.sh`; a stripped final newline on `README.md`. It reported **8 problems**, named each by
-  file and line — including `Directory.Build.props:85` from gate 1 **and** gate 4 — and exited 1.
-- **A binary file planted outside `docs/llm/`** in that same run, to prove the binary rule is general
-  rather than a `docs/llm/` carve-out: reported as `1 binary` in the skip line and accused of nothing.
-- `grep -I -q ''` confirmed as a binary detector against files with real NUL bytes and against a real
-  gzip stream, and confirmed to agree with a NUL scan of the first 8000 bytes.
-- The delivered tree — edited documents included — run through the new gate: passes, 0 findings. The new
-  §16.4 paragraph and F-41 row contain no separator line and no whitespace-only line, checked rather than
-  assumed.
-- `bash -n` plus `shellcheck` at `--severity=warning` **and** `--severity=style`, both clean, which keeps
-  `ci.yml`'s claim that every script in this tree is style-clean true.
-- Every documentation edit applied by exact-match replacement with an assertion that the anchor appears
-  **exactly once**, so nothing was edited by position.
+- **The finding was measured, not inferred.** Every number above came from the live GitHub API
+  against `kusl/myrestaurant`: the repository object, the private-vulnerability-reporting endpoint,
+  the community profile, and a 404 probe for the policy file at all three paths GitHub reads.
+- **`scripts/check_repository.sh` was run against a real git tree**, both halves, against your real
+  repository — and it passes with three advisory warnings and exit 0.
+- **Sensitivity proven for every blocking gate individually**, because a gate that passes by
+  asserting nothing is worthless. Seven damage cases, each reverted before the next: the forbidden
+  sentence reintroduced into `CONTRIBUTING.md` (reported by file and line); the policy untracked and
+  deleted; `§17` removed from it; the reporting-channel phrase removed; `README.md` stopped pointing
+  at it; the policy stopped pointing back at `CONTRIBUTING.md`; the policy emptied. Every one exits
+  1 and names the file.
+- **The exemption proven narrow.** The same forbidden sentence appended to `docs/OPERATIONS.md` and
+  to `docs/BUILD_PROGRESS.md` in one run: the first is reported at `docs/OPERATIONS.md:355`, the
+  second is not.
+- `bash -n` plus `shellcheck` at **both** `--severity=warning` and `--severity=style`, clean over all
+  eight tracked scripts, which keeps `ci.yml`'s claim that every script in this tree is style-clean
+  true. Your existing scripts were baselined clean first, so any finding would have been
+  attributable to this slice.
+- `scripts/check_tree.sh` run over the delivered tree, edited documents and new files included: 5
+  gates, 0 findings, 312 authored files. The new prose was checked for separator lines and
+  whitespace-only lines rather than assumed innocent.
+- `.github/workflows/ci.yml` parsed with PyYAML, and the job list plus the `governance` job's
+  permissions read back out of the parsed document rather than eyeballed.
+- Every documentation edit applied by exact-match replacement with an assertion that the anchor
+  appears **exactly once**, so nothing was edited by position. `OPERATIONS.md`'s section numbering
+  read back afterwards.
 
 ## Where to look if this breaks
 
-**`check_tree.sh` still fails on `docs/llm/`.** The extract did not land. `grep -n GENERATED_DIRECTORIES
-scripts/check_tree.sh` — you should see the array set to `("docs/llm")` near the top.
+**`check_repository.sh` fails at gate 1.** The extract landed but the `git add` did not.
+`git ls-files SECURITY.md` should print the path.
 
-**It fails on a file under some *other* generated directory.** Then there is a second such directory I
-did not know about. Add it to `GENERATED_DIRECTORIES`; that is what the array is for. Send me the path and
-I will record it in §16.4.
+**It fails at gate 3 on a file I did not touch.** Then that file already contained one of the
+forbidden phrasings and I missed it. The message names the file and line; state the policy instead,
+or tell me the path and I will record it.
 
-**The skip line reports more binary files than you expected.** `grep -I` calls a file binary if it finds a
-NUL byte early, so a UTF-16 file would land there. Nothing in this tree is UTF-16 — `.editorconfig` sets
-`charset = utf-8` — so a count above 0 outside `docs/llm/` is worth looking at rather than accepting.
+**Gate 4 says `private vulnerability reporting=unknown`.** The token lacks `administration:read`.
+Expected on a fork's pull request and reported as unknown rather than as a finding; on your own
+machine, `gh auth refresh -s admin:repo_hook` or just accept the unknown — the tree half is the half
+that blocks.
 
-**`ci_local.sh --with-all` now fails at gate 2, 3, 4 or 5.** Expected in the sense that these have never
-run under this script: gate 1 blocked every previous invocation. This is a real finding about your tree
-rather than about this delivery, and the gate names the file.
+**Gate 4 skips entirely on your machine.** No token in the environment. `GITHUB_TOKEN`, `GH_TOKEN`,
+or an authenticated `gh` — and CI passes one, so this half runs there regardless.
 
-**Test count is not 996.** Nothing in this slice touches a test, a project file or any compiled source.
-Look at what changed between your last run and now.
+**CI's `governance` job is red.** It can only be the tree half; the platform half cannot fail. Run
+`bash scripts/check_repository.sh --offline` locally and you will get the identical output with no
+network at all.
 
-**The `tree` job passes locally but fails in CI.** Likeliest is gate 5, which runs blocking there and may
-be skipping here — `sudo dnf install python3-pyyaml`. Second likeliest is a file present in CI's checkout
-but not `git add`-ed locally, since the script reads `git ls-files`.
+**`ci_local.sh` reports 8 gates and you expected 7.** Correct. Governance is the new gate 2.
+
+**Test count is not 996.** Nothing in this slice touches a test, a project file, or any compiled
+source. Look at what changed between your last run and now.

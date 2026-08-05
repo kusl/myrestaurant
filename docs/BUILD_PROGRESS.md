@@ -6218,3 +6218,216 @@ was executed:
 
 The tag. Unchanged from Slice 18, and now genuinely unblocked: `ci_local.sh --with-all` can reach its
 last four gates.
+
+## M6 Slice 20 — the door nobody left open
+
+M6's close-out line reads: *"Then `scripts/ci_local.sh --with-all`, a drill against the real stack, and
+the tag."* The first of those had just passed. Everything had:
+
+| | Result |
+| --- | --- |
+| `dotnet build` | all seven projects, 0 errors |
+| `dotnet test` | 996 total, 0 failed, 981 succeeded, 15 skipped |
+| `MYRESTAURANT_E2E=1` | 15 passed, 0 skipped |
+| `scripts/ci_local.sh --with-all` | all 7 gates, green |
+| `scripts/check_tree.sh` | 310 authored files, 0 findings |
+| `dotnet list package --outdated` | nothing outdated |
+
+So the tree was read against what a tag makes true, which is the habit F-39 established. The defect was
+not in the tree. It was one layer further out, and it is **F-42**.
+
+### What the repository said about itself
+
+Asked through the API, read-only:
+
+```
+has_issues                       : true
+SECURITY.md                      : 404 at the root, in .github/, and in docs/
+private vulnerability reporting  : disabled
+has_wiki                         : true
+description                      : null
+open issues / pull requests       : 0
+```
+
+`CONTRIBUTING.md` had said since rev 1, in the indicative mood: *"Issues are disabled. There is no bug
+tracker to file into."*
+
+They were not. They never had been. The setting was on for the entire life of the sentence.
+
+### Four doors, none of them working
+
+A person who reads this source — which is what the AGPL is *for*, and which is precisely the population
+that finds security defects — had these options:
+
+- an Issues tab that was **open**, and that the only document addressing the question said was shut;
+- no Security tab entry, because no `SECURITY.md` existed anywhere GitHub looks;
+- no private reporting form, because the setting was off;
+- no address, anywhere in the tree, in any file;
+- and a notice that pull requests are closed unreviewed whatever their merit.
+
+The only channel that actually worked was the one the documentation denied, **and it was public.** So
+the first thing anybody would have done with a forgeable join token is publish it — not out of malice
+but because there was nowhere else to put it.
+
+Nothing had been lost yet, and only for one reason: nobody had tried. Zero issues, zero pull requests,
+on the day this was found. That is luck, and luck is not a channel.
+
+### Why this is a finding and not a chore
+
+It is a category this ledger had not recorded, and the distinction is worth keeping because the guard
+against each shape is different:
+
+| Shape | Example | What was wrong |
+| --- | --- | --- |
+| a capability a requirement stated and no milestone claimed | F-35, F-37, F-39 | the build order |
+| a rule four documents agreed on and no code honoured | F-38 | the embodiment column recorded intent as fact |
+| the transport between a correct spec and correct code | F-40 | twenty-one files damaged in delivery |
+| **the repository disagreeing with its own documents** | **F-42** | **a layer nothing in the tree can see** |
+
+`check_tree.sh` reads `git ls-files`. A test process cannot see a settings page. And the one document
+that made a claim about that page made it in a mood that cannot be checked from inside the repository.
+Every gate this project has built was green, correctly, about the wrong thing.
+
+### The rule that came out of it
+
+Narrower and more useful than *check your settings*:
+
+> **A document in this tree states policy, never platform state.**
+
+"Nothing filed here is triaged" is a commitment. It is true wherever it is read, it survives somebody
+toggling a checkbox, and it is the project's to keep. "The issue tracker is off" is a claim about a
+checkbox, verifiable only from outside — and it went wrong in the one direction that mattered: the door
+it declared shut was the single door standing open, and it was a public one.
+
+### What shipped
+
+**`SECURITY.md`**, at the repository root beside `LICENSE` and `CONTRIBUTING.md`. The private channel;
+**no bounty, in the second paragraph** rather than discovered afterwards; scope in both directions,
+including the deliberate out-of-scope entry for a deployment this maintainer does not operate, which
+under the AGPL is most of them; timelines as targets one person can meet rather than an SLA nobody
+would; newest-tag-only support, because there are no maintenance branches and a promise nobody can keep
+is worse than its absence; and a section sending a reporter to **§17 first**, so the ≤120 s replay
+window and the ruled absence of a `/register` limit cost nobody an unpaid evening.
+
+**The carve-out, with its reason.** `CONTRIBUTING.md` now says a vulnerability report is not a
+contribution. Refusing a feature costs the person who wanted it, and the AGPL has already handed them
+the source and the freedom to build it — a fair arrangement. Refusing a report costs an operator's
+*guests*, who never chose this software, cannot read that file, and have no fork to run. Opposite
+costs, opposite answers.
+
+**`scripts/check_repository.sh`** — F-38's lesson applied for the third time, and again without being
+asked: a row in the embodiment column should name something executable. Two deliberately unequal
+halves.
+
+The **tree half blocks** on git and grep alone. A policy exists, is non-empty, names a reporting channel
+and points at §17. `README.md`, `CONTRIBUTING.md` and `SECURITY.md` each name the others — the *edges*
+are asserted rather than the files, because the way this breaks is a rewrite that forgets one edge, not
+a deletion. And **no tracked file asserts a repository setting**, which is this finding made
+unrepeatable rather than merely corrected. The files whose job is to record what this tree used to say —
+this document, `DOCUMENTATION_REVIEW.md`, and the gate itself — are exempt by literal path, the way
+`export.sh` is exempt from the separator gate, and for the same reason: quoting a defect is what a
+ledger does.
+
+The **platform half is advisory**. It reads the repository object and the private-reporting endpoint and
+reports the issue-tracker state, the wiki state, whether a description is set, whether private reporting
+is on. Advisory is a *ruling*, not caution: a fork's settings are the fork's business, and a gate that
+failed somebody's build over this maintainer's disclosure preferences would be wrong about the licence
+this project ships under. A token without `administration:read` is reported as *unknown* rather than as
+a finding, so a fork's pull request stays green.
+
+### Considered and rejected
+
+**Folding it into `check_tree.sh`.** That script's five gates are all offline, all blocking, and all
+assertions that a file somebody wrote is machine-readable. Half of this one is none of those, and a gate
+whose halves carry different authority should not answer to one exit code.
+
+**Making the platform half blocking.** Tempting, because a WARN nobody clears is a WARN people learn to
+ignore — this project has twice argued exactly that, in Slices 18 and 19. Rejected because the argument
+does not transfer: those gates reported on files, so there was always a commit that could clear them.
+This one reports on something outside the tree, where no commit can, and a fork cannot satisfy an
+assertion about this maintainer's settings at all.
+
+**Untracking or disabling the wiki from here.** Not mine to do, and not a file. It is reported, with the
+reason, and left as an operator decision.
+
+**Writing the disclosure policy into `CONTRIBUTING.md` instead of its own file.** GitHub reads
+`SECURITY.md` specifically, from the root, `.github/` or `docs/`, and surfaces it in the Security tab
+and the reporting flow. A policy nobody is shown is not a policy.
+
+### The honest limit
+
+Two things in this finding cannot be fixed by any file, and are recorded rather than papered over:
+
+1. **Private vulnerability reporting has to be enabled** in Settings → Advanced Security.
+2. **The repository description has to be set.**
+
+The gate will WARN about both on every CI run until somebody clicks them, and will never fail. That is a
+gate reporting a finding on every run, which is the thing Slices 18 and 19 argued against — accepted
+here because the finding is *about* something outside the tree, so no commit could clear it, and a WARN
+that persists until a checkbox moves is exactly as loud as that deserves.
+
+The documents are true whichever way the Issues tab and the wiki are left. That is the point of the
+policy-not-platform rule: this delivery cannot change a setting, so nothing in it claims one.
+
+### Build and test
+
+```bash
+bash scripts/check_repository.sh
+#    expect: 4 gates, "repository governance passed", exit 0. With a token in the environment the
+#    fourth gate is advisory and WILL report warnings — private vulnerability reporting off, no
+#    description, the wiki on — and must still exit 0. That is the assertion that matters here:
+#    a finding about a settings page must not be able to fail a build.
+
+bash scripts/check_repository.sh --offline
+#    expect: 3 gates plus a SKIP, exit 0. This is the half that blocks, in isolation.
+
+bash scripts/check_tree.sh
+#    expect: 5 gates, "tree hygiene passed.", exit 0. Two new authored files land in its scope
+#    (SECURITY.md, scripts/check_repository.sh) plus the edited documents, so the count rises.
+
+bash scripts/ci_local.sh --with-all
+#    expect: 8 numbered gates now; governance is the new second one. Gates 3-8 are unchanged.
+
+dotnet test
+#    expect: 996 total, 0 failed, 981 succeeded, 15 skipped. UNCHANGED — no C#, no .csproj, no
+#    migration and no Program.cs is touched in this slice. If this number moves, the cause is not
+#    here.
+
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: 15 passed, 0 skipped. Unchanged.
+```
+
+`git add scripts/check_repository.sh SECURITY.md` is **not optional**. `ci_local.sh`, CI's
+`shell-scripts` job and `check_tree.sh` all enumerate with `git ls-files`, so an untracked new file is
+silently unchecked by every one of them — and `check_repository.sh` asks `git ls-files --error-unmatch`
+about `SECURITY.md` specifically, so an unstaged policy file fails its own gate.
+
+### What was verified here
+
+No .NET SDK in the sandbox, and nothing in this slice compiles — but everything in it is a shell script
+or a document, and both were executed rather than reasoned about:
+
+- **The finding was measured, not inferred.** Every number in the block above came from the live GitHub
+  API against `kusl/myrestaurant`: the repository object, the private-vulnerability-reporting endpoint,
+  the community profile, and a 404 probe for `SECURITY.md` at all three paths GitHub reads.
+- **`scripts/check_repository.sh` was run against a real git tree**, both halves, in four states: the
+  delivered tree (passes, 3 blocking gates clean); `--offline`; with `SECURITY.md` deleted (fails, and
+  names why a repository that refuses pull requests still owes a channel); and with the forbidden
+  sentence re-introduced into `CONTRIBUTING.md` (fails, by file and line).
+- **Sensitivity of each blocking gate proven individually**, because a gate that passes by asserting
+  nothing is worthless: each of the three cross-reference edges broken in turn, `§17` removed from the
+  policy, the reporting-channel phrase removed, the policy emptied.
+- **The exemption proven to be narrow**: the forbidden sentence planted in a non-exempt document is
+  reported; the same sentence in this file and in `DOCUMENTATION_REVIEW.md` is not.
+- `bash -n` and `shellcheck` at **both** `--severity=warning` and `--severity=style`, clean, which keeps
+  `ci.yml`'s claim that every script in this tree is style-clean true. The existing eight scripts were
+  baselined clean first, so a finding would have been attributable.
+- `scripts/check_tree.sh` run over the delivered tree, including every edited document and both new
+  files: 5 gates, 0 findings. The new prose was checked for separator lines and whitespace-only lines
+  rather than assumed innocent.
+- `.github/workflows/ci.yml` parsed with PyYAML, job list and the `governance` job's permissions read
+  back out of the parsed document rather than eyeballed.
+- Every documentation edit applied by exact-match replacement with an assertion that the anchor appears
+  **exactly once**, so nothing was edited by position. `OPERATIONS.md`'s section numbering read back
+  afterwards, because §16 had to land at the end: its section numbers are referenced from the
+  specification and the ADRs, so a renumber would have been a silent break.

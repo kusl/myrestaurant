@@ -3,7 +3,7 @@
 # Run the CI gates locally (TECHNICAL_SPECIFICATION §16.4). Idempotent, and it changes nothing in
 # the working tree.
 #
-#   scripts/ci_local.sh              tree hygiene, shell lint, restore, strict Release build, full test suite
+#   scripts/ci_local.sh              tree hygiene, governance, shell lint, restore, strict build, full test suite
 #   scripts/ci_local.sh --with-smoke ...and then `bash run.sh --smoke` (boots the app once, checks health)
 #   scripts/ci_local.sh --with-e2e   ...and then the §16.3 Playwright scenarios (browser required)
 #   scripts/ci_local.sh --with-all   both of the above
@@ -93,7 +93,19 @@ announce "tree hygiene"
 bash scripts/check_tree.sh
 
 # ---------------------------------------------------------------------------------------------------
-# 2. Shell scripts: every tracked *.sh must parse, and pass shellcheck when it is installed.
+# 2. Repository governance: the one layer no other gate here can see.
+#
+# Second because it is the other gate that needs no SDK and no containers, and because what it asserts
+# is a precondition of publishing rather than of building — which is exactly the kind of thing that
+# gets checked last and therefore never. Its tree half is blocking on git and grep alone. Its platform
+# half reads the GitHub API, is advisory, and reports a skip without a token; see
+# scripts/check_repository.sh for the finding that put it here (F-42).
+# ---------------------------------------------------------------------------------------------------
+announce "repository governance"
+bash scripts/check_repository.sh
+
+# ---------------------------------------------------------------------------------------------------
+# 3. Shell scripts: every tracked *.sh must parse, and pass shellcheck when it is installed.
 # ---------------------------------------------------------------------------------------------------
 announce "shell scripts"
 
@@ -127,7 +139,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------------------------------
-# 3. Restore, build strictly, test. Same flags CI uses, in the same order.
+# 4. Restore, build strictly, test. Same flags CI uses, in the same order.
 # ---------------------------------------------------------------------------------------------------
 if ! command -v dotnet >/dev/null 2>&1; then
     fail "the .NET SDK is required for the build and test gates."
@@ -151,7 +163,7 @@ dotnet test MyRestaurant.slnx \
     -p:ContinuousIntegrationBuild=true
 
 # ---------------------------------------------------------------------------------------------------
-# 4. Optional: the §16.3 end-to-end scenarios, in a real browser.
+# 5. Optional: the §16.3 end-to-end scenarios, in a real browser.
 # ---------------------------------------------------------------------------------------------------
 if (( WITH_E2E )); then
     announce "end to end (§16.3 Playwright scenarios)"
@@ -164,7 +176,7 @@ if (( WITH_E2E )); then
 fi
 
 # ---------------------------------------------------------------------------------------------------
-# 5. Optional: boot once and probe /healthz/ready.
+# 6. Optional: boot once and probe /healthz/ready.
 # ---------------------------------------------------------------------------------------------------
 if (( WITH_SMOKE )); then
     announce "boot smoke (bash run.sh --smoke)"
@@ -181,4 +193,3 @@ if (( ! WITH_SMOKE )); then
     echo "  (not run: the boot smoke — add --with-smoke, or bash run.sh --containers-only)"
 fi
 echo "────────────────────────────────────────────────────────────────────────────"
-
