@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-05T09:21:59-04:00
+  Generated at   : 2026-08-05T10:02:29-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,10 +17,10 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 9ef95000bc598b456be3f18f808c974af87d9750
-  Commit (short) : 9ef9500
-  Commit date    : 2026-08-05 09:20:06 -0400
-  Commit message : add claude changes
+  Commit (full)  : efd6efdd929cebea710e96736e1d4c4725d97dc4
+  Commit (short) : efd6efd
+  Commit date    : 2026-08-05 10:02:25 -0400
+  Commit message : add claude prompt
   Remote origin  : git@github.com:kusl/myrestaurant.git
   Files included : 311
   Excluded path  : docs/llm/
@@ -1157,15 +1157,15 @@ updates:
   File name:             ci.yml
   Relative path:         .github/workflows/ci.yml
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/.github/workflows/ci.yml
-  Size:                  21.5 KiB (22029 bytes)
-  Last modified:         2026-08-05 09:03:34.000000000 -0400
+  Size:                  21.5 KiB (22014 bytes)
+  Last modified:         2026-08-05 09:43:57.951113564 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
   Inode:                 32093342
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               36ec89c3fb2534e8769b273407c9be1feddb5309f161faf84837a3f448676989
-  Last git commit:       9ef9500 2026-08-05 09:20:06 -0400 add claude changes
+  SHA-256:               f5360284147b04973cbbc3d4e1676efdc1ce195e8d57d81189c825703fae97ac
+  Last git commit:       7beb57b 2026-08-05 09:44:01 -0400 use new token
 
 --- CONTENT ---
 # Continuous integration (TECHNICAL_SPECIFICATION §16.4).
@@ -1283,7 +1283,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      administration: read
     steps:
       - name: check out
         uses: actions/checkout@v7
@@ -1293,7 +1292,7 @@ jobs:
       # every run, until somebody clicks it.
       - name: the governance surface, and the published settings
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.ADMIN_READ_TOKEN }}
         run: bash scripts/check_repository.sh
 
   # -----------------------------------------------------------------------------------------------
@@ -13513,15 +13512,15 @@ exit 0
   File name:             check_repository.sh
   Relative path:         scripts/check_repository.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/check_repository.sh
-  Size:                  17.6 KiB (17999 bytes)
-  Last modified:         2026-08-05 09:05:57.000000000 -0400
+  Size:                  17.7 KiB (18131 bytes)
+  Last modified:         2026-08-05 09:52:09.747615965 -0400
   Permissions:           -rwxr-xr-x
   Owner:                 kushal:kushal
   Inode:                 32093345
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               ce4dbb6397982d613fde9295a3027ddf7e7f9b99d88e7c9e17cbb04887d93263
-  Last git commit:       9ef9500 2026-08-05 09:20:06 -0400 add claude changes
+  SHA-256:               2fd467b71796904e7575c4716040505d00aeb2660956b530c9705d7f9572efa5
+  Last git commit:       fcc356d 2026-08-05 09:52:37 -0400 exempt llm folder
 
 --- CONTENT ---
 #!/usr/bin/env bash
@@ -13612,6 +13611,7 @@ RECORD_FILES=(
     "docs/DOCUMENTATION_REVIEW.md"
     "docs/BUILD_PROGRESS.md"
     "scripts/check_repository.sh"
+    "docs/llm/*"
 )
 
 # Assertions about GitHub repository settings, which a file in the tree cannot verify. Case
@@ -13658,7 +13658,9 @@ note_warning_detail() {
 is_record_file() {
     local candidate="$1" record
     for record in "${RECORD_FILES[@]}"; do
-        [[ "$candidate" == "$record" ]] && return 0
+        # Removing quotes around $record allows glob wildcards like 'docs/llm/*'
+        # shellcheck disable=SC2053
+        [[ "$candidate" == $record ]] && return 0
     done
     return 1
 }
@@ -87965,9 +87967,9 @@ public sealed class RestaurantTimeTests
 # DUMP SUMMARY
 ################################################################################
   Files dumped   : 311
-  Total size     : 3.8 MiB (3951294 bytes)
+  Total size     : 3.8 MiB (3951411 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-05T09:22:10-04:00
+  Completed at   : 2026-08-05T10:02:39-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
