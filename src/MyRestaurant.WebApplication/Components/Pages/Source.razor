@@ -1,0 +1,110 @@
+@page "/source"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@inject RestaurantOptions Options
+
+@* The source offer (TECHNICAL_SPECIFICATION §11.9, F-39). Reached from the colophon in the footer of
+   every page, in both layouts.
+
+   WHAT IT DISCHARGES. AGPL-3.0-only §13: a modified version "must prominently offer all users
+   interacting with it remotely through a computer network ... an opportunity to receive the
+   Corresponding Source of your version by providing access to the Corresponding Source from a
+   network server at no charge, through some standard or customary means of facilitating copying of
+   software." A link to a public repository is the customary means; naming the revision is what makes
+   it an offer of *this* version rather than of something adjacent to it.
+
+   The obligation binds whoever modifies the Program, not whoever merely runs it — so an unmodified
+   deployment of this tree owes nothing and this page is a courtesy. Shipping it anyway means an
+   operator who forks complies by setting RESTAURANT_SOURCE_URL, rather than by discovering §13 after
+   somebody asks.
+
+   ANONYMOUS AND STATIC SSR, on purpose. Anonymous because "all users interacting with it remotely"
+   includes a guest who never signs in and a tablet that never will; static SSR because a page that
+   needed a circuit would be blank on exactly the surfaces least likely to have one. It is also on
+   §3.5's exemption list, so a person the obligations pipeline has otherwise locked to one page can
+   still read the licence offer — the pipeline exists to stop them *acting*, not to stop them reading
+   what the software is.
+
+   The revision is rendered as text rather than composed into a link. Building "{url}/tree/{revision}"
+   would be this page guessing at the URL layout of a forge it has never been told the identity of;
+   GitHub, GitLab, Gitea, cgit and Sourcehut do not agree on that path, and a link that 404s is worse
+   than a hash somebody can paste into `git checkout`. *@
+
+<PageTitle>Source code — @Options.RestaurantName</PageTitle>
+
+<section class="panel">
+    <p class="eyebrow">Free software</p>
+    <h1>Source code</h1>
+
+    <p class="lede">
+        This site runs <strong>MyRestaurant</strong>, a self-hosted restaurant ordering system
+        published under the <strong>GNU Affero General Public License, version 3 only</strong>. You are
+        free to run it, study it, modify it, and share it — and anyone who runs a modified copy as a
+        network service owes its users that same freedom.
+    </p>
+
+    <dl class="source-facts">
+        <dt>Version</dt>
+        <dd>@_version</dd>
+
+        <dt>Source revision</dt>
+        <dd>
+            @if (_hasRevision)
+            {
+                <code class="source-revision">@_revision</code>
+            }
+            else
+            {
+                <span class="source-unknown">
+                    Not recorded. This build was produced without a revision stamp, so it can be
+                    identified by its version only.
+                </span>
+            }
+        </dd>
+
+        <dt>Licence</dt>
+        <dd>AGPL-3.0-only</dd>
+    </dl>
+
+    <h2>Where to get it</h2>
+
+    <p>
+        The operator of this instance publishes the corresponding source at:
+    </p>
+
+    <p class="source-link">
+        <a href="@Options.SourceUrl" rel="external noopener" target="_blank">@Options.SourceUrl</a>
+    </p>
+
+    @if (_hasRevision)
+    {
+        <p class="source-hint">
+            To obtain exactly the version you are interacting with, check out revision
+            <code class="source-revision">@_revision</code> from that repository.
+        </p>
+    }
+
+    <p class="source-hint">
+        If this site has been modified and the link above does not lead to those modifications, that is
+        a licence problem rather than a preference — tell whoever operates it.
+    </p>
+</section>
+
+@code {
+    private string _version = string.Empty;
+    private string _revision = string.Empty;
+    private bool _hasRevision;
+
+    protected override void OnInitialized()
+    {
+        BuildInformation build = BuildInformation.Current;
+
+        _version = build.Version;
+        _hasRevision = build.HasSourceRevision;
+
+        // The full revision here, not the abbreviated one the colophon shows: this is the page whose
+        // job is to be pasted into `git checkout`, and seven characters is a convenience rather than
+        // an identifier.
+        _revision = build.SourceRevision ?? string.Empty;
+    }
+}

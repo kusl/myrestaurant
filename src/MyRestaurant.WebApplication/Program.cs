@@ -52,8 +52,13 @@ if (configurationErrors.Count > 0)
 // and instrumentation are always registered — they are cheap and keep the custom meter live.
 bool otlpExporterConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
 
+// service.version carries the full informational version — "1.0.0+3f2a9c1…" — because the question a
+// collector is asked after a deployment is which build changed, and a semver alone cannot answer it
+// between two builds of the same tag (§12, §11.9). BuildInformation reads it once from the assembly.
 builder.Services.AddOpenTelemetry()
-    .ConfigureResource(resource => resource.AddService(serviceName: "myrestaurant"))
+    .ConfigureResource(resource => resource.AddService(
+        serviceName: "myrestaurant",
+        serviceVersion: BuildInformation.Current.InformationalVersion))
     .WithTracing(tracing =>
     {
         tracing.AddAspNetCoreInstrumentation();
@@ -266,3 +271,5 @@ app.MapRazorComponents<App>()
 app.Run();
 
 return 0;
+
+################################################################################

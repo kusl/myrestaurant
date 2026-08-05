@@ -1,276 +1,250 @@
-# M6 Slice 16 — the restore drill, and the four defects it found before it could run
+# M6 close-out — the release: what the program says about itself, and to whom
 
-Every file below is a **full file** at its **repo-relative path**. Extract at the repository root and the
-contents drop straight over your working tree — no diffs, no patches, no scripts to run.
+Every file below is a **full file** at its **repo-relative path**. Extract at the repository root and
+the contents drop straight over your working tree — no diffs, no patches, no scripts to run.
 
 ```bash
-tar -xzf m6-slice16-restore-drill.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-closeout-release.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
 **None.** Nothing here renames, supersedes or orphans anything: no migration, no schema change, no
-package change, no ADR edit, no `Program.cs` edit, no `.slnx` edit, and **no C# at all** — so no new
-test folder either.
-
-## Two things to do by hand after extracting
-
-```bash
-git add scripts/restore_drill.sh          # NOT optional — see below
-ls -l scripts/*.sh                        # all three should be -rwxr-xr-x already
-```
-
-`scripts/restore_drill.sh` is a **new** file, and both `scripts/ci_local.sh` and CI's `shell-scripts`
-job enumerate what they check with `git ls-files '*.sh'`. Until it is tracked, it is silently
-unchecked — the one gate in this slice that would notice a broken new script is the one that cannot
-see it yet.
-
-All three scripts carry mode 755 in the archive, so no `chmod` should be needed. If your extract
-dropped the bit anyway, `chmod +x scripts/*.sh` fixes it; nothing in the tree invokes them as
-`./scripts/…` (CI and `ci_local.sh` both go through `bash`), so a missing bit is cosmetic rather than
-fatal.
+package change, no ADR edit, no `.slnx` edit. `Program.cs` changes by **one statement** (noted below,
+since that is rare). Four new files land in existing folders, so no `.csproj` edit either.
 
 ## The files
 
 | File | Change |
 | --- | --- |
-| `scripts/restore_drill.sh` | **new** — non-destructive rehearsal of a recovery set against a scratch database |
-| `scripts/backup.sh` | rewritten: atomic dump, key-ring capture, discovery that refuses on ambiguity, three-valued exit |
-| `scripts/restore.sh` | rewritten: archive verified first, `web` restarted from an `EXIT` trap, key ring put back, `--yes` |
-| `.github/workflows/ci.yml` | `boot-smoke` gains three steps — render a page, back the instance up, drill the backup |
-| `.gitignore` | backup artefacts, so O§6's "git-ignored" is true and a key ring cannot be committed |
-| `.env.example` | the §15 block documents the two-file set and the discovery overrides |
-| `docs/TECHNICAL_SPECIFICATION.md` | **§15 rewritten**, §16.4 amended, Appendix A gains F-38, changelog **v1.2** |
-| `docs/OPERATIONS.md` | **§6 rewritten**, §8 bullet updated, §14 corrected and extended |
-| `docs/DOCUMENTATION_REVIEW.md` | **F-38** entered, status line and "Going forward" updated |
-| `docs/BUILD_PROGRESS.md` | Slice 16 appended (**complete file**, 5,756 lines — I did the appending) |
+| `src/…/Configuration/BuildInformation.cs` | **new** — parses the assembly's informational version into a version and a source revision |
+| `src/…/Configuration/SourceRoutes.cs` | **new** — the `/source` route constant, in one place |
+| `src/…/Components/Pages/Source.razor` | **new** — the AGPL §13 offer, naming this build's revision |
+| `src/…/Components/Layout/AppColophon.razor` | **new** — the footer line, every page, both layouts |
+| `src/…/Configuration/RestaurantOptions.cs` | `RESTAURANT_SOURCE_URL` + its validation |
+| `src/…/Identity/ObligationsEnforcement.cs` | `/source` added to the §3.5 exemption list |
+| `src/…/Components/Layout/MainLayout.razor` | renders `<AppColophon />` |
+| `src/…/Components/Layout/DisplayLayout.razor` | renders `<AppColophon />`, plus its own smaller styling |
+| `src/…/Components/Pages/Home.razor` | the stale "the event explorer arrives next" lede, rewritten |
+| `src/…/wwwroot/app.css` | colophon and `/source` styles; `.app-footer`'s bottom padding moves |
+| `src/…/Program.cs` | **one statement**: `serviceVersion` on the OpenTelemetry resource |
+| `Directory.Build.props` | `VersionPrefix` and assembly metadata |
+| `Containerfile` | `VERSION` / `SOURCE_REVISION` build arguments → `InformationalVersion` |
+| `.github/workflows/ci.yml` | stamps the image; new gate: `/source` must name the built commit |
+| `.github/workflows/release.yml` | version from the tag → the image; a GitHub release on the tag |
+| `.env.example` | `RESTAURANT_SOURCE_URL`, documented for forks |
+| `tests/…/BuildInformationTests.cs` | **new** — 16 facts on the parse |
+| `tests/…/RestaurantOptionsTests.cs` | +8 facts: the source URL, and the five shapes refused |
+| `tests/…/Identity/ObligationsEnforcementTests.cs` | +1: `/source` is exempt |
+| `docs/REQUIREMENTS.md` | **rev 3** — one new §8 principle |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.3** — new §11.9; §12, §13, §16.4, §19, Appendix A |
+| `docs/DOCUMENTATION_REVIEW.md` | **F-39** entered; status line and "Going forward" extended |
+| `docs/OPERATIONS.md` | §14 release procedure rewritten; **new §15** on fork obligations |
+| `docs/BUILD_PROGRESS.md` | stage checkboxes ticked; close-out appended (**complete file**, 5,946 lines) |
+| `README.md` | the status paragraph, the scenario table, CI, backups and the roadmap, all corrected |
 | `_CHANGES.md` | this file |
 
-`docs/REQUIREMENTS.md` is **deliberately untouched** — see "One documentation decision" below.
+## Why there is a slice here at all
 
-## Why this slice is a drill and not a document
+Slice 16 ended with *"What is left in M6: **Nothing**. The next move is not a slice, it is a release."*
+That was true of the feature list. It was not true of the tree, and the gap only became visible by
+reading the repository against **what a tag would make true** rather than against §19.
 
-§19's M6 line has read "full E2E suite (§16.3), backups + restore drill, …" since v1.0. Slice 15
-closed the first clause. The second was described in `OPERATIONS.md` §6 as five manual steps to
-perform once, against a scratch host, before you need them — and nobody had performed them.
+Publishing changes who the audience is. Two questions that had obvious answers while one person ran one
+instance stop having them the moment somebody else can `podman pull` the thing.
 
-The moment something did, it found four defects. This is the whole argument for the slice.
+### 1. Nothing could say which build it was
 
-### 1. `scripts/restore.sh` could not have completed a restore
+`Directory.Build.props` set no `VersionPrefix`, so every assembly reported the SDK's default `1.0.0`.
+`Program.cs` called `AddService(serviceName: "myrestaurant")` with **no `serviceVersion`**, so every
+trace and metric leaving the process was unversioned. No surface reported a build at all. The only
+available answer to "which build is on that box?" was *whatever the person who deployed it typed* —
+which is not an answer, it is a memory.
 
-It ran `pg_restore --clean --if-exists` under `set -euo pipefail`, with `web` already stopped, **one
-line before** the `up -d web` that would bring it back.
+### 2. Nothing offered anybody the source
 
-`pg_restore` exits **1 whenever it ignored any error at all.** That is its documented contract, and it
-is `exit_code = AH->n_errors ? 1 : 0` in `pg_restore.c` — I read it out of the PostgreSQL 17 source
-rather than recalling it. `--clean --if-exists` ignores errors as a matter of course, because that is
-what `IF EXISTS` is *for*.
+R§1 says the project is published *"so anyone may run their own copy under the AGPL"*.
+`CONTRIBUTING.md` has told forks since rev 1 that *"your fork owes its users the same"*. AGPL-3.0-only
+§13 — read out of this repository's own `LICENSE` rather than recalled — asks a **modified** version to
+prominently offer its users the corresponding source. Nothing in the application made that
+dischargeable, so a fork operator complied by writing a page from scratch or, far more likely, not at
+all.
 
-So `set -e` killed the script one line early. **The single most likely outcome of the documented
-recovery procedure was a database that came back and an application that stayed down, with nothing
-printed to say so.** That is worse than a crash; a crash is attributable.
+Both land together because they are one thing: §13 offers the source *of the version being interacted
+with*, so an offer that cannot name a revision is approximate. Both land **before** the tag, because
+the first tag is the version people cite.
 
-`web` now comes back from an `EXIT` trap, so it comes back on every path out of the script including
-the ones that got there by failing. Ignored errors are reported and downgrade the exit code to 2.
+This is **F-39**, and it is the same shape as F-35 and F-37 — a capability the surrounding documents
+assumed and §19's build order never claimed.
 
-### 2. Nothing captured the Data Protection key ring
+## The SourceLink trap, which is why the Containerfile does this and not MSBuild
 
-§15 has required it alongside the database since v1.0. `OPERATIONS.md` §6 listed it as step 3. §8
-explains exactly what losing it costs. And **F-16's own row in `DOCUMENTATION_REVIEW.md` lists it under
-*Embodied in*.**
+The obvious implementation is `-p:SourceRevisionId=$SHA` and let the SDK append it to
+`InformationalVersion`. **That silently does nothing here.**
+`AddSourceRevisionToInformationalVersion` in `Microsoft.NET.GenerateAssemblyInfo.targets` is
+conditioned on `SourceControlInformationFeatureSupported`, and a code search of `dotnet/sdk` finds that
+property in exactly two files — that target, and its own test. **SourceLink sets it. Nothing else in
+the SDK does.**
 
-Both scripts printed a reminder.
+Read out of the SDK source rather than recalled, because the failure mode is a build that succeeds and
+a page that quietly reports "Not recorded" forever.
 
-Four documents in agreement about a thing no code did — which means every backup ever taken from this
-tree is a set that restores every account and **no enrolled authenticator** (§3.4). `backup.sh` now
-captures it as a sibling tar; `restore.sh` puts it back; the drill fails a set that does not have one.
+So the `Containerfile` passes it explicitly, and a package dependency to obtain one string was the
+worse trade:
 
-### 3. A failed dump could evict a good one
+```dockerfile
+ARG VERSION=1.0.0
+ARG SOURCE_REVISION=
+RUN INFORMATIONAL_VERSION="${VERSION}${SOURCE_REVISION:++${SOURCE_REVISION}}" \
+    && dotnet publish … /p:Version="${VERSION}" /p:InformationalVersion="${INFORMATIONAL_VERSION}"
+```
 
-The dump went straight through a redirect, so a truncated file survived as the newest `.dump`. `set -e`
-skipped *that* run's pruning — which is exactly what F-16's "prunes only after a successful new dump"
-promises — but the **next** successful run counted the poison file toward `BACKUP_RETENTION_COUNT` and
-pruned a real backup to make room for it. The guarantee held within one run and broke on the following
-one. Fixed with a hidden `.partial` write, a header check, and an atomic rename.
+`${SOURCE_REVISION:+…}` expands to `+<revision>` only when the argument is set and non-empty, so an
+unstamped build produces a clean `1.0.0` rather than a trailing `+` the parser would have to treat as a
+revision it does not have.
 
-### 4. Container discovery took the first match
+## The gate, which is the part that will still be true in a year
 
-`ps --format '{{.Names}}' | grep -m1 postgres`. Harmless with one postgres container — and a restore
-drill needs a second one. **A backup that dumps the scratch database succeeds, comes out roughly the
-right size, and is worthless**, which is precisely the failure a backup script must not be capable of.
-It now refuses on ambiguity and names what it found; `POSTGRES_CONTAINER` / `WEB_CONTAINER` settle it.
+F-38's lesson was *a row in the embodiment column should name something executable*. This is the first
+chance to apply it without being asked, so `boot-smoke` gained:
 
-All four land as one ledger row, **F-38**.
+```yaml
+- name: the source offer names this commit
+  run: |
+    page=$(curl --fail --silent http://127.0.0.1:8080/source)
+    grep --quiet --fixed-strings "${{ github.sha }}" <<<"$page"
+```
 
-## What the drill asserts, and the two gates worth defending
+The stamp travels from a build argument through an MSBuild property, an assembly attribute, a parse and
+a component. **Every link in that chain fails silently** — the page still renders, and it renders "Not
+recorded", which reads as a configuration choice rather than a defect. The commit appearing in the
+response is the one assertion a broken chain cannot satisfy. It doubles as a reachability check: no
+cookie is sent, so a regression that put the licence offer behind authentication fails here too.
 
-`scripts/restore_drill.sh` starts its own PostgreSQL container — distinct name, **no published port**
-(so it cannot collide with the live `127.0.0.1:5432`), **no volume** (so its data dies with it) —
-restores a real set into it, and tears it down in a trap.
+## Four design decisions worth being able to veto
 
-It never writes to the live database, and that argument is structural rather than a promise: there is
-exactly one connection target in the file, `scratch_query`, and it names `$SCRATCH` and nothing else.
-The only thing that goes near the live instance is `--from-live`, which delegates to `backup.sh`,
-which only reads.
+**The colophon is a sibling of the clock's `<footer>`, not a child.** `RestaurantClockFooter` owns that
+element and pins `ShouldRender() => false` because a script owns its text node after first paint.
+The two are rendered as a pair by both layouts and by nothing else, so they are *styled* as one bar —
+which is why `.app-footer`'s `padding-bottom` moved to the colophon along with the
+`env(safe-area-inset-bottom)`.
 
-**Gate C reads its expectations out of the migrations** — anchored `^CREATE TABLE x` / `^CREATE VIEW x`
-over `src/MyRestaurant.DataAccess/Migrations/*.sql`, which is 22 tables and 5 views today. A
-hard-coded list would have been easier and would rot on the first migration nobody remembered to
-extend it with. The parse also has the failure mode a hard-coded list does not: if the DDL is ever
-reformatted past those patterns, the gate reports **that** rather than silently passing on an empty
-expectation. Anything in the dump that no migration declares is reported too.
+**`/source` is on §3.5's exemption list.** The obligations pipeline stops a flagged principal *acting*
+until they have changed a password or enrolled an authenticator. That is not a reason to withhold the
+licence under which they are being shown a page — and the footer they are looking at links there, so
+the alternative is a visible dead link on the one page they can see.
 
-**Gate D reads DbUp's journal, because structural completeness is not the question this code asks.**
-At startup `SchemaMigrationRunner.IsUpToDate()` asks DbUp whether every embedded script has been
-applied and `/healthz/ready` answers from it, so a restored schema with a short `schemaversions` is one
-this code will try to migrate. Table name and shape verified against `dbup-postgresql`'s
-`PostgresqlTableJournal` — `schemaversions`, columns `schemaversionsid` / `scriptname` / `applied`,
-unqualified so it lands in `public`. The journal stores the embedded **resource** name, so a
-migration's file name is a *suffix* of its row rather than equal to it; the gate matches on the suffix
-for that reason.
+**There is no off switch, and the version is not hidden.** An offer with an off switch is not one. As
+for the version: the source is public, the tags are public, the digests are public, so concealing the
+number would protect nothing and break an offer that is supposed to name what it is offering.
 
-Gate E queries every §8.3 view — the one place in the schema where an object's correctness depends on
-nine others, and therefore what `--clean` is most plausibly able to break. Gate F is a row census,
-reported and never asserted: the only sensible count for a fresh instance is almost all zeros, and the
-only way to notice you have been faithfully backing up an empty database for a month is to be shown
-the numbers. Gate G is the key ring, and it is why a drill of a database-only set is not allowed to
-look like a pass.
+**The revision is text, not a link.** `{url}/tree/{revision}` would be the page guessing at the URL
+layout of a forge it has never been told the identity of. GitHub, GitLab, Gitea, cgit and Sourcehut do
+not agree, and a link that 404s is worse than a hash somebody can paste into `git checkout`.
 
-## The key ring's write direction, and why it is safe
+## Three things fixed in passing
 
-Reading it out is uncontroversial: `podman cp <web>:<dir>/. -` streams a tar through the engine's own
-archive API, so it works regardless of what is installed in the runtime image — no `tar` in the
-container, no helper image, no mount.
+**The specification's header said v1.1** while its own changelog already carried a v1.2 entry — Slice 16
+bumped one and not the other.
 
-Writing it back crosses the volume-ownership question that `:U` exists to answer, and that is why I
-nearly deferred it. It is safe for a checkable reason rather than a hopeful one:
-`mcr.microsoft.com/dotnet/aspnet:10.0` resolves to the Ubuntu-based variant, whose `runtime-deps`
-Dockerfile creates the `app` user at UID 1654 and **never issues `USER app`** — read out of
-`dotnet/dotnet-docker` — and this repository's `Containerfile` does not set `USER` either. **The
-application runs as root.** Root-owned key files in that directory are exactly what it writes there
-itself, so `podman cp` in either direction and on either engine cannot get the ownership wrong.
-`compose.yaml`'s `:U` is belt-and-braces, not load-bearing.
+**Every stage checkbox from 2 to 6 was unticked**, with Stage 2 still marked "in progress" through four
+completed milestones.
 
-The restore happens while `web` is stopped, which is not tidiness: Data Protection mints a fresh ring
-the first time it protects anything, so a ring dropped in after startup would sit beside one the
-application had already begun using.
-
-## Why the drill went into `boot-smoke` rather than its own job
-
-Everything a drill needs is already standing up there: a built image, a database DbUp has migrated,
-and a running application. A separate job would build the image a second time to answer one question.
-The job's **display name is unchanged**, so nothing keyed on the check name moves.
-
-The `curl http://127.0.0.1:8080/setup` step is load-bearing, and the reason is a detail that would
-otherwise have made Gate G meaningless: **Data Protection creates its first key the first time it
-protects anything, and `/healthz/ready` protects nothing.** On a freshly booted instance the key ring
-is an empty directory. `/setup` renders a form, which mints an antiforgery token, which mints the key.
-Without that step every CI run would report an empty ring and the gate would become noise.
-
-`POSTGRES_CONTAINER` and `WEB_CONTAINER` are set explicitly rather than discovered, because the runner
-generates the service container's name and because `backup.sh` now refuses to guess when more than one
-container matches — which is exactly what the drill's own scratch container causes seconds later.
-
-The set is deliberately **not** uploaded as an artifact: the `-dataprotection.tar` is key material in
-the clear. Throwaway in CI, but publishing one is not a habit worth forming, and `.gitignore` refuses
-it for the same reason.
-
-**CI runs the drill without `--strict` on this first landing.** Every FAIL gate still blocks; what
-`--strict` adds is that ignored `pg_restore` errors and an empty ring also fail, and neither number has
-been observed on a real run. Once a few runs report "pg_restore completed with no errors", tightening
-it is a one-word edit — and I would rather hand you a gate that goes green than one I guessed at.
+**`Home.razor` told every visitor the event explorer "arrives next"** — it shipped in M5. A landing page
+is the worst place in an application to carry a roadmap: it is the one text nobody re-reads and
+everybody sees.
 
 ## One documentation decision, stated so you can veto it
 
-`docs/REQUIREMENTS.md` is **untouched**, and that is a judgement call rather than an oversight.
+`REQUIREMENTS.md` moves to **rev 3**. This is the opposite call from Slice 16, which deliberately left
+the requirements untouched, and the difference is real. §15's key-ring sentence was **already the
+contract** and the code had failed to honour it — a defect fix at the mechanism level. Here, nothing
+previously said the running program must name itself or offer its source. `CONTRIBUTING.md` said a fork
+*owes* it and R§1 said the project is published under the AGPL, but neither is a requirement on the
+program's behaviour. **This is new intent, so the requirements move.**
 
-The atomic-documentation rule (R§10 · S§18) wants a behaviour change to land with its requirement
-edit. But §15's sentence *"the Data Protection keys volume must be backed up alongside the database"*
-was **already the contract**. Nothing here is new intent; the documents were right and the code did
-not do what they said. So this lands as a defect fix at the mechanism level — S§15 rewritten, S§16.4
-amended, O§6 rewritten with O§8 and O§14 following, F-38 entered — and no revision bump on the
-requirements. If you would rather see a rev 3 with an explicit recoverability bullet in R§8, that is a
-one-bullet edit and I will do it.
-
-One thing fixed in passing: O§14's first paragraph said CI "runs three gates" and listed three of
-four. `end-to-end` had been missing from it since Slice 2.
+If you would rather this landed as a mechanism-level fix with no revision bump, the edit is one bullet
+in R§8 and one line in the revision history; say so and I will pull it back out.
 
 ## Build and test
 
 ```bash
-bash -n scripts/backup.sh scripts/restore.sh scripts/restore_drill.sh
-shellcheck --severity=warning scripts/*.sh    # blocking gate — clean
-shellcheck --severity=style   scripts/*.sh    # advisory gate — also clean
-
 dotnet build
-#    expect: all seven projects succeed, 0 errors. No C# changed in this slice.
+#    expect: all seven projects succeed, 0 errors.
 
 dotnet test
-#    expect: 971 total, 0 failed, 957 succeeded, 14 skipped — UNCHANGED from Slice 15.
-#    Nothing here is an xUnit test, deliberately: the drill asserts on pg_dump/pg_restore
-#    round-tripping and on container plumbing, and Testcontainers is the wrong tool for that.
+#    expect: 996 total, 0 failed, 982 succeeded, 14 skipped.
+#    25 more facts than Slice 16: 16 in the new BuildInformationTests, 8 in RestaurantOptionsTests,
+#    1 InlineData in ObligationsEnforcementTests. No test moves in or out of the skipped column.
 
 bash scripts/ci_local.sh --with-all
 
-# the drill itself, against a live dev stack:
-bash run.sh --containers-only
-bash scripts/backup.sh --no-keys     # dev runs the app on the host: no container to read a ring from
-bash scripts/restore_drill.sh --no-keys
-#    expect: gates A-F pass, G skipped with a WARN, exit 0. Roughly 20-30s, most of it the
-#    scratch container's first-boot initdb.
+# then, before tagging, confirm the whole stamp chain on a real build:
+podman build --file Containerfile --tag myrestaurant_web:stamped \
+    --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" .
+#    boot it and open /source: it must name that commit, not "Not recorded".
 ```
 
-Note that `dotnet test` at Slice 15 was expected at **971 / 0 failed / 957 succeeded / 14 skipped** and
-I have not seen a run since. This slice moves no test either way, so whatever Slice 15's numbers
-actually were, they should be identical here.
+**Cutting the tag**, once the above is green:
+
+```bash
+# 1. VersionPrefix in Directory.Build.props is already 1.0.0. Confirm that is what you want.
+# 2. Tag and push:
+git tag --annotate v1.0.0 --message 'M6 complete'
+git push origin v1.0.0
+```
+
+`release.yml` re-runs every CI gate, derives `1.0.0` from the tag, passes it and the commit into the
+image build, publishes `ghcr.io/kusl/myrestaurant:1.0.0`, `:1.0` and `:sha-<commit>`, and opens a
+GitHub release. The `release-notes` job holds the only `contents: write` in either workflow.
 
 ## What was actually verified here
 
-No .NET SDK in the sandbox and no container engine either, so **none of the three scripts has been
-executed.** What was run:
+No .NET SDK in the sandbox and no container engine, so **nothing here has been compiled or executed.**
+What *was* run:
 
-- `bash -n` and `shellcheck` at both `--severity=warning` and `--severity=style` on all three scripts
-  — clean at both, which keeps `ci.yml`'s claim that every script in the tree is style-clean true.
-- A YAML parse of the edited `ci.yml`: four jobs, nine steps in `boot-smoke`.
-- The drill's pure-bash logic exercised against the **real** migration files: 22 tables and 5 views
-  parsed; `contains` verified safe on empty arrays under `set -u`; the generated census SQL inspected;
-  the journal suffix match and the ignored-error regex checked on both matching and non-matching input.
-- `pg_restore`'s exit-code contract read out of the PostgreSQL 17 source.
-- DbUp's journal table name and column shape read out of `dbup-postgresql`.
-- The container's default user established from the .NET image sources rather than assumed.
-- Every doc edit applied by exact-match replacement with an assertion that the anchor appears **exactly
-  once**, so nothing was edited by position. Section numbering in `OPERATIONS.md` and
-  `TECHNICAL_SPECIFICATION.md` re-checked afterwards: unchanged, so no cross-reference moved.
+- Brace, paren and bracket balance on every C#, Razor and CSS file touched.
+- A tag-balance parse of all five touched components, with Razor comments, `<style>` bodies and
+  `@code` blocks stripped first.
+- A YAML parse of both workflows: `ci.yml` is four jobs with **ten** steps in `boot-smoke` (was nine);
+  `release.yml` is three jobs.
+- The SDK's `Microsoft.NET.GenerateAssemblyInfo.targets` and `Microsoft.NET.DefaultAssemblyInfo.targets`
+  read out of `dotnet/sdk` — the SourceLink condition, and that `Version` falls back to `VersionPrefix`.
+- AGPL §13 read out of this repository's own `LICENSE`.
+- All eight GitHub Action majors in both workflows checked against the API: `checkout@v7`,
+  `setup-dotnet@v6`, `cache@v6`, `upload-artifact@v7`, `setup-buildx-action@v4`, `login-action@v4`,
+  `metadata-action@v6`, `build-push-action@v7`. All current. `release.yml` has never run; if one had
+  been wrong, the first tag is where it would have surfaced.
+- Every documentation edit applied by exact-match replacement with an assertion that the anchor appears
+  **exactly once**, so nothing was edited by position.
 
 ## Where to look if this breaks
 
-**`backup.sh` exits 2 in production.** The web container was not found, or
-`DATA_PROTECTION_KEYS_DIRECTORY` does not match its mount point. The database dump is fine and is
-already on disk; only the ring is missing.
+**The build fails on `BuildInformation`.** It uses `char.IsAsciiHexDigit` and a range expression; both
+are fine on net10.0. More likely is the `required` modifier interacting with an analyzer setting — the
+type mirrors `RestaurantOptions`, which already uses `required` throughout, so it should not.
 
-**`backup.sh` refuses with "more than one running container matches".** Something else on the host has
-`postgres` or `web` in its name, or a previous drill's scratch container survived (`--keep`, or a
-`SIGKILL`). It lists the candidates. `POSTGRES_CONTAINER=… WEB_CONTAINER=…` settles it.
+**`/source` renders "Not recorded" in production.** The image was built without
+`--build-arg SOURCE_REVISION=…`. The default `podman-compose --build` path does exactly that, and it is
+the honest answer — a locally built image genuinely does not know its commit. Pass the argument, or
+deploy the published image.
 
-**The drill fails Gate C with "read 0 table(s) and 0 view(s) out of the migrations".** A migration was
-reformatted past the anchored `CREATE TABLE x` / `CREATE VIEW x` patterns. Fix the patterns in the
-script — do not hard-code a list, which is the thing this gate exists to avoid.
+**CI's new step fails but the page looks fine in a browser.** Compare the rendered revision against
+`github.sha`. A truncated one means something abbreviated it before the page did; a missing one means
+the build argument did not reach `dotnet publish`, and the `echo "building MyRestaurant …"` line in the
+Containerfile's `RUN` is the first place that shows.
 
-**The drill fails Gate D with rows missing from `schemaversions`.** The dump predates a migration this
-tree now carries, which is the *expected* answer for an old dump: this code would migrate it forward at
-startup. A dump from a **newer** schema is the dangerous direction and fails fast on boot instead.
+**The footer looks wrong — a gap, or the clock crowded against the bottom.** `.app-footer`'s
+`padding-bottom` moved to `.app-colophon`. Those two are always rendered as a pair; if you add a layout
+that renders `<RestaurantClockFooter />` without `<AppColophon />`, that assumption breaks and the
+clock will sit flush against the viewport edge.
 
-**The drill fails Gate E on a view.** `pg_restore --clean` dropped or failed to recreate something a
-§8.3 view depends on. Gate B's ignored-error count in the same run is where the reason will be.
+**A person mid-obligation cannot reach `/source`.** `SourceRoutes.Source` did not make it into
+`ObligationsEnforcement.IsExemptPath`. There is a fact for exactly this.
 
-**The drill warns on Gate G with an empty ring.** Nothing has been protected yet on that instance. In
-CI that means the `/setup` render step did not do its job — check its output before anything else.
+**`release-notes` fails with a permissions error.** That job carries `contents: write` at job scope
+while the workflow default is `contents: read`. If the repository's Actions settings force read-only
+tokens, the job-level grant cannot override it — the setting is at Settings → Actions → Workflow
+permissions.
 
-**CI's `back up the booted instance` step fails.** `${{ job.services.postgres.id }}` did not resolve to
-something `docker exec` accepts, or `myrestaurant_web_ci` had already exited. `boot-smoke`'s existing
-readiness probe runs first and would normally have caught the second.
-
-**`restore.sh` exits 2 with "pg_restore ignored N errors".** Usually benign under `--clean --if-exists`
-— a `DROP` for something that was not there. It is surfaced rather than swallowed precisely because the
-count is small enough to be worth reading; `backup.sh` passes `--no-owner` at dump time to keep it that
-way.
+################################################################################

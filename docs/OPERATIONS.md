@@ -183,15 +183,23 @@ The restore drill lives in that job rather than one of its own because everythin
 
 CI deliberately does **not** use `compose.yaml`. The data-protection volume carries Podman's `:U` suffix — correct for the canonical rootless engine (ADR-0004) and rejected outright by Docker Compose — so the job uses a service-container PostgreSQL plus one `docker run --network host` instead. Same image, same environment variables, same readiness probe; the canonical stack stays the only compose file in the tree.
 
+`boot-smoke` also fetches `/source` with no cookie and fails unless the response names the commit the image was built from. That is the gate behind "Verifying what is actually running" below: the version an instance reports is checked on every push, so it is worth trusting.
+
 **Cutting a release.**
 
 ```bash
-scripts/ci_local.sh --with-smoke          # optional, but cheaper than a failed tag
-git tag --annotate v0.6.0 --message 'M6 slice 1'
-git push origin v0.6.0
+scripts/ci_local.sh --with-all            # optional, but far cheaper than a failed tag
 ```
 
-`.github/workflows/release.yml` re-runs the full CI workflow (it calls `ci.yml` rather than repeating it, so a tag is verified by exactly the gates a push is), and only then publishes to GitHub Container Registry:
+1. **Bump `VersionPrefix` in `Directory.Build.props`** to the version you are about to tag, and commit it. This is the number an *untagged* build reports; the pipeline overrides it from the tag, so skipping this step does not produce a wrong image — it produces a `main` that misreports itself between releases.
+2. Tag and push:
+
+```bash
+git tag --annotate v1.0.0 --message 'M6 complete'
+git push origin v1.0.0
+```
+
+`.github/workflows/release.yml` re-runs the full CI workflow (it calls `ci.yml` rather than repeating it, so a tag is verified by exactly the gates a push is), derives the version from the tag, passes it and the commit into the image build so the running container reports what the registry called it, publishes to GitHub Container Registry, and finally opens a release on the tag. The release step is downstream of the push and idempotent — re-running updates the note rather than failing — so a half-published release cannot advertise an image that is not there:
 
 - `ghcr.io/kusl/myrestaurant:0.6.0` — the exact version. **Use this in production.**
 - `ghcr.io/kusl/myrestaurant:0.6` — moves with each patch on that minor.
@@ -214,11 +222,45 @@ Then the upgrade in §12 becomes: back up, edit the pinned version in that one f
 
 If your compose implementation does not support `!reset`, delete the `build:` block by writing the whole `web` service out in the override instead. The images are public, so no registry login is needed to pull.
 
-**Verifying what is actually running.**
+**Verifying what is actually running.** Ask the application, not the host:
+
+```bash
+curl --silent https://your-domain.example/source | grep --after-context=3 'source-revision'
+```
+
+Every page's footer links to `/source`, which reports the version and the exact source revision the running binary was built from. That answer comes from inside the process — it survives a mislabelled image, a hand-edited `compose.override.yaml`, and a container somebody restarted from a tag that has since moved. It is also anonymous, so you can check it from a phone without signing in, and it is the answer CI verifies on every push.
+
+A build produced without a revision stamp — a local `podman build` with no arguments, for instance — says **"Not recorded"** rather than guessing. That is itself the useful signal: a production instance saying "Not recorded" did not come from the release pipeline.
+
+The container labels are a second opinion, from the outside:
 
 ```bash
 podman inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' myrestaurant_web_1
 podman inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' myrestaurant_web_1
 ```
 
-Those labels are stamped by `docker/metadata-action` at publish time, so they are trustworthy on a registry image and absent on one you built locally — which is itself a useful signal about where a container came from.
+Those are stamped by `docker/metadata-action` at publish time, so they are present on a registry image and absent on one you built locally. If the labels and `/source` disagree, believe `/source` — the labels describe the image somebody pushed, the page describes the code that is executing.
+
+`service.version` on every trace and metric carries the same string, so a latency change after a deployment is attributable to a build rather than to the weather.
+
+## 15. If you fork this — your obligations, and the one variable that meets them
+
+This program is AGPL-3.0-only. **§13 of that licence asks anyone who runs a *modified* version as a network service to offer its users the corresponding source.** Running this tree unmodified places you under no such obligation, and everything below is then a courtesy you get for free.
+
+If you *have* modified it — and forking is explicitly encouraged; `CONTRIBUTING.md` says so — the mechanism is already in the application and takes one variable:
+
+```bash
+RESTAURANT_SOURCE_URL=https://git.example.com/you/myrestaurant
+```
+
+Publish your modified source at that URL, and the footer of every page already links to a `/source` page that offers it, names the version, and names the revision. That is what §13 asks for.
+
+Three things worth knowing:
+
+- **`http` is accepted here**, unlike `RESTAURANT_PUBLIC_ORIGIN`. A Gitea on your LAN discharges the obligation perfectly well and the application will not refuse to boot over the scheme.
+- **Stamp your builds** or the offer cannot name a revision. Pass `--build-arg SOURCE_REVISION=$(git rev-parse HEAD)` to `podman build`, and `--build-arg VERSION=...` if you version your fork separately. Without them the page reports the version and "Not recorded", which is honest but less useful to the person asking.
+- **There is no setting that removes the offer.** That is deliberate. If you want it gone you have the source and the freedom to remove it — which is, precisely, the arrangement this licence exists to guarantee. Just be aware of what you are removing and from whom.
+
+None of this is legal advice; it is the mechanism. `LICENSE` is the text that governs.
+
+################################################################################

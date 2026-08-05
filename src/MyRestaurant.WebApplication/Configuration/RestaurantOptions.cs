@@ -28,6 +28,13 @@ public sealed class RestaurantOptions
     /// </summary>
     public static readonly IReadOnlyList<string> DefaultTrustedOriginPatterns = ["https://*.trycloudflare.com"];
 
+    /// <summary>
+    /// Where the unmodified program's source lives — the default for <c>RESTAURANT_SOURCE_URL</c>
+    /// (§11.9). A deployment that has not modified the program is accurate with this value; one that
+    /// has must point it at the modified source instead.
+    /// </summary>
+    public const string DefaultSourceUrl = "https://github.com/kusl/myrestaurant";
+
     /// <summary>Canonical value of <c>RESTAURANT_CLOCK_FORMAT</c> for <c>3:04 PM</c>.</summary>
     public const string TwelveHourClockFormat = "12-hour";
 
@@ -52,6 +59,19 @@ public sealed class RestaurantOptions
 
     public required string RestaurantName { get; init; }
     public required string PublicOrigin { get; init; }
+
+    /// <summary>
+    /// Where this instance's corresponding source is published (<c>RESTAURANT_SOURCE_URL</c>; §11.9,
+    /// F-39). Rendered on <c>/source</c>, which the colophon in every page's footer links to, so that
+    /// an operator who has modified the program discharges AGPL-3.0-only §13 by setting one variable
+    /// rather than by writing a page.
+    ///
+    /// <para>Not <c>required</c>, and defaulted to the upstream repository: an unmodified deployment
+    /// is telling the truth with that value, and a fork that forgets to change it is at least
+    /// pointing somewhere real while it is wrong. There is deliberately no way to switch the offer
+    /// off — see §11.9.</para>
+    /// </summary>
+    public string SourceUrl { get; init; } = DefaultSourceUrl;
 
     /// <summary>
     /// Additional browser origins that may act as the WebAuthn relying party, as wildcard patterns
@@ -95,6 +115,7 @@ public sealed class RestaurantOptions
             TimeZoneId = ReadString(configuration, "RESTAURANT_TIME_ZONE", "America/New_York"),
             ClockFormat = ReadString(configuration, "RESTAURANT_CLOCK_FORMAT", DefaultClockFormat),
             CurrencyCode = ReadString(configuration, "RESTAURANT_CURRENCY_CODE", "USD"),
+            SourceUrl = ReadString(configuration, "RESTAURANT_SOURCE_URL", DefaultSourceUrl),
             DatabaseConnectionString = ReadString(
                 configuration,
                 "RESTAURANT_DATABASE_CONNECTION_STRING",
@@ -141,6 +162,19 @@ public sealed class RestaurantOptions
         if (CurrencyCode.Length != 3 || !CurrencyCode.All(char.IsAsciiLetter))
         {
             errors.Add($"RESTAURANT_CURRENCY_CODE must be a 3-letter ISO 4217 code (was '{CurrencyCode}').");
+        }
+
+        // http is accepted here and nowhere else in this type, deliberately. RESTAURANT_PUBLIC_ORIGIN
+        // is https-only because WebAuthn requires a secure context and the authentication cookie is
+        // Secure; neither applies to an outbound link at which somebody else serves a repository. A
+        // fork operator running Gitea on a LAN over plain http is discharging §13 perfectly well, and
+        // refusing to start over it would be this application enforcing a taste as though it were a
+        // security property.
+        if (!Uri.TryCreate(SourceUrl, UriKind.Absolute, out Uri? sourceUrl)
+            || (!string.Equals(sourceUrl.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(sourceUrl.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)))
+        {
+            errors.Add($"RESTAURANT_SOURCE_URL must be an absolute http or https URL (was '{SourceUrl}').");
         }
 
         if (Argon2MemoryKibibytes < MinimumArgon2MemoryKibibytes)
@@ -294,3 +328,5 @@ public sealed class RestaurantOptions
         return bare.Length > 0 && !bare.Contains('*') && bare.Contains('.');
     }
 }
+
+################################################################################

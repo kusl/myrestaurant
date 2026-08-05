@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using MyRestaurant.Domain.Authentication;
+using MyRestaurant.WebApplication.Configuration;
 using MyRestaurant.WebApplication.Identity;
 using MyRestaurant.WebApplication.Time;
 using Xunit;
@@ -71,6 +72,12 @@ public sealed class ObligationsEnforcementTests
     // The footer wall clock's anchor (§11.7): the obligation pages render the footer too, and a
     // redirect to HTML would leave the one page a locked-out user is allowed to see with a dead clock.
     [InlineData(RestaurantClockRoutes.Snapshot)]
+    // The source offer (§11.9). The pipeline exists to stop a flagged principal ACTING until they
+    // have changed a password or enrolled an authenticator; it is not a reason to withhold the
+    // licence under which they are being shown the page. AGPL §13 offers the corresponding source to
+    // all users interacting with the program over a network, and somebody mid-pipeline is one — and
+    // the footer they are looking at links here, so the alternative is a visible dead link.
+    [InlineData(SourceRoutes.Source)]
     public void IsExemptPath_PipelinePagesSignOutHealthAndFrameworkAssets_AreExempt(string path)
     {
         Assert.True(ObligationsEnforcement.IsExemptPath(new PathString(path)));
@@ -166,3 +173,5 @@ public sealed class ObligationsEnforcementTests
         return new ClaimsPrincipal(identity);
     }
 }
+
+################################################################################

@@ -54,4 +54,33 @@
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
 
+  <!--
+    Identity of the built assemblies (TECHNICAL_SPECIFICATION §11.9, §12).
+
+    VersionPrefix is what an untagged build reports. `Version` defaults to it, `InformationalVersion`
+    defaults to `Version`, and the SDK writes the latter into AssemblyInformationalVersionAttribute —
+    which is where WebApplication/Configuration/BuildInformation reads it back out. The release
+    pipeline overrides Version from the git tag, so the two can disagree only on main between tags,
+    which is correct: a build off main is not the release, and saying so is the point.
+
+    The SDK will also append "+$(SourceRevisionId)" by itself, but only when
+    SourceControlInformationFeatureSupported is true — a property SourceLink sets and nothing else in
+    the SDK does. Rather than take a package dependency to obtain one string, the Containerfile passes
+    InformationalVersion explicitly from its VERSION and SOURCE_REVISION build arguments, and the
+    workflows fill those in from the tag and the commit. A build that was told neither reports its
+    version with no revision, and the /source page says as much rather than inventing one.
+
+    Bumping VersionPrefix is a step in the release procedure (OPERATIONS §14), not something CI does.
+  -->
+  <PropertyGroup>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <Product>MyRestaurant</Product>
+    <Company>MyRestaurant</Company>
+    <Authors>MyRestaurant</Authors>
+    <Description>Self-hosted, single-restaurant ordering system.</Description>
+    <Copyright>Copyright (C) 2026 the MyRestaurant authors</Copyright>
+  </PropertyGroup>
+
 </Project>
+
+################################################################################

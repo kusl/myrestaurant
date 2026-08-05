@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using MyRestaurant.Domain.Authentication;
+using MyRestaurant.WebApplication.Configuration;
 using MyRestaurant.WebApplication.Time;
 
 namespace MyRestaurant.WebApplication.Identity;
@@ -112,11 +113,18 @@ public static class ObligationsEnforcement
     /// <summary>
     /// True when <paramref name="path"/> stays reachable while an obligation is outstanding (§3.5:
     /// "no authenticated endpoint except sign-out and the pipeline pages themselves"). Health probes,
-    /// framework static assets, and the wall clock's anchor (§11.7) are also exempt — none of them
-    /// carries a user action, and the obligation pages themselves render the footer that asks for the
-    /// last of those. The Blazor circuit endpoint (<c>/_blazor</c>) is deliberately <b>not</b> exempt:
-    /// while a flag is set, interactive circuits are refused too, so an already-open tab cannot keep
-    /// acting.
+    /// framework static assets, the wall clock's anchor (§11.7), and the source offer (§11.9) are also
+    /// exempt — none of them carries a user action, and the obligation pages themselves render the
+    /// footer that links to the last two. The Blazor circuit endpoint (<c>/_blazor</c>) is deliberately
+    /// <b>not</b> exempt: while a flag is set, interactive circuits are refused too, so an already-open
+    /// tab cannot keep acting.
+    ///
+    /// <para>The source offer is on this list for a reason worth stating plainly rather than
+    /// inferring: the pipeline exists to stop a flagged principal from <em>acting</em> until they have
+    /// changed a password or enrolled an authenticator. It is not a reason to withhold the licence
+    /// under which they are being shown the page. AGPL-3.0-only §13 offers the corresponding source to
+    /// all users interacting with the program over a network, and a person mid-pipeline is one of
+    /// them.</para>
     /// </summary>
     public static bool IsExemptPath(PathString path)
         => path.StartsWithSegments(AccountRoutes.ForcedPasswordChange)
@@ -124,6 +132,7 @@ public static class ObligationsEnforcement
         || path.StartsWithSegments(AccountRoutes.SignOut)
         || path.StartsWithSegments(AccountRoutes.AccessDenied)
         || path.StartsWithSegments(RestaurantClockRoutes.Snapshot)
+        || path.StartsWithSegments(SourceRoutes.Source)
         || path.StartsWithSegments("/healthz")
         || path.StartsWithSegments("/_framework");
 
@@ -178,3 +187,5 @@ public static class ObligationsEnforcement
         => string.Equals(principal.FindFirstValue(claimType), "true", StringComparison.OrdinalIgnoreCase);
 }
 
+
+################################################################################

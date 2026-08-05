@@ -1,0 +1,53 @@
+@* The colophon (TECHNICAL_SPECIFICATION §11.9). One line under the wall clock, on every page, in
+   both layouts: what this build is, and a link to the offer of its source.
+
+   WHY IT IS ON EVERY PAGE rather than tucked into an "about" nobody visits. AGPL-3.0-only §13 says a
+   modified version "must prominently offer all users interacting with it remotely through a computer
+   network ... an opportunity to receive the Corresponding Source". This application is published so
+   that other people will run it, and CONTRIBUTING.md tells them their fork "owes its users the same"
+   — so the mechanism that discharges that obligation belongs in the program, set by one environment
+   variable, rather than left as a page each operator has to remember to write. A footer link on every
+   page is the customary reading of "prominently"; a link only a signed-in administrator can reach is
+   not an offer to all users, which is also why §3.5's obligations pipeline exempts the destination.
+
+   Note that the obligation binds whoever *modifies* the Program. An unmodified deployment of this
+   tree is not obliged to offer anything. Shipping the offer anyway costs one line and means the
+   operator who does modify it complies by changing RESTAURANT_SOURCE_URL to point at their fork,
+   instead of discovering the requirement afterwards. There is deliberately no switch to turn this
+   off: an offer with an off switch is not one, and an operator who genuinely wants it gone has the
+   source and the freedom to remove it — which is the whole arrangement.
+
+   WHY THE VERSION IS SHOWN. Two reasons, one operational and one legal. Operationally, "which build
+   is this box running?" had no answer obtainable from the running instance before this. Legally, §13
+   offers the Corresponding Source "of your version", and an offer that cannot name the revision is
+   approximate. The usual objection — that a version number tells an attacker which advisories to try
+   — does not survive contact with this project: the source is public, the tags are public, and the
+   image digests are public, so concealing the number here would protect nothing and break the offer.
+
+   No @rendermode: static SSR, like the layouts that host it. Nothing here changes after the first
+   paint, and a colophon that needed a circuit would be missing from exactly the surfaces that most
+   need to state what they are — a sign-in page, a paired tablet, a page rendered before a circuit has
+   started. *@
+
+<p class="app-colophon">
+    <span class="app-colophon-name">MyRestaurant</span>
+    <span class="app-colophon-version" title="@_informationalVersion">@_display</span>
+    <a class="app-colophon-link" href="@SourceRoutes.Source">Source code (AGPL-3.0-only)</a>
+</p>
+
+@code {
+    private string _display = string.Empty;
+    private string _informationalVersion = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        // Read once from the static rather than re-derived per render: it cannot change while the
+        // process lives, and the reflection behind it should not run on every page of every request.
+        BuildInformation build = BuildInformation.Current;
+        _display = build.Display;
+
+        // The title attribute carries the unabbreviated stamp, so an operator reading a screenshot
+        // over somebody's shoulder can get the full revision without opening the page it links to.
+        _informationalVersion = build.InformationalVersion;
+    }
+}

@@ -10,6 +10,12 @@
 #
 # Result: ghcr.io/<owner>/<repository>:0.6.0, :0.6, and :sha-<commit>. See docs/OPERATIONS.md §14
 # for how to deploy from the registry instead of building on the box.
+#
+# The tag is also what the image says about itself: `verify` proves the tree, then the version is
+# derived from the tag and the commit and passed into the build, so a running instance answers
+# /source with the same numbers the registry used (TECHNICAL_SPECIFICATION §11.9). Finally a GitHub
+# release is opened on the tag, because a published image with no release note is a thing people have
+# to reverse-engineer from a manifest.
 
 name: release
 
@@ -41,6 +47,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      version: ${{ steps.version.outputs.value }}
 
     steps:
       - name: check out the tag
@@ -55,6 +63,28 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Derived in a step rather than taken from metadata-action's outputs, because the image needs
+      # the bare version string as a build argument and reading it back out of a tag list is one more
+      # thing that can silently produce the wrong answer. Both values arrive through `env:` rather
+      # than being interpolated into the script body: a ref name is attacker-influencable on a fork,
+      # and `${{ }}` inside `run:` is textual substitution before the shell ever sees it.
+      - name: derive the version from the tag
+        id: version
+        env:
+          REFERENCE_NAME: ${{ github.ref_name }}
+          REFERENCE_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          if [ "$REFERENCE_TYPE" = 'tag' ]; then
+              version="${REFERENCE_NAME#v}"
+          else
+              # workflow_dispatch off a branch. Publishing 1.0.0 from an untagged branch would be a
+              # lie the registry then caches, so say what it actually is.
+              version="0.0.0-${REFERENCE_NAME//[^0-9A-Za-z.-]/-}"
+          fi
+          printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'the image will report version %s at revision %s\n' "$version" "${{ github.sha }}"
 
       - name: derive tags and labels
         id: metadata
@@ -83,6 +113,12 @@ jobs:
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
+          # What the running instance will say about itself (§11.9). Without these the published
+          # image reports Directory.Build.props' VersionPrefix and no revision at all — which is to
+          # say, every release would claim to be the same build.
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+            SOURCE_REVISION=${{ github.sha }}
 
       - name: summarize
         run: |
@@ -94,5 +130,69 @@ jobs:
               printf '%s\n' "${{ steps.metadata.outputs.tags }}"
               echo '```'
               echo
+              echo "Version: \`${{ steps.version.outputs.value }}\` at \`${{ github.sha }}\`."
+              echo "A running instance reports the same at \`/source\`."
+              echo
               echo "Pull with: \`podman pull ghcr.io/${{ github.repository }}:\${TAG}\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # -------------------------------------------------------------------------------------------------
+  # The release note. Separate from `image` and downstream of it, so a failed push cannot leave a
+  # release advertising an image that is not in the registry.
+  # -------------------------------------------------------------------------------------------------
+  release-notes:
+    name: publish release notes
+    needs: image
+    if: ${{ github.ref_type == 'tag' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # The only job in either workflow that writes anything to the repository. Scoped here rather
+      # than raised at the workflow level for that reason.
+      contents: write
+
+    steps:
+      - name: check out the tag
+        uses: actions/checkout@v7
+
+      # Idempotent on purpose: re-running a release (or dispatching one twice) should update the note
+      # rather than fail on "already exists". --verify-tag refuses to invent a tag that is not there,
+      # which is the one mistake worth being loud about.
+      - name: open or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.image.outputs.version }}
+        run: |
+          set -euo pipefail
+          notes="$(mktemp)"
+          {
+              echo "### Container image"
+              echo
+              echo '```bash'
+              echo "podman pull ghcr.io/${{ github.repository }}:${VERSION}"
+              echo '```'
+              echo
+              echo "Built from \`${{ github.sha }}\`, \`linux/amd64\`."
+              echo
+              echo "### Verifying what you are running"
+              echo
+              echo "Every page links to \`/source\` in its footer. That page reports this version and"
+              echo "revision, and offers the corresponding source under AGPL-3.0-only."
+              echo
+              echo "### Reading further"
+              echo
+              echo "- Deploying from the registry: \`docs/OPERATIONS.md\` §14"
+              echo "- What changed and why: \`docs/BUILD_PROGRESS.md\`"
+              echo "- Configuration: \`.env.example\` and \`docs/TECHNICAL_SPECIFICATION.md\` §13"
+          } > "$notes"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release edit "$TAG" --notes-file "$notes"
+              echo "updated the existing release for $TAG"
+          else
+              gh release create "$TAG" --title "$TAG" --notes-file "$notes" --verify-tag
+              echo "created the release for $TAG"
+          fi
+
+################################################################################

@@ -22,6 +22,7 @@ public sealed class RestaurantOptionsTests
         Assert.Equal(RestaurantOptions.TwelveHourClockFormat, options.ClockFormat);
         Assert.True(options.UsesTwelveHourClock);
         Assert.Equal("USD", options.CurrencyCode);
+        Assert.Equal(RestaurantOptions.DefaultSourceUrl, options.SourceUrl);
         Assert.Equal(65536, options.Argon2MemoryKibibytes);
         Assert.Equal(3, options.Argon2Iterations);
         Assert.Equal(60, options.TableJoinTokenRotationSeconds);
@@ -204,6 +205,42 @@ public sealed class RestaurantOptionsTests
     public void Validate_UnknownClockFormat_IsRejected(string clockFormat)
         => Assert.NotEmpty(Build(clockFormat: clockFormat).Validate());
 
+    // --- the source offer (§11.9, F-39) -----------------------------------------------------------
+
+    [Fact]
+    public void FromConfiguration_ReadsTheSourceUrl()
+    {
+        RestaurantOptions options = RestaurantOptions.FromConfiguration(ConfigurationWith(new()
+        {
+            ["RESTAURANT_SOURCE_URL"] = "https://git.example.com/someone/myrestaurant-fork",
+        }));
+
+        Assert.Equal("https://git.example.com/someone/myrestaurant-fork", options.SourceUrl);
+        Assert.Empty(options.Validate());
+    }
+
+    /// <summary>
+    /// http is accepted here and nowhere else. RESTAURANT_PUBLIC_ORIGIN is https-only because
+    /// WebAuthn needs a secure context and the authentication cookie is Secure; an outbound link to
+    /// somebody else's repository has neither property. A fork operator running a forge on a LAN over
+    /// plain http is discharging AGPL §13 perfectly well, and refusing to boot over it would be this
+    /// application enforcing a taste as though it were a security control.
+    /// </summary>
+    [Theory]
+    [InlineData("https://github.com/kusl/myrestaurant")]
+    [InlineData("http://gitea.lan:3000/restaurant/source")]
+    public void Validate_AbsoluteHttpOrHttpsSourceUrl_IsAccepted(string sourceUrl)
+        => Assert.Empty(Build(sourceUrl: sourceUrl).Validate());
+
+    [Theory]
+    [InlineData("")]                              // cleared rather than set
+    [InlineData("github.com/kusl/myrestaurant")]  // no scheme: a browser would resolve it relatively
+    [InlineData("/source")]                       // relative: points back at this instance, offering nothing
+    [InlineData("ftp://example.com/source.tar")]  // not something a browser will open
+    [InlineData("javascript:alert(1)")]           // absolute, and a link the footer would render
+    public void Validate_SourceUrlThatIsNotAnAbsoluteHttpUrl_IsRejected(string sourceUrl)
+        => Assert.NotEmpty(Build(sourceUrl: sourceUrl).Validate());
+
     [Fact]
     public void FromConfiguration_ReadsTheClockFormat()
     {
@@ -227,6 +264,7 @@ public sealed class RestaurantOptionsTests
         string timeZoneId = "America/New_York",
         string clockFormat = RestaurantOptions.DefaultClockFormat,
         string currencyCode = "USD",
+        string sourceUrl = RestaurantOptions.DefaultSourceUrl,
         string databaseConnectionString = "Host=localhost;Database=x;Username=u;Password=p",
         int kitchenReminderSeconds = 60,
         int rotationSeconds = 60,
@@ -245,6 +283,7 @@ public sealed class RestaurantOptionsTests
             TimeZoneId = timeZoneId,
             ClockFormat = clockFormat,
             CurrencyCode = currencyCode,
+            SourceUrl = sourceUrl,
             DatabaseConnectionString = databaseConnectionString,
             DataProtectionKeysDirectory = "/tmp/myrestaurant-keys",
             KitchenSubmissionReminderSeconds = kitchenReminderSeconds,
@@ -257,3 +296,5 @@ public sealed class RestaurantOptionsTests
             Argon2MaxConcurrentHashes = argon2MaxConcurrent,
         };
 }
+
+################################################################################

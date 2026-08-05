@@ -40,12 +40,14 @@ The scaffold and each subsequent milestone are written in an environment
 The work is split into six stages aligned to the spec's milestones (§19). Each
 stage is meant to leave the tree buildable and testable.
 
-- [x] **Stage 1 — M1: skeleton + pure Domain** *(built green: 139 passed, 28 skipped)*
-- [ ] **Stage 2 — M2: identity & accounts** *(in progress — identity data layer + Argon2id hasher, sign-in/authorization wiring, the password sign-in flow + obligations middleware, TOTP enrollment, passkeys, the first-administrator `/setup` bootstrap, and now the F-06a quick-tunnel passkey correction have landed; last verified local sweep: 336 passed, 15 skipped, 0 warnings — the F-06a slice adds pure unit tests only)*
-- [ ] **Stage 3 — M3: tables & joining**
-- [ ] **Stage 4 — M4: ordering**
-- [ ] **Stage 5 — M5: counter & administration**
-- [ ] **Stage 6 — M6: hardening**
+- [x] **Stage 1 — M1: skeleton + pure Domain**
+- [x] **Stage 2 — M2: identity & accounts** *(plus the close-out that added the profile page — F-35)*
+- [x] **Stage 3 — M3: tables & joining**
+- [x] **Stage 4 — M4: ordering** *(plus the close-out that made `RESTAURANT_TIME_ZONE` true on every surface — F-36)*
+- [x] **Stage 5 — M5: counter & administration**
+- [x] **Stage 6 — M6: hardening** *(CI, the full §16.3 end-to-end suite, guest registration — F-37, the backup/restore drill — F-38, and the close-out that stamped the build and shipped the source offer — F-39)*
+
+**All six stages are complete.** These boxes went unticked for four milestones, which is worth one sentence rather than a silent correction: each stage was finished in its own slice and the summary at the top of the file was never the thing anybody read, so nobody noticed. It is the same failure mode as F-35 and F-37 in miniature — a claim nobody was checking — and the honest fix is to check it here, once, at the release.
 
 ### A note on `run.sh` and quick-tunnel URLs (updated by F-06a)
 
@@ -5754,3 +5756,191 @@ runbooks (M5), CI pipeline (Slice 1), guest registration (Slice 5).
 
 The next move is not a slice, it is a **release**: `scripts/ci_local.sh --with-all`, a drill against the real
 stack, then a tag. `Stage 6 — M6: hardening` can have its checkbox.
+
+################################################################################
+
+## M6 close-out — the release: what the program says about itself, and to whom
+
+Slice 16 ended with "What is left in M6: **Nothing**. The next move is not a slice, it is a release."
+That was true of the feature list and false of the tree, and the gap only became visible by reading the
+repository against *what a tag would make true* rather than against §19. Publishing changes who the
+audience is, and two questions that had obvious answers while one person ran one instance stop having
+them the moment somebody else can `podman pull` the thing:
+
+- **Which build is this box running?** Nothing stamped a version. `Directory.Build.props` set no
+  `VersionPrefix`, so every assembly reported the SDK's default `1.0.0`; `Program.cs` called
+  `AddService(serviceName: "myrestaurant")` with no `serviceVersion`, so every trace and metric left
+  the process unversioned; and no surface reported a build at all. The only answer available was
+  "whatever the person who deployed it typed", which is not an answer, it is a memory.
+
+- **Where is the source?** R§1 says the project is published *"so anyone may run their own copy under
+  the AGPL"*, and `CONTRIBUTING.md` has told forks since rev 1 that *"your fork owes its users the
+  same"*. AGPL-3.0-only §13 asks a **modified** version to prominently offer its users the
+  corresponding source. Nothing in the application made that dischargeable, so a fork operator
+  complied by writing a page from scratch or — far more likely — not at all.
+
+Both land here, together, because they are one thing: §13 offers the source *of the version being
+interacted with*, so an offer that cannot name a revision is approximate. Both land **before** the tag
+rather than after it, because the first tag is the version people cite.
+
+This is **F-39**, and it is the same shape as F-35 and F-37 — a capability the surrounding documents
+assumed and §19's build order never claimed. Unlike those two, it was not found by somebody trying to
+use the thing. It was found by the pre-publication read, which is the first time that habit produced
+anything, and is therefore worth writing down as a habit.
+
+### The colophon and `/source`
+
+`AppColophon.razor` renders one quiet line beneath the wall clock — product, version, and a link
+reading *"Source code (AGPL-3.0-only)"* — on every page, in both layouts. `Source.razor` is the
+destination: version, revision, licence, and the URL the operator publishes at.
+
+Four decisions inside that, each with a reason rather than a preference:
+
+**It is a sibling of the clock's `<footer>`, not a child.** `RestaurantClockFooter` owns that element
+and pins `ShouldRender() => false` because a script owns its text node after first paint; putting
+markup inside it would mean reasoning about that. The two are rendered as a pair by both layouts and by
+nothing else, so they can be *styled* as one bar: the clock keeps the border and the background, the
+colophon takes over the bottom padding and the `env(safe-area-inset-bottom)` that keeps it clear of a
+notched handset's home indicator. `.app-footer`'s `padding-bottom` moved for that reason and no other.
+
+**`/source` is on §3.5's exemption list.** The obligations pipeline exists to stop a flagged principal
+*acting* until they have changed a password or enrolled an authenticator. It is not a reason to
+withhold the licence under which they are being shown a page — and the footer they are looking at links
+there, so the alternative is a visible dead link on the one page they are allowed to see.
+
+**There is no off switch.** An offer with an off switch is not one. An operator who wants it gone has
+the source and the freedom to remove it, which is precisely the arrangement the licence exists to
+guarantee.
+
+**The revision is text, not a link.** Composing `{url}/tree/{revision}` would be the page guessing at
+the URL layout of a forge it has never been told the identity of. GitHub, GitLab, Gitea, cgit and
+Sourcehut do not agree, and a link that 404s is worse than a hash somebody can paste into
+`git checkout`.
+
+### The stamp, and the SourceLink trap
+
+The obvious implementation is `-p:SourceRevisionId=$SHA` and let the SDK append it. **That silently does
+nothing.** `AddSourceRevisionToInformationalVersion` in `Microsoft.NET.GenerateAssemblyInfo.targets` is
+conditioned on `SourceControlInformationFeatureSupported`, and a search of `dotnet/sdk` finds that
+property in exactly two files — that target and its own test. SourceLink sets it. Nothing else does.
+Read out of the SDK source rather than recalled, because the failure mode is a build that succeeds and
+a page that quietly reports "Not recorded" forever.
+
+So the `Containerfile` passes `InformationalVersion` explicitly:
+
+```dockerfile
+ARG VERSION=1.0.0
+ARG SOURCE_REVISION=
+RUN INFORMATIONAL_VERSION="${VERSION}${SOURCE_REVISION:++${SOURCE_REVISION}}" \
+    && dotnet publish … /p:Version="${VERSION}" /p:InformationalVersion="${INFORMATIONAL_VERSION}"
+```
+
+`${SOURCE_REVISION:+…}` expands to `+<revision>` only when the argument is set and non-empty, so an
+unstamped build produces a clean `1.0.0` rather than a trailing `+` that the parser would have to treat
+as a revision it does not have. A package dependency to obtain one string was the worse trade.
+
+`BuildInformation` parses it back out and is the only reader. Its rules, and why each is a rule:
+
+- **Everything after the first `+` is the revision.** SemVer allows dot-separated metadata and the
+  SDK's own target appends `.$(SourceRevisionId)` when a `+` is already present, so two segments means
+  two facts were stamped; dropping either would be the parse forming an opinion about which mattered.
+- **A prerelease label stays with the version.** Splitting on the wrong character turns `1.1.0-rc.1`
+  into `1.1.0` and publishes a release candidate claiming to be the release.
+- **Not recorded is a real answer.** No revision renders as text saying so — never a guess, never an
+  empty `<code>` element. It is the one field somebody would act on, and a production instance
+  reporting "Not recorded" is itself the useful signal that it did not come from the pipeline.
+- **A non-hexadecimal revision is not abbreviated.** A fork may stamp a tag or a build number, and
+  truncating `nightly-2026-08-04` to seven characters would be this code assuming everyone uses git.
+
+The same string becomes OpenTelemetry's `service.version` — the full informational version, not the
+semver, because the question a collector is asked after a deployment is *which build changed* and two
+builds of one tag are indistinguishable without the revision.
+
+### The gate, which is the part that will still be true in a year
+
+F-38's lesson was *a row in the embodiment column should name something executable*. This is the first
+opportunity to apply it unprompted, so:
+
+```yaml
+- name: the source offer names this commit
+  run: |
+    page=$(curl --fail --silent http://127.0.0.1:8080/source)
+    grep --quiet --fixed-strings "${{ github.sha }}" <<<"$page"
+```
+
+The stamp travels from a build argument through an MSBuild property, an assembly attribute, a parse and
+a component. **Every link in that chain fails silently** — the page still renders, and it renders "Not
+recorded", which reads as a configuration choice rather than a defect. The commit appearing in the
+response is the one assertion a broken chain cannot satisfy. It also doubles as a reachability check:
+no cookie is sent, so a regression that put the licence offer behind authentication fails here.
+
+It lives in `boot-smoke` for the same reason the restore drill does — a built image and a booted
+instance are already standing up there.
+
+### The release pipeline, now that a tag means something
+
+`release.yml` gained three things. The version is **derived from the tag** in a step of its own rather
+than read back out of `metadata-action`'s tag list, and both the ref name and ref type arrive through
+`env:` rather than being interpolated into the script body — a ref name is attacker-influencable on a
+fork, and `${{ }}` inside `run:` is textual substitution before the shell ever sees it. That version
+and the commit are **passed into the image build**, so the container reports what the registry called
+it. And a **GitHub release** is opened on the tag by a downstream job holding the only `contents:
+write` in either workflow, idempotent so a re-run updates the note instead of failing on "already
+exists".
+
+All eight action majors in both workflows were checked against the GitHub API rather than assumed —
+`checkout@v7`, `setup-dotnet@v6`, `cache@v6`, `upload-artifact@v7`, `setup-buildx-action@v4`,
+`login-action@v4`, `metadata-action@v6`, `build-push-action@v7`. All current. `release.yml` has never
+run; if one of them had been wrong, the first tag is where it would have surfaced.
+
+### Two things fixed in passing
+
+**The specification's header said v1.1** while its own changelog already carried a v1.2 entry — Slice 16
+bumped one and not the other. The header now says what the changelog says.
+
+**Every stage checkbox from 2 to 6 was unticked**, with Stage 2 still marked "in progress" through four
+completed milestones. Each stage was finished in its own slice and the summary at the top of this file
+was never the thing anybody read. Same failure mode as F-35 in miniature: a claim nobody was checking.
+
+### One documentation decision, stated so it can be vetoed
+
+`REQUIREMENTS.md` moves to **rev 3** with one new §8 principle. This is the opposite call from Slice 16,
+which deliberately left the requirements untouched, and the difference is real: §15's key-ring sentence
+was *already the contract* and the code had failed to honour it, so that was a defect fix at the
+mechanism level. Here nothing previously said the running program must name itself or offer its source.
+`CONTRIBUTING.md` said a fork *owes* it, R§1 said the project is published under the AGPL — but neither
+is a requirement on the program's behaviour. This is new intent, so the requirements move.
+
+### Build and test
+
+```bash
+dotnet build
+#    expect: all seven projects succeed, 0 errors.
+
+dotnet test
+#    expect: 996 total, 0 failed, 982 succeeded, 14 skipped — 25 more facts than Slice 16.
+#    16 in the new BuildInformationTests, 8 in RestaurantOptionsTests (the source URL, and the
+#    five shapes that must be refused), 1 InlineData in ObligationsEnforcementTests.
+
+bash scripts/ci_local.sh --with-all
+
+# then, before tagging, confirm the stamp end to end on a real build:
+podman build --file Containerfile --tag myrestaurant_web:stamped \
+    --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" .
+#    boot it and open /source: it must name that commit, not "Not recorded".
+```
+
+No .NET SDK in the sandbox, so nothing here has been compiled. What *was* run: brace, paren and bracket
+balance on every C#, Razor and CSS file; a tag-balance parse of all four touched components with Razor
+comments, `<style>` bodies and `@code` blocks stripped; a YAML parse of both workflows (four jobs and
+ten `boot-smoke` steps in `ci.yml`, three jobs in `release.yml`); the SDK's version targets read out of
+`dotnet/sdk` to establish the SourceLink condition and that `Version` falls back to `VersionPrefix`;
+AGPL §13 read out of this repository's own `LICENSE` rather than recalled; the eight action majors
+checked against the GitHub API; and every documentation edit applied by exact-match replacement with an
+assertion that the anchor appears exactly once, so nothing was edited by position.
+
+### What is left
+
+The tag. `Stage 6 — M6: hardening` has its checkbox; so does every stage above it.
+
+################################################################################

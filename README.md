@@ -8,16 +8,21 @@ the kitchen and counter work from live boards, and everything runs on one small 
 Cloudflare tunnel. Blazor Server over PostgreSQL, no external runtime dependencies beyond the
 database and the tunnel.
 
-**Milestones 1 through 5 are complete**, which means the product is feature-whole: identity and
-accounts, table administration and rotating join QR codes, paired table displays, the living order
-with its locking protocol, the kitchen and counter boards, billing and settlement, menu management,
-and the administration surfaces including the cross-log event explorer. **Milestone 6 (hardening)**
-is in progress — continuous integration has landed, and so has the Playwright end-to-end harness
-with eight of the fifteen §16.3 scenarios implemented against a real browser. Building those
-scenarios turned up one genuine product gap and closed it: guests can now self-register at
-`/register`, which the requirements had mandated since rev 2 and no page had ever provided. The
-remaining seven scenarios and an executable backup/restore drill are what is left. See *Roadmap* and
-`docs/BUILD_PROGRESS.md`.
+**All six milestones are complete.** Identity and accounts, table administration with rotating join
+QR codes, paired table displays, the living order and its locking protocol, the kitchen and counter
+boards, billing and settlement, menu management, the cross-log event explorer — and then the
+hardening milestone: continuous integration, all fifteen §16.3 end-to-end scenarios running against a
+real browser, and a backup/restore drill that CI rehearses on every push rather than a runbook nobody
+has executed.
+
+Two product gaps surfaced during that milestone and were closed rather than noted. Writing the
+end-to-end scenarios found that guests had nowhere to self-register despite the requirements having
+mandated it since rev 2, so `/register` exists. Executing the restore procedure for the first time
+found that it could not have completed — and that nothing had ever backed up the Data Protection key
+ring, so every backup ever taken would have restored the accounts and none of their enrolled
+authenticators. Both are in `docs/DOCUMENTATION_REVIEW.md` as F-37 and F-38.
+
+See *Roadmap* and `docs/BUILD_PROGRESS.md`.
 
 ## Layout
 
@@ -126,7 +131,7 @@ port, and a browser context with a CDP WebAuthn virtual authenticator. Nothing i
 scenarios, so they can run in any order — which matters, because scenario 1 needs a database with no
 administrator and scenario 13 needs one with an administrator who has both a passkey and TOTP.
 
-Eight of the fifteen are implemented:
+All fifteen are implemented:
 
 | # | What it proves |
 | --- | --- |
@@ -134,13 +139,17 @@ Eight of the fifteen are implemented:
 | 2 | a display pairs and its QR advances across a rotation boundary |
 | 3 | a guest scans, self-registers with a passkey, and joins *after* the code they scanned has expired |
 | 4 | a guest stages two adds and a note, sends, and the kitchen gets exactly one alert with both lines pending |
+| 5 | a second guest joins on a fresh token and sees the first guest's order live; the roster updates both ways |
 | 6 | the kitchen marks one line away and the guest's own screen re-badges it |
+| 7 | removing a fulfilled line rejects the whole batch with a per-operation reason; removing a pending one succeeds |
+| 8 | a send left unfulfilled past the threshold produces exactly one reminder, not a stream |
+| 9 | the counter adjusts a price with a reason and the guest sees old → new with that reason |
+| 10 | the counter closes with a pending-line warning; the table flips to settled read-only and the totals match |
+| 11 | a guest hides a closed order, staff and admin views are unchanged, and an administrator finds and unhides it |
+| 12 | an admin reset forces password change then TOTP re-enrollment — on the passkey path too |
 | 13 | a passkey sign-in of a TOTP-enrolled person is not challenged for a code |
 | 14 | the join-token window arithmetic as a guest experiences it |
 | 15 | rotating a join secret kills every outstanding QR while the paired display recovers by itself |
-
-The other seven — 5, 7, 8, 9, 10, 11 and 12 — are named, skipped placeholders whose skip reason says
-what each is waiting on.
 
 Scenario 3 is the one that earns its runtime. §16.3 words it *"registers with passkey (slowly — grant
 outlives token)"*, and that parenthetical is the entire reason the §4.4 join grant exists. The
@@ -188,14 +197,17 @@ Every push and pull request against `main` runs four gates (`.github/workflows/c
 | --- | --- |
 | `shell-scripts` | every tracked `*.sh` parses under `bash -n` and passes shellcheck |
 | `build-and-test` | a Release build with **warnings escalated to errors**, then all ~970 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
-| `boot-smoke` | the production `Containerfile` builds, and the resulting image boots against a real PostgreSQL until `/healthz/ready` answers 200 |
-| `end-to-end` | the §16.3 scenarios in Chromium against the built application, with `MYRESTAURANT_E2E=1` |
+| `boot-smoke` | the production `Containerfile` builds, the image boots against a real PostgreSQL until `/healthz/ready` answers 200, `/source` names the commit it was built from, and then that instance is backed up and the backup is put through a full restore drill |
+| `end-to-end` | all fifteen §16.3 scenarios in Chromium against the built application, with `MYRESTAURANT_E2E=1` |
 
 That third gate is the one worth understanding. `/healthz/ready` returns 200 only once DbUp has
 applied every migration and the composition root has resolved, so it catches the class of failure no
 unit test sees: a missing DI registration, a migration that conflicts against a genuinely empty
 database, a configuration default the validator rejects. Those do not break a build — they break a
-deployment.
+deployment. The same job then proves the instance's data comes back: `scripts/backup.sh` takes a real
+recovery set off it, and `scripts/restore_drill.sh` restores that set into a scratch container it
+creates and destroys, gating the archive, the restore, every relation the migrations declare, DbUp's
+journal, all five projection views, and the Data Protection key ring.
 
 Run the same gates locally before pushing:
 
@@ -254,11 +266,51 @@ must persist, and never bootstrap a real instance through a quick tunnel.
 
 ## Backups
 
-`scripts/backup.sh` writes a `pg_dump -Fc` archive to `BACKUP_DIRECTORY` and prunes to
-`BACKUP_RETENTION_COUNT`; schedule it at `BACKUP_SCHEDULE_TIME` with a systemd timer or cron.
-`scripts/restore.sh <dump>` stops the web app, restores, and starts it again (startup migrations then
-verify the schema). Back up the Data Protection keys volume alongside the database — without it,
-TOTP secrets and auth cookies are unrecoverable.
+**A recovery set is two files, not one.** `scripts/backup.sh` writes a `pg_dump -Fc` archive *and* a
+tar of the Data Protection key ring, sharing one timestamp, to `BACKUP_DIRECTORY`, then prunes whole
+sets to `BACKUP_RETENTION_COUNT`. Schedule it at `BACKUP_SCHEDULE_TIME` with a systemd timer or cron.
+Without the key ring a restore brings back every account and **no enrolled authenticator** — the TOTP
+secrets are encrypted with it.
+
+`scripts/restore.sh <dump>` verifies the archive, stops the web app, restores the database, puts the
+key ring back, and restarts the app from an `EXIT` trap so it comes back on every path out of the
+script including the failing ones. `scripts/restore_drill.sh` rehearses the whole thing
+non-destructively against a scratch container it creates and destroys — it never touches the live
+database. CI runs the drill on every push.
+
+All of this is `docs/OPERATIONS.md` §6. It reads the way it does because the procedure was executed
+for the first time in Slice 16 and four defects fell out of the attempt (F-38); the shape of those
+defects is the argument for why a recovery procedure nobody runs is a hypothesis.
+
+## Knowing what you are running, and where the source is
+
+Every page's footer carries one quiet line: the product name, the running version, and a link to
+`/source`. That page is anonymous and reports the version, the exact source revision the binary was
+built from, and the licence — so the answer to *"which build is on that box?"* comes from inside the
+process rather than from whoever deployed it, and survives a mislabelled image or a tag that has since
+moved. The same string is OpenTelemetry's `service.version`, so a latency change after a deploy is
+attributable to a build. A build produced without a revision stamp says **"Not recorded"** rather than
+guessing, which is itself a signal: a production instance saying that did not come from the release
+pipeline.
+
+CI proves it: `boot-smoke` fetches `/source` with no cookie and fails unless the response names the
+commit the image was built from. The stamp travels through a build argument, an MSBuild property, an
+assembly attribute, a parse and a component, and every one of those links fails *silently* — the page
+still renders, it just renders "Not recorded".
+
+**If you fork this and run it as a network service,** AGPL-3.0-only §13 asks you to offer your users
+the corresponding source of *your* version. The mechanism is already here and takes one variable:
+
+```bash
+RESTAURANT_SOURCE_URL=https://git.example.com/you/myrestaurant
+```
+
+Publish your modified source there and the footer link already offers it. Stamp your builds with
+`--build-arg SOURCE_REVISION=$(git rev-parse HEAD)` so the offer can name a revision. `http` is
+accepted for this one setting — a Gitea on your LAN discharges the obligation perfectly well. There is
+deliberately no setting that removes the offer; if you want it gone, you have the source and the
+freedom to remove it, which is the arrangement. Details in `docs/OPERATIONS.md` §15, and none of it is
+legal advice — `LICENSE` is the text that governs.
 
 ## First-build checklist
 
@@ -310,6 +362,11 @@ scripts/ci_local.sh --with-all
   an anonymous caller cannot ask for unbounded Argon2id work, and §3.2's process-wide hashing
   semaphore. `/display/pair` is the only limited endpoint (§4.2, 5/min/IP), and adding a second
   policy naively would hijack its rejection message — see `docs/TECHNICAL_SPECIFICATION.md` §17.
+- **The source offer has no off switch, and the version is not hidden.** A version number on every
+  page is sometimes objected to as telling an attacker which advisories to try. That objection does
+  not survive contact with this project: the source is public, the tags are public, the image digests
+  are public, and concealing the number here would protect nothing while breaking an offer that is
+  supposed to name the version it offers the source of.
 - **Container images are `linux/amd64` only.** The release pipeline does not emulate arm64: the
   `Containerfile` runs `dotnet publish` in its build stage, and doing that under QEMU is slow enough
   to risk a timeout. An arm64 image wants a cross-compiled publish rather than an emulated one
@@ -333,10 +390,11 @@ scripts/ci_local.sh --with-all
 - ✔ **M5** — counter & administration: bills, price adjustment with reason, close & settle,
   end-of-day, the counter fallback QR, menu management with its event log, the cross-log event
   explorer, hide/unhide, and post-close corrective events.
-- **M6** — hardening *(in progress)*: ✔ the CI pipeline and publish-on-tag; ✔ the Playwright
-  harness and §16.3 scenarios 1, 13 and 14; ✔ scenarios 2 and 15, the display's rotating QR across a
-  window boundary and its recovery after a join-secret rotation; ✔ the display's own refresh
-  schedule, extracted and unit-tested; ✔ guest self-registration at `/register` and scenario 3, the
-  grant outliving the token it was issued for; ✔ scenarios 4 and 6, the first to watch a live update
-  cross between two circuits; still to come, the other seven scenarios and an executable
-  backup/restore drill.
+- ✔ **M6** — hardening: the CI pipeline and publish-on-tag; the Playwright harness and all fifteen
+  §16.3 scenarios against a real browser; guest self-registration at `/register` (F-37); the
+  backup/restore drill, rehearsed by CI on every push rather than written down as a procedure
+  (F-38); and the close-out that stamped the build and shipped the source offer (F-39).
+
+Every milestone is complete. What follows is maintenance and whatever the restaurant asks for next.
+
+################################################################################

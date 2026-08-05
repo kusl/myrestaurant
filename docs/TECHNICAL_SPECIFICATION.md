@@ -1,8 +1,8 @@
 # myrestaurant — Technical Specification
 
-**Version 1.1 — 2026-08-02 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
+**Version 1.3 — 2026-08-04 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
-This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md` (rev 2). It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. The decisions register in Appendix A maps every ruling to its embodiment.
+This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md` (rev 3). It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. The decisions register in Appendix A maps every ruling to its embodiment.
 
 ---
 
@@ -767,12 +767,36 @@ That asymmetry is §3.3's rule made structural: a passkey is always offered, nev
 
 No TOTP step (§3.4 pairs the authenticator with the password path for staff) and no role — a guest is the *absence* of a grant (§3.7), so nothing touches `person_role`. The account commits in one transaction — `person`, the optional `passkey_credential`, and a `security_event` with a **NULL actor**, this being a self-action, exactly as the bootstrap records itself.
 
+### 11.9 The colophon and `/source` (every page, both layouts)
+
+**The colophon** is one quiet line beneath the §11.7 wall clock, rendered by both layouts on every page: the product name, the running version, and a link to `/source` reading *"Source code (AGPL-3.0-only)"*. It is a sibling of the clock's `<footer>` rather than a child of it, because that element belongs to a component whose re-rendering is pinned off; the pair is styled as one bar and the colophon carries the bottom padding and the safe-area inset.
+
+**`/source`** is anonymous, static SSR, and on §3.5's exemption list. It states the version, the source revision, the licence, and the URL at which the operator publishes the corresponding source (`RESTAURANT_SOURCE_URL`, §13).
+
+**Why the program offers its own source.** AGPL-3.0-only §13 requires a **modified** version to *"prominently offer all users interacting with it remotely through a computer network … an opportunity to receive the Corresponding Source of your version by providing access to the Corresponding Source from a network server at no charge"*. An unmodified deployment of this tree therefore owes nothing, and this page is a courtesy for it. But this project is published so that other people will run it, and `CONTRIBUTING.md` has told them since rev 1 that a fork *"owes its users the same"* — so the mechanism belongs **in the program**, discharged by setting one environment variable, rather than left as a page each operator must remember to write. A footer link on every page is the customary reading of *prominently*; a link only an administrator can reach is not an offer to all users, which is also why the destination is exempt from the obligations pipeline (§3.5): the pipeline exists to stop a flagged principal **acting**, not to withhold the licence under which they are being shown a page.
+
+There is deliberately **no setting that turns the offer off.** An offer with an off switch is not one, and an operator who genuinely wants it gone has the source and the freedom to remove it — which is the entire arrangement.
+
+**The build stamp.** `Directory.Build.props` sets `VersionPrefix`; the `Containerfile` takes `VERSION` and `SOURCE_REVISION` build arguments and passes `InformationalVersion` (`version` or `version+revision`) to `dotnet publish`; `WebApplication/Configuration/BuildInformation` parses that attribute back out at runtime and is the only reader of it. The value also becomes OpenTelemetry's `service.version` (§12).
+
+Three normative details:
+
+- **Everything after the first `+` is the revision.** SemVer allows dot-separated build metadata, and the SDK's own `AddSourceRevisionToInformationalVersion` appends `.$(SourceRevisionId)` when a `+` is already present — so a second segment means two facts were stamped and discarding either would be the parse forming an opinion.
+- **An unstamped build must say so.** No revision renders as *"Not recorded"*, never as a guess and never as an empty element. This is the one field somebody would act on.
+- **`SourceRevisionId` alone does nothing.** The SDK's `AddSourceRevisionToInformationalVersion` target is conditioned on `SourceControlInformationFeatureSupported`, which **SourceLink** sets and nothing else in the SDK does. Passing `InformationalVersion` explicitly is deliberate — a package dependency to obtain one string is a worse trade than four lines of `Containerfile`.
+
+`RESTAURANT_SOURCE_URL` validates as an **absolute http or https URL**. http is accepted here and nowhere else in `RestaurantOptions`: `RESTAURANT_PUBLIC_ORIGIN` is https-only because WebAuthn needs a secure context and the authentication cookie is `Secure`, and neither property applies to an outbound link at which somebody else serves a repository. A fork operator running a forge on a LAN over plain http is discharging §13 perfectly well.
+
+The revision is rendered as text, never composed into `{url}/tree/{revision}`: GitHub, GitLab, Gitea, cgit and Sourcehut do not agree on that path, and a link that 404s is worse than a hash somebody can paste into `git checkout`.
+
 ## 12. Observability
 
 
 OpenTelemetry traces (ASP.NET Core + Npgsql instrumentation), logs, and metrics via OTLP (`OTEL_EXPORTER_OTLP_ENDPOINT` etc.; `run.sh` translates a legacy `UPTRACE_DSN` if present — any OTLP collector works). Custom meters (full snake_case):
 
 `guest_submission_batches_total` · `order_lines_added_total` · `order_lines_removed_total` · `order_lines_fulfilled_total` · `kitchen_reminders_sent_total` · `sittings_closed_total` · `table_join_tokens_validated_total{result}` · `sign_ins_total{method=password|passkey, result=succeeded|failed}` · `password_hash_duration_milliseconds` (histogram). Health: `/healthz/live` (process up), `/healthz/ready` (DB reachable + migrations current); compose healthchecks target these.
+
+The resource carries `service.name = myrestaurant` and **`service.version` = the full informational version** (`1.0.0+3f2a9c1…`, §11.9). The version is the whole build stamp rather than the semver alone, because the question a collector is asked after a deployment is *which build changed*, and two builds of the same tag are indistinguishable without the revision. A build that was not stamped reports its version with no `+` suffix, which is the honest answer rather than an absent attribute.
 
 ## 13. Configuration (environment only)
 
@@ -784,6 +808,7 @@ OpenTelemetry traces (ASP.NET Core + Npgsql instrumentation), logs, and metrics 
 | `RESTAURANT_TIME_ZONE` | `America/New_York` | rendering only — **all** instants, for **all** readers (§8.1, §11.7) |
 | `RESTAURANT_CLOCK_FORMAT` | `12-hour` | `12-hour` (3:04 PM) or `24-hour` (15:04); display only. Accepts `12`/`12h`/`12 hour` and the `24` equivalents; anything else fails startup |
 | `RESTAURANT_CURRENCY_CODE` | `USD` | display only |
+| `RESTAURANT_SOURCE_URL` | `https://github.com/kusl/myrestaurant` | where this instance publishes its corresponding source (§11.9). Absolute **http or https** — http accepted here only, so a self-hosted forge on a LAN is not refused. **If you modify the program and run it as a network service, point this at your fork**; AGPL §13 |
 | `RESTAURANT_DATABASE_CONNECTION_STRING` | compose-internal default | Npgsql string |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | dev defaults | consumed by the postgres container; **must** be overridden in production |
 | `DATA_PROTECTION_KEYS_DIRECTORY` | `/var/lib/myrestaurant/dataprotection` | named volume; §3.4 |
@@ -796,7 +821,7 @@ OpenTelemetry traces (ASP.NET Core + Npgsql instrumentation), logs, and metrics 
 | `OTEL_*` | unset | standard OTel variables; `UPTRACE_DSN` translated by `run.sh` only |
 | `CLOUDFLARE_TUNNEL_TOKEN` | — | production profile, cloudflared |
 
-Fail-fast validation at startup: origin parses as absolute https URL; Argon2 floor (§3.2); rotation/grant/pairing values ≥ 10 s / ≥ 1 min / ≥ 1 min; connection string present.
+Fail-fast validation at startup: origin parses as absolute https URL; source URL parses as absolute http-or-https URL; Argon2 floor (§3.2); rotation/grant/pairing values ≥ 10 s / ≥ 1 min / ≥ 1 min; connection string present.
 
 ## 14. Deployment, TLS, origins (ADR-0004, ADR-0005)
 
@@ -864,6 +889,10 @@ Either file alone is insufficient, and the second is the one that gets forgotten
 
 **16.4 CI:** GitHub Actions — build, unit, integration (service container PostgreSQL), E2E (Playwright/Chromium, all fifteen §16.3 scenarios), then boot the production image against real PostgreSQL and **take a backup of that instance and drill the restore** (§15) in the same job; publish image on tag. The drill is a CI gate rather than a runbook step because a recovery procedure nobody executes is a hypothesis — see F-38.
 
+`boot-smoke` additionally **fetches `/source` anonymously and fails unless the response contains the commit the image was built from.** The stamp travels from a build argument through an MSBuild property, an assembly attribute, a parse and a component (§11.9), and every link in that chain fails *silently*: the page still renders, and it renders "Not recorded", which reads as a configuration choice rather than as a defect. The commit appearing in the response is the assertion nothing weaker can satisfy, and it doubles as a reachability check — no cookie is sent, so a regression that put the licence offer behind authentication fails here.
+
+**Releases** (`release.yml`) call this workflow rather than restating its gates, then derive the version from the tag, pass it and the commit into the image build so the published image reports what the registry called it, and open a GitHub release on the tag. The release step is downstream of the push and idempotent, so a re-run updates the note instead of failing.
+
 ## 17. Security posture and accepted risks
 
 Threats mitigated: static-QR capability theft (rotating tokens, ≤120 s life, per-table secret rotation); Argon2 memory DoS (semaphore + rate limit + lockout); display theft (revocation; device holds no secret worth extracting; join secret never leaves the server); credential stuffing (Argon2id, lockout, passkeys-first); stale sessions after admin action (5-minute stamp revalidation); half-applied schema (fail-fast migrations); pairing brute force (hashed single-use codes, TTL, 5/min/IP).
@@ -887,6 +916,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 - **M4 close-out — restaurant time:** the §8.1 rendering rule actually honoured on every surface (`RestaurantTime`, replacing eighteen `ToLocalTime()` call sites), the §13 clock-format decision, and the §11.7 footer clock. Scheduled here rather than inside a feature slice because a half-applied time convention is worse than a uniformly wrong one, and ahead of M5 because a wrong time on a settled bill is a different order of problem from a wrong time on a roster — see F-36.
 - **M5 — counter & administration:** bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu management + events, event explorer, hide/unhide, post-close corrections.
 - **M6 — hardening & production:** full E2E suite (§16.3), backups + restore drill, cloudflared production profile + tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, CI pipeline. The **guest registration surface** (§11.8) also lands here rather than in M2, where it belonged: R§4.3 required it from rev 2 and no milestone claimed it, and the gap surfaced only when §16.3 scenario 3 went to write it — see F-37.
+- **M6 close-out — the release:** the build stamp and the source offer (§11.9), because both are things a first tag makes true forever and neither is worth adding *after* the version people cite. Publishing images for other people to run is what turns "which build is this?" from a question the operator can answer from memory into one the instance must answer itself, and what makes `CONTRIBUTING.md`'s promise that a fork "owes its users the same" into something a fork can actually discharge — see F-39. Then `scripts/ci_local.sh --with-all`, a drill against the real stack, and the tag.
 
 ---
 
@@ -907,6 +937,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 | F-20 | Hand-written fakes; NSubstitute ok; no Moq | §16.1 |
 | F-37 | Guest self-registration is a real surface at `/register`, specified rather than assumed; a passkey is offered first and may be declined only when a password was set; no rate limit in v1, with the reason it is not a two-line addition recorded | §11.1, §11.8, §17, §19 · R§4.3 |
 | F-38 | The restore path had never been executed and could not have completed: `pg_restore` exits non-zero on ignored errors, ahead of the line that restarted `web`. Nothing captured the Data Protection key ring despite §15 requiring it. A failed dump could evict a good one on the following run. Container discovery took whichever match came first | Both scripts rewritten; `scripts/restore_drill.sh` added and executed by CI on every push, so the drill is rehearsed rather than documented | §15, §16.4 · O§6, O§8, O§14 · `scripts/backup.sh`, `scripts/restore.sh`, `scripts/restore_drill.sh`, `.github/workflows/ci.yml` |
+| F-39 | The program could not say what it was, and did not offer its own source. Nothing stamped a version, so every assembly reported the SDK's default and every trace left the process unversioned; and no surface discharged AGPL §13, although `CONTRIBUTING.md` told forks they owed it | Version and source revision stamped through the `Containerfile` into `AssemblyInformationalVersionAttribute`, read by `BuildInformation`, reported at `/source`, in a colophon on every page in both layouts, and as OpenTelemetry's `service.version`; `RESTAURANT_SOURCE_URL` set by the operator; no off switch; CI fails unless `/source` names the commit it was built from | §11.9, §12, §13, §16.4, §19 · R§8 · `Configuration/BuildInformation.cs`, `Configuration/SourceRoutes.cs`, `Components/Pages/Source.razor`, `Components/Layout/AppColophon.razor`, `Directory.Build.props`, `Containerfile`, `.github/workflows/` |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP re-enrollment only if enrolled pre-reset; obligations pipeline runs on passkey path too; counter fallback = same rotating QR (no short-code) | §10.1–10.2, §3.5, §3.7, §4.5 · ledger notes |
@@ -914,6 +945,10 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 ---
 
 ## Changelog
+
+**v1.3 — 2026-08-04.** The release. New **§11.9** specifies the colophon and `/source`: what the program says about itself on every page, the AGPL §13 offer it now carries, the build stamp that lets the offer name a revision, and the three normative details of that stamp — metadata after the first `+` is all revision, an unstamped build must say "Not recorded" rather than guess, and `SourceRevisionId` alone does nothing without SourceLink. **§12** records `service.version`. **§13** gains `RESTAURANT_SOURCE_URL` and its http-is-accepted-here-only rule. **§16.4** gains the gate that fails unless `/source` names the commit CI built, plus a paragraph on what a release does. **§19** gains an M6 close-out line. **Appendix A** gains **F-39**. `REQUIREMENTS.md` moves to **rev 3** with one new §8 principle, because unlike v1.2 this *is* new intent rather than a mechanism catching up with an existing contract.
+
+One correction in passing: the header of this document read **v1.1** while the changelog below already carried a v1.2 entry — Slice 16 bumped one and not the other. The header is now the version the changelog says it is.
 
 **v1.2 — 2026-08-04.** **§15** rewritten. A recovery set is now *defined* as two files — the database dump and the Data Protection key ring — and `scripts/backup.sh` writes both. The rule that the key ring must be backed up alongside the database has been normative since v1.0 and no script in the tree honoured it; that, and three other defects in the same two scripts, are recorded as **F-38**. §15 also now states the guarantees that make retention's promise true across runs rather than within one (hidden `.partial` write, header check, `pg_isready` before anything is written, refusal on ambiguous container discovery, whole-set pruning), records that `scripts/restore.sh` restarts `web` from an `EXIT` trap and the exact reason the previous ordering could not have worked, and specifies `scripts/restore_drill.sh` and its seven gates. **§16.4** names the drill as a CI gate. **Appendix A** gains F-38.
 
@@ -924,3 +959,5 @@ Nothing else moved: no schema change, no ADR edit, and deliberately no `REQUIREM
 Nothing else moved. §11.7 keeps its number — a dozen source files cite it — so the new subsection is appended rather than inserted, and no existing cross-reference changes meaning.
 
 **v1.0 — 2026-07-17.** Initial accepted specification.
+
+################################################################################
