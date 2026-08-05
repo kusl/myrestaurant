@@ -1,13 +1,13 @@
-# M6 Slice 18 — the tree must parse before anything tries to build it
+# M6 Slice 19 — the gate that could not pass
 
 Every file below is a **full file** at its **repo-relative path**. Extract at the repository root and
-the contents drop straight over your working tree — no diffs, no patches, no scripts to run.
+the contents drop straight over your working tree — no diffs, no patches, nothing to run.
 
 ```bash
-tar -xzf m6-slice-18-tree-hygiene.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice-19-gate-scope.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
-Then, before anything else:
+Then:
 
 ```bash
 bash scripts/check_tree.sh
@@ -16,240 +16,181 @@ bash scripts/check_tree.sh
 ## Files to DELETE
 
 **None.** Nothing here renames, supersedes or orphans anything: no migration, no schema change, no
-package change, no ADR edit, no `.slnx` edit, no `Program.cs` edit. One new file lands in an existing
-folder, so no `.csproj` edit either.
+package change, no ADR edit, no `.slnx` edit, no `Program.cs` edit, no `.csproj` edit, no new file. Five
+existing files are replaced in place.
 
 ## What happened
 
-Your `dotnet build` was not failing a test. It was failing to load:
+Slice 18's gate landed, and the next full run said this:
 
 ```
-error MSB4024: The imported project file
-"/home/kushal/src/dotnet/myrestaurant/Directory.Build.props" could not be loaded.
-Data at the root level is invalid. Line 86, position 1.
+tree hygiene FAILED: 1321 problem(s). Nothing was modified.
 ```
 
-Seven of those, one per project, and the same fault from `clean`, `restore`, `test` and the container
-build — where it appeared as `NETSDK1013: The TargetFramework value '' was not recognized`, which is the
-same problem wearing a different hat, because the `TargetFramework` that file supplies never arrived.
-MSBuild imports `Directory.Build.props` before it evaluates anything, so one malformed character there
-fails every verb in the repository.
+On a tree in which every file was correct. Tree hygiene is gate 1, so **the four gates behind it never
+ran** — shell lint, strict Release build, the full test suite, the end-to-end scenarios. CI's `tree` job
+is red right now for the same reason, on the same files.
 
-Line 86 was a line of eighty `#` characters appended after `</Project>`. That string is the section
-separator `export.sh` writes *between* files in a context dump.
+Everything else in that run was green, and that is what locates the defect rather than being scene-setting:
 
-**Twenty-one tracked files carried the identical 82-byte suffix** — a newline, eighty `#`, a newline.
-That was established by arithmetic rather than by looking: `export.sh` publishes an exact byte count for
-every file it emits (`Size: 4.3 KiB (4447 bytes)`), so reading each file's content as exactly that many
-bytes and comparing the tail against the separator gives an answer that does not depend on judgement.
+| | Result |
+| --- | --- |
+| `dotnet build` | all seven projects, 0 errors |
+| `dotnet test` | **996 total, 0 failed, 981 succeeded, 15 skipped** |
+| `MYRESTAURANT_E2E=1` | **15 passed, 0 skipped** — the whole §16.3 matrix |
+| `run.sh --smoke` | `/healthz/ready` 200 |
+| `run.sh --containers-only` | stack up and healthy |
+| `dotnet list package --outdated` | nothing outdated |
+| `scripts/quick_tunnel.sh` | tunnel up, prechecks pass |
+| `scripts/ci_local.sh --with-all` | **failed at gate 1** |
 
-The twenty-one were exactly the **modified** files of the close-out slice. The five **new** files of that
-slice were clean. That asymmetry names the cause with no room left for a theory: the modified files were
-reconstructed by reading the previous dump back, and the reader took the decoration between files for
-the end of a file. The authoritative terminator in that format is the byte count. It was always there;
-nothing in the dump format needed fixing, and this delivery was built by reading it correctly.
+The only thing wrong with the repository was the gate inspecting it.
 
-`docs/BUILD_PROGRESS.md` had **two**: the trailing one, and a second buried at line 5760 between the
-Slice 16 section and the close-out section, left over from an earlier cycle that appended text after it.
-That is how a stray separator stops being at the end of a file and becomes something no amount of
-inspecting the end of a file will find.
+## The 1321, which resolve exactly
 
-## Why fifteen of the twenty-one said nothing
+| Count | Files | What the gate said | What was true |
+| --- | --- | --- | --- |
+| 638 | `docs/llm/dump.txt` | gate 1: separator, not content | it is a context dump; the separator **is** its structure |
+| 638 | `docs/llm/vendor/claude-output.txt` | gate 1: separator, not content | same |
+| 45 | every `.tar.gz` / `.zip` under `docs/llm/vendor/` | gate 3: "no final newline (truncated…)" | a gzip stream ends where it ends; a trailing `0x0A` would corrupt it |
 
-| Files | What the line means there | Consequence |
-| --- | --- | --- |
-| `Directory.Build.props` | XML content after the root element closed | `MSB4024` on every MSBuild verb — the outage |
-| 5 × `.cs` | a preprocessor directive with a garbage name | `CS1024`, on a compile that never got to run |
-| `ci.yml`, `release.yml`, `Containerfile`, `.env.example` | a comment | nothing. All four parsed perfectly while damaged |
-| 4 × `.md` | a heading rule | renders as a horizontal line |
-| 3 × `.razor` | literal markup text | eighty `#` on the page |
-| `app.css` | a dangling selector | discards itself **and the rule after it** |
+1276 + 45 = 1321. **Two independent bugs, not one** — and each one alone would have left a real hole.
 
-A class of damage that is catastrophic in one file and invisible in fifteen is a class of damage that
-belongs to something running on every push. The cost of finding it turned out to be one `grep`.
+### Bug 1 — the exemption was half a rule
+
+Gate 1 exempted `export.sh`, because writing separators is that script's job. It did not exempt
+`docs/llm/` — the directory `export.sh` writes them **into**, and which `export.sh` itself has always
+excluded from its own output as `EXCLUDED_DIRECTORY="docs/llm"`. The gate knew about the producer and not
+about the product.
+
+The second reason is stronger and generalises: a dump is a *copy* of the authored files, so every property
+the gate asserts is asserted twice over the same content. A real finding is reported twice; a correct
+separator is reported as a defect.
+
+### Bug 2 — three gates, two beliefs about what a file is
+
+Gates 1 and 2 are `grep -I`, and `-I` makes grep report no match in a binary file. They were binary-safe
+**by accident**. Gate 3's final-newline half is `tail -c 1 | wc -l`, which has no such notion — so it
+failed every archive in the tree, and its message, *"truncated, or an editor that does not add one"*, is
+exactly backwards about a file that is intact.
+
+The fix is not a third guard. It is **one predicate, `is_authored_text`, that all three gates consult**, so
+they cannot disagree about a file. Binary-ness is asked of `grep -I` rather than read off an extension
+list, because an extension list is a list somebody has to remember to update — and it would have been
+wrong about the `.zip` files on the day they were added.
 
 ## The files
 
-**Restored — the 82-byte suffix removed, and otherwise byte-identical to what you had.** I verified
-that: after stripping the suffix, every one of these matches your on-disk file exactly, including its
-original trailing-newline count. Eight of them also carry the documentation and CI edits below.
-
-| File | Also edited? |
-| --- | --- |
-| `Directory.Build.props` | no — restoration only. **This is the one that unblocks the build.** |
-| `src/…/Program.cs` | no — restoration only |
-| `src/…/Configuration/RestaurantOptions.cs` | no |
-| `src/…/Identity/ObligationsEnforcement.cs` | no |
-| `tests/…/RestaurantOptionsTests.cs` | no |
-| `tests/…/Identity/ObligationsEnforcementTests.cs` | no |
-| `src/…/Components/Layout/MainLayout.razor` | no |
-| `src/…/Components/Layout/DisplayLayout.razor` | no |
-| `src/…/Components/Pages/Home.razor` | no |
-| `src/…/wwwroot/app.css` | no |
-| `Containerfile` | no |
-| `.env.example` | no |
-| `.github/workflows/release.yml` | no |
-| `docs/REQUIREMENTS.md` | no — deliberately unchanged, see below |
-| `.github/workflows/ci.yml` | **yes** — new `tree` job |
-| `README.md` | **yes** — the gate table, the layout section, the first-build checklist |
-| `docs/TECHNICAL_SPECIFICATION.md` | **yes** — **v1.4**: §16.4, Appendix A |
-| `docs/OPERATIONS.md` | **yes** — §14 |
-| `docs/DOCUMENTATION_REVIEW.md` | **yes** — **F-40** |
-| `docs/BUILD_PROGRESS.md` | **yes** — buried separator removed at 5760; Slice 18 appended |
-| `_CHANGES.md` | **yes** — this file |
-
-**New:**
-
 | File | Change |
 | --- | --- |
-| `scripts/check_tree.sh` | the gate — five properties of the checkout, run first in CI and locally |
+| `scripts/check_tree.sh` | **the fix.** Scope decided once; gates 1–3 all consult it; skip counts reported |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.5**: §16.4 gains the scope rule; Appendix A gains **F-41** |
+| `docs/DOCUMENTATION_REVIEW.md` | **F-41** — status line and the closing prose |
+| `docs/BUILD_PROGRESS.md` | Slice 19 section appended. **Full file**, not an append block |
+| `README.md` | the `tree` row of the gate table says what the gate skips |
+| `_CHANGES.md` | this file |
 
-**Edited, not corrupted:**
+Five tracked files and this one. **I compared all 310 files in the delivered tree against yours: 305 are
+byte-identical and the 5 above are the only ones that differ.**
 
-| File | Change |
-| --- | --- |
-| `scripts/ci_local.sh` | tree hygiene inserted as gate 1; sections renumbered; help text |
-| `compose.yaml` | line 109 was a blank line carrying three spaces |
-| `tests/…/Identity/DapperUserStorePasskeyTests.cs` | line 228 was a blank line carrying eight spaces |
+`docs/BUILD_PROGRESS.md` is a complete 421 KB file this time rather than a `docs/_append/` block and a
+`cat >>` line — you asked not to be handed scripts that edit documentation, and that was the last of them.
+There is nothing in `docs/_append/` to merge and nothing to run.
 
-Twenty-five files. Every one is in the archive for a reason stated above.
+## What the gate says now
 
-## The gate
+```
+checking 310 authored text file(s) of 327 tracked
+  skipped: 17 generated (docs/llm), 0 binary, 0 empty
+```
 
-`scripts/check_tree.sh`, first in both CI (its own `tree` job) and `scripts/ci_local.sh`. Five
-properties of the checkout, asserted before any tool that would report their absence as something else:
+"Checking 412 tracked file(s)" was true on the run that failed 1321 times, and the least useful true
+sentence available. A gate whose silence is meant to mean something has to say what it looked at.
 
-1. **No context-dump separator** in any tracked file. `export.sh` is exempt **by path**, because writing
-   that string is its job; the exemption is a literal path comparison rather than a cleverer rule, so it
-   is obvious and cannot widen by accident. The threshold is **twenty** `#` rather than eighty:
-   Markdown's deepest heading is six and nothing in this tree has a use for twenty consecutive ones, so a
-   separator that was re-wrapped or truncated on the way in is caught too, where an exact-length match
-   would wave it through.
-2. **No whitespace-only lines.** Narrower than `.editorconfig`'s `trim_trailing_whitespace` on purpose:
-   it fails only on lines made *entirely* of spaces or tabs, never on trailing whitespace after real
-   content — two spaces at the end of a Markdown line are a hard break, and a gate that forbade those
-   would be wrong about Markdown rather than right about whitespace. A line with nothing but indentation
-   has no such defence. This is the check the two whitespace fixes above exist to satisfy.
-3. **LF endings and a final newline.** Both load-bearing. A CRLF in a shell script reports as
-   `bad interpreter: /usr/bin/env bash^M`, which names the wrong problem; a missing final newline is what
-   a truncated transfer looks like, which makes this the cheapest available detector of the *other* way a
-   delivered tree arrives damaged.
-4. **Every `.props`, `.targets`, `.csproj`, `.slnx` is well-formed XML.** The gate that would have turned
-   this incident into thirty seconds. `xml.etree` is standard library — no package, no network.
-   Well-formedness only: MSBuild stays the authority on whether a project *means* anything; this asserts
-   MSBuild will get far enough to have an opinion.
-5. **Every `.yml` / `.yaml` parses.** Blocking where a parser exists, a reported skip where none does —
-   the shape your shellcheck gate already uses. Worth being explicit that this gate could **not** have
-   caught the incident: a trailing `#` line is valid YAML, and both workflows parsed while damaged.
-   Gate 1 finds that. This one is for a workflow that was truncated or re-indented, which nothing else in
-   the pipeline reads early enough to blame correctly.
+## Three decisions worth being able to veto
 
-Gates 1–4 need only git, grep and the Python standard library, so they block everywhere — including a
-workstation with no SDK. On Fedora, `sudo dnf install python3-pyyaml` turns gate 5 from a skip into a
-check; GitHub's runners already have it.
+**`docs/llm/` is excluded by the gate, not untracked by me.** The tempting fix is
+`git rm -r --cached docs/llm/`. That directory is your deliberate working record and what the repository
+keeps is not the gate's business; the gate's *scope* is what was wrong. If you would rather untrack it,
+the `GENERATED_DIRECTORIES` entry becomes harmless rather than wrong, so nothing here has to change either
+way.
 
-## Four decisions worth being able to veto
+**Binary detection by `grep -I`, not by `.gitattributes`.** Marking the archives `binary` is the idiomatic
+git answer and would fix bug 2. Rejected because it also changes how git diffs, merges and archives those
+paths — a larger change than this needs — and because it does nothing about bug 1, a context dump being
+text.
 
-**A `tree` job rather than a step on `shell-scripts`.** It is not about shell — the file it exists to
-protect is XML. And a distinct check name means a failure here is attributable from the commit list
-without opening anything, which is the whole point of a gate whose failure mode is a message that blames
-the wrong tool. Costs one runner slot for about ten seconds. If you would rather it were a step inside
-`shell-scripts`, that is a four-line move; I went this way because renaming an existing job could break a
-required status check, and adding one cannot.
-
-**The two whitespace fixes, rather than making gate 2 advisory.** A gate that reports a finding on every
-run is a gate people learn to ignore — the argument this repository already makes about `NU19xx`. Both
-edits are a blank line losing its leftover indentation, so the behavioural risk is zero.
-
-**`REQUIREMENTS.md` is untouched.** This is the v1.2 call, not the v1.3 one. `.editorconfig` has asked
-for LF endings, a final newline and trimmed whitespace since M1, and §16.4 is the section that records
-which of the project's own rules are enforced instead of remembered. Nothing new is being asked of the
-program, so nothing changes in the requirements.
-
-**`export.sh` is untouched.** The tempting fix is an explicit end-of-content marker so a reader cannot
-mistake the separator for content. It would be redundant: the format already publishes an exact byte
-count per file, which is an unambiguous terminator, and the failure was in the consumer rather than the
-producer. Changing the dump format would also invalidate every tool that already reads it correctly.
+**Gate 1 stays blocking.** Slice 18 argued that a gate reporting findings on every run is a gate people
+learn to ignore. That argument points here too, harder: a gate that cannot pass on a correct tree has to
+be bypassed, and the four real gates behind it go with it.
 
 ## Build and test
 
 ```bash
 bash scripts/check_tree.sh
-#    expect: 5 gates, "tree hygiene passed.", exit 0. Under two seconds, no SDK needed.
-#    If gate 5 says SKIP, that is PyYAML missing locally and is not a failure.
-
-dotnet build
-#    expect: all seven projects succeed, 0 errors.
-#    This is the assertion that matters here — the tree you have now cannot reach a compiler at all.
-
-dotnet test
-#    expect: 996 total, 0 failed, 982 succeeded, 14 skipped. UNCHANGED from the close-out slice.
-#    No test is added, moved, renamed or unskipped in this slice. The 25 facts the close-out added
-#    (16 BuildInformationTests, 8 RestaurantOptionsTests, 1 ObligationsEnforcementTests InlineData)
-#    have still never executed, so 996 is a prediction rather than an observation. If you get a
-#    different number, look there first, not here.
+#    expect: 5 gates, "tree hygiene passed.", exit 0, and a skip line reporting 17 generated files.
+#    This is the assertion that matters in this slice. Under two seconds, no SDK needed.
 
 bash scripts/ci_local.sh --with-all
-#    expect: 5 numbered gates now — tree hygiene is the new first one.
+#    expect: all 5 numbered gates RUN. Gates 2-5 have never executed under this script, so if
+#    there is a surprise anywhere in this delivery it will be here rather than in gate 1.
+
+dotnet test
+#    expect: 996 total, 0 failed, 981 succeeded, 15 skipped. UNCHANGED — and now an observation
+#    rather than a prediction, because your last run reported exactly this. No test is touched.
 
 MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
-#    expect: 15 passed, 0 skipped.
+#    expect: 15 passed, 0 skipped. Unchanged.
 ```
+
+`dotnet build` is not in that list on purpose: no compiled file is touched in this slice.
 
 ## What was actually verified here
 
-No .NET SDK and no container engine in the sandbox, so **nothing here has been compiled or executed**
-beyond the shell script. What *was* run:
+No .NET SDK in the sandbox — but this slice's subject is a shell script, and it was executed.
 
-- The twenty-one damaged files identified by byte arithmetic against each `METADATA` block's `Size:`
-  field, not by inspection, and the corrupt suffix confirmed byte-identical across all of them.
-- **A full reconciliation of the delivered tree against your on-disk tree.** Every one of the 309 files
-  was compared; 284 are byte-identical, and the 25 that differ are the 25 listed above. That is how I
-  know the restorations changed nothing but the suffix — four files initially drifted by a single
-  trailing newline from an over-eager normalisation, and that was reverted.
-- After repair: all 10 MSBuild/solution files parse as XML; all 4 YAML files parse (`ci.yml` is now five
-  jobs, `tree` first with two steps, `boot-smoke` still ten; `release.yml` still three).
-- The tree scanned for every other artifact the dump format could have leaked — `--- METADATA ---`,
-  `--- CONTENT ---`, `# FILE: `, the `═` rule — none present anywhere.
-- The whole tree checked for what gates 2 and 3 assert, so they land green rather than
-  green-except-for-two: exactly two whitespace-only lines existed and are fixed; **zero** files have
-  CRLF, **zero** lack a final newline, **zero** are empty.
-- `scripts/check_tree.sh` run against the repaired tree (5 gates, exit 0), then against a scratch copy
-  with all five damage patterns re-introduced: the separator in `Directory.Build.props`, in `Program.cs`
-  and buried mid-document in `BUILD_PROGRESS.md`; a whitespace-only line in `compose.yaml`; a truncated
-  flow sequence in `ci.yml`. It reported six problems, named each by file **and line** — including
-  `Directory.Build.props:86`, the exact line MSBuild complained about — and exited 1.
-- `bash -n` plus `shellcheck` at `--severity=warning` **and** `--severity=style` on the new script and on
-  the edited `ci_local.sh`. Both clean at both, which keeps `ci.yml`'s claim that every script in this
-  tree is style-clean true.
+- The 1321 accounted for exactly, by file and by gate, from your run's own output: 638 + 638 + 45.
+- **`docs/llm/` reconstructed in a scratch tree** at its real shape — both committed dumps at full size
+  and seventeen archives — so the gate faced the input that produced the failure rather than a
+  description of it. Result: 5 gates, exit 0, 17 skipped as generated.
+- **Sensitivity re-proven, which matters more than the pass.** A gate that passes by skipping everything
+  is worthless. All five damage patterns re-introduced *outside* `docs/llm/` — the separator appended to
+  `Directory.Build.props`, to `Program.cs`, and buried at line 3000 of `BUILD_PROGRESS.md`; a
+  whitespace-only line in `compose.yaml`; a truncated flow sequence in `ci.yml`; a CRLF in
+  `scripts/backup.sh`; a stripped final newline on `README.md`. It reported **8 problems**, named each by
+  file and line — including `Directory.Build.props:85` from gate 1 **and** gate 4 — and exited 1.
+- **A binary file planted outside `docs/llm/`** in that same run, to prove the binary rule is general
+  rather than a `docs/llm/` carve-out: reported as `1 binary` in the skip line and accused of nothing.
+- `grep -I -q ''` confirmed as a binary detector against files with real NUL bytes and against a real
+  gzip stream, and confirmed to agree with a NUL scan of the first 8000 bytes.
+- The delivered tree — edited documents included — run through the new gate: passes, 0 findings. The new
+  §16.4 paragraph and F-41 row contain no separator line and no whitespace-only line, checked rather than
+  assumed.
+- `bash -n` plus `shellcheck` at `--severity=warning` **and** `--severity=style`, both clean, which keeps
+  `ci.yml`'s claim that every script in this tree is style-clean true.
 - Every documentation edit applied by exact-match replacement with an assertion that the anchor appears
-  **exactly once**, so nothing was edited by position. One anchor was initially too short and pulled the
-  F-38 sentence out of §16.4's first paragraph; that was caught by reading the result back and repaired.
+  **exactly once**, so nothing was edited by position.
 
 ## Where to look if this breaks
 
-**`dotnet build` still fails on `Directory.Build.props`.** The extract did not land. Check
-`sed -n '82,84p' Directory.Build.props` — the file is 84 lines and ends at `</Project>`.
+**`check_tree.sh` still fails on `docs/llm/`.** The extract did not land. `grep -n GENERATED_DIRECTORIES
+scripts/check_tree.sh` — you should see the array set to `("docs/llm")` near the top.
 
-**`dotnet build` now fails with `CS1024`.** A `.cs` file still has the appended line. Run
-`bash scripts/check_tree.sh`; it names the file and the line number.
+**It fails on a file under some *other* generated directory.** Then there is a second such directory I
+did not know about. Add it to `GENERATED_DIRECTORIES`; that is what the array is for. Send me the path and
+I will record it in §16.4.
 
-**`check_tree.sh` fails on a file I did not send you.** Then a file was damaged that was not in the
-close-out slice's modified set, which would mean the pattern is wider than the twenty-one I found. Send
-me the output and I will look; do not delete the line by hand until you know why it is there.
+**The skip line reports more binary files than you expected.** `grep -I` calls a file binary if it finds a
+NUL byte early, so a UTF-16 file would land there. Nothing in this tree is UTF-16 — `.editorconfig` sets
+`charset = utf-8` — so a count above 0 outside `docs/llm/` is worth looking at rather than accepting.
 
-**Gate 5 says SKIP on your workstation.** PyYAML is not installed. `sudo dnf install python3-pyyaml`.
-This is not a failure and CI checks it regardless.
+**`ci_local.sh --with-all` now fails at gate 2, 3, 4 or 5.** Expected in the sense that these have never
+run under this script: gate 1 blocked every previous invocation. This is a real finding about your tree
+rather than about this delivery, and the gate names the file.
 
-**Gate 2 fails on a Markdown file after you edit one.** You wrote a line with only indentation on it.
-Note that a Markdown *hard break* — two spaces after real text — is deliberately allowed; the gate only
-objects to lines that are nothing but whitespace.
+**Test count is not 996.** Nothing in this slice touches a test, a project file or any compiled source.
+Look at what changed between your last run and now.
 
-**The `tree` job fails in CI but the script passes locally.** The likeliest difference is gate 5, which
-runs blocking there and may be skipping here. The second likeliest is that something in your working
-tree is untracked: the script reads `git ls-files`, so a file you have not `git add`-ed is invisible to
-it locally and present in CI's checkout only if you committed it.
-
-**Test count is not 996.** Nothing in this slice touches a test's behaviour. Both test files in the
-archive are pure restorations. Look at the close-out slice's 25 new facts, which are executing for the
-first time.
+**The `tree` job passes locally but fails in CI.** Likeliest is gate 5, which runs blocking there and may
+be skipping here — `sudo dnf install python3-pyyaml`. Second likeliest is a file present in CI's checkout
+but not `git add`-ed locally, since the script reads `git ls-files`.

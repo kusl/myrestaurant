@@ -6089,3 +6089,132 @@ No .NET SDK and no container engine in the sandbox, so nothing was compiled. Wha
 
 The tag, still. Nothing in this slice changes the release procedure beyond adding a two-second check in
 front of it.
+
+## M6 Slice 19 — the gate that could not pass
+
+Slice 18 added `scripts/check_tree.sh` and made it the first gate in CI and in `scripts/ci_local.sh`.
+The next full run reported this:
+
+```
+tree hygiene FAILED: 1321 problem(s). Nothing was modified.
+```
+
+On a tree in which every file was correct. And because tree hygiene is gate 1, the four gates behind it —
+shell lint, strict Release build, the full test suite, the end-to-end scenarios — **did not run at all**.
+CI's `tree` job was red for the same reason, on the same files.
+
+Everything else in that run was green, which is worth stating plainly because it locates the defect:
+`dotnet build` succeeded on all seven projects, `dotnet test` returned **996 total, 0 failed, 981
+succeeded, 15 skipped**, `MYRESTAURANT_E2E=1` returned **15 passed, 0 skipped** — the whole §16.3 matrix
+live — `run.sh --smoke` passed, the container stack came up healthy, `dotnet list package --outdated`
+found nothing, and the quick tunnel worked. The only thing wrong with the repository was the gate
+inspecting it.
+
+### The 1321, which resolve exactly
+
+| Count | Files | What the gate said | What was true |
+| --- | --- | --- | --- |
+| 638 | `docs/llm/dump.txt` | gate 1: separator, not content | it is a context dump; the separator **is** its structure |
+| 638 | `docs/llm/vendor/claude-output.txt` | gate 1: separator, not content | same |
+| 45 | every `.tar.gz` and `.zip` under `docs/llm/vendor/` | gate 3: "no final newline (truncated…)" | a gzip stream ends where it ends; a trailing `0x0A` would corrupt it |
+
+1276 + 45 = 1321. Two independent bugs, not one.
+
+### Bug 1 — the exemption was half a rule
+
+Gate 1 exempted `export.sh`, on the stated grounds that writing separators is that script's job. It did
+not exempt `docs/llm/` — the directory `export.sh` writes them **into**. `export.sh` has always excluded
+that directory from its own output (`EXCLUDED_DIRECTORY="docs/llm"`), because a dump containing itself is
+nonsense. The gate knew about the producer and not about the product.
+
+The second reason to exclude it is stronger than the first and generalises: a dump is a *copy* of the
+authored files. Every property this gate asserts is therefore asserted twice against the same content —
+so a real finding is reported twice, and a correct separator is reported as a defect. Nothing under
+`docs/llm/` is authored, and the gate's five properties are properties of files somebody wrote.
+
+### Bug 2 — three gates, two beliefs about what a file is
+
+Gates 1 and 2 are `grep -I`, and `-I` makes grep report no match in a binary file. They were binary-safe
+**by accident**. Gate 3's final-newline half is `tail -c 1 | wc -l`, which has no such notion, so it
+failed every archive in the tree — and its message, *"truncated, or an editor that does not add one"*, is
+precisely backwards about a file that is intact.
+
+Three checks over one file set, holding two different beliefs about what a file was, with nothing making
+them reconcile. The fix is not a third guard: it is one predicate, `is_authored_text`, that all three
+consult. Binary-ness is asked of `grep -I` rather than read off an extension list, because the extension
+list is a list somebody must remember to update — and would have been wrong about the `.zip` files on the
+day they were added.
+
+### Considered and rejected
+
+**A `.gitattributes` marking the archives `binary`.** The idiomatic git answer, and it would work for
+bug 2. Rejected because it also changes how git diffs, merges and archives those paths — a larger change
+than this gate needs — and because it does nothing about bug 1, a context dump being text.
+
+**Untracking `docs/llm/`.** Not mine to propose. The directory is the project's deliberate working record
+and the gate has no business editing what the repository chooses to keep. The gate's scope is the thing
+that was wrong.
+
+**Making gate 1 advisory.** This is the argument Slice 18 itself made against noisy gates, pointed the
+other way: a gate that reports 1276 findings on a correct tree teaches people to skip it, and the four
+real gates behind it go too.
+
+### The gate now reports what it declined to inspect
+
+```
+checking 310 authored text file(s) of 327 tracked
+  skipped: 17 generated (docs/llm), 0 binary, 0 empty
+```
+
+"Checking 412 tracked file(s)" was a true sentence on the run that failed 1321 times, and the least
+useful true sentence available. A gate whose silence is supposed to mean something has to say what it
+looked at.
+
+### Build and test
+
+```bash
+bash scripts/check_tree.sh
+#    expect: 5 gates, "tree hygiene passed.", exit 0. The skip line reports 17 generated files.
+#    This is the assertion that matters in this slice.
+
+bash scripts/ci_local.sh --with-all
+#    expect: all 5 numbered gates RUN, for the first time since the gate landed. Gates 2-5 have
+#    never executed under ci_local.sh, so this is where a surprise would appear — not in gate 1.
+
+dotnet test
+#    expect: 996 total, 0 failed, 981 succeeded, 15 skipped. UNCHANGED and now an observation
+#    rather than a prediction: the previous run reported exactly this.
+
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: 15 passed, 0 skipped. Unchanged; no test is touched in this slice.
+```
+
+### What was verified here
+
+No .NET SDK in the sandbox, so nothing was compiled — but this slice's subject is a shell script, and it
+was executed:
+
+- The 1321 accounted for exactly, by file and by gate, from the run's own output: 638 + 638 separator
+  findings and 45 final-newline findings.
+- `docs/llm/` reconstructed in a scratch tree at its real size and shape — both committed dumps and
+  seventeen archives — so the gate faced the input that produced the failure rather than a description
+  of it. Against that tree: **5 gates, exit 0, 17 skipped as generated.**
+- **Sensitivity re-proven, which is the assertion that matters more than the pass.** All five damage
+  patterns re-introduced *outside* `docs/llm/`: the separator appended to `Directory.Build.props`, to
+  `Program.cs`, and buried at line 3000 of `BUILD_PROGRESS.md`; a whitespace-only line in `compose.yaml`;
+  a truncated flow sequence in `ci.yml`; a CRLF in `scripts/backup.sh`; a stripped final newline on
+  `README.md`. The gate reported **8 problems**, named each by file and line — including
+  `Directory.Build.props:85` from gate 1 **and** gate 4 — and exited 1.
+- A binary file planted outside `docs/llm/` in the same run, to prove the binary rule is general rather
+  than a `docs/llm/` carve-out: reported as `1 binary` in the skip line, and accused of nothing.
+- `grep -I -q ''` confirmed as a binary detector against files with real NUL bytes and against a real
+  gzip stream, and confirmed to agree with a NUL scan of the first 8000 bytes.
+- `bash -n` plus `shellcheck` at `--severity=warning` **and** `--severity=style`, both clean, which keeps
+  `ci.yml`'s claim that every script in this tree is style-clean true.
+- Every documentation edit applied by exact-match replacement with an assertion that the anchor appears
+  **exactly once**, so nothing was edited by position.
+
+### What is left
+
+The tag. Unchanged from Slice 18, and now genuinely unblocked: `ci_local.sh --with-all` can reach its
+last four gates.

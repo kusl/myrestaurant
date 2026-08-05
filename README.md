@@ -198,7 +198,7 @@ Every push and pull request against `main` runs five gates (`.github/workflows/c
 
 | Gate | What it proves |
 | --- | --- |
-| `tree` | the checkout is machine-readable at all: no context-dump separator lines, no whitespace-only lines, LF endings with a final newline, every MSBuild and solution file well-formed XML, every YAML file parsing (`scripts/check_tree.sh`) |
+| `tree` | the checkout is machine-readable at all: no context-dump separator lines, no whitespace-only lines, LF endings with a final newline, every MSBuild and solution file well-formed XML, every YAML file parsing (`scripts/check_tree.sh`). Asserted over authored text only — generated dumps under `docs/llm/` and binary files are skipped, and the counts are reported |
 | `shell-scripts` | every tracked `*.sh` parses under `bash -n` and passes shellcheck |
 | `build-and-test` | a Release build with **warnings escalated to errors**, then all ~970 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
 | `boot-smoke` | the production `Containerfile` builds, the image boots against a real PostgreSQL until `/healthz/ready` answers 200, `/source` names the commit it was built from, and then that instance is backed up and the backup is put through a full restore drill |

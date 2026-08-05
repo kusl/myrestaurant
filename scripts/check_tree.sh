@@ -33,9 +33,9 @@
 # So this script asserts the properties that make the tree machine-readable at all, before any
 # tool that would report their absence as something else:
 #
-#   1. no context-dump separator anywhere in a tracked file
+#   1. no context-dump separator anywhere in an authored text file
 #   2. no line made only of whitespace
-#   3. LF endings, and a final newline on every file
+#   3. LF endings, and a final newline on every authored text file
 #   4. every MSBuild/solution XML file parses
 #   5. every YAML file parses
 #
@@ -43,6 +43,37 @@
 # blocking everywhere. Gate 5 needs a YAML parser; where there is none it says so and skips,
 # the way the shellcheck gate does. Nothing here is a style opinion: every one of these is a
 # property some later tool silently depends on.
+#
+# WHAT THIS GATE IS ABOUT, AND WHAT IT IS NOT (F-41). Every property above is a property of a
+# file somebody WROTE. Two kinds of tracked file are therefore out of scope, and the first
+# version of this script asserted all five against both — which made it fail 1321 times on a
+# clean tree the day after it landed, at gate 1, so that the four gates behind it never ran:
+#
+#   • GENERATED text. docs/llm/ holds context dumps, and a dump's whole structure is the
+#     separator this script exists to forbid. export.sh already excludes that directory from
+#     its own output (its EXCLUDED_DIRECTORY) because a dump containing itself is nonsense;
+#     the same boundary applies here for a stronger reason. A dump is a copy of the authored
+#     files, so checking it re-asserts every property against a second copy and reports every
+#     real finding twice — while a separator that is correctly present reports as a defect.
+#     Exempting export.sh but not the directory export.sh writes into was half a rule.
+#
+#   • BINARY files. A .tar.gz does not have LF endings and must not end in 0x0A: a gzip stream
+#     ends where it ends, and appending a byte to make a gate happy would corrupt it. Gates 1
+#     and 2 were already binary-safe by accident, because `grep -I` reports no match on a
+#     binary file. Gate 3's final-newline half used `tail -c 1 | wc -l`, which has no such
+#     guard, so it failed every archive in the tree — and its message, "truncated, or an
+#     editor that does not add one", is exactly backwards for a file that is intact.
+#
+# Both are now decided in ONE place. `is_authored_text` is the only thing in this script that
+# says whether a file is in scope, and gates 1, 2 and 3 all ask it, so they cannot come to
+# different conclusions about the same file. Binary-ness is asked of `grep -I` rather than
+# guessed from the extension: an extension list is a list somebody has to remember to update,
+# and it would have been wrong about the .zip files here on the day they were added.
+#
+# Considered and rejected: a .gitattributes marking the archives `binary`. That is the
+# idiomatic git answer and it would work, but it also changes how git diffs, merges and
+# archives those paths, which is a larger change than this gate needs — and it would still
+# leave the generated-text half of the problem unsolved, because a context dump is text.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -61,6 +92,21 @@ case "${1:-}" in
         exit 1
         ;;
 esac
+
+# ---------------------------------------------------------------------------------------------------
+# Scope.
+#
+# GENERATED_DIRECTORIES holds path prefixes whose contents are produced by a tool rather than
+# written by a person. Kept in step with export.sh's EXCLUDED_DIRECTORY by hand, and that is
+# acceptable precisely because it is one entry: a shell script cannot read another script's
+# variable without sourcing it, and sourcing export.sh would run it.
+#
+# EXEMPT_FILES holds individual authored files that are allowed to contain a separator because
+# writing one is their job. The comparison is a literal path equality rather than a pattern, so
+# the exemption is obvious, auditable, and cannot widen by accident.
+# ---------------------------------------------------------------------------------------------------
+GENERATED_DIRECTORIES=("docs/llm")
+EXEMPT_FILES=("export.sh")
 
 # ---------------------------------------------------------------------------------------------------
 # Reporting. Every gate announces itself, so a failure is attributable at a glance.
@@ -83,6 +129,38 @@ note_failure() {
     FAILURES=$(( FAILURES + 1 ))
 }
 
+is_generated() {
+    local candidate="$1" prefix
+    for prefix in "${GENERATED_DIRECTORIES[@]}"; do
+        [[ "$candidate" == "$prefix" || "$candidate" == "${prefix}/"* ]] && return 0
+    done
+    return 1
+}
+
+is_exempt() {
+    local candidate="$1" exempt
+    for exempt in "${EXEMPT_FILES[@]}"; do
+        [[ "$candidate" == "$exempt" ]] && return 0
+    done
+    return 1
+}
+
+# True when a path is a regular, non-empty, authored, textual file — the only kind any of the
+# first three gates has an opinion about.
+#
+# The binary test is `grep -I -q ''`: the empty pattern matches every line, so a text file
+# exits 0, and `-I` makes grep behave as though a binary file had no matching lines at all, so
+# a binary file exits 1. Using grep for this is the point rather than a convenience — gates 1
+# and 2 ARE greps with -I, so routing gate 3 through the same test is what makes the three
+# gates agree by construction instead of by inspection.
+is_authored_text() {
+    local candidate="$1"
+    [[ -f "$candidate" ]] || return 1
+    [[ -s "$candidate" ]] || return 1
+    is_generated "$candidate" && return 1
+    grep -I -q '' -- "$candidate" 2>/dev/null
+}
+
 if ! command -v git >/dev/null 2>&1; then
     echo "error: git is required (the file list comes from 'git ls-files')." >&2
     exit 1
@@ -98,14 +176,41 @@ if (( ${#tracked_files[@]} == 0 )); then
     exit 1
 fi
 
-echo "checking ${#tracked_files[@]} tracked file(s)"
+# The in-scope set, computed once. Announced with its own arithmetic rather than just a total,
+# because "checking 412 files" was a true sentence on the run that failed 1321 times, and a
+# gate that reports what it declined to look at is a gate whose silence means something.
+authored_files=()
+generated_count=0
+binary_count=0
+empty_count=0
+for tracked_path in "${tracked_files[@]}"; do
+    [[ -f "$tracked_path" ]] || continue
+    if is_generated "$tracked_path"; then
+        generated_count=$(( generated_count + 1 ))
+        continue
+    fi
+    if [[ ! -s "$tracked_path" ]]; then
+        empty_count=$(( empty_count + 1 ))
+        continue
+    fi
+    if ! grep -I -q '' -- "$tracked_path" 2>/dev/null; then
+        binary_count=$(( binary_count + 1 ))
+        continue
+    fi
+    authored_files+=("$tracked_path")
+done
+
+echo "checking ${#authored_files[@]} authored text file(s) of ${#tracked_files[@]} tracked"
+printf '  skipped: %d generated (%s), %d binary, %d empty\n' \
+    "$generated_count" "${GENERATED_DIRECTORIES[*]}" "$binary_count" "$empty_count"
+
+if (( ${#authored_files[@]} == 0 )); then
+    echo "error: every tracked file was skipped, which cannot be right." >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------------------------------
 # 1. No context-dump separator.
-#
-# export.sh is the one file allowed to contain the separator, because writing it is that
-# script's job: the string appears in its heredocs. The exemption is by path rather than by
-# some cleverer rule so that it is obvious, auditable, and impossible to widen by accident.
 #
 # The threshold is twenty rather than eighty. Markdown's deepest heading is six '#' and no
 # language in this tree has a use for a line of twenty consecutive ones, so anything at or
@@ -115,10 +220,9 @@ echo "checking ${#tracked_files[@]} tracked file(s)"
 announce "no context-dump separators"
 
 separator_hits=0
-for tracked_path in "${tracked_files[@]}"; do
-    [[ "$tracked_path" == "export.sh" ]] && continue
-    [[ -f "$tracked_path" ]] || continue
-    if hit=$(grep -I -n -E '^#{20,}$' -- "$tracked_path"); then
+for tracked_path in "${authored_files[@]}"; do
+    is_exempt "$tracked_path" && continue
+    if hit=$(grep -n -E '^#{20,}$' -- "$tracked_path"); then
         while IFS= read -r hit_line; do
             note_failure "${tracked_path}:${hit_line%%:*} is a context-dump separator, not content"
             separator_hits=$(( separator_hits + 1 ))
@@ -126,7 +230,7 @@ for tracked_path in "${tracked_files[@]}"; do
     fi
 done
 if (( separator_hits == 0 )); then
-    echo "     none (export.sh exempt: it writes them)"
+    echo "     none (exempt: ${EXEMPT_FILES[*]} — it writes them)"
 else
     echo "     ${separator_hits} separator line(s) found. A tool read a context dump and kept the" >&2
     echo "     decoration between files. The end of a file in that format is the byte count in" >&2
@@ -146,9 +250,8 @@ fi
 announce "no whitespace-only lines"
 
 whitespace_hits=0
-for tracked_path in "${tracked_files[@]}"; do
-    [[ -f "$tracked_path" ]] || continue
-    if hit=$(grep -I -n -E '^[[:space:]]+$' -- "$tracked_path"); then
+for tracked_path in "${authored_files[@]}"; do
+    if hit=$(grep -n -E '^[[:space:]]+$' -- "$tracked_path"); then
         while IFS= read -r hit_line; do
             note_failure "${tracked_path}:${hit_line%%:*} is blank but not empty (indentation left behind)"
             whitespace_hits=$(( whitespace_hits + 1 ))
@@ -165,16 +268,16 @@ done
 # "bad interpreter: /usr/bin/env bash^M", which names the wrong problem. A file with no final
 # newline is what a truncated transfer looks like, so the check doubles as the cheapest
 # available detector of the other way a delivered tree can arrive damaged.
+#
+# Both halves run only over authored text (F-41). Neither property is meaningful for a
+# compressed archive, and the final-newline message in particular would accuse an intact one
+# of being truncated.
 # ---------------------------------------------------------------------------------------------------
 announce "LF endings and a final newline"
 
 ending_hits=0
-for tracked_path in "${tracked_files[@]}"; do
-    [[ -f "$tracked_path" ]] || continue
-    # An empty file has no final newline to have, and no CR to carry.
-    [[ -s "$tracked_path" ]] || continue
-
-    if grep -I -q $'\r' -- "$tracked_path"; then
+for tracked_path in "${authored_files[@]}"; do
+    if grep -q $'\r' -- "$tracked_path"; then
         note_failure "${tracked_path} contains a carriage return (this tree is LF only)"
         ending_hits=$(( ending_hits + 1 ))
     fi
@@ -211,7 +314,9 @@ if ! command -v python3 >/dev/null 2>&1; then
 else
     xml_paths=()
     while IFS= read -r xml_path; do
-        [[ -n "$xml_path" ]] && xml_paths+=("$xml_path")
+        [[ -n "$xml_path" ]] || continue
+        is_generated "$xml_path" && continue
+        xml_paths+=("$xml_path")
     done < <(git ls-files '*.props' '*.targets' '*.csproj' '*.slnx' '*.sln')
 
     if (( ${#xml_paths[@]} == 0 )); then
@@ -253,7 +358,9 @@ announce "YAML parses"
 
 yaml_paths=()
 while IFS= read -r yaml_path; do
-    [[ -n "$yaml_path" ]] && yaml_paths+=("$yaml_path")
+    [[ -n "$yaml_path" ]] || continue
+    is_generated "$yaml_path" && continue
+    yaml_paths+=("$yaml_path")
 done < <(git ls-files '*.yml' '*.yaml')
 
 if (( ${#yaml_paths[@]} == 0 )); then
