@@ -5,37 +5,62 @@ I have made changes to the repository
 including adding a new secret token for administration read. 
 boot smoke (container image) is still failing on github actions 
 Run bash scripts/backup.sh
-[backup] using POSTGRES_CONTAINER='aacf5ed2faedbc5ad5ed7de1ae56e87f5f7d088d84e20b1cfa94b22d209a58aa'.
-[backup] error: 'aacf5ed2faedbc5ad5ed7de1ae56e87f5f7d088d84e20b1cfa94b22d209a58aa' did not answer pg_isready for user 'myrestaurant' database 'myrestaurant'.
+  bash scripts/backup.sh
+  shell: /usr/bin/bash -e {0}
+  env:
+    DOTNET_NOLOGO: true
+    DOTNET_CLI_TELEMETRY_OPTOUT: true
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    NUGET_XMLDOC_MODE: skip
+    BACKUP_DIRECTORY: /home/runner/work/myrestaurant/myrestaurant/ci-backups
+    POSTGRES_CONTAINER: f35d0ec9fc2d3fef41bcb6a75a4903724a2f311e0d843b5f67e473394e777746
+    WEB_CONTAINER: myrestaurant_web_ci
+[backup] using POSTGRES_CONTAINER='f35d0ec9fc2d3fef41bcb6a75a4903724a2f311e0d843b5f67e473394e777746'.
+[backup] error: 'f35d0ec9fc2d3fef41bcb6a75a4903724a2f311e0d843b5f67e473394e777746' did not answer pg_isready for user 'myrestaurant' database 'myrestaurant'.
 Error: Process completed with exit code 1.
 and so is end to end (playwright) on github actions 
 Run dotnet test tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj \
+  dotnet test tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj \
+      --configuration Release \
+      --no-build \
+      -p:ContinuousIntegrationBuild=true \
+      --logger "trx" \
+      --logger "console;verbosity=normal" \
+      --results-directory "/home/runner/work/myrestaurant/myrestaurant/TestResults"
+  shell: /usr/bin/bash -e {0}
+  env:
+    DOTNET_NOLOGO: true
+    DOTNET_CLI_TELEMETRY_OPTOUT: true
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    NUGET_XMLDOC_MODE: skip
+    DOTNET_ROOT: /usr/share/dotnet
+    MYRESTAURANT_E2E: 1
 Test run for /home/runner/work/myrestaurant/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/bin/Release/net10.0/MyRestaurant.EndToEnd.Tests.dll (.NETCoreApp,Version=v10.0)
 A total of 1 test files matched the specified pattern.
 [xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 10.0.10)
-[xUnit.net 00:00:00.20]   Discovering: MyRestaurant.EndToEnd.Tests
-[xUnit.net 00:00:00.41]   Discovered:  MyRestaurant.EndToEnd.Tests
-[xUnit.net 00:00:00.61]   Starting:    MyRestaurant.EndToEnd.Tests
-  Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Guest_StagesAddsAndSend_KitchenGetsOneAlert [6 s]
+[xUnit.net 00:00:00.19]   Discovering: MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:00:00.39]   Discovered:  MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:00:00.59]   Starting:    MyRestaurant.EndToEnd.Tests
+  Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Guest_StagesAddsAndSend_KitchenGetsOneAlert [5 s]
   Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Kitchen_FulfillsLine_GuestSeesFulfilledBadge [4 s]
-  Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Admin_RotatesJoinSecret_InFlightTokenDiesNextWindowWorks [22 s]
+  Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Admin_RotatesJoinSecret_InFlightTokenDiesNextWindowWorks [12 s]
   Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.SecondGuest_JoinsAndSeesOrderLiveWithRosterUpdate [5 s]
   Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Send_UnfulfilledPastThreshold_YieldsExactlyOneReminder [26 s]
   Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Guest_ScansRegistersWithPasskeyAndJoins [19 s]
-  Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Display_PairsAndShowsRotatingQrAcrossWindowBoundary [8 s]
+  Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Display_PairsAndShowsRotatingQrAcrossWindowBoundary [9 s]
   Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Counter_AdjustsPriceWithReason_GuestSeesOldToNew [6 s]
   Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Guest_HidesClosedOrder_AdminCanUnhide [7 s]
   Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.PasskeySignIn_OfTotpUser_SkipsTotpChallenge [2 s]
   Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Guest_RemoveFulfilledLineRejected_RemovePendingSucceeds [6 s]
   Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.JoinToken_ExpiredShowsFriendlyPage_PreviousWindowAccepted [1 s]
-[xUnit.net 00:02:19.03]     MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch [FAIL]
-[xUnit.net 00:02:19.03]       Assert.Single() Failure: The collection did not contain any matching items
-[xUnit.net 00:02:19.03]       Expected:   (predicate expression)
-[xUnit.net 00:02:19.03]       Collection: []
-[xUnit.net 00:02:19.03]       Stack Trace:
-[xUnit.net 00:02:19.04]         /_/tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs(1625,0): at MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch()
-[xUnit.net 00:02:19.04]         /_/tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs(1629,0): at MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch()
-[xUnit.net 00:02:19.04]         --- End of stack trace from previous location ---
+[xUnit.net 00:02:07.31]     MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch [FAIL]
+[xUnit.net 00:02:07.31]       Assert.Single() Failure: The collection did not contain any matching items
+[xUnit.net 00:02:07.31]       Expected:   (predicate expression)
+[xUnit.net 00:02:07.31]       Collection: []
+[xUnit.net 00:02:07.31]       Stack Trace:
+[xUnit.net 00:02:07.31]         /_/tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs(1625,0): at MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch()
+[xUnit.net 00:02:07.31]         /_/tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs(1629,0): at MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch()
+[xUnit.net 00:02:07.31]         --- End of stack trace from previous location ---
   Failed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch [6 s]
   Error Message:
    Assert.Single() Failure: The collection did not contain any matching items
@@ -46,15 +71,15 @@ Collection: []
    at MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch() in /_/tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs:line 1629
 --- End of stack trace from previous location ---
   Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Admin_ResetsTotpUser_ForcesPasswordThenTotpReenrollment [5 s]
-[xUnit.net 00:02:27.25]   Finished:    MyRestaurant.EndToEnd.Tests (ID = '0d5802f48a9bac98cda7eecd4b9cd892f33db8d11de9f1f7d34fa581dc2e900d')
+[xUnit.net 00:02:15.86]   Finished:    MyRestaurant.EndToEnd.Tests (ID = '0d5802f48a9bac98cda7eecd4b9cd892f33db8d11de9f1f7d34fa581dc2e900d')
   Passed MyRestaurant.EndToEnd.Tests.EndToEndScenarios.Setup_BootstrapsFirstAdministratorThenBecomes404 [2 s]
-Results File: /home/runner/work/myrestaurant/myrestaurant/TestResults/_runnervmvrwv9_2026-08-05_13_54_53_net10.0.trx
+Results File: /home/runner/work/myrestaurant/myrestaurant/TestResults/_runnervmvrwv9_2026-08-05_14_34_23_net10.0.trx
 
 Test Run Failed.
 Total tests: 15
      Passed: 14
      Failed: 1
- Total time: 2.4611 Minutes
+ Total time: 2.2711 Minutes
 Error: Process completed with exit code 1.
 
 Please review 
