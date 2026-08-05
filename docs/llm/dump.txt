@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-04T14:42:18-04:00
+  Generated at   : 2026-08-04T22:33:16-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 7271ebbb19304c4f2b65979a36b7ae2de5b13e33
-  Commit (short) : 7271ebb
-  Commit date    : 2026-08-04 14:42:03 -0400
-  Commit message : add claude changes
+  Commit (full)  : b3cc4573e41d27001c94a06bd948d98cc423a673
+  Commit (short) : b3cc457
+  Commit date    : 2026-08-04 22:33:01 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 302
+  Files included : 303
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (302 included files)
+# FILE TREE  (303 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -579,7 +579,8 @@ cat "$OUTPUT_FILE"
 │   ├── backup.sh
 │   ├── ci_local.sh
 │   ├── quick_tunnel.sh
-│   └── restore.sh
+│   ├── restore.sh
+│   └── restore_drill.sh
 ├── src
 │   ├── MyRestaurant.DataAccess
 │   │   ├── Displays
@@ -969,15 +970,15 @@ indent_size = 2
   File name:             .env.example
   Relative path:         .env.example
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/.env.example
-  Size:                  4.4 KiB (4464 bytes)
-  Last modified:         2026-07-26 20:40:23.000000000 -0400
+  Size:                  5.5 KiB (5598 bytes)
+  Last modified:         2026-08-04 20:56:18.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25951184
+  Inode:                 31516881
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               96a90bfbb20e515d62f209ea0c805a9d41b0a20388c5bfebd76e81f27596a6e3
-  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
+  SHA-256:               df120dd7b12bac5eeb1af25428e2fefae6b6bc6ba32f272ed81fb90641d8d3c3
+  Last git commit:       b3cc457 2026-08-04 22:33:01 -0400 add claude response
 
 --- CONTENT ---
 # Copy to `.env` and adjust. `.env` is git-ignored; never commit a populated one.
@@ -1035,9 +1036,24 @@ ARGON2_PARALLELISM=1
 ARGON2_MAX_CONCURRENT_HASHES=4
 
 # --- Backups (§15) -------------------------------------------------------------------------------
+# A backup set is TWO files sharing one timestamp: the database dump and the Data Protection key ring
+# (myrestaurant-<stamp>.dump and myrestaurant-<stamp>-dataprotection.tar). Without the ring, every
+# stored TOTP secret is undecryptable — the accounts come back and the enrolled authenticators do not
+# (OPERATIONS §6 and §8). scripts/backup.sh writes both, scripts/restore.sh puts both back, and
+# scripts/restore_drill.sh rehearses the round trip against a scratch database it creates and
+# destroys — it never writes to this one.
 BACKUP_DIRECTORY=/var/lib/myrestaurant/backups
 BACKUP_SCHEDULE_TIME=03:30
 BACKUP_RETENTION_COUNT=14
+# The backup and restore scripts find the postgres and web containers by name and REFUSE when more
+# than one matches, because dumping the wrong database looks exactly like success. Set these to skip
+# discovery — required in CI, and useful whenever a second postgres container is around (the drill
+# starts one on purpose).
+# POSTGRES_CONTAINER=myrestaurant_postgres_1
+# WEB_CONTAINER=myrestaurant_web_1
+# The scratch image the drill restores into. Fully qualified so a short-name registry prompt cannot
+# hang an unattended run.
+# DRILL_POSTGRES_IMAGE=docker.io/library/postgres:17-alpine
 
 # --- OpenTelemetry (optional, §12) ---------------------------------------------------------------
 # Unset by default; when unset the app attaches no OTLP exporter (no connection-refused noise).
@@ -1127,15 +1143,15 @@ updates:
   File name:             ci.yml
   Relative path:         .github/workflows/ci.yml
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/.github/workflows/ci.yml
-  Size:                  13.5 KiB (13816 bytes)
-  Last modified:         2026-07-29 05:06:51.000000000 -0400
+  Size:                  16.0 KiB (16392 bytes)
+  Last modified:         2026-08-04 20:56:38.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 27205621
+  Inode:                 31516874
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               63dead15769b36f905802645950f89d43dab6d7123f0277c7f1c0adcdf47c241
-  Last git commit:       8f04e99 2026-07-29 05:38:41 -0400 add claude response
+  SHA-256:               6284b4c33e5af0b4e3dc41f3001098006104cf8a82b4a483d04306ccd278c042
+  Last git commit:       b3cc457 2026-08-04 22:33:01 -0400 add claude response
 
 --- CONTENT ---
 # Continuous integration (TECHNICAL_SPECIFICATION §16.4).
@@ -1155,6 +1171,12 @@ updates:
 #                   that proves DbUp migrations apply and the composition root resolves — a class of
 #                   failure no unit test sees, because it happens exactly once, at startup, and
 #                   presents as a 500 on some route hours later.
+#
+#                   It then backs that instance up with scripts/backup.sh and puts the result through
+#                   scripts/restore_drill.sh (§15), so recovery is rehearsed on every push instead of
+#                   being a runbook nobody has executed. It lives here rather than in a job of its
+#                   own because everything the drill needs — a built image, a migrated database, a
+#                   live Data Protection key ring — is already standing up in this job.
 #
 #   end-to-end      The §16.3 Playwright scenarios, in Chromium, against the built application. Its
 #                   own job rather than part of build-and-test, for two reasons: the scenarios are
@@ -1309,7 +1331,7 @@ jobs:
         run: dotnet list MyRestaurant.slnx package --vulnerable --include-transitive
 
   # -----------------------------------------------------------------------------------------------
-  # 3. Boot the actual production image against an actual PostgreSQL.
+  # 3. Boot the actual production image against an actual PostgreSQL, then rehearse recovery from it.
   # -----------------------------------------------------------------------------------------------
   boot-smoke:
     name: boot smoke (container image)
@@ -1375,6 +1397,41 @@ jobs:
           done
           echo "/healthz/ready did not answer 200 within 180s" >&2
           exit 1
+
+      # Data Protection creates its first key the first time it protects anything, and
+      # /healthz/ready protects nothing — so on a freshly booted instance the key ring is an empty
+      # directory. /setup renders a form, which mints an antiforgery token, which mints the key.
+      # Without this step the drill's key-ring gate would report an empty ring on every run and
+      # would therefore stop meaning anything.
+      - name: render a page so a Data Protection key exists
+        run: |
+          curl --fail --silent --show-error --max-time 10 --output /dev/null \
+              http://127.0.0.1:8080/setup
+          echo "/setup rendered; the key ring is no longer empty."
+
+      # POSTGRES_CONTAINER and WEB_CONTAINER are set rather than discovered: the service container's
+      # name is generated by the runner, and scripts/backup.sh refuses to guess when more than one
+      # container matches its filter — which is exactly the situation the drill's own scratch
+      # container creates a few seconds later.
+      #
+      # The backup set is deliberately NOT uploaded as an artifact. The -dataprotection.tar is key
+      # material in the clear; it is throwaway here, but publishing one is not a habit worth forming.
+      - name: back up the booted instance
+        env:
+          BACKUP_DIRECTORY: ${{ github.workspace }}/ci-backups
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          WEB_CONTAINER: myrestaurant_web_ci
+        run: bash scripts/backup.sh
+
+      # Not --strict on this first landing. Every FAIL gate still blocks; what --strict adds is that
+      # ignored pg_restore errors and an empty key ring also fail, and neither number has been
+      # observed on a real run yet. Once a few runs report "pg_restore completed with no errors",
+      # tightening this is a one-word edit.
+      - name: drill the restore
+        env:
+          BACKUP_DIRECTORY: ${{ github.workspace }}/ci-backups
+          DRILL_POSTGRES_IMAGE: postgres:17-alpine
+        run: bash scripts/restore_drill.sh
 
       - name: container logs
         if: ${{ failure() }}
@@ -1588,15 +1645,15 @@ jobs:
   File name:             .gitignore
   Relative path:         .gitignore
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/.gitignore
-  Size:                  401 B (401 bytes)
-  Last modified:         2026-07-18 01:58:28.998012099 -0400
+  Size:                  752 B (752 bytes)
+  Last modified:         2026-08-04 20:56:18.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258245
+  Inode:                 31516879
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               c96d52bbd7324c75885621cec87261ea2779715b55103a53830e4e53190cd9e5
-  Last git commit:       636e63c 2026-07-18 01:58:56 -0400 ignore data protection folder for now
+  SHA-256:               1400e7d6854b0f1158c761221467ab86091e17d3c5115ab0cb5621b001c05c74
+  Last git commit:       b3cc457 2026-08-04 22:33:01 -0400 add claude response
 
 --- CONTENT ---
 # Build output
@@ -1633,6 +1690,14 @@ playwright-report/
 .DS_Store
 
 .dataprotection/
+
+# Backups (§15). BACKUP_DIRECTORY defaults outside the tree, so these matter only when it is pointed
+# at a repo-relative path — but OPERATIONS §6 calls the directory git-ignored, and this is what makes
+# that sentence true. The -dataprotection.tar is key material in the clear: never commit one.
+backups/
+ci-backups/
+*.dump
+*-dataprotection.tar
 
 ################################################################################
 # FILE: CONTRIBUTING.md
@@ -3037,257 +3102,293 @@ scripts/ci_local.sh --with-all
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  14.6 KiB (14978 bytes)
-  Last modified:         2026-08-04 14:39:24.000000000 -0400
+  Size:                  16.6 KiB (16993 bytes)
+  Last modified:         2026-08-04 21:01:23.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31322119
+  Inode:                 31516880
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               a7eb02e573170a82cc3b1bca0ef465627e424f761b53eff92f35f33146a33d3e
-  Last git commit:       7271ebb 2026-08-04 14:42:03 -0400 add claude changes
+  SHA-256:               9ee3063502db2f407a18bafd390111fa8cabcfbb8efc25d760f4c3ad1afc1f50
+  Last git commit:       b3cc457 2026-08-04 22:33:01 -0400 add claude response
 
 --- CONTENT ---
-# M6 Slice 15 — §16.3 scenario 12, and the last placeholder in the matrix
+# M6 Slice 16 — the restore drill, and the four defects it found before it could run
 
-Every file below is a **full file** at its **repo-relative path**. Extract at the repo root and the
+Every file below is a **full file** at its **repo-relative path**. Extract at the repository root and the
 contents drop straight over your working tree — no diffs, no patches, no scripts to run.
 
 ```bash
-tar -xzf m6-slice15-reset-and-reenroll.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice16-restore-drill.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 ```
 
 ## Files to DELETE
 
 **None.** Nothing here renames, supersedes or orphans anything: no migration, no schema change, no
-package change, no ADR edit, no `Program.cs` edit, no `.slnx` edit, no new file and therefore no new
-test folder.
+package change, no ADR edit, no `Program.cs` edit, no `.slnx` edit, and **no C# at all** — so no new
+test folder either.
+
+## Two things to do by hand after extracting
+
+```bash
+git add scripts/restore_drill.sh          # NOT optional — see below
+ls -l scripts/*.sh                        # all three should be -rwxr-xr-x already
+```
+
+`scripts/restore_drill.sh` is a **new** file, and both `scripts/ci_local.sh` and CI's `shell-scripts`
+job enumerate what they check with `git ls-files '*.sh'`. Until it is tracked, it is silently
+unchecked — the one gate in this slice that would notice a broken new script is the one that cannot
+see it yet.
+
+All three scripts carry mode 755 in the archive, so no `chmod` should be needed. If your extract
+dropped the bit anyway, `chmod +x scripts/*.sh` fixes it; nothing in the tree invokes them as
+`./scripts/…` (CI and `ci_local.sh` both go through `bash`), so a missing bit is cosmetic rather than
+fatal.
 
 ## The files
 
 | File | Change |
 | --- | --- |
-| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | §16.3 scenario **12** implemented; its placeholder and the now-unused `PendingHarnessExtension` removed |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/AccountJourneys.cs` | `SignOutAsync` strict-mode fix; §3.5 obligation (2); §3.4 and §3.3 voluntary surfaces |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs` | §3.7 credential reset; the management page's fact chips read by label |
-| `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManagePerson.razor` | one additive class on the reset panel's password (**one line** plus its comment) |
-| `docs/BUILD_PROGRESS.md` | Slice 15 appended (**complete file**, 5,572 lines — I did the appending) |
+| `scripts/restore_drill.sh` | **new** — non-destructive rehearsal of a recovery set against a scratch database |
+| `scripts/backup.sh` | rewritten: atomic dump, key-ring capture, discovery that refuses on ambiguity, three-valued exit |
+| `scripts/restore.sh` | rewritten: archive verified first, `web` restarted from an `EXIT` trap, key ring put back, `--yes` |
+| `.github/workflows/ci.yml` | `boot-smoke` gains three steps — render a page, back the instance up, drill the backup |
+| `.gitignore` | backup artefacts, so O§6's "git-ignored" is true and a key ring cannot be committed |
+| `.env.example` | the §15 block documents the two-file set and the discovery overrides |
+| `docs/TECHNICAL_SPECIFICATION.md` | **§15 rewritten**, §16.4 amended, Appendix A gains F-38, changelog **v1.2** |
+| `docs/OPERATIONS.md` | **§6 rewritten**, §8 bullet updated, §14 corrected and extended |
+| `docs/DOCUMENTATION_REVIEW.md` | **F-38** entered, status line and "Going forward" updated |
+| `docs/BUILD_PROGRESS.md` | Slice 16 appended (**complete file**, 5,756 lines — I did the appending) |
 | `_CHANGES.md` | this file |
 
-All five pre-edit files were checked against the SHA-256 hashes `export.sh` recorded in `dump.txt`
-before anything was touched. **All five matched**, so every byte I did not edit is known identical to
-your working tree.
+`docs/REQUIREMENTS.md` is **deliberately untouched** — see "One documentation decision" below.
 
-**Scenario 12 is the fifteenth and last of §16.3.** There are no `[Fact(Skip)]` placeholders left in
-`EndToEndScenarios.cs`, which is why `PendingHarnessExtension` goes with it — a `private const` with
-no remaining reference is an IDE0051 waiting for the next CI run, where
-`EnforceCodeStyleInBuild` meets `TreatWarningsAsErrors`.
+## Why this slice is a drill and not a document
 
-## Two harness problems this scenario found before it could be written
+§19's M6 line has read "full E2E suite (§16.3), backups + restore drill, …" since v1.0. Slice 15
+closed the first clause. The second was described in `OPERATIONS.md` §6 as five manual steps to
+perform once, against a scratch host, before you need them — and nobody had performed them.
 
-### 1. `SignOutAsync` could not sign a trapped principal out
+The moment something did, it found four defects. This is the whole argument for the slice.
 
-This is a real bug in the existing harness, not a shortcoming of the new code, and it would have
-surfaced as a strict-mode violation thirty seconds into the run.
+### 1. `scripts/restore.sh` could not have completed a restore
 
-`ObligationsEnforcement.IsExemptPath` exempts sign-out and the two obligation pages and nothing else
-— **`/sign-in` is not on that list.** So a principal holding an obligation cannot reach the sign-in
-page at all, and sign-out is the only route to a fresh cookie. But both obligation pages render a
-sign-out form of their own beside the header's — *"Not ready right now?"* on
-`ChangePasswordRequired.razor`, *"Done for now?"* on `EnrollTotpRequired.razor` — because §3.5
-promises leaving is always possible. `SignOutAsync` held a bare
+It ran `pg_restore --clean --if-exists` under `set -euo pipefail`, with `web` already stopped, **one
+line before** the `up -d web` that would bring it back.
 
-```csharp
-ILocator signOutButton = page.Locator("form.sign-out-form button[type='submit']");
-```
+`pg_restore` exits **1 whenever it ignored any error at all.** That is its documented contract, and it
+is `exit_code = AH->n_errors ? 1 : 0` in `pg_restore.c` — I read it out of the PostgreSQL 17 source
+rather than recalling it. `--clean --if-exists` ignores errors as a matter of course, because that is
+what `IF EXISTS` is *for*.
 
-which resolves to two elements on exactly those pages, and every `Locator` method that acts on a
-single element throws a strict-mode violation when it does. `.First` fixes it, and taking the first
-is safe rather than merely convenient: the two forms are identical in effect — same endpoint, same
-antiforgery token, neither carries a `returnUrl`, so `SafeLocalReturnUrl(null)` sends both to `/` —
-and the header's comes first in document order. I counted the forms on both pages to confirm it is
-exactly one page-level form beside the layout's, not more.
+So `set -e` killed the script one line early. **The single most likely outcome of the documented
+recovery procedure was a database that came back and an application that stayed down, with nothing
+printed to say so.** That is worse than a crash; a crash is attributable.
 
-Scenario 12 signs a trapped principal out twice, so this was not optional.
+`web` now comes back from an `EXIT` trap, so it comes back on every path out of the script including
+the ones that got there by failing. Ignored errors are reported and downgrade the exit code to 2.
 
-### 2. One person needs two browsers, and the reason is `passkey.js`
+### 2. Nothing captured the Data Protection key ring
 
-A WebAuthn private key never leaves the authenticator that minted it, so the passkey this scenario
-registers belongs to one browser context for good. That context **cannot also be where the password
-sign-ins happen.** `passkey.js`'s `tryAutofillPasskey` fires a conditional-mediation
-`navigator.credentials.get()` on *every* sign-in page load, and `VirtualAuthenticator` is configured
-with `hasResidentKey: true` and `automaticPresenceSimulation: true` — so once a discoverable
-credential exists in that context, a "password sign-in" there may be answered by the authenticator
-before a password is ever typed.
+§15 has required it alongside the database since v1.0. `OPERATIONS.md` §6 listed it as step 3. §8
+explains exactly what losing it costs. And **F-16's own row in `DOCUMENTATION_REVIEW.md` lists it under
+*Embodied in*.**
 
-It would still land on the forced-change page. **The scenario would pass, for the wrong reason, and
-the clause about the password path would be asserting nothing.** `SignInWithPasskeyAsync`'s existing
-comment already anticipates this happening — *"an authenticator that simulates presence can satisfy
-it with no gesture at all"* — it just had not yet mattered.
+Both scripts printed a reminder.
 
-So the staff member gets a **device** (virtual authenticator; holds the passkey; does the passkey
-sign-ins) and a **terminal** (no authenticator, so its conditional request is never satisfied; does
-the password walk). The one password sign-in that happens on the device is the first one, and it is
-safe there for a stated reason rather than by luck: the authenticator is still empty at that point,
-so the conditional request has nothing to answer with.
+Four documents in agreement about a thing no code did — which means every backup ever taken from this
+tree is a set that restores every account and **no enrolled authenticator** (§3.4). `backup.sh` now
+captures it as a sibling tar; `restore.sh` puts it back; the drill fails a set that does not have one.
 
-## Why the sign-out ordering is load-bearing
+### 3. A failed dump could evict a good one
 
-`ObligationsMiddleware` decides from the cookie's claims, not from the row. So the device signs out
-**before** the terminal clears the two flags. Left signed in, its cookie would still carry
-`must_change_password` and it would still be redirected — and the closing assertion that the pipeline
-*releases* a passkey session could not then tell a fresh cookie from
-`ChangePasswordRequired.razor`'s own stale-claim guard firing on the way past.
+The dump went straight through a redirect, so a truncated file survived as the newest `.dump`. `set -e`
+skipped *that* run's pruning — which is exactly what F-16's "prunes only after a successful new dump"
+promises — but the **next** successful run counted the poison file toward `BACKUP_RETENTION_COUNT` and
+pruned a real backup to make room for it. The guarantee held within one run and broke on the following
+one. Fixed with a hidden `.partial` write, a header check, and an atomic rename.
 
-That closing assertion is the point of including it. Without it, *"the passkey path hits the
-pipeline"* is satisfied equally well by a middleware that refuses passkey sessions **permanently**,
-which would be a considerably worse defect than the one the earlier assertion guards against.
+### 4. Container discovery took the first match
 
-## Four form posts of arrangement, and no shortcut available
+`ps --format '{{.Names}}' | grep -m1 postgres`. Harmless with one postgres container — and a restore
+drill needs a second one. **A backup that dumps the scratch database succeeds, comes out roughly the
+right size, and is worthless**, which is precisely the failure a backup script must not be capable of.
+It now refuses on ambiguity and names what it found; `POSTGRES_CONTAINER` / `WEB_CONTAINER` settle it.
 
-§3.7's create-staff form writes `must_change_password` and nothing else — no secret, no passkey, and
-deliberately not `must_enroll_totp` — so an enrolled account with a passkey cannot be arranged by an
-administrator. It could have been arranged by `INSERT`, and that would have been the wrong move:
-**the reset under test probes `totp_secret_protected`** to decide whether to clear an authenticator at
-all, so a fixture that got that one column wrong would produce a password-only reset and the
-scenario's second obligation would never exist. The account enrols itself through §3.4's voluntary
-page and adds its own passkey through §3.3's, which is what a real staff member does.
+All four land as one ledger row, **F-38**.
 
-## Chips rather than columns
+## What the drill asserts, and the two gates worth defending
 
-Every flag this scenario asserts on has a row in `person` that could be read directly, and reading it
-directly would prove nothing about §3.7: that `must_change_password` is set is one claim, and that an
-administrator can *see* it is another. Only the second is a product behaviour.
+`scripts/restore_drill.sh` starts its own PostgreSQL container — distinct name, **no published port**
+(so it cannot collide with the live `127.0.0.1:5432`), **no volume** (so its data dies with it) —
+restores a real set into it, and tears it down in a trap.
 
-So the flags are read as the chips `ManagePerson.razor` renders, found by the `span.manage-label`
-beside each group rather than by position — the same reasoning as `TickRoleAsync`, and for the same
-reason: indexing works today and silently starts reading roles as credentials the day a fourth fact
-is added above an existing one, which is exactly the kind of failure a scenario would blame on
-authorization.
+It never writes to the live database, and that argument is structural rather than a promise: there is
+exactly one connection target in the file, `scratch_query`, and it names `$SCRATCH` and nothing else.
+The only thing that goes near the live instance is `--from-live`, which delegates to `backup.sh`,
+which only reads.
 
-The **Credentials** group is the interesting one, because it is *derived* rather than stored.
-"Authenticator" appears iff `totp_secret_protected IS NOT NULL` (§3.4 has no enrolled column), so the
-chip's absence after the reset is the surface agreeing the secret is gone, and its return at the end
-is the surface agreeing a new one landed.
+**Gate C reads its expectations out of the migrations** — anchored `^CREATE TABLE x` / `^CREATE VIEW x`
+over `src/MyRestaurant.DataAccess/Migrations/*.sql`, which is 22 tables and 5 views today. A
+hard-coded list would have been easier and would rot on the first migration nobody remembered to
+extend it with. The parse also has the failure mode a hard-coded list does not: if the DDL is ever
+reformatted past those patterns, the gate reports **that** rather than silently passing on an empty
+expectation. Anything in the dump that no migration declares is reported too.
 
-Two new sites needed **declared** text rather than rendered text, and Slice 14's
-`ScreenText.DeclaredAsync` is why they are not two more red tests: `.manage-label` is upcased for the
-eyebrow treatment, so the label the reader matches on comes back as `STATUS` and every lookup would
-miss; and `.chip-role` is capitalized, so a role chip whose markup says `kitchen` — the stored
-vocabulary, which is what `person_role.role_name`'s CHECK constrains — reads back as `Kitchen`.
+**Gate D reads DbUp's journal, because structural completeness is not the question this code asks.**
+At startup `SchemaMigrationRunner.IsUpToDate()` asks DbUp whether every embedded script has been
+applied and `/healthz/ready` answers from it, so a restored schema with a short `schemaversions` is one
+this code will try to migrate. Table name and shape verified against `dbup-postgresql`'s
+`PostgresqlTableJournal` — `schemaversions`, columns `schemaversionsid` / `scriptname` / `applied`,
+unqualified so it lands in `public`. The journal stores the embedded **resource** name, so a
+migration's file name is a *suffix* of its row rather than equal to it; the gate matches on the suffix
+for that reason.
 
-## Assertions in pairs, never singletons
+Gate E queries every §8.3 view — the one place in the schema where an object's correctness depends on
+nine others, and therefore what `--clean` is most plausibly able to break. Gate F is a row census,
+reported and never asserted: the only sensible count for a fresh instance is almost all zeros, and the
+only way to notice you have been faithfully backing up an empty database for a month is to be shown
+the numbers. Gate G is the key ring, and it is why a drill of a database-only set is not allowed to
+look like a pass.
 
-Every claim in the post-reset block is of the form *"this chip is there now"*, which a chip that had
-always been there satisfies perfectly. So the same three groups are read **before** the reset as
-well, and the pair is the assertion.
+## The key ring's write direction, and why it is safe
 
-The recovery codes take the same shape: two sets of ten, asserted **disjoint**. §3.7's reset deletes
-every `totp_recovery_code` row and §3.4 replaces the set on confirmation, so an overlap of even one
-code would mean a code the administrator's reset was supposed to have destroyed is still live — and
-nothing else in the suite would notice.
+Reading it out is uncontroversial: `podman cp <web>:<dir>/. -` streams a tar through the engine's own
+archive API, so it works regardless of what is installed in the runtime image — no `tar` in the
+container, no helper image, no mount.
 
-Three things are also asserted **not** to have moved across the reset, because a reset that had
-quietly deactivated the account or dropped its grant would clear every obligation assertion below it
-and be caught by nothing else: the account is still `Active`, it still holds `kitchen`, and it still
-carries a `Password`.
+Writing it back crosses the volume-ownership question that `:U` exists to answer, and that is why I
+nearly deferred it. It is safe for a checkable reason rather than a hopeful one:
+`mcr.microsoft.com/dotnet/aspnet:10.0` resolves to the Ubuntu-based variant, whose `runtime-deps`
+Dockerfile creates the `app` user at UID 1654 and **never issues `USER app`** — read out of
+`dotnet/dotnet-docker` — and this repository's `Containerfile` does not set `USER` either. **The
+application runs as root.** Root-owned key files in that directory are exactly what it writes there
+itself, so `podman cp` in either direction and on either engine cannot get the ownership wrong.
+`compose.yaml`'s `:U` is belt-and-braces, not load-bearing.
 
-## One non-default `ReturnUrl`, deliberately placed
+The restore happens while `web` is stopped, which is not tidiness: Data Protection mints a fresh ring
+the first time it protects anything, so a ring dropped in after startup would sit beside one the
+application had already begun using.
 
-The pipeline's destination in this scenario is `/`, which is also `SafeLocalReturnUrl`'s fallback — so
-*"lands home"* on its own cannot separate **carried the destination across two redirects and two
-cookie re-issues** from **dropped it**. The trapped device therefore asks for `/kitchen`, the one
-board its role could otherwise walk straight into, and the redirect is asserted to carry
-`ReturnUrl=%2Fkitchen`.
+## Why the drill went into `boot-smoke` rather than its own job
 
-That is two things at once: §3.5's *"no authenticated endpoint is reachable"* asserted on a real area
-page rather than on a sign-in navigation, and the one place in the scenario where step (3)'s carry is
-distinguishable from the default. `Assert.Equal("/", new Uri(url).AbsolutePath)` stays where §16.3
-put it, and the comment says which of the two it is and is not evidence for.
+Everything a drill needs is already standing up there: a built image, a database DbUp has migrated,
+and a running application. A separate job would build the image a second time to answer one question.
+The job's **display name is unchanged**, so nothing keyed on the check name moves.
 
-## The one product change
+The `curl http://127.0.0.1:8080/setup` step is load-bearing, and the reason is a detail that would
+otherwise have made Gate G meaningless: **Data Protection creates its first key the first time it
+protects anything, and `/healthz/ready` protects nothing.** On a freshly booted instance the key ring
+is an empty directory. `/setup` renders a form, which mints an antiforgery token, which mints the key.
+Without that step every CI run would report an empty ring and the gate would become noise.
 
-`ManagePerson.razor`'s reset panel wrote the temporary password into `<p class="totp-secret">`, which
-is the same collision Slice 12 fixed on `CreateStaff.razor`: an element holding a password,
-addressable only by a class named for an authenticator key.
+`POSTGRES_CONTAINER` and `WEB_CONTAINER` are set explicitly rather than discovered, because the runner
+generates the service container's name and because `backup.sh` now refuses to guess when more than one
+container matches — which is exactly what the drill's own scratch container causes seconds later.
 
-It mattered more here than there. The account this panel just reset is on its way to
-`/account/enroll-totp-required`, whose own `p.totp-secret` holds a **real** authenticator key — so one
-selector meant two different secrets on two consecutive screens of one scenario. The element gains
-`.staff-temporary-password` beside the class it already had, and the harness reuses the constant Slice
-12 introduced rather than adding a second name for the same thing: both panels show "the one-time
-temporary password this administration surface just minted", and one selector for one meaning is the
-point.
+The set is deliberately **not** uploaded as an artifact: the `-dataprotection.tar` is key material in
+the clear. Throwaway in CI, but publishing one is not a habit worth forming, and `.gitignore` refuses
+it for the same reason.
 
-There is **no CSS rule for that name anywhere in `src/`** — I checked — so nothing changes on screen.
-That is the whole of the product diff: one line, plus its comment.
+**CI runs the drill without `--strict` on this first landing.** Every FAIL gate still blocks; what
+`--strict` adds is that ignored `pg_restore` errors and an empty ring also fail, and neither number has
+been observed on a real run. Once a few runs report "pg_restore completed with no errors", tightening
+it is a one-word edit — and I would rather hand you a gate that goes green than one I guessed at.
 
-## The kitchen role, chosen rather than defaulted
+## One documentation decision, stated so you can veto it
 
-§3.4's authenticator is a staff credential — §17 accepts a password-only counter and nothing in the
-specification asks a guest to carry TOTP — so a staff account is the faithful subject of "a
-TOTP-enrolled user". And the role gives the closing claim something to point at: `MainLayout` renders
-the kitchen link to the kitchen role and to nobody else, **not even to administrators**, so "lands
-home" becomes "landed home as this person, with this role's door on screen" rather than "reached a
-page". Scenarios 9 and 10 use the counter role; a fixture of its own keeps a failure here
-unambiguous.
+`docs/REQUIREMENTS.md` is **untouched**, and that is a judgement call rather than an oversight.
+
+The atomic-documentation rule (R§10 · S§18) wants a behaviour change to land with its requirement
+edit. But §15's sentence *"the Data Protection keys volume must be backed up alongside the database"*
+was **already the contract**. Nothing here is new intent; the documents were right and the code did
+not do what they said. So this lands as a defect fix at the mechanism level — S§15 rewritten, S§16.4
+amended, O§6 rewritten with O§8 and O§14 following, F-38 entered — and no revision bump on the
+requirements. If you would rather see a rev 3 with an explicit recoverability bullet in R§8, that is a
+one-bullet edit and I will do it.
+
+One thing fixed in passing: O§14's first paragraph said CI "runs three gates" and listed three of
+four. `end-to-end` had been missing from it since Slice 2.
 
 ## Build and test
 
 ```bash
+bash -n scripts/backup.sh scripts/restore.sh scripts/restore_drill.sh
+shellcheck --severity=warning scripts/*.sh    # blocking gate — clean
+shellcheck --severity=style   scripts/*.sh    # advisory gate — also clean
+
 dotnet build
-#    expect: all seven projects succeed, 0 errors
+#    expect: all seven projects succeed, 0 errors. No C# changed in this slice.
 
 dotnet test
-#    expect: total 971, failed 0, succeeded 957, skipped 14 — one fewer skip than Slice 14.
-#    Scenario 12 moves from [Fact(Skip)] to [Fact] + Assert.SkipUnless, and xUnit counts an
-#    Assert.Skip as skipped too — so the total does not move and one test crosses from the
-#    unconditionally-skipped column into the conditionally-skipped one.
+#    expect: 971 total, 0 failed, 957 succeeded, 14 skipped — UNCHANGED from Slice 15.
+#    Nothing here is an xUnit test, deliberately: the drill asserts on pg_dump/pg_restore
+#    round-tripping and on container plumbing, and Testcontainers is the wrong tool for that.
 
 bash scripts/ci_local.sh --with-all
 
-MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
-#    expect: total 15, failed 0, 15 passed, 0 skipped — the first fully green E2E run.
-#    Scenario 12 adds roughly 40-50s: a /setup wizard, a staff account, four Argon2id hashes across
-#    three password sign-ins and two forced changes, two TOTP confirmations, two passkey ceremonies
-#    (one attestation, two assertions), a reset, four reads of the management page, and no waiting
-#    on any timer.
+# the drill itself, against a live dev stack:
+bash run.sh --containers-only
+bash scripts/backup.sh --no-keys     # dev runs the app on the host: no container to read a ring from
+bash scripts/restore_drill.sh --no-keys
+#    expect: gates A-F pass, G skipped with a WARN, exit 0. Roughly 20-30s, most of it the
+#    scratch container's first-boot initdb.
 ```
 
-Note that `dotnet test` at Slice 14 was **971 / 0 failed / 956 succeeded / 15 skipped** and I have
-not seen a run since — the `claude-terminal.txt` in this dump predates Slice 14 (it still shows the
-`SETTLED TOTAL` failure and two skips). If Slice 14's own numbers came out differently, adjust these
-by the same offset: this slice moves exactly one test from skipped to run.
+Note that `dotnet test` at Slice 15 was expected at **971 / 0 failed / 957 succeeded / 14 skipped** and
+I have not seen a run since. This slice moves no test either way, so whatever Slice 15's numbers
+actually were, they should be identical here.
+
+## What was actually verified here
+
+No .NET SDK in the sandbox and no container engine either, so **none of the three scripts has been
+executed.** What was run:
+
+- `bash -n` and `shellcheck` at both `--severity=warning` and `--severity=style` on all three scripts
+  — clean at both, which keeps `ci.yml`'s claim that every script in the tree is style-clean true.
+- A YAML parse of the edited `ci.yml`: four jobs, nine steps in `boot-smoke`.
+- The drill's pure-bash logic exercised against the **real** migration files: 22 tables and 5 views
+  parsed; `contains` verified safe on empty arrays under `set -u`; the generated census SQL inspected;
+  the journal suffix match and the ignored-error regex checked on both matching and non-matching input.
+- `pg_restore`'s exit-code contract read out of the PostgreSQL 17 source.
+- DbUp's journal table name and column shape read out of `dbup-postgresql`.
+- The container's default user established from the .NET image sources rather than assumed.
+- Every doc edit applied by exact-match replacement with an assertion that the anchor appears **exactly
+  once**, so nothing was edited by position. Section numbering in `OPERATIONS.md` and
+  `TECHNICAL_SPECIFICATION.md` re-checked afterwards: unchanged, so no cross-reference moved.
 
 ## Where to look if this breaks
 
-**A strict-mode violation on a sign-out.** Something else has grown a second `form.sign-out-form`, or
-the `.First` did not survive the merge. The message names the selector and the count.
+**`backup.sh` exits 2 in production.** The web container was not found, or
+`DATA_PROTECTION_KEYS_DIRECTORY` does not match its mount point. The database dump is fine and is
+already on disk; only the ring is missing.
 
-**`The browser is not on /account/enroll-totp-required`.** The forced password change cleared
-obligation (1) and the pipeline did *not* pick up obligation (2). Either `must_enroll_totp` was never
-set — check `reset.ClearedAuthenticator`, which is asserted true one screen earlier, and the panel
-sentence it reads — or `RefreshSignInAsync` issued a cookie that dropped the second claim.
+**`backup.sh` refuses with "more than one running container matches".** Something else on the host has
+`postgres` or `web` in its name, or a previous drill's scratch container survived (`--keep`, or a
+`SIGKILL`). It lists the candidates. `POSTGRES_CONTAINER=… WEB_CONTAINER=…` settles it.
 
-**A password sign-in that lands somewhere unexpected on the device.** The two-browser split has
-collapsed. The device holds a discoverable credential from step (b) onwards; if a password sign-in is
-attempted there after that point, `passkey.js`'s conditional request may answer it first.
+**The drill fails Gate C with "read 0 table(s) and 0 view(s) out of the migrations".** A migration was
+reformatted past the anchored `CREATE TABLE x` / `CREATE VIEW x` patterns. Fix the patterns in the
+script — do not hard-code a list, which is the thing this gate exists to avoid.
 
-**`ReturnUrl=%2Fkitchen` missing.** `RedirectTargetFor` stopped composing `{PathBase}{Path}{QueryString}`,
-or `/kitchen` became exempt. The former is the interesting one — it is what §3.5 step (3) rests on.
+**The drill fails Gate D with rows missing from `schemaversions`.** The dump predates a migration this
+tree now carries, which is the *expected* answer for an old dump: this code would migrate it forward at
+startup. A dump from a **newer** schema is the dangerous direction and fails fast on boot instead.
 
-**Recovery-code sets overlapping.** `ResetCredentialsAsync` stopped deleting
-`totp_recovery_code` rows, or `TotpEnrollment.IssueRecoveryCodesAsync` stopped replacing the set.
-Either way a code an administrator's reset was meant to destroy is still live.
+**The drill fails Gate E on a view.** `pg_restore --clean` dropped or failed to recreate something a
+§8.3 view depends on. Gate B's ignored-error count in the same run is where the reason will be.
 
-**A chip lookup failing with *"has no 'Credentials' group of facts"*.** A `span.manage-label` was
-reworded or a fourth fact group was added. The message lists every label the page did offer, so the
-fix is a one-word edit at the call site.
+**The drill warns on Gate G with an empty ring.** Nothing has been protected yet on that instance. In
+CI that means the `/setup` render step did not do its job — check its output before anything else.
 
-**A passkey ceremony failing on the device only.** `OpenIsolatedPageAsync(withVirtualAuthenticator: true)`
-is what makes that context capable of one, and a credential minted in one context is invisible in every
-other. If `SignInWithPasskeyAsync` starts failing in step (e) or (g) but the `/setup` wizard's
-attestation still works, the credential and the browser have been separated.
+**CI's `back up the booted instance` step fails.** `${{ job.services.postgres.id }}` did not resolve to
+something `docker exec` accepts, or `myrestaurant_web_ci` had already exited. `boot-smoke`'s existing
+readiness probe runs first and would normally have caught the second.
+
+**`restore.sh` exits 2 with "pg_restore ignored N errors".** Usually benign under `--clean --if-exists`
+— a `DROP` for something that was not there. It is surfaced rather than swallowed precisely because the
+count is small enough to be worth reading; `backup.sh` passes `--no-owner` at dump time to keep it that
+way.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3426,15 +3527,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  371.8 KiB (380761 bytes)
-  Last modified:         2026-08-04 14:37:02.000000000 -0400
+  Size:                  384.1 KiB (393369 bytes)
+  Last modified:         2026-08-04 20:59:48.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31322121
+  Inode:                 31516883
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               23642d0789a0c280cd6b42f972d36df67163010859be3dd391a4e87ffc5ea0c0
-  Last git commit:       7271ebb 2026-08-04 14:42:03 -0400 add claude changes
+  SHA-256:               3f3a245ada32a251f83604376f49e0311f12d78240f381e8aadd70ce2413c6a9
+  Last git commit:       b3cc457 2026-08-04 22:33:01 -0400 add claude response
 
 --- CONTENT ---
 # Build progress
@@ -9010,6 +9111,190 @@ against the markup they target; a count confirming both obligation pages carry e
 their own beside the layout's, which is the strict-mode violation `.First` resolves; and a check that
 `.staff-temporary-password` has no CSS rule anywhere, so nothing changes on screen.
 
+---
+
+### M6 Slice 16 — the restore drill, and the four defects it found before it could run
+
+§19's M6 line has read "full E2E suite (§16.3), backups + restore drill, …" since v1.0. Slice 15 closed the
+first clause. This slice closes the second, and the interesting part is not the drill — it is what happened the
+moment something tried to rehearse a procedure four documents agreed was already in place.
+
+**`scripts/restore.sh` could not have completed a restore.** It ran `pg_restore --clean --if-exists` under
+`set -euo pipefail`, with `web` already stopped, one line *before* the `up -d web` that would bring it back.
+`pg_restore` exits **1 whenever it ignored any error at all** — that is its documented contract, and it is
+`exit_code = AH->n_errors ? 1 : 0` in `pg_restore.c`, checked against the PostgreSQL 17 source rather than
+recalled — and `--clean --if-exists` ignores errors as a matter of course, because that is what `IF EXISTS` is
+*for*. So `set -e` killed the script one line early. The single most likely outcome of the documented recovery
+procedure was a database that came back and an application that stayed down, with nothing printed to say so.
+That is worse than a crash: a crash is attributable.
+
+**Nothing captured the Data Protection key ring.** §15 has required it alongside the database since v1.0,
+`OPERATIONS.md` §6 said to do it as step 3, §8 explains exactly why, and **F-16's own row in
+`DOCUMENTATION_REVIEW.md` lists it under *Embodied in*.** Both scripts printed a reminder. Four documents in
+agreement about a thing no code did, which means every backup ever taken from this tree was a set that restores
+every account and no enrolled authenticator (§3.4).
+
+**A failed dump could evict a good one.** The dump went straight through a redirect, so a truncated file
+survived as the newest `.dump`. `set -e` skipped *that* run's pruning — which is what F-16's "prunes only after
+a successful new dump" promises — but the next successful run counted the poison file toward
+`BACKUP_RETENTION_COUNT` and pruned a real backup to make room for it. The guarantee held within one run and
+broke on the following one.
+
+**Container discovery took the first match.** `ps --format '{{.Names}}' | grep -m1 postgres`. Harmless with one
+postgres container; a drill needs a second one. A backup that dumps the scratch database succeeds, comes out
+roughly the right size, and is worthless — which is precisely the failure a backup script must not be capable
+of. It now refuses on ambiguity and names what it found.
+
+All four are one ledger row, **F-38**.
+
+#### What the drill actually asserts
+
+`scripts/restore_drill.sh` starts its own PostgreSQL container — distinct name, no published port (so it cannot
+collide with the live `127.0.0.1:5432`), no volume (so its data dies with it) — restores a real backup set into
+it, and tears it down on the way out. It never writes to the live database, and the argument for that is
+structural rather than a promise: there is exactly one connection target in the file, `scratch_query`, and it
+names `$SCRATCH` and nothing else. The only thing that goes near the live instance is `--from-live`, which
+delegates to `scripts/backup.sh`, which only reads.
+
+Seven gates. Two of them are the ones worth defending.
+
+**Gate C reads its expectations out of the migrations.** `^CREATE TABLE x` / `^CREATE VIEW x`, anchored, over
+`src/MyRestaurant.DataAccess/Migrations/*.sql` — 22 tables and 5 views today. A hard-coded list would have been
+easier and would rot on the first migration nobody remembered to add to it. The parse also has the failure mode
+a hard-coded list does not: if the DDL is ever reformatted past those patterns, the gate reports *that* rather
+than silently passing on an empty expectation. Anything present in the dump that no migration declares is
+reported too, so a stray object cannot hide behind a green run.
+
+**Gate D reads DbUp's journal, because structural completeness is not the question this code asks.** At startup
+`SchemaMigrationRunner.IsUpToDate()` asks DbUp whether every embedded script has been applied, and
+`/healthz/ready` answers from it. A restored schema whose `schemaversions` is short is a schema this code will
+try to migrate. The table name and shape were verified against `dbup-postgresql`'s `PostgresqlTableJournal` —
+`schemaversions`, columns `schemaversionsid` / `scriptname` / `applied`, unqualified so it lands in `public` —
+and the journal stores the embedded *resource* name, so a migration's file name is a suffix of its row rather
+than equal to it. The gate matches on the suffix for that reason.
+
+Gate E queries every §8.3 projection view, which is the one place in the schema where an object's correctness
+depends on nine others and therefore the thing `--clean` is most plausibly able to break. Gate F is a row
+census, reported and never asserted — the only sensible count for a fresh instance is almost all zeros, and the
+only way to notice you have been faithfully backing up an empty database for a month is to be shown the
+numbers. Gate G is the key ring, and it is the reason a drill of a database-only set is not allowed to look
+like a pass.
+
+Gates A and B are the cheap ones: the archive lists, and it restores. `--strict` promotes reservations (ignored
+errors, an empty ring) to failures.
+
+#### The key ring, and why the write direction is safe
+
+Reading it out is uncontroversial: `podman cp <web>:<dir>/. -` streams a tar through the engine's own archive
+API, so it works regardless of what is installed in the runtime image — no `tar` in the container, no helper
+image, no mount.
+
+Writing it back crosses the volume-ownership question that `:U` exists to answer, and that is why this was
+nearly deferred. It is safe, and for a checkable reason rather than a hopeful one: `mcr.microsoft.com/dotnet/aspnet:10.0`
+resolves to the Ubuntu-based variant, whose `runtime-deps` Dockerfile creates the `app` user at UID 1654 and
+**never issues `USER app`** — verified in `dotnet/dotnet-docker`'s image sources — and this repository's
+`Containerfile` does not set `USER` either. The application runs as root. Root-owned key files in that
+directory are exactly what it already writes there itself, so `podman cp` in either direction and on either
+engine cannot get the ownership wrong. `compose.yaml`'s `:U` is belt-and-braces, not load-bearing.
+
+The restore happens while `web` is stopped, which is not tidiness: Data Protection creates a fresh key ring the
+first time it protects anything, so a ring dropped in after startup would be sitting beside one the application
+had already minted and begun using.
+
+#### Why the drill went into `boot-smoke` rather than its own job
+
+Everything a drill needs is already standing up in that job: a built image, a database DbUp has migrated, and a
+running application. A separate job would have to build the image a second time to answer one question. So
+`boot-smoke` gained three steps after its readiness probe — render a page, back the instance up, drill the
+backup — and its display name is unchanged so nothing keyed on the check name moves.
+
+The middle step needs the first, and the reason is a detail that would otherwise have made Gate G meaningless:
+Data Protection creates its first key the first time it protects *anything*, and `/healthz/ready` protects
+nothing. On a freshly booted instance the key ring is an empty directory. `/setup` renders a form, which mints
+an antiforgery token, which mints the key. Without that `curl`, every CI run would have reported an empty ring
+and the gate would have become noise.
+
+`POSTGRES_CONTAINER` and `WEB_CONTAINER` are set explicitly in the job rather than discovered, because the
+runner generates the service container's name and because `backup.sh` now refuses to guess when more than one
+container matches — which is exactly what the drill's own scratch container causes moments later. And the backup
+set is deliberately **not** uploaded as an artifact: the `-dataprotection.tar` is key material in the clear.
+Throwaway here, but publishing one is not a habit worth forming, and `.gitignore` now refuses it for the same
+reason.
+
+The CI drill runs **without** `--strict` on this first landing. Every FAIL gate still blocks; what `--strict`
+adds is that ignored `pg_restore` errors and an empty ring also fail, and neither number has been observed on a
+real run. Once a few runs report "pg_restore completed with no errors", tightening it is a one-word edit.
+
+#### Three-valued exit codes, in both scripts
+
+"The database was dumped and the key ring was not" is neither success nor failure, and a scheduled job needs to
+be able to tell. `backup.sh`: **0** complete set, **2** database only, **1** nothing usable. `restore.sh`: **0**
+restored and healthy, **2** restored with reservations (ignored errors, or the ring did not go back), **1**
+nothing restored. `restore.sh` also gained `--yes` for scripted recovery, since a recovery you cannot automate
+is one more thing to get wrong at the worst possible time.
+
+#### One documentation decision, stated so it can be vetoed
+
+`REQUIREMENTS.md` is **untouched**, and that is a judgement call rather than an oversight. The atomic-documentation
+rule (R§10 · S§18) wants a behaviour change to land with its requirement edit — but §15's sentence *"the Data
+Protection keys volume must be backed up alongside the database"* was already the contract. Nothing here is new
+intent; the documents were right and the code did not do what they said. So this lands as a defect fix at the
+mechanism level: S§15 rewritten, S§16.4 amended, O§6 rewritten with O§8 and O§14 following it, F-38 entered, and
+no revision bump on the requirements.
+
+O§14's first paragraph also said CI "runs three gates" and listed three of four — `end-to-end` had been missing
+since Slice 2. Fixed in passing.
+
+#### Build and test
+
+```bash
+bash -n scripts/backup.sh scripts/restore.sh scripts/restore_drill.sh
+shellcheck --severity=warning scripts/*.sh   # blocking gate: clean
+shellcheck --severity=style   scripts/*.sh   # advisory gate: also clean
+
+git add scripts/restore_drill.sh
+#    NOT optional. Both scripts/ci_local.sh and CI's shell-scripts job enumerate with
+#    `git ls-files '*.sh'`, so an untracked new script is silently unchecked.
+
+chmod +x scripts/restore_drill.sh
+
+dotnet build
+#    expect: all seven projects succeed, 0 errors — no C# changed in this slice.
+
+dotnet test
+#    expect: 971 total, 0 failed, 957 succeeded, 14 skipped — unchanged from Slice 15.
+#    Nothing here is a test; the drill is a shell gate, deliberately, because it asserts
+#    on pg_dump/pg_restore round-tripping and Testcontainers is the wrong tool for that.
+
+bash scripts/ci_local.sh --with-all
+
+# the drill itself, against a live dev stack:
+bash run.sh --containers-only
+bash scripts/backup.sh --no-keys            # dev has no web container to read a ring out of
+BACKUP_DIRECTORY=/var/lib/myrestaurant/backups bash scripts/restore_drill.sh --no-keys
+#    expect: gates A–F pass, G skipped with a WARN, exit 0. Roughly 20-30s, most of it the
+#    scratch container's first-boot initdb.
+```
+
+No .NET SDK in the sandbox, and no container engine either, so none of the three scripts has been executed
+here. What *was* run: `bash -n` and `shellcheck` at both `--severity=warning` and `--severity=style` on all
+three (clean at both, which keeps `ci.yml`'s claim that every script in the tree is style-clean true); a YAML
+parse of the edited `ci.yml` confirming four jobs and nine steps in `boot-smoke`; the drill's pure-bash logic
+exercised against the real migration files — 22 tables and 5 views parsed, `contains` verified safe on empty
+arrays under `set -u`, the generated census SQL inspected, the journal suffix match and the ignored-error
+regex checked on both the matching and the non-matching input; `pg_restore`'s exit-code contract read out of
+the PostgreSQL 17 source; DbUp's journal table name and column shape read out of `dbup-postgresql`; and the
+container's default user established from the .NET image sources rather than assumed.
+
+#### What is left in M6
+
+Nothing. §19's M6 line: full E2E suite (Slices 2–15), backups + restore drill (this slice), cloudflared
+production profile + tunnel docs (M1/F-06a), quick-tunnel demo script with warning (landed early), OPERATIONS
+runbooks (M5), CI pipeline (Slice 1), guest registration (Slice 5).
+
+The next move is not a slice, it is a **release**: `scripts/ci_local.sh --with-all`, a drill against the real
+stack, then a tag. `Stage 6 — M6: hardening` can have its checkbox.
+
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
 ################################################################################
@@ -9018,20 +9303,20 @@ their own beside the layout's, which is the strict-mode violation `.First` resol
   File name:             DOCUMENTATION_REVIEW.md
   Relative path:         docs/DOCUMENTATION_REVIEW.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/DOCUMENTATION_REVIEW.md
-  Size:                  20.4 KiB (20859 bytes)
-  Last modified:         2026-08-02 01:18:01.000000000 -0400
+  Size:                  24.4 KiB (25025 bytes)
+  Last modified:         2026-08-04 20:58:24.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 29341766
+  Inode:                 31516885
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               11449be11699001936082d2a937d9a4697c12bc2f8f597235bbacc5193ae1f60
-  Last git commit:       2a55b8b 2026-08-02 09:19:30 -0400 add claude response
+  SHA-256:               402a8456b6377a59b2a47a736279ec52f837a105a418c49f59ccff4ef1b50c58
+  Last git commit:       b3cc457 2026-08-04 22:33:01 -0400 add claude response
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
 
-**Status:** All findings resolved. **F-36** (timestamps ignored `RESTAURANT_TIME_ZONE`) closed in the M4 close-out slice, on the schedule its row recorded. **F-37** (no guest registration surface existed) closed in M6 Slice 5, with one part deliberately left open and named — see its row.
+**Status:** All findings resolved. **F-36** (timestamps ignored `RESTAURANT_TIME_ZONE`) closed in the M4 close-out slice, on the schedule its row recorded. **F-37** (no guest registration surface existed) closed in M6 Slice 5, with one part deliberately left open and named — see its row. **F-38** (the restore path had never been executed and could not have completed) closed in M6 Slice 16; it is now rehearsed by CI on every push rather than documented as a procedure.
 **Scope of the original review (2026-07-16):** `REQUIREMENTS.md` rev 1 (commit `af51017`) and the `dump.txt` produced by `export.sh`.
 **Rulings:** the owner ruled on every finding on 2026-07-17 — F-01–05, F-09–11, F-13–19, F-21–24 accepted as raised; F-06, F-07 (Q1), F-08 (Q2/Q3), and F-12 (Q4/Q5) resolved with the defaults proposed in the ruling exchange ("all of this is fine").
 
@@ -9104,6 +9389,7 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 | F-34 | §8.2's `passkey_credential` was specified before ASP.NET Core Identity's .NET 10 passkey API was verified against source. That API's `UserPasskeyInfo` credential record carries WebAuthn state the table did not model (user-verified, backup-eligible, backed-up), and assertion **reads** the stored backup-eligible bit and fails the ceremony on a mismatch — so it cannot be dropped and reconstructed. | Additive migration `0002_passkey_credential_webauthn_state.sql` adds `is_user_verified` / `is_backup_eligible` / `is_backed_up` (all `NOT NULL DEFAULT false`); `0001` is left untouched (DbUp journals per script). The raw attestation object and client-data JSON `UserPasskeyInfo` also exposes are deliberately not stored (attestation is `none`, §3.3; nothing re-reads them) and are reconstructed as empty on read. This is the framework gap §3.3 anticipated — no fallback library was needed, only the columns. | S§8.2 (schema-evolution note), S§3.3 · `0002_*.sql`, `DapperUserStore` passkey region · BUILD_PROGRESS Slice 5 |
 | F-35 | The profile page is specified twice — R§4.6 ("every person has a profile page") and S§11.1 (in the `/table` surface list) — but §19's build order never named it, so no milestone claimed it. M2 shipped the individual credential pages (`/account/enroll-totp`, `/account/passkeys`) with no hub and no way to edit the three self-owned fields, and the gap was only noticed in use, after M3: two freshly created staff accounts could not set their own display names. Compounding it, §11.2 groups the kitchen queue by *person display name*, so M4 would have inherited tickets reading `betty`. | The profile page ships as an M2 close-out slice before M4 opens: `/account` (display name, email, phone, plus the credential status hub) and `/account/change-password` (voluntary change, and add-a-password for a passkey-only account). R§4.6 now states display-name editing and username immutability explicitly; S§11.1 points at a new S§11.6 that specifies the surface; S§19's M2 line names it and records that it landed late. Addresses stay unsurfaced, with the reason recorded in S§11.6. | R§4.6 · S§11.1, S§11.6, S§19 · `ProfileDetails.cs`, `Profile.razor`, `ChangePassword.razor` · BUILD_PROGRESS M2 close-out |
 | F-36 | Every surface rendered instants with `DateTimeOffset.ToLocalTime()`, which is the **server process's** zone — not `RESTAURANT_TIME_ZONE`. S§8.1 says instants are "stored `timestamptz` UTC; rendered in `RESTAURANT_TIME_ZONE`", and S§13 listed the variable as "rendering only", but nothing read it: `RestaurantOptions.ResolveTimeZone()` existed with no caller, and the runtime container sets no `TZ`, so a deployed instance rendered UTC. Harmless while the only timestamps were on administration pages read by staff who could infer the offset; not harmless from M4 Slice 2 onward, where a guest sees "sent 19:04" for an order placed at 3:04 PM. A second, unspecified question was entangled with it: S§13 had no locale setting, so nothing decided 12- versus 24-hour or the separator, and `ToString("t")` took those from the container's culture too. | **Closed in the M4 close-out slice**, on the schedule the original row recorded — deliberately not folded into the slice that found it, because doing it piecemeal would have left two time conventions inside a single page (the static `/table/{id}` header and its interactive island are one screen). Three parts. (1) **The rule made explicit and enforceable:** all instants render in `RESTAURANT_TIME_ZONE` for **every** reader — the viewer's own zone is irrelevant, because a restaurant is a physical place in one zone and a guest abroad wants the times the meal actually happened at. One type, `WebApplication/Time/RestaurantTime`, performs the conversion; all eighteen `ToLocalTime()` call sites now go through it and nothing else may call it. (2) **The locale question answered:** `RESTAURANT_CLOCK_FORMAT` (`12-hour` default / `24-hour`), validated at startup; every other pattern is explicit and invariant-cultured, so the base image's locale decides nothing. (3) **The convention stated where readers are:** a footer clock on every page in both layouts, ticking to the second, server-anchored and client-driven — no server-side timer, nothing running while the tab is hidden, one wake per visible second, and a rare `GET /restaurant-clock` re-anchor for the surfaces that outlive a page load. | S§8.1, S§11.7 (new), S§13, S§19 · R§8 · `Time/RestaurantTime.cs`, `Time/RestaurantClockEndpoints.cs`, `Components/Layout/RestaurantClockFooter.razor`, `wwwroot/js/clock.js` · BUILD_PROGRESS M4 close-out |
+| F-38 | **The restore path had never been executed, and it could not have completed.** `scripts/restore.sh` ran `pg_restore --clean --if-exists` under `set -e`, with `web` already stopped, one line *before* the `up -d web` that would bring it back. `pg_restore` exits **1 whenever it ignored any error** — its documented contract, `exit_code = AH->n_errors ? 1 : 0` in `pg_restore.c`, verified against the PostgreSQL 17 source — and `--clean --if-exists` ignores errors routinely. So the single most likely outcome of the documented recovery procedure was a database that came back and an application that stayed down, silently. Three more defects came out of the same reading. (2) **Nothing captured the Data Protection key ring.** S§15 has required it alongside the database since v1.0 and **F-16's own row in this file lists it under *Embodied in*** — both scripts only printed a reminder, so every backup ever taken was a set that cannot decrypt a TOTP secret. (3) **A failed dump could evict a good one.** The dump was written straight through a redirect, so a truncated file survived as the newest `.dump`; `set -e` skipped that run's pruning, but the *next* successful run counted the poison file toward `BACKUP_RETENTION_COUNT` and pruned a real backup to make room. F-16's "prunes only after a successful new dump" held for one run and broke on the following one. (4) **Container discovery took the first match** (`ps | grep -m1 postgres`), which is fine until a second postgres container exists — and a restore drill needs one. | Both scripts rewritten and `scripts/restore_drill.sh` added: a non-destructive rehearsal against a scratch container it creates and destroys, gating the archive's readability, the restore and its ignored-error count, the presence of every relation the migrations declare (read *from* the migrations, so a new one extends the gate by itself), DbUp's journal, the resolvability of every §8.3 view, a row census, and the key ring. `web` is now restarted from an `EXIT` trap so it comes back on every path out of `restore.sh`; the dump lands via a hidden `.partial` and an atomic rename; discovery refuses on ambiguity and `pg_isready` runs before anything is written; the key ring is captured with `podman cp` (the engine's archive API, so no tools are needed in the runtime image) and put back while `web` is down. **`REQUIREMENTS.md` is deliberately untouched:** S§15's key-ring sentence was already the contract, so this is a defect fix at the mechanism level rather than new intent. And the drill is wired into CI's `boot-smoke`, so it is rehearsed on every push rather than being a runbook step. | S§15, S§16.4 · O§6, O§8, O§14 · `scripts/backup.sh`, `scripts/restore.sh`, `scripts/restore_drill.sh`, `.github/workflows/ci.yml`, `.gitignore`, `.env.example` · BUILD_PROGRESS M6 Slice 16 |
 | F-37 | There was no registration page. R§4.3 has required guest self-registration since rev 2, S§4.4 says the join grant's purpose is to survive it (*"the grant cookie survives the passkey ceremony; that is its purpose"*), and S§11.1 puts it on the join path — but §19's build order never named it, so no milestone claimed it, exactly as happened to the profile page in F-35. Thirty-six routable pages and none of them a registration surface: `SignIn.razor` said so in its own footnote, `TableJoin.razor` sent an anonymous grant-holder to `/sign-in` — a door with nothing behind it for a first-time guest — and BUILD_PROGRESS had flagged the gap twice. It surfaced only when §16.3 scenario 3 went to write it, and it also blocked scenarios 4 through 11, every one of which needs a guest account; until then the only non-administrator account obtainable was a *staff* account with `must_change_password` set, which is not what those scenarios are about. | The surface ships in M6 as its own slice: `/register`, anonymous static SSR, two steps over a Data-Protection-protected ticket cookie, reached from `/sign-in` by a link carrying the return URL. A ticket rather than one form because a WebAuthn attestation needs a user handle before the `person` row exists and that handle must equal the eventual identifier — S§3.6's problem, S§3.6's solution — but with **no step enum**, since the wizard has three unskippable steps and registration has one, so the ticket's existence *is* the state. Declining the passkey renders only when a password was set, making S§3.3's "offered, never required, never a gate" structural rather than advisory; an account with neither credential is refused in the markup and again before any SQL runs. **Left open, by ruling:** no rate limit, because a naive second `AddRateLimiter` policy would hijack §4.2's single-valued rejection handler and answer a refused registration with "too many pairing attempts" — wrong, and deliberate-looking. What bounds it meanwhile is written into S§17 rather than left as folklore. | R§4.3 · S§11.1, S§11.8 (new), S§17, S§19 · `GuestRegistration.cs`, `RegistrationState.cs`, `Register.razor`, `AccountEndpoints.cs` · BUILD_PROGRESS M6 Slice 5 |
 
 ---
@@ -9123,6 +9409,19 @@ requirement section names a capability, §19 should name the milestone that owns
 milestone claims should be visible as such. Both gaps were found the same way in the end — by somebody
 trying to *use* the thing, not by anybody reading the documents.
 
+**F-38 is a third shape, and this ledger was part of it.** F-35 and F-37 were capabilities that a requirement
+stated and no milestone claimed. F-38 is the opposite failure: S§15 stated the rule, S§19 named the milestone,
+`OPERATIONS.md` §6 wrote the runbook, and **F-16's row right here listed "The Data Protection keys volume is
+backed up alongside the database" under *Embodied in*** — four documents in agreement about something no code
+did. Nobody was wrong to trust them. The row was written when the decision was made, and a decision is not an
+implementation; "embodied in" was recording intent in a column reserved for fact.
+
+The guard is not more documentation. It is that a claim about behaviour should be checked by something that
+runs. The key ring is now captured by a script rather than by a reminder, its presence is a gate rather than a
+sentence, and that gate executes on every push — so the next time this drifts, the build goes red instead of
+the ledger staying green. Where F-36's lesson was *record a finding when you see it*, F-38's is *a row in the
+embodiment column should name something executable*.
+
 New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodiment — landed in the **same commit** as the change they describe, together with the matching `REQUIREMENTS.md`, specification, and ADR edits (atomic documentation, R§10 · S§18).
 
 ################################################################################
@@ -9133,15 +9432,15 @@ New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodimen
   File name:             OPERATIONS.md
   Relative path:         docs/OPERATIONS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/OPERATIONS.md
-  Size:                  20.5 KiB (20951 bytes)
-  Last modified:         2026-08-02 01:18:08.000000000 -0400
+  Size:                  24.9 KiB (25498 bytes)
+  Last modified:         2026-08-04 20:57:56.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 29341770
+  Inode:                 31516886
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               639d2f8ba23c33b6f4dd819c89c35b46e6733d4468cb193d3d3bd9045f4e8329
-  Last git commit:       2a55b8b 2026-08-02 09:19:30 -0400 add claude response
+  SHA-256:               d0333995b11873926e818ea476ab89c4789399c1de8cbd700161e5464c22e946
+  Last git commit:       b3cc457 2026-08-04 22:33:01 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Operations
@@ -9210,21 +9509,51 @@ Any cheap device with a browser works — an old tablet on a stand is the refere
 
 ## 6. Backups and restore
 
-`scripts/backup.sh` runs `pg_dump --format=custom` **inside the postgres container** via `podman exec` — the dump client always matches the server version (F-16) — writing `myrestaurant-YYYYMMDD-HHMMSS.dump` into `BACKUP_DIRECTORY` (bind-mounted, git-ignored), then pruning to the newest `BACKUP_RETENTION_COUNT` (default 14). Pruning happens **only after** a successful new dump: a failing backup never eats old ones.
+**A backup is two files.** `scripts/backup.sh` writes both, sharing one timestamp, into `BACKUP_DIRECTORY` (bind-mounted, git-ignored):
 
-Schedule it at `BACKUP_SCHEDULE_TIME` (default 03:30 host-local) with a systemd **user** timer or cron; with a user timer, `loginctl enable-linger` is what keeps it running without a login session.
+```
+myrestaurant-20260804-033000.dump                  the database — pg_dump --format=custom
+myrestaurant-20260804-033000-dataprotection.tar    the Data Protection key ring (§8)
+```
 
-**Back up the Data Protection keys volume in the same breath** — see §8. A database dump without the key ring is a backup that cannot decrypt any TOTP secret.
+`pg_dump` runs **inside the postgres container** via `podman exec`, so the dump client always matches the server version (F-16). The key ring comes out of the web container with `podman cp`, which streams a tar through the engine's own archive API and therefore needs nothing installed inside that image.
 
-**Restore drill** — do this once *before* you need it, against a scratch host:
+**Both files, or you do not have a backup.** A dump without the key ring restores every account and no enrolled authenticator — see §8. The script tells you which you got: exit **0** is a complete set, exit **2** means the database was dumped and the key ring was not, exit **1** means nothing usable was written. Wire the schedule so a 2 actually reaches you; it is recoverable, but it is not a backup.
 
-1. `podman-compose down` (or stop only `web`).
-2. `scripts/restore.sh <dumpfile>` — runs `pg_restore --clean --if-exists` into the postgres container.
-3. Restore the Data Protection keys volume from the same backup set.
-4. Start the stack. `web` verifies migrations at startup: a dump from an older schema is rolled forward automatically; a dump from a *newer* schema than the code fails fast — deploy matching code first.
-5. Sign in, open a sitting's event history, confirm the world is intact.
+Run it as-is in production. In **dev** the application runs on the host under `run.sh`, so there is no container to read a key ring out of — use `scripts/backup.sh --no-keys` there.
 
-There are no down-migrations anywhere in the system (ADR-0012): recovery from a bad migration is exactly this procedure with the pre-upgrade dump.
+Schedule at `BACKUP_SCHEDULE_TIME` (default 03:30 host-local) with a systemd **user** timer or cron; with a user timer, `loginctl enable-linger` is what keeps it running with nobody logged in. Retention keeps the newest `BACKUP_RETENTION_COUNT` sets (default 14) and prunes **only after** a new set has landed, so a failing backup never eats old ones. The dump is written to a hidden `.partial` file and renamed into place only once it is complete, which is what stops a half-written dump from counting as the newest backup and evicting a good one on the *next* run.
+
+Container discovery **refuses when more than one container matches** rather than picking the first, and names what it found. Set `POSTGRES_CONTAINER` / `WEB_CONTAINER` to settle it. This matters more than it sounds: dumping the wrong database succeeds, comes out roughly the right size, and is worthless.
+
+### The drill
+
+```bash
+scripts/restore_drill.sh                 # rehearse the newest set
+scripts/restore_drill.sh --from-live     # take a fresh set first, then rehearse it
+scripts/restore_drill.sh --strict        # treat reservations as failures
+scripts/restore_drill.sh --keep          # leave the scratch container for inspection
+```
+
+**Run it now, and again after anything that touches the schema.** It restores into a scratch PostgreSQL container it creates and destroys itself — no maintenance window, no scratch host, no published port, and it never writes to the live database — then checks that the archive lists; that it restores, and with how many ignored errors; that every table and view the migrations declare came back; that DbUp's journal is at a version this code will accept; that every projection view still resolves; what the row counts are; and that the key ring is present and not empty. Ninety seconds. CI runs the same script on every push (§14).
+
+It is not a replacement for knowing the procedure below, because the day you need it the drill is not what you will be running.
+
+### Real recovery
+
+1. `scripts/restore.sh <dumpfile>` — stops `web`, restores the database, puts the key ring back from the sibling tar, starts `web` again, and waits for `/healthz/ready`. Add `--yes` to skip the confirmation prompt in a scripted recovery.
+2. **Read the exit code.** **0** restored and healthy. **2** restored with reservations — `pg_restore` ignored some errors (usually benign under `--clean --if-exists`), or the key ring was not put back; the warnings say which. **1** nothing was restored.
+3. Sign in, open a sitting's event history, and confirm the world is intact.
+
+`web` is started again on **every** path out of that script, including the paths that got there by failing, because it happens in an `EXIT` trap. That is worth knowing because it used not to be true: `pg_restore` exits non-zero whenever it ignored any error, the script runs under `set -e`, and the line that restarted `web` came *after* the restore — so the single most likely outcome of the previously documented procedure was a database that came back and an application that stayed down, with nothing saying so (F-38).
+
+A dump from an **older** schema is rolled forward automatically at startup. A dump from a **newer** schema than the code fails fast — deploy matching code first. There are no down-migrations anywhere in the system (ADR-0012): recovery from a bad migration is exactly this procedure with the pre-upgrade dump.
+
+**If you ran `down` rather than `stop`**, the web container no longer exists and the key ring has nowhere to go; the script says so instead of pretending. Bring the stack up and re-run, or place it by hand:
+
+```bash
+podman cp - '<web-container>:/var/lib/myrestaurant/dataprotection' < myrestaurant-<stamp>-dataprotection.tar
+```
 
 ## 7. Optional staff-LAN fallback (off by default)
 
@@ -9241,7 +9570,7 @@ Hard limits, by design: **passkeys do not work on this origin** — `restaurant.
 The ASP.NET Data Protection key ring lives in the `DATA_PROTECTION_KEYS_DIRECTORY` volume. It encrypts every stored TOTP secret and signs every authentication cookie and join-grant cookie.
 
 - **Losing it** means: all sessions invalid (harmless — everyone signs in again) and **every enrolled TOTP secret undecryptable** (not harmless). Recovery from key loss: administrators clear TOTP per affected account (`Reset credentials`), and users re-enroll through the obligations pipeline. Passkeys and passwords are unaffected.
-- **Therefore:** the volume is part of every backup set (§6), it survives `podman-compose down`/`up` because it is a named volume, and you never delete it casually. Treat the backup copies as secrets.
+- **Therefore:** `scripts/backup.sh` captures it into `myrestaurant-<timestamp>-dataprotection.tar` beside every dump and `scripts/restore.sh` puts it back (§6) — it is no longer something you have to remember, and `scripts/restore_drill.sh` fails a drill whose set does not include one. It survives `podman-compose down`/`up` because it is a named volume, and you never delete it casually. Treat the backup copies as secrets: that tar is the key material, in the clear, which is also why `.gitignore` refuses it and why CI does not upload one as an artifact.
 
 ## 9. Changing the public origin (domain move)
 
@@ -9291,9 +9620,11 @@ Migrations are append-only and roll forward only — the same philosophy as the 
 
 CI is not an operations concern until the day you need to know *which build* is on the box and whether anyone verified it. This section is that day.
 
-**What every push is checked against.** `.github/workflows/ci.yml` runs three gates on every push and pull request against `main`: `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), and `boot-smoke` (the production `Containerfile` is built and the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200).
+**What every push is checked against.** `.github/workflows/ci.yml` runs four gates on every push and pull request against `main`: `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), `end-to-end` (the §16.3 Playwright scenarios in Chromium, all fifteen of them), and `boot-smoke` (the production `Containerfile` is built, the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200, and then that instance is backed up and the backup is put through `scripts/restore_drill.sh`).
 
-`boot-smoke` is the gate that matters operationally, because it is the only one that exercises what a deployment exercises: DbUp applying every migration to an empty database, `RestaurantOptions.Validate()` accepting the configuration, and the composition root resolving. A green `boot-smoke` is the machine saying "this commit starts". Nothing else in the suite says that.
+`boot-smoke` is the gate that matters operationally, because it is the only one that exercises what a deployment exercises: DbUp applying every migration to an empty database, `RestaurantOptions.Validate()` accepting the configuration, and the composition root resolving. A green `boot-smoke` now says "this commit starts, **and its data comes back**". Nothing else in the suite says either half.
+
+The restore drill lives in that job rather than one of its own because everything it needs is already standing up there — a built image, a migrated database, a live key ring. Giving it a separate job would mean building the image twice for one answer. And putting it in CI at all is the point: §6's drill was five manual steps for four milestones and nobody had performed them, so when something finally did, it found that `scripts/restore.sh` could not have completed a restore at all (F-38). A procedure nobody executes is a hypothesis.
 
 CI deliberately does **not** use `compose.yaml`. The data-protection volume carries Podman's `:U` suffix — correct for the canonical rootless engine (ADR-0004) and rejected outright by Docker Compose — so the job uses a service-container PostgreSQL plus one `docker run --network host` instead. Same image, same environment variables, same readiness probe; the canonical stack stays the only compose file in the tree.
 
@@ -9567,15 +9898,15 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
   File name:             TECHNICAL_SPECIFICATION.md
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/TECHNICAL_SPECIFICATION.md
-  Size:                  82.8 KiB (84807 bytes)
-  Last modified:         2026-08-02 01:16:52.000000000 -0400
+  Size:                  89.0 KiB (91103 bytes)
+  Last modified:         2026-08-04 20:57:15.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 29341765
+  Inode:                 31516884
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               be60c9c4a4539f833bc612fa52ed5f5631c5c5da585d2e07e0fc0a9d0fb81526
-  Last git commit:       2a55b8b 2026-08-02 09:19:30 -0400 add claude response
+  SHA-256:               0265e80bfc6ebba113621abf3df1276516d34af6957cad9e5798c64699f5f459
+  Last git commit:       b3cc457 2026-08-04 22:33:01 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
@@ -10392,7 +10723,32 @@ Fail-fast validation at startup: origin parses as absolute https URL; Argon2 flo
 
 ## 15. Backups
 
-`scripts/backup.sh`: `pg_dump -Fc` to `BACKUP_DIRECTORY/myrestaurant-YYYYMMDD-HHMMSS.dump`, prune to `BACKUP_RETENTION_COUNT`; scheduled at `BACKUP_SCHEDULE_TIME` (systemd timer or host cron invoking the script via `podman exec`). `scripts/restore.sh <dump>`: stop web, `pg_restore --clean --if-exists`, start web (migrations verify). **The Data Protection keys volume must be backed up alongside the database** — without it, TOTP secrets and cookies are unrecoverable (§3.4). Restore drill documented in OPERATIONS §6.
+**A recovery set is two files, not one.** `scripts/backup.sh` writes both, sharing one timestamp, into `BACKUP_DIRECTORY`:
+
+| File | Contents | Read out with |
+|---|---|---|
+| `myrestaurant-YYYYMMDD-HHMMSS.dump` | `pg_dump --format=custom --no-owner`, run **inside** the postgres container so the dump client always matches the server (F-16) | `podman exec` |
+| `myrestaurant-YYYYMMDD-HHMMSS-dataprotection.tar` | the Data Protection key ring from `DATA_PROTECTION_KEYS_DIRECTORY` (§3.4) | `podman cp`, which streams a tar through the engine's own archive API and therefore needs nothing installed in the runtime image |
+
+Either file alone is insufficient, and the second is the one that gets forgotten: **without the key ring every stored TOTP secret is undecryptable** — the accounts come back and the enrolled authenticators do not (§3.4, OPERATIONS §8). That rule has been normative since v1.0. Until **F-38** no script honoured it; both merely printed a reminder.
+
+**`scripts/backup.sh`, normatively.** The dump is written to a hidden `.partial` file and renamed into place only once it is complete and carries a custom-format header, so a half-written dump can never become "the newest backup" and evict a good one on the *next* run — which is what makes F-16's "retention prunes only after a successful new dump" true across runs rather than within one. A dump is attempted only after `pg_isready` confirms the discovered container really is the database and the credentials work. Container discovery **refuses on ambiguity** instead of taking the first match, because dumping the wrong database succeeds, is the right size, and is worthless. Retention prunes whole *sets* to `BACKUP_RETENTION_COUNT`. Scheduled at `BACKUP_SCHEDULE_TIME` (systemd user timer or host cron). Exit codes are three-valued because "the database was dumped and the key ring was not" is neither success nor failure: **0** complete set, **2** database only, **1** nothing usable produced.
+
+**`scripts/restore.sh [--yes] [--no-keys] <dump>`.** Verify the archive; stop `web`; `pg_restore --clean --if-exists --no-owner`; put the key ring back from the sibling tar while `web` is down, so the application reads it at startup rather than after minting a fresh ring of its own; start `web` (DbUp verifies the schema and rolls an older dump forward — there are no down-migrations, ADR-0012). **The web application is started again on every path out of the script**, from an `EXIT` trap. That is not defensive style, it is a fix: `pg_restore` exits non-zero whenever it ignored any error (`exit_code = AH->n_errors ? 1 : 0`) and `--clean --if-exists` ignores errors routinely, so under `set -e` the previous ordering — restore, *then* start `web` — left the database restored and the application down, silently. Ignored errors are reported and downgrade the exit code to **2** rather than aborting.
+
+**The drill is executable, not a procedure.** `scripts/restore_drill.sh` rehearses a recovery set against a scratch PostgreSQL container it creates and destroys itself: no maintenance window, no scratch host, no published port, and no write of any kind to the live database. Seven gates:
+
+| Gate | Asserts |
+|---|---|
+| A | the archive is a readable custom-format dump with a non-empty table of contents |
+| B | it restores into an empty database, and how many errors `pg_restore` ignored doing so |
+| C | every table and view the migrations declare is present — the expected set is read out of `src/MyRestaurant.DataAccess/Migrations/*.sql`, so a new migration extends this gate by itself, and DDL that stops matching the patterns is reported rather than silently passing on an empty expectation |
+| D | DbUp's `schemaversions` carries one row per migration file, so the schema is at a version this code *accepts* rather than merely structurally plausible (ADR-0012) |
+| E | every §8.3 projection view still resolves against the restored tables — the one place in the schema where one object's correctness depends on nine others |
+| F | a row census, reported rather than asserted: it is how you notice you have been faithfully backing up an empty database for a month |
+| G | the key ring is beside the dump, is a readable tar, and contains keys |
+
+`--strict` promotes reservations (ignored errors, an empty key ring) to failures; `--from-live` takes a fresh set first; `--keep` leaves the scratch container for inspection. The drill deliberately does **not** boot the application against the restored database — that is §16.4's `boot-smoke`, which now runs the drill immediately after proving the image starts, so every push rehearses recovery. OPERATIONS §6 is the runbook.
 
 ## 16. Testing
 
@@ -10417,7 +10773,7 @@ Fail-fast validation at startup: origin parses as absolute https URL; Argon2 flo
 14. Expired token URL → friendly expiry page; token from previous window → accepted.
 15. Admin rotates a table's join secret → in-flight token dies; display's next window works.
 
-**16.4 CI:** GitHub Actions — build, unit, integration (service container PostgreSQL), E2E (compose), publish image on tag.
+**16.4 CI:** GitHub Actions — build, unit, integration (service container PostgreSQL), E2E (Playwright/Chromium, all fifteen §16.3 scenarios), then boot the production image against real PostgreSQL and **take a backup of that instance and drill the restore** (§15) in the same job; publish image on tag. The drill is a CI gate rather than a runbook step because a recovery procedure nobody executes is a hypothesis — see F-38.
 
 ## 17. Security posture and accepted risks
 
@@ -10461,6 +10817,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 | F-18 / F-19 | Menu item event log; lockout 5/5min, username 3–64 citext, currency/timezone defaults | §7, §3.1, §13, §8.2 |
 | F-20 | Hand-written fakes; NSubstitute ok; no Moq | §16.1 |
 | F-37 | Guest self-registration is a real surface at `/register`, specified rather than assumed; a passkey is offered first and may be declined only when a password was set; no rate limit in v1, with the reason it is not a two-line addition recorded | §11.1, §11.8, §17, §19 · R§4.3 |
+| F-38 | The restore path had never been executed and could not have completed: `pg_restore` exits non-zero on ignored errors, ahead of the line that restarted `web`. Nothing captured the Data Protection key ring despite §15 requiring it. A failed dump could evict a good one on the following run. Container discovery took whichever match came first | Both scripts rewritten; `scripts/restore_drill.sh` added and executed by CI on every push, so the drill is rehearsed rather than documented | §15, §16.4 · O§6, O§8, O§14 · `scripts/backup.sh`, `scripts/restore.sh`, `scripts/restore_drill.sh`, `.github/workflows/ci.yml` |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP re-enrollment only if enrolled pre-reset; obligations pipeline runs on passkey path too; counter fallback = same rotating QR (no short-code) | §10.1–10.2, §3.5, §3.7, §4.5 · ledger notes |
@@ -10468,6 +10825,10 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 ---
 
 ## Changelog
+
+**v1.2 — 2026-08-04.** **§15** rewritten. A recovery set is now *defined* as two files — the database dump and the Data Protection key ring — and `scripts/backup.sh` writes both. The rule that the key ring must be backed up alongside the database has been normative since v1.0 and no script in the tree honoured it; that, and three other defects in the same two scripts, are recorded as **F-38**. §15 also now states the guarantees that make retention's promise true across runs rather than within one (hidden `.partial` write, header check, `pg_isready` before anything is written, refusal on ambiguous container discovery, whole-set pruning), records that `scripts/restore.sh` restarts `web` from an `EXIT` trap and the exact reason the previous ordering could not have worked, and specifies `scripts/restore_drill.sh` and its seven gates. **§16.4** names the drill as a CI gate. **Appendix A** gains F-38.
+
+Nothing else moved: no schema change, no ADR edit, and deliberately no `REQUIREMENTS.md` edit. §15's key-ring sentence was already the contract, so this is a defect fix at the mechanism level rather than new intent — the documents were right and the code did not do what they said.
 
 **v1.1 — 2026-08-02.** Guest registration written down. New **§11.8 `/register`** specifies the surface R§4.3 has required since rev 2 and which no milestone had claimed: the two-step ticket-backed flow, why a ticket is needed at all (a WebAuthn user handle must exist before the `person` row does), and the rule that declining a passkey is offered exactly when a password was set. **§11.1** points at it instead of naming registration in passing. **§17** records the absent rate limit as an accepted risk with the concrete reason it is not a small change. **§19** notes that the surface lands in M6 rather than M2, and why. **Appendix A** gains F-37.
 
@@ -11488,66 +11849,253 @@ exec dotnet watch --project src/MyRestaurant.WebApplication run --launch-profile
   File name:             backup.sh
   Relative path:         scripts/backup.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/backup.sh
-  Size:                  1.9 KiB (1926 bytes)
-  Last modified:         2026-07-17 21:34:52.000000000 -0400
+  Size:                  11.9 KiB (12227 bytes)
+  Last modified:         2026-08-04 20:48:52.000000000 -0400
   Permissions:           -rwxr-xr-x
   Owner:                 kushal:kushal
-  Inode:                 21258244
+  Inode:                 31516877
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               b2b17e0680dacb38a5c68b345253c9fae599432b5d0f34e9d09e742669be3145
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               a368018c14ac561af4229c7a7357f154a00ad1b36c6e8fc4a2118d3478dd52f6
+  Last git commit:       b3cc457 2026-08-04 22:33:01 -0400 add claude response
 
 --- CONTENT ---
 #!/usr/bin/env bash
 #
-# Database backup (TECHNICAL_SPECIFICATION §15): pg_dump -Fc into
-# BACKUP_DIRECTORY/myrestaurant-YYYYMMDD-HHMMSS.dump, then prune to BACKUP_RETENTION_COUNT most
-# recent dumps. Run pg_dump inside the postgres container (so the tool version matches the server).
-# Schedule via a systemd timer or host cron at BACKUP_SCHEDULE_TIME.
+# Backup a complete recovery set (TECHNICAL_SPECIFICATION §15, OPERATIONS §6).
 #
-# IMPORTANT: this backs up the DATABASE only. The Data Protection keys volume must be backed up
-# alongside it (§3.4) — without those keys, TOTP secrets and auth cookies are unrecoverable.
+#   scripts/backup.sh              dump the database AND capture the Data Protection key ring
+#   scripts/backup.sh --no-keys    database only (dev, where the app runs on the host, not in a container)
+#   scripts/backup.sh --help       this text
+#
+# A recovery set is TWO files sharing one timestamp, and it is a set because either one alone is
+# useless for the thing you will actually be doing at the time — bringing a restaurant back:
+#
+#   BACKUP_DIRECTORY/myrestaurant-YYYYMMDD-HHMMSS.dump                    pg_dump --format=custom
+#   BACKUP_DIRECTORY/myrestaurant-YYYYMMDD-HHMMSS-dataprotection.tar      the key ring (§3.4)
+#
+# Without the key ring, every stored TOTP secret is undecryptable — the database comes back and every
+# enrolled authenticator does not (§3.4, OPERATIONS §8). §15 has always said the key ring must be
+# backed up alongside the database; until F-38 nothing in this tree did it, and this script only
+# printed a reminder. It now captures both.
+#
+# pg_dump runs INSIDE the postgres container via `podman exec`, so the dump client always matches the
+# server version (F-16). The key ring is read out of the web container with `podman cp`, which uses
+# the engine's own archive API and therefore needs no tools installed in that image.
+#
+# Retention prunes to the newest BACKUP_RETENTION_COUNT *sets* and prunes only after a new set has
+# landed, so a failing backup never eats an old one. Two smaller guarantees make that true rather
+# than merely intended: the dump is written to a hidden `.partial` file and only renamed into place
+# once it is complete and its header checks out, so a half-written dump can never become "the newest
+# backup" and evict a good one on the next run; and a dump is only attempted after `pg_isready`
+# confirms the discovered container really is the database and the credentials work.
+#
+# Schedule it at BACKUP_SCHEDULE_TIME with a systemd USER timer or cron. With a user timer,
+# `loginctl enable-linger <user>` is what keeps it running with nobody logged in.
+#
+# Exit codes are three-valued on purpose, because "the database was dumped but the key ring was not"
+# is neither success nor failure and a scheduled job needs to be able to tell:
+#
+#   0   a complete recovery set landed
+#   1   no usable backup was produced (nothing was written, or what was written was removed)
+#   2   the database dump landed but the key ring did not — recoverable, but not a complete set
+#
+# Environment:
+#   BACKUP_DIRECTORY                where sets are written (default /var/lib/myrestaurant/backups)
+#   BACKUP_RETENTION_COUNT          how many sets to keep (default 14; must be a positive integer)
+#   POSTGRES_USER / POSTGRES_DB     database credentials (default myrestaurant / myrestaurant)
+#   POSTGRES_CONTAINER              skip discovery and use this container for pg_dump
+#   WEB_CONTAINER                   skip discovery and use this container for the key ring
+#   DATA_PROTECTION_KEYS_DIRECTORY  the key-ring path inside the web container
+#                                   (default /var/lib/myrestaurant/dataprotection)
 
 set -euo pipefail
+
+WITH_KEYS=1
+
+case "${1:-}" in
+    "")
+        ;;
+    --no-keys)
+        WITH_KEYS=0
+        ;;
+    --help | -h)
+        # Print the header comment block and stop at the first line of real code, so the help text
+        # cannot drift out of step with a hard-coded line range.
+        awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
+        exit 0
+        ;;
+    *)
+        echo "error: unknown argument '$1' (expected --no-keys, --help, or nothing)." >&2
+        exit 1
+        ;;
+esac
 
 BACKUP_DIRECTORY="${BACKUP_DIRECTORY:-/var/lib/myrestaurant/backups}"
 BACKUP_RETENTION_COUNT="${BACKUP_RETENTION_COUNT:-14}"
 PGUSER="${POSTGRES_USER:-myrestaurant}"
 PGDB="${POSTGRES_DB:-myrestaurant}"
+KEYS_DIRECTORY="${DATA_PROTECTION_KEYS_DIRECTORY:-/var/lib/myrestaurant/dataprotection}"
 
+info() { printf '[backup] %s\n' "$*"; }
+warn() { printf '[backup] warning: %s\n' "$*" >&2; }
+die()  { printf '[backup] error: %s\n' "$*" >&2; exit 1; }
+
+# A retention count that is not a positive integer would reach `(( ${#dumps[@]} > $count ))` and, under
+# `set -e`, take the whole script down AFTER a good dump had landed — reported as a backup failure when
+# the backup had in fact succeeded. Check it before anything is written.
+if [[ ! "$BACKUP_RETENTION_COUNT" =~ ^[0-9]+$ ]] || (( BACKUP_RETENTION_COUNT < 1 )); then
+    die "BACKUP_RETENTION_COUNT must be a positive integer (got '$BACKUP_RETENTION_COUNT')."
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# Container engine, then containers.
+# ---------------------------------------------------------------------------------------------------
 if command -v podman >/dev/null 2>&1; then
     ENGINE="podman"
 elif command -v docker >/dev/null 2>&1; then
     ENGINE="docker"
 else
-    echo "error: need podman or docker on PATH." >&2
-    exit 1
+    die "need podman or docker on PATH."
 fi
 
-CONTAINER="${POSTGRES_CONTAINER:-$("$ENGINE" ps --format '{{.Names}}' | grep -m1 postgres || true)}"
-if [[ -z "$CONTAINER" ]]; then
-    echo "error: no running postgres container found (set POSTGRES_CONTAINER to override)." >&2
-    exit 1
+# Discovery prints exactly one container name or fails. `grep -m1 postgres` used to stand here, and
+# it silently picked whichever container the engine happened to list first — which is fine until a
+# second one exists, and `scripts/restore_drill.sh` creates a second postgres container on purpose.
+# A backup that dumps the drill's scratch database instead of the real one would succeed, be the
+# right size, and be worthless. Ambiguity is now an error you can act on.
+discover_container() {
+    local fragment="$1" label="$2"
+    local -a names=()
+
+    mapfile -t names < <("$ENGINE" ps --filter "name=$fragment" --format '{{.Names}}' 2>/dev/null \
+        | tr -d '[]' | awk '{ print $1 }' | awk 'NF' | sort -u)
+
+    if (( ${#names[@]} == 0 )); then
+        warn "no running container matching '$fragment' (the $label)."
+        return 1
+    fi
+
+    if (( ${#names[@]} > 1 )); then
+        warn "more than one running container matches '$fragment' (the $label):"
+        printf '           %s\n' "${names[@]}" >&2
+        warn "set ${label^^}_CONTAINER to name the one you mean."
+        return 1
+    fi
+
+    printf '%s\n' "${names[0]}"
+}
+
+if [[ -n "${POSTGRES_CONTAINER:-}" ]]; then
+    DATABASE_CONTAINER="$POSTGRES_CONTAINER"
+    info "using POSTGRES_CONTAINER='$DATABASE_CONTAINER'."
+else
+    DATABASE_CONTAINER="$(discover_container postgres postgres || true)"
+    [[ -n "$DATABASE_CONTAINER" ]] || die "could not identify the postgres container (set POSTGRES_CONTAINER)."
 fi
 
+# Prove it is the database, and prove the credentials work, BEFORE creating a file that would
+# otherwise look like a backup. A dump that fails after the redirect has opened leaves bytes behind.
+if ! "$ENGINE" exec "$DATABASE_CONTAINER" pg_isready --username "$PGUSER" --dbname "$PGDB" >/dev/null 2>&1; then
+    die "'$DATABASE_CONTAINER' did not answer pg_isready for user '$PGUSER' database '$PGDB'."
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# The database dump: hidden partial, verified, then renamed into place.
+# ---------------------------------------------------------------------------------------------------
 mkdir -p "$BACKUP_DIRECTORY"
 timestamp="$(date +%Y%m%d-%H%M%S)"
-outfile="$BACKUP_DIRECTORY/myrestaurant-${timestamp}.dump"
+DUMP_FILE="$BACKUP_DIRECTORY/myrestaurant-${timestamp}.dump"
+KEYS_FILE="$BACKUP_DIRECTORY/myrestaurant-${timestamp}-dataprotection.tar"
+PARTIAL_DUMP="$BACKUP_DIRECTORY/.myrestaurant-${timestamp}.dump.partial"
+PARTIAL_KEYS="$BACKUP_DIRECTORY/.myrestaurant-${timestamp}-dataprotection.tar.partial"
 
-echo "info: dumping '$PGDB' from container '$CONTAINER' -> $outfile"
-"$ENGINE" exec -i "$CONTAINER" pg_dump -Fc -U "$PGUSER" "$PGDB" > "$outfile"
+# Single-quoted so the paths expand when the trap fires, not when it is installed. An inline trap
+# rather than a named function on purpose: a partial file must never survive, and there is nothing
+# here worth the indirection.
+trap 'rm -f -- "$PARTIAL_DUMP" "$PARTIAL_KEYS" 2>/dev/null || true' EXIT
 
-# Prune: keep only the newest BACKUP_RETENTION_COUNT dumps.
+info "dumping database '$PGDB' from container '$DATABASE_CONTAINER'…"
+"$ENGINE" exec --interactive "$DATABASE_CONTAINER" \
+    pg_dump --format=custom --no-owner --username "$PGUSER" "$PGDB" > "$PARTIAL_DUMP"
+
+# `--no-owner` at dump time (rather than only at restore time) is deliberate: every ownership
+# statement pg_dump would emit is one more thing pg_restore can report as an ignored error, and
+# `scripts/restore_drill.sh` counts those. Fewer ignored errors means the count is worth reading.
+
+if [[ ! -s "$PARTIAL_DUMP" ]]; then
+    die "pg_dump produced an empty file — nothing was written to $BACKUP_DIRECTORY."
+fi
+
+# A custom-format archive starts with the five bytes 'PGDMP'. This is cheap insurance rather than the
+# real integrity check: pg_dump exiting non-zero already takes the script down under `set -e`, and
+# the partial file is removed by the trap. `scripts/restore_drill.sh` is where an archive is proved
+# restorable, because proving that means restoring it, and 03:30 is the wrong time to find out.
+if [[ "$(head -c 5 "$PARTIAL_DUMP")" != "PGDMP" ]]; then
+    die "the dump does not begin with a custom-format archive header — refusing to keep it."
+fi
+
+mv -- "$PARTIAL_DUMP" "$DUMP_FILE"
+info "database dump: $DUMP_FILE ($(du -h -- "$DUMP_FILE" | cut -f1))"
+
+# ---------------------------------------------------------------------------------------------------
+# The key ring (§3.4). Read out of the web container with `podman cp`, which streams a tar archive
+# through the engine and therefore does not care what is installed inside that image.
+# ---------------------------------------------------------------------------------------------------
+KEYS_CAPTURED=0
+
+if (( WITH_KEYS )); then
+    if [[ -n "${WEB_CONTAINER:-}" ]]; then
+        APPLICATION_CONTAINER="$WEB_CONTAINER"
+        info "using WEB_CONTAINER='$APPLICATION_CONTAINER'."
+    else
+        APPLICATION_CONTAINER="$(discover_container web web || true)"
+    fi
+
+    if [[ -z "$APPLICATION_CONTAINER" ]]; then
+        warn "could not identify the web container, so the Data Protection key ring was NOT captured."
+        warn "in dev the application runs on the host (run.sh), where there is no container to read"
+        warn "from — pass --no-keys there. In production this is a real problem: see OPERATIONS §8."
+    elif ! "$ENGINE" cp "$APPLICATION_CONTAINER:$KEYS_DIRECTORY/." - > "$PARTIAL_KEYS" 2>/dev/null; then
+        warn "could not read '$KEYS_DIRECTORY' out of '$APPLICATION_CONTAINER' — key ring NOT captured."
+        warn "check DATA_PROTECTION_KEYS_DIRECTORY matches the container's mount point."
+        rm -f -- "$PARTIAL_KEYS"
+    else
+        key_count="$(tar -tf "$PARTIAL_KEYS" 2>/dev/null | grep -c 'key-.*\.xml$' || true)"
+        mv -- "$PARTIAL_KEYS" "$KEYS_FILE"
+        KEYS_CAPTURED=1
+        info "key ring: $KEYS_FILE (${key_count} key file(s))"
+        if (( key_count == 0 )); then
+            warn "the key ring is EMPTY. Data Protection creates its first key the first time it"
+            warn "protects anything — an instance nobody has signed in to yet has none. Harmless"
+            warn "now; not harmless once anyone has enrolled TOTP, so check the next set."
+        fi
+    fi
+else
+    info "skipping the key ring (--no-keys)."
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# Retention. Prune whole sets, newest first, and only now that a new set is on disk.
+# ---------------------------------------------------------------------------------------------------
 mapfile -t dumps < <(ls -1t "$BACKUP_DIRECTORY"/myrestaurant-*.dump 2>/dev/null || true)
 if (( ${#dumps[@]} > BACKUP_RETENTION_COUNT )); then
     for stale in "${dumps[@]:BACKUP_RETENTION_COUNT}"; do
-        echo "info: pruning old backup $stale"
-        rm -f -- "$stale"
+        info "pruning $stale (and its key ring, if any)"
+        rm -f -- "$stale" "${stale%.dump}-dataprotection.tar"
     done
 fi
 
-echo "info: backup complete. Remember to back up the Data Protection keys volume too (§3.4)."
+# ---------------------------------------------------------------------------------------------------
+# Report.
+# ---------------------------------------------------------------------------------------------------
+echo
+info "backup complete. Rehearse it with: scripts/restore_drill.sh"
+if (( WITH_KEYS )) && (( ! KEYS_CAPTURED )); then
+    warn "this set is INCOMPLETE — database only, no key ring (exit 2)."
+    exit 2
+fi
+exit 0
 
 ################################################################################
 # FILE: scripts/ci_local.sh
@@ -11940,39 +12488,116 @@ wait "$TUNNEL_PID"
   File name:             restore.sh
   Relative path:         scripts/restore.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/restore.sh
-  Size:                  2.0 KiB (2006 bytes)
-  Last modified:         2026-07-17 21:35:04.000000000 -0400
+  Size:                  12.4 KiB (12670 bytes)
+  Last modified:         2026-08-04 20:49:50.000000000 -0400
   Permissions:           -rwxr-xr-x
   Owner:                 kushal:kushal
-  Inode:                 21258242
+  Inode:                 31516876
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               43882e92f027ec48b2ae3e4aceee6f25ee458608387fc84870f5fd0e3355211b
-  Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
+  SHA-256:               2ce32f466b820965c96468de5ed2f29def09881b26466d0a169c62dde32fe748
+  Last git commit:       b3cc457 2026-08-04 22:33:01 -0400 add claude response
 
 --- CONTENT ---
 #!/usr/bin/env bash
 #
-# Database restore (TECHNICAL_SPECIFICATION §15): stop the web app, pg_restore --clean --if-exists
-# the given dump, then start the web app again (startup migrations verify the schema is current).
+# Restore a recovery set (TECHNICAL_SPECIFICATION §15, OPERATIONS §6).
 #
-#   scripts/restore.sh <path-to-.dump>
+#   scripts/restore.sh <path-to-.dump>              interactive; confirms before overwriting
+#   scripts/restore.sh --yes <path-to-.dump>        no confirmation prompt (scripted recovery)
+#   scripts/restore.sh --no-keys <path-to-.dump>    database only; leave the key ring alone
+#   scripts/restore.sh --help                       this text
 #
-# Reminder: a full recovery also requires the Data Protection keys volume that was backed up next to
-# this dump (§3.4). Restoring the database alone will orphan existing TOTP secrets and cookies.
+# What it does, in order: verify the archive is a custom-format dump; stop `web`; `pg_restore --clean
+# --if-exists` into the postgres container; put the Data Protection key ring back from the sibling
+# `-dataprotection.tar` written by `scripts/backup.sh`; start `web` again (DbUp verifies the schema at
+# startup and rolls an older dump forward); wait for /healthz/ready.
+#
+# THE WEB APPLICATION IS ALWAYS STARTED AGAIN. That sentence used to be false and it is the whole
+# reason this script was rewritten (F-38). `pg_restore` exits 1 whenever it ignored ANY error — that
+# is its documented contract, `exit_code = AH->n_errors ? 1 : 0` in `pg_restore.c` — and `--clean
+# --if-exists` ignores errors routinely. Under `set -e` the old script therefore died on the
+# `pg_restore` line, which sat BEFORE the `up -d web` line, with `web` already stopped. The single
+# most likely outcome of the documented recovery procedure was a database that came back and an
+# application that stayed down, silently. Starting `web` again now happens in an EXIT trap, so it
+# happens on every path out of this script including the ones nobody planned.
+#
+# Ignored errors are reported rather than fatal, and turn the exit code into 2. On a healthy set the
+# count is zero — `scripts/backup.sh` passes `--no-owner` at dump time precisely so that this number
+# stays worth reading — so a non-zero count is news even though it is usually benign.
+#
+# Exit codes:
+#   0   restored, key ring in place, web healthy
+#   1   nothing was restored (bad arguments, unusable archive, no container)
+#   2   restored, but with reservations: pg_restore ignored errors, or the key ring was not put back
+#
+# Environment:
+#   POSTGRES_USER / POSTGRES_DB     database credentials (default myrestaurant / myrestaurant)
+#   POSTGRES_CONTAINER              skip discovery and use this container for pg_restore
+#   WEB_CONTAINER                   skip discovery and use this container for the key ring
+#   DATA_PROTECTION_KEYS_DIRECTORY  the key-ring path inside the web container
+#                                   (default /var/lib/myrestaurant/dataprotection)
+#   RESTORE_HEALTH_URL              readiness probe (default http://127.0.0.1:8080/healthz/ready)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DUMP="${1:-}"
-if [[ -z "$DUMP" || ! -f "$DUMP" ]]; then
-    echo "usage: scripts/restore.sh <path-to-.dump>" >&2
-    exit 1
-fi
+ASSUME_YES=0
+WITH_KEYS=1
+DUMP=""
+
+while (( $# > 0 )); do
+    case "$1" in
+        --yes | -y)
+            ASSUME_YES=1
+            ;;
+        --no-keys)
+            WITH_KEYS=0
+            ;;
+        --help | -h)
+            awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
+            exit 0
+            ;;
+        -*)
+            echo "error: unknown option '$1' (expected --yes, --no-keys, or --help)." >&2
+            exit 1
+            ;;
+        *)
+            if [[ -n "$DUMP" ]]; then
+                echo "error: more than one dump given ('$DUMP' and '$1')." >&2
+                exit 1
+            fi
+            DUMP="$1"
+            ;;
+    esac
+    shift
+done
 
 PGUSER="${POSTGRES_USER:-myrestaurant}"
 PGDB="${POSTGRES_DB:-myrestaurant}"
+KEYS_DIRECTORY="${DATA_PROTECTION_KEYS_DIRECTORY:-/var/lib/myrestaurant/dataprotection}"
+HEALTH_URL="${RESTORE_HEALTH_URL:-http://127.0.0.1:8080/healthz/ready}"
 
+info() { printf '[restore] %s\n' "$*"; }
+warn() { printf '[restore] warning: %s\n' "$*" >&2; }
+die()  { printf '[restore] error: %s\n' "$*" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------------------------------
+# 1. The archive. Checked before anything is stopped, so a typo costs nothing.
+# ---------------------------------------------------------------------------------------------------
+[[ -n "$DUMP" ]] || die "usage: scripts/restore.sh [--yes] [--no-keys] <path-to-.dump>"
+[[ -f "$DUMP" ]] || die "'$DUMP' is not a file."
+[[ -s "$DUMP" ]] || die "'$DUMP' is empty."
+
+if [[ "$(head -c 5 "$DUMP")" != "PGDMP" ]]; then
+    die "'$DUMP' does not begin with a custom-format archive header (expected 'PGDMP')."
+fi
+
+KEYS_ARCHIVE="${DUMP%.dump}-dataprotection.tar"
+
+# ---------------------------------------------------------------------------------------------------
+# 2. Engine and compose command (mirrors run.sh and scripts/quick_tunnel.sh).
+# ---------------------------------------------------------------------------------------------------
 if command -v podman-compose >/dev/null 2>&1; then
     COMPOSE=(podman-compose); ENGINE="podman"
 elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
@@ -11980,30 +12605,687 @@ elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1
 elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
     COMPOSE=(docker compose); ENGINE="docker"
 else
-    echo "error: need podman-compose, 'podman compose', or 'docker compose' on PATH." >&2
+    die "need podman-compose, 'podman compose', or 'docker compose' on PATH."
+fi
+
+# One container name or a refusal — never whichever one the engine listed first. See the same comment
+# in scripts/backup.sh: scripts/restore_drill.sh creates a second postgres container on purpose, and
+# restoring into it instead of the real one would look exactly like success.
+discover_container() {
+    local fragment="$1" label="$2"
+    local -a names=()
+
+    mapfile -t names < <("$ENGINE" ps --filter "name=$fragment" --format '{{.Names}}' 2>/dev/null \
+        | tr -d '[]' | awk '{ print $1 }' | awk 'NF' | sort -u)
+
+    if (( ${#names[@]} == 0 )); then
+        warn "no running container matching '$fragment' (the $label)."
+        return 1
+    fi
+
+    if (( ${#names[@]} > 1 )); then
+        warn "more than one running container matches '$fragment' (the $label):"
+        printf '            %s\n' "${names[@]}" >&2
+        warn "set ${label^^}_CONTAINER to name the one you mean."
+        return 1
+    fi
+
+    printf '%s\n' "${names[0]}"
+}
+
+if [[ -n "${POSTGRES_CONTAINER:-}" ]]; then
+    DATABASE_CONTAINER="$POSTGRES_CONTAINER"
+else
+    DATABASE_CONTAINER="$(discover_container postgres postgres || true)"
+    [[ -n "$DATABASE_CONTAINER" ]] || die "could not identify the postgres container (set POSTGRES_CONTAINER)."
+fi
+
+if ! "$ENGINE" exec "$DATABASE_CONTAINER" pg_isready --username "$PGUSER" --dbname "$PGDB" >/dev/null 2>&1; then
+    die "'$DATABASE_CONTAINER' did not answer pg_isready for user '$PGUSER' database '$PGDB'."
+fi
+
+# The web container is discovered while it is still running, because that is the only time discovery
+# by name works — one step from here it will be stopped.
+APPLICATION_CONTAINER=""
+if (( WITH_KEYS )); then
+    if [[ -n "${WEB_CONTAINER:-}" ]]; then
+        APPLICATION_CONTAINER="$WEB_CONTAINER"
+    else
+        APPLICATION_CONTAINER="$(discover_container web web || true)"
+    fi
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# 3. Confirm.
+# ---------------------------------------------------------------------------------------------------
+echo
+info "about to restore:"
+info "  dump         $DUMP"
+if (( WITH_KEYS )) && [[ -f "$KEYS_ARCHIVE" ]]; then
+    info "  key ring     $KEYS_ARCHIVE"
+elif (( WITH_KEYS )); then
+    info "  key ring     (none found beside the dump — see the warning below)"
+else
+    info "  key ring     skipped (--no-keys)"
+fi
+info "  into         database '$PGDB' in container '$DATABASE_CONTAINER'"
+echo
+warn "this OVERWRITES the current contents of database '$PGDB'."
+
+if (( ! ASSUME_YES )); then
+    read -r -p "Type 'restore' to continue: " confirm
+    [[ "$confirm" == "restore" ]] || { info "aborted."; exit 1; }
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# 4. Stop web, and arrange for it to come back no matter what happens next.
+# ---------------------------------------------------------------------------------------------------
+WEB_STOPPED=0
+RESERVATIONS=0
+
+http_ok() {
+    if command -v curl >/dev/null 2>&1; then
+        curl --fail --silent --show-error --max-time 5 --output /dev/null "$1" >/dev/null 2>&1
+    elif command -v wget >/dev/null 2>&1; then
+        wget --quiet --timeout=5 --output-document=/dev/null "$1" >/dev/null 2>&1
+    else
+        return 3
+    fi
+}
+
+wait_for_health() {
+    local deadline=$(( $(date +%s) + 180 ))
+    while (( $(date +%s) < deadline )); do
+        if http_ok "$HEALTH_URL"; then
+            return 0
+        fi
+        sleep 3
+    done
+    return 1
+}
+
+finish() {
+    local status=$?
+
+    if (( WEB_STOPPED )); then
+        echo
+        info "starting the web application again (DbUp verifies the schema at startup)…"
+        if "${COMPOSE[@]}" up -d web; then
+            if wait_for_health; then
+                info "healthy: $HEALTH_URL answered 200."
+            else
+                warn "the web application did not report ready at $HEALTH_URL."
+                warn "read the log: ${COMPOSE[*]} logs web"
+                warn "a dump from a NEWER schema than this code fails fast on purpose — deploy"
+                warn "matching code first (OPERATIONS §6, ADR-0012: there are no down-migrations)."
+                (( status == 0 )) && status=2
+            fi
+        else
+            warn "could not start 'web'. Start it yourself: ${COMPOSE[*]} up -d web"
+            (( status == 0 )) && status=2
+        fi
+    fi
+
+    if (( status == 0 )) && (( RESERVATIONS )); then
+        status=2
+    fi
+
+    echo
+    case "$status" in
+        0) info "restore complete. Sign in and open a sitting's event history to confirm (OPERATIONS §6)." ;;
+        2) warn "restore finished WITH RESERVATIONS — read the warnings above before trusting it." ;;
+        *) warn "restore did not complete." ;;
+    esac
+
+    exit "$status"
+}
+trap finish EXIT
+
+info "stopping the web application…"
+"${COMPOSE[@]}" stop web || warn "'${COMPOSE[*]} stop web' reported a problem; continuing."
+WEB_STOPPED=1
+
+# ---------------------------------------------------------------------------------------------------
+# 5. The database.
+# ---------------------------------------------------------------------------------------------------
+echo
+info "restoring $DUMP into '$PGDB'…"
+
+restore_status=0
+"$ENGINE" exec --interactive "$DATABASE_CONTAINER" \
+    pg_restore --clean --if-exists --no-owner --username "$PGUSER" --dbname "$PGDB" \
+    < "$DUMP" || restore_status=$?
+
+if (( restore_status != 0 )); then
+    warn "pg_restore exited $restore_status, which means it ignored at least one error (see above)."
+    warn "with --clean --if-exists that is usually benign — a DROP for an object that was not there."
+    warn "It is reported rather than swallowed because the count is small enough to be worth reading."
+    RESERVATIONS=1
+else
+    info "pg_restore reported no errors."
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# 6. The key ring (§3.4). Put back while `web` is stopped, so the application reads it at startup
+#    rather than after it has already created a fresh ring of its own.
+# ---------------------------------------------------------------------------------------------------
+echo
+if (( ! WITH_KEYS )); then
+    info "skipping the key ring (--no-keys)."
+elif [[ ! -f "$KEYS_ARCHIVE" ]]; then
+    warn "no key ring beside the dump ('$KEYS_ARCHIVE' does not exist)."
+    warn "The database is back; every stored TOTP secret in it is NOT decryptable without the ring"
+    warn "that encrypted it (§3.4). Administrators must clear TOTP per affected account and users"
+    warn "re-enroll through the obligations pipeline — OPERATIONS §8. Passwords and passkeys are fine."
+    RESERVATIONS=1
+elif [[ -z "$APPLICATION_CONTAINER" ]]; then
+    warn "found '$KEYS_ARCHIVE' but no web container to put it in."
+    warn "'stop' leaves the container in place; 'down' removes it. If you ran 'down', bring the stack"
+    warn "up and then: $ENGINE cp - '<web-container>:$KEYS_DIRECTORY' < '$KEYS_ARCHIVE'"
+    RESERVATIONS=1
+elif ! "$ENGINE" cp - "$APPLICATION_CONTAINER:$KEYS_DIRECTORY" < "$KEYS_ARCHIVE"; then
+    warn "could not write the key ring into '$APPLICATION_CONTAINER:$KEYS_DIRECTORY'."
+    RESERVATIONS=1
+else
+    info "key ring restored into '$APPLICATION_CONTAINER:$KEYS_DIRECTORY'."
+fi
+
+# `web` is started by the EXIT trap — deliberately, so that every path out of this script starts it,
+# including the ones that got here by failing.
+
+################################################################################
+# FILE: scripts/restore_drill.sh
+################################################################################
+
+--- METADATA ---
+  File name:             restore_drill.sh
+  Relative path:         scripts/restore_drill.sh
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/restore_drill.sh
+  Size:                  21.3 KiB (21857 bytes)
+  Last modified:         2026-08-04 20:59:48.000000000 -0400
+  Permissions:           -rwxr-xr-x
+  Owner:                 kushal:kushal
+  Inode:                 31516878
+  Hard links:            1
+  MIME type:             text/x-shellscript
+  SHA-256:               54e63468b5f440f80bd384af4425b5c715266c85f56337573b1fb7ad4650e00c
+  Last git commit:       b3cc457 2026-08-04 22:33:01 -0400 add claude response
+
+--- CONTENT ---
+#!/usr/bin/env bash
+#
+# Restore drill (TECHNICAL_SPECIFICATION §15, OPERATIONS §6). Proves a recovery set can actually come
+# back — without a maintenance window, without a scratch host, and without touching the live stack.
+#
+#   scripts/restore_drill.sh                     drill the newest set in BACKUP_DIRECTORY
+#   scripts/restore_drill.sh --dump <path>       drill a specific dump (and its sibling key ring)
+#   scripts/restore_drill.sh --from-live         take a fresh set with scripts/backup.sh, then drill it
+#   scripts/restore_drill.sh --strict            ignored pg_restore errors and an empty key ring fail
+#   scripts/restore_drill.sh --keep              leave the scratch container running for inspection
+#   scripts/restore_drill.sh --no-keys           do not expect a key ring beside the dump
+#   scripts/restore_drill.sh --help              this text
+#
+# IT NEVER WRITES TO THE LIVE DATABASE. Every query and every restore in this script targets a
+# container this script created, whose name is printed before anything happens and which is destroyed
+# on the way out. The only thing that goes near the live instance is `--from-live`, and all that does
+# is delegate to `scripts/backup.sh`, which only reads.
+#
+# WHY THIS EXISTS. §15 has always promised a restore drill and OPERATIONS §6 has always described one
+# — as five steps to perform by hand, once, against a scratch host, before you need it. A procedure
+# nobody has executed is a hypothesis. When this drill was first written it immediately found that
+# `scripts/restore.sh` could not have completed a restore at all (F-38): `pg_restore` exits non-zero
+# whenever it ignored any error, and under `set -e` that killed the script one line before it started
+# `web` again. Three other defects came with it. A drill you can run in ninety seconds finds that
+# class of thing; a drill you perform once a year does not.
+#
+# WHAT IT PROVES, as seven gates:
+#
+#   A  the archive is a readable custom-format dump with a non-empty table of contents
+#   B  it restores into an empty database, and how many errors pg_restore ignored doing it
+#   C  every table and view the migrations declare is present afterwards — the expected set is read
+#      out of src/MyRestaurant.DataAccess/Migrations/*.sql, so a new migration extends this gate by
+#      itself and nothing here needs editing
+#   D  DbUp's journal carries one row per migration file, so the restored schema is not merely
+#      structurally plausible but at a version this code will accept (ADR-0012)
+#   E  every projection view still resolves against the restored tables — `SELECT count(*)` on each,
+#      which is the check `pg_restore --clean` is most plausibly able to break
+#   F  a row census, reported rather than asserted: it is how you notice you have been faithfully
+#      backing up an empty database for a month
+#   G  the Data Protection key ring is beside the dump and contains keys (§3.4)
+#
+# What it deliberately does NOT prove: that the application boots against the restored database. That
+# is boot-smoke's job in .github/workflows/ci.yml, which does exactly that on every push, and doing it
+# here would mean building an image inside a drill.
+#
+# Exit codes:  0 every gate passed   1 a gate failed (or the drill could not run)
+#
+# Environment:
+#   BACKUP_DIRECTORY             where sets live (default /var/lib/myrestaurant/backups)
+#   POSTGRES_USER / POSTGRES_DB  credentials the scratch database is created with
+#   DRILL_POSTGRES_IMAGE         scratch image (default docker.io/library/postgres:17-alpine —
+#                                fully qualified so a short-name registry prompt cannot hang a drill)
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+DUMP=""
+FROM_LIVE=0
+STRICT=0
+KEEP=0
+WITH_KEYS=1
+
+while (( $# > 0 )); do
+    case "$1" in
+        --dump)
+            shift
+            [[ $# -gt 0 ]] || { echo "error: --dump needs a path." >&2; exit 1; }
+            DUMP="$1"
+            ;;
+        --from-live) FROM_LIVE=1 ;;
+        --strict)    STRICT=1 ;;
+        --keep)      KEEP=1 ;;
+        --no-keys)   WITH_KEYS=0 ;;
+        --help | -h)
+            awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
+            exit 0
+            ;;
+        *)
+            echo "error: unknown argument '$1' (try --help)." >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+BACKUP_DIRECTORY="${BACKUP_DIRECTORY:-/var/lib/myrestaurant/backups}"
+PGUSER="${POSTGRES_USER:-myrestaurant}"
+PGDB="${POSTGRES_DB:-myrestaurant}"
+DRILL_IMAGE="${DRILL_POSTGRES_IMAGE:-docker.io/library/postgres:17-alpine}"
+MIGRATION_DIRECTORY="src/MyRestaurant.DataAccess/Migrations"
+
+PASS_COUNT=0
+WARN_COUNT=0
+FAIL_COUNT=0
+
+info() { printf '[drill] %s\n' "$*"; }
+gate() { printf '\n[drill] ─── %s\n' "$*"; }
+pass() { PASS_COUNT=$(( PASS_COUNT + 1 )); printf '[drill]     PASS  %s\n' "$*"; }
+soft() { WARN_COUNT=$(( WARN_COUNT + 1 )); printf '[drill]     WARN  %s\n' "$*"; }
+bad()  { FAIL_COUNT=$(( FAIL_COUNT + 1 )); printf '[drill]     FAIL  %s\n' "$*"; }
+die()  { printf '[drill] error: %s\n' "$*" >&2; exit 1; }
+
+# In --strict a reservation is a failure. Everything that would otherwise be a WARN routes through
+# here, so the two modes cannot drift apart.
+reserve() {
+    if (( STRICT )); then
+        bad "$*"
+    else
+        soft "$*"
+    fi
+}
+
+# ---------------------------------------------------------------------------------------------------
+# 0. Engine.
+# ---------------------------------------------------------------------------------------------------
+if command -v podman >/dev/null 2>&1; then
+    ENGINE="podman"
+elif command -v docker >/dev/null 2>&1; then
+    ENGINE="docker"
+else
+    die "need podman or docker on PATH."
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# 1. Choose the set to drill.
+# ---------------------------------------------------------------------------------------------------
+if (( FROM_LIVE )); then
+    if [[ -n "$DUMP" ]]; then
+        die "--from-live and --dump are mutually exclusive."
+    fi
+    info "taking a fresh set with scripts/backup.sh…"
+    # Exit 2 is 'database dumped, key ring not captured' — a real result the drill should go on to
+    # report through gate G, not a reason to stop before the drill has run.
+    backup_status=0
+    bash scripts/backup.sh || backup_status=$?
+    case "$backup_status" in
+        0 | 2) ;;
+        *) die "scripts/backup.sh exited $backup_status — nothing to drill." ;;
+    esac
+fi
+
+if [[ -z "$DUMP" ]]; then
+    mapfile -t candidates < <(ls -1t "$BACKUP_DIRECTORY"/myrestaurant-*.dump 2>/dev/null || true)
+    (( ${#candidates[@]} > 0 )) || die "no myrestaurant-*.dump in '$BACKUP_DIRECTORY' (pass --dump, or --from-live)."
+    DUMP="${candidates[0]}"
+fi
+
+[[ -f "$DUMP" ]] || die "'$DUMP' is not a file."
+[[ -s "$DUMP" ]] || die "'$DUMP' is empty."
+
+KEYS_ARCHIVE="${DUMP%.dump}-dataprotection.tar"
+
+mapfile -t MIGRATIONS < <(find "$MIGRATION_DIRECTORY" -maxdepth 1 -name '*.sql' -type f | sort)
+(( ${#MIGRATIONS[@]} > 0 )) || die "no migrations under '$MIGRATION_DIRECTORY' — run this from the repository."
+
+echo
+info "drilling      $DUMP  ($(du -h -- "$DUMP" | cut -f1))"
+info "key ring      ${KEYS_ARCHIVE}$( [[ -f "$KEYS_ARCHIVE" ]] && echo "" || echo "  (missing)" )"
+info "migrations    ${#MIGRATIONS[@]} file(s) in $MIGRATION_DIRECTORY"
+info "scratch image $DRILL_IMAGE"
+info "strict mode   $( (( STRICT )) && echo "on" || echo "off" )"
+info "on exit       $( (( KEEP )) && echo "the scratch container is KEPT (--keep)" || echo "the scratch container is removed" )"
+
+# ---------------------------------------------------------------------------------------------------
+# 2. The scratch instance. Distinct name, no published port (so it cannot collide with the live
+#    127.0.0.1:5432), no volume (so its data dies with it).
+# ---------------------------------------------------------------------------------------------------
+SCRATCH="myrestaurant-restore-drill-$$"
+RESTORE_LOG="$(mktemp "${TMPDIR:-/tmp}/myrestaurant-drill.XXXXXX")"
+
+# An inline, single-quoted trap (expanding when it fires, not when it is installed) rather than a
+# named function: the scratch container must not survive this script by any path, and there is no `$?`
+# juggling to justify the indirection — bash preserves the script's exit status across an EXIT trap
+# that does not itself call `exit`, and every code this script returns is decided explicitly, by `die`
+# or by the report at the bottom.
+trap 'rm -f -- "$RESTORE_LOG" 2>/dev/null || true
+      if (( KEEP )); then
+          printf "\n[drill] --keep: %s is still running. Remove it with: %s rm --force %s\n" \
+              "$SCRATCH" "$ENGINE" "$SCRATCH"
+      else
+          "$ENGINE" rm --force "$SCRATCH" >/dev/null 2>&1 || true
+      fi' EXIT
+
+gate "scratch database"
+info "starting $SCRATCH (no ports published, no volume mounted)…"
+"$ENGINE" run --detach --name "$SCRATCH" \
+    --env POSTGRES_USER="$PGUSER" \
+    --env POSTGRES_PASSWORD="restore-drill-$$" \
+    --env POSTGRES_DB="$PGDB" \
+    "$DRILL_IMAGE" >/dev/null \
+    || die "could not start the scratch container from '$DRILL_IMAGE'."
+
+scratch_ready=0
+deadline=$(( $(date +%s) + 90 ))
+while (( $(date +%s) < deadline )); do
+    if "$ENGINE" exec "$SCRATCH" pg_isready --username "$PGUSER" --dbname "$PGDB" >/dev/null 2>&1; then
+        scratch_ready=1
+        break
+    fi
+    sleep 2
+done
+
+if (( scratch_ready )); then
+    pass "scratch database is accepting connections"
+else
+    bad "the scratch database never became ready"
+    "$ENGINE" logs "$SCRATCH" 2>&1 | tail -n 20 >&2 || true
+    die "cannot drill without a scratch database."
+fi
+
+# Every query below goes through here, and here names $SCRATCH and nothing else. That is the whole of
+# the non-destructiveness argument: there is no other connection target in this file.
+scratch_query() {
+    "$ENGINE" exec "$SCRATCH" psql \
+        --username "$PGUSER" --dbname "$PGDB" \
+        --no-align --tuples-only --quiet --set=ON_ERROR_STOP=1 --command "$1"
+}
+
+# ---------------------------------------------------------------------------------------------------
+# Gate A — the archive is readable.
+# ---------------------------------------------------------------------------------------------------
+gate "gate A · archive is a readable custom-format dump"
+
+toc=""
+if ! toc="$("$ENGINE" exec --interactive "$SCRATCH" pg_restore --list < "$DUMP" 2>&1)"; then
+    bad "pg_restore --list could not read the archive"
+    printf '%s\n' "$toc" | tail -n 10 >&2
+else
+    toc_entries="$(printf '%s\n' "$toc" | grep -c -v -e '^;' -e '^$' || true)"
+    if (( toc_entries > 0 )); then
+        pass "table of contents lists $toc_entries entries"
+    else
+        bad "the archive listed no objects at all"
+    fi
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# Gate B — it restores.
+# ---------------------------------------------------------------------------------------------------
+gate "gate B · restores into an empty database"
+
+restore_status=0
+"$ENGINE" exec --interactive "$SCRATCH" \
+    pg_restore --clean --if-exists --no-owner --username "$PGUSER" --dbname "$PGDB" \
+    < "$DUMP" > "$RESTORE_LOG" 2>&1 || restore_status=$?
+
+ignored="$(grep -oE 'errors ignored on restore: [0-9]+' "$RESTORE_LOG" | grep -oE '[0-9]+$' | tail -n1 || true)"
+[[ -n "$ignored" ]] || ignored=0
+
+if (( restore_status == 0 )); then
+    pass "pg_restore completed with no errors"
+else
+    reserve "pg_restore exited $restore_status and ignored $ignored error(s)"
+    info "    last lines of the restore log:"
+    tail -n 8 "$RESTORE_LOG" | sed 's/^/[drill]       /'
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# Gate C — every declared relation came back.
+#
+# The expected set is read from the migrations rather than hard-coded here, so this gate grows with
+# the schema on its own. If the DDL is ever reformatted past what these patterns match, the gate
+# reports THAT rather than silently passing on an empty expectation — which is the failure mode a
+# hard-coded list has and this does not.
+# ---------------------------------------------------------------------------------------------------
+gate "gate C · every table and view the migrations declare is present"
+
+mapfile -t expected_tables < <(
+    grep -hoE '^CREATE TABLE( IF NOT EXISTS)? [a-z_]+' "${MIGRATIONS[@]}" | awk '{ print $NF }' | sort -u
+)
+mapfile -t expected_views < <(
+    grep -hoE '^CREATE (OR REPLACE )?VIEW( IF NOT EXISTS)? [a-z_]+' "${MIGRATIONS[@]}" | awk '{ print $NF }' | sort -u
+)
+
+if (( ${#expected_tables[@]} == 0 )) || (( ${#expected_views[@]} == 0 )); then
+    bad "read ${#expected_tables[@]} table(s) and ${#expected_views[@]} view(s) out of the migrations"
+    info "    the DDL no longer matches the anchored 'CREATE TABLE x' / 'CREATE VIEW x' patterns this"
+    info "    gate reads. Fix the patterns in this script — do not hard-code a list."
+fi
+
+mapfile -t actual_tables < <(scratch_query \
+    "SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name" 2>/dev/null || true)
+mapfile -t actual_views < <(scratch_query \
+    "SELECT table_name FROM information_schema.views
+      WHERE table_schema = 'public' ORDER BY table_name" 2>/dev/null || true)
+
+contains() {
+    local needle="$1"; shift
+    local item
+    for item in "$@"; do
+        [[ "$item" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
+present_tables=()
+missing_tables=()
+for expected in "${expected_tables[@]}"; do
+    if contains "$expected" ${actual_tables[@]+"${actual_tables[@]}"}; then
+        present_tables+=("$expected")
+    else
+        missing_tables+=("$expected")
+    fi
+done
+
+missing_views=()
+present_views=()
+for expected in "${expected_views[@]}"; do
+    if contains "$expected" ${actual_views[@]+"${actual_views[@]}"}; then
+        present_views+=("$expected")
+    else
+        missing_views+=("$expected")
+    fi
+done
+
+if (( ${#missing_tables[@]} == 0 )) && (( ${#expected_tables[@]} > 0 )); then
+    pass "all ${#expected_tables[@]} tables present"
+else
+    bad "${#missing_tables[@]} table(s) missing: ${missing_tables[*]-}"
+fi
+
+if (( ${#missing_views[@]} == 0 )) && (( ${#expected_views[@]} > 0 )); then
+    pass "all ${#expected_views[@]} views present"
+else
+    bad "${#missing_views[@]} view(s) missing: ${missing_views[*]-}"
+fi
+
+# Anything in the database the migrations did not declare. `schemaversions` is DbUp's own journal and
+# is expected; it gets its own gate below. Everything else is reported so a stray object cannot hide.
+for actual in ${actual_tables[@]+"${actual_tables[@]}"}; do
+    if [[ "$actual" == "schemaversions" ]]; then
+        continue
+    fi
+    if ! contains "$actual" ${expected_tables[@]+"${expected_tables[@]}"}; then
+        info "    note: '$actual' exists in the dump but no migration declares it"
+    fi
+done
+
+# ---------------------------------------------------------------------------------------------------
+# Gate D — DbUp's journal. Structural completeness is not enough: the code that will boot against
+# this database asks DbUp whether every embedded script has been applied, and answers /healthz/ready
+# from that. A restored schema whose journal is short is a schema this code will try to migrate.
+# ---------------------------------------------------------------------------------------------------
+gate "gate D · DbUp journal carries one row per migration file"
+
+# `mapfile` reports success even when the process substitution feeding it failed, so there is nothing
+# to test here — an unreadable journal simply arrives as an empty array, which is the case handled next.
+mapfile -t journal < <(scratch_query "SELECT scriptname FROM schemaversions ORDER BY scriptname" 2>/dev/null || true)
+
+if (( ${#journal[@]} == 0 )); then
+    bad "the restored database has no readable 'schemaversions' rows"
+    info "    either the dump predates DbUp ever running, or the journal table did not come back."
+else
+    unjournalled=()
+    for migration in "${MIGRATIONS[@]}"; do
+        migration_name="$(basename -- "$migration")"
+        found=0
+        for entry in "${journal[@]}"; do
+            # DbUp journals the embedded RESOURCE name (MyRestaurant.DataAccess.Migrations.0001_….sql),
+            # so the file name is a suffix of it rather than equal to it.
+            if [[ "$entry" == *"$migration_name" ]]; then
+                found=1
+                break
+            fi
+        done
+        (( found )) || unjournalled+=("$migration_name")
+    done
+
+    if (( ${#unjournalled[@]} == 0 )); then
+        pass "${#MIGRATIONS[@]} migration(s) journalled, ${#journal[@]} row(s) in schemaversions"
+    else
+        bad "not journalled: ${unjournalled[*]}"
+        info "    this code would treat the restored database as needing migration, and"
+        info "    /healthz/ready would report not-current until it ran."
+    fi
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# Gate E — the projection views still resolve. A view survives `--clean` as a definition; whether it
+# still resolves against the restored tables is a different question, and §8.3's views are the only
+# place in the schema where one object's correctness depends on nine others.
+# ---------------------------------------------------------------------------------------------------
+gate "gate E · every projection view resolves"
+
+broken_views=()
+for view in ${present_views[@]+"${present_views[@]}"}; do
+    if ! scratch_query "SELECT count(*) FROM $view" >/dev/null 2>&1; then
+        broken_views+=("$view")
+    fi
+done
+
+if (( ${#present_views[@]} == 0 )); then
+    bad "no views to query"
+elif (( ${#broken_views[@]} == 0 )); then
+    pass "${#present_views[@]} view(s) queryable"
+else
+    bad "view(s) that do not resolve: ${broken_views[*]}"
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# Gate F — the row census. Reported, never asserted: the only sensible row count for a brand-new
+# instance is almost all zeros, and the only way to notice you have been backing up an empty database
+# for a month is to have been shown the numbers.
+# ---------------------------------------------------------------------------------------------------
+gate "gate F · row census (reported, not asserted)"
+
+if (( ${#present_tables[@]} == 0 )); then
+    soft "no tables to count"
+else
+    census_sql=""
+    for table in "${present_tables[@]}"; do
+        [[ -n "$census_sql" ]] && census_sql+=" UNION ALL "
+        census_sql+="SELECT '${table}' AS relation, count(*) AS row_count FROM ${table}"
+    done
+    census_sql="SELECT relation, row_count FROM ( $census_sql ) AS census ORDER BY relation"
+
+    if census="$(scratch_query "$census_sql" 2>/dev/null)"; then
+        printf '%s\n' "$census" | awk -F'|' '{ printf "[drill]       %-46s %8s\n", $1, $2 }'
+        people="$(printf '%s\n' "$census" | awk -F'|' '$1 == "person" { print $2 }')"
+        if [[ "${people:-0}" == "0" ]]; then
+            soft "the restored database has no person rows — this dump predates /setup"
+        else
+            pass "census read; $people person row(s)"
+        fi
+    else
+        bad "the census query failed"
+    fi
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# Gate G — the key ring (§3.4). A dump that restores perfectly and a key ring that was never captured
+# is a restaurant whose accounts all come back and whose enrolled authenticators all do not. This gate
+# is the reason a "successful" drill of a database-only set is not allowed to look like a pass.
+# ---------------------------------------------------------------------------------------------------
+gate "gate G · the Data Protection key ring is beside the dump"
+
+if (( ! WITH_KEYS )); then
+    soft "skipped (--no-keys)"
+elif [[ ! -f "$KEYS_ARCHIVE" ]]; then
+    bad "no key ring at '$KEYS_ARCHIVE'"
+    info "    §15 requires the key ring alongside the database. scripts/backup.sh writes it as a"
+    info "    sibling tar with the same timestamp; a set without one cannot decrypt a TOTP secret."
+elif ! tar -tf "$KEYS_ARCHIVE" >/dev/null 2>&1; then
+    bad "'$KEYS_ARCHIVE' is not a readable tar archive"
+else
+    key_count="$(tar -tf "$KEYS_ARCHIVE" 2>/dev/null | grep -c 'key-.*\.xml$' || true)"
+    if (( key_count > 0 )); then
+        pass "key ring readable, $key_count key file(s)"
+    else
+        reserve "the key ring is readable but contains no key-*.xml (nothing has been protected yet)"
+    fi
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# Report.
+# ---------------------------------------------------------------------------------------------------
+echo
+info "────────────────────────────────────────────────────────────────────────"
+info "  restore drill: $PASS_COUNT passed, $WARN_COUNT warned, $FAIL_COUNT failed"
+info "  dump:          $DUMP"
+info "────────────────────────────────────────────────────────────────────────"
+
+if (( FAIL_COUNT > 0 )); then
+    info "this set would NOT bring the instance back cleanly. Read the FAIL lines above."
     exit 1
 fi
 
-CONTAINER="${POSTGRES_CONTAINER:-$("$ENGINE" ps --format '{{.Names}}' | grep -m1 postgres || true)}"
-if [[ -z "$CONTAINER" ]]; then
-    echo "error: no running postgres container found (set POSTGRES_CONTAINER to override)." >&2
-    exit 1
+if (( WARN_COUNT > 0 )); then
+    info "this set restores, with the reservations above. Re-run with --strict to fail on them."
 fi
 
-echo "warning: this will overwrite the current contents of database '$PGDB'."
-read -r -p "Type 'restore' to continue: " confirm
-[[ "$confirm" == "restore" ]] || { echo "aborted."; exit 1; }
-
-echo "info: stopping the web app..."
-"${COMPOSE[@]}" stop web || true
-
-echo "info: restoring $DUMP into '$PGDB'..."
-"$ENGINE" exec -i "$CONTAINER" pg_restore --clean --if-exists --no-owner -U "$PGUSER" -d "$PGDB" < "$DUMP"
-
-echo "info: starting the web app (migrations will verify the schema)..."
-"${COMPOSE[@]}" up -d web
-
-echo "info: restore complete. Confirm health at /healthz/ready."
+info "drilled without touching the live database."
+exit 0
 
 ################################################################################
 # FILE: src/MyRestaurant.DataAccess/Displays/DisplayDeviceAuthenticator.cs
@@ -83637,10 +84919,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 302
-  Total size     : 3.5 MiB (3679783 bytes)
+  Files dumped   : 303
+  Total size     : 3.6 MiB (3756298 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-04T14:42:28-04:00
+  Completed at   : 2026-08-04T22:33:27-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
