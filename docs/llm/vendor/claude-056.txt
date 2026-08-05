@@ -98,3 +98,62 @@ remember to give full files for all files that need to change
 I will likely miss those bespoke scripts 
 
 
+
+/
+Claude finished the response
+
+Message collapsed
+
+Orchestrating container engine support across backup, restore, and CI workflows
+Orchestrating container engine support across backup, restore, and CI workflows
+I've traced both failures to root causes. Here's what I found before hitting the tool limit — no files produced yet, so nothing to extract or delete from this message.
+
+Failure 1 — boot smoke: scripts/backup.sh picks the wrong container engine
+backup.sh selects its engine with command -v podman first, falling back to docker. GitHub's ubuntu-24.04 runner image has podman installed — I confirmed this against actions/runner-images: images/ubuntu/templates/build.ubuntu-24_04.pkr.hcl line 114 runs scripts/build/install-container-tools.sh, which installs a pinned static podman bundle (v5.8.4) into /usr/local/bin alongside buildah and skopeo.
+
+So on the runner ENGINE="podman", and then:
+
+podman exec f35d0ec9… pg_isready --username myrestaurant --dbname myrestaurant
+fails, because f35d0ec9… is a Docker service container ID that podman's store has never heard of. The script's die then reports it as a credentials/readiness problem — which is why the message sends you looking at PostgreSQL instead of at engine selection. The database was fine; /healthz/ready had already answered 200 two steps earlier.
+
+scripts/restore_drill.sh has the identical discovery block (lines 116–122) and would take the same wrong turn, plus it would re-pull postgres:17-alpine into podman's store when docker already has it cached from the service container.
+
+Intended fix: a documented CONTAINER_ENGINE override honoured by both scripts, set to docker on the two boot-smoke steps; and, when no override is given and both engines exist, let the named container choose the engine (<engine> container inspect) rather than PATH order — the reason the script needs an engine at all is to reach a specific container, so that's a checkable fact rather than a guess. Error messages get split so "this engine does not know that container" reads differently from "it did not answer pg_isready".
+
+Failure 2 — E2E scenario 10: the counter board is read mid-reload
+CounterJourneys.WaitForBoardAsync waits on section.counter-board becoming visible (BoardSurfaceSelector, line 167). That section exists in every state of CounterBoard.razor, including @if (!_loaded) { <p class="lede">Loading the floor…</p> } — so the wait is satisfied instantly and guarantees nothing.
+
+The sequence that bites: prerender runs OnInitializedAsync to completion, so the HTML GotoAsync receives has the settled row. Then the circuit takes over, the component is constructed fresh, StateHasChanged fires the moment OnInitializedAsync yields, and the DOM is re-rendered with _loaded == false — both lists vanish until two queries come back. ReadFloorAsync lands in that window on a slow runner.
+
+That explains the exact failure shape: floor.Settled is [], and Assert.DoesNotContain(tableLabel, floor.OpenTableLabels) on line 1623 passes vacuously one line earlier because that list is empty too. The ListRecentlyClosedSittingsAsync SQL (closed_at >= now − 12h) is correct and not implicated.
+
+Unlike the other four interactive surfaces, CounterBoard.razor publishes no data-live at all — so nothing currently asserts a circuit is behind the one screen whose whole purpose is a total that moves. Fix: publish id="counter-board-surface", data-live (from RendererInfo.IsInteractive, matching KitchenBoard/CounterSitting/TableOrderSurface/TableDisplay) and data-loaded (from _loaded), then require both in the selector. Gating on data-live alone would make this worse — that's precisely the render where _loaded is false.
+
+Worth flagging: the same latent race exists on the other four surfaces, which publish data-live but not the loaded state. They pass today only because their callers go on to wait for specific content. I'd keep that out of this slice rather than rewrite ~4,000 lines of Razor speculatively, and note it as a follow-up.
+
+Files that will change
+scripts/backup.sh, scripts/restore_drill.sh
+.github/workflows/ci.yml
+src/MyRestaurant.WebApplication/Components/Pages/Counter/CounterBoard.razor
+tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs
+.env.example, docs/OPERATIONS.md §6, plus a docs/_append/BUILD_PROGRESS-M6-Slice-21.md block
+Say the word and I'll build the .tar.gz with full files at those exact paths — no diffs, no text-manipulation scripts, and an explicit "files to DELETE" section. scripts/check_repository.sh stays untouched, docs/llm exemption included.
+
+Claude reached its tool-use limit for this turn.
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+64
+74
+
+please continue
