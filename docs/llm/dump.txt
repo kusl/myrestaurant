@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-05T03:43:25-04:00
+  Generated at   : 2026-08-05T03:58:51-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,12 +17,12 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : c235226581af50e27cfc896c03ba12edbf78ca11
-  Commit (short) : c235226
-  Commit date    : 2026-08-05 03:24:36 -0400
-  Commit message : add claude prompt
+  Commit (full)  : 1c42c5e2df16d5a47e4433742cd98fe00bee3605
+  Commit (short) : 1c42c5e
+  Commit date    : 2026-08-05 03:58:42 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 308
+  Files included : 309
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
@@ -533,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (308 included files)
+# FILE TREE  (309 included files)
 ################################################################################
 .
 ├── .editorconfig
@@ -577,6 +577,7 @@ cat "$OUTPUT_FILE"
 ├── run.sh
 ├── scripts
 │   ├── backup.sh
+│   ├── check_tree.sh
 │   ├── ci_local.sh
 │   ├── quick_tunnel.sh
 │   ├── restore.sh
@@ -975,15 +976,15 @@ indent_size = 2
   File name:             .env.example
   Relative path:         .env.example
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/.env.example
-  Size:                  6.1 KiB (6238 bytes)
-  Last modified:         2026-08-04 23:15:37.000000000 -0400
+  Size:                  6.0 KiB (6156 bytes)
+  Last modified:         2026-08-05 03:33:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737854
+  Inode:                 31773472
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               6a3b8de0b7996b5c9a574e309a25df6427c6cb7022715736d742e6dfa1b89386
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               ae917a19dfb0702e13f94828c5ad589496a9062cb3712d5390823aa8fd184dfd
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 # Copy to `.env` and adjust. `.env` is git-ignored; never commit a populated one.
@@ -1079,8 +1080,6 @@ OTEL_SERVICE_NAME=myrestaurant
 # CLOUDFLARE_TUNNEL_TOKEN=
 
 ################################################################################
-
-################################################################################
 # FILE: .github/dependabot.yml
 ################################################################################
 
@@ -1156,20 +1155,26 @@ updates:
   File name:             ci.yml
   Relative path:         .github/workflows/ci.yml
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/.github/workflows/ci.yml
-  Size:                  17.8 KiB (18209 bytes)
-  Last modified:         2026-08-04 23:16:10.000000000 -0400
+  Size:                  19.3 KiB (19735 bytes)
+  Last modified:         2026-08-05 03:51:20.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737843
+  Inode:                 31773455
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               5747f3737869fd4597f759f5157cfbd4a3588c16d727ff3aa9361e7e446b9c3c
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               50f60133378a7f45fd2bd395ceab3e238273bffa028759d0ccfb0f2b2f57589f
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 # Continuous integration (TECHNICAL_SPECIFICATION §16.4).
 #
-# Four gates. None of them can be satisfied by a tree that merely looks right:
+# Five gates. None of them can be satisfied by a tree that merely looks right:
+#
+#   tree            The tree is machine-readable at all: no context-dump separators, no
+#                   whitespace-only lines, LF endings with a final newline, and every MSBuild and
+#                   YAML file parses. Cheapest gate in the workflow and the one that catches the
+#                   damage that disguises itself as a toolchain fault — see scripts/check_tree.sh
+#                   for the incident that put it here.
 #
 #   shell-scripts   Every tracked *.sh parses (`bash -n`) and passes shellcheck. This is the
 #                   project's own pre-delivery discipline, enforced instead of remembered.
@@ -1227,7 +1232,29 @@ env:
 
 jobs:
   # -----------------------------------------------------------------------------------------------
-  # 1. Shell scripts. Cheapest gate, so it runs alongside everything else and fails in ~30 seconds.
+  # 1. Tree hygiene. Seconds, no SDK, no containers, no network beyond the checkout.
+  #
+  # A job of its own rather than a step bolted onto shell-scripts, for two reasons. It is not about
+  # shell: the file it exists to protect is XML, and the incident that produced it took out the
+  # build for every project in the solution. And a distinct check name means a failure here is
+  # attributable from the commit list without opening anything — which is the whole point of a gate
+  # whose failure mode is a message that blames the wrong tool.
+  # -----------------------------------------------------------------------------------------------
+  tree:
+    name: tree hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: check out
+        uses: actions/checkout@v7
+
+      # Blocking, all five of its gates. PyYAML is preinstalled on GitHub's Ubuntu runners, so the
+      # YAML parse — the one gate that degrades to a skip on a workstation without it — runs here.
+      - name: the tree parses
+        run: bash scripts/check_tree.sh
+
+  # -----------------------------------------------------------------------------------------------
+  # 2. Shell scripts. Also cheap, so it runs alongside everything else and fails in ~30 seconds.
   # -----------------------------------------------------------------------------------------------
   shell-scripts:
     name: shell scripts
@@ -1272,7 +1299,7 @@ jobs:
           shellcheck --severity=style --color=always "${scripts[@]}"
 
   # -----------------------------------------------------------------------------------------------
-  # 2. Build and the full test suite, with warnings as errors.
+  # 3. Build and the full test suite, with warnings as errors.
   # -----------------------------------------------------------------------------------------------
   build-and-test:
     name: build and test
@@ -1344,7 +1371,7 @@ jobs:
         run: dotnet list MyRestaurant.slnx package --vulnerable --include-transitive
 
   # -----------------------------------------------------------------------------------------------
-  # 3. Boot the actual production image against an actual PostgreSQL, then rehearse recovery from it.
+  # 4. Boot the actual production image against an actual PostgreSQL, then rehearse recovery from it.
   # -----------------------------------------------------------------------------------------------
   boot-smoke:
     name: boot smoke (container image)
@@ -1483,7 +1510,7 @@ jobs:
         run: docker rm --force myrestaurant_web_ci || true
 
   # -----------------------------------------------------------------------------------------------
-  # 4. The §16.3 end-to-end scenarios, in a real browser.
+  # 5. The §16.3 end-to-end scenarios, in a real browser.
   # -----------------------------------------------------------------------------------------------
   end-to-end:
     name: end to end (Playwright)
@@ -1561,8 +1588,6 @@ jobs:
           retention-days: 14
 
 ################################################################################
-
-################################################################################
 # FILE: .github/workflows/release.yml
 ################################################################################
 
@@ -1570,15 +1595,15 @@ jobs:
   File name:             release.yml
   Relative path:         .github/workflows/release.yml
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/.github/workflows/release.yml
-  Size:                  8.0 KiB (8144 bytes)
-  Last modified:         2026-08-04 23:20:47.000000000 -0400
+  Size:                  7.9 KiB (8062 bytes)
+  Last modified:         2026-08-05 03:33:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737844
+  Inode:                 31773456
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               8e1b635ba3f9bb35afaf1c910e9562e70c145bc0ea3f658cef59456afcd7aafe
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               257bb4319e413f149fd5ee9ac22335b61ec9cc0f3d9d80955da1e85fa3073b9d
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 # Publish the container image on a tag (TECHNICAL_SPECIFICATION §16.4: "publish image on tag").
@@ -1779,8 +1804,6 @@ jobs:
           fi
 
 ################################################################################
-
-################################################################################
 # FILE: .gitignore
 ################################################################################
 
@@ -1923,15 +1946,15 @@ localhost:8443 {
   File name:             Containerfile
   Relative path:         Containerfile
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/Containerfile
-  Size:                  3.0 KiB (3035 bytes)
-  Last modified:         2026-08-04 23:15:37.000000000 -0400
+  Size:                  2.9 KiB (2953 bytes)
+  Last modified:         2026-08-05 03:33:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737821
+  Inode:                 31773437
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               c21986c7d1b86e89a3fc04accd13aaf7963784c8fcb0cf18df7310f184688229
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               03ecb1b351093517574e6a11c8cedc8b88982cc406923f110d8c5fa5fcb6f2d7
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 # syntax=docker/dockerfile:1
@@ -1995,8 +2018,6 @@ EXPOSE 8080
 ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
 
 ################################################################################
-
-################################################################################
 # FILE: Directory.Build.props
 ################################################################################
 
@@ -2004,15 +2025,15 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
   File name:             Directory.Build.props
   Relative path:         Directory.Build.props
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/Directory.Build.props
-  Size:                  4.3 KiB (4447 bytes)
-  Last modified:         2026-08-04 23:15:16.000000000 -0400
+  Size:                  4.3 KiB (4365 bytes)
+  Last modified:         2026-08-05 03:33:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737845
+  Inode:                 31773457
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               adf0c2152263a22a79096351d97c111cd77e992c7b0b6ae55cafc51a42112b0a
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               eefdaf71374de4141177d47987e017221414d0a6a87b26723e133af028929552
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 <Project>
@@ -2099,8 +2120,6 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
   </PropertyGroup>
 
 </Project>
-
-################################################################################
 
 ################################################################################
 # FILE: Directory.Packages.props
@@ -2932,15 +2951,15 @@ For more information on this, and how to apply and follow the GNU AGPL, see
   File name:             README.md
   Relative path:         README.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/README.md
-  Size:                  24.5 KiB (25062 bytes)
-  Last modified:         2026-08-04 23:27:37.000000000 -0400
+  Size:                  25.6 KiB (26251 bytes)
+  Last modified:         2026-08-05 03:51:20.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737846
+  Inode:                 31773458
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               3653cdcb5104981ff3c69a6697b03262fd0d5c27c250f5e8e0e1f53f87ee22c7
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               9ef6e5ead2846068ce72d01d28712331daff20909924582d454ce792378c37b7
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 # MyRestaurant
@@ -2989,6 +3008,9 @@ the web layer depends on data-access and the domain; the domain depends on nothi
 - `tests/` — pure domain tests, Testcontainers integration tests for migrations, the Identity stores
   and every reader/mutation over real PostgreSQL, web-layer configuration/wiring/enforcement tests,
   and the end-to-end scenario matrix with its Playwright harness (see *End-to-end scenarios*).
+- `scripts/` — the operational scripts: `check_tree.sh` (repository hygiene, the first CI gate),
+  `ci_local.sh` (every CI gate, locally), `backup.sh` / `restore.sh` / `restore_drill.sh` (§15
+  recovery sets and the rehearsal CI runs on every push), and `quick_tunnel.sh` (a demo origin).
 - `.github/workflows/` — the CI and release pipelines (see *Continuous integration*).
 
 ## Prerequisites
@@ -3136,10 +3158,11 @@ browser, no build output. A missing tool is not a broken product.
 
 ## Continuous integration
 
-Every push and pull request against `main` runs four gates (`.github/workflows/ci.yml`):
+Every push and pull request against `main` runs five gates (`.github/workflows/ci.yml`):
 
 | Gate | What it proves |
 | --- | --- |
+| `tree` | the checkout is machine-readable at all: no context-dump separator lines, no whitespace-only lines, LF endings with a final newline, every MSBuild and solution file well-formed XML, every YAML file parsing (`scripts/check_tree.sh`) |
 | `shell-scripts` | every tracked `*.sh` parses under `bash -n` and passes shellcheck |
 | `build-and-test` | a Release build with **warnings escalated to errors**, then all ~970 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
 | `boot-smoke` | the production `Containerfile` builds, the image boots against a real PostgreSQL until `/healthz/ready` answers 200, `/source` names the commit it was built from, and then that instance is backed up and the backup is put through a full restore drill |
@@ -3154,10 +3177,22 @@ recovery set off it, and `scripts/restore_drill.sh` restores that set into a scr
 creates and destroys, gating the archive, the restore, every relation the migrations declare, DbUp's
 journal, all five projection views, and the Data Protection key ring.
 
+The first gate is the cheapest and the newest. It exists because a stray line appended to
+`Directory.Build.props` once failed every MSBuild verb in the repository at once — `clean`, `restore`,
+`build`, `test` and the container build — with a message (`Data at the root level is invalid`) that
+pointed at MSBuild rather than at the file. Twenty other tracked files had the same line and said
+nothing, because in YAML, in a Containerfile, in `.env` and in Markdown it is a comment. It runs in
+about two seconds and needs no SDK, so it is worth running by hand after applying anything to this
+tree:
+
+```bash
+bash scripts/check_tree.sh
+```
+
 Run the same gates locally before pushing:
 
 ```bash
-scripts/ci_local.sh                # shell lint, restore, strict build, full suite
+scripts/ci_local.sh                # tree, shell lint, restore, strict build, full suite
 scripts/ci_local.sh --with-e2e     # ...and the §16.3 scenarios in a real browser
 scripts/ci_local.sh --with-smoke   # ...and boot once against the dev database
 scripts/ci_local.sh --with-all     # both of the optional gates
@@ -3262,11 +3297,12 @@ legal advice — `LICENSE` is the text that governs.
 The code in each milestone slice is written carefully but has not been compiled in its authoring
 environment (no toolchain or package feed there). On a networked machine:
 
-1. `dotnet restore` — resolve or adjust any package versions in `Directory.Packages.props`.
-2. `dotnet build` — fix any analyzer/compiler findings.
-3. `dotnet test` — domain and web-layer tests need no services; the data-access tests need the
+1. `bash scripts/check_tree.sh` — seconds, no SDK; confirms the tree arrived intact.
+2. `dotnet restore` — resolve or adjust any package versions in `Directory.Packages.props`.
+3. `dotnet build` — fix any analyzer/compiler findings.
+4. `dotnet test` — domain and web-layer tests need no services; the data-access tests need the
    container engine socket (see *Testing*).
-4. `./run.sh --smoke` — confirm migrations apply and `/healthz/ready` returns 200.
+5. `./run.sh --smoke` — confirm migrations apply and `/healthz/ready` returns 200.
 
 Or, in one command that mirrors what CI will say about the same tree:
 
@@ -3343,8 +3379,6 @@ scripts/ci_local.sh --with-all
 Every milestone is complete. What follows is maintenance and whatever the restaurant asks for next.
 
 ################################################################################
-
-################################################################################
 # FILE: _CHANGES.md
 ################################################################################
 
@@ -3352,267 +3386,272 @@ Every milestone is complete. What follows is maintenance and whatever the restau
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  14.2 KiB (14519 bytes)
-  Last modified:         2026-08-04 23:29:08.000000000 -0400
+  Size:                  15.0 KiB (15367 bytes)
+  Last modified:         2026-08-05 03:53:34.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737853
+  Inode:                 31773471
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               3d9b1f67d1ecf397d8e3789e6da6c5be4035bee12d0bab6116a0611c00380a84
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               1e725842e4263a2d4a01b263fff3e420ba991d96c171f369ff66082e55665480
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
-# M6 close-out — the release: what the program says about itself, and to whom
+# M6 Slice 18 — the tree must parse before anything tries to build it
 
 Every file below is a **full file** at its **repo-relative path**. Extract at the repository root and
 the contents drop straight over your working tree — no diffs, no patches, no scripts to run.
 
 ```bash
-tar -xzf m6-closeout-release.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice-18-tree-hygiene.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+```
+
+Then, before anything else:
+
+```bash
+bash scripts/check_tree.sh
 ```
 
 ## Files to DELETE
 
 **None.** Nothing here renames, supersedes or orphans anything: no migration, no schema change, no
-package change, no ADR edit, no `.slnx` edit. `Program.cs` changes by **one statement** (noted below,
-since that is rare). Four new files land in existing folders, so no `.csproj` edit either.
+package change, no ADR edit, no `.slnx` edit, no `Program.cs` edit. One new file lands in an existing
+folder, so no `.csproj` edit either.
+
+## What happened
+
+Your `dotnet build` was not failing a test. It was failing to load:
+
+```
+error MSB4024: The imported project file
+"/home/kushal/src/dotnet/myrestaurant/Directory.Build.props" could not be loaded.
+Data at the root level is invalid. Line 86, position 1.
+```
+
+Seven of those, one per project, and the same fault from `clean`, `restore`, `test` and the container
+build — where it appeared as `NETSDK1013: The TargetFramework value '' was not recognized`, which is the
+same problem wearing a different hat, because the `TargetFramework` that file supplies never arrived.
+MSBuild imports `Directory.Build.props` before it evaluates anything, so one malformed character there
+fails every verb in the repository.
+
+Line 86 was a line of eighty `#` characters appended after `</Project>`. That string is the section
+separator `export.sh` writes *between* files in a context dump.
+
+**Twenty-one tracked files carried the identical 82-byte suffix** — a newline, eighty `#`, a newline.
+That was established by arithmetic rather than by looking: `export.sh` publishes an exact byte count for
+every file it emits (`Size: 4.3 KiB (4447 bytes)`), so reading each file's content as exactly that many
+bytes and comparing the tail against the separator gives an answer that does not depend on judgement.
+
+The twenty-one were exactly the **modified** files of the close-out slice. The five **new** files of that
+slice were clean. That asymmetry names the cause with no room left for a theory: the modified files were
+reconstructed by reading the previous dump back, and the reader took the decoration between files for
+the end of a file. The authoritative terminator in that format is the byte count. It was always there;
+nothing in the dump format needed fixing, and this delivery was built by reading it correctly.
+
+`docs/BUILD_PROGRESS.md` had **two**: the trailing one, and a second buried at line 5760 between the
+Slice 16 section and the close-out section, left over from an earlier cycle that appended text after it.
+That is how a stray separator stops being at the end of a file and becomes something no amount of
+inspecting the end of a file will find.
+
+## Why fifteen of the twenty-one said nothing
+
+| Files | What the line means there | Consequence |
+| --- | --- | --- |
+| `Directory.Build.props` | XML content after the root element closed | `MSB4024` on every MSBuild verb — the outage |
+| 5 × `.cs` | a preprocessor directive with a garbage name | `CS1024`, on a compile that never got to run |
+| `ci.yml`, `release.yml`, `Containerfile`, `.env.example` | a comment | nothing. All four parsed perfectly while damaged |
+| 4 × `.md` | a heading rule | renders as a horizontal line |
+| 3 × `.razor` | literal markup text | eighty `#` on the page |
+| `app.css` | a dangling selector | discards itself **and the rule after it** |
+
+A class of damage that is catastrophic in one file and invisible in fifteen is a class of damage that
+belongs to something running on every push. The cost of finding it turned out to be one `grep`.
 
 ## The files
 
+**Restored — the 82-byte suffix removed, and otherwise byte-identical to what you had.** I verified
+that: after stripping the suffix, every one of these matches your on-disk file exactly, including its
+original trailing-newline count. Eight of them also carry the documentation and CI edits below.
+
+| File | Also edited? |
+| --- | --- |
+| `Directory.Build.props` | no — restoration only. **This is the one that unblocks the build.** |
+| `src/…/Program.cs` | no — restoration only |
+| `src/…/Configuration/RestaurantOptions.cs` | no |
+| `src/…/Identity/ObligationsEnforcement.cs` | no |
+| `tests/…/RestaurantOptionsTests.cs` | no |
+| `tests/…/Identity/ObligationsEnforcementTests.cs` | no |
+| `src/…/Components/Layout/MainLayout.razor` | no |
+| `src/…/Components/Layout/DisplayLayout.razor` | no |
+| `src/…/Components/Pages/Home.razor` | no |
+| `src/…/wwwroot/app.css` | no |
+| `Containerfile` | no |
+| `.env.example` | no |
+| `.github/workflows/release.yml` | no |
+| `docs/REQUIREMENTS.md` | no — deliberately unchanged, see below |
+| `.github/workflows/ci.yml` | **yes** — new `tree` job |
+| `README.md` | **yes** — the gate table, the layout section, the first-build checklist |
+| `docs/TECHNICAL_SPECIFICATION.md` | **yes** — **v1.4**: §16.4, Appendix A |
+| `docs/OPERATIONS.md` | **yes** — §14 |
+| `docs/DOCUMENTATION_REVIEW.md` | **yes** — **F-40** |
+| `docs/BUILD_PROGRESS.md` | **yes** — buried separator removed at 5760; Slice 18 appended |
+| `_CHANGES.md` | **yes** — this file |
+
+**New:**
+
 | File | Change |
 | --- | --- |
-| `src/…/Configuration/BuildInformation.cs` | **new** — parses the assembly's informational version into a version and a source revision |
-| `src/…/Configuration/SourceRoutes.cs` | **new** — the `/source` route constant, in one place |
-| `src/…/Components/Pages/Source.razor` | **new** — the AGPL §13 offer, naming this build's revision |
-| `src/…/Components/Layout/AppColophon.razor` | **new** — the footer line, every page, both layouts |
-| `src/…/Configuration/RestaurantOptions.cs` | `RESTAURANT_SOURCE_URL` + its validation |
-| `src/…/Identity/ObligationsEnforcement.cs` | `/source` added to the §3.5 exemption list |
-| `src/…/Components/Layout/MainLayout.razor` | renders `<AppColophon />` |
-| `src/…/Components/Layout/DisplayLayout.razor` | renders `<AppColophon />`, plus its own smaller styling |
-| `src/…/Components/Pages/Home.razor` | the stale "the event explorer arrives next" lede, rewritten |
-| `src/…/wwwroot/app.css` | colophon and `/source` styles; `.app-footer`'s bottom padding moves |
-| `src/…/Program.cs` | **one statement**: `serviceVersion` on the OpenTelemetry resource |
-| `Directory.Build.props` | `VersionPrefix` and assembly metadata |
-| `Containerfile` | `VERSION` / `SOURCE_REVISION` build arguments → `InformationalVersion` |
-| `.github/workflows/ci.yml` | stamps the image; new gate: `/source` must name the built commit |
-| `.github/workflows/release.yml` | version from the tag → the image; a GitHub release on the tag |
-| `.env.example` | `RESTAURANT_SOURCE_URL`, documented for forks |
-| `tests/…/BuildInformationTests.cs` | **new** — 16 facts on the parse |
-| `tests/…/RestaurantOptionsTests.cs` | +8 facts: the source URL, and the five shapes refused |
-| `tests/…/Identity/ObligationsEnforcementTests.cs` | +1: `/source` is exempt |
-| `docs/REQUIREMENTS.md` | **rev 3** — one new §8 principle |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.3** — new §11.9; §12, §13, §16.4, §19, Appendix A |
-| `docs/DOCUMENTATION_REVIEW.md` | **F-39** entered; status line and "Going forward" extended |
-| `docs/OPERATIONS.md` | §14 release procedure rewritten; **new §15** on fork obligations |
-| `docs/BUILD_PROGRESS.md` | stage checkboxes ticked; close-out appended (**complete file**, 5,946 lines) |
-| `README.md` | the status paragraph, the scenario table, CI, backups and the roadmap, all corrected |
-| `_CHANGES.md` | this file |
+| `scripts/check_tree.sh` | the gate — five properties of the checkout, run first in CI and locally |
 
-## Why there is a slice here at all
+**Edited, not corrupted:**
 
-Slice 16 ended with *"What is left in M6: **Nothing**. The next move is not a slice, it is a release."*
-That was true of the feature list. It was not true of the tree, and the gap only became visible by
-reading the repository against **what a tag would make true** rather than against §19.
+| File | Change |
+| --- | --- |
+| `scripts/ci_local.sh` | tree hygiene inserted as gate 1; sections renumbered; help text |
+| `compose.yaml` | line 109 was a blank line carrying three spaces |
+| `tests/…/Identity/DapperUserStorePasskeyTests.cs` | line 228 was a blank line carrying eight spaces |
 
-Publishing changes who the audience is. Two questions that had obvious answers while one person ran one
-instance stop having them the moment somebody else can `podman pull` the thing.
+Twenty-five files. Every one is in the archive for a reason stated above.
 
-### 1. Nothing could say which build it was
+## The gate
 
-`Directory.Build.props` set no `VersionPrefix`, so every assembly reported the SDK's default `1.0.0`.
-`Program.cs` called `AddService(serviceName: "myrestaurant")` with **no `serviceVersion`**, so every
-trace and metric leaving the process was unversioned. No surface reported a build at all. The only
-available answer to "which build is on that box?" was *whatever the person who deployed it typed* —
-which is not an answer, it is a memory.
+`scripts/check_tree.sh`, first in both CI (its own `tree` job) and `scripts/ci_local.sh`. Five
+properties of the checkout, asserted before any tool that would report their absence as something else:
 
-### 2. Nothing offered anybody the source
+1. **No context-dump separator** in any tracked file. `export.sh` is exempt **by path**, because writing
+   that string is its job; the exemption is a literal path comparison rather than a cleverer rule, so it
+   is obvious and cannot widen by accident. The threshold is **twenty** `#` rather than eighty:
+   Markdown's deepest heading is six and nothing in this tree has a use for twenty consecutive ones, so a
+   separator that was re-wrapped or truncated on the way in is caught too, where an exact-length match
+   would wave it through.
+2. **No whitespace-only lines.** Narrower than `.editorconfig`'s `trim_trailing_whitespace` on purpose:
+   it fails only on lines made *entirely* of spaces or tabs, never on trailing whitespace after real
+   content — two spaces at the end of a Markdown line are a hard break, and a gate that forbade those
+   would be wrong about Markdown rather than right about whitespace. A line with nothing but indentation
+   has no such defence. This is the check the two whitespace fixes above exist to satisfy.
+3. **LF endings and a final newline.** Both load-bearing. A CRLF in a shell script reports as
+   `bad interpreter: /usr/bin/env bash^M`, which names the wrong problem; a missing final newline is what
+   a truncated transfer looks like, which makes this the cheapest available detector of the *other* way a
+   delivered tree arrives damaged.
+4. **Every `.props`, `.targets`, `.csproj`, `.slnx` is well-formed XML.** The gate that would have turned
+   this incident into thirty seconds. `xml.etree` is standard library — no package, no network.
+   Well-formedness only: MSBuild stays the authority on whether a project *means* anything; this asserts
+   MSBuild will get far enough to have an opinion.
+5. **Every `.yml` / `.yaml` parses.** Blocking where a parser exists, a reported skip where none does —
+   the shape your shellcheck gate already uses. Worth being explicit that this gate could **not** have
+   caught the incident: a trailing `#` line is valid YAML, and both workflows parsed while damaged.
+   Gate 1 finds that. This one is for a workflow that was truncated or re-indented, which nothing else in
+   the pipeline reads early enough to blame correctly.
 
-R§1 says the project is published *"so anyone may run their own copy under the AGPL"*.
-`CONTRIBUTING.md` has told forks since rev 1 that *"your fork owes its users the same"*. AGPL-3.0-only
-§13 — read out of this repository's own `LICENSE` rather than recalled — asks a **modified** version to
-prominently offer its users the corresponding source. Nothing in the application made that
-dischargeable, so a fork operator complied by writing a page from scratch or, far more likely, not at
-all.
+Gates 1–4 need only git, grep and the Python standard library, so they block everywhere — including a
+workstation with no SDK. On Fedora, `sudo dnf install python3-pyyaml` turns gate 5 from a skip into a
+check; GitHub's runners already have it.
 
-Both land together because they are one thing: §13 offers the source *of the version being interacted
-with*, so an offer that cannot name a revision is approximate. Both land **before** the tag, because
-the first tag is the version people cite.
+## Four decisions worth being able to veto
 
-This is **F-39**, and it is the same shape as F-35 and F-37 — a capability the surrounding documents
-assumed and §19's build order never claimed.
+**A `tree` job rather than a step on `shell-scripts`.** It is not about shell — the file it exists to
+protect is XML. And a distinct check name means a failure here is attributable from the commit list
+without opening anything, which is the whole point of a gate whose failure mode is a message that blames
+the wrong tool. Costs one runner slot for about ten seconds. If you would rather it were a step inside
+`shell-scripts`, that is a four-line move; I went this way because renaming an existing job could break a
+required status check, and adding one cannot.
 
-## The SourceLink trap, which is why the Containerfile does this and not MSBuild
+**The two whitespace fixes, rather than making gate 2 advisory.** A gate that reports a finding on every
+run is a gate people learn to ignore — the argument this repository already makes about `NU19xx`. Both
+edits are a blank line losing its leftover indentation, so the behavioural risk is zero.
 
-The obvious implementation is `-p:SourceRevisionId=$SHA` and let the SDK append it to
-`InformationalVersion`. **That silently does nothing here.**
-`AddSourceRevisionToInformationalVersion` in `Microsoft.NET.GenerateAssemblyInfo.targets` is
-conditioned on `SourceControlInformationFeatureSupported`, and a code search of `dotnet/sdk` finds that
-property in exactly two files — that target, and its own test. **SourceLink sets it. Nothing else in
-the SDK does.**
+**`REQUIREMENTS.md` is untouched.** This is the v1.2 call, not the v1.3 one. `.editorconfig` has asked
+for LF endings, a final newline and trimmed whitespace since M1, and §16.4 is the section that records
+which of the project's own rules are enforced instead of remembered. Nothing new is being asked of the
+program, so nothing changes in the requirements.
 
-Read out of the SDK source rather than recalled, because the failure mode is a build that succeeds and
-a page that quietly reports "Not recorded" forever.
-
-So the `Containerfile` passes it explicitly, and a package dependency to obtain one string was the
-worse trade:
-
-```dockerfile
-ARG VERSION=1.0.0
-ARG SOURCE_REVISION=
-RUN INFORMATIONAL_VERSION="${VERSION}${SOURCE_REVISION:++${SOURCE_REVISION}}" \
-    && dotnet publish … /p:Version="${VERSION}" /p:InformationalVersion="${INFORMATIONAL_VERSION}"
-```
-
-`${SOURCE_REVISION:+…}` expands to `+<revision>` only when the argument is set and non-empty, so an
-unstamped build produces a clean `1.0.0` rather than a trailing `+` the parser would have to treat as a
-revision it does not have.
-
-## The gate, which is the part that will still be true in a year
-
-F-38's lesson was *a row in the embodiment column should name something executable*. This is the first
-chance to apply it without being asked, so `boot-smoke` gained:
-
-```yaml
-- name: the source offer names this commit
-  run: |
-    page=$(curl --fail --silent http://127.0.0.1:8080/source)
-    grep --quiet --fixed-strings "${{ github.sha }}" <<<"$page"
-```
-
-The stamp travels from a build argument through an MSBuild property, an assembly attribute, a parse and
-a component. **Every link in that chain fails silently** — the page still renders, and it renders "Not
-recorded", which reads as a configuration choice rather than a defect. The commit appearing in the
-response is the one assertion a broken chain cannot satisfy. It doubles as a reachability check: no
-cookie is sent, so a regression that put the licence offer behind authentication fails here too.
-
-## Four design decisions worth being able to veto
-
-**The colophon is a sibling of the clock's `<footer>`, not a child.** `RestaurantClockFooter` owns that
-element and pins `ShouldRender() => false` because a script owns its text node after first paint.
-The two are rendered as a pair by both layouts and by nothing else, so they are *styled* as one bar —
-which is why `.app-footer`'s `padding-bottom` moved to the colophon along with the
-`env(safe-area-inset-bottom)`.
-
-**`/source` is on §3.5's exemption list.** The obligations pipeline stops a flagged principal *acting*
-until they have changed a password or enrolled an authenticator. That is not a reason to withhold the
-licence under which they are being shown a page — and the footer they are looking at links there, so
-the alternative is a visible dead link on the one page they can see.
-
-**There is no off switch, and the version is not hidden.** An offer with an off switch is not one. As
-for the version: the source is public, the tags are public, the digests are public, so concealing the
-number would protect nothing and break an offer that is supposed to name what it is offering.
-
-**The revision is text, not a link.** `{url}/tree/{revision}` would be the page guessing at the URL
-layout of a forge it has never been told the identity of. GitHub, GitLab, Gitea, cgit and Sourcehut do
-not agree, and a link that 404s is worse than a hash somebody can paste into `git checkout`.
-
-## Three things fixed in passing
-
-**The specification's header said v1.1** while its own changelog already carried a v1.2 entry — Slice 16
-bumped one and not the other.
-
-**Every stage checkbox from 2 to 6 was unticked**, with Stage 2 still marked "in progress" through four
-completed milestones.
-
-**`Home.razor` told every visitor the event explorer "arrives next"** — it shipped in M5. A landing page
-is the worst place in an application to carry a roadmap: it is the one text nobody re-reads and
-everybody sees.
-
-## One documentation decision, stated so you can veto it
-
-`REQUIREMENTS.md` moves to **rev 3**. This is the opposite call from Slice 16, which deliberately left
-the requirements untouched, and the difference is real. §15's key-ring sentence was **already the
-contract** and the code had failed to honour it — a defect fix at the mechanism level. Here, nothing
-previously said the running program must name itself or offer its source. `CONTRIBUTING.md` said a fork
-*owes* it and R§1 said the project is published under the AGPL, but neither is a requirement on the
-program's behaviour. **This is new intent, so the requirements move.**
-
-If you would rather this landed as a mechanism-level fix with no revision bump, the edit is one bullet
-in R§8 and one line in the revision history; say so and I will pull it back out.
+**`export.sh` is untouched.** The tempting fix is an explicit end-of-content marker so a reader cannot
+mistake the separator for content. It would be redundant: the format already publishes an exact byte
+count per file, which is an unambiguous terminator, and the failure was in the consumer rather than the
+producer. Changing the dump format would also invalidate every tool that already reads it correctly.
 
 ## Build and test
 
 ```bash
+bash scripts/check_tree.sh
+#    expect: 5 gates, "tree hygiene passed.", exit 0. Under two seconds, no SDK needed.
+#    If gate 5 says SKIP, that is PyYAML missing locally and is not a failure.
+
 dotnet build
 #    expect: all seven projects succeed, 0 errors.
+#    This is the assertion that matters here — the tree you have now cannot reach a compiler at all.
 
 dotnet test
-#    expect: 996 total, 0 failed, 982 succeeded, 14 skipped.
-#    25 more facts than Slice 16: 16 in the new BuildInformationTests, 8 in RestaurantOptionsTests,
-#    1 InlineData in ObligationsEnforcementTests. No test moves in or out of the skipped column.
+#    expect: 996 total, 0 failed, 982 succeeded, 14 skipped. UNCHANGED from the close-out slice.
+#    No test is added, moved, renamed or unskipped in this slice. The 25 facts the close-out added
+#    (16 BuildInformationTests, 8 RestaurantOptionsTests, 1 ObligationsEnforcementTests InlineData)
+#    have still never executed, so 996 is a prediction rather than an observation. If you get a
+#    different number, look there first, not here.
 
 bash scripts/ci_local.sh --with-all
+#    expect: 5 numbered gates now — tree hygiene is the new first one.
 
-# then, before tagging, confirm the whole stamp chain on a real build:
-podman build --file Containerfile --tag myrestaurant_web:stamped \
-    --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" .
-#    boot it and open /source: it must name that commit, not "Not recorded".
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: 15 passed, 0 skipped.
 ```
-
-**Cutting the tag**, once the above is green:
-
-```bash
-# 1. VersionPrefix in Directory.Build.props is already 1.0.0. Confirm that is what you want.
-# 2. Tag and push:
-git tag --annotate v1.0.0 --message 'M6 complete'
-git push origin v1.0.0
-```
-
-`release.yml` re-runs every CI gate, derives `1.0.0` from the tag, passes it and the commit into the
-image build, publishes `ghcr.io/kusl/myrestaurant:1.0.0`, `:1.0` and `:sha-<commit>`, and opens a
-GitHub release. The `release-notes` job holds the only `contents: write` in either workflow.
 
 ## What was actually verified here
 
-No .NET SDK in the sandbox and no container engine, so **nothing here has been compiled or executed.**
-What *was* run:
+No .NET SDK and no container engine in the sandbox, so **nothing here has been compiled or executed**
+beyond the shell script. What *was* run:
 
-- Brace, paren and bracket balance on every C#, Razor and CSS file touched.
-- A tag-balance parse of all five touched components, with Razor comments, `<style>` bodies and
-  `@code` blocks stripped first.
-- A YAML parse of both workflows: `ci.yml` is four jobs with **ten** steps in `boot-smoke` (was nine);
-  `release.yml` is three jobs.
-- The SDK's `Microsoft.NET.GenerateAssemblyInfo.targets` and `Microsoft.NET.DefaultAssemblyInfo.targets`
-  read out of `dotnet/sdk` — the SourceLink condition, and that `Version` falls back to `VersionPrefix`.
-- AGPL §13 read out of this repository's own `LICENSE`.
-- All eight GitHub Action majors in both workflows checked against the API: `checkout@v7`,
-  `setup-dotnet@v6`, `cache@v6`, `upload-artifact@v7`, `setup-buildx-action@v4`, `login-action@v4`,
-  `metadata-action@v6`, `build-push-action@v7`. All current. `release.yml` has never run; if one had
-  been wrong, the first tag is where it would have surfaced.
+- The twenty-one damaged files identified by byte arithmetic against each `METADATA` block's `Size:`
+  field, not by inspection, and the corrupt suffix confirmed byte-identical across all of them.
+- **A full reconciliation of the delivered tree against your on-disk tree.** Every one of the 309 files
+  was compared; 284 are byte-identical, and the 25 that differ are the 25 listed above. That is how I
+  know the restorations changed nothing but the suffix — four files initially drifted by a single
+  trailing newline from an over-eager normalisation, and that was reverted.
+- After repair: all 10 MSBuild/solution files parse as XML; all 4 YAML files parse (`ci.yml` is now five
+  jobs, `tree` first with two steps, `boot-smoke` still ten; `release.yml` still three).
+- The tree scanned for every other artifact the dump format could have leaked — `--- METADATA ---`,
+  `--- CONTENT ---`, `# FILE: `, the `═` rule — none present anywhere.
+- The whole tree checked for what gates 2 and 3 assert, so they land green rather than
+  green-except-for-two: exactly two whitespace-only lines existed and are fixed; **zero** files have
+  CRLF, **zero** lack a final newline, **zero** are empty.
+- `scripts/check_tree.sh` run against the repaired tree (5 gates, exit 0), then against a scratch copy
+  with all five damage patterns re-introduced: the separator in `Directory.Build.props`, in `Program.cs`
+  and buried mid-document in `BUILD_PROGRESS.md`; a whitespace-only line in `compose.yaml`; a truncated
+  flow sequence in `ci.yml`. It reported six problems, named each by file **and line** — including
+  `Directory.Build.props:86`, the exact line MSBuild complained about — and exited 1.
+- `bash -n` plus `shellcheck` at `--severity=warning` **and** `--severity=style` on the new script and on
+  the edited `ci_local.sh`. Both clean at both, which keeps `ci.yml`'s claim that every script in this
+  tree is style-clean true.
 - Every documentation edit applied by exact-match replacement with an assertion that the anchor appears
-  **exactly once**, so nothing was edited by position.
+  **exactly once**, so nothing was edited by position. One anchor was initially too short and pulled the
+  F-38 sentence out of §16.4's first paragraph; that was caught by reading the result back and repaired.
 
 ## Where to look if this breaks
 
-**The build fails on `BuildInformation`.** It uses `char.IsAsciiHexDigit` and a range expression; both
-are fine on net10.0. More likely is the `required` modifier interacting with an analyzer setting — the
-type mirrors `RestaurantOptions`, which already uses `required` throughout, so it should not.
+**`dotnet build` still fails on `Directory.Build.props`.** The extract did not land. Check
+`sed -n '82,84p' Directory.Build.props` — the file is 84 lines and ends at `</Project>`.
 
-**`/source` renders "Not recorded" in production.** The image was built without
-`--build-arg SOURCE_REVISION=…`. The default `podman-compose --build` path does exactly that, and it is
-the honest answer — a locally built image genuinely does not know its commit. Pass the argument, or
-deploy the published image.
+**`dotnet build` now fails with `CS1024`.** A `.cs` file still has the appended line. Run
+`bash scripts/check_tree.sh`; it names the file and the line number.
 
-**CI's new step fails but the page looks fine in a browser.** Compare the rendered revision against
-`github.sha`. A truncated one means something abbreviated it before the page did; a missing one means
-the build argument did not reach `dotnet publish`, and the `echo "building MyRestaurant …"` line in the
-Containerfile's `RUN` is the first place that shows.
+**`check_tree.sh` fails on a file I did not send you.** Then a file was damaged that was not in the
+close-out slice's modified set, which would mean the pattern is wider than the twenty-one I found. Send
+me the output and I will look; do not delete the line by hand until you know why it is there.
 
-**The footer looks wrong — a gap, or the clock crowded against the bottom.** `.app-footer`'s
-`padding-bottom` moved to `.app-colophon`. Those two are always rendered as a pair; if you add a layout
-that renders `<RestaurantClockFooter />` without `<AppColophon />`, that assumption breaks and the
-clock will sit flush against the viewport edge.
+**Gate 5 says SKIP on your workstation.** PyYAML is not installed. `sudo dnf install python3-pyyaml`.
+This is not a failure and CI checks it regardless.
 
-**A person mid-obligation cannot reach `/source`.** `SourceRoutes.Source` did not make it into
-`ObligationsEnforcement.IsExemptPath`. There is a fact for exactly this.
+**Gate 2 fails on a Markdown file after you edit one.** You wrote a line with only indentation on it.
+Note that a Markdown *hard break* — two spaces after real text — is deliberately allowed; the gate only
+objects to lines that are nothing but whitespace.
 
-**`release-notes` fails with a permissions error.** That job carries `contents: write` at job scope
-while the workflow default is `contents: read`. If the repository's Actions settings force read-only
-tokens, the job-level grant cannot override it — the setting is at Settings → Actions → Workflow
-permissions.
+**The `tree` job fails in CI but the script passes locally.** The likeliest difference is gate 5, which
+runs blocking there and may be skipping here. The second likeliest is that something in your working
+tree is untracked: the script reads `git ls-files`, so a file you have not `git add`-ed is invisible to
+it locally and present in CI's checkout only if you committed it.
 
-################################################################################
+**Test count is not 996.** Nothing in this slice touches a test's behaviour. Both test files in the
+archive are pure restorations. Look at the close-out slice's 25 new facts, which are executing for the
+first time.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3622,15 +3661,15 @@ permissions.
   File name:             compose.yaml
   Relative path:         compose.yaml
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/compose.yaml
-  Size:                  4.8 KiB (4919 bytes)
-  Last modified:         2026-07-26 20:40:23.000000000 -0400
+  Size:                  4.8 KiB (4916 bytes)
+  Last modified:         2026-08-05 03:51:20.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 25951185
+  Inode:                 31773459
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               ab2df7626b9019d8d3c7c7d7b7627ac8a2d9772017b8402476402496ff08cb18
-  Last git commit:       d04dd08 2026-07-26 22:39:57 -0400 add claude response
+  SHA-256:               89df3ee67cea3a0376a854a4d4978037a2ca399f9668ec058d4e38a122be063e
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 # Canonical stack (TECHNICAL_SPECIFICATION §14.1), rootless Podman-first.
@@ -3741,7 +3780,6 @@ volumes:
   dataprotection-keys:
   caddy-data:
   caddy-config:
-  
 
 ################################################################################
 # FILE: docs/BUILD_PROGRESS.md
@@ -3751,15 +3789,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  396.0 KiB (405482 bytes)
-  Last modified:         2026-08-04 23:26:35.000000000 -0400
+  Size:                  404.8 KiB (414529 bytes)
+  Last modified:         2026-08-05 03:51:20.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737856
+  Inode:                 31773474
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               4e06d87ac3bf71ee9cacfcf41a3c2f7a9d01aecbf61ce0fd1544f48bad4726b2
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               4dfa55837b06e9854cc6d447e2f93b7833981d14432ccacf3336e55a9e9d6bb8
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 # Build progress
@@ -9521,8 +9559,6 @@ runbooks (M5), CI pipeline (Slice 1), guest registration (Slice 5).
 The next move is not a slice, it is a **release**: `scripts/ci_local.sh --with-all`, a drill against the real
 stack, then a tag. `Stage 6 — M6: hardening` can have its checkbox.
 
-################################################################################
-
 ## M6 close-out — the release: what the program says about itself, and to whom
 
 Slice 16 ended with "What is left in M6: **Nothing**. The next move is not a slice, it is a release."
@@ -9707,7 +9743,154 @@ assertion that the anchor appears exactly once, so nothing was edited by positio
 
 The tag. `Stage 6 — M6: hardening` has its checkbox; so does every stage above it.
 
-################################################################################
+## M6 Slice 18 — the tree must parse before anything tries to build it
+
+The close-out slice ended with "the next move is the tag". The next thing that actually happened was
+that the whole solution stopped building, and it is worth writing down carefully, because the defect
+was not in the program and the interesting part is not the mistake.
+
+### What the failure looked like
+
+```
+$ dotnet build
+error MSB4024: The imported project file
+"/home/kushal/src/dotnet/myrestaurant/Directory.Build.props" could not be loaded.
+Data at the root level is invalid. Line 86, position 1.
+```
+
+Seven of those, one per project, and the same message from `dotnet clean`, from `restore`, from `test`
+and from inside the container build — `NETSDK1013: The TargetFramework value '' was not recognized`
+there, which is the same fault wearing a different hat, since the `TargetFramework` that file supplies
+never arrived. MSBuild imports `Directory.Build.props` before it evaluates anything, so a malformed one
+fails every verb in the repository.
+
+Line 86 was a line of eighty `#` characters, appended after `</Project>`. That string is the section
+separator `export.sh` writes *between* files in a context dump.
+
+### The extent, established by arithmetic rather than by looking
+
+`export.sh` publishes an exact byte count for every file it emits (`Size: 4.3 KiB (4447 bytes)`).
+Reading each file's content as exactly that many bytes and comparing the tail against the separator
+gives an answer that does not depend on judgement: **twenty-one tracked files carried the identical
+82-byte suffix** — a newline, eighty `#`, a newline.
+
+The twenty-one were exactly the *modified* files of the close-out slice. The five *new* files of that
+slice were clean. That asymmetry names the cause with no room left for a theory: the modified files
+were reconstructed by reading the previous dump back, and the reader took the decoration between files
+for the end of a file. The authoritative terminator in that format is the byte count. It was always
+there; nothing in the dump format needed fixing.
+
+`docs/BUILD_PROGRESS.md` had **two** — the trailing one, and a second buried at line 5760 between the
+Slice 16 section and the close-out section, left over from an earlier cycle. The close-out had appended
+text after it, which is how a stray separator stops being at the end of a file and becomes something no
+amount of inspecting the end of a file will ever find.
+
+### Why this is F-40 and not an apology
+
+Of the twenty-one files, **six broke anything**:
+
+| File | What the line means there | Consequence |
+| --- | --- | --- |
+| `Directory.Build.props` | XML content after the root element closed | `MSB4024` on every MSBuild verb — the outage |
+| 5 × `.cs` | a preprocessor directive with a garbage name | `CS1024`, on a compile that never got to run |
+
+The other **fifteen absorbed it in silence**. In `ci.yml`, `release.yml`, the `Containerfile` and
+`.env.example` the line is a comment, and all four parsed perfectly while carrying it. In the four
+Markdown documents it renders as a heading rule. In the three Razor components it is literal text on
+the page. In `app.css` it is a dangling selector, which discards itself and the rule that follows it.
+
+A class of damage that is catastrophic in one file and invisible in fifteen is a class of damage that
+belongs to something running on every push. The cost of finding it turned out to be one `grep`.
+
+### The gate
+
+`scripts/check_tree.sh` — new, and the first gate in both CI (its own `tree` job) and
+`scripts/ci_local.sh`. Five properties of the checkout, asserted before any tool that would report
+their absence as something else:
+
+1. **No context-dump separator** in any tracked file. `export.sh` is exempt **by path**, because
+   writing that string is its job; the exemption is a literal path comparison rather than a cleverer
+   rule so that it is obvious and cannot widen by accident. The threshold is **twenty** `#` rather than
+   eighty: Markdown's deepest heading is six and nothing in this tree has a use for twenty consecutive
+   ones, so a separator that got re-wrapped or truncated on the way in is caught too, where an
+   exact-length match would wave it through.
+2. **No whitespace-only lines.** Deliberately narrower than `.editorconfig`'s
+   `trim_trailing_whitespace`: it fails only on lines made *entirely* of spaces or tabs, never on
+   trailing whitespace after real content, because two spaces at the end of a Markdown line are a hard
+   break and a gate that forbade those would be wrong about Markdown rather than right about
+   whitespace. A line with nothing but indentation has no such defence.
+3. **LF endings and a final newline.** Both load-bearing rather than cosmetic. A CRLF in a shell script
+   reports as `bad interpreter: /usr/bin/env bash^M`, which names the wrong problem; and a missing final
+   newline is what a truncated transfer looks like, which makes this the cheapest available detector of
+   the *other* way a delivered tree arrives damaged.
+4. **Every `.props`, `.targets`, `.csproj`, `.slnx` is well-formed XML.** The gate that turns this
+   incident from a morning into thirty seconds. `xml.etree` is standard library, so no package and no
+   network. Well-formedness only — MSBuild remains the authority on whether a project *means* anything;
+   this asserts MSBuild will get far enough to have an opinion.
+5. **Every `.yml` / `.yaml` parses.** Blocking where a parser exists, a reported skip where none does —
+   the shape the shellcheck gate already uses. Worth being clear that this gate could **not** have
+   caught the incident: a trailing `#` line is valid YAML. Gate 1 is what finds that. This one is for a
+   workflow that was truncated or re-indented, which nothing else reads early enough to blame correctly.
+
+Gates 1–4 need only git, grep and the Python standard library, so they block everywhere including a
+workstation with no SDK installed.
+
+Two pre-existing `.editorconfig` violations were fixed so gate 2 lands at zero noise: `compose.yaml:109`
+and `DapperUserStorePasskeyTests.cs:228`, both blank lines carrying leftover indentation. That follows
+the reasoning this repository already applies to `NU19xx` — a gate that reports a finding on every run
+is a gate people learn to ignore.
+
+`REQUIREMENTS.md` is deliberately **untouched**. `.editorconfig` has asked for LF endings, a final
+newline and trimmed whitespace since M1, and §16.4 is the section that says which of the project's own
+rules are enforced instead of remembered. Nothing new is being asked of the program.
+
+### Build and test
+
+```bash
+bash scripts/check_tree.sh
+#    expect: 5 gates, "tree hygiene passed.", exit 0. Under two seconds, no SDK needed.
+
+dotnet build
+#    expect: all seven projects succeed, 0 errors. This is the assertion that matters in this slice —
+#    the previous tree could not reach a compiler at all.
+
+dotnet test
+#    expect: 996 total, 0 failed, 982 succeeded, 14 skipped — unchanged from the close-out slice.
+#    No test is added, moved or renamed here. If this number differs from 996, the cause is the
+#    close-out slice's 25 new facts having never run rather than anything in this one.
+
+bash scripts/ci_local.sh --with-all
+#    expect: 5 numbered gates locally now; tree hygiene is the new first one.
+```
+
+### What was verified here
+
+No .NET SDK and no container engine in the sandbox, so nothing was compiled. What *was* run:
+
+- The twenty-one damaged files identified by byte arithmetic against each `METADATA` block's `Size:`
+  field, not by inspection — and the corrupt suffix confirmed byte-identical across all of them.
+- After repair: all 10 MSBuild/solution files parsed as XML, all 4 YAML files parsed, and the tree
+  scanned for every other artifact the dump format could have leaked (`--- METADATA ---`,
+  `--- CONTENT ---`, `# FILE: `, the `═` rule) — none present.
+- The whole tree checked for the properties gates 2 and 3 assert, to be certain they land green rather
+  than green-except-for-two: exactly two whitespace-only lines existed and are fixed; **zero** files had
+  CRLF, **zero** lacked a final newline, **zero** were empty.
+- `scripts/check_tree.sh` run against the repaired tree (5 gates pass, exit 0), then run against a
+  scratch copy with all five damage patterns re-introduced — the separator in `Directory.Build.props`,
+  in `Program.cs` and buried in `BUILD_PROGRESS.md`, a whitespace-only line in `compose.yaml`, and a
+  truncated flow sequence in `ci.yml`. It reported six problems, named each by file and line, and
+  exited 1.
+- `bash -n` plus `shellcheck` at `--severity=warning` *and* `--severity=style` on the new script and on
+  the edited `ci_local.sh`, both clean at both, which keeps `ci.yml`'s claim that every script in the
+  tree is style-clean true.
+- A YAML parse of the edited `ci.yml`: five jobs, `tree` first with two steps, `boot-smoke` still ten.
+- Every documentation edit applied by exact-match replacement with an assertion that the anchor appears
+  exactly once, so nothing was edited by position.
+
+### What is left
+
+The tag, still. Nothing in this slice changes the release procedure beyond adding a two-second check in
+front of it.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -9717,20 +9900,20 @@ The tag. `Stage 6 — M6: hardening` has its checkbox; so does every stage above
   File name:             DOCUMENTATION_REVIEW.md
   Relative path:         docs/DOCUMENTATION_REVIEW.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/DOCUMENTATION_REVIEW.md
-  Size:                  28.9 KiB (29613 bytes)
-  Last modified:         2026-08-04 23:24:32.000000000 -0400
+  Size:                  33.5 KiB (34307 bytes)
+  Last modified:         2026-08-05 03:51:20.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737858
+  Inode:                 31773476
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               df72b3ae308e95a9a1cf6948eb1b163be2b084f85d62227555835c62f52dddd3
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               57506a702700fdc4ab9b7f8d818f7c5401b65dca3b5bf1eee2506577618c50c6
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
 
-**Status:** All findings resolved. **F-36** (timestamps ignored `RESTAURANT_TIME_ZONE`) closed in the M4 close-out slice, on the schedule its row recorded. **F-37** (no guest registration surface existed) closed in M6 Slice 5, with one part deliberately left open and named — see its row. **F-38** (the restore path had never been executed and could not have completed) closed in M6 Slice 16; it is now rehearsed by CI on every push rather than documented as a procedure. **F-39** (the program could not say what build it was, and offered nobody its source) closed in the M6 close-out slice, ahead of the first tag.
+**Status:** All findings resolved. **F-36** (timestamps ignored `RESTAURANT_TIME_ZONE`) closed in the M4 close-out slice, on the schedule its row recorded. **F-37** (no guest registration surface existed) closed in M6 Slice 5, with one part deliberately left open and named — see its row. **F-38** (the restore path had never been executed and could not have completed) closed in M6 Slice 16; it is now rehearsed by CI on every push rather than documented as a procedure. **F-39** (the program could not say what build it was, and offered nobody its source) closed in the M6 close-out slice, ahead of the first tag. **F-40** (twenty-one tracked files carried an appended context-dump separator, one of them `Directory.Build.props`, which failed every MSBuild verb in the repository) closed in M6 Slice 18; the tree is now gated on being machine-readable before anything tries to build it.
 **Scope of the original review (2026-07-16):** `REQUIREMENTS.md` rev 1 (commit `af51017`) and the `dump.txt` produced by `export.sh`.
 **Rulings:** the owner ruled on every finding on 2026-07-17 — F-01–05, F-09–11, F-13–19, F-21–24 accepted as raised; F-06, F-07 (Q1), F-08 (Q2/Q3), and F-12 (Q4/Q5) resolved with the defaults proposed in the ruling exchange ("all of this is fine").
 
@@ -9809,6 +9992,8 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 
 ---
 
+| F-40 | **The tree stopped being machine-readable, and only one of the twenty-one damaged files said so.** A `dotnet build` on 2026-08-05 failed with `MSB4024 … Directory.Build.props could not be loaded. Data at the root level is invalid. Line 86, position 1` — and so did `clean`, `restore`, `test` and the container build, because MSBuild imports that file before it evaluates anything. Line 86 was a line of eighty `#` characters appended after `</Project>`: the section separator `export.sh` writes *between* files in a context dump. **Twenty-one tracked files carried the identical 82-byte suffix**, and `docs/BUILD_PROGRESS.md` carried a second one buried mid-document from an earlier cycle, where nothing that inspects the end of a file would have found it. The set was exactly the *modified* files of the previous slice; the five *new* files of that slice were clean, which names the cause without ambiguity: a tool read the dump back and took the decoration between files for content, where the authoritative terminator is the `Size:` byte count in each `METADATA` block. **What makes this a finding rather than a mishap is the failure mode.** Six of the twenty-one broke anything — the one XML file, catastrophically, and five C# files that would have failed a compile that never got to run. The other fifteen absorbed it in silence: the line is a comment in YAML, in the Containerfile and in `.env`, a heading rule in Markdown, literal text in Razor markup, and a dangling selector in CSS that takes the following rule down with it. `ci.yml` and `release.yml` parsed perfectly while carrying the damage. | `scripts/check_tree.sh` added and run as the **first** gate in both CI (its own `tree` job) and `scripts/ci_local.sh`. Five properties of the checkout, asserted before any tool that would report their absence as something else: no context-dump separator in any tracked file (`export.sh` exempt by path — it writes them; threshold twenty rather than eighty, so a re-wrapped or truncated one cannot slip through); no line made only of whitespace; LF endings with a final newline on every file; every `.props`/`.targets`/`.csproj`/`.slnx` well-formed XML; every `.yml`/`.yaml` valid YAML. The first four need only git, grep and the Python standard library, so they block everywhere; the YAML parse reports a skip where no parser exists, as the shellcheck gate does. Two pre-existing `.editorconfig` violations (`compose.yaml`, `DapperUserStorePasskeyTests.cs` — blank lines carrying leftover indentation) were fixed so the gate lands at zero noise, on the same reasoning this repository already applies to `NU19xx`: a gate that reports a finding on every run is a gate people learn to ignore. **`REQUIREMENTS.md` deliberately untouched** — `.editorconfig` has asked for all of this since M1, so this is a rule being enforced rather than new intent. | S§16.4, S Appendix A · O§14 · `scripts/check_tree.sh`, `scripts/ci_local.sh`, `.github/workflows/ci.yml`, `compose.yaml` · BUILD_PROGRESS M6 Slice 18 |
+
 ## Going forward
 
 **F-36 is closed**, which completes a round trip worth naming: it was entered the moment it was understood,
@@ -9841,9 +10026,24 @@ embodiment column should name something executable*.
 
 F-38's lesson — *a row in the embodiment column should name something executable* — was applied here without being asked for. The offer's presence is a CI gate, not a sentence: `boot-smoke` fails unless `/source` names the commit it was built from. If the stamp chain breaks, the build goes red rather than the page quietly reporting "Not recorded" for a year.
 
-New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodiment — landed in the **same commit** as the change they describe, together with the matching `REQUIREMENTS.md`, specification, and ADR edits (atomic documentation, R§10 · S§18).
+**F-40 is the first finding about the workshop rather than the work.** F-35, F-37 and F-39 were capabilities a
+requirement assumed and no milestone claimed. F-38 was a rule four documents agreed on and no code honoured.
+F-40 is neither: the specification was right, the code was right, and the *transport between them* damaged
+twenty-one files. That is a category this ledger had not recorded before, and it generalises further than the
+one incident — every delivery into this repository arrives as text produced by a tool, and no tool that
+produces text is incapable of producing slightly wrong text.
 
-################################################################################
+The lesson is narrower than "check your work" and worth stating precisely: **when a format carries both content
+and decoration, only the content's declared length is authoritative.** `export.sh` publishes an exact byte count
+for every file it emits and a separator after it; a reader that trusts the separator will be wrong exactly as
+often as a file ends near one. Nothing in the dump format needed fixing — the byte count was always there.
+
+And the corollary, which is what actually landed: **the gate belongs at the point where the damage is cheap to
+name.** MSBuild eventually reported the problem, but it reported it as `Data at the root level is invalid`, four
+verbs deep, with no indication that twenty other files shared the fault. `scripts/check_tree.sh` names all of
+them, by line, in under two seconds, before the SDK is even asked for an opinion.
+
+New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodiment — landed in the **same commit** as the change they describe, together with the matching `REQUIREMENTS.md`, specification, and ADR edits (atomic documentation, R§10 · S§18).
 
 ################################################################################
 # FILE: docs/OPERATIONS.md
@@ -9853,15 +10053,15 @@ New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodimen
   File name:             OPERATIONS.md
   Relative path:         docs/OPERATIONS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/OPERATIONS.md
-  Size:                  28.7 KiB (29414 bytes)
-  Last modified:         2026-08-04 23:25:07.000000000 -0400
+  Size:                  29.8 KiB (30560 bytes)
+  Last modified:         2026-08-05 03:51:20.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737859
+  Inode:                 31773477
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               4b7305687426bfc7af90d6bc7f1e64dc882ffe15f7c0ac2b4b6c2f686ba4a9a6
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               adaea15b155ea862445d4f8990cd91f786b0019215064efd1d4b68aaeb608203
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Operations
@@ -10041,7 +10241,7 @@ Migrations are append-only and roll forward only — the same philosophy as the 
 
 CI is not an operations concern until the day you need to know *which build* is on the box and whether anyone verified it. This section is that day.
 
-**What every push is checked against.** `.github/workflows/ci.yml` runs four gates on every push and pull request against `main`: `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), `end-to-end` (the §16.3 Playwright scenarios in Chromium, all fifteen of them), and `boot-smoke` (the production `Containerfile` is built, the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200, and then that instance is backed up and the backup is put through `scripts/restore_drill.sh`).
+**What every push is checked against.** `.github/workflows/ci.yml` runs five gates on every push and pull request against `main`: `tree` (the checkout is machine-readable at all — see below), `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), `end-to-end` (the §16.3 Playwright scenarios in Chromium, all fifteen of them), and `boot-smoke` (the production `Containerfile` is built, the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200, and then that instance is backed up and the backup is put through `scripts/restore_drill.sh`).
 
 `boot-smoke` is the gate that matters operationally, because it is the only one that exercises what a deployment exercises: DbUp applying every migration to an empty database, `RestaurantOptions.Validate()` accepting the configuration, and the composition root resolving. A green `boot-smoke` now says "this commit starts, **and its data comes back**". Nothing else in the suite says either half.
 
@@ -10049,11 +10249,20 @@ The restore drill lives in that job rather than one of its own because everythin
 
 CI deliberately does **not** use `compose.yaml`. The data-protection volume carries Podman's `:U` suffix — correct for the canonical rootless engine (ADR-0004) and rejected outright by Docker Compose — so the job uses a service-container PostgreSQL plus one `docker run --network host` instead. Same image, same environment variables, same readiness probe; the canonical stack stays the only compose file in the tree.
 
+**The `tree` gate exists because of an outage in the toolchain, not in the product** (F-40). On 2026-08-05 every MSBuild verb in the repository — `clean`, `restore`, `build`, `test`, and the container build — failed with `MSB4024: Data at the root level is invalid`, because `Directory.Build.props` had acquired a stray line after `</Project>` and MSBuild imports that file before it evaluates anything. Twenty other tracked files had acquired the same line and said nothing about it, since in YAML, in a Containerfile, in `.env` and in Markdown it is inert. `scripts/check_tree.sh` now asserts, in about two seconds and with no SDK, that no tracked file carries a context-dump separator, that no line is made only of whitespace, that every file uses LF endings and ends with a newline, that every MSBuild and solution file is well-formed XML, and that every YAML file parses. **Run it before you deliver anything into this tree**, not only in CI:
+
+```bash
+bash scripts/check_tree.sh
+```
+
+It is also the first gate of `scripts/ci_local.sh`, so `--with-all` already covers it.
+
 `boot-smoke` also fetches `/source` with no cookie and fails unless the response names the commit the image was built from. That is the gate behind "Verifying what is actually running" below: the version an instance reports is checked on every push, so it is worth trusting.
 
 **Cutting a release.**
 
 ```bash
+bash scripts/check_tree.sh                # seconds, no SDK; run this first (F-40)
 scripts/ci_local.sh --with-all            # optional, but far cheaper than a failed tag
 ```
 
@@ -10130,8 +10339,6 @@ Three things worth knowing:
 None of this is legal advice; it is the mechanism. `LICENSE` is the text that governs.
 
 ################################################################################
-
-################################################################################
 # FILE: docs/REQUIREMENTS.md
 ################################################################################
 
@@ -10139,15 +10346,15 @@ None of this is legal advice; it is the mechanism. `LICENSE` is the text that go
   File name:             REQUIREMENTS.md
   Relative path:         docs/REQUIREMENTS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/REQUIREMENTS.md
-  Size:                  25.0 KiB (25627 bytes)
-  Last modified:         2026-08-04 23:22:42.000000000 -0400
+  Size:                  24.9 KiB (25545 bytes)
+  Last modified:         2026-08-05 03:33:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737860
+  Inode:                 31773478
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               372e51eb816cf86ff92036ce6c5b7d05dff4c9e1e3e8c8239902ccaabe991cea
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               9e39c534c14573e873e3910503f9df975bd622c30be39db411d0fb0a98d22ca3
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Requirements
@@ -10356,8 +10563,6 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
 - **Rev 1 — 2026-07-16.** Initial requirements.
 
 ################################################################################
-
-################################################################################
 # FILE: docs/TECHNICAL_SPECIFICATION.md
 ################################################################################
 
@@ -10365,20 +10570,20 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
   File name:             TECHNICAL_SPECIFICATION.md
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/TECHNICAL_SPECIFICATION.md
-  Size:                  97.5 KiB (99840 bytes)
-  Last modified:         2026-08-04 23:24:00.000000000 -0400
+  Size:                  100.4 KiB (102829 bytes)
+  Last modified:         2026-08-05 03:51:20.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737857
+  Inode:                 31773475
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               388c30f54c61dc2b68ca16c0aeb349619208824b9441507f5acdb381575e45f2
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               c3f9a31e0dd48d339d8cba7f93dbd84c9ca562dbf2601a934f98618d36947a26
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
 
-**Version 1.3 — 2026-08-04 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
+**Version 1.4 — 2026-08-05 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
 This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md` (rev 3). It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. The decisions register in Appendix A maps every ruling to its embodiment.
 
@@ -11265,7 +11470,11 @@ Either file alone is insufficient, and the second is the one that gets forgotten
 14. Expired token URL → friendly expiry page; token from previous window → accepted.
 15. Admin rotates a table's join secret → in-flight token dies; display's next window works.
 
-**16.4 CI:** GitHub Actions — build, unit, integration (service container PostgreSQL), E2E (Playwright/Chromium, all fifteen §16.3 scenarios), then boot the production image against real PostgreSQL and **take a backup of that instance and drill the restore** (§15) in the same job; publish image on tag. The drill is a CI gate rather than a runbook step because a recovery procedure nobody executes is a hypothesis — see F-38.
+**16.4 CI:** GitHub Actions — **tree hygiene**, shell lint, build, unit, integration (service container PostgreSQL), E2E (Playwright/Chromium, all fifteen §16.3 scenarios), then boot the production image against real PostgreSQL and **take a backup of that instance and drill the restore** (§15) in the same job; publish image on tag. The drill is a CI gate rather than a runbook step because a recovery procedure nobody executes is a hypothesis — see F-38.
+
+The **tree gate** (`scripts/check_tree.sh`, run by the `tree` job and as the first gate of `scripts/ci_local.sh`) asserts five properties of the checkout itself, before any tool that would report their absence as something else: no context-dump separator line in any tracked file (`export.sh` exempt — it writes them); no line made only of whitespace; LF endings with a final newline on every file; every tracked `.props`, `.targets`, `.csproj` and `.slnx` well-formed XML; every tracked `.yml` and `.yaml` valid YAML. The first four are blocking everywhere, needing only git, grep and the Python standard library; the YAML parse degrades to a reported skip where no parser is installed, as the shellcheck gate does.
+
+It is here because of **F-40**, and the argument for it is the failure *mode* rather than the mistake. MSBuild imports `Directory.Build.props` before it evaluates anything, so one malformed character in that file fails `clean`, `restore`, `build`, `test` and the container build with the same message — and the message is `MSB4024: Data at the root level is invalid`, which sends a reader to look at MSBuild. Of the twenty-one files damaged identically in the incident, six broke anything at all and fifteen absorbed it in silence, because the offending line is a comment in YAML, in a Containerfile and in `.env`, a heading rule in Markdown, literal text in Razor markup, and a discarded selector in CSS. Damage that is catastrophic in one file and invisible in fifteen belongs to something that runs on every push.
 
 `boot-smoke` additionally **fetches `/source` anonymously and fails unless the response contains the commit the image was built from.** The stamp travels from a build argument through an MSBuild property, an assembly attribute, a parse and a component (§11.9), and every link in that chain fails *silently*: the page still renders, and it renders "Not recorded", which reads as a configuration choice rather than as a defect. The commit appearing in the response is the assertion nothing weaker can satisfy, and it doubles as a reachability check — no cookie is sent, so a regression that put the licence offer behind authentication fails here.
 
@@ -11316,6 +11525,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 | F-37 | Guest self-registration is a real surface at `/register`, specified rather than assumed; a passkey is offered first and may be declined only when a password was set; no rate limit in v1, with the reason it is not a two-line addition recorded | §11.1, §11.8, §17, §19 · R§4.3 |
 | F-38 | The restore path had never been executed and could not have completed: `pg_restore` exits non-zero on ignored errors, ahead of the line that restarted `web`. Nothing captured the Data Protection key ring despite §15 requiring it. A failed dump could evict a good one on the following run. Container discovery took whichever match came first | Both scripts rewritten; `scripts/restore_drill.sh` added and executed by CI on every push, so the drill is rehearsed rather than documented | §15, §16.4 · O§6, O§8, O§14 · `scripts/backup.sh`, `scripts/restore.sh`, `scripts/restore_drill.sh`, `.github/workflows/ci.yml` |
 | F-39 | The program could not say what it was, and did not offer its own source. Nothing stamped a version, so every assembly reported the SDK's default and every trace left the process unversioned; and no surface discharged AGPL §13, although `CONTRIBUTING.md` told forks they owed it | Version and source revision stamped through the `Containerfile` into `AssemblyInformationalVersionAttribute`, read by `BuildInformation`, reported at `/source`, in a colophon on every page in both layouts, and as OpenTelemetry's `service.version`; `RESTAURANT_SOURCE_URL` set by the operator; no off switch; CI fails unless `/source` names the commit it was built from | §11.9, §12, §13, §16.4, §19 · R§8 · `Configuration/BuildInformation.cs`, `Configuration/SourceRoutes.cs`, `Components/Pages/Source.razor`, `Components/Layout/AppColophon.razor`, `Directory.Build.props`, `Containerfile`, `.github/workflows/` |
+| F-40 | Twenty-one tracked files carried an appended context-dump separator line, and `docs/BUILD_PROGRESS.md` carried a second one buried mid-document. `Directory.Build.props` was one of them, which made it invalid XML and failed every MSBuild verb in the repository. Root cause: a tool read a context dump and treated the decoration between files as content, where the authoritative terminator is the byte count in each `METADATA` block | `scripts/check_tree.sh` added and run as the first gate both in CI (`tree` job) and locally; five properties asserted, four of them blocking with no dependencies; two pre-existing `.editorconfig` violations fixed so the gate lands at zero noise | §16.4 · O§14 · `scripts/check_tree.sh`, `scripts/ci_local.sh`, `.github/workflows/ci.yml`, `.editorconfig` |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP re-enrollment only if enrolled pre-reset; obligations pipeline runs on passkey path too; counter fallback = same rotating QR (no short-code) | §10.1–10.2, §3.5, §3.7, §4.5 · ledger notes |
@@ -11323,6 +11533,10 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 ---
 
 ## Changelog
+
+**v1.4 — 2026-08-05.** **§16.4** gains the tree gate: what `scripts/check_tree.sh` asserts, which of its checks are blocking without dependencies, and why a gate this cheap is worth a job of its own. **Appendix A** gains **F-40**.
+
+Nothing else moved, and deliberately no `REQUIREMENTS.md` edit. This is the v1.2 call rather than the v1.3 one: `.editorconfig` has asked for LF endings, a final newline and trimmed whitespace since M1, and §16.4 has always been the section that says which of the project's own rules are enforced instead of remembered. Nothing new is being asked of the program — a rule the tree already carried is now checked. No schema change, no ADR edit, no `.slnx` edit.
 
 **v1.3 — 2026-08-04.** The release. New **§11.9** specifies the colophon and `/source`: what the program says about itself on every page, the AGPL §13 offer it now carries, the build stamp that lets the offer name a revision, and the three normative details of that stamp — metadata after the first `+` is all revision, an unstamped build must say "Not recorded" rather than guess, and `SourceRevisionId` alone does nothing without SourceLink. **§12** records `service.version`. **§13** gains `RESTAURANT_SOURCE_URL` and its http-is-accepted-here-only rule. **§16.4** gains the gate that fails unless `/source` names the commit CI built, plus a paragraph on what a release does. **§19** gains an M6 close-out line. **Appendix A** gains **F-39**. `REQUIREMENTS.md` moves to **rev 3** with one new §8 principle, because unlike v1.2 this *is* new intent rather than a mechanism catching up with an existing contract.
 
@@ -11337,8 +11551,6 @@ Nothing else moved: no schema change, no ADR edit, and deliberately no `REQUIREM
 Nothing else moved. §11.7 keeps its number — a dozen source files cite it — so the new subsection is appended rather than inserted, and no existing cross-reference changes meaning.
 
 **v1.0 — 2026-07-17.** Initial accepted specification.
-
-################################################################################
 
 ################################################################################
 # FILE: docs/adr/0001-single-application-with-areas.md
@@ -12602,6 +12814,318 @@ fi
 exit 0
 
 ################################################################################
+# FILE: scripts/check_tree.sh
+################################################################################
+
+--- METADATA ---
+  File name:             check_tree.sh
+  Relative path:         scripts/check_tree.sh
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/check_tree.sh
+  Size:                  13.4 KiB (13683 bytes)
+  Last modified:         2026-08-05 03:35:52.000000000 -0400
+  Permissions:           -rwxr-xr-x
+  Owner:                 kushal:kushal
+  Inode:                 31773462
+  Hard links:            1
+  MIME type:             text/x-shellscript
+  SHA-256:               8a62ad1aeb75d17610b03c1d643e3872726a7be93c1f9e60de3222ba14170a2e
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
+
+--- CONTENT ---
+#!/usr/bin/env bash
+#
+# Repository hygiene (TECHNICAL_SPECIFICATION §16.4). Reads the tree; changes nothing in it.
+#
+#   scripts/check_tree.sh        run every gate
+#   scripts/check_tree.sh --help this text
+#
+# WHY THIS EXISTS. On 2026-08-05 the whole solution stopped building. The message was
+# MSB4024 — "the imported project file Directory.Build.props could not be loaded. Data at the
+# root level is invalid. Line 86, position 1" — and it appeared on `dotnet clean`, on
+# `restore`, on `build`, on `test` and inside the container build, because every one of those
+# imports that file before it does anything else. Line 86 was a line of eighty '#' characters
+# that had been appended after </Project>.
+#
+# It was not the only one. Twenty-one tracked files had acquired the same trailing line, and
+# docs/BUILD_PROGRESS.md had acquired a second one buried mid-document, where nothing that
+# looks at the end of a file would ever have found it. The line is the section separator
+# export.sh writes between files in a context dump: a tool had read a dump back and taken the
+# separator for content. The authoritative end of a file in that format is the byte count in
+# its METADATA block, not the separator that follows it — the separator is a decoration, and
+# treating a decoration as a delimiter is how twenty-one files got one.
+#
+# What makes that worth a permanent gate is not the mistake, it is the failure MODE. Of the
+# twenty-one files, exactly six broke anything: one XML file, which broke everything, and five
+# C# files, which would have failed the compile that never got to run. The other fifteen
+# absorbed it in silence. In YAML, Containerfile and .env the line is a comment. In Markdown
+# it renders as a heading rule. In Razor markup it is literal text on the page. In CSS it is a
+# dangling selector the browser discards along with the rule that follows it. A class of
+# damage that corrupts fifteen files invisibly and one file catastrophically is a class of
+# damage that should be found by something that runs on every push, and the cost of finding it
+# is one grep.
+#
+# So this script asserts the properties that make the tree machine-readable at all, before any
+# tool that would report their absence as something else:
+#
+#   1. no context-dump separator anywhere in a tracked file
+#   2. no line made only of whitespace
+#   3. LF endings, and a final newline on every file
+#   4. every MSBuild/solution XML file parses
+#   5. every YAML file parses
+#
+# Gates 1 to 4 need nothing but git, grep and the Python standard library, so they are
+# blocking everywhere. Gate 5 needs a YAML parser; where there is none it says so and skips,
+# the way the shellcheck gate does. Nothing here is a style opinion: every one of these is a
+# property some later tool silently depends on.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+case "${1:-}" in
+    "")
+        ;;
+    --help | -h)
+        # Print the header comment block and stop at the first line of real code, so the help
+        # text cannot drift out of step with a hard-coded line range.
+        awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
+        exit 0
+        ;;
+    *)
+        echo "error: unknown argument '$1' (expected --help, or nothing)." >&2
+        exit 1
+        ;;
+esac
+
+# ---------------------------------------------------------------------------------------------------
+# Reporting. Every gate announces itself, so a failure is attributable at a glance.
+# ---------------------------------------------------------------------------------------------------
+GATE_NUMBER=0
+FAILURES=0
+
+announce() {
+    GATE_NUMBER=$(( GATE_NUMBER + 1 ))
+    echo
+    echo "  ${GATE_NUMBER}. $1"
+}
+
+# Records a failure and keeps going. Every gate reports everything it found before the script
+# exits, because "the tree is malformed in four places" is a different morning's work from
+# "the tree is malformed in one place", and a gate that stops at the first hit cannot tell the
+# difference.
+note_failure() {
+    echo "     FAIL: $1" >&2
+    FAILURES=$(( FAILURES + 1 ))
+}
+
+if ! command -v git >/dev/null 2>&1; then
+    echo "error: git is required (the file list comes from 'git ls-files')." >&2
+    exit 1
+fi
+
+tracked_files=()
+while IFS= read -r tracked_path; do
+    [[ -n "$tracked_path" ]] && tracked_files+=("$tracked_path")
+done < <(git ls-files)
+
+if (( ${#tracked_files[@]} == 0 )); then
+    echo "error: no tracked files found; is this the repository root?" >&2
+    exit 1
+fi
+
+echo "checking ${#tracked_files[@]} tracked file(s)"
+
+# ---------------------------------------------------------------------------------------------------
+# 1. No context-dump separator.
+#
+# export.sh is the one file allowed to contain the separator, because writing it is that
+# script's job: the string appears in its heredocs. The exemption is by path rather than by
+# some cleverer rule so that it is obvious, auditable, and impossible to widen by accident.
+#
+# The threshold is twenty rather than eighty. Markdown's deepest heading is six '#' and no
+# language in this tree has a use for a line of twenty consecutive ones, so anything at or
+# above that is a separator — including one that got re-wrapped, truncated or hand-typed on
+# the way in, which an exact-length match would wave through.
+# ---------------------------------------------------------------------------------------------------
+announce "no context-dump separators"
+
+separator_hits=0
+for tracked_path in "${tracked_files[@]}"; do
+    [[ "$tracked_path" == "export.sh" ]] && continue
+    [[ -f "$tracked_path" ]] || continue
+    if hit=$(grep -I -n -E '^#{20,}$' -- "$tracked_path"); then
+        while IFS= read -r hit_line; do
+            note_failure "${tracked_path}:${hit_line%%:*} is a context-dump separator, not content"
+            separator_hits=$(( separator_hits + 1 ))
+        done <<<"$hit"
+    fi
+done
+if (( separator_hits == 0 )); then
+    echo "     none (export.sh exempt: it writes them)"
+else
+    echo "     ${separator_hits} separator line(s) found. A tool read a context dump and kept the" >&2
+    echo "     decoration between files. The end of a file in that format is the byte count in" >&2
+    echo "     its METADATA block; delete these lines." >&2
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# 2. No whitespace-only lines.
+#
+# .editorconfig sets trim_trailing_whitespace for every file, and nothing enforced it. The
+# gate is deliberately narrower than that setting: it fails only on lines made ENTIRELY of
+# spaces or tabs, never on trailing whitespace after real content. That is the difference
+# between an accident and a technique — two spaces at the end of a Markdown line are a hard
+# line break, and a gate that forbade those would be wrong about Markdown rather than right
+# about whitespace. A line with nothing but indentation on it has no such defence.
+# ---------------------------------------------------------------------------------------------------
+announce "no whitespace-only lines"
+
+whitespace_hits=0
+for tracked_path in "${tracked_files[@]}"; do
+    [[ -f "$tracked_path" ]] || continue
+    if hit=$(grep -I -n -E '^[[:space:]]+$' -- "$tracked_path"); then
+        while IFS= read -r hit_line; do
+            note_failure "${tracked_path}:${hit_line%%:*} is blank but not empty (indentation left behind)"
+            whitespace_hits=$(( whitespace_hits + 1 ))
+        done <<<"$hit"
+    fi
+done
+(( whitespace_hits == 0 )) && echo "     none"
+
+# ---------------------------------------------------------------------------------------------------
+# 3. LF endings and a final newline.
+#
+# .editorconfig asks for both (end_of_line = lf, insert_final_newline = true), and both are
+# load-bearing rather than cosmetic. A CRLF that reaches a shell script produces
+# "bad interpreter: /usr/bin/env bash^M", which names the wrong problem. A file with no final
+# newline is what a truncated transfer looks like, so the check doubles as the cheapest
+# available detector of the other way a delivered tree can arrive damaged.
+# ---------------------------------------------------------------------------------------------------
+announce "LF endings and a final newline"
+
+ending_hits=0
+for tracked_path in "${tracked_files[@]}"; do
+    [[ -f "$tracked_path" ]] || continue
+    # An empty file has no final newline to have, and no CR to carry.
+    [[ -s "$tracked_path" ]] || continue
+
+    if grep -I -q $'\r' -- "$tracked_path"; then
+        note_failure "${tracked_path} contains a carriage return (this tree is LF only)"
+        ending_hits=$(( ending_hits + 1 ))
+    fi
+
+    # `tail -c 1 | wc -l` counts the newlines in the last byte: 1 when the file ends with one,
+    # 0 when it does not. Command substitution strips trailing newlines, so comparing
+    # "$(tail -c1 ...)" against a newline would always compare equal — the trap export.sh
+    # documents having fallen into once already.
+    if (( $(tail -c 1 -- "$tracked_path" | wc -l) == 0 )); then
+        note_failure "${tracked_path} has no final newline (truncated, or an editor that does not add one)"
+        ending_hits=$(( ending_hits + 1 ))
+    fi
+done
+(( ending_hits == 0 )) && echo "     all files end with exactly one LF"
+
+# ---------------------------------------------------------------------------------------------------
+# 4. Every MSBuild and solution file is well-formed XML.
+#
+# This is the gate that would have turned the eight-hour version of 2026-08-05 into a
+# thirty-second one. MSBuild imports Directory.Build.props before it evaluates anything, so a
+# malformed one fails `clean`, `restore`, `build`, `test` and the container build with the same
+# message, and the message says "Data at the root level is invalid" — which sounds like a
+# problem with MSBuild rather than with a stray line somebody appended.
+#
+# xml.etree is in the Python standard library, so this needs no package and no network. It is
+# a well-formedness check, not a schema check: MSBuild is the authority on whether a project
+# means anything, and this only asserts that MSBuild will get far enough to have an opinion.
+# ---------------------------------------------------------------------------------------------------
+announce "MSBuild and solution XML parses"
+
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "     SKIP: python3 is not installed, so the XML parse did not run." >&2
+    echo "           CI runs it regardless." >&2
+else
+    xml_paths=()
+    while IFS= read -r xml_path; do
+        [[ -n "$xml_path" ]] && xml_paths+=("$xml_path")
+    done < <(git ls-files '*.props' '*.targets' '*.csproj' '*.slnx' '*.sln')
+
+    if (( ${#xml_paths[@]} == 0 )); then
+        note_failure "no MSBuild or solution files are tracked, which cannot be right"
+    else
+        printf '     %d file(s)\n' "${#xml_paths[@]}"
+        if ! python3 -c '
+import sys
+import xml.etree.ElementTree as ElementTree
+
+failed = 0
+for path in sys.argv[1:]:
+    try:
+        ElementTree.parse(path)
+    except Exception as error:
+        print(f"     FAIL: {path} is not well-formed XML: {error}", file=sys.stderr)
+        failed += 1
+sys.exit(1 if failed else 0)
+' "${xml_paths[@]}"; then
+            note_failure "one or more MSBuild or solution files are not well-formed XML (above)"
+        fi
+    fi
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# 5. Every YAML file parses.
+#
+# Advisory when no parser is present, blocking when one is — the same shape as the shellcheck
+# gate, and for the same reason: a check that cannot run should say so rather than pass
+# quietly. GitHub's Ubuntu runners ship PyYAML, so in CI this is blocking.
+#
+# Worth noting what this gate could NOT have caught in the incident above: a trailing '#' line
+# in ci.yml and release.yml is a valid YAML comment, so both workflows parsed perfectly while
+# carrying the same damage as Directory.Build.props. Gate 1 is what finds that. This gate is
+# here for the other failure — a workflow that was truncated or badly re-indented, which YAML
+# will reject and which nothing else in the pipeline reads early enough to blame correctly.
+# ---------------------------------------------------------------------------------------------------
+announce "YAML parses"
+
+yaml_paths=()
+while IFS= read -r yaml_path; do
+    [[ -n "$yaml_path" ]] && yaml_paths+=("$yaml_path")
+done < <(git ls-files '*.yml' '*.yaml')
+
+if (( ${#yaml_paths[@]} == 0 )); then
+    echo "     none tracked"
+elif ! command -v python3 >/dev/null 2>&1 || ! python3 -c 'import yaml' 2>/dev/null; then
+    echo "     SKIP: no YAML parser available, so ${#yaml_paths[@]} file(s) went unchecked." >&2
+    echo "           CI runs it regardless; install it with 'sudo dnf install python3-pyyaml'." >&2
+else
+    printf '     %d file(s)\n' "${#yaml_paths[@]}"
+    if ! python3 -c '
+import sys
+import yaml
+
+failed = 0
+for path in sys.argv[1:]:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            yaml.safe_load(handle)
+    except Exception as error:
+        print(f"     FAIL: {path} is not valid YAML: {error}", file=sys.stderr)
+        failed += 1
+sys.exit(1 if failed else 0)
+' "${yaml_paths[@]}"; then
+        note_failure "one or more YAML files do not parse (above)"
+    fi
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# Verdict.
+# ---------------------------------------------------------------------------------------------------
+echo
+if (( FAILURES > 0 )); then
+    echo "tree hygiene FAILED: ${FAILURES} problem(s). Nothing was modified." >&2
+    exit 1
+fi
+echo "tree hygiene passed."
+
+################################################################################
 # FILE: scripts/ci_local.sh
 ################################################################################
 
@@ -12609,15 +13133,15 @@ exit 0
   File name:             ci_local.sh
   Relative path:         scripts/ci_local.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/ci_local.sh
-  Size:                  7.8 KiB (8021 bytes)
-  Last modified:         2026-07-29 07:53:16.000000000 -0400
-  Permissions:           -rw-r--r--
+  Size:                  8.6 KiB (8841 bytes)
+  Last modified:         2026-08-05 03:51:20.000000000 -0400
+  Permissions:           -rwxr-xr-x
   Owner:                 kushal:kushal
-  Inode:                 27520851
+  Inode:                 31773461
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               61d04d22c35d6787336520b1b4048de59773545693630ee44113b8769afe518a
-  Last git commit:       0447626 2026-07-29 08:20:23 -0400 add claude response
+  SHA-256:               3a63c75b1a83ed2cee79e1ded2e952384576a57706ff3829f56561edd19a4db7
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 #!/usr/bin/env bash
@@ -12625,7 +13149,7 @@ exit 0
 # Run the CI gates locally (TECHNICAL_SPECIFICATION §16.4). Idempotent, and it changes nothing in
 # the working tree.
 #
-#   scripts/ci_local.sh              shell lint, restore, strict Release build, full test suite
+#   scripts/ci_local.sh              tree hygiene, shell lint, restore, strict Release build, full test suite
 #   scripts/ci_local.sh --with-smoke ...and then `bash run.sh --smoke` (boots the app once, checks health)
 #   scripts/ci_local.sh --with-e2e   ...and then the §16.3 Playwright scenarios (browser required)
 #   scripts/ci_local.sh --with-all   both of the above
@@ -12703,7 +13227,19 @@ fail() {
 }
 
 # ---------------------------------------------------------------------------------------------------
-# 1. Shell scripts: every tracked *.sh must parse, and pass shellcheck when it is installed.
+# 1. Tree hygiene: the tree must be machine-readable before anything tries to build it.
+#
+# First because it is the cheapest gate here by two orders of magnitude and because the failure it
+# catches disguises itself as a toolchain problem. A malformed Directory.Build.props reports as
+# MSB4024 on `dotnet clean`, on `restore`, on `build` and on the container build alike, and the
+# message it reports — "Data at the root level is invalid" — sends you looking at MSBuild. See
+# scripts/check_tree.sh for what happened and what each gate asserts.
+# ---------------------------------------------------------------------------------------------------
+announce "tree hygiene"
+bash scripts/check_tree.sh
+
+# ---------------------------------------------------------------------------------------------------
+# 2. Shell scripts: every tracked *.sh must parse, and pass shellcheck when it is installed.
 # ---------------------------------------------------------------------------------------------------
 announce "shell scripts"
 
@@ -12737,7 +13273,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------------------------------
-# 2. Restore, build strictly, test. Same flags CI uses, in the same order.
+# 3. Restore, build strictly, test. Same flags CI uses, in the same order.
 # ---------------------------------------------------------------------------------------------------
 if ! command -v dotnet >/dev/null 2>&1; then
     fail "the .NET SDK is required for the build and test gates."
@@ -12761,7 +13297,7 @@ dotnet test MyRestaurant.slnx \
     -p:ContinuousIntegrationBuild=true
 
 # ---------------------------------------------------------------------------------------------------
-# 3. Optional: the §16.3 end-to-end scenarios, in a real browser.
+# 4. Optional: the §16.3 end-to-end scenarios, in a real browser.
 # ---------------------------------------------------------------------------------------------------
 if (( WITH_E2E )); then
     announce "end to end (§16.3 Playwright scenarios)"
@@ -12774,7 +13310,7 @@ if (( WITH_E2E )); then
 fi
 
 # ---------------------------------------------------------------------------------------------------
-# 4. Optional: boot once and probe /healthz/ready.
+# 5. Optional: boot once and probe /healthz/ready.
 # ---------------------------------------------------------------------------------------------------
 if (( WITH_SMOKE )); then
     announce "boot smoke (bash run.sh --smoke)"
@@ -30630,15 +31166,15 @@ else
   File name:             DisplayLayout.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Layout/DisplayLayout.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Layout/DisplayLayout.razor
-  Size:                  3.6 KiB (3637 bytes)
-  Last modified:         2026-08-04 23:14:45.000000000 -0400
+  Size:                  3.5 KiB (3555 bytes)
+  Last modified:         2026-08-05 03:33:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737836
+  Inode:                 31773450
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               5418930b88bd094b1f59fddf393d9bd37e4496af792d0b9f7b8a1f630b89a8dc
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               2dc5001f6c1d616e47b0435626c229ac3cffe2a9a216543fca651775a2b87ddb
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 @inherits LayoutComponentBase
@@ -30740,8 +31276,6 @@ else
 </style>
 
 ################################################################################
-
-################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
 ################################################################################
 
@@ -30749,15 +31283,15 @@ else
   File name:             MainLayout.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Layout/MainLayout.razor
-  Size:                  3.6 KiB (3706 bytes)
-  Last modified:         2026-08-04 23:14:20.000000000 -0400
+  Size:                  3.5 KiB (3624 bytes)
+  Last modified:         2026-08-05 03:33:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737835
+  Inode:                 31773449
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               f6214684fd57c64d4a8ed2618026dc3f16d75b1b772829146018a2cfc502a44b
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               144a14ffa390ba927c5b428b44a3059523224c4d0660a417ca9768e57199749f
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 @inherits LayoutComponentBase
@@ -30822,8 +31356,6 @@ else
        administration page nobody but the operator can reach is not. *@
     <AppColophon />
 </div>
-
-################################################################################
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/Layout/RestaurantClockFooter.razor
@@ -40290,15 +40822,15 @@ else
   File name:             Home.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Home.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Home.razor
-  Size:                  4.1 KiB (4169 bytes)
-  Last modified:         2026-08-04 23:27:59.000000000 -0400
+  Size:                  4.0 KiB (4087 bytes)
+  Last modified:         2026-08-05 03:33:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737831
+  Inode:                 31773447
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               314a60a73ae48af9519e48ffcb67020a7effef1e28fd50860415940dad4374e5
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               b9a991ed603292a1eec58e9b2fa1cb691059a49791c208f331f26e30c55f5994
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 @page "/"
@@ -40395,8 +40927,6 @@ else
         }
     }
 }
-
-################################################################################
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Components/Pages/Kitchen/KitchenBoard.razor
@@ -44164,15 +44694,15 @@ public sealed class BuildInformation
   File name:             RestaurantOptions.cs
   Relative path:         src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs
-  Size:                  16.4 KiB (16752 bytes)
-  Last modified:         2026-08-04 23:13:57.000000000 -0400
+  Size:                  16.3 KiB (16670 bytes)
+  Last modified:         2026-08-05 03:33:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737838
+  Inode:                 31773452
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               983bbc4279729099c56990d341044d443936d44ace9c9a8488d15a7d3d53c354
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               61d2c0d37a6567acf4f13361be3c4ea4af27fe74e632610d6773b98a3673ec8f
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 using System.Globalization;
@@ -44505,8 +45035,6 @@ public sealed class RestaurantOptions
         return bare.Length > 0 && !bare.Contains('*') && bare.Contains('.');
     }
 }
-
-################################################################################
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Configuration/SourceRoutes.cs
@@ -46174,15 +46702,15 @@ public static class IdentityServiceCollectionExtensions
   File name:             ObligationsEnforcement.cs
   Relative path:         src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Identity/ObligationsEnforcement.cs
-  Size:                  10.0 KiB (10196 bytes)
-  Last modified:         2026-08-04 23:14:20.000000000 -0400
+  Size:                  9.9 KiB (10114 bytes)
+  Last modified:         2026-08-05 03:51:20.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737826
+  Inode:                 31773442
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               c34f3e8b7c5a619ae10010d43b3d142cc6de763187d40f73bb8fcbbc4033b935
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               aea2eca1197dc57ba2ff83c060b11aeae3aabaf938b445553bcab6947e72d171
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 using System.Security.Claims;
@@ -46374,8 +46902,6 @@ public static class ObligationsEnforcement
         => string.Equals(principal.FindFirstValue(claimType), "true", StringComparison.OrdinalIgnoreCase);
 }
 
-
-################################################################################
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Identity/ObligationsMiddleware.cs
@@ -50224,15 +50750,15 @@ public static class OrdersServiceCollectionExtensions
   File name:             Program.cs
   Relative path:         src/MyRestaurant.WebApplication/Program.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Program.cs
-  Size:                  14.8 KiB (15160 bytes)
-  Last modified:         2026-08-04 23:15:04.000000000 -0400
+  Size:                  14.7 KiB (15078 bytes)
+  Last modified:         2026-08-05 03:33:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737824
+  Inode:                 31773440
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               d1343ca56cdd69b3184df41d226230062479940f0973b17826b984d04cf501d3
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               1772392ac0ed1dd37c29ee30fa7d03fa58302f95bdd8729890e80af8b4a5e92d
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -50508,8 +51034,6 @@ app.MapRazorComponents<App>()
 app.Run();
 
 return 0;
-
-################################################################################
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/Properties/launchSettings.json
@@ -51716,15 +52240,15 @@ public sealed record RestaurantClockSnapshot(
   File name:             app.css
   Relative path:         src/MyRestaurant.WebApplication/wwwroot/app.css
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/wwwroot/app.css
-  Size:                  28.1 KiB (28729 bytes)
-  Last modified:         2026-08-04 23:14:45.000000000 -0400
+  Size:                  28.0 KiB (28647 bytes)
+  Last modified:         2026-08-05 03:33:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737828
+  Inode:                 31773444
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               d98ea7abc4c475d2f0321506e7cf0fc6384488e7a724f05e83d6deb2dffc62c7
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               d7588f1c3872cf5e7c9d6a57b1f2670c9220b75b8e614c96d62159cbf7598eb4
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 /*
@@ -52983,8 +53507,6 @@ a:focus-visible,
     display: grid;
     gap: 0.2rem;
 }
-
-################################################################################
 
 ################################################################################
 # FILE: src/MyRestaurant.WebApplication/wwwroot/js/clock.js
@@ -56545,15 +57067,15 @@ public sealed class DapperSecurityEventLogTests : IClassFixture<PostgreSqlFixtur
   File name:             DapperUserStorePasskeyTests.cs
   Relative path:         tests/MyRestaurant.DataAccess.Tests/Identity/DapperUserStorePasskeyTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/Identity/DapperUserStorePasskeyTests.cs
-  Size:                  10.9 KiB (11160 bytes)
-  Last modified:         2026-07-21 00:37:35.489858898 -0400
+  Size:                  10.9 KiB (11152 bytes)
+  Last modified:         2026-08-05 03:51:20.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21956050
+  Inode:                 31773470
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               0254805f10568083e6edd5218c1ce2a0477cd12270cad2c1874de7cd189da99d
-  Last git commit:       b7c3b80 2026-07-21 00:37:50 -0400 add helper method
+  SHA-256:               350a9409601c8a8dfa580e5b75a858ce5475c96883b480cc72635d381f75dcf1
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 using System.Data.Common;
@@ -56783,7 +57305,7 @@ public sealed class DapperUserStorePasskeyTests : IClassFixture<PostgreSqlFixtur
     // --- helpers -----------------------------------------------------------------------------------
     private void SkipIfNoContainer()
         => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
-        
+
     private DapperUserStore BuildStore() => new(
         _connectionFactory!,
         _clock,
@@ -80578,15 +81100,15 @@ public sealed class IdentityWiringTests
   File name:             ObligationsEnforcementTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Identity/ObligationsEnforcementTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Identity/ObligationsEnforcementTests.cs
-  Size:                  7.1 KiB (7286 bytes)
-  Last modified:         2026-08-04 23:22:06.000000000 -0400
+  Size:                  7.0 KiB (7204 bytes)
+  Last modified:         2026-08-05 03:33:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737850
+  Inode:                 31773466
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               bd579674db932928cc4606764598d5706a2437baed8223d8a8b1baa19ef700b6
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               6c26b573ffb8a8b6a2ef01a7e833cca073bc032c47b486f81e4d21e14f6d96d6
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 using System.Security.Claims;
@@ -80764,8 +81286,6 @@ public sealed class ObligationsEnforcementTests
         return new ClaimsPrincipal(identity);
     }
 }
-
-################################################################################
 
 ################################################################################
 # FILE: tests/MyRestaurant.WebApplication.Tests/Identity/PersonPrincipalTests.cs
@@ -84406,15 +84926,15 @@ public sealed class OrdersWiringTests
   File name:             RestaurantOptionsTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/RestaurantOptionsTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/RestaurantOptionsTests.cs
-  Size:                  12.1 KiB (12415 bytes)
-  Last modified:         2026-08-04 23:21:57.000000000 -0400
+  Size:                  12.0 KiB (12333 bytes)
+  Last modified:         2026-08-05 03:33:12.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31737851
+  Inode:                 31773467
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               66f01db55e07dc0044a5f1c7e50c13a995fb30a612c878a24bb6352088c53b52
-  Last git commit:       b2a3109 2026-08-05 02:49:17 -0400 add claude response
+  SHA-256:               f7cdd801737f72ab965f9a13e170689b3c7cf4076ced0194bf6710c7bcd2212a
+  Last git commit:       1c42c5e 2026-08-05 03:58:42 -0400 add claude response
 
 --- CONTENT ---
 using Microsoft.Extensions.Configuration;
@@ -84715,8 +85235,6 @@ public sealed class RestaurantOptionsTests
             Argon2MaxConcurrentHashes = argon2MaxConcurrent,
         };
 }
-
-################################################################################
 
 ################################################################################
 # FILE: tests/MyRestaurant.WebApplication.Tests/Sittings/CounterWiringTests.cs
@@ -86231,10 +86749,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 308
-  Total size     : 3.7 MiB (3833650 bytes)
+  Files dumped   : 309
+  Total size     : 3.7 MiB (3868433 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-05T03:43:35-04:00
+  Completed at   : 2026-08-05T03:59:02-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
