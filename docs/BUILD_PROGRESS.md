@@ -5757,8 +5757,6 @@ runbooks (M5), CI pipeline (Slice 1), guest registration (Slice 5).
 The next move is not a slice, it is a **release**: `scripts/ci_local.sh --with-all`, a drill against the real
 stack, then a tag. `Stage 6 — M6: hardening` can have its checkbox.
 
-################################################################################
-
 ## M6 close-out — the release: what the program says about itself, and to whom
 
 Slice 16 ended with "What is left in M6: **Nothing**. The next move is not a slice, it is a release."
@@ -5943,4 +5941,151 @@ assertion that the anchor appears exactly once, so nothing was edited by positio
 
 The tag. `Stage 6 — M6: hardening` has its checkbox; so does every stage above it.
 
-################################################################################
+## M6 Slice 18 — the tree must parse before anything tries to build it
+
+The close-out slice ended with "the next move is the tag". The next thing that actually happened was
+that the whole solution stopped building, and it is worth writing down carefully, because the defect
+was not in the program and the interesting part is not the mistake.
+
+### What the failure looked like
+
+```
+$ dotnet build
+error MSB4024: The imported project file
+"/home/kushal/src/dotnet/myrestaurant/Directory.Build.props" could not be loaded.
+Data at the root level is invalid. Line 86, position 1.
+```
+
+Seven of those, one per project, and the same message from `dotnet clean`, from `restore`, from `test`
+and from inside the container build — `NETSDK1013: The TargetFramework value '' was not recognized`
+there, which is the same fault wearing a different hat, since the `TargetFramework` that file supplies
+never arrived. MSBuild imports `Directory.Build.props` before it evaluates anything, so a malformed one
+fails every verb in the repository.
+
+Line 86 was a line of eighty `#` characters, appended after `</Project>`. That string is the section
+separator `export.sh` writes *between* files in a context dump.
+
+### The extent, established by arithmetic rather than by looking
+
+`export.sh` publishes an exact byte count for every file it emits (`Size: 4.3 KiB (4447 bytes)`).
+Reading each file's content as exactly that many bytes and comparing the tail against the separator
+gives an answer that does not depend on judgement: **twenty-one tracked files carried the identical
+82-byte suffix** — a newline, eighty `#`, a newline.
+
+The twenty-one were exactly the *modified* files of the close-out slice. The five *new* files of that
+slice were clean. That asymmetry names the cause with no room left for a theory: the modified files
+were reconstructed by reading the previous dump back, and the reader took the decoration between files
+for the end of a file. The authoritative terminator in that format is the byte count. It was always
+there; nothing in the dump format needed fixing.
+
+`docs/BUILD_PROGRESS.md` had **two** — the trailing one, and a second buried at line 5760 between the
+Slice 16 section and the close-out section, left over from an earlier cycle. The close-out had appended
+text after it, which is how a stray separator stops being at the end of a file and becomes something no
+amount of inspecting the end of a file will ever find.
+
+### Why this is F-40 and not an apology
+
+Of the twenty-one files, **six broke anything**:
+
+| File | What the line means there | Consequence |
+| --- | --- | --- |
+| `Directory.Build.props` | XML content after the root element closed | `MSB4024` on every MSBuild verb — the outage |
+| 5 × `.cs` | a preprocessor directive with a garbage name | `CS1024`, on a compile that never got to run |
+
+The other **fifteen absorbed it in silence**. In `ci.yml`, `release.yml`, the `Containerfile` and
+`.env.example` the line is a comment, and all four parsed perfectly while carrying it. In the four
+Markdown documents it renders as a heading rule. In the three Razor components it is literal text on
+the page. In `app.css` it is a dangling selector, which discards itself and the rule that follows it.
+
+A class of damage that is catastrophic in one file and invisible in fifteen is a class of damage that
+belongs to something running on every push. The cost of finding it turned out to be one `grep`.
+
+### The gate
+
+`scripts/check_tree.sh` — new, and the first gate in both CI (its own `tree` job) and
+`scripts/ci_local.sh`. Five properties of the checkout, asserted before any tool that would report
+their absence as something else:
+
+1. **No context-dump separator** in any tracked file. `export.sh` is exempt **by path**, because
+   writing that string is its job; the exemption is a literal path comparison rather than a cleverer
+   rule so that it is obvious and cannot widen by accident. The threshold is **twenty** `#` rather than
+   eighty: Markdown's deepest heading is six and nothing in this tree has a use for twenty consecutive
+   ones, so a separator that got re-wrapped or truncated on the way in is caught too, where an
+   exact-length match would wave it through.
+2. **No whitespace-only lines.** Deliberately narrower than `.editorconfig`'s
+   `trim_trailing_whitespace`: it fails only on lines made *entirely* of spaces or tabs, never on
+   trailing whitespace after real content, because two spaces at the end of a Markdown line are a hard
+   break and a gate that forbade those would be wrong about Markdown rather than right about
+   whitespace. A line with nothing but indentation has no such defence.
+3. **LF endings and a final newline.** Both load-bearing rather than cosmetic. A CRLF in a shell script
+   reports as `bad interpreter: /usr/bin/env bash^M`, which names the wrong problem; and a missing final
+   newline is what a truncated transfer looks like, which makes this the cheapest available detector of
+   the *other* way a delivered tree arrives damaged.
+4. **Every `.props`, `.targets`, `.csproj`, `.slnx` is well-formed XML.** The gate that turns this
+   incident from a morning into thirty seconds. `xml.etree` is standard library, so no package and no
+   network. Well-formedness only — MSBuild remains the authority on whether a project *means* anything;
+   this asserts MSBuild will get far enough to have an opinion.
+5. **Every `.yml` / `.yaml` parses.** Blocking where a parser exists, a reported skip where none does —
+   the shape the shellcheck gate already uses. Worth being clear that this gate could **not** have
+   caught the incident: a trailing `#` line is valid YAML. Gate 1 is what finds that. This one is for a
+   workflow that was truncated or re-indented, which nothing else reads early enough to blame correctly.
+
+Gates 1–4 need only git, grep and the Python standard library, so they block everywhere including a
+workstation with no SDK installed.
+
+Two pre-existing `.editorconfig` violations were fixed so gate 2 lands at zero noise: `compose.yaml:109`
+and `DapperUserStorePasskeyTests.cs:228`, both blank lines carrying leftover indentation. That follows
+the reasoning this repository already applies to `NU19xx` — a gate that reports a finding on every run
+is a gate people learn to ignore.
+
+`REQUIREMENTS.md` is deliberately **untouched**. `.editorconfig` has asked for LF endings, a final
+newline and trimmed whitespace since M1, and §16.4 is the section that says which of the project's own
+rules are enforced instead of remembered. Nothing new is being asked of the program.
+
+### Build and test
+
+```bash
+bash scripts/check_tree.sh
+#    expect: 5 gates, "tree hygiene passed.", exit 0. Under two seconds, no SDK needed.
+
+dotnet build
+#    expect: all seven projects succeed, 0 errors. This is the assertion that matters in this slice —
+#    the previous tree could not reach a compiler at all.
+
+dotnet test
+#    expect: 996 total, 0 failed, 982 succeeded, 14 skipped — unchanged from the close-out slice.
+#    No test is added, moved or renamed here. If this number differs from 996, the cause is the
+#    close-out slice's 25 new facts having never run rather than anything in this one.
+
+bash scripts/ci_local.sh --with-all
+#    expect: 5 numbered gates locally now; tree hygiene is the new first one.
+```
+
+### What was verified here
+
+No .NET SDK and no container engine in the sandbox, so nothing was compiled. What *was* run:
+
+- The twenty-one damaged files identified by byte arithmetic against each `METADATA` block's `Size:`
+  field, not by inspection — and the corrupt suffix confirmed byte-identical across all of them.
+- After repair: all 10 MSBuild/solution files parsed as XML, all 4 YAML files parsed, and the tree
+  scanned for every other artifact the dump format could have leaked (`--- METADATA ---`,
+  `--- CONTENT ---`, `# FILE: `, the `═` rule) — none present.
+- The whole tree checked for the properties gates 2 and 3 assert, to be certain they land green rather
+  than green-except-for-two: exactly two whitespace-only lines existed and are fixed; **zero** files had
+  CRLF, **zero** lacked a final newline, **zero** were empty.
+- `scripts/check_tree.sh` run against the repaired tree (5 gates pass, exit 0), then run against a
+  scratch copy with all five damage patterns re-introduced — the separator in `Directory.Build.props`,
+  in `Program.cs` and buried in `BUILD_PROGRESS.md`, a whitespace-only line in `compose.yaml`, and a
+  truncated flow sequence in `ci.yml`. It reported six problems, named each by file and line, and
+  exited 1.
+- `bash -n` plus `shellcheck` at `--severity=warning` *and* `--severity=style` on the new script and on
+  the edited `ci_local.sh`, both clean at both, which keeps `ci.yml`'s claim that every script in the
+  tree is style-clean true.
+- A YAML parse of the edited `ci.yml`: five jobs, `tree` first with two steps, `boot-smoke` still ten.
+- Every documentation edit applied by exact-match replacement with an assertion that the anchor appears
+  exactly once, so nothing was edited by position.
+
+### What is left
+
+The tag, still. Nothing in this slice changes the release procedure beyond adding a two-second check in
+front of it.

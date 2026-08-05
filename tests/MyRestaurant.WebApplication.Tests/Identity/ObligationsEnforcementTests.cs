@@ -173,5 +173,3 @@ public sealed class ObligationsEnforcementTests
         return new ClaimsPrincipal(identity);
     }
 }
-
-################################################################################

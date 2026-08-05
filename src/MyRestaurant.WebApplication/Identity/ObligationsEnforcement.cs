@@ -187,5 +187,3 @@ public static class ObligationsEnforcement
         => string.Equals(principal.FindFirstValue(claimType), "true", StringComparison.OrdinalIgnoreCase);
 }
 
-
-################################################################################

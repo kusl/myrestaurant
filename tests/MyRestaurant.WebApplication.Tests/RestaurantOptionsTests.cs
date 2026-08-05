@@ -296,5 +296,3 @@ public sealed class RestaurantOptionsTests
             Argon2MaxConcurrentHashes = argon2MaxConcurrent,
         };
 }
-
-################################################################################

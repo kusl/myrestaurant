@@ -328,5 +328,3 @@ public sealed class RestaurantOptions
         return bare.Length > 0 && !bare.Contains('*') && bare.Contains('.');
     }
 }
-
-################################################################################

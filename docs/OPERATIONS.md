@@ -175,7 +175,7 @@ Migrations are append-only and roll forward only — the same philosophy as the 
 
 CI is not an operations concern until the day you need to know *which build* is on the box and whether anyone verified it. This section is that day.
 
-**What every push is checked against.** `.github/workflows/ci.yml` runs four gates on every push and pull request against `main`: `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), `end-to-end` (the §16.3 Playwright scenarios in Chromium, all fifteen of them), and `boot-smoke` (the production `Containerfile` is built, the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200, and then that instance is backed up and the backup is put through `scripts/restore_drill.sh`).
+**What every push is checked against.** `.github/workflows/ci.yml` runs five gates on every push and pull request against `main`: `tree` (the checkout is machine-readable at all — see below), `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), `end-to-end` (the §16.3 Playwright scenarios in Chromium, all fifteen of them), and `boot-smoke` (the production `Containerfile` is built, the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200, and then that instance is backed up and the backup is put through `scripts/restore_drill.sh`).
 
 `boot-smoke` is the gate that matters operationally, because it is the only one that exercises what a deployment exercises: DbUp applying every migration to an empty database, `RestaurantOptions.Validate()` accepting the configuration, and the composition root resolving. A green `boot-smoke` now says "this commit starts, **and its data comes back**". Nothing else in the suite says either half.
 
@@ -183,11 +183,20 @@ The restore drill lives in that job rather than one of its own because everythin
 
 CI deliberately does **not** use `compose.yaml`. The data-protection volume carries Podman's `:U` suffix — correct for the canonical rootless engine (ADR-0004) and rejected outright by Docker Compose — so the job uses a service-container PostgreSQL plus one `docker run --network host` instead. Same image, same environment variables, same readiness probe; the canonical stack stays the only compose file in the tree.
 
+**The `tree` gate exists because of an outage in the toolchain, not in the product** (F-40). On 2026-08-05 every MSBuild verb in the repository — `clean`, `restore`, `build`, `test`, and the container build — failed with `MSB4024: Data at the root level is invalid`, because `Directory.Build.props` had acquired a stray line after `</Project>` and MSBuild imports that file before it evaluates anything. Twenty other tracked files had acquired the same line and said nothing about it, since in YAML, in a Containerfile, in `.env` and in Markdown it is inert. `scripts/check_tree.sh` now asserts, in about two seconds and with no SDK, that no tracked file carries a context-dump separator, that no line is made only of whitespace, that every file uses LF endings and ends with a newline, that every MSBuild and solution file is well-formed XML, and that every YAML file parses. **Run it before you deliver anything into this tree**, not only in CI:
+
+```bash
+bash scripts/check_tree.sh
+```
+
+It is also the first gate of `scripts/ci_local.sh`, so `--with-all` already covers it.
+
 `boot-smoke` also fetches `/source` with no cookie and fails unless the response names the commit the image was built from. That is the gate behind "Verifying what is actually running" below: the version an instance reports is checked on every push, so it is worth trusting.
 
 **Cutting a release.**
 
 ```bash
+bash scripts/check_tree.sh                # seconds, no SDK; run this first (F-40)
 scripts/ci_local.sh --with-all            # optional, but far cheaper than a failed tag
 ```
 
@@ -262,5 +271,3 @@ Three things worth knowing:
 - **There is no setting that removes the offer.** That is deliberate. If you want it gone you have the source and the freedom to remove it — which is, precisely, the arrangement this licence exists to guarantee. Just be aware of what you are removing and from whom.
 
 None of this is legal advice; it is the mechanism. `LICENSE` is the text that governs.
-
-################################################################################

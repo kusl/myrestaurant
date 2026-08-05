@@ -3,7 +3,7 @@
 # Run the CI gates locally (TECHNICAL_SPECIFICATION §16.4). Idempotent, and it changes nothing in
 # the working tree.
 #
-#   scripts/ci_local.sh              shell lint, restore, strict Release build, full test suite
+#   scripts/ci_local.sh              tree hygiene, shell lint, restore, strict Release build, full test suite
 #   scripts/ci_local.sh --with-smoke ...and then `bash run.sh --smoke` (boots the app once, checks health)
 #   scripts/ci_local.sh --with-e2e   ...and then the §16.3 Playwright scenarios (browser required)
 #   scripts/ci_local.sh --with-all   both of the above
@@ -81,7 +81,19 @@ fail() {
 }
 
 # ---------------------------------------------------------------------------------------------------
-# 1. Shell scripts: every tracked *.sh must parse, and pass shellcheck when it is installed.
+# 1. Tree hygiene: the tree must be machine-readable before anything tries to build it.
+#
+# First because it is the cheapest gate here by two orders of magnitude and because the failure it
+# catches disguises itself as a toolchain problem. A malformed Directory.Build.props reports as
+# MSB4024 on `dotnet clean`, on `restore`, on `build` and on the container build alike, and the
+# message it reports — "Data at the root level is invalid" — sends you looking at MSBuild. See
+# scripts/check_tree.sh for what happened and what each gate asserts.
+# ---------------------------------------------------------------------------------------------------
+announce "tree hygiene"
+bash scripts/check_tree.sh
+
+# ---------------------------------------------------------------------------------------------------
+# 2. Shell scripts: every tracked *.sh must parse, and pass shellcheck when it is installed.
 # ---------------------------------------------------------------------------------------------------
 announce "shell scripts"
 
@@ -115,7 +127,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------------------------------
-# 2. Restore, build strictly, test. Same flags CI uses, in the same order.
+# 3. Restore, build strictly, test. Same flags CI uses, in the same order.
 # ---------------------------------------------------------------------------------------------------
 if ! command -v dotnet >/dev/null 2>&1; then
     fail "the .NET SDK is required for the build and test gates."
@@ -139,7 +151,7 @@ dotnet test MyRestaurant.slnx \
     -p:ContinuousIntegrationBuild=true
 
 # ---------------------------------------------------------------------------------------------------
-# 3. Optional: the §16.3 end-to-end scenarios, in a real browser.
+# 4. Optional: the §16.3 end-to-end scenarios, in a real browser.
 # ---------------------------------------------------------------------------------------------------
 if (( WITH_E2E )); then
     announce "end to end (§16.3 Playwright scenarios)"
@@ -152,7 +164,7 @@ if (( WITH_E2E )); then
 fi
 
 # ---------------------------------------------------------------------------------------------------
-# 4. Optional: boot once and probe /healthz/ready.
+# 5. Optional: boot once and probe /healthz/ready.
 # ---------------------------------------------------------------------------------------------------
 if (( WITH_SMOKE )); then
     announce "boot smoke (bash run.sh --smoke)"

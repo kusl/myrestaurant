@@ -1,6 +1,6 @@
 # Documentation Review — Findings and Resolutions
 
-**Status:** All findings resolved. **F-36** (timestamps ignored `RESTAURANT_TIME_ZONE`) closed in the M4 close-out slice, on the schedule its row recorded. **F-37** (no guest registration surface existed) closed in M6 Slice 5, with one part deliberately left open and named — see its row. **F-38** (the restore path had never been executed and could not have completed) closed in M6 Slice 16; it is now rehearsed by CI on every push rather than documented as a procedure. **F-39** (the program could not say what build it was, and offered nobody its source) closed in the M6 close-out slice, ahead of the first tag.
+**Status:** All findings resolved. **F-36** (timestamps ignored `RESTAURANT_TIME_ZONE`) closed in the M4 close-out slice, on the schedule its row recorded. **F-37** (no guest registration surface existed) closed in M6 Slice 5, with one part deliberately left open and named — see its row. **F-38** (the restore path had never been executed and could not have completed) closed in M6 Slice 16; it is now rehearsed by CI on every push rather than documented as a procedure. **F-39** (the program could not say what build it was, and offered nobody its source) closed in the M6 close-out slice, ahead of the first tag. **F-40** (twenty-one tracked files carried an appended context-dump separator, one of them `Directory.Build.props`, which failed every MSBuild verb in the repository) closed in M6 Slice 18; the tree is now gated on being machine-readable before anything tries to build it.
 **Scope of the original review (2026-07-16):** `REQUIREMENTS.md` rev 1 (commit `af51017`) and the `dump.txt` produced by `export.sh`.
 **Rulings:** the owner ruled on every finding on 2026-07-17 — F-01–05, F-09–11, F-13–19, F-21–24 accepted as raised; F-06, F-07 (Q1), F-08 (Q2/Q3), and F-12 (Q4/Q5) resolved with the defaults proposed in the ruling exchange ("all of this is fine").
 
@@ -79,6 +79,8 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 
 ---
 
+| F-40 | **The tree stopped being machine-readable, and only one of the twenty-one damaged files said so.** A `dotnet build` on 2026-08-05 failed with `MSB4024 … Directory.Build.props could not be loaded. Data at the root level is invalid. Line 86, position 1` — and so did `clean`, `restore`, `test` and the container build, because MSBuild imports that file before it evaluates anything. Line 86 was a line of eighty `#` characters appended after `</Project>`: the section separator `export.sh` writes *between* files in a context dump. **Twenty-one tracked files carried the identical 82-byte suffix**, and `docs/BUILD_PROGRESS.md` carried a second one buried mid-document from an earlier cycle, where nothing that inspects the end of a file would have found it. The set was exactly the *modified* files of the previous slice; the five *new* files of that slice were clean, which names the cause without ambiguity: a tool read the dump back and took the decoration between files for content, where the authoritative terminator is the `Size:` byte count in each `METADATA` block. **What makes this a finding rather than a mishap is the failure mode.** Six of the twenty-one broke anything — the one XML file, catastrophically, and five C# files that would have failed a compile that never got to run. The other fifteen absorbed it in silence: the line is a comment in YAML, in the Containerfile and in `.env`, a heading rule in Markdown, literal text in Razor markup, and a dangling selector in CSS that takes the following rule down with it. `ci.yml` and `release.yml` parsed perfectly while carrying the damage. | `scripts/check_tree.sh` added and run as the **first** gate in both CI (its own `tree` job) and `scripts/ci_local.sh`. Five properties of the checkout, asserted before any tool that would report their absence as something else: no context-dump separator in any tracked file (`export.sh` exempt by path — it writes them; threshold twenty rather than eighty, so a re-wrapped or truncated one cannot slip through); no line made only of whitespace; LF endings with a final newline on every file; every `.props`/`.targets`/`.csproj`/`.slnx` well-formed XML; every `.yml`/`.yaml` valid YAML. The first four need only git, grep and the Python standard library, so they block everywhere; the YAML parse reports a skip where no parser exists, as the shellcheck gate does. Two pre-existing `.editorconfig` violations (`compose.yaml`, `DapperUserStorePasskeyTests.cs` — blank lines carrying leftover indentation) were fixed so the gate lands at zero noise, on the same reasoning this repository already applies to `NU19xx`: a gate that reports a finding on every run is a gate people learn to ignore. **`REQUIREMENTS.md` deliberately untouched** — `.editorconfig` has asked for all of this since M1, so this is a rule being enforced rather than new intent. | S§16.4, S Appendix A · O§14 · `scripts/check_tree.sh`, `scripts/ci_local.sh`, `.github/workflows/ci.yml`, `compose.yaml` · BUILD_PROGRESS M6 Slice 18 |
+
 ## Going forward
 
 **F-36 is closed**, which completes a round trip worth naming: it was entered the moment it was understood,
@@ -111,6 +113,21 @@ embodiment column should name something executable*.
 
 F-38's lesson — *a row in the embodiment column should name something executable* — was applied here without being asked for. The offer's presence is a CI gate, not a sentence: `boot-smoke` fails unless `/source` names the commit it was built from. If the stamp chain breaks, the build goes red rather than the page quietly reporting "Not recorded" for a year.
 
-New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodiment — landed in the **same commit** as the change they describe, together with the matching `REQUIREMENTS.md`, specification, and ADR edits (atomic documentation, R§10 · S§18).
+**F-40 is the first finding about the workshop rather than the work.** F-35, F-37 and F-39 were capabilities a
+requirement assumed and no milestone claimed. F-38 was a rule four documents agreed on and no code honoured.
+F-40 is neither: the specification was right, the code was right, and the *transport between them* damaged
+twenty-one files. That is a category this ledger had not recorded before, and it generalises further than the
+one incident — every delivery into this repository arrives as text produced by a tool, and no tool that
+produces text is incapable of producing slightly wrong text.
 
-################################################################################
+The lesson is narrower than "check your work" and worth stating precisely: **when a format carries both content
+and decoration, only the content's declared length is authoritative.** `export.sh` publishes an exact byte count
+for every file it emits and a separator after it; a reader that trusts the separator will be wrong exactly as
+often as a file ends near one. Nothing in the dump format needed fixing — the byte count was always there.
+
+And the corollary, which is what actually landed: **the gate belongs at the point where the damage is cheap to
+name.** MSBuild eventually reported the problem, but it reported it as `Data at the root level is invalid`, four
+verbs deep, with no indication that twenty other files shared the fault. `scripts/check_tree.sh` names all of
+them, by line, in under two seconds, before the SDK is even asked for an opinion.
+
+New issues enter this ledger as fresh `F-nn` rows — finding, ruling, embodiment — landed in the **same commit** as the change they describe, together with the matching `REQUIREMENTS.md`, specification, and ADR edits (atomic documentation, R§10 · S§18).

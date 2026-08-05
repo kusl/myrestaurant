@@ -44,6 +44,9 @@ the web layer depends on data-access and the domain; the domain depends on nothi
 - `tests/` — pure domain tests, Testcontainers integration tests for migrations, the Identity stores
   and every reader/mutation over real PostgreSQL, web-layer configuration/wiring/enforcement tests,
   and the end-to-end scenario matrix with its Playwright harness (see *End-to-end scenarios*).
+- `scripts/` — the operational scripts: `check_tree.sh` (repository hygiene, the first CI gate),
+  `ci_local.sh` (every CI gate, locally), `backup.sh` / `restore.sh` / `restore_drill.sh` (§15
+  recovery sets and the rehearsal CI runs on every push), and `quick_tunnel.sh` (a demo origin).
 - `.github/workflows/` — the CI and release pipelines (see *Continuous integration*).
 
 ## Prerequisites
@@ -191,10 +194,11 @@ browser, no build output. A missing tool is not a broken product.
 
 ## Continuous integration
 
-Every push and pull request against `main` runs four gates (`.github/workflows/ci.yml`):
+Every push and pull request against `main` runs five gates (`.github/workflows/ci.yml`):
 
 | Gate | What it proves |
 | --- | --- |
+| `tree` | the checkout is machine-readable at all: no context-dump separator lines, no whitespace-only lines, LF endings with a final newline, every MSBuild and solution file well-formed XML, every YAML file parsing (`scripts/check_tree.sh`) |
 | `shell-scripts` | every tracked `*.sh` parses under `bash -n` and passes shellcheck |
 | `build-and-test` | a Release build with **warnings escalated to errors**, then all ~970 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
 | `boot-smoke` | the production `Containerfile` builds, the image boots against a real PostgreSQL until `/healthz/ready` answers 200, `/source` names the commit it was built from, and then that instance is backed up and the backup is put through a full restore drill |
@@ -209,10 +213,22 @@ recovery set off it, and `scripts/restore_drill.sh` restores that set into a scr
 creates and destroys, gating the archive, the restore, every relation the migrations declare, DbUp's
 journal, all five projection views, and the Data Protection key ring.
 
+The first gate is the cheapest and the newest. It exists because a stray line appended to
+`Directory.Build.props` once failed every MSBuild verb in the repository at once — `clean`, `restore`,
+`build`, `test` and the container build — with a message (`Data at the root level is invalid`) that
+pointed at MSBuild rather than at the file. Twenty other tracked files had the same line and said
+nothing, because in YAML, in a Containerfile, in `.env` and in Markdown it is a comment. It runs in
+about two seconds and needs no SDK, so it is worth running by hand after applying anything to this
+tree:
+
+```bash
+bash scripts/check_tree.sh
+```
+
 Run the same gates locally before pushing:
 
 ```bash
-scripts/ci_local.sh                # shell lint, restore, strict build, full suite
+scripts/ci_local.sh                # tree, shell lint, restore, strict build, full suite
 scripts/ci_local.sh --with-e2e     # ...and the §16.3 scenarios in a real browser
 scripts/ci_local.sh --with-smoke   # ...and boot once against the dev database
 scripts/ci_local.sh --with-all     # both of the optional gates
@@ -317,11 +333,12 @@ legal advice — `LICENSE` is the text that governs.
 The code in each milestone slice is written carefully but has not been compiled in its authoring
 environment (no toolchain or package feed there). On a networked machine:
 
-1. `dotnet restore` — resolve or adjust any package versions in `Directory.Packages.props`.
-2. `dotnet build` — fix any analyzer/compiler findings.
-3. `dotnet test` — domain and web-layer tests need no services; the data-access tests need the
+1. `bash scripts/check_tree.sh` — seconds, no SDK; confirms the tree arrived intact.
+2. `dotnet restore` — resolve or adjust any package versions in `Directory.Packages.props`.
+3. `dotnet build` — fix any analyzer/compiler findings.
+4. `dotnet test` — domain and web-layer tests need no services; the data-access tests need the
    container engine socket (see *Testing*).
-4. `./run.sh --smoke` — confirm migrations apply and `/healthz/ready` returns 200.
+5. `./run.sh --smoke` — confirm migrations apply and `/healthz/ready` returns 200.
 
 Or, in one command that mirrors what CI will say about the same tree:
 
@@ -396,5 +413,3 @@ scripts/ci_local.sh --with-all
   (F-38); and the close-out that stamped the build and shipped the source offer (F-39).
 
 Every milestone is complete. What follows is maintenance and whatever the restaurant asks for next.
-
-################################################################################
