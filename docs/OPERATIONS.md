@@ -64,21 +64,51 @@ Any cheap device with a browser works — an old tablet on a stand is the refere
 
 ## 6. Backups and restore
 
-`scripts/backup.sh` runs `pg_dump --format=custom` **inside the postgres container** via `podman exec` — the dump client always matches the server version (F-16) — writing `myrestaurant-YYYYMMDD-HHMMSS.dump` into `BACKUP_DIRECTORY` (bind-mounted, git-ignored), then pruning to the newest `BACKUP_RETENTION_COUNT` (default 14). Pruning happens **only after** a successful new dump: a failing backup never eats old ones.
+**A backup is two files.** `scripts/backup.sh` writes both, sharing one timestamp, into `BACKUP_DIRECTORY` (bind-mounted, git-ignored):
 
-Schedule it at `BACKUP_SCHEDULE_TIME` (default 03:30 host-local) with a systemd **user** timer or cron; with a user timer, `loginctl enable-linger` is what keeps it running without a login session.
+```
+myrestaurant-20260804-033000.dump                  the database — pg_dump --format=custom
+myrestaurant-20260804-033000-dataprotection.tar    the Data Protection key ring (§8)
+```
 
-**Back up the Data Protection keys volume in the same breath** — see §8. A database dump without the key ring is a backup that cannot decrypt any TOTP secret.
+`pg_dump` runs **inside the postgres container** via `podman exec`, so the dump client always matches the server version (F-16). The key ring comes out of the web container with `podman cp`, which streams a tar through the engine's own archive API and therefore needs nothing installed inside that image.
 
-**Restore drill** — do this once *before* you need it, against a scratch host:
+**Both files, or you do not have a backup.** A dump without the key ring restores every account and no enrolled authenticator — see §8. The script tells you which you got: exit **0** is a complete set, exit **2** means the database was dumped and the key ring was not, exit **1** means nothing usable was written. Wire the schedule so a 2 actually reaches you; it is recoverable, but it is not a backup.
 
-1. `podman-compose down` (or stop only `web`).
-2. `scripts/restore.sh <dumpfile>` — runs `pg_restore --clean --if-exists` into the postgres container.
-3. Restore the Data Protection keys volume from the same backup set.
-4. Start the stack. `web` verifies migrations at startup: a dump from an older schema is rolled forward automatically; a dump from a *newer* schema than the code fails fast — deploy matching code first.
-5. Sign in, open a sitting's event history, confirm the world is intact.
+Run it as-is in production. In **dev** the application runs on the host under `run.sh`, so there is no container to read a key ring out of — use `scripts/backup.sh --no-keys` there.
 
-There are no down-migrations anywhere in the system (ADR-0012): recovery from a bad migration is exactly this procedure with the pre-upgrade dump.
+Schedule at `BACKUP_SCHEDULE_TIME` (default 03:30 host-local) with a systemd **user** timer or cron; with a user timer, `loginctl enable-linger` is what keeps it running with nobody logged in. Retention keeps the newest `BACKUP_RETENTION_COUNT` sets (default 14) and prunes **only after** a new set has landed, so a failing backup never eats old ones. The dump is written to a hidden `.partial` file and renamed into place only once it is complete, which is what stops a half-written dump from counting as the newest backup and evicting a good one on the *next* run.
+
+Container discovery **refuses when more than one container matches** rather than picking the first, and names what it found. Set `POSTGRES_CONTAINER` / `WEB_CONTAINER` to settle it. This matters more than it sounds: dumping the wrong database succeeds, comes out roughly the right size, and is worthless.
+
+### The drill
+
+```bash
+scripts/restore_drill.sh                 # rehearse the newest set
+scripts/restore_drill.sh --from-live     # take a fresh set first, then rehearse it
+scripts/restore_drill.sh --strict        # treat reservations as failures
+scripts/restore_drill.sh --keep          # leave the scratch container for inspection
+```
+
+**Run it now, and again after anything that touches the schema.** It restores into a scratch PostgreSQL container it creates and destroys itself — no maintenance window, no scratch host, no published port, and it never writes to the live database — then checks that the archive lists; that it restores, and with how many ignored errors; that every table and view the migrations declare came back; that DbUp's journal is at a version this code will accept; that every projection view still resolves; what the row counts are; and that the key ring is present and not empty. Ninety seconds. CI runs the same script on every push (§14).
+
+It is not a replacement for knowing the procedure below, because the day you need it the drill is not what you will be running.
+
+### Real recovery
+
+1. `scripts/restore.sh <dumpfile>` — stops `web`, restores the database, puts the key ring back from the sibling tar, starts `web` again, and waits for `/healthz/ready`. Add `--yes` to skip the confirmation prompt in a scripted recovery.
+2. **Read the exit code.** **0** restored and healthy. **2** restored with reservations — `pg_restore` ignored some errors (usually benign under `--clean --if-exists`), or the key ring was not put back; the warnings say which. **1** nothing was restored.
+3. Sign in, open a sitting's event history, and confirm the world is intact.
+
+`web` is started again on **every** path out of that script, including the paths that got there by failing, because it happens in an `EXIT` trap. That is worth knowing because it used not to be true: `pg_restore` exits non-zero whenever it ignored any error, the script runs under `set -e`, and the line that restarted `web` came *after* the restore — so the single most likely outcome of the previously documented procedure was a database that came back and an application that stayed down, with nothing saying so (F-38).
+
+A dump from an **older** schema is rolled forward automatically at startup. A dump from a **newer** schema than the code fails fast — deploy matching code first. There are no down-migrations anywhere in the system (ADR-0012): recovery from a bad migration is exactly this procedure with the pre-upgrade dump.
+
+**If you ran `down` rather than `stop`**, the web container no longer exists and the key ring has nowhere to go; the script says so instead of pretending. Bring the stack up and re-run, or place it by hand:
+
+```bash
+podman cp - '<web-container>:/var/lib/myrestaurant/dataprotection' < myrestaurant-<stamp>-dataprotection.tar
+```
 
 ## 7. Optional staff-LAN fallback (off by default)
 
@@ -95,7 +125,7 @@ Hard limits, by design: **passkeys do not work on this origin** — `restaurant.
 The ASP.NET Data Protection key ring lives in the `DATA_PROTECTION_KEYS_DIRECTORY` volume. It encrypts every stored TOTP secret and signs every authentication cookie and join-grant cookie.
 
 - **Losing it** means: all sessions invalid (harmless — everyone signs in again) and **every enrolled TOTP secret undecryptable** (not harmless). Recovery from key loss: administrators clear TOTP per affected account (`Reset credentials`), and users re-enroll through the obligations pipeline. Passkeys and passwords are unaffected.
-- **Therefore:** the volume is part of every backup set (§6), it survives `podman-compose down`/`up` because it is a named volume, and you never delete it casually. Treat the backup copies as secrets.
+- **Therefore:** `scripts/backup.sh` captures it into `myrestaurant-<timestamp>-dataprotection.tar` beside every dump and `scripts/restore.sh` puts it back (§6) — it is no longer something you have to remember, and `scripts/restore_drill.sh` fails a drill whose set does not include one. It survives `podman-compose down`/`up` because it is a named volume, and you never delete it casually. Treat the backup copies as secrets: that tar is the key material, in the clear, which is also why `.gitignore` refuses it and why CI does not upload one as an artifact.
 
 ## 9. Changing the public origin (domain move)
 
@@ -145,9 +175,11 @@ Migrations are append-only and roll forward only — the same philosophy as the 
 
 CI is not an operations concern until the day you need to know *which build* is on the box and whether anyone verified it. This section is that day.
 
-**What every push is checked against.** `.github/workflows/ci.yml` runs three gates on every push and pull request against `main`: `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), and `boot-smoke` (the production `Containerfile` is built and the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200).
+**What every push is checked against.** `.github/workflows/ci.yml` runs four gates on every push and pull request against `main`: `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), `end-to-end` (the §16.3 Playwright scenarios in Chromium, all fifteen of them), and `boot-smoke` (the production `Containerfile` is built, the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200, and then that instance is backed up and the backup is put through `scripts/restore_drill.sh`).
 
-`boot-smoke` is the gate that matters operationally, because it is the only one that exercises what a deployment exercises: DbUp applying every migration to an empty database, `RestaurantOptions.Validate()` accepting the configuration, and the composition root resolving. A green `boot-smoke` is the machine saying "this commit starts". Nothing else in the suite says that.
+`boot-smoke` is the gate that matters operationally, because it is the only one that exercises what a deployment exercises: DbUp applying every migration to an empty database, `RestaurantOptions.Validate()` accepting the configuration, and the composition root resolving. A green `boot-smoke` now says "this commit starts, **and its data comes back**". Nothing else in the suite says either half.
+
+The restore drill lives in that job rather than one of its own because everything it needs is already standing up there — a built image, a migrated database, a live key ring. Giving it a separate job would mean building the image twice for one answer. And putting it in CI at all is the point: §6's drill was five manual steps for four milestones and nobody had performed them, so when something finally did, it found that `scripts/restore.sh` could not have completed a restore at all (F-38). A procedure nobody executes is a hypothesis.
 
 CI deliberately does **not** use `compose.yaml`. The data-protection volume carries Podman's `:U` suffix — correct for the canonical rootless engine (ADR-0004) and rejected outright by Docker Compose — so the job uses a service-container PostgreSQL plus one `docker run --network host` instead. Same image, same environment variables, same readiness probe; the canonical stack stays the only compose file in the tree.
 

@@ -1,49 +1,236 @@
 #!/usr/bin/env bash
 #
-# Database backup (TECHNICAL_SPECIFICATION §15): pg_dump -Fc into
-# BACKUP_DIRECTORY/myrestaurant-YYYYMMDD-HHMMSS.dump, then prune to BACKUP_RETENTION_COUNT most
-# recent dumps. Run pg_dump inside the postgres container (so the tool version matches the server).
-# Schedule via a systemd timer or host cron at BACKUP_SCHEDULE_TIME.
+# Backup a complete recovery set (TECHNICAL_SPECIFICATION §15, OPERATIONS §6).
 #
-# IMPORTANT: this backs up the DATABASE only. The Data Protection keys volume must be backed up
-# alongside it (§3.4) — without those keys, TOTP secrets and auth cookies are unrecoverable.
+#   scripts/backup.sh              dump the database AND capture the Data Protection key ring
+#   scripts/backup.sh --no-keys    database only (dev, where the app runs on the host, not in a container)
+#   scripts/backup.sh --help       this text
+#
+# A recovery set is TWO files sharing one timestamp, and it is a set because either one alone is
+# useless for the thing you will actually be doing at the time — bringing a restaurant back:
+#
+#   BACKUP_DIRECTORY/myrestaurant-YYYYMMDD-HHMMSS.dump                    pg_dump --format=custom
+#   BACKUP_DIRECTORY/myrestaurant-YYYYMMDD-HHMMSS-dataprotection.tar      the key ring (§3.4)
+#
+# Without the key ring, every stored TOTP secret is undecryptable — the database comes back and every
+# enrolled authenticator does not (§3.4, OPERATIONS §8). §15 has always said the key ring must be
+# backed up alongside the database; until F-38 nothing in this tree did it, and this script only
+# printed a reminder. It now captures both.
+#
+# pg_dump runs INSIDE the postgres container via `podman exec`, so the dump client always matches the
+# server version (F-16). The key ring is read out of the web container with `podman cp`, which uses
+# the engine's own archive API and therefore needs no tools installed in that image.
+#
+# Retention prunes to the newest BACKUP_RETENTION_COUNT *sets* and prunes only after a new set has
+# landed, so a failing backup never eats an old one. Two smaller guarantees make that true rather
+# than merely intended: the dump is written to a hidden `.partial` file and only renamed into place
+# once it is complete and its header checks out, so a half-written dump can never become "the newest
+# backup" and evict a good one on the next run; and a dump is only attempted after `pg_isready`
+# confirms the discovered container really is the database and the credentials work.
+#
+# Schedule it at BACKUP_SCHEDULE_TIME with a systemd USER timer or cron. With a user timer,
+# `loginctl enable-linger <user>` is what keeps it running with nobody logged in.
+#
+# Exit codes are three-valued on purpose, because "the database was dumped but the key ring was not"
+# is neither success nor failure and a scheduled job needs to be able to tell:
+#
+#   0   a complete recovery set landed
+#   1   no usable backup was produced (nothing was written, or what was written was removed)
+#   2   the database dump landed but the key ring did not — recoverable, but not a complete set
+#
+# Environment:
+#   BACKUP_DIRECTORY                where sets are written (default /var/lib/myrestaurant/backups)
+#   BACKUP_RETENTION_COUNT          how many sets to keep (default 14; must be a positive integer)
+#   POSTGRES_USER / POSTGRES_DB     database credentials (default myrestaurant / myrestaurant)
+#   POSTGRES_CONTAINER              skip discovery and use this container for pg_dump
+#   WEB_CONTAINER                   skip discovery and use this container for the key ring
+#   DATA_PROTECTION_KEYS_DIRECTORY  the key-ring path inside the web container
+#                                   (default /var/lib/myrestaurant/dataprotection)
 
 set -euo pipefail
+
+WITH_KEYS=1
+
+case "${1:-}" in
+    "")
+        ;;
+    --no-keys)
+        WITH_KEYS=0
+        ;;
+    --help | -h)
+        # Print the header comment block and stop at the first line of real code, so the help text
+        # cannot drift out of step with a hard-coded line range.
+        awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
+        exit 0
+        ;;
+    *)
+        echo "error: unknown argument '$1' (expected --no-keys, --help, or nothing)." >&2
+        exit 1
+        ;;
+esac
 
 BACKUP_DIRECTORY="${BACKUP_DIRECTORY:-/var/lib/myrestaurant/backups}"
 BACKUP_RETENTION_COUNT="${BACKUP_RETENTION_COUNT:-14}"
 PGUSER="${POSTGRES_USER:-myrestaurant}"
 PGDB="${POSTGRES_DB:-myrestaurant}"
+KEYS_DIRECTORY="${DATA_PROTECTION_KEYS_DIRECTORY:-/var/lib/myrestaurant/dataprotection}"
 
+info() { printf '[backup] %s\n' "$*"; }
+warn() { printf '[backup] warning: %s\n' "$*" >&2; }
+die()  { printf '[backup] error: %s\n' "$*" >&2; exit 1; }
+
+# A retention count that is not a positive integer would reach `(( ${#dumps[@]} > $count ))` and, under
+# `set -e`, take the whole script down AFTER a good dump had landed — reported as a backup failure when
+# the backup had in fact succeeded. Check it before anything is written.
+if [[ ! "$BACKUP_RETENTION_COUNT" =~ ^[0-9]+$ ]] || (( BACKUP_RETENTION_COUNT < 1 )); then
+    die "BACKUP_RETENTION_COUNT must be a positive integer (got '$BACKUP_RETENTION_COUNT')."
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# Container engine, then containers.
+# ---------------------------------------------------------------------------------------------------
 if command -v podman >/dev/null 2>&1; then
     ENGINE="podman"
 elif command -v docker >/dev/null 2>&1; then
     ENGINE="docker"
 else
-    echo "error: need podman or docker on PATH." >&2
-    exit 1
+    die "need podman or docker on PATH."
 fi
 
-CONTAINER="${POSTGRES_CONTAINER:-$("$ENGINE" ps --format '{{.Names}}' | grep -m1 postgres || true)}"
-if [[ -z "$CONTAINER" ]]; then
-    echo "error: no running postgres container found (set POSTGRES_CONTAINER to override)." >&2
-    exit 1
+# Discovery prints exactly one container name or fails. `grep -m1 postgres` used to stand here, and
+# it silently picked whichever container the engine happened to list first — which is fine until a
+# second one exists, and `scripts/restore_drill.sh` creates a second postgres container on purpose.
+# A backup that dumps the drill's scratch database instead of the real one would succeed, be the
+# right size, and be worthless. Ambiguity is now an error you can act on.
+discover_container() {
+    local fragment="$1" label="$2"
+    local -a names=()
+
+    mapfile -t names < <("$ENGINE" ps --filter "name=$fragment" --format '{{.Names}}' 2>/dev/null \
+        | tr -d '[]' | awk '{ print $1 }' | awk 'NF' | sort -u)
+
+    if (( ${#names[@]} == 0 )); then
+        warn "no running container matching '$fragment' (the $label)."
+        return 1
+    fi
+
+    if (( ${#names[@]} > 1 )); then
+        warn "more than one running container matches '$fragment' (the $label):"
+        printf '           %s\n' "${names[@]}" >&2
+        warn "set ${label^^}_CONTAINER to name the one you mean."
+        return 1
+    fi
+
+    printf '%s\n' "${names[0]}"
+}
+
+if [[ -n "${POSTGRES_CONTAINER:-}" ]]; then
+    DATABASE_CONTAINER="$POSTGRES_CONTAINER"
+    info "using POSTGRES_CONTAINER='$DATABASE_CONTAINER'."
+else
+    DATABASE_CONTAINER="$(discover_container postgres postgres || true)"
+    [[ -n "$DATABASE_CONTAINER" ]] || die "could not identify the postgres container (set POSTGRES_CONTAINER)."
 fi
 
+# Prove it is the database, and prove the credentials work, BEFORE creating a file that would
+# otherwise look like a backup. A dump that fails after the redirect has opened leaves bytes behind.
+if ! "$ENGINE" exec "$DATABASE_CONTAINER" pg_isready --username "$PGUSER" --dbname "$PGDB" >/dev/null 2>&1; then
+    die "'$DATABASE_CONTAINER' did not answer pg_isready for user '$PGUSER' database '$PGDB'."
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# The database dump: hidden partial, verified, then renamed into place.
+# ---------------------------------------------------------------------------------------------------
 mkdir -p "$BACKUP_DIRECTORY"
 timestamp="$(date +%Y%m%d-%H%M%S)"
-outfile="$BACKUP_DIRECTORY/myrestaurant-${timestamp}.dump"
+DUMP_FILE="$BACKUP_DIRECTORY/myrestaurant-${timestamp}.dump"
+KEYS_FILE="$BACKUP_DIRECTORY/myrestaurant-${timestamp}-dataprotection.tar"
+PARTIAL_DUMP="$BACKUP_DIRECTORY/.myrestaurant-${timestamp}.dump.partial"
+PARTIAL_KEYS="$BACKUP_DIRECTORY/.myrestaurant-${timestamp}-dataprotection.tar.partial"
 
-echo "info: dumping '$PGDB' from container '$CONTAINER' -> $outfile"
-"$ENGINE" exec -i "$CONTAINER" pg_dump -Fc -U "$PGUSER" "$PGDB" > "$outfile"
+# Single-quoted so the paths expand when the trap fires, not when it is installed. An inline trap
+# rather than a named function on purpose: a partial file must never survive, and there is nothing
+# here worth the indirection.
+trap 'rm -f -- "$PARTIAL_DUMP" "$PARTIAL_KEYS" 2>/dev/null || true' EXIT
 
-# Prune: keep only the newest BACKUP_RETENTION_COUNT dumps.
+info "dumping database '$PGDB' from container '$DATABASE_CONTAINER'…"
+"$ENGINE" exec --interactive "$DATABASE_CONTAINER" \
+    pg_dump --format=custom --no-owner --username "$PGUSER" "$PGDB" > "$PARTIAL_DUMP"
+
+# `--no-owner` at dump time (rather than only at restore time) is deliberate: every ownership
+# statement pg_dump would emit is one more thing pg_restore can report as an ignored error, and
+# `scripts/restore_drill.sh` counts those. Fewer ignored errors means the count is worth reading.
+
+if [[ ! -s "$PARTIAL_DUMP" ]]; then
+    die "pg_dump produced an empty file — nothing was written to $BACKUP_DIRECTORY."
+fi
+
+# A custom-format archive starts with the five bytes 'PGDMP'. This is cheap insurance rather than the
+# real integrity check: pg_dump exiting non-zero already takes the script down under `set -e`, and
+# the partial file is removed by the trap. `scripts/restore_drill.sh` is where an archive is proved
+# restorable, because proving that means restoring it, and 03:30 is the wrong time to find out.
+if [[ "$(head -c 5 "$PARTIAL_DUMP")" != "PGDMP" ]]; then
+    die "the dump does not begin with a custom-format archive header — refusing to keep it."
+fi
+
+mv -- "$PARTIAL_DUMP" "$DUMP_FILE"
+info "database dump: $DUMP_FILE ($(du -h -- "$DUMP_FILE" | cut -f1))"
+
+# ---------------------------------------------------------------------------------------------------
+# The key ring (§3.4). Read out of the web container with `podman cp`, which streams a tar archive
+# through the engine and therefore does not care what is installed inside that image.
+# ---------------------------------------------------------------------------------------------------
+KEYS_CAPTURED=0
+
+if (( WITH_KEYS )); then
+    if [[ -n "${WEB_CONTAINER:-}" ]]; then
+        APPLICATION_CONTAINER="$WEB_CONTAINER"
+        info "using WEB_CONTAINER='$APPLICATION_CONTAINER'."
+    else
+        APPLICATION_CONTAINER="$(discover_container web web || true)"
+    fi
+
+    if [[ -z "$APPLICATION_CONTAINER" ]]; then
+        warn "could not identify the web container, so the Data Protection key ring was NOT captured."
+        warn "in dev the application runs on the host (run.sh), where there is no container to read"
+        warn "from — pass --no-keys there. In production this is a real problem: see OPERATIONS §8."
+    elif ! "$ENGINE" cp "$APPLICATION_CONTAINER:$KEYS_DIRECTORY/." - > "$PARTIAL_KEYS" 2>/dev/null; then
+        warn "could not read '$KEYS_DIRECTORY' out of '$APPLICATION_CONTAINER' — key ring NOT captured."
+        warn "check DATA_PROTECTION_KEYS_DIRECTORY matches the container's mount point."
+        rm -f -- "$PARTIAL_KEYS"
+    else
+        key_count="$(tar -tf "$PARTIAL_KEYS" 2>/dev/null | grep -c 'key-.*\.xml$' || true)"
+        mv -- "$PARTIAL_KEYS" "$KEYS_FILE"
+        KEYS_CAPTURED=1
+        info "key ring: $KEYS_FILE (${key_count} key file(s))"
+        if (( key_count == 0 )); then
+            warn "the key ring is EMPTY. Data Protection creates its first key the first time it"
+            warn "protects anything — an instance nobody has signed in to yet has none. Harmless"
+            warn "now; not harmless once anyone has enrolled TOTP, so check the next set."
+        fi
+    fi
+else
+    info "skipping the key ring (--no-keys)."
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# Retention. Prune whole sets, newest first, and only now that a new set is on disk.
+# ---------------------------------------------------------------------------------------------------
 mapfile -t dumps < <(ls -1t "$BACKUP_DIRECTORY"/myrestaurant-*.dump 2>/dev/null || true)
 if (( ${#dumps[@]} > BACKUP_RETENTION_COUNT )); then
     for stale in "${dumps[@]:BACKUP_RETENTION_COUNT}"; do
-        echo "info: pruning old backup $stale"
-        rm -f -- "$stale"
+        info "pruning $stale (and its key ring, if any)"
+        rm -f -- "$stale" "${stale%.dump}-dataprotection.tar"
     done
 fi
 
-echo "info: backup complete. Remember to back up the Data Protection keys volume too (§3.4)."
+# ---------------------------------------------------------------------------------------------------
+# Report.
+# ---------------------------------------------------------------------------------------------------
+echo
+info "backup complete. Rehearse it with: scripts/restore_drill.sh"
+if (( WITH_KEYS )) && (( ! KEYS_CAPTURED )); then
+    warn "this set is INCOMPLETE — database only, no key ring (exit 2)."
+    exit 2
+fi
+exit 0

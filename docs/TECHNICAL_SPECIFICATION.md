@@ -812,7 +812,32 @@ Fail-fast validation at startup: origin parses as absolute https URL; Argon2 flo
 
 ## 15. Backups
 
-`scripts/backup.sh`: `pg_dump -Fc` to `BACKUP_DIRECTORY/myrestaurant-YYYYMMDD-HHMMSS.dump`, prune to `BACKUP_RETENTION_COUNT`; scheduled at `BACKUP_SCHEDULE_TIME` (systemd timer or host cron invoking the script via `podman exec`). `scripts/restore.sh <dump>`: stop web, `pg_restore --clean --if-exists`, start web (migrations verify). **The Data Protection keys volume must be backed up alongside the database** — without it, TOTP secrets and cookies are unrecoverable (§3.4). Restore drill documented in OPERATIONS §6.
+**A recovery set is two files, not one.** `scripts/backup.sh` writes both, sharing one timestamp, into `BACKUP_DIRECTORY`:
+
+| File | Contents | Read out with |
+|---|---|---|
+| `myrestaurant-YYYYMMDD-HHMMSS.dump` | `pg_dump --format=custom --no-owner`, run **inside** the postgres container so the dump client always matches the server (F-16) | `podman exec` |
+| `myrestaurant-YYYYMMDD-HHMMSS-dataprotection.tar` | the Data Protection key ring from `DATA_PROTECTION_KEYS_DIRECTORY` (§3.4) | `podman cp`, which streams a tar through the engine's own archive API and therefore needs nothing installed in the runtime image |
+
+Either file alone is insufficient, and the second is the one that gets forgotten: **without the key ring every stored TOTP secret is undecryptable** — the accounts come back and the enrolled authenticators do not (§3.4, OPERATIONS §8). That rule has been normative since v1.0. Until **F-38** no script honoured it; both merely printed a reminder.
+
+**`scripts/backup.sh`, normatively.** The dump is written to a hidden `.partial` file and renamed into place only once it is complete and carries a custom-format header, so a half-written dump can never become "the newest backup" and evict a good one on the *next* run — which is what makes F-16's "retention prunes only after a successful new dump" true across runs rather than within one. A dump is attempted only after `pg_isready` confirms the discovered container really is the database and the credentials work. Container discovery **refuses on ambiguity** instead of taking the first match, because dumping the wrong database succeeds, is the right size, and is worthless. Retention prunes whole *sets* to `BACKUP_RETENTION_COUNT`. Scheduled at `BACKUP_SCHEDULE_TIME` (systemd user timer or host cron). Exit codes are three-valued because "the database was dumped and the key ring was not" is neither success nor failure: **0** complete set, **2** database only, **1** nothing usable produced.
+
+**`scripts/restore.sh [--yes] [--no-keys] <dump>`.** Verify the archive; stop `web`; `pg_restore --clean --if-exists --no-owner`; put the key ring back from the sibling tar while `web` is down, so the application reads it at startup rather than after minting a fresh ring of its own; start `web` (DbUp verifies the schema and rolls an older dump forward — there are no down-migrations, ADR-0012). **The web application is started again on every path out of the script**, from an `EXIT` trap. That is not defensive style, it is a fix: `pg_restore` exits non-zero whenever it ignored any error (`exit_code = AH->n_errors ? 1 : 0`) and `--clean --if-exists` ignores errors routinely, so under `set -e` the previous ordering — restore, *then* start `web` — left the database restored and the application down, silently. Ignored errors are reported and downgrade the exit code to **2** rather than aborting.
+
+**The drill is executable, not a procedure.** `scripts/restore_drill.sh` rehearses a recovery set against a scratch PostgreSQL container it creates and destroys itself: no maintenance window, no scratch host, no published port, and no write of any kind to the live database. Seven gates:
+
+| Gate | Asserts |
+|---|---|
+| A | the archive is a readable custom-format dump with a non-empty table of contents |
+| B | it restores into an empty database, and how many errors `pg_restore` ignored doing so |
+| C | every table and view the migrations declare is present — the expected set is read out of `src/MyRestaurant.DataAccess/Migrations/*.sql`, so a new migration extends this gate by itself, and DDL that stops matching the patterns is reported rather than silently passing on an empty expectation |
+| D | DbUp's `schemaversions` carries one row per migration file, so the schema is at a version this code *accepts* rather than merely structurally plausible (ADR-0012) |
+| E | every §8.3 projection view still resolves against the restored tables — the one place in the schema where one object's correctness depends on nine others |
+| F | a row census, reported rather than asserted: it is how you notice you have been faithfully backing up an empty database for a month |
+| G | the key ring is beside the dump, is a readable tar, and contains keys |
+
+`--strict` promotes reservations (ignored errors, an empty key ring) to failures; `--from-live` takes a fresh set first; `--keep` leaves the scratch container for inspection. The drill deliberately does **not** boot the application against the restored database — that is §16.4's `boot-smoke`, which now runs the drill immediately after proving the image starts, so every push rehearses recovery. OPERATIONS §6 is the runbook.
 
 ## 16. Testing
 
@@ -837,7 +862,7 @@ Fail-fast validation at startup: origin parses as absolute https URL; Argon2 flo
 14. Expired token URL → friendly expiry page; token from previous window → accepted.
 15. Admin rotates a table's join secret → in-flight token dies; display's next window works.
 
-**16.4 CI:** GitHub Actions — build, unit, integration (service container PostgreSQL), E2E (compose), publish image on tag.
+**16.4 CI:** GitHub Actions — build, unit, integration (service container PostgreSQL), E2E (Playwright/Chromium, all fifteen §16.3 scenarios), then boot the production image against real PostgreSQL and **take a backup of that instance and drill the restore** (§15) in the same job; publish image on tag. The drill is a CI gate rather than a runbook step because a recovery procedure nobody executes is a hypothesis — see F-38.
 
 ## 17. Security posture and accepted risks
 
@@ -881,6 +906,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 | F-18 / F-19 | Menu item event log; lockout 5/5min, username 3–64 citext, currency/timezone defaults | §7, §3.1, §13, §8.2 |
 | F-20 | Hand-written fakes; NSubstitute ok; no Moq | §16.1 |
 | F-37 | Guest self-registration is a real surface at `/register`, specified rather than assumed; a passkey is offered first and may be declined only when a password was set; no rate limit in v1, with the reason it is not a two-line addition recorded | §11.1, §11.8, §17, §19 · R§4.3 |
+| F-38 | The restore path had never been executed and could not have completed: `pg_restore` exits non-zero on ignored errors, ahead of the line that restarted `web`. Nothing captured the Data Protection key ring despite §15 requiring it. A failed dump could evict a good one on the following run. Container discovery took whichever match came first | Both scripts rewritten; `scripts/restore_drill.sh` added and executed by CI on every push, so the drill is rehearsed rather than documented | §15, §16.4 · O§6, O§8, O§14 · `scripts/backup.sh`, `scripts/restore.sh`, `scripts/restore_drill.sh`, `.github/workflows/ci.yml` |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP re-enrollment only if enrolled pre-reset; obligations pipeline runs on passkey path too; counter fallback = same rotating QR (no short-code) | §10.1–10.2, §3.5, §3.7, §4.5 · ledger notes |
@@ -888,6 +914,10 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`). **Atomic doc
 ---
 
 ## Changelog
+
+**v1.2 — 2026-08-04.** **§15** rewritten. A recovery set is now *defined* as two files — the database dump and the Data Protection key ring — and `scripts/backup.sh` writes both. The rule that the key ring must be backed up alongside the database has been normative since v1.0 and no script in the tree honoured it; that, and three other defects in the same two scripts, are recorded as **F-38**. §15 also now states the guarantees that make retention's promise true across runs rather than within one (hidden `.partial` write, header check, `pg_isready` before anything is written, refusal on ambiguous container discovery, whole-set pruning), records that `scripts/restore.sh` restarts `web` from an `EXIT` trap and the exact reason the previous ordering could not have worked, and specifies `scripts/restore_drill.sh` and its seven gates. **§16.4** names the drill as a CI gate. **Appendix A** gains F-38.
+
+Nothing else moved: no schema change, no ADR edit, and deliberately no `REQUIREMENTS.md` edit. §15's key-ring sentence was already the contract, so this is a defect fix at the mechanism level rather than new intent — the documents were right and the code did not do what they said.
 
 **v1.1 — 2026-08-02.** Guest registration written down. New **§11.8 `/register`** specifies the surface R§4.3 has required since rev 2 and which no milestone had claimed: the two-step ticket-backed flow, why a ticket is needed at all (a WebAuthn user handle must exist before the `person` row does), and the rule that declining a passkey is offered exactly when a password was set. **§11.1** points at it instead of naming registration in passing. **§17** records the absent rate limit as an accepted risk with the concrete reason it is not a small change. **§19** notes that the surface lands in M6 rather than M2, and why. **Appendix A** gains F-37.
 
