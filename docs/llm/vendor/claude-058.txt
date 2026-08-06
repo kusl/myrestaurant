@@ -11,3 +11,232 @@ please avoid giving me bespoke scripts to manipulate text in code / documentatio
 remember to give full files for all files that need to change 
 I will likely miss those bespoke scripts 
 
+
+/
+Claude finished the response
+Please continue with the next step 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+please avoid giving me bespoke scripts to manipulate text in code / documentation 
+remember to give full files for all files that need to change 
+I will likely miss those bespoke scripts
+
+I'll start by reviewing the current state of the codebase.
+
+
+Examined Razor component architecture and structure
+Examined Razor component architecture and structure
+
+Check project files present and dump size
+
+Inspect dump format
+
+Splitter script to parse the monolithic dump into a working tree
+
+Run splitter
+
+List full repo tree
+
+Read last session changes file
+
+Check doc sizes and tail of build progress
+
+Outline of documentation review
+
+Read Group E and Going forward
+
+Rest of Going forward
+Reviewing remaining M6 milestones and tag/release process execution.
+
+
+Spec outline
+
+Read build order and changelog
+Evaluating genuinely valuable next work items.
+
+
+Find data-live / data-loaded usages
+Identifying Razor components publishing data-live attribute.
+
+
+Read the reference implementation CounterBoard.razor
+
+Read KitchenBoard head
+
+Find loaded flag and live attribute in KitchenBoard
+
+Read KitchenBoard code block start
+Examined Razor component architecture and structure.
+
+
+Read CounterSitting surface tag and state
+
+Read CounterSitting code region
+Done
+Now let me look at the display and table order surfaces.
+
+
+Architecting Razor markup with data-loaded attribute integration
+Architecting Razor markup with data-loaded attribute integration
+
+Read TableDisplay markup head
+Examined element rendering conditions and state dependencies.
+
+
+Inspect TableDisplay stage handling
+
+Read TableDisplay code region
+Orchestrating component state reset and immediate rendering.
+
+Identified component state transitions and selector matching vulnerabilities.
+
+
+Sizes of harness + surfaces
+
+Read CounterJourneys barrier docs
+
+Read CounterJourneys wait methods
+
+Read KitchenJourneys selectors
+
+Kitchen describe surface
+
+Read DisplayJourneys fully
+
+Read TableOrderJourneys selectors/barrier
+
+Read TableOrderSurface markup head and state
+
+Read TableOrderSurface code region
+Reconciling TableDisplay's divergent loading state architecture.
+
+Reconciling timing semantics for load state persistence.
+
+Reconciling data-loaded semantics across five surfaces uniformly.
+
+
+Find all interactive render modes
+
+Find where TableOrderSurface is hosted
+
+Read App.razor and Routes.razor
+Reconciling routing patterns and enforcement mechanisms.
+
+
+Find static SSR pages and pages with load flags
+Analyzing SSR rendering behavior and race condition mechanics.
+
+
+Read TableJourneys
+Uncovering incomplete surface enumeration, identifying sixth component.
+
+
+Check whether /table index is exercised
+Weighing whether fixing enumeration issue justifies modifying sixth file.
+
+
+Check Home.razor and TableArea code block
+
+Read Home.razor
+Diagnosing visual flicker from setup flag initialization.
+
+
+Read first scenarios
+Refactoring components to integrate loaded indicator attributes.
+
+Weighing unit test viability for enforcing interactive component attributes.
+
+
+Read WebApplicationLocator for repo-root discovery pattern
+
+Read web app test csproj and a sample test
+Verifying directives and scrutinizing editorconfig styling rules.
+
+Verified component directives and audited configuration files.
+
+
+Read TableDisplay header and TableJoin hosting
+Orchestrating component modifications and positioning normative rules strategically.
+
+Architecting six-component test strategy with unified field markers.
+
+
+Check exact attribute text and _loaded declarations
+
+See how static SSR admin pages express loading
+
+Check loading text on static pages
+
+See loading flag naming on static pages
+
+Inspect AdministrationHome loading condition
+Documenting intent and verifying interactive component markers.
+
+
+Enumerate interactive routable pages
+Architecting Razor markup with data-loaded attribute integration.
+
+
+Read KitchenBoard LoadAsync
+Done
+I've read the tree and found the next slice, but hit the tool limit before I could write and verify the archive. Here's exactly where I am, so the next run starts from a decision rather than a re-read.
+
+Where the tree actually is
+Your memory of this project (in my context) was stale — it said M6 Slice 4. The dump is at commit 88e9bc1, M6 Slice 22 complete: 313 tracked authored files, 996 tests, all 15 §16.3 E2E scenarios passing, docs/_append/ retired, .dockerignore + Containerfile guard landed, F-45 and F-46 written up. Nothing is unmerged.
+
+The next slice, and it was already named
+F-44's own row in docs/DOCUMENTATION_REVIEW.md records something deferred rather than fixed:
+
+"the other four live surfaces publish data-live with no loaded bit and carry the same latent race, passing because their callers go on to wait for specific content… a scenario that fails is the evidence needed for the rest."
+
+That evidence now exists (scenario 10). So the slice is: give the remaining surfaces the data-loaded bit and tighten the four harness barriers.
+
+But the enumeration is wrong, and that's the actual finding. App.razor sets RenderModeForPage => HttpContext.AcceptsInteractiveRouting() ? InteractiveServer : null, so every routable page without [ExcludeFromInteractiveRouting] is interactive. There are six such pages plus one hosted island, not five:
+
+Component	Publishes today
+CounterBoard.razor	data-live + data-loaded (Slice 21)
+KitchenBoard.razor	data-live only
+CounterSitting.razor	data-live only
+TableOrderSurface.razor	data-live only
+TableDisplay.razor	data-live only, and no _loaded field at all
+TableArea.razor (/table)	nothing — no id, no attribute, and it has a "Looking up your tables…" state
+Home.razor	nothing, and correctly so — no loading state
+That is F-46's shape a third time: a rule enforced as a list of examples, green while narrower than its name. The tree says "the five live surfaces" in five places and /table was never one of them.
+
+Two extra things I verified that shape the fix:
+
+TableDisplay needs a real _loaded, not a rename. Its #table-display-surface element is also rendered by the _qr is null branch, which is reachable transiently between _stage = Live and DescribeCurrentAsync returning — so data-live='true' alone already matches a card with no QR in it.
+private bool _loaded; is a clean discriminator. The static-SSR administration pages express loading with null-collection sentinels instead, so the field appears in exactly the interactive set.
+What I was about to package (M6 Slice 23, F-47)
+Full files, exact paths, extract-at-root .tar.gz, no scripts:
+
+6 Razor files — the four missing data-loaded, TableArea gaining all three, CounterBoard's "five live surfaces" comment corrected
+4 harness files — KitchenJourneys, CounterJourneys, TableOrderJourneys, DisplayJourneys: selectors gain [data-loaded='true'], DescribeSurfaceAsync reports it, failure messages name it
+NEW tests/MyRestaurant.WebApplication.Tests/Components/LiveSurfaceContractTests.cs — F-38's "name something executable": derives the interactive set from the exclusion attribute rather than a list, and asserts the pair is published and bound to RendererInfo.IsInteractive / _loaded. Repo root found by walking up for MyRestaurant.slnx, mirroring WebApplicationLocator. 6 tests → 1002 total.
+docs/TECHNICAL_SPECIFICATION.md v1.8 (new §11.10, appended not inserted, so no cross-reference moves), docs/DOCUMENTATION_REVIEW.md, full docs/BUILD_PROGRESS.md, _CHANGES.md
+Files to delete: none.
+
+Say continue and I'll build and ship it.
+
+Claude reached its tool-use limit for this turn.
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+17
+82
+
+please continue 
+
