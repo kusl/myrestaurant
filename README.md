@@ -200,10 +200,10 @@ Every push and pull request against `main` runs six gates (`.github/workflows/ci
 | Gate | What it proves |
 | --- | --- |
 | `tree` | the checkout is machine-readable at all: no context-dump separator lines, no whitespace-only lines, LF endings with a final newline, every MSBuild and solution file well-formed XML, every YAML file parsing (`scripts/check_tree.sh`). Asserted over authored text only — generated dumps under `docs/llm/` and binary files are skipped, and the counts are reported |
-| `governance` | a security policy exists, `README`/`CONTRIBUTING`/`SECURITY` each point at the others, and **no tracked file asserts a repository setting** (`scripts/check_repository.sh`). That half is blocking; a second, advisory half reads the GitHub API and reports the settings themselves, because a fork's settings are the fork's business |
+| `governance` | a security policy exists, `README`/`CONTRIBUTING`/`SECURITY` each point at the others, and **no tracked file asserts a repository or package setting** (`scripts/check_repository.sh`). That half is blocking; a second, advisory half reads the GitHub API and reports the settings themselves, because a fork's settings are the fork's business |
 | `shell-scripts` | every tracked `*.sh` parses under `bash -n` and passes shellcheck |
 | `build-and-test` | a Release build with **warnings escalated to errors**, then all ~970 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
-| `boot-smoke` | the production `Containerfile` builds, the image boots against a real PostgreSQL until `/healthz/ready` answers 200, `/source` names the commit it was built from, and then that instance is backed up and the backup is put through a full restore drill |
+| `boot-smoke` | the production `Containerfile` builds — which now also means its build context is exactly the allow-list `.dockerignore` describes, asserted by the build itself — the image boots against a real PostgreSQL until `/healthz/ready` answers 200, `/source` names the commit it was built from, and then that instance is backed up and the backup is put through a full restore drill |
 | `end-to-end` | all fifteen §16.3 scenarios in Chromium against the built application, with `MYRESTAURANT_E2E=1` |
 
 That third gate is the one worth understanding. `/healthz/ready` returns 200 only once DbUp has

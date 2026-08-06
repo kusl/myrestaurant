@@ -1,0 +1,40 @@
+# What the image builder is allowed to see (TECHNICAL_SPECIFICATION §14.1).
+#
+# Containerfile's build stage runs `COPY . .`, so this file decides what "." means. Read by both
+# engines: Docker/BuildKit reads `.dockerignore` from the context root, and Podman reads
+# `.containerignore` or `.dockerignore` from the same place (ADR-0004 makes rootless Podman
+# canonical, and CI builds with Docker — one file has to satisfy both, and this is it).
+#
+# WHY AN ALLOW-LIST RATHER THAN A DENY-LIST. A deny-list answers "what is wrong today". The thing
+# that put this file here (F-45) is that `.gitignore` is a deny-list, that it is already correct,
+# and that it protects nothing here — a build context is not a commit, and every path it names was
+# being copied into the builder anyway. A deny-list would have to be extended for tomorrow's
+# untracked secret by somebody who remembered to. This list has to be extended for tomorrow's
+# *source directory*, by a build that fails immediately when it is not.
+#
+# The guard in Containerfile asserts this file took effect, because an ignore-file is an
+# instruction to a tool and instructions can be renamed, superseded by a `.containerignore`, or
+# overridden with `--ignorefile`. The two lists are deliberately stated twice: if they drift, the
+# build stops.
+
+# ---- everything ----------------------------------------------------------------------------------
+*
+
+# ---- ...except the publish graph -------------------------------------------------------------------
+# `dotnet publish src/MyRestaurant.WebApplication/MyRestaurant.WebApplication.csproj` needs the three
+# source projects, the two Directory.*.props files that central package management resolves through,
+# global.json for SDK selection, and .editorconfig because EnforceCodeStyleInBuild reads it — so the
+# image build and the CI build apply the same analyzer set.
+!.editorconfig
+!Directory.Build.props
+!Directory.Packages.props
+!global.json
+!src
+
+# ---- ...and never local build output, even from inside src -----------------------------------------
+# A workstation that has run `dotnet build` leaves these behind. They are git-ignored and were
+# therefore invisible to every gate in this repository, while being copied into the builder on every
+# `podman-compose --profile production up -d --build`. Last matching line wins, so these come after
+# the re-inclusion above.
+src/**/bin
+src/**/obj

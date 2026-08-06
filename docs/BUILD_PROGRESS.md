@@ -6431,3 +6431,461 @@ or a document, and both were executed rather than reasoned about:
   **exactly once**, so nothing was edited by position. `OPERATIONS.md`'s section numbering read back
   afterwards, because §16 had to land at the end: its section numbers are referenced from the
   specification and the ADRs, so a renumber would have been a silent break.
+
+## M6 Slice 21 — two green gates that were never green
+
+Slice 20 closed on a table of results in which everything passed. Two of those rows were reporting on a
+workstation, and the two CI jobs that have no workstation equivalent — `boot-smoke`, which boots the
+production image, and `end-to-end`, which drives Chromium — were red on the same push. They stayed red.
+Neither failure was in the thing its message named.
+
+| Job | What it said | Where the defect was |
+| --- | --- | --- |
+| `boot smoke (container image)` | the database did not answer `pg_isready` | which container engine the script chose (**F-43**) |
+| `end to end (Playwright)` | `Assert.Single()`: the collection was empty | when the harness was allowed to read the screen (**F-44**) |
+
+Both are the same shape at one remove: a check that passed for years on one machine and could not pass on
+another, because what it actually asserted was narrower than what it appeared to assert.
+
+### F-43 — the engine the container did not belong to
+
+`scripts/backup.sh` and `scripts/restore_drill.sh` both opened with the same four lines:
+
+```bash
+if command -v podman >/dev/null 2>&1; then
+    ENGINE="podman"
+elif command -v docker >/dev/null 2>&1; then
+    ENGINE="docker"
+```
+
+podman first because ADR-0004 makes rootless Podman canonical, which is right — and on a host with one
+engine the block is also correct, which is why it survived. A GitHub Actions `ubuntu-24.04` runner is not
+that host. Its image runs `scripts/build/install-container-tools.sh`, which installs a pinned static
+podman bundle into `/usr/local/bin` alongside buildah and skopeo, next to a working Docker daemon. So
+`command -v podman` succeeds there, and every container in the `boot-smoke` job — the service database,
+the image under test — belongs to Docker.
+
+What the job printed:
+
+```
+[backup] using POSTGRES_CONTAINER='f35d0ec9fc2d3f…'.
+[backup] error: 'f35d0ec9fc2d3f…' did not answer pg_isready for user 'myrestaurant' database 'myrestaurant'.
+```
+
+`podman exec <a docker container id>` fails with "no such container". The script had one message for
+every way that command could fail, so a fault entirely in engine selection was reported as a database
+that would not answer for its own credentials — and reported it two steps after `/healthz/ready` had
+returned 200 from an application talking to that very database. **A diagnostic that names the wrong
+subsystem is worse than no diagnostic**, because it is followed.
+
+Three changes, and the order matters:
+
+1. **`CONTAINER_ENGINE`** is honoured by both scripts and set to `docker` on the two `boot-smoke` steps.
+   Explicit, visible in the job, and the half a reader will find first.
+2. **The container chooses the engine.** When `POSTGRES_CONTAINER` is set, `backup.sh` asks each
+   available engine `container inspect` and uses the one that answers. This is not a guess dressed up as
+   a heuristic: the only reason the script needs an engine is to reach one named container, and whether a
+   given engine can see that container is a fact. `container inspect` rather than `ps --filter name=`
+   because CI passes an id, and `ps` filters do not match ids. Discovery without a name works the same
+   way, per engine, and still **refuses** on ambiguity rather than picking — F-38's rule, unchanged.
+3. **The two conditions are said separately.** "Knows it but it is not running" and "did not answer
+   `pg_isready` for these credentials" are fixed in different places, so they are now different lines,
+   and both name the engine they were asked of.
+
+`restore_drill.sh` gets the variable but not the inference, and the asymmetry is the point: the drill
+creates its own scratch container, so there is nothing to infer from. On the runner that also costs a
+second pull of `postgres:17-alpine` into podman's store while Docker already holds it — slow rather than
+wrong, and one more reason the job pins the engine.
+
+### F-44 — a barrier that was satisfied by the first paint
+
+§16.3 scenario 10 closes a sitting, walks back to `/counter`, and asserts the table left the floor and
+appeared under "Settled today". It failed on the second half:
+
+```
+Assert.Single() Failure: The collection did not contain any matching items
+Collection: []
+```
+
+`ListRecentlyClosedSittingsAsync` filters `closed_at >= now − 12h` against a sitting closed seconds
+earlier, so the query was never in question. The harness was reading the board before either list
+existed.
+
+`WaitForBoardAsync` waited on `section.counter-board` becoming visible. **That element is present in
+every state of the component**, including:
+
+```razor
+@if (!_loaded)
+{
+    <p class="lede">Loading the floor…</p>
+}
+```
+
+So the wait was satisfied by the first paint and asserted nothing at all. And the state it failed to
+wait past is not the prerender — prerendering runs the whole lifecycle before it emits, so the first HTML
+a browser receives is fully loaded, which is exactly why this passed locally for as long as it did. It is
+the **hand-over**. `blazor.web.js` opens the circuit, the component is constructed again from nothing,
+`ComponentBase` renders the moment `OnInitializedAsync` yields, and the DOM returns to "Loading the
+floor…" for as long as two queries take. Milliseconds on a workstation. Long enough on a loaded runner.
+
+The failure is quiet in a way worth naming. The assertion one line above the failing one is
+
+```csharp
+Assert.DoesNotContain(tableLabel, floor.OpenTableLabels);
+```
+
+and an empty list satisfies it. So the reading that produced the failure had already produced a pass, for
+the wrong reason, out of the same empty screen.
+
+`CounterBoard.razor` now publishes what the other four live surfaces publish, plus one more bit:
+
+| Attribute | From | Says |
+| --- | --- | --- |
+| `data-live` | `RendererInfo.IsInteractive` | a circuit produced this markup |
+| `data-loaded` | `_loaded` | §11.3's two queries have answered |
+
+and `BoardSurfaceSelector` demands both. **Either alone is wrong, in opposite directions.** `data-live`
+by itself steers a reader *to* the circuit's first render — the one instant when neither list is in the
+document — so it would have made this worse rather than better. `data-loaded` by itself matches the
+prerendered markup, which is loaded and inert: correct as of the request and never again, on the one
+screen in the application whose entire purpose is a number that moves while somebody stands reading it.
+
+Until now `/counter` was also the only one of the five live surfaces that published nothing, so nothing
+anywhere asserted a circuit was behind it.
+
+### What is deliberately not in this slice
+
+**`data-loaded` on the other four surfaces.** `KitchenBoard`, `CounterSitting`, `TableOrderSurface` and
+`TableDisplay` all publish `data-live` and none publishes a loaded bit, so all four carry the same latent
+race. They pass today because their callers go on to wait for specific content — a bill line, a badge, a
+menu item — and that wait incidentally waits out the reload. The board is where it bites because
+`ReadFloorAsync` asks about membership of a list, and absence is indistinguishable from a list that has
+not rendered.
+
+That is a real finding, and it is recorded rather than fixed here: four surfaces is ~4,000 lines of Razor
+edited against a race none of them is currently losing, in the same delivery as two failures that are
+losing. Scenario 10 is the evidence that the class is real; a scenario that fails is the evidence needed
+to justify the other four.
+
+### Build and test
+
+```bash
+bash scripts/check_tree.sh
+#    expect: 5 gates, "tree hygiene passed.", exit 0. No new authored file lands in its scope —
+#    docs/_append/ is a delivery convenience, merged and removed — so the count is unchanged.
+
+bash scripts/ci_local.sh
+#    expect: 8 numbered gates, green. Gate 3 (shell scripts) is the one that matters here: both
+#    edited scripts must pass bash -n and shellcheck --severity=warning.
+
+dotnet build MyRestaurant.slnx -c Release -p:ContinuousIntegrationBuild=true
+#    expect: all seven projects, 0 errors. CounterBoard.razor is the only compiled file that changed
+#    on the src side, and Razor is where a delivery like this would break.
+
+dotnet test
+#    expect: 996 total, 0 failed, 981 succeeded, 15 skipped. UNCHANGED. No test is added, renamed or
+#    moved; the harness edit changes a selector and a message. If this number moves, the cause is
+#    not here.
+
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: 15 passed, 0 skipped. Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch is the
+#    one that was failing in CI and has never failed locally, so a local pass proves the selector
+#    still matches — not that the race is closed. The runner proves that.
+```
+
+The drill and the backup cannot be rehearsed against the CI topology from a workstation, so the two
+things worth doing locally are the ones that would catch a typo:
+
+```bash
+BACKUP_DIRECTORY=/tmp/mr-backup-check bash scripts/backup.sh --no-keys
+#    expect: on a dev stack, the postgres container found and named with the engine it was found
+#    through — "[backup] using 'myrestaurant_postgres_1', discovered via podman." That line is new
+#    and it is the whole of F-43's fix reporting itself.
+
+CONTAINER_ENGINE=nosuchengine bash scripts/backup.sh --no-keys
+#    expect: exit 1, "CONTAINER_ENGINE='nosuchengine' is not on PATH." A bad override must fail on
+#    the override rather than fall back to guessing, which is the behaviour this slice removed.
+```
+
+### Ledger
+
+| Shape | Finding | What was wrong |
+| --- | --- | --- |
+| a script correct on one host and wrong on another, reporting the wrong subsystem | **F-43** | engine chosen by `PATH` order rather than by the container it had to reach |
+| a test barrier satisfied by markup present in every state | **F-44** | `section.counter-board` exists while loading, so the wait asserted nothing |
+
+Both rows belong to a category this ledger has recorded twice before — a check whose *name* was true and
+whose *content* was narrower than its name. F-40's separator gate and F-42's governance gate were both
+about layers nothing then looked at. These two are about looking at the right layer and asking it the
+wrong question, which is harder to notice because the gate is green.
+
+## M6 Slice 22 — what leaves this machine
+
+Slice 21 fixed two CI jobs and shipped no ledger. That is where this one starts, because the rule it
+broke is the rule this project is built on.
+
+| | Finding | Shape |
+| --- | --- | --- |
+| **F-45** | the image build's context was the entire working tree | a file that should have existed and never had |
+| **F-46** | a document asserted a *package* setting, and the gate built to forbid exactly that reported "none" | a rule enforced as a list of examples |
+| — | F-43 and F-44 shipped without their rows in this file, in `DOCUMENTATION_REVIEW.md` or in Appendix A | the atomic-documentation rule, broken by a delivery that invoked it |
+
+Both findings came out of the same reading — F-39's habit, now three for three: **the moment before
+publishing is a distinct review, because publishing changes who the audience is.** One layer further
+out each time. F-39 asked what a tag makes true about the *program*. F-42 asked what it makes true
+about the *repository*. This slice asked what it makes true about the *artefact* — what goes into the
+image, and who can get the image back out — and found that neither question had ever been asked.
+
+### First: the debt Slice 21 left
+
+`docs/_append/BUILD_PROGRESS-M6-Slice-21.md` was committed and never merged. F-43 and F-44 existed as
+working code, as an `OPERATIONS.md` §6 paragraph, and nowhere else — not in this file, not in Group E,
+not in Appendix A. S§18 says a behaviour change lands in one commit with its ledger and specification
+edits, and a delivery that quoted that rule in its own notes did not follow it.
+
+The mechanism is the interesting part rather than the lapse. Eleven append files before this one went
+the same way and eventually got merged; the twelfth did not, because merging is a step somebody has to
+remember after the archive is already extracted and the tests are already green. The reason the
+mechanism existed at all was that this file is 434 KiB and regenerating it from scratch risks losing
+history that cannot be reconstructed — a real concern, but the wrong solution to it. **From this slice
+the file ships whole**, assembled from the existing bytes rather than rewritten, so there is no second
+artefact and nothing to forget. `docs/_append/` goes with it.
+
+Slice 21's entry is immediately above this one, unedited.
+
+### F-45 — the build context was the whole tree
+
+`Containerfile` has said `COPY . .` since M1, with the repository root as the context. There has never
+been a `.dockerignore` in this tree, or a `.containerignore`, or an `--ignorefile` anywhere in
+`compose.yaml`, `run.sh` or either workflow.
+
+Measured, against a fresh clone with nothing built:
+
+```
+458 files, 31,148,997 bytes handed to the builder
+    docs/llm/   16 MB      committed context dumps and delivery archives
+    .git/       11 MB      history the build cannot read and would not use
+    src/         1.6 MB    the only part `dotnet publish` opens
+```
+
+Eighty-seven per cent of it is material the build cannot use, which is the harmless half of the
+finding and the half that would have been noticed eventually, because it costs seconds on every push.
+
+The other half had been sitting there the whole time. **A build context is not a commit**, and nothing
+in this project had ever looked at the difference. `.gitignore` names `.env`, `.dataprotection/`, every
+`*.dump` and every `*-dataprotection.tar`, and it is *correct* about all of them — its own comment on
+that last pattern reads "never commit one", and it is right. It protected nothing here. Docker and
+Podman do not read `.gitignore`; they read an ignore-file that did not exist, so every one of those
+paths was copied into the build stage on every `podman-compose --profile production up -d --build`.
+
+The ordering is not hypothetical. It is the documented upgrade procedure:
+
+```
+OPERATIONS §12
+  1. scripts/backup.sh      writes myrestaurant-<stamp>-dataprotection.tar
+  2. podman-compose --profile production up -d --build
+```
+
+§8 calls that tar "the key material, in the clear". Step 1 creates it; step 2 hands it to the image
+builder, on any `BACKUP_DIRECTORY` inside the tree — and `.gitignore` anticipates exactly that
+placement in the comment above its `backups/` entry. CI escaped by accident of step ordering alone:
+`boot-smoke` runs `docker build` before `backup.sh` writes `ci-backups/`, and if those two steps had
+ever been reordered for any reason, nothing would have said so.
+
+And no gate could have caught it, which is the part worth keeping. `check_tree.sh` enumerates with
+`git ls-files`. `check_repository.sh` enumerates with `git ls-files`. Every file at issue is
+git-ignored **on purpose**, and being git-ignored is precisely what made it dangerous.
+
+#### An allow-list, and why not the other kind
+
+```
+*
+!.editorconfig
+!Directory.Build.props
+!Directory.Packages.props
+!global.json
+!src
+src/**/bin
+src/**/obj
+```
+
+Result: **169 files, 1,615,409 bytes.** Every path in the publish graph survives — the three project
+files, `Migrations/*.sql`, `wwwroot/`, `appsettings*.json`, every `.razor` and `.cs` under `src` — and
+nothing else does. `.editorconfig` is on the list deliberately, so `EnforceCodeStyleInBuild` applies
+the same analyzer set inside the image build as it does in CI.
+
+A deny-list was the obvious alternative and is the wrong answer, for a reason this finding demonstrates
+rather than asserts: **a deny-list is what failed.** `.gitignore` is a well-maintained deny-list, it was
+already correct, and being correct did not help, because the question is not "what is wrong today". A
+deny-list has to be extended for tomorrow's untracked secret by somebody who remembers to. An
+allow-list has to be extended for tomorrow's *source directory*, by a build that fails immediately when
+it is not — and the failure is loud, local, and self-describing. Same argument as `RECORD_FILES` being
+literal paths in Slice 20, and the same argument as `is_authored_text` being one decision in Slice 19:
+scope decided in one place, auditable, and unable to widen by accident.
+
+One file rather than two: Podman reads `.containerignore` or `.dockerignore` and prefers the former
+when both exist; Docker/BuildKit reads `.dockerignore` at the context root unless a
+`Containerfile.dockerignore` exists, which this tree does not ship. So the single root `.dockerignore`
+is read by both engines, and ADR-0004's canonical Podman and CI's Docker cannot disagree about it.
+
+#### The row names something executable, and it runs where the risk is
+
+F-38's lesson, fourth application, again unprompted. An ignore-file is an *instruction to a tool*, and
+instructions fail quietly: rename it, shadow it with a `.containerignore`, pass `--ignorefile`, build
+from a parent directory — the build still succeeds, and the only symptom is that it took longer.
+
+So the allow-list is stated twice, on purpose. Once as the instruction, and once as an assertion in
+`Containerfile` immediately after `COPY . .`:
+
+```
+BUILD CONTEXT REJECTED — .dockerignore did not take effect (see F-45).
+  not allowed here:  CONTRIBUTING.md Caddyfile LICENSE README.md docs scripts tests .env .git
+```
+
+It fails unless the context root is *exactly* the allowed set, unless every required path is present,
+and unless no `bin` or `obj` survives under `src`. The first condition is the one that matters: it
+catches the top-level entry nobody has thought about yet, which is the population this finding was
+actually about.
+
+The placement is the deliberate part. **This guard runs wherever a build runs**, which is the operator's
+workstation and not only CI — and the machine most likely to have a key ring sitting in the tree is the
+operator's, because CI has never taken a backup it then rebuilt over. A gate that only ran in CI would
+have been a gate pointed away from the risk.
+
+### F-46 — the rule was right and the enforcement was a list
+
+Slice 20's gate 3 exists so that no tracked file can assert a GitHub setting. It landed green, it has
+been green ever since, and it was wrong on the day it landed. `docs/OPERATIONS.md` §14 told a reader, in
+the indicative, that the published images carried a particular visibility and that pulling one therefore
+needed no credentials — in the paragraph that tells an operator how to deploy from the registry.
+
+Three things were wrong with that sentence at once:
+
+- It is a claim about a **package** settings page. Gate 3's list enumerated the *repository* page —
+  issues, pull requests, discussions, the wiki — and a package's visibility is a genuinely separate
+  switch from its repository's.
+- The package **did not exist**. There are no tags on this repository and no releases; the sentence
+  described the future state of an object nobody had created.
+- GitHub's own documentation contradicts itself about which way that switch falls for a `GITHUB_TOKEN`
+  publish — one page says a package inherits the repository's visibility, another says it inherits
+  permissions *but not* visibility. So the sentence was not merely unverifiable from inside the tree;
+  nobody could say whether it was true.
+
+The correct repair is the one F-42 prescribed and this file has already argued for once: state the
+intention, and name where the switch lives. §14 now says these images are *meant* to pull without a
+login and points an operator who meets a 401 at Package settings → *Change visibility*. That sentence
+is true whichever way the checkbox falls, and it is useful in the case where the checkbox is wrong,
+which the previous one was not.
+
+#### The second half: the report never reached the run that matters
+
+The gate's advisory half is the only thing in this project that looks at the platform layer at all. It
+did not run on a release. A called workflow sees only the secrets it is handed, and `release.yml` used
+`uses: ./.github/workflows/ci.yml` with no `secrets:` block — so `ADMIN_READ_TOKEN` was empty there, the
+half skipped silently, and **the one run that creates a package produced no report about packages.**
+
+`release.yml` now passes that secret by name. Not `secrets: inherit`: one named secret is a smaller
+statement than all of them, and `ci.yml` declaring it `required: false` under `workflow_call` documents
+the dependency where a reader of either file will find it. A fork's pull request will not carry the
+secret, the half degrades to a skip, and nothing goes red — which is the behaviour Slice 20 ruled for
+and this change preserves.
+
+#### What the gate learned
+
+The patterns are widened, and that is the smaller half. The larger half is that the list now sits
+beside the rule with the reasoning attached, in the script and in S§16.4, because **a rule stated as a
+rule and enforced as a list of examples is enforced as a list of examples.** That is the third time in
+two slices: F-43's engine selection was named for what it needed and asked `PATH` instead; F-44's
+barrier was named for a loaded board and matched a loading one; this one was named for repository
+settings and meant six phrasings. All three were green while being narrower than their names.
+
+### Considered and rejected
+
+**A `.dockerignore` gate in `check_tree.sh`.** Tempting — it is cheap, and `check_tree.sh` runs in two
+seconds against `boot-smoke`'s several minutes. Rejected because it would be a *second* place deciding
+what belongs in a build context, and F-41 is this project's own finding about exactly that: when two
+checks share a file set, the set is defined once. The Containerfile guard is not a duplicate of the
+ignore-file, it is the assertion that the ignore-file took effect, and those are different jobs. A third
+opinion in a fifth gate would be a duplicate.
+
+**Exempting `docs/TECHNICAL_SPECIFICATION.md` so Appendix A could quote the offending sentence.** The
+gate caught the F-46 row quoting the very sentence F-46 is about, which is the gate working. Slice 20
+kept the exemption list at three files and paraphrased in `_CHANGES.md` rather than widen it; the same
+answer applies here, more strongly — the specification is the document that makes normative claims, so
+it is the last file in this tree worth exempting. Appendix A paraphrases.
+
+**Adding `LICENSE` to the build context.** An AGPL image arguably ought to carry its licence text. It
+does not carry it today either — the runtime stage copies only `/app/publish` — so including it in the
+allow-list would have changed nothing about the image while making the list look like it had a reason
+nobody could check. §11.9's `/source` is how this project discharges AGPL §13, and that is unaffected.
+Recorded as a separate question, not answered here.
+
+**Making the platform half of the governance gate blocking now that it reaches releases.** No. Slice
+20's ruling stands and the argument has not changed: a fork's settings are the fork's business.
+
+### Build and test
+
+```bash
+bash scripts/check_tree.sh
+#    expect: 5 gates, "tree hygiene passed.", exit 0. The authored-text count rises by one —
+#    .dockerignore is a new tracked text file and lands in scope — and docs/_append/ leaves it.
+
+bash scripts/check_repository.sh --offline
+#    expect: 3 gates plus a SKIP, exit 0. Gate 3 is the one this slice changes; it must report
+#    "none" AFTER the OPERATIONS §14 edit and would report docs/OPERATIONS.md before it.
+
+bash scripts/ci_local.sh --with-all
+#    expect: 8 numbered gates, unchanged in number and order.
+
+dotnet test
+#    expect: 996 total, 0 failed. UNCHANGED. No C#, no .csproj, no migration, no Program.cs, no
+#    Razor is touched here. If this number moves, the cause is not this slice.
+
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: 15 passed, 0 skipped. Unchanged.
+
+podman build --file Containerfile --tag myrestaurant_web:local .
+#    expect: an early line reading "build context accepted: 169 file(s)", then the usual publish.
+#    This is the assertion that did not exist before. Compare the "Sending build context" figure
+#    against a build from before this slice if you want the size difference in front of you.
+```
+
+The container build is the one worth running by hand, because it is the only thing here that exercises
+the new file. If it prints `BUILD CONTEXT REJECTED`, read the list it prints: that is the difference
+between what `.dockerignore` says and what the engine actually handed over.
+
+### What was verified here
+
+No .NET SDK and no container engine in the sandbox, so nothing was reasoned about that could be
+executed instead:
+
+- **The 31 MB figure is measured, not estimated**, from a fresh `git clone` of `kusl/myrestaurant`:
+  458 files, 31,148,997 bytes, `docs/llm/` 16 MB, `.git/` 11 MB.
+- **`.dockerignore` was evaluated against the real tree** with a faithful implementation of the
+  documented matching rules — last matching pattern wins, `**` spanning zero or more segments, a
+  pattern matching a path or any ancestor. Result: 169 files, 1,615,409 bytes, and every path in the
+  publish graph individually asserted present (`Migrations/0001_initial_schema.sql`, `wwwroot/app.css`,
+  `appsettings.json`, `Components/App.razor`, all three `.csproj`).
+- **Sensitivity proven by planting the real hazards**: `.env`, `.dataprotection/key-abc.xml`, a
+  `.dump`, a `-dataprotection.tar`, a stale `obj/project.assets.json` carrying a host `.nuget` path,
+  and a built `.dll` under `src/**/bin`. All six excluded with the file present; all six confirmed
+  copied with it absent.
+- **The `Containerfile` guard was executed**, in `dash` rather than bash — the SDK image's `/bin/sh` —
+  after joining its line continuations the way the Dockerfile parser does. `dash -n` clean on all three
+  `RUN` bodies. It accepts the real 169-file context and rejects eight separately constructed damage
+  cases: a leaked `.env`, a leaked `.git`, `docs` + `tests` + `README.md` (the no-ignore-file case), a
+  `backups/` holding a key-ring tar, an `obj/` under `src`, a missing `.csproj`, a missing `global.json`,
+  and the current tree as it stands. Every one exits 1 and names what it found.
+- **Ignore-file precedence checked against the sources**, not from memory: Docker's build documentation
+  for the context root and the `<Dockerfile>.dockerignore` override, and `podman-build.1.md.in` for
+  `.containerignore`/`.dockerignore` and which wins when both exist.
+- **Each new gate-3 pattern fired individually**, planted one at a time into `docs/OPERATIONS.md` and
+  reverted between runs — seven true positives. And four legitimate policy phrasings were planted to
+  prove the list does not over-fire, including the replacement sentence §14 now carries and an
+  instruction to *set* the visibility, which must remain sayable.
+- **Both workflows parsed with PyYAML** and the `workflow_call` secret declaration, the `verify` job's
+  `secrets:` block and the governance job's `env:` read back out of the parsed documents rather than
+  eyeballed.
+- **Every documentation edit applied by exact-match replacement with an assertion that the anchor
+  occurs exactly once**, so nothing was edited by position, and `docs/BUILD_PROGRESS.md` was assembled
+  from its existing bytes plus two appended sections rather than rewritten.

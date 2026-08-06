@@ -162,6 +162,8 @@ Default production topology has no LAN path: when the WAN drops, guests' phones 
 
 Migrations are append-only and roll forward only — the same philosophy as the order event log. There is no schema downgrade path, ever.
 
+**Steps 1 and 2 are in that order for a reason, and until Slice 22 that order was a hazard (F-45).** Step 1 writes a `-dataprotection.tar`, which §8 calls the key material in the clear. Step 2 builds an image whose context was the entire working tree — so if `BACKUP_DIRECTORY` pointed anywhere inside the repository, the backup you had just taken was copied into the image builder. `.gitignore` names all of it and protected none of it: a build context is not a commit, and nothing in this project had ever looked at the difference. `.dockerignore` now reduces the context to the three source projects plus four files, and `Containerfile` refuses to build if that did not take effect, so the ordering is safe on any `BACKUP_DIRECTORY` you choose. You do not have to move it, and you no longer have to remember not to.
+
 ## 13. Routine security operations — quick reference
 
 | Situation | Action |
@@ -220,6 +222,10 @@ git push origin v1.0.0
 
 There is no `latest`, on purpose. A tag that silently changes what it points at is the reason people cannot answer "what is running".
 
+**What goes into the image, and what the build refuses.** `Containerfile`'s build stage is `COPY . .`, so the build context is whatever `.dockerignore` leaves of the repository root. That file is an **allow-list**: `.editorconfig`, `Directory.Build.props`, `Directory.Packages.props`, `global.json`, and `src` — and, from inside `src`, never `bin` or `obj`. Everything else is excluded by default, including tomorrow's file that nobody has thought about yet. On a fresh clone that is 169 files and 1.6 MB rather than 458 files and 31 MB; on a workstation that has run the test suite it is a great deal more than that.
+
+The list is stated twice on purpose. `.dockerignore` is the instruction, and a `RUN` guard immediately after the `COPY` is the assertion that the instruction took effect — because an ignore-file can be renamed, shadowed by a `.containerignore` (Podman prefers that name when both exist), or overridden with `--ignorefile`, and none of those failures announce themselves. If the two disagree the build stops and names what it found, which is the only outcome that distinguishes "excluded" from "excluded on the machine where somebody last checked". Adding a source directory to the tree therefore means adding it to both, and a build that fails with `BUILD CONTEXT REJECTED` immediately after `COPY . .` is telling you exactly that.
+
 **Images are `linux/amd64` only.** The `Containerfile` runs a full `dotnet publish` inside its build stage, and doing that for arm64 through QEMU emulation is slow enough to risk the job timeout. If you want to run this on an ARM single-board machine, build on the box (`podman-compose --profile production up -d --build`, which is the default deployment anyway) or teach the `Containerfile` a cross-compiled publish (`-r linux-arm64` from an amd64 SDK). Emulation is the wrong fix.
 
 **Deploying from the registry instead of building on the box.** The default production flow builds locally — `git pull` then `--build` (§12) — which needs the SDK image and a few minutes of CPU on the host. To deploy a published image instead, add a `compose.override.yaml` beside `compose.yaml`; Podman and Docker both merge it automatically, and it stays untracked so it cannot follow a `git pull`:
@@ -233,7 +239,9 @@ services:
 
 Then the upgrade in §12 becomes: back up, edit the pinned version in that one file, `podman-compose --profile production up -d`. Everything else about §12 still holds — `web` applies new migrations at startup and exits non-zero on failure, and there is no schema downgrade path, ever.
 
-If your compose implementation does not support `!reset`, delete the `build:` block by writing the whole `web` service out in the override instead. The images are public, so no registry login is needed to pull.
+If your compose implementation does not support `!reset`, delete the `build:` block by writing the whole `web` service out in the override instead.
+
+**The intent is that these images pull without a login**, and if yours does not, the switch is not in this repository — package visibility is a setting on the package, separate from the repository's own visibility, and a package first published by a workflow may land private. `ghcr.io/<owner>/<package>` → Package settings → *Change visibility*. This paragraph states an intention rather than a fact on purpose: a sentence here saying the images *were* already so configured was false for as long as it existed, because it described a checkbox nothing in this tree can see, about a package that did not yet exist (F-46, and F-42 before it — §16 has the same warning about the setting `SECURITY.md` depends on). If you hit a 401 on a `podman pull`, the answer is one page in the package settings and not a bug in the override above.
 
 **Verifying what is actually running.** Ask the application, not the host:
 

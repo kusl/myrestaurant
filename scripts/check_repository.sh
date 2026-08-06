@@ -36,6 +36,13 @@
 #      unrepeatable: a document may state POLICY ("issues are not triaged"), which is true
 #      wherever it is read, and must not state PLATFORM STATE, which it cannot check.
 #
+#      F-46 is why that list has a second group. This gate landed green and was already wrong:
+#      it enumerated the settings on the repository page, and the claim that had been sitting in
+#      OPERATIONS §14 the whole time was about the PACKAGE page — "the images are public, so no
+#      registry login is needed to pull", written in the indicative about a package that did not
+#      exist yet. A rule stated as a rule and enforced as a list of examples is enforced as a
+#      list of examples.
+#
 #   2. The platform half is ADVISORY and needs the GitHub API. It reports what the published
 #      repository actually says. Advisory for a reason that is not squeamishness: a fork's
 #      settings are the fork's business, and a gate that failed a fork's build over the
@@ -89,8 +96,21 @@ RECORD_FILES=(
     "docs/llm/*"
 )
 
-# Assertions about GitHub repository settings, which a file in the tree cannot verify. Case
-# insensitive extended regular expressions, matched against authored text.
+# Assertions about GitHub repository and package settings, which a file in the tree cannot verify.
+# Case insensitive extended regular expressions, matched against authored text.
+#
+# The second group arrived with F-46, and the reason it is here is worth keeping: gate 3 landed in
+# Slice 20 to make F-42 unrepeatable, passed on its first run, and was already wrong. It listed the
+# settings on the repository page and stopped there, so it never looked at the OTHER settings page
+# this project depends on — the one that decides whether a published image can be pulled at all.
+# OPERATIONS §14 had asserted that page's value, in the indicative, about a package that did not
+# exist yet, and gate 3 reported "none".
+#
+# A repository's visibility and a package's visibility are separate switches, and GitHub's own
+# documentation disagrees with itself about which way the second one falls for a GITHUB_TOKEN
+# publish — which is the strongest possible argument for not asserting it in a document. State the
+# policy: the intent is that the images be pullable without a login, and an operator who hits a
+# 401 needs to be told where that switch lives, not told it was already flipped.
 PLATFORM_STATE_CLAIMS=(
     "issues are disabled"
     "issues are turned off"
@@ -98,6 +118,10 @@ PLATFORM_STATE_CLAIMS=(
     "pull requests are disabled"
     "discussions are disabled"
     "the wiki is disabled"
+    "the image(s)? (is|are) public"
+    "the package(s)? (is|are) public"
+    "no registry (login|sign-in|authentication)"
+    "private vulnerability reporting is (on|enabled)"
 )
 
 # ---------------------------------------------------------------------------------------------------
