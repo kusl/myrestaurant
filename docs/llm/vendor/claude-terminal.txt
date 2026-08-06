@@ -10,21 +10,21 @@ kushal@fedora:~/src/dotnet/myrestaurant$ time podman build --file Containerfile 
 --> Using cache 535c69df98d0b90be64d41ccd286142851a86df1d13fcbf278194162c42bb97e
 --> 535c69df98d0
 [1/2] STEP 5/7: COPY . .
---> 7611424cf8cd
+--> ea24557ace4a
 [1/2] STEP 6/7: RUN set -eu;     unexpected='';     for entry in * .[!.]*; do         [ -e "$entry" ] || continue;         case "$entry" in             .editorconfig|Directory.Build.props|Directory.Packages.props|global.json|src) ;;             *) unexpected="${unexpected} ${entry}" ;;         esac;     done;     missing='';     for required in         .editorconfig         Directory.Build.props         Directory.Packages.props         global.json         src/MyRestaurant.Domain/MyRestaurant.Domain.csproj         src/MyRestaurant.DataAccess/MyRestaurant.DataAccess.csproj         src/MyRestaurant.WebApplication/MyRestaurant.WebApplication.csproj     ; do         [ -e "$required" ] || missing="${missing} ${required}";     done;     stale="$(find src -type d -name bin -o -type d -name obj 2>/dev/null | tr '\n' ' ')";     if [ -n "$unexpected" ] || [ -n "$missing" ] || [ -n "$stale" ]; then         echo 'BUILD CONTEXT REJECTED — .dockerignore did not take effect (see F-45).' >&2;         [ -z "$unexpected" ] || echo "  not allowed here:  ${unexpected# }" >&2;         [ -z "$missing" ]    || echo "  required, absent:  ${missing# }" >&2;         [ -z "$stale" ]      || echo "  local build output:${stale%% }" >&2;         echo '' >&2;         echo '  The context root must contain exactly: .editorconfig Directory.Build.props' >&2;         echo '  Directory.Packages.props global.json src' >&2;         echo '' >&2;         echo '  Most likely: .dockerignore is missing from the context root, a .containerignore' >&2;         echo '  is shadowing it (podman prefers that name when both exist), or --ignorefile was' >&2;         echo '  passed. Anything else here was copied into this builder, and on a host that has' >&2;         echo '  taken a backup that includes the Data Protection key ring in the clear.' >&2;         exit 1;     fi;     echo "build context accepted: $(find . -type f | wc -l) file(s)"
 build context accepted: 169 file(s)
---> 9d2ce17195d1
+--> 2b0f98684f63
 [1/2] STEP 7/7: RUN INFORMATIONAL_VERSION="${VERSION}${SOURCE_REVISION:++${SOURCE_REVISION}}"     && echo "building MyRestaurant ${INFORMATIONAL_VERSION}"     && dotnet publish src/MyRestaurant.WebApplication/MyRestaurant.WebApplication.csproj         --configuration Release         --output /app/publish         /p:UseAppHost=false         /p:Version="${VERSION}"         /p:InformationalVersion="${INFORMATIONAL_VERSION}"
 building MyRestaurant 1.0.0
   Determining projects to restore...
-  Restored /source/src/MyRestaurant.Domain/MyRestaurant.Domain.csproj (in 53 ms).
-  Restored /source/src/MyRestaurant.DataAccess/MyRestaurant.DataAccess.csproj (in 1.12 sec).
-  Restored /source/src/MyRestaurant.WebApplication/MyRestaurant.WebApplication.csproj (in 1.13 sec).
+  Restored /source/src/MyRestaurant.Domain/MyRestaurant.Domain.csproj (in 57 ms).
+  Restored /source/src/MyRestaurant.DataAccess/MyRestaurant.DataAccess.csproj (in 1.13 sec).
+  Restored /source/src/MyRestaurant.WebApplication/MyRestaurant.WebApplication.csproj (in 1.14 sec).
   MyRestaurant.Domain -> /source/src/MyRestaurant.Domain/bin/Release/net10.0/MyRestaurant.Domain.dll
   MyRestaurant.DataAccess -> /source/src/MyRestaurant.DataAccess/bin/Release/net10.0/MyRestaurant.DataAccess.dll
   MyRestaurant.WebApplication -> /source/src/MyRestaurant.WebApplication/bin/Release/net10.0/MyRestaurant.WebApplication.dll
   MyRestaurant.WebApplication -> /app/publish/
---> 718faf4ec088
+--> 12af5637a347
 [2/2] STEP 1/7: FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 [2/2] STEP 2/7: WORKDIR /app
 --> Using cache e53daba3f656b34c7639a4a6d453df4a5aa0b0eb8e90d7f44ac2fe8dafa509b8
@@ -33,25 +33,25 @@ building MyRestaurant 1.0.0
 --> Using cache d8ed817cd8fee0e85d599cc68c60412a3fc51f53a27fb4f0dd31aecea44e540f
 --> d8ed817cd8fe
 [2/2] STEP 4/7: COPY --from=build /app/publish .
---> adadd0b3d8d3
+--> 440ebb84033d
 [2/2] STEP 5/7: ENV ASPNETCORE_URLS=http://+:8080     ASPNETCORE_ENVIRONMENT=Production     DOTNET_EnableDiagnostics=0
---> 2f75abc1842a
+--> 47d1c50906b2
 [2/2] STEP 6/7: EXPOSE 8080
---> 3c27a238a4d0
+--> 901c8cc976a5
 [2/2] STEP 7/7: ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
 [2/2] COMMIT myrestaurant_web:local
---> f0ec44ffff09
+--> 237720ba139e
 Successfully tagged localhost/myrestaurant_web:local
-f0ec44ffff09d166ccef2d5dd1bf0347caed2e35d87e5936a62625becc8e0891
+237720ba139e6134445985c50417dba82bcc00d54bd3679af46de163a03a168a
 
-real	0m11.362s
-user	0m6.601s
-sys	0m2.097s
+real	0m11.704s
+user	0m6.789s
+sys	0m2.252s
 kushal@fedora:~/src/dotnet/myrestaurant$ cd /home/kushal/src/dotnet/myrestaurant/; export MYRESTAURANT_E2E=1; time bash export.sh > docs/llm/vendor/claude-output.txt; time dotnet --info; time dotnet clean; time dotnet restore; time dotnet build; time dotnet test; time bash run.sh --smoke; time dotnet list package; time dotnet list package --outdated; time bash run.sh --containers-only; time bash scripts/ci_local.sh --with-all --with-e2e; time dotnet test tests/MyRestaurant.EndToEnd.Tests; time bash scripts/quick_tunnel.sh;
 
-real	0m10.912s
-user	0m5.195s
-sys	0m6.456s
+real	0m10.717s
+user	0m5.232s
+sys	0m6.263s
 .NET SDK:
  Version:           10.0.110
  Commit:            f7d90799ce
@@ -101,37 +101,37 @@ Learn more:
 Download .NET:
   https://aka.ms/dotnet/download
 
-real	0m0.237s
-user	0m0.137s
-sys	0m0.045s
+real	0m0.152s
+user	0m0.124s
+sys	0m0.025s
 
 Build succeeded in 0.8s
 
-real	0m1.037s
-user	0m0.912s
-sys	0m0.277s
+real	0m0.967s
+user	0m0.894s
+sys	0m0.282s
 Restore complete (0.6s)
 
 Build succeeded in 0.7s
 
-real	0m0.909s
-user	0m1.005s
-sys	0m0.212s
+real	0m0.847s
+user	0m0.916s
+sys	0m0.213s
 Restore complete (0.6s)
-  MyRestaurant.Domain net10.0 succeeded (3.1s) → src/MyRestaurant.Domain/bin/Debug/net10.0/MyRestaurant.Domain.dll
-  MyRestaurant.Domain.Tests net10.0 succeeded (0.8s) → tests/MyRestaurant.Domain.Tests/bin/Debug/net10.0/MyRestaurant.Domain.Tests.dll
-  MyRestaurant.DataAccess net10.0 succeeded (1.3s) → src/MyRestaurant.DataAccess/bin/Debug/net10.0/MyRestaurant.DataAccess.dll
+  MyRestaurant.Domain net10.0 succeeded (3.0s) → src/MyRestaurant.Domain/bin/Debug/net10.0/MyRestaurant.Domain.dll
+  MyRestaurant.Domain.Tests net10.0 succeeded (0.7s) → tests/MyRestaurant.Domain.Tests/bin/Debug/net10.0/MyRestaurant.Domain.Tests.dll
+  MyRestaurant.DataAccess net10.0 succeeded (1.1s) → src/MyRestaurant.DataAccess/bin/Debug/net10.0/MyRestaurant.DataAccess.dll
   MyRestaurant.DataAccess.Tests net10.0 succeeded (1.2s) → tests/MyRestaurant.DataAccess.Tests/bin/Debug/net10.0/MyRestaurant.DataAccess.Tests.dll
-  MyRestaurant.WebApplication net10.0 succeeded (4.0s) → src/MyRestaurant.WebApplication/bin/Debug/net10.0/MyRestaurant.WebApplication.dll
-  MyRestaurant.WebApplication.Tests net10.0 succeeded (0.9s) → tests/MyRestaurant.WebApplication.Tests/bin/Debug/net10.0/MyRestaurant.WebApplication.Tests.dll
-  MyRestaurant.EndToEnd.Tests net10.0 succeeded (1.0s) → tests/MyRestaurant.EndToEnd.Tests/bin/Debug/net10.0/MyRestaurant.EndToEnd.Tests.dll
+  MyRestaurant.WebApplication net10.0 succeeded (4.2s) → src/MyRestaurant.WebApplication/bin/Debug/net10.0/MyRestaurant.WebApplication.dll
+  MyRestaurant.WebApplication.Tests net10.0 succeeded (0.8s) → tests/MyRestaurant.WebApplication.Tests/bin/Debug/net10.0/MyRestaurant.WebApplication.Tests.dll
+  MyRestaurant.EndToEnd.Tests net10.0 succeeded (1.1s) → tests/MyRestaurant.EndToEnd.Tests/bin/Debug/net10.0/MyRestaurant.EndToEnd.Tests.dll
 
-Build succeeded in 10.1s
+Build succeeded in 10.0s
 
-real	0m10.238s
-user	0m4.122s
-sys	0m0.613s
-Restore complete (0.6s)
+real	0m10.185s
+user	0m3.671s
+sys	0m0.676s
+Restore complete (0.5s)
   MyRestaurant.Domain net10.0 succeeded (0.1s) → src/MyRestaurant.Domain/bin/Debug/net10.0/MyRestaurant.Domain.dll
   MyRestaurant.Domain.Tests net10.0 succeeded (0.1s) → tests/MyRestaurant.Domain.Tests/bin/Debug/net10.0/MyRestaurant.Domain.Tests.dll
   MyRestaurant.DataAccess net10.0 succeeded (0.2s) → src/MyRestaurant.DataAccess/bin/Debug/net10.0/MyRestaurant.DataAccess.dll
@@ -140,36 +140,36 @@ Restore complete (0.6s)
 [xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 10.0.10)
   MyRestaurant.WebApplication.Tests net10.0 succeeded (0.1s) → tests/MyRestaurant.WebApplication.Tests/bin/Debug/net10.0/MyRestaurant.WebApplication.Tests.dll
   MyRestaurant.EndToEnd.Tests net10.0 succeeded (0.1s) → tests/MyRestaurant.EndToEnd.Tests/bin/Debug/net10.0/MyRestaurant.EndToEnd.Tests.dll
-[xUnit.net 00:00:00.20]   Discovering: MyRestaurant.Domain.Tests
+[xUnit.net 00:00:00.22]   Discovering: MyRestaurant.Domain.Tests
 [xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 10.0.10)
-[xUnit.net 00:00:00.21]   Discovering: MyRestaurant.DataAccess.Tests
+[xUnit.net 00:00:00.23]   Discovering: MyRestaurant.DataAccess.Tests
 [xUnit.net 00:00:00.52]   Discovered:  MyRestaurant.Domain.Tests
 [xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 10.0.10)
 [xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 10.0.10)
 [xUnit.net 00:00:00.75]   Starting:    MyRestaurant.Domain.Tests
-[xUnit.net 00:00:00.58]   Discovered:  MyRestaurant.DataAccess.Tests
-[xUnit.net 00:00:00.24]   Discovering: MyRestaurant.WebApplication.Tests
-[xUnit.net 00:00:00.22]   Discovering: MyRestaurant.EndToEnd.Tests
-[xUnit.net 00:00:01.02]   Finished:    MyRestaurant.Domain.Tests (ID = 'b6c01ddd74d216f4851f0d42a91c97832f6c59c22f8d3350feb81f9ba958dcb4')
-[xUnit.net 00:00:00.85]   Starting:    MyRestaurant.DataAccess.Tests
-[xUnit.net 00:00:00.46]   Discovered:  MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:00:00.52]   Discovered:  MyRestaurant.DataAccess.Tests
+[xUnit.net 00:00:00.22]   Discovering: MyRestaurant.WebApplication.Tests
+[xUnit.net 00:00:00.21]   Discovering: MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:00:01.01]   Finished:    MyRestaurant.Domain.Tests (ID = 'b6c01ddd74d216f4851f0d42a91c97832f6c59c22f8d3350feb81f9ba958dcb4')
+[xUnit.net 00:00:00.80]   Starting:    MyRestaurant.DataAccess.Tests
   MyRestaurant.Domain.Tests test net10.0 succeeded (1.6s)
-[xUnit.net 00:00:00.62]   Discovered:  MyRestaurant.WebApplication.Tests
-[xUnit.net 00:00:00.67]   Starting:    MyRestaurant.EndToEnd.Tests
-[xUnit.net 00:00:00.90]   Starting:    MyRestaurant.WebApplication.Tests
-[xUnit.net 00:00:01.29]   Finished:    MyRestaurant.WebApplication.Tests (ID = 'fd11cfaecca32a91985c726a548f460c7324da7bb3eb7952f492d00917e1013f')
+[xUnit.net 00:00:00.46]   Discovered:  MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:00:00.61]   Discovered:  MyRestaurant.WebApplication.Tests
+[xUnit.net 00:00:00.66]   Starting:    MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:00:00.88]   Starting:    MyRestaurant.WebApplication.Tests
+[xUnit.net 00:00:01.31]   Finished:    MyRestaurant.WebApplication.Tests (ID = 'fd11cfaecca32a91985c726a548f460c7324da7bb3eb7952f492d00917e1013f')
   MyRestaurant.WebApplication.Tests test net10.0 succeeded (1.9s)
-[xUnit.net 00:00:19.70]   Finished:    MyRestaurant.DataAccess.Tests (ID = '23bbaa1bcab6d182394189cbf03cd87b21b0723d1028bebf2f2817502965f88d')
-  MyRestaurant.DataAccess.Tests test net10.0 succeeded (20.3s)
-[xUnit.net 00:02:24.23]   Finished:    MyRestaurant.EndToEnd.Tests (ID = 'ba0d461b6d2adcbcaea0112577ca9f9402cf637b002a62bf63550417cd75feda')
-  MyRestaurant.EndToEnd.Tests test net10.0 succeeded (144.9s)
+[xUnit.net 00:00:21.29]   Finished:    MyRestaurant.DataAccess.Tests (ID = '23bbaa1bcab6d182394189cbf03cd87b21b0723d1028bebf2f2817502965f88d')
+  MyRestaurant.DataAccess.Tests test net10.0 succeeded (21.9s)
+[xUnit.net 00:02:23.04]   Finished:    MyRestaurant.EndToEnd.Tests (ID = 'ba0d461b6d2adcbcaea0112577ca9f9402cf637b002a62bf63550417cd75feda')
+  MyRestaurant.EndToEnd.Tests test net10.0 succeeded (143.6s)
 
-Test summary: total: 996, failed: 0, succeeded: 996, skipped: 0, duration: 145.5s
-Build succeeded in 146.4s
+Test summary: total: 1005, failed: 0, succeeded: 1005, skipped: 0, duration: 144.3s
+Build succeeded in 145.1s
 
-real	2m26.540s
-user	0m2.631s
-sys	0m0.612s
+real	2m25.261s
+user	0m2.545s
+sys	0m0.582s
 info: starting postgres in a container...
 93aa428db0aeeb71d24dcad1491bef6e1396a4255697e4bfc4c725bfeb981b74
 myrestaurant_postgres_1
@@ -182,9 +182,9 @@ info:   https://localhost:8443  (Kestrel dev cert)
 info:   http://localhost:8080   (plain HTTP, loopback)
 info: smoke check passed; shutting the app down and exiting.
 
-real	0m4.961s
-user	0m4.907s
-sys	0m0.864s
+real	0m0.670s
+user	0m0.483s
+sys	0m0.190s
 Restore complete (0.5s)
 
 Build succeeded in 0.6s
@@ -246,12 +246,12 @@ Project 'MyRestaurant.WebApplication.Tests' has the following package references
 
 (A) : Auto-referenced package.
 
-real	0m1.956s
-user	0m2.068s
-sys	0m0.475s
+real	0m1.995s
+user	0m2.021s
+sys	0m0.497s
 Restore complete (0.5s)
 
-Build succeeded in 0.7s
+Build succeeded in 0.6s
 
 The following sources were used:
    https://api.nuget.org/v3/index.json
@@ -264,9 +264,9 @@ The given project `MyRestaurant.Domain.Tests` has no updates given the current s
 The given project `MyRestaurant.EndToEnd.Tests` has no updates given the current sources.
 The given project `MyRestaurant.WebApplication.Tests` has no updates given the current sources.
 
-real	0m3.508s
-user	0m3.052s
-sys	0m0.546s
+real	0m3.556s
+user	0m2.869s
+sys	0m0.574s
 info: bringing up the full dev stack (postgres + caddy + web) in containers...
 93aa428db0aeeb71d24dcad1491bef6e1396a4255697e4bfc4c725bfeb981b74
 af555904a0961945f16bb323a501457b13a4f7e9bde969b145b97da80b38ecbe
@@ -281,14 +281,14 @@ af555904a0961945f16bb323a501457b13a4f7e9bde969b145b97da80b38ecbe
 --> Using cache 535c69df98d0b90be64d41ccd286142851a86df1d13fcbf278194162c42bb97e
 --> 535c69df98d0
 [1/2] STEP 5/7: COPY . .
---> Using cache 7611424cf8cdad53a32bb67118d5a90ca10dc4e97953d1da023035af1ad3a6c8
---> 7611424cf8cd
+--> Using cache ea24557ace4a8c107cc485db62af0a0061418c43911df4f4ac310b0c10b1e881
+--> ea24557ace4a
 [1/2] STEP 6/7: RUN set -eu;     unexpected='';     for entry in * .[!.]*; do         [ -e "$entry" ] || continue;         case "$entry" in             .editorconfig|Directory.Build.props|Directory.Packages.props|global.json|src) ;;             *) unexpected="${unexpected} ${entry}" ;;         esac;     done;     missing='';     for required in         .editorconfig         Directory.Build.props         Directory.Packages.props         global.json         src/MyRestaurant.Domain/MyRestaurant.Domain.csproj         src/MyRestaurant.DataAccess/MyRestaurant.DataAccess.csproj         src/MyRestaurant.WebApplication/MyRestaurant.WebApplication.csproj     ; do         [ -e "$required" ] || missing="${missing} ${required}";     done;     stale="$(find src -type d -name bin -o -type d -name obj 2>/dev/null | tr '\n' ' ')";     if [ -n "$unexpected" ] || [ -n "$missing" ] || [ -n "$stale" ]; then         echo 'BUILD CONTEXT REJECTED — .dockerignore did not take effect (see F-45).' >&2;         [ -z "$unexpected" ] || echo "  not allowed here:  ${unexpected# }" >&2;         [ -z "$missing" ]    || echo "  required, absent:  ${missing# }" >&2;         [ -z "$stale" ]      || echo "  local build output:${stale%% }" >&2;         echo '' >&2;         echo '  The context root must contain exactly: .editorconfig Directory.Build.props' >&2;         echo '  Directory.Packages.props global.json src' >&2;         echo '' >&2;         echo '  Most likely: .dockerignore is missing from the context root, a .containerignore' >&2;         echo '  is shadowing it (podman prefers that name when both exist), or --ignorefile was' >&2;         echo '  passed. Anything else here was copied into this builder, and on a host that has' >&2;         echo '  taken a backup that includes the Data Protection key ring in the clear.' >&2;         exit 1;     fi;     echo "build context accepted: $(find . -type f | wc -l) file(s)"
---> Using cache 9d2ce17195d1cb82511abe62fa2f29510e5eb84d31df12b71dd1e303eaaa12d3
---> 9d2ce17195d1
+--> Using cache 2b0f98684f638dd508b2a63f4978f92d18c1083cc601c17bf098a832487f6124
+--> 2b0f98684f63
 [1/2] STEP 7/7: RUN INFORMATIONAL_VERSION="${VERSION}${SOURCE_REVISION:++${SOURCE_REVISION}}"     && echo "building MyRestaurant ${INFORMATIONAL_VERSION}"     && dotnet publish src/MyRestaurant.WebApplication/MyRestaurant.WebApplication.csproj         --configuration Release         --output /app/publish         /p:UseAppHost=false         /p:Version="${VERSION}"         /p:InformationalVersion="${INFORMATIONAL_VERSION}"
---> Using cache 718faf4ec08891fdd6e84d0a76bef7eb01a29d33cc0d30dfc7a6bae132d72fb0
---> 718faf4ec088
+--> Using cache 12af5637a3476cf22c7dcb8aa7e649db71b103d02b19bf8ba98f504c3c593e01
+--> 12af5637a347
 [2/2] STEP 1/7: FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 [2/2] STEP 2/7: WORKDIR /app
 --> Using cache e53daba3f656b34c7639a4a6d453df4a5aa0b0eb8e90d7f44ac2fe8dafa509b8
@@ -297,27 +297,27 @@ af555904a0961945f16bb323a501457b13a4f7e9bde969b145b97da80b38ecbe
 --> Using cache d8ed817cd8fee0e85d599cc68c60412a3fc51f53a27fb4f0dd31aecea44e540f
 --> d8ed817cd8fe
 [2/2] STEP 4/7: COPY --from=build /app/publish .
---> Using cache adadd0b3d8d3720c30e8a0e7d7d2c9ab491560653d9535372a89120f01add53b
---> adadd0b3d8d3
+--> Using cache 440ebb84033d4cbebd986ab93dfdbf369edf59a5b37eb75853a3fed9fe266d80
+--> 440ebb84033d
 [2/2] STEP 5/7: ENV ASPNETCORE_URLS=http://+:8080     ASPNETCORE_ENVIRONMENT=Production     DOTNET_EnableDiagnostics=0
---> Using cache 2f75abc1842a4b2ed67ae062ba21c152eca1cd1ba123a4bbaf5d073f2ab39ea4
---> 2f75abc1842a
+--> Using cache 47d1c50906b247d76cd1c59f757b6a799027357e802a8bb0375b6faf29747ac1
+--> 47d1c50906b2
 [2/2] STEP 6/7: EXPOSE 8080
---> Using cache 3c27a238a4d028072b9925735bbb025a023d62137449b044f5d44a93dc8518f5
---> 3c27a238a4d0
+--> Using cache 901c8cc976a527e79c55cbe759b3efa82aa634bcb5791a15b02e34a774f6f1d3
+--> 901c8cc976a5
 [2/2] STEP 7/7: ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
---> Using cache f0ec44ffff09d166ccef2d5dd1bf0347caed2e35d87e5936a62625becc8e0891
+--> Using cache 237720ba139e6134445985c50417dba82bcc00d54bd3679af46de163a03a168a
 [2/2] COMMIT myrestaurant_web
---> f0ec44ffff09
+--> 237720ba139e
 Successfully tagged localhost/myrestaurant_web:latest
 Successfully tagged localhost/myrestaurant_web:local
-f0ec44ffff09d166ccef2d5dd1bf0347caed2e35d87e5936a62625becc8e0891
-myrestaurant_web_1
+237720ba139e6134445985c50417dba82bcc00d54bd3679af46de163a03a168a
 Error: no container with name or ID "myrestaurant_caddy_1" found: no such container
+myrestaurant_web_1
 Error: no container with ID or name "myrestaurant_caddy_1" found: no such container
 myrestaurant_web_1
-51fcfc8cc07a07774be22bef2891647d718959d0d6eb0ef753dc6e85c1e5ef3d
-4a726c70766bca5ee08562e3cf83c5ebcb3e43379db85c312a5ac4ce1688775e
+9e49fea713a39de19beaa0718375a1c74170936d1e72d0136fee2282ef92760f
+d3b9e3748de3821ae0fc5902a011b7b74a9869ec7b355147722ec39b8962aae3
 myrestaurant_postgres_1
 myrestaurant_web_1
 myrestaurant_caddy_1
@@ -327,15 +327,15 @@ info:   https://localhost:8443  (Caddy TLS — trust its local CA on first use)
 info:   http://localhost:8080   (web container, loopback only)
 info: the stack keeps running in the background. Stop it with: podman-compose --profile dev down
 
-real	0m5.794s
-user	0m1.282s
-sys	0m1.081s
+real	0m5.274s
+user	0m1.276s
+sys	0m1.267s
 
 ────────────────────────────────────────────────────────────────────────────
   1. tree hygiene
 ────────────────────────────────────────────────────────────────────────────
-checking 313 authored text file(s) of 424 tracked
-  skipped: 111 generated (docs/llm), 0 binary, 0 empty
+checking 315 authored text file(s) of 428 tracked
+  skipped: 113 generated (docs/llm), 0 binary, 0 empty
 
   1. no context-dump separators
      none (exempt: export.sh — it writes them)
@@ -394,20 +394,20 @@ warning: shellcheck is not installed, so only the parse check ran here.
 ────────────────────────────────────────────────────────────────────────────
 Restore complete (0.5s)
 
-Build succeeded in 0.7s
+Build succeeded in 0.6s
 
 ────────────────────────────────────────────────────────────────────────────
   5. build (Release, warnings as errors)
 ────────────────────────────────────────────────────────────────────────────
-  MyRestaurant.Domain net10.0 succeeded (0.1s) → src/MyRestaurant.Domain/bin/Release/net10.0/MyRestaurant.Domain.dll
-  MyRestaurant.Domain.Tests net10.0 succeeded (0.2s) → tests/MyRestaurant.Domain.Tests/bin/Release/net10.0/MyRestaurant.Domain.Tests.dll
+  MyRestaurant.Domain net10.0 succeeded (0.2s) → src/MyRestaurant.Domain/bin/Release/net10.0/MyRestaurant.Domain.dll
+  MyRestaurant.Domain.Tests net10.0 succeeded (0.3s) → tests/MyRestaurant.Domain.Tests/bin/Release/net10.0/MyRestaurant.Domain.Tests.dll
   MyRestaurant.DataAccess net10.0 succeeded (0.7s) → src/MyRestaurant.DataAccess/bin/Release/net10.0/MyRestaurant.DataAccess.dll
-  MyRestaurant.DataAccess.Tests net10.0 succeeded (0.9s) → tests/MyRestaurant.DataAccess.Tests/bin/Release/net10.0/MyRestaurant.DataAccess.Tests.dll
-  MyRestaurant.WebApplication net10.0 succeeded (1.8s) → src/MyRestaurant.WebApplication/bin/Release/net10.0/MyRestaurant.WebApplication.dll
+  MyRestaurant.DataAccess.Tests net10.0 succeeded (0.8s) → tests/MyRestaurant.DataAccess.Tests/bin/Release/net10.0/MyRestaurant.DataAccess.Tests.dll
+  MyRestaurant.WebApplication net10.0 succeeded (2.1s) → src/MyRestaurant.WebApplication/bin/Release/net10.0/MyRestaurant.WebApplication.dll
   MyRestaurant.WebApplication.Tests net10.0 succeeded (0.7s) → tests/MyRestaurant.WebApplication.Tests/bin/Release/net10.0/MyRestaurant.WebApplication.Tests.dll
-  MyRestaurant.EndToEnd.Tests net10.0 succeeded (0.8s) → tests/MyRestaurant.EndToEnd.Tests/bin/Release/net10.0/MyRestaurant.EndToEnd.Tests.dll
+  MyRestaurant.EndToEnd.Tests net10.0 succeeded (0.9s) → tests/MyRestaurant.EndToEnd.Tests/bin/Release/net10.0/MyRestaurant.EndToEnd.Tests.dll
 
-Build succeeded in 3.6s
+Build succeeded in 4.0s
 
 ────────────────────────────────────────────────────────────────────────────
   6. test
@@ -416,29 +416,29 @@ Build succeeded in 3.6s
 [xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 10.0.10)
 [xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 10.0.10)
 [xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 10.0.10)
-[xUnit.net 00:00:00.19]   Discovering: MyRestaurant.Domain.Tests
-[xUnit.net 00:00:00.20]   Discovering: MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:00:00.15]   Discovering: MyRestaurant.Domain.Tests
+[xUnit.net 00:00:00.17]   Discovering: MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:00:00.19]   Discovering: MyRestaurant.DataAccess.Tests
 [xUnit.net 00:00:00.20]   Discovering: MyRestaurant.WebApplication.Tests
-[xUnit.net 00:00:00.21]   Discovering: MyRestaurant.DataAccess.Tests
-[xUnit.net 00:00:00.37]   Discovered:  MyRestaurant.EndToEnd.Tests
-[xUnit.net 00:00:00.44]   Discovered:  MyRestaurant.Domain.Tests
-[xUnit.net 00:00:00.46]   Discovered:  MyRestaurant.DataAccess.Tests
+[xUnit.net 00:00:00.35]   Discovered:  MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:00:00.40]   Discovered:  MyRestaurant.Domain.Tests
+[xUnit.net 00:00:00.45]   Discovered:  MyRestaurant.DataAccess.Tests
 [xUnit.net 00:00:00.52]   Discovered:  MyRestaurant.WebApplication.Tests
-[xUnit.net 00:00:00.56]   Starting:    MyRestaurant.EndToEnd.Tests
-[xUnit.net 00:00:00.64]   Starting:    MyRestaurant.Domain.Tests
-[xUnit.net 00:00:00.68]   Starting:    MyRestaurant.DataAccess.Tests
-[xUnit.net 00:00:00.77]   Starting:    MyRestaurant.WebApplication.Tests
-[xUnit.net 00:00:00.86]   Finished:    MyRestaurant.Domain.Tests (ID = 'd848c0891595e364d07595ea377895faebe4845acc260963f57d8c19f09361a3')
-  MyRestaurant.Domain.Tests test net10.0 succeeded (1.4s)
-[xUnit.net 00:00:01.09]   Finished:    MyRestaurant.WebApplication.Tests (ID = 'f9f2b953926488debf8b7384c6bb695cebf8e22750a8b4f1aaab5ef1a67c4b81')
+[xUnit.net 00:00:00.54]   Starting:    MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:00:00.60]   Starting:    MyRestaurant.Domain.Tests
+[xUnit.net 00:00:00.66]   Starting:    MyRestaurant.DataAccess.Tests
+[xUnit.net 00:00:00.78]   Starting:    MyRestaurant.WebApplication.Tests
+[xUnit.net 00:00:00.79]   Finished:    MyRestaurant.Domain.Tests (ID = 'd848c0891595e364d07595ea377895faebe4845acc260963f57d8c19f09361a3')
+  MyRestaurant.Domain.Tests test net10.0 succeeded (1.3s)
+[xUnit.net 00:00:01.07]   Finished:    MyRestaurant.WebApplication.Tests (ID = 'f9f2b953926488debf8b7384c6bb695cebf8e22750a8b4f1aaab5ef1a67c4b81')
   MyRestaurant.WebApplication.Tests test net10.0 succeeded (1.6s)
-[xUnit.net 00:00:26.11]   Finished:    MyRestaurant.DataAccess.Tests (ID = 'aa4a463a1a8997d9786cfa4cf1f4bc69ed7b1243c4a47ad6160a7a5149b05222')
-  MyRestaurant.DataAccess.Tests test net10.0 succeeded (26.7s)
-[xUnit.net 00:02:06.28]   Finished:    MyRestaurant.EndToEnd.Tests (ID = '7f3d95b7366eeea86603f4295dd59844a0e37354681d3ee06fc35a836536ad62')
-  MyRestaurant.EndToEnd.Tests test net10.0 succeeded (126.8s)
+[xUnit.net 00:00:26.36]   Finished:    MyRestaurant.DataAccess.Tests (ID = 'aa4a463a1a8997d9786cfa4cf1f4bc69ed7b1243c4a47ad6160a7a5149b05222')
+  MyRestaurant.DataAccess.Tests test net10.0 succeeded (26.9s)
+[xUnit.net 00:02:10.91]   Finished:    MyRestaurant.EndToEnd.Tests (ID = '7f3d95b7366eeea86603f4295dd59844a0e37354681d3ee06fc35a836536ad62')
+  MyRestaurant.EndToEnd.Tests test net10.0 succeeded (131.4s)
 
-Test summary: total: 996, failed: 0, succeeded: 996, skipped: 0, duration: 126.8s
-Build succeeded in 127.1s
+Test summary: total: 1005, failed: 0, succeeded: 1005, skipped: 0, duration: 131.4s
+Build succeeded in 131.7s
 
 ────────────────────────────────────────────────────────────────────────────
   7. end to end (§16.3 Playwright scenarios)
@@ -446,14 +446,14 @@ Build succeeded in 127.1s
 MYRESTAURANT_E2E=1 — each scenario creates its own database and boots the built app.
 The first run downloads Chromium into ~/.cache/ms-playwright.
 [xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 10.0.10)
-[xUnit.net 00:00:00.14]   Discovering: MyRestaurant.EndToEnd.Tests
-[xUnit.net 00:00:00.31]   Discovered:  MyRestaurant.EndToEnd.Tests
-[xUnit.net 00:00:00.47]   Starting:    MyRestaurant.EndToEnd.Tests
-[xUnit.net 00:02:00.16]   Finished:    MyRestaurant.EndToEnd.Tests (ID = '7f3d95b7366eeea86603f4295dd59844a0e37354681d3ee06fc35a836536ad62')
-  MyRestaurant.EndToEnd.Tests test net10.0 succeeded (120.7s)
+[xUnit.net 00:00:00.15]   Discovering: MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:00:00.32]   Discovered:  MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:00:00.49]   Starting:    MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:01:58.86]   Finished:    MyRestaurant.EndToEnd.Tests (ID = '7f3d95b7366eeea86603f4295dd59844a0e37354681d3ee06fc35a836536ad62')
+  MyRestaurant.EndToEnd.Tests test net10.0 succeeded (119.4s)
 
-Test summary: total: 15, failed: 0, succeeded: 15, skipped: 0, duration: 120.6s
-Build succeeded in 120.9s
+Test summary: total: 15, failed: 0, succeeded: 15, skipped: 0, duration: 119.4s
+Build succeeded in 119.7s
 
 ────────────────────────────────────────────────────────────────────────────
   8. boot smoke (bash run.sh --smoke)
@@ -474,9 +474,9 @@ info: smoke check passed; shutting the app down and exiting.
   all local CI gates passed.
 ────────────────────────────────────────────────────────────────────────────
 
-real	4m17.148s
-user	0m53.147s
-sys	0m11.566s
+real	4m20.031s
+user	0m53.913s
+sys	0m11.975s
 Restore complete (0.5s)
   MyRestaurant.Domain net10.0 succeeded (0.1s) → src/MyRestaurant.Domain/bin/Debug/net10.0/MyRestaurant.Domain.dll
   MyRestaurant.DataAccess net10.0 succeeded (0.0s) → src/MyRestaurant.DataAccess/bin/Debug/net10.0/MyRestaurant.DataAccess.dll
@@ -484,32 +484,32 @@ Restore complete (0.5s)
   MyRestaurant.EndToEnd.Tests net10.0 succeeded (0.1s) → tests/MyRestaurant.EndToEnd.Tests/bin/Debug/net10.0/MyRestaurant.EndToEnd.Tests.dll
 [xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 10.0.10)
 [xUnit.net 00:00:00.16]   Discovering: MyRestaurant.EndToEnd.Tests
-[xUnit.net 00:00:00.34]   Discovered:  MyRestaurant.EndToEnd.Tests
-[xUnit.net 00:00:00.52]   Starting:    MyRestaurant.EndToEnd.Tests
-[xUnit.net 00:02:05.02]   Finished:    MyRestaurant.EndToEnd.Tests (ID = 'ba0d461b6d2adcbcaea0112577ca9f9402cf637b002a62bf63550417cd75feda')
-  MyRestaurant.EndToEnd.Tests test net10.0 succeeded (125.5s)
+[xUnit.net 00:00:00.33]   Discovered:  MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:00:00.50]   Starting:    MyRestaurant.EndToEnd.Tests
+[xUnit.net 00:02:06.55]   Finished:    MyRestaurant.EndToEnd.Tests (ID = 'ba0d461b6d2adcbcaea0112577ca9f9402cf637b002a62bf63550417cd75feda')
+  MyRestaurant.EndToEnd.Tests test net10.0 succeeded (127.0s)
 
-Test summary: total: 15, failed: 0, succeeded: 15, skipped: 0, duration: 125.5s
-Build succeeded in 126.6s
+Test summary: total: 15, failed: 0, succeeded: 15, skipped: 0, duration: 127.0s
+Build succeeded in 128.2s
 
-real	2m6.815s
-user	0m1.730s
-sys	0m0.389s
+real	2m8.394s
+user	0m1.780s
+sys	0m0.392s
 [quick-tunnel] starting the database…
 93aa428db0aeeb71d24dcad1491bef6e1396a4255697e4bfc4c725bfeb981b74
 myrestaurant_postgres_1
 [quick-tunnel] opening a quick tunnel to http://localhost:8080 …
 [quick-tunnel] waiting for the quick tunnel URL (up to 90s)…
-[quick-tunnel] public origin: https://outsourcing-solutions-faqs-nasa.trycloudflare.com
+[quick-tunnel] public origin: https://ross-pontiac-historic-valued.trycloudflare.com
 [quick-tunnel] starting the web app with the tunnel origin…
 93aa428db0aeeb71d24dcad1491bef6e1396a4255697e4bfc4c725bfeb981b74
-myrestaurant_postgres_1
 myrestaurant_web_1
-82cef63f2377b88ab59030f1e16fddb06a57351ddbe0277a63b44145a0bd7f2d
-myrestaurant_default
+myrestaurant_postgres_1
 93ef49f4779a737a5093e6566b1212fd9596b4d1dcfbd98ef75d45a2fc5461e9
-336662179ee45f0b21c4da4c886ab72eea635c0be2f7329d15f6de1965923a15
-30cb2af76dacb1c60ecd5132afb8fc4b410a4bd9d5507cacf36449088ce2cedd
+myrestaurant_default
+ffcca09f05ea6a4b518fdb78e30139d0002d7aaa19d59c0ac4a7fb958ecb9838
+8f70c6bcd91b5e86c179ef6d476c92da493222ee4970632a3bac16fc1446b546
+f706903683d9d54b5437a87e4909a07ea0ba84b90c64af7204fcd914eb34fd0b
 myrestaurant_postgres_1
 myrestaurant_web_1
 [quick-tunnel] web app is ready.
@@ -517,7 +517,7 @@ myrestaurant_web_1
 ────────────────────────────────────────────────────────────────────────────
   QUICK TUNNEL — DEMO
 
-  PUBLIC URL:  https://outsourcing-solutions-faqs-nasa.trycloudflare.com
+  PUBLIC URL:  https://ross-pontiac-historic-valued.trycloudflare.com
 
   • Passkeys WORK here: register and sign in with a passkey, or run a
     passkey-only account (username + passkey, no password).
@@ -530,51 +530,51 @@ myrestaurant_web_1
 ────────────────────────────────────────────────────────────────────────────
 
 [quick-tunnel] streaming cloudflared log (Ctrl+C to stop):
-2026-08-06T01:46:15Z INF Thank you for trying Cloudflare Tunnel. Doing so, without a Cloudflare account, is a quick way to experiment and try it out. However, be aware that these account-less Tunnels have no uptime guarantee, are subject to the Cloudflare Online Services Terms of Use (https://www.cloudflare.com/website-terms/), and Cloudflare reserves the right to investigate your use of Tunnels for violations of such terms. If you intend to use Tunnels in production you should use a pre-created named tunnel by following: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps
-2026-08-06T01:46:15Z INF Requesting new quick Tunnel on trycloudflare.com...
-2026-08-06T01:46:20Z INF +--------------------------------------------------------------------------------------------+
-2026-08-06T01:46:20Z INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |
-2026-08-06T01:46:20Z INF |  https://outsourcing-solutions-faqs-nasa.trycloudflare.com                                 |
-2026-08-06T01:46:20Z INF +--------------------------------------------------------------------------------------------+
-2026-08-06T01:46:20Z INF Cannot determine default configuration path. No file [config.yml config.yaml] in [~/.cloudflared ~/.cloudflare-warp ~/cloudflare-warp /etc/cloudflared /usr/local/etc/cloudflared]
-2026-08-06T01:46:20Z INF Version 2026.7.3 (Checksum 9d71c677db00134c1bd4144b7783486b654ad281b1ea62b4972098d19f770f17)
-2026-08-06T01:46:20Z INF GOOS: linux, GOVersion: go1.26.4, GoArch: amd64
-2026-08-06T01:46:20Z INF Settings: map[ha-connections:1 no-autoupdate:true protocol:quic url:http://localhost:8080]
-2026-08-06T01:46:20Z INF Generated Connector ID: 007a1bc6-6c3f-40d4-a4b5-f2bd232c258c
-2026-08-06T01:46:20Z INF Initial protocol quic
-2026-08-06T01:46:20Z INF ICMP proxy will use 192.168.0.209 as source for IPv4
-2026-08-06T01:46:20Z INF ICMP proxy will use fe80::282b:9120:f498:f651 in zone wlp2s0 as source for IPv6
-2026-08-06T01:46:20Z INF ICMP proxy will use 192.168.0.209 as source for IPv4
-2026-08-06T01:46:20Z INF ICMP proxy will use fe80::282b:9120:f498:f651 in zone wlp2s0 as source for IPv6
-2026-08-06T01:46:20Z INF Starting metrics server on 127.0.0.1:20241/metrics
-2026-08-06T01:46:20Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.192.57
-2026-08-06T01:46:21Z INF Registered tunnel connection connIndex=0 connection=f5a4ca98-c83e-41dc-88c3-26f8e5941975 event=0 ip=198.41.192.57 location=iad10 protocol=quic
-2026-08-06T01:46:26Z INF +-------------------------------------------------------------------------------------+
-2026-08-06T01:46:26Z INF |                               CONNECTIVITY PRE-CHECKS                               |
-2026-08-06T01:46:26Z INF +-------------------------------------------------------------------------------------+
-2026-08-06T01:46:26Z INF |  COMPONENT         TARGET                     STATUS  DETAILS                       |
-2026-08-06T01:46:26Z INF |  DNS Resolution    region1.v2.argotunnel.com  PASS    DNS Resolved successfully     |
-2026-08-06T01:46:26Z INF |  DNS Resolution    region2.v2.argotunnel.com  PASS    DNS Resolved successfully     |
-2026-08-06T01:46:26Z INF |  UDP Connectivity  region1.v2.argotunnel.com  PASS    QUIC connection successful    |
-2026-08-06T01:46:26Z INF |  UDP Connectivity  region2.v2.argotunnel.com  PASS    QUIC connection successful    |
-2026-08-06T01:46:26Z INF |  TCP Connectivity  region1.v2.argotunnel.com  PASS    HTTP/2 connection successful  |
-2026-08-06T01:46:26Z INF |  TCP Connectivity  region2.v2.argotunnel.com  PASS    HTTP/2 connection successful  |
-2026-08-06T01:46:26Z INF |  Cloudflare API    api.cloudflare.com:443     PASS    API is reachable              |
-2026-08-06T01:46:26Z INF |                                                                                     |
-2026-08-06T01:46:26Z INF |  SUMMARY: Environment is healthy. cloudflared will use 'quic' as primary protocol.  |
-2026-08-06T01:46:26Z INF +-------------------------------------------------------------------------------------+
-2026-08-06T01:46:26Z INF precheck component="DNS Resolution" details="DNS Resolved successfully" run_id=b194a4a8-d83e-4548-ade3-abfea30e1e19 status=pass target=region1.v2.argotunnel.com
-2026-08-06T01:46:26Z INF precheck component="DNS Resolution" details="DNS Resolved successfully" run_id=b194a4a8-d83e-4548-ade3-abfea30e1e19 status=pass target=region2.v2.argotunnel.com
-2026-08-06T01:46:26Z INF precheck component="UDP Connectivity" details="QUIC connection successful" run_id=b194a4a8-d83e-4548-ade3-abfea30e1e19 status=pass target=region1.v2.argotunnel.com
-2026-08-06T01:46:26Z INF precheck component="UDP Connectivity" details="QUIC connection successful" run_id=b194a4a8-d83e-4548-ade3-abfea30e1e19 status=pass target=region2.v2.argotunnel.com
-2026-08-06T01:46:26Z INF precheck component="TCP Connectivity" details="HTTP/2 connection successful" run_id=b194a4a8-d83e-4548-ade3-abfea30e1e19 status=pass target=region1.v2.argotunnel.com
-2026-08-06T01:46:26Z INF precheck component="TCP Connectivity" details="HTTP/2 connection successful" run_id=b194a4a8-d83e-4548-ade3-abfea30e1e19 status=pass target=region2.v2.argotunnel.com
-2026-08-06T01:46:26Z INF precheck component="Cloudflare API" details="API is reachable" run_id=b194a4a8-d83e-4548-ade3-abfea30e1e19 status=pass target=api.cloudflare.com:443
-2026-08-06T01:46:26Z INF precheck complete hard_fail=false run_id=b194a4a8-d83e-4548-ade3-abfea30e1e19 suggested_protocol=quic
+2026-08-06T02:39:55Z INF Thank you for trying Cloudflare Tunnel. Doing so, without a Cloudflare account, is a quick way to experiment and try it out. However, be aware that these account-less Tunnels have no uptime guarantee, are subject to the Cloudflare Online Services Terms of Use (https://www.cloudflare.com/website-terms/), and Cloudflare reserves the right to investigate your use of Tunnels for violations of such terms. If you intend to use Tunnels in production you should use a pre-created named tunnel by following: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps
+2026-08-06T02:39:55Z INF Requesting new quick Tunnel on trycloudflare.com...
+2026-08-06T02:40:02Z INF +--------------------------------------------------------------------------------------------+
+2026-08-06T02:40:02Z INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |
+2026-08-06T02:40:02Z INF |  https://ross-pontiac-historic-valued.trycloudflare.com                                    |
+2026-08-06T02:40:02Z INF +--------------------------------------------------------------------------------------------+
+2026-08-06T02:40:02Z INF Cannot determine default configuration path. No file [config.yml config.yaml] in [~/.cloudflared ~/.cloudflare-warp ~/cloudflare-warp /etc/cloudflared /usr/local/etc/cloudflared]
+2026-08-06T02:40:02Z INF Version 2026.7.3 (Checksum 9d71c677db00134c1bd4144b7783486b654ad281b1ea62b4972098d19f770f17)
+2026-08-06T02:40:02Z INF GOOS: linux, GOVersion: go1.26.4, GoArch: amd64
+2026-08-06T02:40:02Z INF Settings: map[ha-connections:1 no-autoupdate:true protocol:quic url:http://localhost:8080]
+2026-08-06T02:40:02Z INF Generated Connector ID: e794c407-a251-47d2-9891-72ef6ea87950
+2026-08-06T02:40:02Z INF Initial protocol quic
+2026-08-06T02:40:02Z INF ICMP proxy will use 192.168.0.209 as source for IPv4
+2026-08-06T02:40:02Z INF ICMP proxy will use fe80::282b:9120:f498:f651 in zone wlp2s0 as source for IPv6
+2026-08-06T02:40:02Z INF ICMP proxy will use 192.168.0.209 as source for IPv4
+2026-08-06T02:40:02Z INF ICMP proxy will use fe80::282b:9120:f498:f651 in zone wlp2s0 as source for IPv6
+2026-08-06T02:40:02Z INF Starting metrics server on 127.0.0.1:20241/metrics
+2026-08-06T02:40:02Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.233
+2026-08-06T02:40:03Z INF Registered tunnel connection connIndex=0 connection=1fafcc15-772d-46a8-8cb6-d6c9c911e4f0 event=0 ip=198.41.200.233 location=iad14 protocol=quic
+2026-08-06T02:40:08Z INF +-------------------------------------------------------------------------------------+
+2026-08-06T02:40:08Z INF |                               CONNECTIVITY PRE-CHECKS                               |
+2026-08-06T02:40:08Z INF +-------------------------------------------------------------------------------------+
+2026-08-06T02:40:08Z INF |  COMPONENT         TARGET                     STATUS  DETAILS                       |
+2026-08-06T02:40:08Z INF |  DNS Resolution    region1.v2.argotunnel.com  PASS    DNS Resolved successfully     |
+2026-08-06T02:40:08Z INF |  DNS Resolution    region2.v2.argotunnel.com  PASS    DNS Resolved successfully     |
+2026-08-06T02:40:08Z INF |  UDP Connectivity  region1.v2.argotunnel.com  PASS    QUIC connection successful    |
+2026-08-06T02:40:08Z INF |  UDP Connectivity  region2.v2.argotunnel.com  PASS    QUIC connection successful    |
+2026-08-06T02:40:08Z INF |  TCP Connectivity  region1.v2.argotunnel.com  PASS    HTTP/2 connection successful  |
+2026-08-06T02:40:08Z INF |  TCP Connectivity  region2.v2.argotunnel.com  PASS    HTTP/2 connection successful  |
+2026-08-06T02:40:08Z INF |  Cloudflare API    api.cloudflare.com:443     PASS    API is reachable              |
+2026-08-06T02:40:08Z INF |                                                                                     |
+2026-08-06T02:40:08Z INF |  SUMMARY: Environment is healthy. cloudflared will use 'quic' as primary protocol.  |
+2026-08-06T02:40:08Z INF +-------------------------------------------------------------------------------------+
+2026-08-06T02:40:08Z INF precheck component="DNS Resolution" details="DNS Resolved successfully" run_id=28328bdc-4f6d-4528-a5a8-7be449ee870f status=pass target=region1.v2.argotunnel.com
+2026-08-06T02:40:08Z INF precheck component="DNS Resolution" details="DNS Resolved successfully" run_id=28328bdc-4f6d-4528-a5a8-7be449ee870f status=pass target=region2.v2.argotunnel.com
+2026-08-06T02:40:08Z INF precheck component="UDP Connectivity" details="QUIC connection successful" run_id=28328bdc-4f6d-4528-a5a8-7be449ee870f status=pass target=region1.v2.argotunnel.com
+2026-08-06T02:40:08Z INF precheck component="UDP Connectivity" details="QUIC connection successful" run_id=28328bdc-4f6d-4528-a5a8-7be449ee870f status=pass target=region2.v2.argotunnel.com
+2026-08-06T02:40:08Z INF precheck component="TCP Connectivity" details="HTTP/2 connection successful" run_id=28328bdc-4f6d-4528-a5a8-7be449ee870f status=pass target=region1.v2.argotunnel.com
+2026-08-06T02:40:08Z INF precheck component="TCP Connectivity" details="HTTP/2 connection successful" run_id=28328bdc-4f6d-4528-a5a8-7be449ee870f status=pass target=region2.v2.argotunnel.com
+2026-08-06T02:40:08Z INF precheck component="Cloudflare API" details="API is reachable" run_id=28328bdc-4f6d-4528-a5a8-7be449ee870f status=pass target=api.cloudflare.com:443
+2026-08-06T02:40:08Z INF precheck complete hard_fail=false run_id=28328bdc-4f6d-4528-a5a8-7be449ee870f suggested_protocol=quic
 ^C[quick-tunnel] closing the tunnel (the stack keeps running; stop it with 'podman-compose down').
 [quick-tunnel] closing the tunnel (the stack keeps running; stop it with 'podman-compose down').
 
-real	2m27.877s
-user	0m1.511s
-sys	0m0.997s
+real	28m41.766s
+user	0m2.138s
+sys	0m1.554s
 kushal@fedora:~/src/dotnet/myrestaurant$ 
