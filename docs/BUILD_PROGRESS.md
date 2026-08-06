@@ -6889,3 +6889,218 @@ executed instead:
 - **Every documentation edit applied by exact-match replacement with an assertion that the anchor
   occurs exactly once**, so nothing was edited by position, and `docs/BUILD_PROGRESS.md` was assembled
   from its existing bytes plus two appended sections rather than rewritten.
+
+
+---
+
+## M6 Slice 23 — the bit every live surface owed, and the enumeration that made "every" wrong
+
+**F-47 · F-48 · S v1.8 · docs/TECHNICAL_SPECIFICATION.md §11.10 (new), §16.4**
+
+Slice 21 fixed one surface and wrote down that four more had the same problem. This slice went to fix
+those four and found that there were never four, that one of the ones nobody had counted had been
+publishing nothing at all since M3, and that on one of the four the bit being copied would have been
+true and useless. Then, while bumping the specification, it found the specification's header disagreeing
+with the specification's changelog for the second time in seven versions.
+
+### What was carried forward, and what it turned out to say
+
+F-44's row is unusually explicit about its own scope, which is why this slice exists:
+
+> the other four live surfaces publish `data-live` with no loaded bit and carry the same latent race,
+> passing because their callers go on to wait for specific content, which waits out the reload
+> incidentally. Four surfaces is ~4,000 lines of Razor edited against a race none of them is currently
+> losing; scenario 10 is the evidence the class is real, and a scenario that fails is the evidence
+> needed for the rest.
+
+That was the right call at the time and it is still the right call. What was wrong was the noun. The
+first thing this slice did was not to open those four files but to ask where the number four came from,
+and the answer was that it came from a doc comment, which had it from another doc comment.
+
+### F-47, first half — there is no list of five
+
+`App.razor` is eleven lines of decision:
+
+```razor
+private IComponentRenderMode? RenderModeForPage
+    => HttpContext.AcceptsInteractiveRouting() ? InteractiveServer : null;
+```
+
+Every routable page is interactive unless it carries `[ExcludeFromInteractiveRouting]`. Computed rather
+than remembered, that is **six pages** — `/`, `/counter`, `/counter/sittings/{id}`, `/kitchen`,
+`/display/{table}`, `/table` — plus `TableOrderSurface`, which carries no `@page` and no `@rendermode`
+of its own and is interactive because `/table/{id}` hosts it that way. Seven components. The tree said
+five, in five separate doc comments, and one of them was `CounterBoard`'s claim to have been *"the only
+one of the five live surfaces that did not say"*.
+
+**`/table` had been live since M3 and published nothing.** No id, no `data-live`, no `data-loaded`. It
+has a `_loaded` field and a "Looking up your tables…" branch, and the state below that branch — the one
+the hand-over renders before the query answers — is an empty list, which is character-for-character the
+state that means *you are not seated at a table right now*. Nothing was failing, because no §16.3
+scenario reads that page. It was invisible for the only reason that matters: nobody had asked.
+
+`Home.razor` is the interesting non-case. It is interactive, it has an async `OnInitializedAsync`, and
+it correctly publishes neither bit, because it has no loading state to publish — `_needsSetup` defaults
+to the answer that renders nothing, so there is no render in which the page is incomplete. It is in the
+contract test's expected set anyway. The set is what the rule produces; whether a member of it owes the
+bits is a separate question with its own answer.
+
+### F-47, second half — the display's bit is not a loading bit
+
+The obvious way to close this slice would have been to copy `CounterBoard`'s property into four files.
+On `/display/{table}` that would have produced an attribute that was `true` whenever its element
+existed.
+
+`TableDisplay` renders `id="table-display-surface"` from two branches: the QR, and a
+"Preparing the join code…" card for when `DescribeCurrentAsync` came back empty. The second is transient
+rather than fatal and is deliberately not an error page — so it is **fully resolved, fully interactive,
+and has no QR on it**. A `_loaded`-shaped bit reads `true` there. The barrier
+`#table-display-surface[data-live='true']` already matched it, which is why scenario 2's failure mode,
+when the join secret is wrong or the table is inactive, is sixty seconds inside `ReadJoinQrPathAsync`
+and a message about a missing `d` attribute.
+
+So the rule had to be written at the level where the six surfaces actually agree, which is the question
+rather than the expression:
+
+> **`data-loaded`** answers *does this markup have what the surface renders itself for*.
+
+Five surfaces answer that with `_loaded`. The display answers it with `_loaded && _qr is not null`, and
+that is the rule applied rather than an exception to it. §11.10 says so, and the contract test pins
+`data-live`'s expression exactly while pinning only `data-loaded`'s *shape*, for exactly this reason.
+
+**Both halves are the same finding**, and it is F-46's, one more time: a rule stated as a rule and
+enforced as a list of examples is enforced as a list of examples. F-43, F-44, F-46 and now F-47 are four
+checks in three slices whose names were true and whose contents were narrower than their names, and all
+four were green throughout.
+
+### What landed
+
+| File | Change |
+| --- | --- |
+| `Components/Pages/Table/TableArea.razor` | **the sixth surface.** `id="table-area-surface"`, both bits, and the two properties |
+| `Components/Pages/Display/TableDisplay.razor` | `_loaded`, latched on all four paths out of `OnInitializedAsync`; `data-loaded` on both surface branches, predicate `_loaded && _qr is not null` |
+| `Components/Pages/Kitchen/KitchenBoard.razor` | `data-loaded` beside the live bit and the two §10.3 counts |
+| `Components/Pages/Counter/CounterSitting.razor` | `data-loaded` |
+| `Components/Pages/Table/TableOrderSurface.razor` | `data-loaded` |
+| `Components/Pages/Counter/CounterBoard.razor` | doc comment only: the "only one of the five" sentence is retired and its wrongness recorded where it stood |
+| `Harness/DisplayJourneys.cs` · `KitchenJourneys.cs` · `CounterJourneys.cs` · `TableOrderJourneys.cs` | selectors demand both bits; `DescribeSurfaceAsync` reports both; every failure message distinguishes *no circuit* from *circuit, still reading* |
+| `Components/LiveSurfaceContractTests.cs` | **NEW.** Seven assertions, subject derived from the routing rule |
+| `Documentation/SpecificationVersionTests.cs` | **NEW.** Two assertions — F-48 |
+
+`Home.razor` is deliberately untouched. `js/display.js` is deliberately untouched: the staleness curtain
+keys on `data-refresh-token`, which covers a circuit that died *later*, and these bits cover one that
+never lived. Two mechanisms, two failure modes, no overlap.
+
+### The gate, and why it reads text
+
+`LiveSurfaceContractTests` asserts §11.10 against the Razor sources. The interactive set is **derived**
+from `[ExcludeFromInteractiveRouting]` and from `@rendermode="InteractiveServer"` in any file's markup —
+the second half being what a per-file rule would have got wrong, since `TableOrderSurface` is interactive
+only because something else says so.
+
+Seven assertions: the scan read the tree and classified it (it cannot pass vacuously — F-41); every
+interactive surface with a loading state publishes each bit; the two are published the same number of
+times per file (which is how a surface rendering its element from more than one branch is caught, and is
+the assertion that catches `TableDisplay` before the change); `data-live` is answered by
+`RendererInfo.IsInteractive` exactly; `data-loaded` comes from a named property rather than an inline
+expression; and nothing which is not interactive publishes either — because on a static page `data-live`
+is `false` on every render that will ever happen, which is an attribute shaped like an assertion and
+empty of one.
+
+It reads source text rather than rendering anything, and that is a decision rather than laziness. The
+property under test is a property of the markup; a test renderer would need a DI container and a
+database per surface to assert the same string; and the §16.3 scenarios already exercise these
+attributes in a real browser. What a scenario cannot do is notice a **seventh** surface that nobody
+wrote a scenario for, which is precisely how this survived four slices.
+
+One list remains, and it is deliberate: the expected interactive set. It is compared against the set the
+rule produces, so the two can only agree by both being right, and a new interactive page fails the test
+until somebody adds it and thereby decides whether it owes the bits.
+
+### F-48 — the specification's header, for the second time
+
+While bumping the specification to v1.8 the header read **v1.6** and the newest changelog entry read
+**v1.7**. The v1.3 entry corrects the identical drift from Slice 16, in its own words. So: found,
+corrected, explained in the correcting document, and repeated seven versions later.
+
+Recorded at full weight because of the second half rather than the first. A stale version number is not
+worth a paragraph; a defect whose correction left nothing behind that runs is. The fix is two assertions
+in `SpecificationVersionTests` — header matches newest entry, entries descend — and a refusal to grow a
+third. No dates, no section numbers, no "is there an entry for this commit": those are judgements about
+content, and a gate that reaches past what it can decide reports findings on correct trees (F-41).
+
+### Considered and rejected
+
+**A `check_tree.sh` gate for the live-surface contract.** Cheaper to run than `dotnet test` and wrong on
+two counts. `check_tree.sh` asserts properties of *authored text as text* — encodings, separators, XML
+and YAML well-formedness — and knows nothing about what a Razor file means; teaching it would give the
+tree gate a second job and a second vocabulary. And F-41's rule cuts the other way here: gates that share
+a file set must share one definition of it, and this test's file set is "components the routing rule
+makes interactive", which git cannot compute.
+
+**Publishing the pair on `Home.razor` for uniformity.** No. It has no render in which it is incomplete,
+so `data-loaded` would be `true` from the first paint and would assert nothing — the display's problem in
+its other direction. The contract is about surfaces with a loading state, and saying so is what keeps it
+from becoming decoration.
+
+**Fixing the other four live surfaces' latent race the way F-44 described it.** That is what this slice
+set out to do, and doing exactly that would have shipped five files, left `/table` alone, and given the
+display a bit that was always true. The reason it did not is the whole finding.
+
+**Widening `js/display.js` to read `data-loaded`.** Rejected: it already handles the case these bits do
+not, by a mechanism that works when the circuit dies mid-service rather than only at page load. Two
+mechanisms for two failure modes is correct; one for both would be worse at each.
+
+**A `REQUIREMENTS.md` edit.** No, on the v1.2 reasoning. §11.5 has said since v1.0 that a frozen screen
+must not masquerade as a live one; this is that contract stated once for every surface instead of five
+times for four of them. Mechanism catching up with intent, not new intent.
+
+### Build and test
+
+```bash
+bash scripts/check_tree.sh
+#    expect: 5 gates, "tree hygiene passed.", exit 0, and the header reading
+#    "checking 315 authored text file(s) of 425 tracked" — two new .cs files in scope.
+
+bash scripts/check_repository.sh --offline
+#    expect: 3 gates plus a SKIP, exit 0. Unchanged: no tracked file gained a platform-state claim.
+
+bash scripts/ci_local.sh --with-all
+#    expect: 8 numbered gates, same number and same order as Slice 22.
+
+dotnet test
+#    expect: 1005 total, 0 failed. Was 996; nine new tests, seven in LiveSurfaceContractTests and
+#    two in SpecificationVersionTests. No existing test is touched.
+
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: 15 passed, 0 skipped. The four barriers are strictly stricter, so any change here is a
+#    real finding rather than a flake — see "where to look" in _CHANGES.md.
+```
+
+`podman build` is not in that list: nothing in the build context changed.
+
+### What was verified here
+
+No .NET SDK in the sandbox, so nothing was reasoned about that could be executed instead:
+
+- **The interactive set was computed, not read.** A faithful implementation of the test's own scan was
+  run over the tree: 48 `.razor` files, 32 statically routed pages, one island (`TableOrderSurface`),
+  and an interactive set of exactly the seven expected names.
+- **The gate was proven sensitive against the Slice 22 tree.** Run unchanged against the pre-slice
+  sources it fails on `TableArea` (no live bit), on `CounterSitting`, `KitchenBoard`, `TableOrderSurface`
+  and `TableArea` (no loaded bit), and on `TableDisplay` by counts — `2` live against `0` loaded, which
+  is the only assertion that catches a surface with no `_loaded` field at all. Run against the delivered
+  tree, all seven pass.
+- **`SpecificationVersionTests` was proven sensitive the same way**: against the delivered spec the
+  header parses to 1.8, the entries parse to 1.8 … 1.0 descending, and both assertions hold; against the
+  Slice 22 spec the first fails with 1.6 against 1.7.
+- **Every documentation and source edit was applied by exact-match replacement with an assertion that
+  the anchor occurs exactly once**, so nothing was edited by position. `docs/BUILD_PROGRESS.md` is its
+  existing bytes plus this one appended section.
+- **Markup balance was checked before and after on every edited Razor file** and is byte-for-byte
+  unchanged in structure — the two files a crude tag-matcher reports on (`ILogger<TableDisplay>`,
+  `IReadOnlyList<OrderLineView>`) report identically before the slice, which is what makes them
+  generic-type false positives rather than findings.
+- **`.editorconfig` hygiene checked on every delivered file**: LF endings, final newline, no
+  whitespace-only lines, no trailing whitespace, no context-dump separator.
+- No shell script changed, so `bash -n` and shellcheck have nothing new to say.

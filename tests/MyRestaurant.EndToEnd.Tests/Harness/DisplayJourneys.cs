@@ -29,11 +29,24 @@ internal static class DisplayJourneys
     private const string SurfaceSelector = "#table-display-surface";
 
     /// <summary>
-    /// The surface as rendered by a live circuit. <c>TableDisplay.razor</c> sets <c>data-live</c> from
-    /// <c>RendererInfo.IsInteractive</c>, so this matches only markup an interactive renderer produced —
-    /// never the prerendered pass, which is byte-identical in every other respect.
+    /// The surface as rendered by a live circuit that has a code on the glass — §11.10's pair, both
+    /// halves demanded (M6 Slice 23, F-47).
+    ///
+    /// <para><c>[data-live='true']</c> alone is what stood here, and on this surface the state it fails
+    /// to exclude is not a loading state at all. Two branches of <c>TableDisplay.razor</c> carry
+    /// <c>id="table-display-surface"</c>: the QR, and the "Preparing the join code…" card the component
+    /// renders when <c>DescribeCurrentAsync</c> came back empty. The second is transient rather than
+    /// fatal and is deliberately not an error page, so it is fully resolved, fully interactive, and
+    /// carries no QR — which meant this barrier returned happily and
+    /// <see cref="ReadJoinQrPathAsync"/> then spent sixty seconds failing two steps from the
+    /// cause.</para>
+    ///
+    /// <para>That is why <c>data-loaded</c> here means "a code came back" rather than "a query
+    /// answered". §11.10 defines the bit as <em>the surface has what it renders itself for</em>, and on
+    /// this screen that is the QR and nothing else.</para>
     /// </summary>
-    private const string LiveSurfaceSelector = "#table-display-surface[data-live='true']";
+    private const string LiveSurfaceSelector =
+        "#table-display-surface[data-live='true'][data-loaded='true']";
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
@@ -79,7 +92,8 @@ internal static class DisplayJourneys
     }
 
     /// <summary>
-    /// Waits until the surface on screen was rendered by a live circuit rather than by prerendering.
+    /// Waits until the surface on screen was rendered by a live circuit rather than by prerendering,
+    /// <em>and</em> has a join code on it.
     ///
     /// <para><b>Why any scenario that watches the QR must do this first.</b> Prerendering produces the
     /// entire surface server-side: the table label, the party-size chip, and a genuinely current, valid
@@ -114,12 +128,16 @@ internal static class DisplayJourneys
                     // processes no escape sequences at all, so the trailing backslashes that used to wrap
                     // these lines were printed verbatim, along with the newlines they were meant to hide.
                     // Every operand must carry the $ or the addition stops binding to the handler (CS1620).
-                    $"The table display surface never became interactive within"
-                    + $" {timeout.TotalSeconds:F0}s; it is still the prerendered markup ({surface})."
-                    + $" Nothing on this page will ever change — the QR cannot advance across a rotation"
-                    + $" boundary and the party-size chip cannot move — because no Blazor circuit was"
-                    + $" established. Check that /_framework/blazor.web.js is served (RestaurantInstance"
-                    + $" probes it at startup) and that the browser reached /_blazor."),
+                    $"The table display was not live and showing a code within"
+                    + $" {timeout.TotalSeconds:F0}s ({surface}). A surface present with"
+                    + $" data-live='false' is still the prerendered markup: nothing on the page will"
+                    + $" ever change — the QR cannot advance across a rotation boundary and the"
+                    + $" party-size chip cannot move — because no Blazor circuit was established. Check"
+                    + $" that /_framework/blazor.web.js is served (RestaurantInstance probes it at"
+                    + $" startup) and that the browser reached /_blazor. One live but stuck at"
+                    + $" data-loaded='false' is the “Preparing the join code…” card: the circuit is"
+                    + $" there and §4.3 returned no code for this table, so look at the table's join"
+                    + $" secret and at whether the row is still active."),
                 exception);
         }
     }
@@ -262,11 +280,13 @@ internal static class DisplayJourneys
         }
 
         string? live = await surface.GetAttributeAsync("data-live");
+        string? loaded = await surface.GetAttributeAsync("data-loaded");
         string? token = await surface.GetAttributeAsync("data-refresh-token");
 
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"data-live='{live ?? "absent"}', data-refresh-token='{token ?? "absent"}'");
+            $"data-live='{live ?? "absent"}', data-loaded='{loaded ?? "absent"}',"
+            + $" data-refresh-token='{token ?? "absent"}'");
     }
 
     private static async Task<string> DescribeRefusalAsync(IPage page)

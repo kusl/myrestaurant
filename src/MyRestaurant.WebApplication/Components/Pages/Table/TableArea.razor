@@ -19,7 +19,14 @@
 
 <PageTitle>Your tables</PageTitle>
 
-<section class="panel">
+@* §11.10's pair, and this surface is the reason §11.10 exists as a rule rather than as a list. Four
+   slices' worth of comments in this tree said "the five live surfaces" and meant a list somebody had
+   written down; the rule is App.razor's RenderModeForPage, and by that rule this page has been a live
+   surface since M3 while publishing nothing at all — no id, no attribute, nothing an operator or a
+   §16.3 reader could ask. See IsLiveAttributeValue and IsLoadedAttributeValue. *@
+<section class="panel" id="table-area-surface"
+         data-live="@IsLiveAttributeValue"
+         data-loaded="@IsLoadedAttributeValue">
     <p class="eyebrow">Your tables</p>
     <h1>Where you are seated</h1>
 
@@ -112,6 +119,28 @@
 
     [CascadingParameter]
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    /// <summary>
+    /// Whether a circuit produced this markup — <c>"true"</c> only in interactive-server rendering,
+    /// <c>"false"</c> during the prerender pass. §11.10's first bit.
+    ///
+    /// <para>Lower stakes than the other five and published anyway, which is the point of making it a
+    /// rule. This page subscribes to nothing and runs no timer, so a prerendered copy of it is not
+    /// dangerous in the way a prerendered till or kitchen board is — it is a list of links, correct as
+    /// of the request, and following one of them starts a fresh page. What it is is the standing proof
+    /// named in the header comment above: cookie → claims → area policy → AuthorizeRouteView → circuit.
+    /// A dead circuit here means every interactive surface behind it is dead too, and until M6 Slice 23
+    /// this was the one screen that could not say so.</para>
+    /// </summary>
+    private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
+
+    /// <summary>
+    /// Whether the sitting list has answered, published alongside <c>data-live</c> — §11.10's second
+    /// bit. The circuit's first render is live with <c>_loaded</c> still false, and the page renders
+    /// "Looking up your tables…" in that state: no list, and — the part that matters — the same absence
+    /// of a list that means "you are not seated at a table right now".
+    /// </summary>
+    private string IsLoadedAttributeValue => _loaded ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {

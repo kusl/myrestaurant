@@ -83,10 +83,12 @@ else if (_qr is not null)
 {
     @* data-refresh-token / data-fresh-for-ms drive js/display.js: it measures the deadline from when it
        observes the token change, so a kiosk with a badly wrong clock still detects a dead circuit.
-       data-live says whether a circuit produced this markup at all — see IsLiveAttributeValue. *@
+       §11.10's pair: data-live says whether a circuit produced this markup at all, data-loaded whether
+       there is a code on the glass — see IsLiveAttributeValue and IsLoadedAttributeValue. *@
     <section class="display-card display-surface" id="table-display-surface"
              data-refresh-token="@_refreshSequence" data-fresh-for-ms="@FreshForMilliseconds"
-             data-live="@IsLiveAttributeValue">
+             data-live="@IsLiveAttributeValue"
+             data-loaded="@IsLoadedAttributeValue">
         <p class="display-eyebrow">@Options.RestaurantName</p>
         <h1>@_tableLabel</h1>
 
@@ -122,7 +124,8 @@ else
        next boundary — so say so plainly instead of dereferencing a null or showing a blank screen. *@
     <section class="display-card display-surface" id="table-display-surface"
              data-refresh-token="@_refreshSequence" data-fresh-for-ms="@FreshForMilliseconds"
-             data-live="@IsLiveAttributeValue">
+             data-live="@IsLiveAttributeValue"
+             data-loaded="@IsLoadedAttributeValue">
         <p class="display-eyebrow">@Options.RestaurantName</p>
         <h1>@_tableLabel</h1>
         <p class="display-lede">Preparing the join code…</p>
@@ -231,6 +234,7 @@ else
     private TableJoinQrCode? _qr;
     private int _partySize;
     private int _refreshSequence;
+    private bool _loaded;
 
     // Captured once, so nothing ever touches _lifetime.Token after Dispose has run.
     private readonly CancellationTokenSource _lifetime = new();
@@ -273,6 +277,34 @@ else
     /// </summary>
     private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
 
+    /// <summary>
+    /// §11.10's second bit: whether this surface has the thing it exists to show. <c>"true"</c> only
+    /// once the component has finished resolving which §11.5 state it is in <em>and</em> a join code came
+    /// back from <see cref="ITableJoinTokens"/>.
+    ///
+    /// <para><b>Why the predicate is not simply <c>_loaded</c>, unlike the other five surfaces.</b>
+    /// §11.10 defines the bit as "the surface has everything it renders itself for", and on this screen
+    /// that is a QR and nothing else. Both of the branches carrying
+    /// <c>id="table-display-surface"</c> are reachable with the component fully resolved: the second one
+    /// renders "Preparing the join code…" when <c>DescribeCurrentAsync</c> came back empty, which is
+    /// transient rather than fatal and so is deliberately not an error page. A bit that read
+    /// <c>true</c> there would be true and useless — it would tell a reader the surface is ready on the
+    /// one screen where readiness means a code, and §16.3 scenario 2 would go on to spend sixty seconds
+    /// in <c>ReadJoinQrPathAsync</c> failing two steps from the cause.</para>
+    ///
+    /// <para><b>And why not just <c>_qr is not null</c>.</b> Because that conflates "no code yet" with
+    /// "no code came back", and only the second is worth reporting. Keeping <c>_loaded</c> in the
+    /// conjunction means the attribute distinguishes a surface still resolving from one that resolved
+    /// and got nothing — the first is patience, the second is §4.3 not answering.</para>
+    ///
+    /// <para>This is the honest reading of the rule rather than an exception to it. The uniform thing
+    /// across all six surfaces is the <em>question</em> — has this markup got what a reader came for —
+    /// not the expression that answers it. §11.10 says so, and the §16.4 contract test pins the shape
+    /// (a property named <c>IsLoadedAttributeValue</c> feeding the attribute) rather than the body, for
+    /// exactly this reason.</para>
+    /// </summary>
+    private string IsLoadedAttributeValue => _loaded && _qr is not null ? "true" : "false";
+
     protected override async Task OnInitializedAsync()
     {
         _stopping = _lifetime.Token;
@@ -280,6 +312,7 @@ else
         if (AuthenticationStateTask is null)
         {
             _stage = DisplayStage.NotPaired;
+            _loaded = true;
             return;
         }
 
@@ -298,6 +331,7 @@ else
             // an HTTP redirect and the circuit never starts; on the circuit it is a navigation. The
             // rendered not-paired card above stands behind it either way.
             _stage = DisplayStage.NotPaired;
+            _loaded = true;
             Navigation.NavigateTo(DisplayRoutes.Pair);
             return;
         }
@@ -305,11 +339,18 @@ else
         if (_deviceTable.Value != TableId)
         {
             _stage = DisplayStage.WrongTable;
+            _loaded = true;
             return;
         }
 
         _tableLabel = _deviceTableLabel ?? string.Empty;
         await LoadAsync();
+
+        // Latched on every path out of this method, including the three early returns above: §11.10's
+        // bit means "finished deciding", and an unpaired screen or one on the wrong table has decided.
+        // Set before NavigateTo rather than after, because on the prerender pass that call throws a
+        // NavigationException the framework swallows and nothing below it would run.
+        _loaded = true;
 
         StartLiveWorkIfNeeded();
     }

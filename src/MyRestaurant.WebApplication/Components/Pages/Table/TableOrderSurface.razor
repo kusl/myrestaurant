@@ -38,13 +38,16 @@
    that is no longer the guest's to remove — it refuses only so the answer arrives at the moment of the
    tap instead of after a round trip. *@
 
-@* One element around the whole island, and the reason is the attribute on it rather than the
+@* One element around the whole island, and the reason is the attributes on it rather than the
    layout. §11.1's hazard is the same one §11.5 has: a surface that never became interactive looks
    exactly like a live one. Prerendering renders the picker, the basket and the totals; what it does
    not render is anything that responds — every control here is an @@onclick, so on a dead island
    "Add to basket" silently does nothing and the first thing anyone learns is that the basket stayed
-   empty. data-live is the one bit that differs, published the same way TableDisplay publishes it. *@
-<div class="order-surface" id="table-order-surface" data-live="@IsLiveAttributeValue">
+   empty. §11.10's pair says both halves: data-live that a circuit produced this markup, data-loaded
+   that the reads behind it have answered. *@
+<div class="order-surface" id="table-order-surface"
+     data-live="@IsLiveAttributeValue"
+     data-loaded="@IsLoadedAttributeValue">
     @if (!_loaded)
     {
         <p class="lede">Loading your table…</p>
@@ -509,6 +512,23 @@
     /// dev tools and to the §16.3 scenarios that drive this surface.</para>
     /// </summary>
     private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
+
+    /// <summary>
+    /// Whether the reads behind this island have answered, published alongside <c>data-live</c> —
+    /// §11.10's second bit, and the half this surface was missing until M6 Slice 23.
+    ///
+    /// <para>The circuit's first render is <c>data-live="true"</c> with <c>_loaded</c> still false, and
+    /// this island renders "Loading your table…" in that state. Every barrier a scenario sets here is
+    /// about content — a roster entry, a basket line, a committed line, a total — and all of it is
+    /// absent at that instant. The waits downstream have always covered for it by going on to look for
+    /// something specific; that is a race being waited out incidentally rather than a barrier, which is
+    /// exactly what F-44 was about on <c>/counter</c>.</para>
+    ///
+    /// <para><c>_loaded</c> is also set on the <c>_person is null</c> path, deliberately: an expired
+    /// cookie is a resolved state and the surface has something to say about it. Loaded does not mean
+    /// "has content", it means "has finished deciding".</para>
+    /// </summary>
+    private string IsLoadedAttributeValue => _loaded ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {

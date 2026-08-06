@@ -41,10 +41,11 @@
 
 <PageTitle>@(_sitting is null ? "Sitting" : $"Counter — {_sitting.TableLabel}")</PageTitle>
 
-@* data-live says whether a circuit produced this markup at all — see IsLiveAttributeValue. The same
-   attribute, for the same reason, as KitchenBoard's and TableOrderSurface's. *@
+@* §11.10's pair. data-live says whether a circuit produced this markup at all; data-loaded whether
+   the queries behind the bill have answered — see IsLiveAttributeValue and IsLoadedAttributeValue. *@
 <section class="panel counter-sitting-page" id="counter-sitting-surface"
-         data-live="@IsLiveAttributeValue">
+         data-live="@IsLiveAttributeValue"
+         data-loaded="@IsLoadedAttributeValue">
     <p class="eyebrow">Counter</p>
 
     @if (!_loaded)
@@ -743,6 +744,22 @@
     /// and a scenario can name in one sentence.</para>
     /// </summary>
     private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
+
+    /// <summary>
+    /// Whether <see cref="LoadAsync"/> has answered, published alongside <c>data-live</c> — §11.10's
+    /// second bit, and the half this surface was missing until M6 Slice 23.
+    ///
+    /// <para>The circuit's first render is <c>data-live="true"</c> with <c>_loaded</c> still false, and
+    /// this page renders <c>&lt;h1&gt;Loading…&lt;/h1&gt;</c> in that state — no bill, no totals, no
+    /// controls. Waiting on <c>data-live</c> alone is therefore a wait that lands on the one render
+    /// where none of the things a caller came for exist. That is worse than harmless here, because the
+    /// state immediately below it in the markup is <em>"Sitting not found"</em>: a reader that arrived
+    /// early and asked what the page says would be told the identifier is stale.</para>
+    ///
+    /// <para>Not the prerender — that emits fully loaded markup. The hand-over, where the component is
+    /// rebuilt from nothing and the DOM returns to loading for as long as the reads take (F-44).</para>
+    /// </summary>
+    private string IsLoadedAttributeValue => _loaded ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {

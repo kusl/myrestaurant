@@ -144,6 +144,13 @@ internal sealed record CounterFloor(
 /// <c>CounterBoard.razor</c> publishes <c>data-loaded</c> beside <c>data-live</c> and
 /// <see cref="WaitForBoardAsync"/> demands both (M6 Slice 21, F-44).</para>
 ///
+/// <para><b>And the bill is the same shape, which F-44 recorded and did not fix.</b> Slice 21 changed
+/// one surface because one scenario had failed on it, and wrote down that the other four carried the
+/// same latent race and were passing only because their callers went on to wait for specific content.
+/// M6 Slice 23 closed that: §11.10 now makes the pair the rule for every interactive surface rather
+/// than a habit four of them had half of, and <see cref="WaitForLiveSittingAsync"/> demands both bits
+/// here too (F-47).</para>
+///
 /// <para><b>Why the board's link is followed rather than typed.</b> A scenario knows the sitting
 /// identifier only if it reads the database for it, and §16.3's "counter adjusts a price" means the
 /// counter found the table — the board, the open-sittings query, and the link. Following it also means
@@ -201,11 +208,18 @@ internal static class CounterJourneys
     private const string SittingSurfaceSelector = "#counter-sitting-surface";
 
     /// <summary>
-    /// The bill as rendered by a live circuit. <c>CounterSitting.razor</c> sets <c>data-live</c> from
-    /// <c>RendererInfo.IsInteractive</c>, so this matches only markup an interactive renderer produced —
-    /// never the prerendered pass, which is identical in every other respect.
+    /// The bill as rendered by a live circuit that has finished loading — §11.10's pair, both halves
+    /// demanded (M6 Slice 23, F-47).
+    ///
+    /// <para><c>[data-live='true']</c> alone is what stood here, and it matches the circuit's first
+    /// render, where <c>_loaded</c> is still false and the page is a bare
+    /// <c>&lt;h1&gt;Loading…&lt;/h1&gt;</c>. That is worse than an empty screen on this page in
+    /// particular, because the branch immediately below "loading" in the markup is <em>"Sitting not
+    /// found"</em>: a reader that arrived early and asked what the till says would be told, in the
+    /// component's own words, that the identifier names nothing.</para>
     /// </summary>
-    private const string LiveSittingSurfaceSelector = "#counter-sitting-surface[data-live='true']";
+    private const string LiveSittingSurfaceSelector =
+        "#counter-sitting-surface[data-live='true'][data-loaded='true']";
 
     private const string BillEntrySelector = "#counter-sitting-surface article.counter-person";
     private const string BillLineSelector = "li.counter-line";
@@ -414,8 +428,8 @@ internal static class CounterJourneys
     }
 
     /// <summary>
-    /// Waits until the bill on screen was rendered by a live circuit rather than by prerendering. Every
-    /// other method here assumes it.
+    /// Waits until the bill on screen was rendered by a live circuit rather than by prerendering,
+    /// <em>and</em> the reads behind it have answered. Every other method here assumes both.
     /// </summary>
     internal static async Task WaitForLiveSittingAsync(IPage page, TimeSpan timeout)
     {
@@ -436,13 +450,14 @@ internal static class CounterJourneys
             throw new InvalidOperationException(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The till never became interactive within {timeout.TotalSeconds:F0}s; it is still"
-                    + $" the prerendered markup ({surface}). The bill will read correctly and every"
-                    + $" control on it will do nothing — Adjust price, Remove, Add to the bill and"
-                    + $" Close & settle are all @onclick handlers with no circuit behind them, and the"
-                    + $" screen will not hear §9 either. Check that /_framework/blazor.web.js is served"
-                    + $" (RestaurantInstance probes it at startup) and that the browser reached"
-                    + $" /_blazor."),
+                    $"The till was not live and loaded within {timeout.TotalSeconds:F0}s ({surface})."
+                    + $" A surface present with data-live='false' is still the prerendered markup: the"
+                    + $" bill will read correctly and every control on it will do nothing — Adjust"
+                    + $" price, Remove, Add to the bill and Close & settle are all @onclick handlers"
+                    + $" with no circuit behind them, and the screen will not hear §9 either. Check that"
+                    + $" /_framework/blazor.web.js is served (RestaurantInstance probes it at startup)"
+                    + $" and that the browser reached /_blazor. One stuck at data-loaded='false' has a"
+                    + $" circuit and is still on §11.3's reads."),
                 exception);
         }
     }
@@ -1192,8 +1207,11 @@ internal static class CounterJourneys
         }
 
         string? live = await surface.First.GetAttributeAsync("data-live");
+        string? loaded = await surface.First.GetAttributeAsync("data-loaded");
 
-        return string.Create(CultureInfo.InvariantCulture, $"data-live='{live ?? "absent"}'");
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"data-live='{live ?? "absent"}', data-loaded='{loaded ?? "absent"}'");
     }
 
     /// <summary>

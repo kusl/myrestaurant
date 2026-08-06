@@ -217,11 +217,19 @@ internal static class TableOrderJourneys
     private const string SurfaceSelector = "#table-order-surface";
 
     /// <summary>
-    /// The island as rendered by a live circuit. <c>TableOrderSurface.razor</c> sets <c>data-live</c>
-    /// from <c>RendererInfo.IsInteractive</c>, so this matches only markup an interactive renderer
-    /// produced — never the prerendered pass, which is identical in every other respect.
+    /// The island as rendered by a live circuit that has finished loading — §11.10's pair, both halves
+    /// demanded (M6 Slice 23, F-47).
+    ///
+    /// <para><c>[data-live='true']</c> alone is what stood here, and it matches the circuit's first
+    /// render, where <c>_loaded</c> is still false and the island is the single line "Loading your
+    /// table…". Every barrier below this one is about content — a roster entry, a basket line, a
+    /// committed line, a total — and none of it exists at that instant. Those waits have always covered
+    /// for it by going on to look for something specific, which is a race waited out incidentally
+    /// rather than a barrier; F-44 named that pattern on <c>/counter</c>, where the thing being read was
+    /// an <em>absence</em> and so nothing downstream covered for anything.</para>
     /// </summary>
-    private const string LiveSurfaceSelector = "#table-order-surface[data-live='true']";
+    private const string LiveSurfaceSelector =
+        "#table-order-surface[data-live='true'][data-loaded='true']";
 
     /// <summary>Staged adds only. <c>.is-removal</c> rows are ticked removals and are counted separately.</summary>
     private const string BasketLineSelector =
@@ -299,7 +307,8 @@ internal static class TableOrderJourneys
 
     /// <summary>
     /// Waits until the ordering island on screen was rendered by a live circuit rather than by
-    /// prerendering. Every other method here assumes it; a scenario calls it once after joining.
+    /// prerendering, <em>and</em> §11.1's reads have answered. Every other method here assumes both; a
+    /// scenario calls this once after joining.
     /// </summary>
     internal static async Task WaitForLiveSurfaceAsync(IPage page, TimeSpan timeout)
     {
@@ -322,13 +331,14 @@ internal static class TableOrderJourneys
             throw new InvalidOperationException(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The ordering surface never became interactive within"
-                    + $" {timeout.TotalSeconds:F0}s; it is still the prerendered markup ({surface})."
-                    + $" Nothing on this page will respond — Add to basket, Send and every quantity box"
-                    + $" are @onclick handlers with no circuit behind them, and the kitchen will never"
-                    + $" hear anything. Check that /_framework/blazor.web.js is served"
-                    + $" (RestaurantInstance probes it at startup) and that the browser reached"
-                    + $" /_blazor."),
+                    $"The ordering surface was not live and loaded within"
+                    + $" {timeout.TotalSeconds:F0}s ({surface}). A surface present with"
+                    + $" data-live='false' is still the prerendered markup: nothing on the page will"
+                    + $" respond — Add to basket, Send and every quantity box are @onclick handlers with"
+                    + $" no circuit behind them, and the kitchen will never hear anything. Check that"
+                    + $" /_framework/blazor.web.js is served (RestaurantInstance probes it at startup)"
+                    + $" and that the browser reached /_blazor. One stuck at data-loaded='false' has a"
+                    + $" circuit and is still on §11.1's reads."),
                 exception);
         }
     }
@@ -1446,7 +1456,10 @@ internal static class TableOrderJourneys
         }
 
         string? live = await surface.First.GetAttributeAsync("data-live");
+        string? loaded = await surface.First.GetAttributeAsync("data-loaded");
 
-        return string.Create(CultureInfo.InvariantCulture, $"data-live='{live ?? "absent"}'");
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"data-live='{live ?? "absent"}', data-loaded='{loaded ?? "absent"}'");
     }
 }

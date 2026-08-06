@@ -1,15 +1,15 @@
-# M6 Slice 22 — what leaves this machine
+# M6 Slice 23 — what leaves this machine
 
 Every file below is a **full file** at its **repo-relative path**. Extract at the repository root and
 the contents drop straight over your working tree — no diffs, no patches, no scripts that edit your
-code or your documents. **`docs/BUILD_PROGRESS.md` is included whole**, with Slice 21 merged into it,
-so there is nothing to append this time and nothing to remember afterwards.
+code or your documents. **`docs/BUILD_PROGRESS.md` is included whole**, with Slice 23 appended, so
+there is nothing to merge afterwards and nothing to remember.
 
 ```bash
-tar -xzf m6-slice-22-build-context-and-package-visibility.tar.gz -C /home/kushal/src/dotnet/myrestaurant
+tar -xzf m6-slice-23-live-surface-contract.tar.gz -C /home/kushal/src/dotnet/myrestaurant
 cd /home/kushal/src/dotnet/myrestaurant
-git rm docs/_append/BUILD_PROGRESS-M6-Slice-21.md
-git add .dockerignore
+git add tests/MyRestaurant.WebApplication.Tests/Components \
+        tests/MyRestaurant.WebApplication.Tests/Documentation
 ```
 
 Then:
@@ -21,225 +21,205 @@ bash scripts/check_repository.sh
 
 ## Files to DELETE
 
-| Path | Why |
-| --- | --- |
-| `docs/_append/BUILD_PROGRESS-M6-Slice-21.md` | its contents are now inside `docs/BUILD_PROGRESS.md`, byte for byte and unedited. The directory `docs/_append/` goes with it — nothing will be delivered there again |
+**None.** Nothing is renamed, superseded or orphaned.
 
-Nothing else is renamed, superseded or orphaned. No migration, no schema change, no package change,
-no ADR edit, no `.slnx` edit, no `Program.cs` edit, no `.csproj` edit, **no C# and no Razor at all**.
+No migration, no schema change, no package change, no ADR edit, no `.slnx` edit, no `Program.cs` edit,
+no `.csproj` edit, no shell script, no workflow, no `Containerfile`, no `.dockerignore`.
 
-**The two `git` commands above are not optional.** `git rm` because the archive cannot delete a file,
-and an unmerged append file left in the tree is the exact defect this slice is closing. `git add`
-because `ci_local.sh`, CI's `shell-scripts` job, `check_tree.sh` and `check_repository.sh` all
-enumerate with `git ls-files`, so an untracked new file is silently unchecked by every one of them —
-and `.dockerignore` untracked would also be missing from a fresh clone, which is where CI builds.
+**The `git add` is not optional.** Two new files land in a directory structure that does not exist yet,
+and `check_tree.sh`, `check_repository.sh`, `ci_local.sh` and CI's `shell-scripts` job all enumerate
+with `git ls-files` — an untracked new file is silently unchecked by every one of them. `dotnet test`
+will still compile and run them (the test SDK globs `**/*.cs`), so the symptom of forgetting is a test
+count that moves while the gates report an unchanged file count.
 
 ## What happened
 
-Slice 21 fixed two red CI jobs and shipped no ledger. `docs/_append/BUILD_PROGRESS-M6-Slice-21.md` is
-still sitting in your tree unmerged, and **F-43 and F-44 appear nowhere in `docs/DOCUMENTATION_REVIEW.md`
-or in the specification's Appendix A**. S§18 says a behaviour change lands in one commit with its ledger
-and specification edits; that delivery quoted the rule in its own notes and did not follow it. Both rows
-are written now, dated to Slice 21, and the delivery mechanism that allowed it is retired.
+Slice 21's F-44 row said the fix was not applied further because *"the other four live surfaces"*
+carried the same latent race. This slice went to fix those four. **There are not four**, and the two
+things that turned up on the way are the finding.
 
-Then I read the tree against what a tag makes true — F-39's habit, third time — one layer further out
-than Slice 20 went. F-39 asked what a tag makes true about the program. F-42 asked what it makes true
-about the repository. This slice asked about the **artefact**: what goes into the image, and who can
-get the image back out. Neither question had ever been asked.
+## F-47 — the enumeration, and the surface it never contained
 
-## F-45 — the build context was the whole working tree
+`App.razor` decides interactivity in eleven lines:
 
-There has never been a `.dockerignore` in this tree. `Containerfile` has said `COPY . .` since M1 with
-the repository root as the context. Measured against a fresh clone with nothing built:
-
-```
-458 files, 31,148,997 bytes handed to the builder
-    docs/llm/   16 MB
-    .git/       11 MB
-    src/         1.6 MB   <- the only part dotnet publish opens
+```razor
+private IComponentRenderMode? RenderModeForPage
+    => HttpContext.AcceptsInteractiveRouting() ? InteractiveServer : null;
 ```
 
-87% is material the build cannot use. That is the harmless half.
+Computed rather than remembered, that is **six routable pages** plus `TableOrderSurface`, which carries
+no `@page` and no `@rendermode` of its own and is interactive because `/table/{id}` hosts it that way.
+Seven components. The tree said *five*, in five separate doc comments, one of which was
+`CounterBoard`'s claim to have been "the only one of the five live surfaces that did not say".
 
-**A build context is not a commit.** `.gitignore` names `.env`, `.dataprotection/`, every `*.dump` and
-every `*-dataprotection.tar` — and it is correct about all of them; its own comment on the last one says
-never to commit one. It protected nothing here, because neither engine reads it. Every one of those paths
-was copied into the build stage on every local `--build`.
+**`/table` had been a live surface since M3 and published nothing at all** — no id, no `data-live`, no
+`data-loaded`. It has a `_loaded` field and a "Looking up your tables…" branch, and the state the
+hand-over renders before its query answers is an empty list, which is character-for-character the state
+that means *you are not seated at a table right now*. Nothing was failing, because no §16.3 scenario
+reads that page.
 
-The ordering is not hypothetical, it is your documented upgrade:
+**The second half is the one worth reading twice.** The obvious way to close this slice was to copy
+`CounterBoard`'s property into four files. On `/display/{table}` that would have published an attribute
+that was `true` whenever its element existed. `TableDisplay` renders `id="table-display-surface"` from
+two branches — the QR, and the "Preparing the join code…" card for when §4.3 returned nothing — and the
+second is transient rather than fatal, so it is fully resolved, fully interactive, and has no code on
+it. `[data-live='true']` already matched it, which is why scenario 2's failure mode when a join secret
+is wrong is sixty seconds inside `ReadJoinQrPathAsync` and a message about a missing `d` attribute.
 
-```
-OPERATIONS §12
-  1. scripts/backup.sh                                     writes the key ring, in the clear (§8)
-  2. podman-compose --profile production up -d --build     hands it to the image builder
-```
+So §11.10 defines the bit at the level where six surfaces actually agree — **the question, not the
+expression**: `data-loaded` answers *does this markup have what the surface renders itself for*. Five
+answer it with `_loaded`. The display answers it with `_loaded && _qr is not null`, and that is the rule
+applied rather than an exception to it.
 
-CI escaped by accident of step ordering alone — `boot-smoke` builds before `backup.sh` writes anything.
-And no gate could have caught it: every gate you have enumerates with `git ls-files`, and every file at
-issue is git-ignored **on purpose**.
+Both halves are F-46's finding again: a rule stated as a rule and enforced as a list of examples is
+enforced as a list of examples. F-43, F-44, F-46 and now F-47 are four checks in three slices whose
+names were true and whose contents were narrower than their names, all green throughout.
 
-`.dockerignore` is an **allow-list**, and that is the ruling rather than a style choice: a deny-list is
-what failed here. `.gitignore` is a well-kept deny-list, it was already right, and being right did not
-help — a deny-list has to be extended for tomorrow's secret by somebody who remembers to. Context falls
-to **169 files, 1.6 MB**, and the list has to be extended for tomorrow's *source directory* instead, by a
-build that stops the moment it is not.
+**And the row names something executable** (F-38's lesson, fifth application).
+`LiveSurfaceContractTests` **derives** the interactive set from `[ExcludeFromInteractiveRouting]` and
+from `@rendermode="InteractiveServer"` in any file's markup, rather than from a list. Seven assertions,
+including that the two bits are published the same number of times per file — which is the one that
+catches a surface rendering its element from two branches, and the only one that would have caught
+`TableDisplay` before this change.
 
-**And the row names something executable.** `Containerfile` carries a guard immediately after `COPY . .`
-that fails unless the context root is exactly the allowed set, every required path is present, and no
-`bin`/`obj` survives under `src`. An ignore-file can be renamed, shadowed by a `.containerignore` (Podman
-prefers that name when both exist), or overridden with `--ignorefile`, and every one of those failures is
-silent — the build still succeeds, just slower. This guard runs **wherever a build runs**, which is your
-workstation and not only CI, and that is the point: the machine likely to have a key ring in the tree is
-yours, not the runner's.
+## F-48 — the specification's header, for the second time
 
-## F-46 — the F-42 rule, enforced as a list of examples
+While bumping the specification the header read **v1.6** and the newest changelog entry read **v1.7**.
+The v1.3 entry corrects the identical drift from Slice 16, in its own words. Found, corrected,
+explained in the correcting document, and repeated seven versions later.
 
-Slice 20's gate 3 exists so that no tracked file can assert a GitHub setting. It landed green, it has been
-green since, and it was already wrong: `docs/OPERATIONS.md` §14 asserted, in the indicative, the
-visibility of a published **package** and what that implied for pulling one. Three things wrong at once —
-it is the *package* settings page and gate 3 enumerated the *repository* page; the package did not exist,
-there being no tags on this repository; and GitHub's own documentation contradicts itself about which way
-that switch falls for a `GITHUB_TOKEN` publish, so nobody could say whether the sentence was true.
-
-§14 now states the intention and names where the switch lives for an operator who meets a 401. That is
-true whichever way the checkbox falls, and useful in the case where it is wrong — which the old sentence
-was not.
-
-**Second half of the same blind spot:** the gate's advisory report on the published settings never ran on
-a release. A called workflow sees only the secrets it is handed, and `release.yml` handed `ci.yml` none —
-so the one run that *creates* a package produced no report about packages. It now passes
-`ADMIN_READ_TOKEN` **by name** rather than `secrets: inherit`, and `ci.yml` declares it `required: false`
-under `workflow_call`. A fork's pull request still skips that half and still goes green.
+Recorded at full weight for the second half rather than the first: a stale version number is not worth
+a paragraph, but a correction that left nothing behind that runs is. `SpecificationVersionTests` is two
+assertions — header matches newest entry, entries descend — and a deliberate refusal to grow a third.
 
 ## The files
 
 | File | Change |
 | --- | --- |
-| `.dockerignore` | **NEW.** The allow-list. Read by both engines from the context root |
-| `Containerfile` | the guard after `COPY . .`, and the comment that says why the list is stated twice |
-| `scripts/check_repository.sh` | gate 3's forbidden list gains the package-settings group, with the reasoning beside it |
-| `.github/workflows/ci.yml` | `workflow_call` declares `ADMIN_READ_TOKEN` as an optional secret |
-| `.github/workflows/release.yml` | `verify` passes that one secret by name |
-| `docs/OPERATIONS.md` | §12 gains the ordering note; §14 gains the build-context section and replaces the visibility claim with intent plus the location of the switch |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.7**: §2 layout, **§14.1a** new and normative, §16.4 on the list belonging to the rule and on reaching the release run, Appendix A gains **F-43, F-44, F-45, F-46** |
-| `docs/DOCUMENTATION_REVIEW.md` | Group E gains the same four rows, and a *Going forward* section including the procedural finding against Slice 21 |
-| `README.md` | the `governance` and `boot-smoke` gate rows |
-| `docs/BUILD_PROGRESS.md` | **Full file, 451 KiB.** Slice 21 merged in unedited, Slice 22 appended. Nothing to run |
+| `src/…/Components/Pages/Table/TableArea.razor` | **the sixth surface.** `id="table-area-surface"`, both bits, both properties |
+| `src/…/Components/Pages/Display/TableDisplay.razor` | new `_loaded`, latched on all four paths out of `OnInitializedAsync`; `data-loaded` on both surface branches, predicate `_loaded && _qr is not null` |
+| `src/…/Components/Pages/Kitchen/KitchenBoard.razor` | `data-loaded` beside the live bit and the two §10.3 counts |
+| `src/…/Components/Pages/Counter/CounterSitting.razor` | `data-loaded` |
+| `src/…/Components/Pages/Table/TableOrderSurface.razor` | `data-loaded` |
+| `src/…/Components/Pages/Counter/CounterBoard.razor` | **doc comment only.** The "only one of the five" sentence is retired and its wrongness recorded where it stood |
+| `tests/…/Harness/DisplayJourneys.cs` | selector demands both; the failure message distinguishes *no circuit* from *"Preparing the join code…"* |
+| `tests/…/Harness/KitchenJourneys.cs` | selector demands both; describe and message updated |
+| `tests/…/Harness/CounterJourneys.cs` | the sitting selector demands both; type-level remarks record what F-44 deferred |
+| `tests/…/Harness/TableOrderJourneys.cs` | selector demands both; describe and message updated |
+| `tests/MyRestaurant.WebApplication.Tests/Components/LiveSurfaceContractTests.cs` | **NEW.** Seven assertions, subject derived from the routing rule |
+| `tests/MyRestaurant.WebApplication.Tests/Documentation/SpecificationVersionTests.cs` | **NEW.** Two assertions — F-48 |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.8**: **§11.10** new and normative, §16.4 gains both tests, Appendix A gains **F-47** and **F-48**, and the header now says what the changelog says |
+| `docs/DOCUMENTATION_REVIEW.md` | Group E gains both rows; *Going forward* gains the habit both of them earned |
+| `docs/BUILD_PROGRESS.md` | **Full file, 465 KiB.** Slice 23 appended. Nothing to run |
 | `_CHANGES.md` | this file |
 
-`docs/REQUIREMENTS.md` is deliberately untouched, on the v1.2 and v1.4 reasoning: §15 has called the key
-ring a secret since v1.0 and §18 has forbidden platform-state claims since v1.6, so both findings are
-mechanisms catching up with contracts this tree already carried, not new intent.
+`docs/REQUIREMENTS.md` is deliberately untouched, on the v1.2 reasoning: §11.5 has said since v1.0 that
+a frozen screen must not masquerade as a live one, so this is that contract stated once for every
+surface instead of five times for four of them — a mechanism catching up with intent, not new intent.
+
+`Home.razor` is deliberately untouched: it is interactive and it has no render in which it is
+incomplete, so `data-loaded` would be `true` from the first paint and would assert nothing. It is in the
+contract test's expected set anyway, because the set is what the rule produces; whether a member owes
+the bits is a separate question.
+
+`wwwroot/js/display.js` is deliberately untouched: its staleness curtain keys on `data-refresh-token`
+and covers a circuit that died *later*. These bits cover one that never lived. Two mechanisms, two
+failure modes, no overlap.
 
 ## Build and test
 
 ```bash
 bash scripts/check_tree.sh
 #    expect: 5 gates, "tree hygiene passed.", exit 0, and the header reading
-#    "checking 313 authored text file(s) of 423 tracked". That count is unchanged from Slice 21:
-#    .dockerignore joins the scope and the _append file leaves it. If it says 312, the `git add`
-#    did not happen; if it says 314, the `git rm` did not.
+#    "checking 315 authored text file(s) of 425 tracked". Two new .cs files enter scope. If it says
+#    313, the `git add` did not happen.
 
 bash scripts/check_repository.sh --offline
-#    expect: 3 gates plus a SKIP, exit 0. Gate 3 must report "none". Before the OPERATIONS §14 edit
-#    it reports docs/OPERATIONS.md by file and line — that is this slice's second half proving
-#    itself, and you can see it by reverting that one paragraph.
+#    expect: 3 gates plus a SKIP, exit 0. Unchanged — no tracked file gained a platform-state claim.
 
 bash scripts/check_repository.sh
-#    expect: 4 gates, exit 0, "passed, with 1 advisory warning" — the wiki. Description and private
-#    vulnerability reporting both read clean now; Slice 20's two operator actions are done.
+#    expect: 4 gates, exit 0, "passed, with 1 advisory warning" — the wiki, as before.
 
 bash scripts/ci_local.sh --with-all
-#    expect: 8 numbered gates, same number and same order as Slice 21.
+#    expect: 8 numbered gates, same number and same order as Slice 22.
 
 dotnet test
-#    expect: 996 total, 0 failed. UNCHANGED. No C#, no Razor, no .csproj, no migration and no
-#    Program.cs is touched here. If this number moves, the cause is not this slice.
+#    expect: 1005 total, 0 failed. Was 996. Nine new tests: seven in LiveSurfaceContractTests, two in
+#    SpecificationVersionTests. No existing test is edited, so any other movement is not this slice.
 
 MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
-#    expect: 15 passed, 0 skipped. Unchanged.
-
-podman build --file Containerfile --tag myrestaurant_web:local .
-#    expect: an early line reading "build context accepted: 169 file(s)", then the usual publish.
-#    THIS IS THE ONE WORTH RUNNING BY HAND — it is the only thing here that exercises the new file,
-#    and no other gate in the tree does.
+#    expect: 15 passed, 0 skipped. THIS IS THE ONE WORTH WATCHING — the four barriers are strictly
+#    stricter than they were, and a barrier that now waits longer is the intended change. A barrier
+#    that now times out is a real finding; see below.
 ```
 
-`dotnet build` is not in that list on purpose: no compiled file is touched.
+`dotnet build` on its own is not in the list, but the two new files are the first C# this slice adds, so
+a plain `dotnet build` is a cheap first check that they compile before the test run.
 
-## What was actually verified here
-
-No .NET SDK and no container engine in the sandbox — so nothing was reasoned about that could be
-executed instead:
-
-- **The 31 MB figure is measured**, from a fresh `git clone` of `kusl/myrestaurant`: 458 files,
-  31,148,997 bytes.
-- **`.dockerignore` was evaluated against your real tree** with a faithful implementation of the
-  documented matching rules (last matching pattern wins; `**` spans zero or more segments; a pattern
-  matches a path or any ancestor). Result: 169 files, 1,615,409 bytes, with every path in the publish
-  graph individually asserted present — all three `.csproj`, `Migrations/0001_initial_schema.sql`,
-  `wwwroot/app.css`, `appsettings.json`, `Components/App.razor`.
-- **Sensitivity proven by planting the real hazards** — `.env`, `.dataprotection/key-abc.xml`, a
-  `.dump`, a `-dataprotection.tar`, a stale `obj/project.assets.json` carrying a host `.nuget` path, a
-  built `.dll` under `src/**/bin`. All six excluded with the file present; all six confirmed copied with
-  it absent.
-- **The `Containerfile` guard was executed in `dash`** — the SDK image's `/bin/sh`, not bash — after
-  joining its line continuations the way the Dockerfile parser does. `dash -n` clean on all three `RUN`
-  bodies. It accepts the real 169-file context and rejects eight separately constructed damage cases,
-  each reverted before the next: a leaked `.env`; a leaked `.git`; `docs` + `tests` + `README.md` (the
-  no-ignore-file case); a `backups/` holding a key-ring tar; an `obj/` under `src`; a missing `.csproj`;
-  a missing `global.json`; and your tree as it stands today. Every one exits 1 and names what it found.
-- **Ignore-file precedence checked against the sources rather than from memory**: Docker's build
-  documentation for the context root and the `<Dockerfile>.dockerignore` override, and Podman's
-  `podman-build.1.md.in` for `.containerignore`/`.dockerignore` and which wins when both exist.
-- **Each new gate-3 pattern fired individually** — seven planted one at a time and reverted between
-  runs — and four legitimate policy phrasings were planted to prove the list does not over-fire,
-  including the replacement sentence §14 now carries and an instruction to *set* a visibility, which
-  must stay sayable.
-- **Both workflows parsed with PyYAML**, and the `workflow_call` secret declaration, `verify`'s
-  `secrets:` block and the governance job's `env:` were read back out of the parsed documents.
-- **`check_tree.sh` and `check_repository.sh` were run against the delivered tree**, staged, with both
-  halves and a real token: 5 gates clean over 313 authored files, and governance clean with one advisory
-  warning.
-- `bash -n` over all eight tracked scripts. **shellcheck was not available in the sandbox** — the one
-  thing here I could not run. `scripts/check_repository.sh` is the only script that changed and the
-  change is two array literals and comment text, with no new command, expansion or control flow, so the
-  exposure is small; CI runs shellcheck regardless.
-- **Every documentation edit applied by exact-match replacement with an assertion that the anchor occurs
-  exactly once**, so nothing was edited by position. `docs/BUILD_PROGRESS.md` was assembled from its
-  existing bytes plus two whole appended sections — it was not regenerated, and Slice 21's entry is
-  byte-identical to the file you already have.
+`podman build` is not in the list: nothing in the build context changed.
 
 ## Where to look if this breaks
 
-**`podman build` prints `BUILD CONTEXT REJECTED`.** Read the list it prints. Under `not allowed here`
-it is naming top-level entries that reached the builder, which means `.dockerignore` was not read —
-check it landed at the repository root, that no `.containerignore` exists beside it, and that nothing is
-passing `--ignorefile`. Under `required, absent` the ignore-file went too far and the message names
-exactly which path to re-include.
+**`LiveSurfaceContractTests` fails at `TheScanReadsTheTree…` with a set mismatch.** Somebody added a
+routable page, or removed `[ExcludeFromInteractiveRouting]` from one. That is the speed bump working:
+add the name to `ExpectedInteractiveComponents` and, in the same edit, decide whether the new surface
+has a loading state and therefore owes the two bits. The list is not the rule — it is compared against
+what the rule produces, so it can only pass by agreeing with it.
 
-**`check_tree.sh` says 312 authored files.** `git add .dockerignore` did not happen. **314** — the
-`git rm` did not.
+**`LiveSurfaceContractTests` throws "walked up … without finding MyRestaurant.slnx".** The test reads
+the Razor sources off disk and locates them the way `WebApplicationLocator` does. It fails rather than
+skips on purpose. If you are running tests from somewhere detached from the tree, that is the cause.
 
-**`check_repository.sh` fails at gate 3 on a file I did not touch.** Then that file already carried one
-of the new phrasings and I missed it; the message names file and line. State the intention instead, or
-send me the path.
+**An E2E scenario now times out on a barrier.** Read the message: every one of the four now names which
+bit was missing. `data-live='false'` is the old meaning, no circuit. `data-loaded='false'` is new and
+means the circuit is up and the surface has not finished — on `/display/{table}` specifically it means
+§4.3 returned no code for that table, so look at the join secret and at whether the row is still active.
+A barrier that hangs where nothing hung before is worth reporting rather than loosening; these
+selectors are strictly stricter, so they cannot fail on anything that was previously correct.
 
-**CI's `governance` job is red on a release.** It can only be the tree half — the platform half cannot
-fail. `bash scripts/check_repository.sh --offline` locally gives the identical output with no network.
+**`SpecificationVersionTests` fails.** Something bumped one of the two version fields in
+`docs/TECHNICAL_SPECIFICATION.md` and not the other. That is the whole point of it.
 
-**The release's governance job now says `SKIP: no GitHub token`.** `ADMIN_READ_TOKEN` is not set in the
-repository's secrets. That is the same skip you have always had there; it is now visible rather than
-silent, which is the improvement.
+**Test count is not 1005.** Nine tests were added and none removed or edited. If the total moved by some
+other amount, look at what changed between your last run and this one rather than at this slice.
 
-**Test count is not 996.** Nothing in this slice touches a test, a project file, or any compiled source.
-Look at what changed between your last run and this one.
+**A Razor file will not compile.** The likeliest site by far, as always. Five of the six edits are one
+attribute in the markup and one property in the `@code` block; `TableDisplay` is the only one with new
+statements, four `_loaded = true;` assignments on the paths out of `OnInitializedAsync`. Balance was
+checked before and after on every file and is structurally identical, but no SDK ran here.
+
+## What was actually verified here
+
+No .NET SDK in the sandbox, so nothing was reasoned about that could be executed instead:
+
+- **The interactive set was computed rather than read.** A faithful implementation of the test's own
+  scan was run over the tree: 48 `.razor` files, 32 statically routed pages, one island
+  (`TableOrderSurface`), and an interactive set of exactly the seven expected names.
+- **All nine new assertions were executed against the delivered tree** and pass.
+- **Both gates were proven sensitive against the Slice 22 tree.** The contract test fails there on
+  `TableArea` (no live bit); on `CounterSitting`, `KitchenBoard`, `TableOrderSurface` and `TableArea`
+  (no loaded bit); and on `TableDisplay` by counts — `2` live against `0` loaded, which is the only
+  assertion that catches a surface with no `_loaded` field at all. The version test fails there with
+  1.6 against 1.7.
+- **Splitter fidelity was checked against the dump's own byte counts** before anything was edited — the
+  F-40 lesson, applied to the transport rather than assumed. Thirteen files compared; two
+  (`CounterBoard.razor`, `CounterJourneys.cs`) came back one byte short because their trailing blank
+  line had been collapsed, and both were restored before packaging. Every delivered file that existed
+  before now matches its dump size plus exactly the edits described above.
+- **Every edit applied by exact-match replacement with an assertion that the anchor occurs exactly
+  once**, so nothing was edited by position. `docs/BUILD_PROGRESS.md` is its existing bytes plus one
+  appended section; it was not regenerated.
+- **Markup balance checked before and after on every edited Razor file.** The two files a crude
+  tag-matcher reports on report identically *before* the slice — `ILogger<TableDisplay>` and
+  `IReadOnlyList<OrderLineView>` read as tags — which is what makes them generic-type false positives
+  rather than findings.
+- **`.editorconfig` hygiene checked on every delivered file**: LF endings, final newline, no
+  whitespace-only lines, no trailing whitespace, no context-dump separator.
+- No shell script, workflow or project file changed, so `bash -n`, shellcheck and the XML/YAML gates
+  have nothing new to look at.
 
 ## Still not a file, and still yours
 
-The tag. `OPERATIONS.md` §14's release procedure is unchanged: bump `VersionPrefix`, run the gates, tag,
-push. The one thing worth knowing before you do is that **`release.yml` has never executed** — every
-action version in it resolves and every job is structurally sound, but the whole workflow is in the state
-`scripts/restore.sh` was in before F-38. A `workflow_dispatch` off `main` publishes only
-`ghcr.io/kusl/myrestaurant:sha-<commit>` and skips the release-notes job, so it rehearses the path
-without spending a version number. That is a suggestion, not a finding, and it is not in this archive.
+The tag, unchanged from Slice 22's note. `release.yml` has still never executed; a `workflow_dispatch`
+off `main` publishes only `ghcr.io/kusl/myrestaurant:sha-<commit>` and skips the release-notes job, so
+it rehearses the path without spending a version number. Still a suggestion, still not in this archive.

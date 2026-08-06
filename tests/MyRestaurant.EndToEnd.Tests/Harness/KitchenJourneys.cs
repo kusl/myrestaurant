@@ -70,10 +70,20 @@ internal static class KitchenJourneys
     private const string SurfaceSelector = "#kitchen-board-surface";
 
     /// <summary>
-    /// The board as rendered by a live circuit. <c>KitchenBoard.razor</c> sets <c>data-live</c> from
-    /// <c>RendererInfo.IsInteractive</c>, so this matches only markup an interactive renderer produced.
+    /// The board as rendered by a live circuit that has finished loading — §11.10's pair, both halves
+    /// demanded (M6 Slice 23, F-47).
+    ///
+    /// <para><c>[data-live='true']</c> alone is what stood here, and on its own it steers a reader
+    /// <em>towards</em> the circuit's first render rather than past it: <c>ComponentBase</c> renders the
+    /// moment <c>OnInitializedAsync</c> yields, so that selector matches the one instant when the queue,
+    /// the Undo list and the "86" panel are all absent and the board says "Loading the board…".
+    /// <c>[data-loaded='true']</c> alone would match the prerendered markup, which is loaded and inert.
+    /// F-44 recorded that this surface carried the race and passed anyway, because every caller below
+    /// goes on to wait for a specific line or menu row — which waits the reload out incidentally.
+    /// Incidentally is not a barrier, and it is not what a caller reads this method as promising.</para>
     /// </summary>
-    private const string LiveSurfaceSelector = "#kitchen-board-surface[data-live='true']";
+    private const string LiveSurfaceSelector =
+        "#kitchen-board-surface[data-live='true'][data-loaded='true']";
 
     private const string PendingLineSelector = "#kitchen-board-surface li.kitchen-line";
 
@@ -105,13 +115,17 @@ internal static class KitchenJourneys
     }
 
     /// <summary>
-    /// Waits until the board on screen was rendered by a live circuit rather than by prerendering.
+    /// Waits until the board on screen was rendered by a live circuit rather than by prerendering,
+    /// <em>and</em> §11.2's three queries have answered.
     ///
     /// <para>A prerendered board is the worst kind of broken, because it is the kind that looks right: it
     /// lists whatever was outstanding at the moment of the request, in the right order, with the right
     /// waiting times — and then never changes and never makes a sound. A kitchen that has had no orders
     /// for ten minutes looks exactly the same. Waiting here means a scenario says "no circuit" rather
     /// than "the alert never arrived".</para>
+    ///
+    /// <para>A board caught mid-reload is the other half, and it is the half that looks like an empty
+    /// kitchen. Both are waited past — see <see cref="LiveSurfaceSelector"/>.</para>
     /// </summary>
     internal static async Task WaitForLiveBoardAsync(IPage page, TimeSpan timeout)
     {
@@ -132,12 +146,13 @@ internal static class KitchenJourneys
             throw new InvalidOperationException(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"The kitchen board never became interactive within {timeout.TotalSeconds:F0}s;"
-                    + $" it is still the prerendered markup ({surface}). It will list whatever was"
-                    + $" outstanding when the page was requested and then never change and never alert,"
-                    + $" because §9's broadcasts go to subscribers and the subscription is made on the"
-                    + $" circuit. Check that /_framework/blazor.web.js is served and that the browser"
-                    + $" reached /_blazor."),
+                    $"The kitchen board was not live and loaded within {timeout.TotalSeconds:F0}s"
+                    + $" ({surface}). A surface present with data-live='false' is still the prerendered"
+                    + $" markup: it will list whatever was outstanding when the page was requested and"
+                    + $" then never change and never alert, because §9's broadcasts go to subscribers and"
+                    + $" the subscription is made on the circuit — check that /_framework/blazor.web.js"
+                    + $" is served and that the browser reached /_blazor. One stuck at"
+                    + $" data-loaded='false' has a circuit and is waiting on §11.2's three queries."),
                 exception);
         }
     }
@@ -653,10 +668,12 @@ internal static class KitchenJourneys
         }
 
         string? live = await surface.First.GetAttributeAsync("data-live");
+        string? loaded = await surface.First.GetAttributeAsync("data-loaded");
         string? unseen = await surface.First.GetAttributeAsync("data-unseen-alerts");
 
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"data-live='{live ?? "absent"}', data-unseen-alerts='{unseen ?? "absent"}'");
+            $"data-live='{live ?? "absent"}', data-loaded='{loaded ?? "absent"}',"
+            + $" data-unseen-alerts='{unseen ?? "absent"}'");
     }
 }

@@ -24,11 +24,11 @@
 
 <PageTitle>Counter</PageTitle>
 
-@* data-live says whether a circuit produced this markup at all, and data-loaded whether the two
-   queries behind it have answered yet — see IsLiveAttributeValue and IsLoadedAttributeValue. The pair
-   is what the §16.3 harness waits on, and the second half is not optional: the circuit's very first
-   render happens with _loaded still false, so data-live alone names the one moment when neither list
-   below exists. *@
+@* §11.10's pair. data-live says whether a circuit produced this markup at all, and data-loaded
+   whether the two queries behind it have answered yet — see IsLiveAttributeValue and
+   IsLoadedAttributeValue. The pair is what the §16.3 harness waits on, and the second half is not
+   optional: the circuit's very first render happens with _loaded still false, so data-live alone names
+   the one moment when neither list below exists. *@
 <section class="panel counter-board" id="counter-board-surface"
          data-live="@IsLiveAttributeValue"
          data-loaded="@IsLoadedAttributeValue">
@@ -342,20 +342,29 @@
     private int _openPendingLines;
 
     /// <summary>
-    /// Whether a circuit produced this markup, published as an attribute — the same bit
-    /// <c>KitchenBoard</c>, <c>CounterSitting</c>, <c>TableOrderSurface</c> and <c>TableDisplay</c> all
-    /// publish, and for the same reason.
+    /// Whether a circuit produced this markup, published as an attribute — §11.10's first bit, which
+    /// every interactive surface publishes: <c>KitchenBoard</c>, <c>CounterSitting</c>,
+    /// <c>TableOrderSurface</c>, <c>TableDisplay</c> and <c>TableArea</c>.
     ///
     /// <para>This board is the one screen in the application whose entire purpose is a number that
     /// moves while somebody stands reading it (§11.3, §9). A prerendered copy of it is correct as of the
     /// request and then correct forever, which is the failure mode that looks most like success — so
-    /// "a circuit is behind this" has to be assertable from outside, and until now it was the only one
-    /// of the five live surfaces that did not say.</para>
+    /// "a circuit is behind this" has to be assertable from outside.</para>
+    ///
+    /// <para><b>The sentence that used to end this paragraph was wrong, and its wrongness is F-47.</b>
+    /// It read "until now it was the only one of the five live surfaces that did not say". There is no
+    /// list of five. <c>App.razor</c>'s <c>RenderModeForPage</c> makes <em>every</em> routable page
+    /// interactive unless it carries <c>[ExcludeFromInteractiveRouting]</c>, which is six pages plus the
+    /// island hosted inside <c>/table/{id}</c> — and <c>/table</c> had been one of them since M3 while
+    /// publishing nothing at all. A rule enforced as a list of examples is enforced as a list of
+    /// examples (F-46); §11.10 states the rule and §16.4's contract test derives the set from the
+    /// attribute rather than from anybody's memory.</para>
     /// </summary>
     private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
 
     /// <summary>
-    /// Whether <see cref="LoadAsync"/> has answered, published alongside <c>data-live</c>.
+    /// Whether <see cref="LoadAsync"/> has answered, published alongside <c>data-live</c> — §11.10's
+    /// second bit.
     ///
     /// <para><b>Why both, rather than either.</b> <c>ComponentBase</c> renders the moment
     /// <c>OnInitializedAsync</c> yields, so the circuit's first render is <c>data-live="true"</c> with

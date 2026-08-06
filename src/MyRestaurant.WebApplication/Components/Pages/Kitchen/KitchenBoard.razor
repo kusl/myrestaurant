@@ -37,10 +37,13 @@
 
 <PageTitle>Kitchen</PageTitle>
 
-@* data-live says whether a circuit produced this markup at all, and the two counts publish §10.3's
-   unseen tally as numbers rather than only as English inside the badge — see IsLiveAttributeValue. *@
+@* §11.10's pair. data-live says whether a circuit produced this markup at all; data-loaded whether
+   the three queries behind it have answered — see IsLiveAttributeValue and IsLoadedAttributeValue.
+   The two counts beside them publish §10.3's unseen tally as numbers rather than only as English
+   inside the badge. *@
 <section class="panel kitchen-board" id="kitchen-board-surface"
          data-live="@IsLiveAttributeValue"
+         data-loaded="@IsLoadedAttributeValue"
          data-unseen-alerts="@_alerts.UnseenCount"
          data-unseen-reminders="@_alerts.UnseenReminderCount">
     <div class="kitchen-header">
@@ -567,6 +570,25 @@
     /// renders, and nothing on screen changes.</para>
     /// </summary>
     private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
+
+    /// <summary>
+    /// Whether <see cref="LoadAsync"/> has answered, published alongside <c>data-live</c> — §11.10's
+    /// second bit, and the half this surface was missing until M6 Slice 23.
+    ///
+    /// <para><b>Why both, rather than either.</b> <c>ComponentBase</c> renders the moment
+    /// <c>OnInitializedAsync</c> yields, so the circuit's first render is <c>data-live="true"</c> with
+    /// <c>_loaded</c> still false — the one state in which the queue, the Undo list and the "86" panel
+    /// are all absent and the board says "Loading the board…". A reader that waited on
+    /// <c>data-live</c> alone would be steered <em>towards</em> that instant rather than past it.</para>
+    ///
+    /// <para>The window is not the prerender — prerendering runs the whole lifecycle before it emits,
+    /// so the first HTML a browser gets is fully loaded. It is the hand-over: the circuit builds this
+    /// component again from nothing and the DOM returns to loading for as long as three queries take.
+    /// F-44 caught that on <c>/counter</c> and recorded that this board carried the same latent race,
+    /// passing only because every caller here goes on to wait for a specific line or menu row, which
+    /// waits out the reload incidentally. Incidentally is not a barrier.</para>
+    /// </summary>
+    private string IsLoadedAttributeValue => _loaded ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
     {
