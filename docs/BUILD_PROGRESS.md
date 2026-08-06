@@ -7104,3 +7104,309 @@ No .NET SDK in the sandbox, so nothing was reasoned about that could be executed
 - **`.editorconfig` hygiene checked on every delivered file**: LF endings, final newline, no
   whitespace-only lines, no trailing whitespace, no context-dump separator.
 - No shell script changed, so `bash -n` and shellcheck have nothing new to say.
+
+
+---
+
+## M6 Slice 24 — the policy nobody wrote, on the responses it never covered
+
+**F-49 · S v1.9 · docs/TECHNICAL_SPECIFICATION.md §11.11 (new), §16.4, §17 · ADR-0013 (new) · REQUIREMENTS rev 5**
+
+Slice 23 closed the live-surface contract and the specification's own header. This one went looking at
+a layer nothing in this tree had ever described: what the application says about how a browser may use
+the pages it serves.
+
+The search took two minutes and returned nothing. Not one occurrence of `Content-Security-Policy`,
+`frame-ancestors`, `nosniff` or `Referrer-Policy` in any source file, any document, `Caddyfile`,
+`compose.yaml`, `run.sh` or either workflow. That is the finding as it looked at 09:00. It is not the
+finding.
+
+### F-49, first half — there was a policy, and it was not ours
+
+`Program.cs` has said this since M1:
+
+```csharp
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
+```
+
+That parameterless call, read against `dotnet/aspnetcore` at `release/10.0`, installs an endpoint
+convention:
+
+```csharp
+if ((options.ConfigureWebSocketAcceptContext is not null || !options.DisableWebSocketCompression) &&
+    options.ContentSecurityFrameAncestorsPolicy != null)
+{
+    …
+    headers.ContentSecurityPolicy = StringValues.Concat(
+        headers.ContentSecurityPolicy, $"frame-ancestors {options.ContentSecurityFrameAncestorsPolicy}");
+```
+
+`ContentSecurityFrameAncestorsPolicy` defaults to `'self'` and `DisableWebSocketCompression` defaults
+to `false`, so the condition is true and has always been true here. **Every page this application has
+ever served carried `Content-Security-Policy: frame-ancestors 'self'`.** The framework adds it because
+WebSocket compression combined with cross-origin framing is an attack, and it declines to enable the
+first without mitigating the second.
+
+So the honest statement of the gap is not *there is no policy*. It is **there is a policy this project
+cannot reason about**, and that is a shape this ledger had no row for. F-35, F-37 and F-39 were
+capabilities a requirement assumed and no milestone claimed. F-45 was a file that should have existed
+and never had. This is a control that existed, that worked, that nobody decided on, and whose reach
+nobody in the project could have stated. Measured:
+
+| | Covered by the framework's convention |
+| --- | --- |
+| rendered pages | yes — `frame-ancestors 'self'`, one directive |
+| `wwwroot/app.css`, `js/*.js` | **no** |
+| `/_framework/blazor.web.js` | **no** |
+| `/healthz/live`, `/healthz/ready` | **no** |
+| the §11.7 clock endpoint | **no** |
+| `POST /account/sign-out` | **no** |
+| a 404, a 429, the obligations redirect | **no** |
+
+And it **appends**. `StringValues.Concat`, not assignment — so a policy written beside it would have
+been *delivered* beside it, as two `Content-Security-Policy` values on one response, both enforced as
+an intersection, and unreadable to anybody trying to work out where either came from. That detail is
+what makes the correct move `ContentSecurityFrameAncestorsPolicy = null` rather than "add the rest".
+The option's own remarks ask for exactly what replaces it — *"care must be taken to apply a policy in
+this case whenever the first document is rendered"* — and what replaces it is stronger in both
+directions: `frame-ancestors 'none'` instead of `'self'`, on every response instead of on some.
+Compression is untouched; that is `DisableWebSocketCompression`, left at its default.
+
+Everything else was genuinely absent, and two of the absences have names in this product rather than in
+a checklist:
+
+- **No `script-src`.** There are six `@((MarkupString)…)` sites in this tree — the §3.4 TOTP QR, the
+  §4.3 display QR, the §4.5 counter QR, the §11.4 administration QR, and the two enrollment pages — and
+  inline SVG can carry a `<script>` element. Razor escapes everything else, which is a reason for
+  confidence and not a reason to skip the second line: a policy is what makes an injection that got
+  past escaping *inert* rather than merely unlikely.
+- **No `form-action`.** Antiforgery covers a forged request. It says nothing about where a real form
+  posts to, which is the thing a `<base>` or markup injection changes.
+- **No `Referrer-Policy`,** on an application whose §4.3 join token travels in a query string.
+- **No `nosniff`,** on an application that serves static files.
+
+### F-49, second half — the obvious policy would have killed every live surface
+
+This is why the slice is a slice.
+
+The natural `connect-src` for a single-origin application is `'self'`. It would have passed every unit
+test anybody would write about the header. It would also have refused the Blazor circuit's WebSocket on
+every plain-HTTP origin, because **`'self'` is an origin comparison** and `ws://host` is not the same
+origin as `http://host`. CSP3 added a carve-out — *"`'self'` now matches `https:` and `wss:` variants of
+the page's origin, even on pages whose scheme is `http`"* — which covers production, where the page is
+https. It does not clearly cover `ws:` from an `http:` page, browsers have disagreed since 2015, and
+MDN still carries the warning.
+
+`http:` is exactly what a bare `dotnet run` serves and exactly what the §16.3 harness boots. Every §9
+notification in this system arrives over that socket. So `connect-src` names both WebSocket origins
+explicitly, derived from the request:
+
+```
+connect-src 'self' ws://{host} wss://{host}
+```
+
+The host is the one `PublicOriginMiddleware` has already normalized to a trusted public host (§3.3),
+which is what makes writing a request value into a response header safe rather than clever — it is
+never an attacker's string, it is the configured origin or a trusted pattern. A host CSP's `host-part`
+grammar cannot express at all (an IPv6 address literal — brackets and colons are not in the grammar)
+falls back to the bare `ws:` and `wss:` scheme sources, because a source expression the browser
+discards fails as a blank screen with no cause named, and the configuration that reaches it is one
+somebody typed on purpose on a machine they are sitting at.
+
+**And the thing that would have caught the mistake already existed, built for something else.** A policy
+that kills the circuit is a policy under which no surface ever reports `data-live='true'` — so Slice
+23's six surfaces and four barriers would have failed all fifteen scenarios in a way that named the
+cause. That is twice in two slices that the most useful property of a gate was a failure nobody built
+it for.
+
+### The policy, and the four lines that needed a reason
+
+```
+default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none';
+frame-ancestors 'none'; form-action 'self'; img-src 'self' data:;
+style-src 'self' 'unsafe-inline'; script-src 'self';
+connect-src 'self' ws://{host} wss://{host}
+```
+
+**`style-src 'unsafe-inline'` is a concession, and it is tied to the fact that earns it.** Twenty-one
+components carry a scoped `<style>` block — 2,388 lines of CSS — and Blazor's own reconnection overlay
+builds one at runtime with `innerHTML`, so a guest whose circuit drops would see an unstyled dialog
+without it. Both halves matter and only one is visible in this tree, which is why the second is written
+down: moving all twenty-one blocks into `app.css` would not be sufficient on its own.
+
+**`img-src data:`** exists for one thing, `<link rel="icon" href="data:," />` in `App.razor`, which
+stops browsers requesting `/favicon.ico` on every page of a restaurant's phone traffic. A
+`<link rel=icon>` is an image fetch as far as CSP is concerned, so without the scheme every page load
+would log a violation.
+
+**`default-src 'self'` rather than `'none'`** is the one place F-45's allow-list ruling is deliberately
+not applied, and the distinction is the interesting part. F-45 argued that where a domain permits an
+allow-list, an allow-list is right, because the population that matters is always the thing nobody has
+thought of yet — and it was arguing about a set *this project enumerates and controls*, the paths in a
+build context, where the failure is loud, local and self-describing. A CSP fallback governs a set the
+**browser** defines and extends with each new fetch destination. `'none'` there is an allow-list over
+somebody else's vocabulary, and its failure mode is a screen in a working restaurant that quietly stops
+showing something. `'self'` already denies every cross-origin origin, which is the threat; the
+directives that should be narrower are taken to `'none'` by name.
+
+**`Referrer-Policy: same-origin`** is here for a product reason rather than as hygiene: §4.3's token
+rides in a query string, every current browser's default would not leak it, and a secret in a URL
+protected by a browser default is protected by something no deployment here controls.
+
+### Where the middleware sits, and why that is normative
+
+After `PublicOriginMiddleware`, before everything else, writing on the way **in**.
+
+- *After* the host normalizer, because the policy names the request's host, and before that middleware
+  runs the host may still be the internal service address a tunnel left behind.
+- *Before* anything that can produce a response, because the rate limiter's 429, `UseStaticFiles`
+  answering by itself, the obligations redirect and the router's 404 all short-circuit.
+- *On the way in*, because a header written after the inner pipeline returns is written after the body
+  was flushed. The page that makes you look is always the one that went all the way through, which is
+  what makes this the easy thing to get wrong and the hard thing to notice.
+
+Nothing above that point can answer a request — `UseForwardedHeaders` and `PublicOriginMiddleware` both
+rewrite and call on — so the two constraints pick exactly one position rather than a range.
+
+Plain middleware rather than an endpoint convention or an endpoint filter, for the reason the convention
+it replaces demonstrates: a convention reaches the endpoints it was attached to, and the responses most
+in need of a `nosniff` are the static ones that never reach an endpoint at all.
+
+### Three test classes, because they assert three different kinds of thing
+
+`ResponseSecurityHeadersTests` (29) asserts what the header **says**: the directive set with no
+repetition; that the value is one policy rather than two, because a stray comma splits it and the
+result looks approximately right; that nothing admits a wildcard, `'unsafe-eval'`, `'wasm-unsafe-eval'`,
+`'strict-dynamic'` or `'unsafe-hashes'`; and the two `connect-src` branches by name.
+
+`SecurityHeadersMiddlewareTests` (8) asserts **when and to what**: that the headers are on the response
+before the inner delegate runs — the property that makes them survive a short circuit — and that a 404,
+a 429, a redirect and a 503 all carry them. If somebody ever rewrites this as `await next(); …set
+headers…`, that first assertion fails while every page still looks right in a browser.
+
+`ContentSecurityPolicyContractTests` (9) asserts that **the tree still fits inside the policy**, and it
+is the one that will actually catch a regression. A Content Security Policy is the only configuration
+in this project that becomes wrong by editing a file it does not mention: one `<script>` block added to
+a Razor page and that page silently stops working in a browser while everything here stays green. So it
+computes the category rather than reading a list (F-47's habit, sixth application) — scanning 48 Razor
+files and the static assets for inline script, inline `on*` handlers, off-origin references, `url()` and
+`@import` in the stylesheets, and `data:` URLs, with every count asserted non-zero first so it cannot
+pass vacuously (F-41). It asserts the **concessions in both directions**, so that removing the
+twenty-one `<style>` blocks or the favicon fails a test whose message says to *tighten* the policy —
+nothing else would ever cause a concession to be dropped. And it reads `Program.cs` to assert the
+wiring three ways, because none of the three is visible from the middleware's own file: that it is
+installed, that it precedes everything that can answer, and that the framework's appending convention
+is off.
+
+### Considered and rejected
+
+**Put the headers in `Caddyfile`.** Caddy is the dev profile's proxy and is optional in production
+(§14.1), so the headers would be present exactly where they matter least — and absent from a bare
+`dotnet run`, from the harness, and from any fork that fronts this differently.
+
+**Put them in a Cloudflare Transform Rule.** This is the one this project has already ruled on twice
+without knowing it. F-42 and F-46 established that a document must not assert platform state, because
+nothing in the repository can verify it. A *control* that exists only as platform state is that mistake
+with worse consequences: unverifiable, untestable, invisible in a diff, and absent from every fork.
+
+**Leave the framework's `frame-ancestors 'self'` alone and add the rest beside it.** Two policies on one
+response, both enforced, neither attributable — and `'none'` unreachable, and every static file still
+unframed-by-nobody.
+
+**A `<meta http-equiv="Content-Security-Policy">` in `App.razor`.** `frame-ancestors` is specified to
+have no effect from a `meta` tag, which is the directive with the sharpest consequence here; and a meta
+policy protects nothing that is not an HTML document, which excludes every static asset.
+
+**`X-Frame-Options: DENY` beside `frame-ancestors`.** Every browser that can run a Blazor circuit
+understands `frame-ancestors`, and a second spelling of one rule is a second thing to keep in step.
+
+**`Strict-Transport-Security`.** Not the application's to send. It is the one header with a long
+memory — a wrong `max-age` is not revocable from here — it is meaningless on the plain-HTTP hop between
+the tunnel and this process, and its parameters are decisions about the operator's domain rather than
+about this software. O§14 gains a note saying where it belongs and how to turn it on carefully.
+
+**`Permissions-Policy`.** F-45's ruling applied and reaching the opposite conclusion, which is worth
+recording as such. That ruling prefers an allow-list *where the domain permits one*, and
+`Permissions-Policy` is a deny-list by construction: there is no forward-compatible way to say "and
+nothing else". Meanwhile the two features this application does use are screen wake lock (§10.3, both
+`js/display.js` and `js/kitchen.js`) and WebAuthn (§3.3), so a wrong entry is a kitchen board that
+sleeps mid-service and is found by a cook rather than by a test. Recorded as a separate question, not
+answered here.
+
+**A `check_tree.sh` gate.** Same answer as Slice 23: that script asserts properties of authored text as
+text and knows nothing about what a Razor file means, and F-41's rule is that gates sharing a file set
+must share one definition of it.
+
+### Build and test
+
+```bash
+bash scripts/check_tree.sh
+#    expect: 5 gates, "tree hygiene passed.", exit 0. The authored-text count rises by SIX —
+#    two source files, three test files, one ADR. If it does not move, the `git add` did not happen.
+
+bash scripts/check_repository.sh --offline
+#    expect: 3 gates plus a SKIP, exit 0. Gate 3 must still report "none": the OPERATIONS §14 note
+#    added here names where a switch lives without asserting its value, which is the form F-46 ruled
+#    for.
+
+bash scripts/ci_local.sh --with-all
+#    expect: 8 numbered gates, same number and same order as Slice 23.
+
+dotnet build
+#    worth running on its own first. Two new source files and one Program.cs edit; the render-mode
+#    call gains a lambda, which is the only line in the tree whose overload resolution changed.
+
+dotnet test
+#    expect: 1051 total, 0 failed. Was 1005. Forty-six new: 29 + 8 + 9. No existing test is edited.
+
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: 15 passed, 0 skipped. THIS IS THE ONE THAT MATTERS. Every scenario now runs against a
+#    real Chromium enforcing a real Content Security Policy over plain http. If connect-src were
+#    wrong, no circuit would open and every barrier waiting on data-live='true' would time out.
+
+curl -sSI http://localhost:8080/ | grep -i -e content-security -e x-content-type -e referrer
+curl -sSI http://localhost:8080/app.css | grep -i -e content-security -e x-content-type -e referrer
+#    the second is the interesting one: a static file is the response class an endpoint convention
+#    misses, and it is the reason this is middleware.
+```
+
+### What was verified here
+
+No .NET SDK and no browser in the sandbox, so nothing was reasoned about that could be executed
+instead:
+
+- **The framework's convention was read, not remembered.** `ServerComponentsEndpointOptions.cs` and
+  `ServerRazorComponentsEndpointConventionBuilderExtensions.cs` fetched from `dotnet/aspnetcore` at
+  `release/10.0`, and the enabling condition evaluated against this tree's actual call: both defaults
+  hold, so the convention has always been active. `StringValues.Concat` rather than assignment
+  confirmed from the same source.
+- **The `ws:`/`'self'` question was settled against the specification** rather than from memory: CSP3's
+  own "Changes from Level 2" extends `'self'` to the `https:` and `wss:` variants and says nothing about
+  `ws:`, and MDN's `connect-src` page still carries the interop note. This is the fact the whole
+  `connect-src` design turns on.
+- **All 46 new assertions were executed** as faithful ports against the delivered tree, and all pass.
+  The scan reports 48 `.razor` files, 5 `<script src>` (four helpers plus `blazor.web.js`), 1 stylesheet
+  link, 21 inline `<style>` blocks, 7 resource references, exactly 1 `data:` URL, and zero inline
+  scripts, zero `on*` handlers, zero off-origin references and zero `url(`/`@import` in the stylesheets.
+- **Sensitivity proven by planting the damage**: an inline `<script>`, an inline `onclick`, a CDN
+  `<script src="https://…">`, and a second `data:` URL. Each is caught by the assertion named for it,
+  and each is a change that would have passed the whole suite before this slice.
+- **Blazor's reconnection overlay was checked** rather than assumed — `DefaultReconnectDisplay.ts`
+  creates a `<style>` element and assigns `innerHTML`, which is why `style-src 'unsafe-inline'` cannot be
+  dropped by moving the components' blocks alone. `JSInitializers.ts` uses a dynamic `import()` of a
+  same-origin path, which `script-src 'self'` admits; there is no `ImportMap`, no WebAssembly render
+  mode and no inline event handler in this tree, so none of the keywords Microsoft's starter policy
+  carries for a Blazor Web App is needed.
+- **`SpecificationVersionTests` re-run against the edited specification**: header 1.9, entries
+  1.9 … 1.0 descending, both assertions hold.
+- **Governance gate 3 re-run over every delivered file**: two matches, both pre-existing lines in
+  `docs/DOCUMENTATION_REVIEW.md`, which is on `RECORD_FILES` by literal path. Nothing new matches.
+- **Every documentation edit applied by exact-match replacement with an assertion that the anchor
+  occurs exactly once**, so nothing was edited by position. `docs/BUILD_PROGRESS.md` is its existing
+  bytes plus this one appended section.
+- **`.editorconfig` hygiene checked on every delivered file**: LF endings, final newline, no
+  whitespace-only lines, no trailing whitespace, no context-dump separator. Brace, paren, bracket and
+  string balance checked on all five C# files.
+- No shell script, workflow, project file, migration or Razor component changed, so `bash -n`,
+  shellcheck, the XML/YAML gates and the Razor compiler have nothing new to look at.

@@ -174,13 +174,15 @@ Migrations are append-only and roll forward only — the same philosophy as the 
 | Suspected join-token abuse | Rotate the affected table's join secret — in-flight tokens die instantly; watch the `table_join_tokens_validated_total{result}` metric |
 | Administrator's authenticator lost | Another administrator resets them (same flow as any user; TOTP re-enrollment is forced — administrators cannot exist unenrolled). Single-admin instances: this is why the bootstrap made you save **recovery codes** |
 | Lockout complaints | 5 failed attempts locks 5 minutes, automatically clears; no admin action needed |
+| A scanner reports missing security headers | It is probably reporting `Strict-Transport-Security`, and it is right that this application does not send one — see the note at the end of §14. Everything else on a typical scanner's list is sent on **every** response by the application itself (specification §11.11): a Content Security Policy, `X-Content-Type-Options` and `Referrer-Policy`. Check with `curl -sSI https://your-host/ \| grep -i -e content-security -e x-content-type -e referrer`, and check a **static file** too — `curl -sSI https://your-host/app.css` — because that is the response class a proxy-level rule most often misses |
+| A page or a screen stopped working after a deployment and the browser console says "Refused to …" | That is the Content Security Policy (§11.11) doing its job on something new. It is not tuned per deployment and it is not configurable: it is source, and `ContentSecurityPolicyContractTests` fails on the change that would have needed it widened. Report it rather than working around it at the proxy — a header added in front of this application does not replace the one it sent, it arrives beside it, and two policies are enforced as an intersection |
 | Somebody reports a vulnerability | §16 — and note that the private channel `SECURITY.md` names is a **repository setting**, so §16's first table is worth checking before you need it |
 
 ## 14. Continuous integration and releases
 
 CI is not an operations concern until the day you need to know *which build* is on the box and whether anyone verified it. This section is that day.
 
-**What every push is checked against.** `.github/workflows/ci.yml` runs six gates on every push and pull request against `main`: `tree` (the checkout is machine-readable at all — see below), `governance` (a security policy exists and no document asserts a repository setting — the blocking half; the advisory half reports the settings themselves), `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), `end-to-end` (the §16.3 Playwright scenarios in Chromium, all fifteen of them), and `boot-smoke` (the production `Containerfile` is built, the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200, and then that instance is backed up and the backup is put through `scripts/restore_drill.sh`).
+**What every push is checked against.** `.github/workflows/ci.yml` runs six gates on every push and pull request against `main`: `tree` (the checkout is machine-readable at all — see below), `governance` (a security policy exists and no document asserts a repository setting — the blocking half; the advisory half reports the settings themselves), `shell-scripts` (every tracked `*.sh` parses and passes shellcheck), `build-and-test` (a Release build with warnings escalated to errors, then the whole suite — which since Slice 24 includes the response-header contract tests, so a change to the markup that the Content Security Policy would refuse fails here rather than in a browser — the data-access integration tests execute against real PostgreSQL here rather than skipping the way they do on a machine with no container socket), `end-to-end` (the §16.3 Playwright scenarios in Chromium, all fifteen of them), and `boot-smoke` (the production `Containerfile` is built, the resulting image is booted against a real PostgreSQL until `/healthz/ready` answers 200, and then that instance is backed up and the backup is put through `scripts/restore_drill.sh`).
 
 `boot-smoke` is the gate that matters operationally, because it is the only one that exercises what a deployment exercises: DbUp applying every migration to an empty database, `RestaurantOptions.Validate()` accepting the configuration, and the composition root resolving. A green `boot-smoke` now says "this commit starts, **and its data comes back**". Nothing else in the suite says either half.
 
@@ -263,6 +265,25 @@ podman inspect --format '{{index .Config.Labels "org.opencontainers.image.revisi
 Those are stamped by `docker/metadata-action` at publish time, so they are present on a registry image and absent on one you built locally. If the labels and `/source` disagree, believe `/source` — the labels describe the image somebody pushed, the page describes the code that is executing.
 
 `service.version` on every trace and metric carries the same string, so a latency change after a deployment is attributable to a build rather than to the weather.
+
+**One security header this application deliberately does not send, and where it belongs.**
+`Strict-Transport-Security` is not emitted by the application, and that is a decision rather than an
+omission (specification §11.11, ADR-0013). Three reasons, in order of how much they would cost you.
+It is the one header with a **long memory**: a browser that has seen `max-age=31536000` will refuse
+plain HTTP to that host for a year, and there is no way to reach back and tell it otherwise except by
+serving `max-age=0` over working HTTPS for as long as it takes every visitor to come back. It is
+**meaningless where this process sits**: TLS terminates at Cloudflare's edge (or at Caddy), and the hop
+from there to `web:8080` is plain HTTP, so the application is not the thing making the promise. And its
+parameters — the `max-age`, whether to include subdomains, whether to submit to the preload list — are
+decisions about **your domain**, not about this software, and a fork that inherited this repository's
+answer would be inheriting a promise about a name it does not own.
+
+So: **turn it on at the edge**, once you are confident HTTPS works on every name that resolves to you,
+starting with a short `max-age` and lengthening it. Cloudflare has a switch for this under SSL/TLS →
+Edge Certificates; Caddy sends nothing by default and takes a `header` directive. Everything else a
+scanner will ask for is already sent by the application on every response, including on static files —
+which is the class a proxy-level rule most often misses, because it is usually written against the
+paths somebody remembered to test.
 
 ## 15. If you fork this — your obligations, and the one variable that meets them
 
@@ -362,4 +383,3 @@ comment, respond privately, and treat the clock as having started at the public 
 Whether the tab is open or closed is not the interesting variable; a determined reporter with no
 private channel will use whatever is available, which is the argument for the private channel existing
 at all.
-

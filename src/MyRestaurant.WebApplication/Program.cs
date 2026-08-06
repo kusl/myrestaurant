@@ -14,6 +14,7 @@ using MyRestaurant.WebApplication.Identity;
 using MyRestaurant.WebApplication.LiveUpdates;
 using MyRestaurant.WebApplication.Observability;
 using MyRestaurant.WebApplication.Orders;
+using MyRestaurant.WebApplication.Security;
 using MyRestaurant.WebApplication.Tables;
 using MyRestaurant.WebApplication.Time;
 using Npgsql;
@@ -27,8 +28,9 @@ using OpenTelemetry.Trace;
 //   2. wire OpenTelemetry (exporters only when an OTLP endpoint is configured);
 //   3. register services;
 //   4. apply database migrations BEFORE binding HTTP (never serve on a half-applied schema, §17);
-//   5. forwarded headers → public-origin host normalization → rate limiting → auth → display-device
-//      principal → obligations pipeline → health endpoints → Blazor components.
+//   5. forwarded headers → public-origin host normalization → response security headers → rate
+//      limiting → auth → display-device principal → obligations pipeline → health endpoints →
+//      Blazor components.
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
@@ -216,6 +218,19 @@ app.UseForwardedHeaders();
 // *.trycloudflare.com hostname. Sits right after forwarded headers so it can see X-Forwarded-Host and
 // before auth/endpoints so the ceremony sees the corrected host (§3.3, ADR-0005).
 app.UseMiddleware<PublicOriginMiddleware>();
+// Response security headers (§11.11, ADR-0013, F-49) — Content-Security-Policy,
+// X-Content-Type-Options and Referrer-Policy, on EVERY response rather than on the ones that happen to
+// render a component.
+//
+// Position is load-bearing in both directions. It is AFTER PublicOriginMiddleware because the policy's
+// connect-src names this request's own host, so the Blazor circuit's WebSocket is admitted by origin
+// rather than by a scheme wildcard — and until the host has been normalized it may still be the
+// internal service address a tunnel left behind. It is BEFORE everything that can produce a response:
+// the rate limiter's 429, UseStaticFiles answering by itself, the obligations redirect, and the
+// router's 404 all short-circuit, and a header set on the way out of a pipeline that never came back
+// is a header nobody sent. Nothing above this line can answer a request — UseForwardedHeaders and
+// PublicOriginMiddleware both rewrite and call on — so those two constraints pick one position.
+app.UseMiddleware<SecurityHeadersMiddleware>();
 // Endpoint rate limiting (§4.2: /display/pair is anonymous and limited to 5 attempts/minute/IP). It
 // MUST sit after UseForwardedHeaders, because the limiter partitions on the connection's remote
 // address — before the forwarded headers are applied that address is the proxy's, and every device in
@@ -265,8 +280,19 @@ app.MapRestaurantClock();
 // The POST /sign-out endpoint (antiforgery-protected; exempt from the obligations pipeline).
 app.MapRestaurantAccountEndpoints();
 
+// ContentSecurityFrameAncestorsPolicy = null turns OFF the endpoint convention this call would
+// otherwise install (F-49). Left alone, AddInteractiveServerRenderMode appends
+// "frame-ancestors 'self'" to Content-Security-Policy on every component endpoint — the framework's
+// mitigation for WebSocket compression plus framing, which is real and which this application has been
+// carrying since M1 without anybody knowing. It is not turned off to weaken anything: it APPENDS with
+// StringValues.Concat, so leaving it on would deliver two policies on one response, and the one this
+// application wrote says frame-ancestors 'none' on every response of any kind rather than 'self' on
+// the subset that renders components. The option's own remarks require exactly what replaces it —
+// "care must be taken to apply a policy in this case whenever the first document is rendered" — and
+// SecurityHeadersMiddleware, five lines above the endpoints, applies one to every response there is.
+// WebSocket compression is unaffected: that is DisableWebSocketCompression, which stays at its default.
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+    .AddInteractiveServerRenderMode(serverOptions => serverOptions.ContentSecurityFrameAncestorsPolicy = null);
 
 app.Run();
 

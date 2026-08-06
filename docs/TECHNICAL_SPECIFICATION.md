@@ -1,8 +1,8 @@
 # myrestaurant — Technical Specification
 
-**Version 1.8 — 2026-08-05 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
+**Version 1.9 — 2026-08-06 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
-This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md` (rev 4). It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. The decisions register in Appendix A maps every ruling to its embodiment.
+This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md` (rev 5). It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. The decisions register in Appendix A maps every ruling to its embodiment.
 
 ---
 
@@ -807,6 +807,94 @@ The revision is rendered as text, never composed into `{url}/tree/{revision}`: G
 
 The contract is asserted by a test rather than by this paragraph — see §16.4.
 
+### 11.11 Response security headers (every response, ADR-0013)
+
+**Every HTTP response this application produces carries `Content-Security-Policy`,
+`X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`.** Every response means every
+response: rendered pages, static files under `wwwroot`, `/_framework/*`, the health endpoints, the
+clock endpoint, the sign-out POST, a 404 from the router, the rate limiter's 429, and the obligations
+pipeline's redirect. Not a subset chosen by which of them happens to be an endpoint.
+
+**The application emits them and no proxy is trusted to.** This tree is deployed behind Caddy in the
+dev profile, behind a Cloudflare tunnel in production, behind an optional Caddy on a staff LAN, and
+behind nothing at all when somebody runs `dotnet run` to reproduce a defect or when the §16.3 harness
+boots. A header configured in `Caddyfile` is absent from two of those; a header configured at
+Cloudflare is absent from every fork that does not use Cloudflare, and is platform state of exactly
+the kind §18 forbids a document from asserting (ADR-0013).
+
+**There was already a policy, and nobody wrote it (F-49).** `AddInteractiveServerRenderMode` installs
+an endpoint convention that appends `frame-ancestors 'self'` to `Content-Security-Policy` on component
+endpoints, because WebSocket compression combined with cross-origin framing is an attack and the
+framework declines to ship the first without the second. It has been in every build since M1, it
+covers one directive, it covers only endpoints that render components, and it **appends** rather than
+assigns — so a second policy written here would be delivered beside it. It is therefore switched off
+(`ContentSecurityFrameAncestorsPolicy = null`) and this section replaces it with something strictly
+stronger in both directions: `'none'` rather than `'self'`, on every response rather than on some.
+Compression is unaffected; that is a different option.
+
+**The policy.** In this order, and asserted in full by a test rather than described here:
+
+```
+default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none';
+frame-ancestors 'none'; form-action 'self'; img-src 'self' data:;
+style-src 'self' 'unsafe-inline'; script-src 'self';
+connect-src 'self' ws://{host} wss://{host}
+```
+
+Four of those need their reason recorded beside them.
+
+- **`connect-src` names the request's own host, and that is not belt-and-braces.** CSP's `'self'` is an
+  *origin* comparison and `wss://host` is not the same origin as `https://host`. CSP3 added a carve-out
+  so `'self'` also matches the `https:` and `wss:` variants of the page's origin, which covers
+  production; it does not clearly cover `ws:` from an `http:` page, browsers have historically
+  disagreed, and `http:` is exactly what a bare `dotnet run` and the §16.3 harness serve. Every §9
+  notification in this system arrives over that WebSocket, so the two origins are named rather than
+  inferred. The host is the one `PublicOriginMiddleware` has already normalized to a trusted public
+  host (§3.3), which is why a value taken from the request can be written into a header without
+  widening anything. A host that cannot be written as a CSP `host-source` — an IPv6 address literal,
+  which the grammar cannot express at all — falls back to the bare `ws:` and `wss:` scheme sources,
+  because a source expression the browser discards fails as a blank screen with no cause named.
+- **`style-src 'unsafe-inline'` is a concession and is tied to the fact that earns it.** Twenty-one
+  components carry a scoped `<style>` block, and Blazor's own reconnection overlay builds one at
+  runtime with `innerHTML` — so a guest whose circuit drops would see an unstyled dialog without it.
+  The contract test asserts the blocks still exist, so that moving them into `app.css` fails a test
+  that says to tighten the policy. Nothing else would ever cause a concession to be dropped.
+- **`img-src data:`** exists for one thing: the empty `data:` favicon in `App.razor`, which stops
+  browsers requesting `/favicon.ico` on every page of a restaurant's phone traffic. A
+  `<link rel="icon">` is an image fetch as far as CSP is concerned. The contract test asserts it is
+  still the only `data:` URL in the tree.
+- **`default-src 'self'` rather than `'none'`** is the one place F-45's allow-list ruling is
+  deliberately not applied, and the distinction is worth stating because the two cases look alike.
+  F-45 was about a set this project enumerates and controls — the paths in a build context — where an
+  allow-list fails loudly and locally. A CSP fallback governs a set the *browser* defines and extends
+  with each new fetch destination, so `'none'` would be an allow-list over somebody else's vocabulary,
+  and the failure mode is a screen in a working restaurant that quietly stops showing something.
+  `'self'` already denies every cross-origin origin, which is the threat; the directives that should
+  be narrower are taken to `'none'` by name.
+
+**What is deliberately absent**, recorded so that it is not re-litigated by addition: `X-Frame-Options`
+(superseded by `frame-ancestors` in every browser that can run a Blazor circuit, and a second spelling
+of one rule is a second thing to keep in step); `Strict-Transport-Security` (an operator decision with
+a long memory, meaningless on the plain-HTTP hop between the tunnel and this process, and not
+revocable from the application — O§14); `Permissions-Policy` (a deny-list by construction, which F-45
+ruled against where a domain permits an allow-list, and the two features this application *does* use
+are screen wake lock and WebAuthn, so a wrong entry is a kitchen board that sleeps mid-service and is
+found by a cook); `upgrade-insecure-requests` (there is not one absolute URL in the markup);
+`Cross-Origin-Opener-Policy` and its relatives (no popups, no cross-origin isolation requirement, and
+no threat this application can name); and any reporting directive (there is no endpoint to report to).
+
+**`Referrer-Policy: same-origin` is here for a product-specific reason** rather than as hygiene. §4.3's
+join token travels in a query string — `/table/{id}?token=…`. Every current browser defaults to
+`strict-origin-when-cross-origin` and would not leak it, but a secret in a URL protected by a browser
+default is protected by something no deployment here controls.
+
+**Middleware, and its position is normative.** After `PublicOriginMiddleware`, because the policy names
+the normalized host; before everything that can produce a response, because a short-circuit must not
+escape it; and the headers are written **before** the rest of the pipeline runs, because a header
+written afterwards is written after the body was flushed. Not an endpoint convention and not a filter:
+the responses most in need of `nosniff` are the static ones that never reach an endpoint, which is the
+defect the framework's own convention demonstrates.
+
 ## 12. Observability
 
 
@@ -925,6 +1013,10 @@ The **live-surface contract test** (`tests/MyRestaurant.WebApplication.Tests/Com
 
 It reads source text rather than rendering anything, deliberately. The property under test is a property of the markup, a test renderer would need a container and a database per surface to assert the same string, and the §16.3 scenarios already exercise these attributes in a real browser. What a scenario cannot do is notice a **seventh** surface nobody wrote a scenario for, which is exactly how F-47 survived four slices. One list remains — the expected interactive set, written down so that adding a surface is a decision rather than an omission — and it is compared against the set the rule produces, so the two can only agree by both being right.
 
+The **response-header tests** (`tests/MyRestaurant.WebApplication.Tests/Security/`, three classes in the `unit` job) assert §11.11 (**F-49**), and they are three rather than one because they assert three different kinds of thing. `ResponseSecurityHeadersTests` asserts what the header *says* — the directive set with no repetition, that the value is one policy rather than two (a stray comma would make it two, both enforced, and it would look approximately right), that no directive admits a wildcard or dynamic code, and that the WebSocket sources are derived from the request's host in both the expressible and the address-literal case. `SecurityHeadersMiddlewareTests` asserts *when and to what* — that the headers are on the response before the inner pipeline runs, which is the property that makes them survive a short circuit, and that a 404, a 429, a redirect and a 503 all carry them. `ContentSecurityPolicyContractTests` asserts that the tree still fits inside the policy, and it is the one that will actually catch a regression.
+
+That last one exists because **a Content Security Policy is the only configuration in this project that becomes wrong by editing a file it does not mention.** One `<script>` block added to a Razor page, and that page silently stops working in a browser while every other test stays green. So it computes the category rather than reading a list (F-47's habit): it scans the markup and the static assets for inline script, inline event-handler attributes, off-origin references, `url()` and `@import` in the stylesheets, and `data:` URLs — asserting every count non-zero first, so it cannot pass vacuously (F-41). It also asserts the **concessions in both directions**: `style-src 'unsafe-inline'` is checked against the twenty-one components that still carry a `<style>` block, and `img-src data:` against the single favicon, so that removing either fact fails a test whose message says to tighten the policy. Nothing else would ever cause a concession to be dropped. And it reads `Program.cs` to assert the wiring three ways — that the middleware is installed, that it precedes everything that can answer a request, and that the framework's appending `frame-ancestors` convention is switched off — because none of those three is visible from the middleware's own file.
+
 Beside it, and smaller by design, the **specification-version test** (`…/Documentation/SpecificationVersionTests.cs`) asserts that this document's header states the version its newest changelog entry states, and that the entries descend (**F-48**). Two assertions, no third. It is a test rather than a habit because it has drifted twice: the v1.3 entry below corrects exactly this from Slice 16, and Slice 22 did it again — a v1.7 entry under a v1.6 header. It deliberately checks nothing about content; a gate that reaches past what it can decide reports findings on correct trees (F-41).
 
 **The forbidden list covers package settings as well as repository settings (F-46).** The first version of this gate enumerated the switches on the repository page — issues, pull requests, discussions, the wiki — passed on its first run, and was already wrong: OPERATIONS §14 had asserted the visibility of a *package*, in the indicative, about a package that did not yet exist. A repository's visibility and a package's visibility are separate switches, and GitHub's own documentation disagrees with itself about which way the second falls for a `GITHUB_TOKEN` publish, which is the strongest available argument for not asserting it in a document at all. A rule stated as a rule and enforced as a list of examples is enforced as a list of examples; the list is therefore maintained as part of the rule rather than as an afterthought, and the correct repair is always to state the intention and name where the switch lives.
@@ -939,7 +1031,7 @@ Deliberately **not** folded into the tree gate. That script's five gates are all
 
 ## 17. Security posture and accepted risks
 
-Threats mitigated: static-QR capability theft (rotating tokens, ≤120 s life, per-table secret rotation); Argon2 memory DoS (semaphore + rate limit + lockout); display theft (revocation; device holds no secret worth extracting; join secret never leaves the server); credential stuffing (Argon2id, lockout, passkeys-first); stale sessions after admin action (5-minute stamp revalidation); half-applied schema (fail-fast migrations); pairing brute force (hashed single-use codes, TTL, 5/min/IP).
+Threats mitigated: **content injection and clickjacking, bounded by a Content Security Policy on every response** (§11.11, ADR-0013) — `script-src 'self'` with no hash, nonce or `unsafe-*`, so the six `MarkupString` sites are the only raw HTML in the system and an injection that got past Razor's escaping would still be inert; `frame-ancestors 'none'` on every response rather than the framework's `'self'` on component endpoints; `form-action 'self'`, which is the one thing antiforgery does not cover, since a token protects against a forged request and says nothing about where a real form posts to; and `Referrer-Policy: same-origin`, because §4.3's join token rides in a query string and a browser default is not a deployment guarantee; static-QR capability theft (rotating tokens, ≤120 s life, per-table secret rotation); Argon2 memory DoS (semaphore + rate limit + lockout); display theft (revocation; device holds no secret worth extracting; join secret never leaves the server); credential stuffing (Argon2id, lockout, passkeys-first); stale sessions after admin action (5-minute stamp revalidation); half-applied schema (fail-fast migrations); pairing brute force (hashed single-use codes, TTL, 5/min/IP).
 
 Accepted, by ruling or by design: token replay within ≤120 s (bounded by membership/visibility rules); WAN dependence of in-house ordering (hairpin — F-06); quick-tunnel passkeys work per run but the per-run URL is not persistent (PSL — re-register each demo; named tunnel for durability); counter role may operate password-only (no passkey mandate); guest sees table-mates' display names and orders (that's the product); no rate limit on authenticated order sends beyond all-or-nothing validation (single-restaurant trust model).
 
@@ -993,6 +1085,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`) — **except 
 | F-46 | **The rule that made F-42 unrepeatable was enforced as a list of examples, and the example it omitted was already in the tree.** Gate 3 of `scripts/check_repository.sh` landed in Slice 20, passed on its first run, and reported "none" — while `docs/OPERATIONS.md` §14 told a reader, in the indicative, that the published images carried a particular visibility setting and that pulling one therefore needed no registry credentials: a claim about a **package** settings page, about a package that did not exist yet, in the paragraph telling an operator how to deploy from a registry. A repository's visibility and a package's visibility are separate switches, and GitHub's own documentation contradicts itself on which way the second falls for a `GITHUB_TOKEN` publish, so the sentence was not merely unverifiable — nobody could say whether it was true. Found by the same reading that found F-42 and F-39: the moment before publishing is a distinct review. A second half of the same blind spot: the gate's advisory report on the published settings never ran on a release at all, because a called workflow sees only the secrets it is handed and `release.yml` handed it none — so the one run that *creates* a package produced no report about packages | The forbidden list gains the package-settings group and, more to the point, is maintained as part of the rule rather than as an afterthought (§16.4). `OPERATIONS.md` §14 states the intention — the images are meant to pull without a login — and names where the switch lives for an operator who hits a 401, which is the form that stays true whichever way the checkbox falls. `release.yml` passes `ADMIN_READ_TOKEN` to the called workflow **by name** rather than inheriting every secret, so the advisory settings report reaches the run whose report is worth the most | §16.4, §18 · O§14 · `scripts/check_repository.sh`, `docs/OPERATIONS.md`, `.github/workflows/ci.yml`, `.github/workflows/release.yml` · BUILD_PROGRESS M6 Slice 22 |
 | F-47 | **F-44's fix was correct and its account of the remaining work was a list, and the list was wrong.** Slice 21 gave `/counter` a `data-loaded` bit beside `data-live` and recorded that *the other four live surfaces* carried the same latent race. There is no list of four. `App.razor`'s `RenderModeForPage` makes every routable page interactive unless it carries `[ExcludeFromInteractiveRouting]` — six pages, plus the island hosted inside `/table/{id}` — and **`/table` had been one of them since M3 while publishing nothing at all**: no id, no attribute, and a "Looking up your tables…" state whose empty list is indistinguishable from *you are not seated at a table*. The enumeration "the five live surfaces" appeared in five doc comments and nobody had ever asked the routing rule. A second thing the list hid: on `/display/{table}` the missing bit is not a loading bit. Both branches carrying that surface's id are reachable fully resolved, and one of them is the "Preparing the join code…" card — so the barrier `[data-live='true']` returned happily on a screen with no QR on it and §16.3 scenario 2 then spent sixty seconds in `ReadJoinQrPathAsync` failing two steps from the cause. This is F-46's shape for the third time in three slices: a rule stated as a rule, enforced as a list of examples, green the whole time. | §11.10 states the contract, names the routing rule as its subject, and defines `data-loaded` as *the surface has what it renders itself for* rather than *a query returned* — which is why the display's predicate is `_loaded && _qr is not null` and is documented as the honest reading of the rule rather than an exception to it. All six surfaces publish both bits; the four §16.3 barriers demand both. **And the row names something executable** (F-38's lesson, fifth application, again unasked): `LiveSurfaceContractTests` derives the interactive set from the exclusion attribute rather than from a list, and fails on any surface that publishes one bit, the wrong expression, or neither. Run against the Slice 22 tree it fails on exactly the four F-44 named, plus `/table`, plus `TableDisplay` by count mismatch. | §11.10 (new), §16.4 · `Components/Pages/Table/TableArea.razor`, `.../Display/TableDisplay.razor`, `.../Kitchen/KitchenBoard.razor`, `.../Counter/CounterSitting.razor`, `.../Table/TableOrderSurface.razor`, `tests/MyRestaurant.WebApplication.Tests/Components/LiveSurfaceContractTests.cs` · BUILD_PROGRESS M6 Slice 23 |
 | F-48 | This document's header read **v1.6** while its own changelog carried a **v1.7** entry. The v1.3 entry records the identical drift from Slice 16 and corrects it in the same paragraph, which makes this the second occurrence of a defect already found, corrected, and written down — the shape F-46 is about, one register lower. A stated version is the thing every other document, the ledger and `_CHANGES.md` all cite; two of them in one file is the file disagreeing with itself in the field a reader trusts most. | The header is the version the changelog says it is, and `SpecificationVersionTests` asserts it on every `dotnet test` — two assertions, header-matches-newest and entries-descend, the second because without it "newest" is a property of whoever last edited the top of the list rather than of the file. Nothing about dates or content: this is arithmetic on one string, and a gate that reaches past what it can decide reports findings on correct trees (F-41). | §16.4 · `tests/MyRestaurant.WebApplication.Tests/Documentation/SpecificationVersionTests.cs` · BUILD_PROGRESS M6 Slice 23 |
+| F-49 | **This application has published a Content Security Policy since M1, nobody wrote it, no document mentioned it, and it covered one directive on a subset of its responses.** The tree contains no reference to CSP, `nosniff`, `Referrer-Policy` or `frame-ancestors` — not in the application, not in `Caddyfile`, not in a document. It emits one anyway: `AddInteractiveServerRenderMode` installs an endpoint convention that appends `frame-ancestors 'self'` to the header on component endpoints, because WebSocket compression plus cross-origin framing is an attack the framework will not ship one half of. So the honest statement of the gap is not "there is no policy" but "there is a policy this project cannot reason about": one directive, at `'self'` rather than `'none'`, on pages but not on static files, the health endpoints, the clock or the sign-out POST — and appended with `StringValues.Concat`, so anything written beside it would have been *delivered* beside it, as two policies enforced as an intersection. Nothing else was there at all: no `script-src`, so a Content Security Policy contributed nothing against injection through the six `MarkupString` sites; no `form-action`, which antiforgery does not cover; no `nosniff` on any static file; and no `Referrer-Policy`, on an application whose §4.3 join token travels in a query string. **A second half found on the way in, and it is the reason this is a slice rather than a line of configuration:** the obvious `connect-src 'self'` would have refused the Blazor circuit's WebSocket wherever the page is plain HTTP, because `'self'` is an origin comparison and CSP3's carve-out covers `wss:` and not `ws:` — which is to say it would have killed every live surface under `dotnet run` and all fifteen §16.3 scenarios | §11.11 is normative: three headers on **every** response from one middleware placed after `PublicOriginMiddleware` (so the policy can name the normalized host) and before anything that can answer (so a short circuit cannot escape it), writing on the way in rather than the way out. The framework's convention is switched off and replaced by something stronger in both directions — `frame-ancestors 'none'`, on everything. `connect-src` names `ws://{host} wss://{host}` derived from the request, with a recorded fallback for a host CSP's grammar cannot express. Every concession is tied to the fact that earns it, and `default-src 'self'` rather than `'none'` is recorded as the one place F-45's allow-list ruling is deliberately not applied, with the distinction stated. **And the row names something executable** (F-38's lesson, sixth application): `ContentSecurityPolicyContractTests` computes what the application loads by scanning the markup and the static assets, rather than trusting anybody's memory of it — because a CSP is the only configuration here that becomes wrong by editing a file it does not mention | §11.11 (new), §16.4, §17 · O§14 · ADR-0013 (new) · R§8 (rev 5) · `Security/ResponseSecurityHeaders.cs`, `Security/SecurityHeadersMiddleware.cs`, `Program.cs`, `tests/MyRestaurant.WebApplication.Tests/Security/` · BUILD_PROGRESS M6 Slice 24 |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP re-enrollment only if enrolled pre-reset; obligations pipeline runs on passkey path too; counter fallback = same rotating QR (no short-code) | §10.1–10.2, §3.5, §3.7, §4.5 · ledger notes |
@@ -1000,6 +1093,8 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`) — **except 
 ---
 
 ## Changelog
+
+**v1.9 — 2026-08-06.** What every response says about how it may be used. New **§11.11** is normative: `Content-Security-Policy`, `X-Content-Type-Options` and `Referrer-Policy` on every response this application produces, emitted by the application because three different proxies front it and one of them is a dashboard. It records that a partial policy was already being emitted by the framework and is now switched off and replaced, why `connect-src` has to name the request's own host rather than say `'self'` (the entire §9 live-update layer is a WebSocket, and `'self'` is an origin comparison), what each concession is tied to, and what is deliberately absent and why. **§16.4** gains the three test classes and the reason a CSP needs a contract test at all: it is the only configuration here that becomes wrong by editing a file it does not mention. **§17** names the threats the policy bounds. **Appendix A** gains **F-49**. New **ADR-0013** carries the rationale for the application owning these headers rather than a proxy. `REQUIREMENTS.md` moves to **rev 5** with one new §8 principle, on the v1.3 and v1.6 reasoning rather than the v1.2 one: nothing in this tree previously asked the program to constrain what a browser may do with a page it serves, so this is new intent and not a mechanism catching up with an existing contract.
 
 **v1.8 — 2026-08-05.** What a surface says about itself. New **§11.10** is normative: every interactive surface publishes `data-live` and `data-loaded`, *interactive* means what `App.razor`'s `RenderModeForPage` means by it rather than what a doc comment remembered, and `data-loaded` is defined as *the surface has what it renders itself for* — which is a completed read on five surfaces and a join code on the sixth. **§16.4** gains the contract test that asserts it, and the reason it derives its subject from `[ExcludeFromInteractiveRouting]` rather than from a list. **Appendix A** gains **F-47** and **F-48** — the second being this document's own header, which read v1.6 under a v1.7 changelog entry and is now checked by a test rather than remembered. No `REQUIREMENTS.md` edit, on the v1.2 reasoning: §11.5 has said since v1.0 that a frozen screen must not masquerade as a live one, and this is that contract stated once for every surface instead of five times for four of them.
 

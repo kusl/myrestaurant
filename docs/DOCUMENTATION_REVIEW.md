@@ -95,6 +95,8 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 
 | F-48 | **The specification's header said v1.6 while its own changelog said v1.7 — and this is the second time.** The v1.3 changelog entry corrects the identical drift from Slice 16, in its own words: *“the header of this document read v1.1 while the changelog below already carried a v1.2 entry — Slice 16 bumped one and not the other”*. Slice 22 bumped one and not the other. That is a defect found, corrected, written down, and repeated, which puts it in the same family as F-46 one register lower: the correction was applied to the instance and nothing was applied to the class. It matters more than a typo because the stated version is the field every other document cites — `REQUIREMENTS.md`, this file, `_CHANGES.md` and every `BUILD_PROGRESS` entry say “S v1.x” and mean the header. | The header is the version the changelog says it is, and `SpecificationVersionTests` asserts it on every `dotnet test`. Two assertions and a refusal to grow a third: header-matches-newest, and entries-descend — the second because without it “newest” is a property of whoever last edited the top of the list rather than of the file. It checks nothing about dates, section numbers, or whether an entry exists for the current commit; those are judgements about content, and a gate that reaches past what it can decide is a gate that reports findings on correct trees (F-41). | S§16.4 · `tests/MyRestaurant.WebApplication.Tests/Documentation/SpecificationVersionTests.cs`, `docs/TECHNICAL_SPECIFICATION.md` · BUILD_PROGRESS M6 Slice 23 |
 
+| F-49 | **The application has been emitting a Content Security Policy since M1, and this is the first document in the tree to say so.** Searched for on 2026-08-06 with every gate green: not one occurrence of `Content-Security-Policy`, `frame-ancestors`, `nosniff` or `Referrer-Policy` in any source file, any document, `Caddyfile`, `compose.yaml`, or either workflow. The application emits one regardless, because `AddInteractiveServerRenderMode` installs an endpoint convention appending `frame-ancestors 'self'` — the framework's own mitigation for WebSocket compression plus cross-origin framing, which it will not ship one half of. **That is what makes this a different shape from the gaps above.** F-35, F-37 and F-39 were capabilities a requirement assumed and no milestone claimed; F-45 was a file that should have existed and never had. This is a control that existed, that worked, that nobody in the project had decided on, and whose exact reach nobody could have stated: one directive, at `'self'` rather than `'none'`, on component endpoints only — so not on any static file, not on `/healthz/*`, not on the clock, not on the sign-out POST — appended with `StringValues.Concat`, so anything written beside it would have been delivered beside it as a second policy. Everything else was genuinely absent: no `script-src`, so the six `MarkupString` sites had no second line of defence; no `form-action`, which antiforgery does not cover, because a token protects against a forged request and says nothing about where a real form posts to; no `nosniff` anywhere; and no `Referrer-Policy` on an application whose §4.3 join token travels in a query string. | §11.11 and ADR-0013: three headers on every response, from the application rather than from any of the three proxies that front it. The framework's convention is switched off and replaced by `frame-ancestors 'none'` on everything. Concessions are tied by test to the facts that earn them. **And the row names something executable** — `ContentSecurityPolicyContractTests` computes what the application loads by scanning the tree rather than trusting a list, because a CSP is the only configuration in this project that becomes wrong by editing a file it does not mention. | R§8 (rev 5) · S§11.11, S§16.4, S§17 · O§14 · ADR-0013 · `Security/ResponseSecurityHeaders.cs`, `Security/SecurityHeadersMiddleware.cs`, `Program.cs`, `tests/MyRestaurant.WebApplication.Tests/Security/` · BUILD_PROGRESS M6 Slice 24 |
+
 ## Going forward
 
 **F-36 is closed**, which completes a round trip worth naming: it was entered the moment it was understood,
@@ -222,6 +224,32 @@ rule (R§10 · S§18) broken by the delivery that invoked it, and it is why both
 Slice 21 and landed in Slice 22. The mechanism that allowed it is being retired at the same time:
 `docs/BUILD_PROGRESS.md` is delivered as a whole file from here on, so there is no separate artefact left
 to forget.
+
+**F-49 is the eighth shape, and it is the one this ledger had no row for: a control nobody decided on.**
+
+Every finding above is something absent, something wrong, or something narrower than its name. F-49 is
+a mechanism that was **present and working and unowned**. The framework put a Content Security Policy
+on this application's responses in M1 and it was still there four milestones later, protecting against
+a real attack, covering one directive on a subset of responses, and appearing in no document, no test,
+no ADR and no conversation. Nothing was broken. Nobody could have told you what it covered.
+
+The habit that falls out of it is narrow and checkable, and it is the mirror image of F-47's. F-47 said:
+*when a check or a rule is named for a category, go and compute the category.* This one says: **when a
+framework ships a security control on your behalf, find out what it covers and write that down —
+because the reach of a protection you did not choose is exactly as unknown as the reach of one that
+does not exist.** The way it was found is worth keeping too, and it is F-39's habit at one more remove:
+the moment before publishing is a distinct review. F-39 asked what a tag makes true about the program,
+F-42 about the repository, F-45 about the artefact. This asked what it makes true about the *response* —
+a guest's browser is the last thing in the chain and the only one that never consented to anything.
+
+And a second-order note, recorded because it nearly went the other way. The obvious policy —
+`connect-src 'self'` — would have been correct-looking, would have passed every unit test that could be
+written about the header, and would have refused the Blazor circuit's WebSocket on every plain-HTTP
+origin: a bare `dotnet run` and all fifteen §16.3 scenarios. What would have caught it is Slice 23's
+work: `data-live` and `data-loaded` on six surfaces, and four harness barriers that demand both. A
+policy that kills the circuit is a policy under which no surface ever reports `data-live='true'`. That
+is the second time in two slices that the useful thing about a gate was a failure it would catch that
+nobody built it for.
 
 **F-47 and F-48 are the same sentence at two scales, and the sentence is now four slices old.**
 
