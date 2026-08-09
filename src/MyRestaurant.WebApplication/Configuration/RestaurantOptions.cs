@@ -32,6 +32,14 @@ public sealed class RestaurantOptions
     /// Where the unmodified program's source lives — the default for <c>RESTAURANT_SOURCE_URL</c>
     /// (§11.9). A deployment that has not modified the program is accurate with this value; one that
     /// has must point it at the modified source instead.
+    ///
+    /// <para><b>This constant is the only place the fallback is written down, and that is load-bearing
+    /// (F-50).</b> <c>compose.yaml</c> passes the variable through with an <em>empty</em> default
+    /// rather than repeating this string, unlike the settings around it. The asymmetry is deliberate:
+    /// changing this constant is the natural first edit a fork makes, and a compose file that spelled
+    /// the upstream URL as its own default would quietly override that edit — reinstating, one layer
+    /// up, exactly the AGPL §13 failure F-50 is about. An empty value reads as unset, so the fallback
+    /// is decided here and nowhere else.</para>
     /// </summary>
     public const string DefaultSourceUrl = "https://github.com/kusl/myrestaurant";
 

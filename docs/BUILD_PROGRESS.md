@@ -7410,3 +7410,225 @@ instead:
   string balance checked on all five C# files.
 - No shell script, workflow, project file, migration or Razor component changed, so `bash -n`,
   shellcheck, the XML/YAML gates and the Razor compiler have nothing new to look at.
+
+---
+
+## M6 Slice 25 — the variable that never arrived (F-50)
+
+`RESTAURANT_SOURCE_URL` is the one variable in §13 whose default is a claim about **who wrote the
+program**. Every other default is a formatting preference or a dev convenience: get `USD` wrong and a
+price renders in the wrong symbol; get `America/New_York` wrong and a timestamp is off by hours. Get
+this one wrong and a modified program tells its users that its source lives in a repository that does
+not contain the modifications.
+
+`compose.yaml` did not pass it.
+
+### What that actually did
+
+The `web` service enumerates its environment key by key. There is no `env_file`, so the set of
+variables a deployed container receives is exactly the set that block names, and nothing warns about
+the difference between that set and the set the program reads. Measured against everything
+`RestaurantOptions.FromConfiguration` binds — seventeen keys — exactly one was missing, and it was
+this one.
+
+So the documented procedure produced the opposite of its purpose. A fork operator modified the
+program, published their source, set the variable in `.env` the way `OPERATIONS.md` §15 instructs —
+that section is *titled* "your obligations, and the one variable that meets them" — ran
+`podman-compose --profile production up -d`, and served every one of their users an AGPL §13 offer
+naming **this** repository. The one place their modifications are not.
+
+**Nothing failed.** The container started. `/healthz/ready` answered 200. `/source` rendered, named a
+version and a revision, and offered a link. The link resolved. It resolved to a real repository
+containing the wrong program. The whole failure is that a string was plausible.
+
+### Why the suite did not catch it, and why that is not an oversight
+
+All 1051 tests passed, legitimately. `RestaurantOptionsTests` covers the binding layer thoroughly —
+defaults, the Argon2 floor, the §13 lower bounds, the clock-format spellings — and the binding layer
+had no defect. Every test in the suite **constructs its own `RestaurantOptions`**, because that is what
+a unit test does. Not one of them receives the object a container would hand over, because doing that
+means starting a container.
+
+That is the general shape, and it is worth stating in a form that outlives this instance: **a value
+crosses a boundary this project does not test, and the far side of the boundary has a plausible
+default.** Silence is then the *expected output* of the defect. It is F-38's shape one layer further
+out — F-38 was four documents agreeing about something no code did; this is four documents agreeing
+about something the code did correctly, where the transport between the operator and the code
+discarded it.
+
+No existing gate could have seen it either. `check_tree.sh` reads tracked files as text, and
+`compose.yaml` is correct as text — well-formed YAML, LF endings, final newline, no separators.
+`check_repository.sh` reads the platform. `boot-smoke` boots the image, but it boots it with the
+environment CI hands it rather than through compose, and it asserts `/source` names the *commit*,
+which was true.
+
+### The fix, and the one interesting decision in it
+
+One line in `compose.yaml`:
+
+```yaml
+      RESTAURANT_SOURCE_URL: ${RESTAURANT_SOURCE_URL:-}
+```
+
+**Empty default, not the upstream URL** — and the asymmetry with every line around it is the ruling
+rather than an oversight. `RESTAURANT_NAME` restates `My Restaurant`; `RESTAURANT_CURRENCY_CODE`
+restates `USD`; those are harmless because the compose file and the constant say the same thing about
+a formatting preference and always will.
+
+This one is different in a way that only shows up in a fork. `RestaurantOptions.DefaultSourceUrl`
+is a fork's *natural first edit* — somebody who forks this program and changes the constant has done
+something entirely reasonable and expects it to hold. A compose file that spelled this repository's
+URL as its own default would silently override that edit, and the operator would be back to serving
+the wrong offer having fixed the thing that looked like the problem. That is F-50 reintroduced one
+layer up, in the file that had just been fixed. An empty value is read as unset by `ReadString`
+(`IsNullOrWhiteSpace` → fallback), so the fallback stays decided in exactly one place.
+
+The constant's doc comment now says so, because that comment is what a fork reads before editing it.
+
+### The rule, stated where the next person will meet it
+
+§13 previously listed variables and their meanings. It now also says what that section *is*: the table
+describes what the **program** reads; `compose.yaml` and `.env.example` are restatements joined to it
+only by somebody having written the key a third time; and every key must appear in all three. Plus the
+empty-default rule for a variable whose fallback is a claim rather than a format, and the direction the
+rule runs in — one way only, because `POSTGRES_*` belongs to the database image and `OTEL_*` to the
+exporter under its own published contract, and asserting those would report findings on a correct tree
+(F-41).
+
+### The gate, and why it is derived
+
+`ConfigurationSurfaceTests` — F-38's lesson, seventh application, again without being asked.
+
+It **derives the key set from `RestaurantOptions.FromConfiguration`** rather than listing it (F-47's
+habit, seventh application): a key is the first string literal after a `configuration,` argument, with
+the span between the two required to be whitespace so a call shaped differently is skipped rather than
+guessed at. Seventeen keys, no duplicates. That derivation is what makes adding a variable and
+forgetting one of the three restatements fail by name rather than by nobody noticing.
+
+Five assertions:
+
+1. **The scan read the tree** — at least twelve keys, no key read twice. First and alone, because every
+   assertion below it is satisfied by an empty set (F-41), and a marker string that stopped matching
+   produces exactly that, silently.
+2. **Every variable `Validate()` refuses to start over is a variable the binding method reads.** A
+   second, independent observation of the same set from the same file. It catches the rename applied to
+   one half and not the other, whose symptom is an error message naming a variable nobody can set.
+3. **Every key reaches the container** — the `web` service's `environment` mapping. This is the one that
+   found F-50.
+4. **Every key is in `.env.example`** — the file an operator copies. A commented-out line counts;
+   that is how this project documents an optional setting.
+5. **Every key is in §13's table** — checked against the section, not the document, so a variable
+   mentioned in passing elsewhere does not count as specified.
+
+The compose scan is **bounded to the `web` service**: from its own two-space key to the next
+two-space key, then the `environment:` mapping inside that, then the six-space children. Every service
+in the file takes an `environment:` block, so a key set on `postgres` would satisfy an unbounded scan
+while reaching nothing. Plain string operations and no YAML parser, deliberately — a package
+dependency in the unit test project to check five lines of indentation is the worse trade, and the
+question being asked is answerable without one. The same reasoning, and the same house style, as the
+CSP contract test, which also reads source text rather than parsing it.
+
+### Considered and rejected
+
+**`env_file: .env` on the `web` service.** It would fix this instance and nothing else: it hands the
+container the *whole* file, including `POSTGRES_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN` and whatever an
+operator has added — which is F-45's mistake in a different file, a deny-list where an allow-list was
+already working. The enumerated block is right. It was one line short.
+
+**A `check_tree.sh` gate.** Same answer as Slices 23 and 24: that script asserts properties of
+authored text as text and knows nothing about what a compose service means, and F-41's rule is that
+gates sharing a file set must share one definition of it. This gate's subject is a C# method.
+
+**Assert the reverse direction too** — that every key in the `web` block is one the application reads.
+It would report `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME` and `POSTGRES_*` on a correct tree,
+which is F-41 exactly. Recorded in §13 as a one-directional rule so that nobody adds it later thinking
+it was forgotten.
+
+**Make `SourceUrl` required.** Tempting — it would turn a silent wrong answer into a refusal to start.
+But it makes an unmodified deployment set a variable to discharge an obligation it does not have (§13
+of the licence binds *modified* versions), and the failure it prevents is not the one that happened:
+the operator here *did* set the variable.
+
+### Two smaller things fixed on the way past
+
+`OPERATIONS.md` §14's release procedure said `git tag --annotate v1.0.0` and then listed
+`ghcr.io/kusl/myrestaurant:0.6.0` among the images it would produce, and the `compose.override.yaml`
+example pinned `0.6.0` too; `release.yml`'s header comment said `v0.6.0`. One release, three places,
+two versions. Not a finding — nothing is unverifiable and no gate is missing — but it is in the
+paragraph a person reads *while* cutting the first tag, and it is now one number.
+
+### Build and test
+
+```bash
+bash scripts/check_tree.sh
+#    expect: 5 gates, "tree hygiene passed.", exit 0. The authored-text count rises by ONE — the new
+#    test file. If it does not move, the `git add` did not happen.
+
+bash scripts/check_repository.sh --offline
+#    expect: 3 gates plus a SKIP, exit 0. Gate 3 must still report "none": the OPERATIONS §15 text
+#    added here describes a compose file and a curl, not a repository setting.
+
+bash scripts/ci_local.sh --with-all
+#    expect: 8 numbered gates, same number and same order as Slice 24.
+
+dotnet build
+#    one new test file and one doc-comment edit to RestaurantOptions.cs. No signature changed.
+
+dotnet test
+#    expect: 1056 total, 0 failed. Was 1051. Five new. No existing test is edited.
+
+podman-compose --profile production config | grep RESTAURANT_SOURCE_URL
+#    the interesting one. Before this slice it printed nothing.
+
+RESTAURANT_SOURCE_URL=https://example.invalid/mine bash run.sh --smoke
+curl --silent http://localhost:8080/source | grep example.invalid
+#    end to end through the transport that was broken: set it, boot it, read it back.
+```
+
+### What was verified here
+
+No .NET SDK and no container engine in the sandbox, so nothing was reasoned about that could be
+executed instead:
+
+- **The finding was measured, not spotted.** Every key `FromConfiguration` binds was extracted and
+  set-differenced against the `web` service's environment mapping, `.env.example` and §13's table.
+  One key missing from one place, and the census is reproduced in the test.
+- **All five assertions were executed** as faithful ports against the delivered tree. They fail on the
+  Slice 24 tree at assertion 3 naming `RESTAURANT_SOURCE_URL`, and pass on this one — which is the
+  strongest available sensitivity proof, since the gate written today fails on today's tree.
+- **Sensitivity proven for the other four by planting the damage**: a key dropped from `.env.example`,
+  a key renamed in §13's table, a key renamed in a `Validate()` refusal message only, and — the one
+  that matters — the missing key added to the **`postgres`** service instead of `web`. Each is caught
+  by the assertion named for it and by no other. The last one proves the service-boundary parse is
+  doing work rather than searching the file.
+- **The parsing was written twice and compared.** The C# uses plain string operations because there is
+  no `Regex` anywhere in this tree; the Python port used regular expressions first and plain string
+  walks second, and both produce the same seventeen keys and the same fifteen validated names, which is
+  what makes the hand-rolled scanner trustworthy without a compiler here to run it.
+- **`SpecificationVersionTests` re-run against the edited specification**: header 1.10, entries
+  1.10 … 1.0 descending, both assertions hold. Note that `Version.TryParse` reads `1.10` as minor
+  **ten**, so it sorts above 1.9 correctly — checked rather than assumed, because a string comparison
+  would have got it backwards.
+- **Both edited YAML files parsed** with a real parser, and the `web` service's environment mapping
+  re-read from the parsed document to confirm the new key lands where the text scan says it does.
+- **Governance gate 3 re-run over every delivered file**: no new match. The OPERATIONS §15 addition
+  names a compose file and a command, not a platform setting (F-46's form).
+- **Every documentation edit applied by exact-match replacement with an assertion that the anchor
+  occurs exactly once**, so nothing was edited by position. `docs/BUILD_PROGRESS.md` is its existing
+  bytes plus this one appended section.
+- **`.editorconfig` hygiene checked on every delivered file**: LF endings, final newline, no
+  whitespace-only lines, no trailing whitespace, no context-dump separator. Brace, paren, bracket and
+  string balance checked on both C# files; CS4007 and CS1620 scans clean — the one `${...}` sequence in
+  a failure message was removed rather than left in a concatenation chain somebody might later make
+  uniformly interpolated.
+- No shell script, migration or Razor component changed, so `bash -n`, shellcheck and the Razor
+  compiler have nothing new to look at.
+
+### Still open, and deliberately not answered here
+
+**`Permissions-Policy`**, recorded by Slice 24 as a separate question. Left open on purpose: it is a
+judgement about a security header's cost-benefit on a deny-list surface, and folding it into a slice
+about an AGPL-compliance defect would muddy the record of both. It blocks nothing.
+
+**Two operator actions** that no archive can contain: enabling private vulnerability reporting on
+GitHub, and setting the repository description (F-42).

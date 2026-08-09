@@ -1,240 +1,193 @@
-# M6 Slice 24 — the policy nobody wrote
+# M6 Slice 25 — F-50: the variable that never arrived
 
-Every file below is a **full file** at its **repo-relative path**. Extract at the repository root and
-the contents drop straight over your working tree — no diffs, no patches, no scripts that edit your
-code or your documents. **`docs/BUILD_PROGRESS.md` is included whole**, with Slice 24 appended, so
-there is nothing to merge afterwards and nothing to remember.
+Extract at the repository root. Every file is complete; nothing is a diff, a patch or a script.
 
 ```bash
-tar -xzf m6-slice-24-response-security-headers.tar.gz -C /home/kushal/src/dotnet/myrestaurant
-cd /home/kushal/src/dotnet/myrestaurant
-git add src/MyRestaurant.WebApplication/Security \
-        tests/MyRestaurant.WebApplication.Tests/Security \
-        docs/adr/0013-security-headers-are-the-applications.md
+tar -xzf m6-slice-25-configuration-reaches-the-container.tar.gz -C /path/to/myrestaurant
+git add tests/MyRestaurant.WebApplication.Tests/Configuration/
 ```
 
-Then:
+That `git add` is required: the directory is new, and `check_tree.sh` and `check_repository.sh`
+enumerate via `git ls-files`, so an untracked file is invisible to both.
 
-```bash
-bash scripts/check_tree.sh
-bash scripts/check_repository.sh
+**No files to delete.** Nothing is renamed, moved or superseded.
+
+---
+
+## Files in this archive
+
+| Path | New? | Why |
+|---|---|---|
+| `compose.yaml` | changed | Passes `RESTAURANT_SOURCE_URL` into the `web` service. The fix. |
+| `src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs` | changed | `DefaultSourceUrl`'s doc comment records why compose passes an *empty* default rather than repeating this constant. Doc comment only — no signature, no behaviour. |
+| `tests/MyRestaurant.WebApplication.Tests/Configuration/ConfigurationSurfaceTests.cs` | **new** | The gate. Five facts. |
+| `docs/TECHNICAL_SPECIFICATION.md` | changed | Header → **v1.10**; §13 gains the transport rule; §16.4 gains the test; Appendix A gains F-50; changelog gains v1.10. |
+| `docs/DOCUMENTATION_REVIEW.md` | changed | F-50 row; "Going forward" names the new class. |
+| `docs/OPERATIONS.md` | changed | §15 gains a verification step; §14's release examples corrected to one version. |
+| `docs/BUILD_PROGRESS.md` | changed | Full file — existing bytes plus the Slice 25 section appended. |
+| `.github/workflows/release.yml` | changed | Header comment's tag example corrected to match OPERATIONS §14. Comment only. |
+| `_CHANGES.md` | changed | This file. |
+
+`REQUIREMENTS.md` is deliberately untouched — see "Decisions" below.
+
+---
+
+## The finding
+
+`compose.yaml`'s `web` service enumerates its environment key by key and takes no `env_file`. A key it
+does not name does not reach the process. Measured against everything
+`RestaurantOptions.FromConfiguration` binds — seventeen keys — **exactly one was missing**:
+
+```
+APP READS BUT COMPOSE web DOES NOT PASS: ['RESTAURANT_SOURCE_URL']
 ```
 
-## Files to DELETE
+Of the seventeen it was the worst one it could have been. It is the variable F-39 built the AGPL §13
+offer around; the one `OPERATIONS.md` §15 is *titled* after; the one §13 annotates "if you modify the
+program and run it as a network service, point this at your fork". It is also the only variable in the
+table whose default is a **claim about who wrote the program** rather than a formatting preference.
 
-**None.** Nothing is renamed, superseded or orphaned.
+So the documented procedure produced the opposite of its purpose. A fork operator modified this
+program, published their source, set the variable in `.env` as instructed, ran
+`podman-compose --profile production up -d`, and served every one of their users a §13 offer naming
+**this** repository — the one place their modifications are not.
 
-No migration, no schema change, no package change, no `.slnx` edit, no `.csproj` edit, no Razor edit,
-no shell script, no workflow, no `Containerfile`, no `.dockerignore`, no `Caddyfile`, no
-`compose.yaml`.
+Nothing failed. The container started, `/healthz/ready` answered 200, `/source` rendered a version and
+a revision, and the link resolved — to a real repository containing the wrong program. The entire
+failure is that a string was plausible.
 
-**There is a `Program.cs` edit** — two changes, described below. That is rare enough in this project to
-be worth naming at the top rather than leaving in a table.
+**Why 1051 passing tests did not see it.** They passed legitimately. `RestaurantOptionsTests` covers
+the binding layer thoroughly and the binding layer has no defect. Every test in the suite *constructs
+its own* `RestaurantOptions`; not one receives the object a container would hand it, because doing that
+means starting a container. No gate could see it either: `check_tree.sh` reads tracked files as text,
+and `compose.yaml` is correct as text; `check_repository.sh` reads the platform; `boot-smoke` asserts
+`/source` names the commit, which was true.
 
-**The `git add` is not optional.** Six new files land in two directories that do not exist yet, and
-`check_tree.sh`, `check_repository.sh`, `ci_local.sh` and CI's `shell-scripts` job all enumerate with
-`git ls-files` — an untracked new file is silently unchecked by every one of them. `dotnet test` will
-still compile and run the tests (the test SDK globs `**/*.cs`), so the symptom of forgetting is a test
-count that moves while the gates report an unchanged file count.
+That is F-38's shape one layer further out — F-38 was four documents agreeing about something no code
+did; this is four documents agreeing about something the code did correctly, where the transport
+between the operator and the code discarded it.
 
-## What happened
+---
 
-I went looking at a layer nothing in this tree had ever described: what the application says about how
-a browser may use the pages it serves. The search returned nothing — not one occurrence of
-`Content-Security-Policy`, `frame-ancestors`, `nosniff` or `Referrer-Policy` in any source file, any
-document, `Caddyfile`, `compose.yaml`, `run.sh` or either workflow.
+## Decisions
 
-That is not the finding.
+**Empty default, not the upstream URL.** The new compose line is
+`RESTAURANT_SOURCE_URL: ${RESTAURANT_SOURCE_URL:-}`, which is asymmetric with `RESTAURANT_NAME` and
+`RESTAURANT_CURRENCY_CODE` beside it, and that is a ruling rather than an oversight.
+`RestaurantOptions.DefaultSourceUrl` is a fork's natural first edit. A compose file spelling this
+repository's URL as its own default would silently override that edit — F-50 reintroduced one layer up,
+in the file that had just been fixed. An empty value is read as unset by `ReadString`
+(`IsNullOrWhiteSpace` → fallback), so the fallback stays decided in exactly one place.
 
-## F-49, first half — there was a policy, and nobody in this project wrote it
+**`env_file: .env` rejected.** It fixes this instance and nothing else, and it hands the container the
+whole file — `POSTGRES_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN`, and whatever an operator has added. That
+is F-45's mistake in a different file: a deny-list where an allow-list was already working. The
+enumerated block is right; it was one line short.
 
-`app.MapRazorComponents<App>().AddInteractiveServerRenderMode()` — the parameterless call, unchanged
-since M1 — installs an endpoint convention that appends `frame-ancestors 'self'` to
-`Content-Security-Policy`. Read out of `dotnet/aspnetcore` at `release/10.0`, its enabling condition
-holds on both of this tree's defaults, so **every page this application has ever served carried a
-Content Security Policy.** The framework adds it because WebSocket compression plus cross-origin
-framing is an attack and it will not enable the first without mitigating the second.
+**The gate is a test, not a `check_tree.sh` gate.** Same answer as Slices 23 and 24: that script
+asserts properties of authored text as text and knows nothing about what a compose service means, and
+F-41's rule is that gates sharing a file set must share one definition of it. This gate's subject is a
+C# method.
 
-So the gap is not *there is no policy*. It is **there is a policy this project cannot reason about**,
-and that is a shape this ledger had no row for. F-35, F-37 and F-39 were capabilities a requirement
-assumed and no milestone claimed. F-45 was a file that should have existed and never had. This is a
-control that existed, worked, and was never decided on — one directive, at `'self'` rather than
-`'none'`, on component endpoints only. Not on `app.css`. Not on `js/*.js`. Not on
-`/_framework/blazor.web.js`, `/healthz/*`, the §11.7 clock, `POST /account/sign-out`, a 404, a 429 or
-the obligations redirect.
+**The rule runs in one direction.** A key in the `web` block that nothing reads is *not* a finding —
+`POSTGRES_*` belongs to the database image and `OTEL_*` to the exporter under its own published
+contract. Asserting it would report findings on a correct tree (F-41). Recorded in §13 as
+one-directional so nobody adds it later thinking it was forgotten.
 
-And it **appends** — `StringValues.Concat`, not assignment — so a policy written beside it would have
-been *delivered* beside it, two values on one response, both enforced as an intersection and neither
-attributable. That is why the correct move is `ContentSecurityFrameAncestorsPolicy = null` rather than
-"add the rest". The option's own remarks ask for exactly what replaces it, and what replaces it is
-stronger in both directions: `'none'` instead of `'self'`, on every response instead of on some.
-WebSocket compression is untouched — that is a different option, left at its default.
+**`SourceUrl` not made `required`.** It would turn a silent wrong answer into a refusal to start, but
+it makes an unmodified deployment set a variable to discharge an obligation it does not have (§13 binds
+*modified* versions), and it does not prevent what happened: the operator here *did* set it.
 
-Everything else was genuinely absent. Two of the absences have names in this product rather than in a
-checklist: **no `script-src`**, on a tree with six `MarkupString` sites where inline SVG can carry a
-`<script>`; and **no `Referrer-Policy`**, on an application whose §4.3 join token travels in a query
-string.
+**No `REQUIREMENTS.md` edit**, on the v1.2 and v1.7 reasoning. R§8 has carried the AGPL §13 obligation
+since rev 3 and S§11.9 has specified the mechanism since v1.3. This is a mechanism catching up with a
+contract the tree already had, not new intent.
 
-## F-49, second half — the obvious policy would have killed every live surface
+**Two smaller corrections folded in, named as such.** `OPERATIONS.md` §14 said `git tag v1.0.0` and
+then listed `ghcr.io/kusl/myrestaurant:0.6.0`, with the `compose.override.yaml` example pinning `0.6.0`
+too, while `release.yml`'s header comment said `v0.6.0`. One release, three places, two versions. Not a
+finding — nothing unverifiable, no gate missing — but it is the paragraph a person reads *while*
+cutting the first tag. Now one number.
 
-`connect-src 'self'` is the natural choice for a single-origin application. It would have passed every
-unit test anybody would write about the header, and it would have refused the Blazor circuit's
-WebSocket on every plain-HTTP origin — because `'self'` is an **origin** comparison and `ws://host` is
-not the same origin as `http://host`. CSP3's carve-out extends `'self'` to the `https:` and `wss:`
-variants and says nothing about `ws:`; browsers have disagreed since 2015; MDN still carries the note.
+---
 
-`http:` is what a bare `dotnet run` serves and what the §16.3 harness boots. Every §9 notification
-arrives over that socket. So `connect-src` names both origins, derived from the request host that
-`PublicOriginMiddleware` has already normalized to a trusted public host — which is what makes writing
-a request value into a response header safe rather than clever.
+## The gate
 
-**The thing that would have caught the mistake already exists, and it was built for something else.** A
-policy that kills the circuit is a policy under which no surface reports `data-live='true'`, so Slice
-23's four barriers would have failed all fifteen scenarios in a way that named the cause. Second time
-in two slices that a gate's most useful property was a failure nobody built it for.
+`ConfigurationSurfaceTests` **derives** the key set from `RestaurantOptions.FromConfiguration` rather
+than listing it (F-47's habit, seventh application): a key is the first string literal after a
+`configuration,` argument, with the span between required to be whitespace so a differently-shaped call
+is skipped rather than guessed at. Seventeen keys, no duplicates.
 
-## The files
+1. **The scan read the tree** — ≥ 12 keys, none read twice. First and alone, because every assertion
+   below is satisfied by an empty set (F-41).
+2. **Every variable `Validate()` refuses to start over is one the binding method reads** — a second,
+   independent observation of the same set from the same file. Catches a rename applied to one half.
+3. **Every key reaches the container** — the `web` service's `environment` mapping. *This one found
+   F-50.*
+4. **Every key is in `.env.example`** — a commented-out line counts.
+5. **Every key is in §13's table** — checked against the section, not the document.
 
-| File | Change |
-| --- | --- |
-| `src/…/Security/ResponseSecurityHeaders.cs` | **NEW.** The policy: pure, BCL-only, strings in and strings out. Every directive carries the reason it is what it is |
-| `src/…/Security/SecurityHeadersMiddleware.cs` | **NEW.** Writes the three headers on the way *in*, so a short circuit cannot escape them |
-| `src/MyRestaurant.WebApplication/Program.cs` | **two changes.** `app.UseMiddleware<SecurityHeadersMiddleware>();` immediately after `PublicOriginMiddleware`, and `AddInteractiveServerRenderMode(serverOptions => serverOptions.ContentSecurityFrameAncestorsPolicy = null)`. The pipeline-order comment at the top gains the new step |
-| `tests/…/Security/ResponseSecurityHeadersTests.cs` | **NEW.** 29 assertions on what the header *says* |
-| `tests/…/Security/SecurityHeadersMiddlewareTests.cs` | **NEW.** 8 assertions on *when and to what* |
-| `tests/…/Security/ContentSecurityPolicyContractTests.cs` | **NEW.** 9 assertions that the tree still fits inside the policy — the one that will actually catch a regression |
-| `docs/adr/0013-security-headers-are-the-applications.md` | **NEW.** Why the application owns these and not Caddy, not Cloudflare, not a `<meta>` tag |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.9**: **§11.11** new and normative, §16.4 gains the three test classes, §17 names the threats bounded, Appendix A gains **F-49** |
-| `docs/REQUIREMENTS.md` | **rev 5**: one new §8 principle |
-| `docs/OPERATIONS.md` | §13 gains two runbook rows; §14 gains the `Strict-Transport-Security` ruling and where it belongs |
-| `docs/DOCUMENTATION_REVIEW.md` | Group E gains F-49; *Going forward* gains the habit it earned |
-| `docs/BUILD_PROGRESS.md` | **Full file, 484 KiB.** Slice 24 appended. Nothing to run |
-| `_CHANGES.md` | this file |
+The compose scan is **bounded to the `web` service** — two-space key to next two-space key, then the
+`environment:` mapping, then its six-space children — because every service in that file takes an
+`environment:` block and a key set on the wrong one would satisfy an unbounded scan while reaching
+nothing.
 
-`REQUIREMENTS.md` **does** move this time, on the rev 3 and rev 4 reasoning rather than the v1.2 one:
-nothing in this tree previously asked the program to constrain what a browser may do with a page it
-serves, so this is new intent rather than a mechanism catching up with an existing contract.
+Plain string operations, no `Regex`: there is none anywhere in this tree, and warnings are errors in
+CI. No YAML parser either — a package dependency to check five lines of indentation is the worse trade,
+and the same choice the CSP contract test makes.
 
-No Razor file is touched. That is worth stating because the policy is *about* the Razor files: it was
-written to fit the markup as it stands, which is why the contract test scans the markup rather than
-being told about it.
+---
 
-## Build and test
+## Verification performed before packaging
 
-```bash
-bash scripts/check_tree.sh
-#    expect: 5 gates, "tree hygiene passed.", exit 0. The authored-text count rises by SIX (two
-#    source files, three test files, one ADR). If it does not move, the `git add` did not happen.
+No .NET SDK and no container engine here, so nothing was reasoned about that could be executed instead.
 
-bash scripts/check_repository.sh --offline
-#    expect: 3 gates plus a SKIP, exit 0. Gate 3 must still say "none" — the OPERATIONS §14 note
-#    names where a switch lives without asserting its value, which is the form F-46 ruled for.
-
-bash scripts/ci_local.sh --with-all
-#    expect: 8 numbered gates, same number and same order as Slice 23.
-
-dotnet build
-#    worth running on its own first. Two new source files, and the render-mode call gains a lambda —
-#    the only line in the tree whose overload resolution changed.
-
-dotnet test
-#    expect: 1051 total, 0 failed. Was 1005. Forty-six new: 29 + 8 + 9. No existing test is edited,
-#    so any other movement is not this slice.
-
-MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
-#    expect: 15 passed, 0 skipped. THIS IS THE ONE THAT MATTERS. Every scenario now runs against a
-#    real Chromium enforcing a real Content Security Policy over plain http, which is the exact
-#    configuration the connect-src design exists for.
-```
-
-And once it is up, the two `curl`s that show what this slice did — the second is the interesting one,
-because a static file is the response class an endpoint convention misses:
-
-```bash
-curl -sSI http://localhost:8080/        | grep -i -e content-security -e x-content-type -e referrer
-curl -sSI http://localhost:8080/app.css | grep -i -e content-security -e x-content-type -e referrer
-```
-
-`podman build` is not in the list: nothing in the build context changed.
-
-## Where to look if this breaks
-
-**Every E2E scenario times out on a `data-live='true'` barrier.** The policy is refusing the circuit's
-WebSocket. Open the browser console on the failing page and look for a `connect-src` violation; the
-`blockedURI` names the socket URL the browser wanted. The two candidates are a host that
-`IsExpressibleAsHostSource` refused (an address literal), or the harness serving on a host the policy
-did not derive from. `ResponseSecurityHeaders.WebSocketSourcesFor` is the one method involved and it is
-directly testable with the host string from the failure.
-
-**One page renders unstyled, or a control does nothing.** A CSP violation, and the console names the
-directive. Do not widen the policy at a proxy — a header added in front of this application arrives
-*beside* the one it sent, and two policies are enforced as an intersection, so the addition will not
-have the effect you expect. Fix it in `ResponseSecurityHeaders`, and expect
-`ContentSecurityPolicyContractTests` to have gone red first if the cause is new markup.
-
-**`ContentSecurityPolicyContractTests` fails on `NoMarkupCarriesAnInlineScript` or
-`NoMarkupCarriesAnInlineEventHandlerAttribute`.** That is the gate working. Something added an inline
-`<script>` or an HTML `on*=` attribute, which `script-src 'self'` refuses with no hash and no nonce.
-Move it into `wwwroot/js/` beside `passkey.js`, `display.js`, `kitchen.js` and `clock.js`. Blazor's
-`@onclick` is a directive attribute and is deliberately not matched — the scan keys on a whitespace
-character before `on`, which `@` is not.
-
-**`TheInlineStyleConcessionIsStillEarned` or `TheOnlyDataUrlIsTheFaviconThatImgSrcAdmits` fails.** The
-opposite direction, and the message says so: a fact that justified a concession has gone, so the
-concession should go with it. This is the only mechanism that would ever remove one.
-
-**`TheCompositionRootDeliversThePolicyAndOnlyThePolicy` fails.** Either the middleware moved behind
-something that can answer a request, or `ContentSecurityFrameAncestorsPolicy = null` was dropped from
-the render-mode call. The second is the quiet one: everything keeps working and every response
-silently carries two policies.
-
-**Test count is not 1051.** Forty-six were added and none removed or edited. If the total moved by some
-other amount, look at what changed between your last run and this one rather than at this slice.
-
-**`Program.cs` will not compile.** The likeliest of the three source edits, and it is one line:
-`AddInteractiveServerRenderMode` gains an `Action<ServerComponentsEndpointOptions>` overload's lambda.
-The parameter type is inferred, so no `using` was added for it — if the compiler disagrees, add
-`using Microsoft.AspNetCore.Components.Server;`.
-
-## What was actually verified here
-
-No .NET SDK and no browser in the sandbox, so nothing was reasoned about that could be executed
-instead:
-
-- **The framework's convention was read, not remembered.** `ServerComponentsEndpointOptions.cs` and
-  `ServerRazorComponentsEndpointConventionBuilderExtensions.cs` fetched from `dotnet/aspnetcore` at
-  `release/10.0`, and the enabling condition evaluated against this tree's actual call: both defaults
-  hold, so it has always been active. `StringValues.Concat` confirmed from the same source.
-- **The `ws:` question was settled against the specification.** CSP3's own "Changes from Level 2"
-  extends `'self'` to the `https:` and `wss:` variants and says nothing about `ws:`. The whole
-  `connect-src` design turns on that sentence.
-- **All 46 new assertions were executed as faithful ports against the delivered tree**, and all pass.
-  The scan reports 48 `.razor` files, 5 `<script src>`, 1 stylesheet link, 21 inline `<style>` blocks,
-  7 resource references, exactly 1 `data:` URL, and zero inline scripts, zero `on*` handlers, zero
-  off-origin references and zero `url(`/`@import` in the stylesheets.
-- **Sensitivity proven by planting the damage**: an inline `<script>`, an inline `onclick`, a CDN
-  `<script src="https://…">`, and a second `data:` URL — each caught by the assertion named for it, and
-  each a change that would have passed the whole suite before this slice.
-- **Blazor's reconnection overlay was checked** rather than assumed: `DefaultReconnectDisplay.ts`
-  creates a `<style>` and assigns `innerHTML`, which is why `style-src 'unsafe-inline'` cannot be
-  dropped by moving the components' blocks alone. No `ImportMap`, no WebAssembly render mode, no inline
-  handler — so none of the keywords Microsoft's starter policy carries is needed here.
-- **`SpecificationVersionTests` re-run against the edited specification**: header 1.9, entries
-  1.9 … 1.0 descending, both assertions hold.
-- **Governance gate 3 re-run over every delivered file**: two matches, both pre-existing lines in
-  `docs/DOCUMENTATION_REVIEW.md`, which is on `RECORD_FILES` by literal path. Nothing new matches.
+- **The finding was measured, not spotted** — full set-difference census of the seventeen bound keys
+  against all three restatements.
+- **All five assertions executed as faithful ports** against the delivered tree. They fail on the
+  Slice 24 tree at assertion 3 naming `RESTAURANT_SOURCE_URL`, and pass on this one. A gate written
+  today that fails on today's tree is the strongest sensitivity proof available.
+- **Sensitivity proven for the other four by planting damage**: a key dropped from `.env.example`; a
+  key renamed in §13's table; a key renamed in a `Validate()` message only; and the missing key added
+  to **`postgres`** instead of `web`. Each caught by its own assertion and no other. The last proves
+  the service-boundary parse is doing work rather than searching the file.
+- **The parser was written twice and compared** — regex first, plain string walk second. Both yield the
+  same seventeen keys and fifteen validated names, which is what makes a hand-rolled scanner
+  trustworthy with no compiler here to run it.
+- **`SpecificationVersionTests` re-run**: header 1.10, entries 1.10 … 1.0 descending, both assertions
+  hold. `Version.TryParse` reads `1.10` as minor **ten**, so it sorts above 1.9 — checked, because a
+  string comparison would have got it backwards.
+- **Both edited YAML files parsed with a real parser**, and the `web` environment mapping re-read from
+  the parsed document: 20 keys, `RESTAURANT_SOURCE_URL` present with value `${RESTAURANT_SOURCE_URL:-}`,
+  and absent from `postgres`.
+- **Governance gate 3 re-run over every delivered file** — no new match; the §15 addition names a
+  compose file and a command, not a platform setting (F-46's form).
 - **Every documentation edit applied by exact-match replacement with an assertion that the anchor
-  occurs exactly once.** `docs/BUILD_PROGRESS.md` was verified byte-for-byte to be its existing bytes
-  plus one appended section.
-- **Balance checked on all five C# files with string, char and comment literals removed** — braces,
-  parens and brackets all zero. (A crude counter reports two unmatched parens in the contract test;
-  they are inside the literal `"url("`, which is what that test is looking for.)
-- **`.editorconfig` hygiene checked on every delivered file**: LF endings, final newline, no
-  whitespace-only lines, no trailing whitespace, no context-dump separator.
+  occurs exactly once.** Nothing edited by position. `BUILD_PROGRESS.md` is its existing bytes plus one
+  appended section.
+- **Byte hygiene on every delivered file**: LF only, final newline, no whitespace-only lines, no
+  trailing whitespace, no context-dump separator. Brace/paren/bracket and string balance on both C#
+  files. CS4007 and CS1620 scans clean — the one `${...}` sequence in a failure message was removed
+  rather than left in a concatenation chain somebody might later make uniformly interpolated.
 
-## Still not a file, and still yours
+---
 
-The tag, unchanged from Slice 22's and Slice 23's note. `release.yml` has still never executed; a
-`workflow_dispatch` off `main` publishes only `ghcr.io/kusl/myrestaurant:sha-<commit>` and skips the
-release-notes job, so it rehearses the path without spending a version number. Still a suggestion,
-still not in this archive.
+## Expected after applying
+
+```
+dotnet test        →  1056 total, 0 failed   (was 1051; five new, no existing test edited)
+check_tree.sh      →  authored-text count +1 (the new test file)
+ci_local.sh --with-all → 8 gates, same order as Slice 24
+podman-compose --profile production config | grep RESTAURANT_SOURCE_URL
+                   →  prints a line. Before this slice it printed nothing.
+```
+
+---
+
+## Still open
+
+**`Permissions-Policy`** — recorded by Slice 24, deliberately not answered here. It is a judgement
+about a security header's cost-benefit on a deny-list surface; folding it into a slice about an
+AGPL-compliance defect would muddy the record of both. Blocks nothing.
+
+**Two operator actions** no archive can contain: enabling private vulnerability reporting on GitHub,
+and setting the repository description (F-42).

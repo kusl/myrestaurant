@@ -218,8 +218,8 @@ git push origin v1.0.0
 
 `.github/workflows/release.yml` re-runs the full CI workflow (it calls `ci.yml` rather than repeating it, so a tag is verified by exactly the gates a push is), derives the version from the tag, passes it and the commit into the image build so the running container reports what the registry called it, publishes to GitHub Container Registry, and finally opens a release on the tag. The release step is downstream of the push and idempotent — re-running updates the note rather than failing — so a half-published release cannot advertise an image that is not there:
 
-- `ghcr.io/kusl/myrestaurant:0.6.0` — the exact version. **Use this in production.**
-- `ghcr.io/kusl/myrestaurant:0.6` — moves with each patch on that minor.
+- `ghcr.io/kusl/myrestaurant:1.0.0` — the exact version. **Use this in production.**
+- `ghcr.io/kusl/myrestaurant:1.0` — moves with each patch on that minor.
 - `ghcr.io/kusl/myrestaurant:sha-<commit>` — for when you need to name a build rather than a version.
 
 There is no `latest`, on purpose. A tag that silently changes what it points at is the reason people cannot answer "what is running".
@@ -236,7 +236,7 @@ The list is stated twice on purpose. `.dockerignore` is the instruction, and a `
 services:
   web:
     build: !reset null
-    image: ghcr.io/kusl/myrestaurant:0.6.0
+    image: ghcr.io/kusl/myrestaurant:1.0.0
 ```
 
 Then the upgrade in §12 becomes: back up, edit the pinned version in that one file, `podman-compose --profile production up -d`. Everything else about §12 still holds — `web` applies new migrations at startup and exits non-zero on failure, and there is no schema downgrade path, ever.
@@ -296,6 +296,14 @@ RESTAURANT_SOURCE_URL=https://git.example.com/you/myrestaurant
 ```
 
 Publish your modified source at that URL, and the footer of every page already links to a `/source` page that offers it, names the version, and names the revision. That is what §13 asks for.
+
+**Then check that it took, because for four milestones it would not have.** `compose.yaml`'s `web` service names its environment variable by variable and takes no `env_file`, and until Slice 25 it did not name this one — so a value set in `.env` never reached the process, the application used its compiled-in default, and `/source` offered *this* repository to the users of a modified program. Nothing failed: the container started, the page rendered, the link resolved (F-50). The check is one command and it is the only thing that distinguishes the two outcomes:
+
+```bash
+curl --silent http://localhost:8080/source | grep 'git.example.com'
+```
+
+Your own URL, not this one. `ConfigurationSurfaceTests` now asserts on every `dotnet test` that every variable the program reads is passed by that service — so the class of defect is closed — but the value itself is yours, and only you can see whether it is the right one.
 
 Three things worth knowing:
 
