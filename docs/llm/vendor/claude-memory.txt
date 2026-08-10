@@ -1,114 +1,61 @@
-Manage project memory
-Claude regenerates project memory every evening from your past chats in this project. Only you can see this memory, and it is not shared with other project users.
-
 Purpose & context
 
-Kushal (GitHub: kusl) is building "MyRestaurant" — a self-hosted, single-restaurant ordering system intended for public release under AGPL-3.0. The project is a greenfield .NET 10 Blazor Server application with a strict, spec-first engineering discipline: behavior changes, requirement edits, spec edits, ADR edits, and documentation updates must all land together.
+Kushal (GitHub: kusl) is building MyRestaurant — a self-hosted, single-restaurant ordering system licensed under AGPL-3.0-only. The stack is .NET 10 Blazor Server, PostgreSQL 17 with Dapper only (EF Core explicitly forbidden), DbUp startup migrations, rootless Podman Compose, ASP.NET Core Identity with custom Dapper stores, Argon2id password hashing, WebAuthn passkeys (.NET 10 built-in), TOTP with recovery codes, and OpenTelemetry with OTLP export. The repo is kusl/myrestaurant on GitHub (main branch), developed on Fedora 44, with iPhone SE 2020 (375px) as the primary mobile test target. A secondary host named "virginia" (Debian trixie, Podman/podman-compose, no .NET SDK) is used for dev/testing via Tailscale.
 
-Stack & architecture:
+The dependency direction is WebApplication → DataAccess → Domain (Domain is BCL-only). The project follows strict spec-first discipline: behavior, requirements, specs, ADRs, and docs land together in each slice. Milestones M1–M5 are complete; M6 (hardening) is in progress.
 
-.NET 10 Blazor Server (interactive-server mode), PostgreSQL with Dapper only (EF Core explicitly forbidden), DbUp startup migrations, rootless Podman Compose, OpenTelemetry with OTLP export
-ASP.NET Core Identity with custom Dapper stores, Argon2id password hashing, .NET 10 built-in WebAuthn passkeys, TOTP with recovery codes
-Strict dependency direction: WebApplication → DataAccess → Domain (Domain is BCL-only)
-AGPL-3.0-only licensing; no paid dependencies
-Local repo: /home/kushal/src/dotnet/myrestaurant; GitHub: github.com/kusl/myrestaurant (main branch)
-Development environment: Fedora 44, testing on iPhone SE 2020, rootless Podman
-Key constraints:
-
-No .NET SDK in Claude's sandbox — all C# is written to spec and compiled by Kushal; Razor components are the most likely site for compiler-caught issues
-No EF Core, no Redis (unless proven necessary), no Moq, no FluentAssertions (use AwesomeAssertions), no prerelease packages
-GitHub PAT is available for read-only API calls but must never appear in any response or generated file
-xUnit v3 with Testcontainers (real PostgreSQL, not mocks); Playwright E2E deferred to M6
-.slnx format exclusively; never regenerate .sln
-Six-milestone plan:
-
-M1 (complete): Skeleton, pure Domain, DataAccess, WebApplication host, infra, tests, scripts
-M2 (in progress): Identity and accounts — Dapper Identity stores, Argon2id, passkeys, TOTP, obligations middleware, /setup bootstrap, account administration
-M3: Table CRUD, display pairing, rotating token endpoints, sittings/membership
-M4: Living order with row-level locking, staging UI, batch send, fulfillment/reversal, kitchen surface
-M5: Billing, counter, administration, menu management
-M6: Playwright E2E, backup/restore drill, CI
-Key people & references:
-
-GoTunnels project (github.com/kusl/gotunnels) is the reference implementation for tunnels, WebAuthn, Argon2id, TOTP, and OTel patterns (but not its localStorage bearer session model)
 Current state
 
-M2 is complete except for a blocking 500 error on the /account/enroll-totp route (the EnrollTotp.razor page, reached via the "Security" nav link). Claude has traced the full GET request path but cannot isolate the root cause without the server-side exception stack. Kushal was asked to run podman logs --tail 120 myrestaurant_web_1 after reproducing the error and provide the exception type and stack frames.
+M6 is the active milestone, delivering discrete numbered slices. Recent slices completed:
 
-M2 completed slices:
+Slice 21–22: CI engine detection fix (F-43), CounterBoard live attributes (F-44), .dockerignore allow-list (F-45), package-visibility governance gate (F-46), documentation debt closure
+Slice 23: data-loaded attribute extended to all seven live interactive surfaces (F-44 follow-up), SpecificationVersionTests automated header/changelog agreement check
+Slice 24: Response security headers middleware (F-49) — CSP with WebSocket-aware connect-src, frame-ancestors 'self' (framework-emitted), 46 new assertions
+Slice 25: RESTAURANT_SOURCE_URL environment variable wired into the container via compose.yaml (F-50), fixing silent AGPL §13 source-offer failure for forks; 5 new xUnit facts
+dev_instance.sh script: New scripts/dev_instance.sh for virginia, supporting up/url/status/logs/down/--help subcommands, detached tunnel container (survives SSH exit), reuses existing tunnel URL to preserve passkeys, HTTP readiness probing with curl/wget/podman exec fallback, fully-qualified image names fix for Debian Podman
 
-Identity persistence foundation (DapperUserStore, Argon2idPasswordHasher, DI wiring)
-Sign-in + authorization wiring (SecurityEventType, SignInAudit, DapperSecurityEventLog, AuthorizationPolicies, RestaurantSignInManager, cookie auth hardening)
-Interactive sign-in surface (password, TOTP, recovery-code pages; obligations middleware; RestaurantClaimsPrincipalFactory; POST /sign-out)
-TOTP enrollment (custom token provider, stateless enrollment ticket via Data Protection, inline SVG QR, TotpEnrollment service)
-WebAuthn passkeys (additive migration for missing boolean columns, IUserPasskeyStore, PasskeySignInAsync override with auditing, ceremony endpoints, passkey.js, Passkeys.razor)
-WebAuthn quick-tunnel fix (per-request RP-ID derivation via null ServerDomain, WebAuthnOriginPolicy wildcard matcher, PublicOriginMiddleware, RESTAURANT_TRUSTED_ORIGIN_PATTERNS config)
-First-administrator bootstrap /setup (multi-step static-SSR wizard, pg_advisory_xact_lock, Data-Protection-protected setup cookie, UUIDv7 user handle minted at step 1)
-Administration: people directory (IPersonDirectory/DapperPersonDirectory, AdministrationHome.razor)
-Account administration: staff creation, role grant/revoke, credential reset, deactivate/reactivate (IAccountAdministration/DapperAccountAdministration)
-M3 Slice 1: Table administration CRUD + join-secret rotation (ITableAdministration/DapperTableAdministration, ITableDirectory/DapperTableDirectory, three static-SSR admin pages, 11 integration tests)
-Recent bug fixes applied:
+Test suite is currently at ~1056 passing tests. Known open item: OPERATIONS.md §2 incorrectly claims .env is auto-created by scripts.
 
-WebAuthn origin normalization: strip explicit default ports (:443/:80) before comparison
-Dapper constructor-binding incompatibility: Npgsql materializes timestamptz as DateTime; positional records expecting DateTimeOffset caused failures — fixed by introducing internal row types with DateTime fields and projecting to public records in ToSummary(); applied to both TableDirectory.cs and PersonDirectory.cs
-Header CSS: added flex-wrap: wrap to fix nav overflow on narrow viewports (iPhone SE 375px)
-BL0008 Blazor analyzer warnings: replaced = new() initializers with = default! + ??= new() in OnInitialized
-Ambiguous column 42702 error: qualified all PersonColumns with person. prefix in DapperUserStore.cs
-Testcontainers skip: rootless Podman socket must be enabled via systemctl --user enable --now podman.socket
-Next planned work (held pending 500 fix):
-
-M3 Slice 2: Join-token service, token generation/validation, and metrics
 On the horizon
 
-Diagnose and fix the /account/enroll-totp 500 error (requires Kushal to provide server logs)
-M3 Slice 2: Join-secret rotation, token generation/validation, metrics
-M3 remaining: Display pairing, device auth, /display surface
-Deferred from M2: Grant-time passkey mandate for kitchen/administrator roles in the create-staff-without-session case; voluntary TOTP self-removal and the admin-cannot-remove-own-enrollment rule (§4.2)
+M6 checklist completion → first tagged release
+AGPL §13 source offer verified end-to-end post-Slice 25
+docs/_append/ retirement is complete; BUILD_PROGRESS.md ships whole each time going forward
+
 Key learnings & principles
 
-Dapper + Npgsql type binding: Npgsql materializes timestamptz as DateTime, not DateTimeOffset. Dapper's constructor binding (used for positional records) is strict about type matching; property-setter binding (used for classes) is more lenient. Fix pattern: introduce an internal row type with DateTime fields, project to the public record in a ToSummary() method. Avoid a global type handler to minimize blast radius.
-WebAuthn RP-ID: Setting IdentityPasskeyOptions.ServerDomain = null enables per-request RP-ID derivation (ServerDomain ?? Request.Host.Host), which is how .NET 10's PasskeyHandler works natively. Quick tunnels work with this approach; pinning to a boot-time host does not.
-AddIdentityCore vs AddIdentity: AddIdentityCore does not register IPasskeyHandler<TUser>; AddIdentity does. PasskeySignInAsync bypasses two-factor authentication by construction (bypassTwoFactor: true).
-WebAuthn column requirements: The passkey_credential table must include is_backup_eligible and related boolean columns; the assertion handler reads and validates these bits.
-Missing RestaurantClaimsPrincipalFactory: AddIdentityCore's default factory emits no role claims, meaning area policies could never pass. A custom ClaimsPrincipalFactory is required.
-Stale container pitfall: Many apparent routing/404 issues are caused by running a stale container predating a code change. Full no-cache rebuild required.
-compose.yaml profile interpolation: Podman-compose interpolates all services at parse time regardless of active profile; :? fail-fast guards on production-only variables abort dev commands. Use :- (empty default) instead.
-IdentityWiringTests.cs project placement: Must live in MyRestaurant.WebApplication.Tests (not DataAccess.Tests); it references WebApplication-layer types. The .csproj requires explicit ProjectReference entries — no transitive reliance.
-Framework API verification discipline: All .NET 10 / ASP.NET Core API signatures, property names, and member names are verified against dotnet/aspnetcore release/10.0 source via GitHub API before use, since no SDK is available in the sandbox.
+Document policy, never platform state: A document states what the system does; repository settings pages are operator-verified separately (finding F-42 category)
+Atomic documentation rule: Every behavior change, requirement edit, spec edit, ADR edit, and ledger row lands in one commit/slice
+Defect ledger pattern: DOCUMENTATION_REVIEW.md tracks findings as F-series entries with status, ruling, and embodiment; BUILD_PROGRESS.md tracks slice completion
+Fully-qualified image names on Debian Podman: Short names (postgres:17-alpine) fail because unqualified-search registries are disabled; always use docker.io/library/postgres:17-alpine
+Tunnel-before-build ordering: Opening a Cloudflare quick tunnel before building the container image makes the URL unreachable for the entire build duration; build first, then open tunnel
+Detached tunnel containers: Running the tunnel as a Podman container (not a child process) is required when the session is a remote SSH connection that will close
+CSP 'self' and WebSockets: connect-src 'self' does not reliably cover ws: from http: pages; derive ws://{host} wss://{host} from the normalized request host explicitly
+Npgsql timestamptz → DateTime: Npgsql materializes timestamptz as UTC DateTime; Dapper constructor binding (positional records) refuses the DateTimeOffset mismatch — use internal row types with DateTime fields and project to DateTimeOffset records
+SupplyParameterFromForm initializers: = new() triggers BL0008; use = default! with ??= new() in OnInitialized
+Static-SSR intermediate render race: ComponentBase calls StateHasChanged() the moment OnInitializedAsync suspends — null-guard all render-path field accesses
+pg_advisory_xact_lock for concurrency-sensitive operations (setup bootstrap, sitting mutations)
+Append-only event log (ADR-0002); UUIDv7 surrogate keys (ADR-0011); no Moq (hand-written fakes per §16.1); xUnit v3 with Testcontainers against real Postgres
+Gate sensitivity proofs: Every blocking CI gate assertion must be individually proven sensitive before delivery
+Proven test counts are arithmetic predictions: Never state E2E scenario counts as observed unless actually run
+
 Approach & patterns
 
-Deliverable format (must be honored in every session):
+Delivery format (non-negotiable): Every slice is a structured .tar.gz archive named with slice number and feature (e.g., m6-slice-25-*.tar.gz), extracting at the repo root, containing full complete files at exact repo-relative paths — never diffs, never patches, never bespoke text-manipulation scripts. Kushal will miss inline scripts.
+Files to delete: Always include an explicit "Files to DELETE" section, even when empty; use git rm for tracked files
+git add reminders: Required for any new untracked directory, since gate scripts use git ls-files enumeration
+BUILD_PROGRESS.md: Ships as a full complete file in every archive (the docs/_append/ mechanism is retired)
+_CHANGES.md: Required in every archive, explaining every decision
+Static checks in lieu of compiler: Brace/paren/bracket balance walks (string-and-comment-aware), CS4007 scan (no await in interpolated string holes), CS1620 scan, Razor tag-tree and @code block balance, selector existence checks, bash -n + shellcheck --severity=style for shell scripts, YAML parse validation, byte-level hygiene (no CR, final newline, no whitespace-only lines)
+SHA-256 verification: Reconstruct working tree from dump.txt and verify file hashes before editing
+Repository reconstruction: Use Python splitter parsing # FILE: and --- CONTENT --- headers to split dump.txt into working tree at /home/claude/repo/; use grep -n "^# FILE: ${q}$" + awk for individual file extraction
+GitHub API: curl -sS -H "Authorization: Bearer $GH_PAT" -H "Accept: application/vnd.github.raw" "https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={branch}" for framework source verification; PAT must never appear in any response or generated file
+Communication style: Terse and directive; resume immediately on "please continue" or "go" without preamble; minimal prose
 
-Full file contents at exact repo-relative paths — never diffs or patches
-Structured .tar.gz extracting at repo root for drop-in merge
-Explicit statement of any files to delete
-Minimal prose; immediate resumption on "please continue" without preamble
-GitHub PAT must never appear in any response
-Fix vs. continue policy: If a fix is small, fold it into the next feature slice output. If a fix is substantial, focus only on the current issue before advancing — avoid accumulating broken or unstable code.
-
-Slice discipline: Each slice must leave the tree in a buildable, green state before the next slice begins. If a build is not confirmed green, hold the next slice.
-
-Code patterns:
-
-One connection and transaction per operation; single IClock.UtcNow instant per operation
-UUIDv7 primary keys; snake_case unabbreviated identifiers throughout
-Batched security_event inserts; security-stamp rotation on every credential/role/active-state change
-BUILD_PROGRESS.md updated with each slice (append manually or request targeted diff — do not regenerate as a full file due to size)
-Static-SSR Razor pages for administration surfaces; interactive-server mode for the main app
-Testcontainers integration tests with a PostgreSqlFixture; skip-guarded when container runtime unavailable
-Repo tooling:
-
-export.sh generates dump.txt (concatenated LLM-readable repo dump); Claude navigates it via grep "^# FILE: " + sed -n to extract specific files
-Transcript files stored at /mnt/transcripts/; repo dump at /mnt/project/dump.txt
-run.sh is compose-up-and-watch (foreground); quick tunnels are a separate scripts/quick_tunnel.sh — these are always two separate commands
-bash -n + shellcheck before delivering any shell script
 Tools & resources
 
-GitHub API (read-only, authenticated with PAT): used to verify framework source and fetch library signatures — never printed in responses
-dotnet/aspnetcore release/10.0 on GitHub: authoritative source for .NET 10 API verification
-Podman/Podman Compose: rootless container engine (not Docker); socket must be user-enabled
-DbUp: startup migration runner (LogToConsole() preferred over custom IUpgradeLog)
-OpenTelemetry: OTLP export; UPTRACE_DSN is optional
-Net.Codecrete.QrCodeGenerator 3.0.0: inline SVG QR code generation
-Konscious.Security.Cryptography (Argon2id), pinned in Directory.Packages.props
-Cloudflare tunnels: named tunnel for production (stable origin for passkey RP-ID binding); quick tunnels for demo only (work with per-request RP-ID derivation)
+Languages/frameworks: .NET 10, Blazor Server, ASP.NET Core Identity, Dapper, Npgsql, DbUp, xUnit v3, Testcontainers, Playwright (E2E), AwesomeAssertions
+Infrastructure: Podman/podman-compose (rootless), Cloudflare quick tunnels (scripts/quick_tunnel.sh) and named tunnels for production, Caddy (removed in favor of Cloudflare tunnels), GitHub Actions CI, GHCR for release images
+Key scripts: scripts/dev_instance.sh (virginia dev instance), scripts/backup.sh, scripts/restore.sh, scripts/restore_drill.sh, scripts/check_tree.sh (gate 1), scripts/check_repository.sh (gate 6 — tree half blocking, platform half advisory), scripts/ci_local.sh, export.sh
+Spec/doc files: docs/TECHNICAL_SPECIFICATION.md (currently v1.10), docs/REQUIREMENTS.md (rev 5), docs/OPERATIONS.md, docs/DOCUMENTATION_REVIEW.md, docs/BUILD_PROGRESS.md, docs/adr/
+Reference project: kusl/gotunnels (Go reference for tunnel, passkey, Argon2id, TOTP, OTel patterns)
