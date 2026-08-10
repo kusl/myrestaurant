@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-10T16:55:03-04:00
+  Generated at   : 2026-08-10T17:37:17-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,19 +17,18 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 4efcbf6425610125b1c0c0777dfb13239502fcc0
-  Commit (short) : 4efcbf6
-  Commit date    : 2026-08-10 16:45:57 -0400
-  Commit message : revert
+  Commit (full)  : dfa8a40d48dd023e386098a3f134bdb692e487c3
+  Commit (short) : dfa8a40
+  Commit date    : 2026-08-10 17:37:08 -0400
+  Commit message : add claude changes
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 324
+  Files included : 326
   Excluded path  : docs/llm/
   Excluded files : export.sh
 
 GIT WORKING TREE STATUS (first 20 lines)
 ═════════════════════════════════════════════════════════════════════════════════
  M docs/llm/vendor/claude-output.txt
- M tests/MyRestaurant.WebApplication.Tests/Deployment/DevInstanceLoopbackContractTests.cs
 
 ################################################################################
 # FILE: export.sh  [THIS SCRIPT — included for full context]
@@ -534,7 +533,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (324 included files)
+# FILE TREE  (326 included files)
 ################################################################################
 .
 ├── .dockerignore
@@ -581,6 +580,7 @@ cat "$OUTPUT_FILE"
 ├── run.sh
 ├── scripts
 │   ├── backup.sh
+│   ├── check_compose_substitution.sh
 │   ├── check_repository.sh
 │   ├── check_tree.sh
 │   ├── ci_local.sh
@@ -888,6 +888,7 @@ cat "$OUTPUT_FILE"
         │   └── ConfigurationSurfaceTests.cs
         ├── Deployment
         │   ├── ComposeDependencyContractTests.cs
+        │   ├── ComposeSubstitutionContractTests.cs
         │   └── DevInstanceLoopbackContractTests.cs
         ├── Displays
         │   ├── DisplayDeviceCookieTests.cs
@@ -1058,15 +1059,15 @@ indent_size = 2
   File name:             .env.example
   Relative path:         .env.example
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/.env.example
-  Size:                  9.0 KiB (9205 bytes)
-  Last modified:         2026-08-10 14:43:54.000000000 -0400
+  Size:                  10.4 KiB (10657 bytes)
+  Last modified:         2026-08-10 17:28:34.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 35139434
+  Inode:                 35606641
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               5021a86513d2b46144d66168bd6e69d11849c9fe62379bc9768c73254186bc13
-  Last git commit:       a899317 2026-08-10 16:11:06 -0400 add claude response
+  SHA-256:               e11ca027c349fa8760e0b6501085b1186d9b8bb9746d0e01f1e50177d12aa047
+  Last git commit:       dfa8a40 2026-08-10 17:37:08 -0400 add claude changes
 
 --- CONTENT ---
 # Copy to `.env` and adjust. `.env` is git-ignored; never commit a populated one.
@@ -1099,9 +1100,20 @@ RESTAURANT_CURRENCY_CODE=USD
 # Where this instance's source code is published (§11.9). Linked from /source, which the footer of
 # every page links to. If you have MODIFIED this program and run it as a network service, AGPL-3.0-only
 # §13 requires you to offer your users the corresponding source — point this at your fork and you have
-# done so. Leave it alone if you run this tree unmodified. Absolute http or https; http is accepted
-# here (unlike RESTAURANT_PUBLIC_ORIGIN) so a self-hosted forge on a LAN is not refused.
-RESTAURANT_SOURCE_URL=https://github.com/kusl/myrestaurant
+# done so:
+#
+#     RESTAURANT_SOURCE_URL=https://git.example.com/you/myrestaurant
+#
+# Absolute http or https; http is accepted here (unlike RESTAURANT_PUBLIC_ORIGIN) so a self-hosted
+# forge on a LAN is not refused.
+#
+# ASSIGNED EMPTY, and that is F-50's ruling applied to this file rather than an omission. Empty means
+# "the program's own default", which is RestaurantOptions.DefaultSourceUrl and the ONE place the
+# fallback is written down — the reason compose.yaml passes this variable through with an empty default
+# too. This file previously spelled the upstream URL here, which is the same defect one layer over: a
+# fork whose first edit is that constant would have had it silently overridden by the `.env` they were
+# told to copy, and served their users a §13 offer pointing at somebody else's repository.
+RESTAURANT_SOURCE_URL=
 
 # --- Database ------------------------------------------------------------------------------------
 # Consumed by the postgres container. PRODUCTION: change POSTGRES_PASSWORD.
@@ -1157,16 +1169,27 @@ BACKUP_RETENTION_COUNT=14
 # DRILL_POSTGRES_IMAGE=docker.io/library/postgres:17-alpine
 
 # --- OpenTelemetry (optional, §12) ---------------------------------------------------------------
-# Unset by default; when unset the app attaches no OTLP exporter (no connection-refused noise).
-# OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.com
-# OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <token>
+# Empty by default; when empty the app attaches no OTLP exporter (no connection-refused noise). Fill
+# these in to export — for example OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.com and
+# OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <token>.
+#
+# ASSIGNED EMPTY RATHER THAN COMMENTED OUT (F-57), and that matters more here than anywhere else in
+# this file. Every variable compose.yaml interpolates must be assigned, because on an engine that does
+# not apply the default after ':-' — Debian trixie's podman-compose does not — a commented-out line
+# leaves the placeholder text to reach the container. An EMPTY endpoint switches the exporter off; the
+# literal string `${OTEL_EXPORTER_OTLP_ENDPOINT:-}` is not empty, so it switches the exporter ON and
+# points it at a hostname made of braces. scripts/check_compose_substitution.sh tells you whether your
+# engine needs this file at all.
+OTEL_EXPORTER_OTLP_ENDPOINT=
+OTEL_EXPORTER_OTLP_HEADERS=
 OTEL_SERVICE_NAME=myrestaurant
 # run.sh also accepts a legacy UPTRACE_DSN and translates it into the OTEL_* variables above.
 # UPTRACE_DSN=
 
 # --- Production tunnel (production profile only, §14.1) ------------------------------------------
-# PRODUCTION: set to your Cloudflare named-tunnel token. Required by `--profile production`.
-# CLOUDFLARE_TUNNEL_TOKEN=
+# PRODUCTION: set to your Cloudflare named-tunnel token. Required by `--profile production`; empty
+# here, and assigned rather than commented out for the reason recorded beside the OTEL_* pair (F-57).
+CLOUDFLARE_TUNNEL_TOKEN=
 
 # --- Detached test instance (scripts/dev_instance.sh, §14.3a, OPERATIONS §10a) --------------------
 # Read from the shell environment by that script, not from this file — nothing here is sourced by a
@@ -3222,15 +3245,15 @@ For more information on this, and how to apply and follow the GNU AGPL, see
   File name:             README.md
   Relative path:         README.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/README.md
-  Size:                  32.1 KiB (32847 bytes)
-  Last modified:         2026-08-10 14:46:12.000000000 -0400
+  Size:                  33.0 KiB (33799 bytes)
+  Last modified:         2026-08-10 17:30:15.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 35139425
+  Inode:                 35606630
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               e12de7e5dbe6d61551456fd47d66eb40b713c9128bfe093bee922c6d10ca4b07
-  Last git commit:       a899317 2026-08-10 16:11:06 -0400 add claude response
+  SHA-256:               93872e37c054944917cfa0bc1dbb6d12d761e9544dc4f76f7009d430b4461727
+  Last git commit:       dfa8a40 2026-08-10 17:37:08 -0400 add claude changes
 
 --- CONTENT ---
 # MyRestaurant
@@ -3280,6 +3303,8 @@ the web layer depends on data-access and the domain; the domain depends on nothi
   and every reader/mutation over real PostgreSQL, web-layer configuration/wiring/enforcement tests,
   and the end-to-end scenario matrix with its Playwright harness (see *End-to-end scenarios*).
 - `scripts/` — the operational scripts: `check_tree.sh` (repository hygiene, the first CI gate),
+  `check_compose_substitution.sh` (does this host's compose engine apply the defaults in
+  `compose.yaml`? — a preflight, not a CI gate, because its subject is the machine),
   `check_repository.sh` (the governance surface, and an advisory read of the published repository's
   settings), `ci_local.sh` (every CI gate, locally), `backup.sh` / `restore.sh` / `restore_drill.sh` (§15
   recovery sets and the rehearsal CI runs on every push), `quick_tunnel.sh` (a demo origin, held in
@@ -3548,6 +3573,15 @@ version of this script hung forever on its first real run (**F-53**). Not in the
 time. `compose.yaml` no longer asks for a health condition, which removes the cause, and the
 deadline is there because a script whose job is to hand the terminal back must not contain a call
 that can keep it.
+
+**The third run found the cause of both failures, and it was not in this repository (F-57).** Every
+value in `compose.yaml` is written `${NAME:-default}`, and Debian trixie's podman-compose does not
+apply the part after `:-` — so the placeholder text itself reached the containers. The application
+validated five of them and exited 1; `POSTGRES_USER` reached `initdb` as punctuation, which erased the
+data directory and crash-looped. Eleven more were wrong in silence. `scripts/check_compose_substitution.sh`
+asks the engine that question directly, all three helpers that start the stack run it first and refuse
+rather than work, and `cp .env.example .env` — which now assigns every variable the stack interpolates,
+empty where empty is the value — is the remediation.
 
 **The second run of that script found the opposite defect (F-55), and it is why `up` now has an exit
 code worth reading.** It did not hang; it waited out a five-minute readiness deadline against a
@@ -3880,223 +3914,197 @@ This document describes how a report gets handled, not what anyone is entitled t
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  13.0 KiB (13282 bytes)
-  Last modified:         2026-08-10 14:54:04.000000000 -0400
+  Size:                  10.5 KiB (10759 bytes)
+  Last modified:         2026-08-10 17:33:21.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 35139433
+  Inode:                 35606640
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               f0f471f7112753743f2f6a585839d2b4e5fffa9d06c92bb19a4c9bade49b661f
-  Last git commit:       a899317 2026-08-10 16:11:06 -0400 add claude response
+  SHA-256:               b00a04a872571dc65d9f4195a944f3fb52fba94a01b8357ed1a1886731f78269
+  Last git commit:       dfa8a40 2026-08-10 17:37:08 -0400 add claude changes
 
 --- CONTENT ---
-# M6 Slice 28 — the command that came back and said nothing was wrong (F-55, F-56)
+# M6 Slice 29 — the engine that does not read its own defaults (F-57)
 
-Extract at the repository root. Every path below is repo-relative and every file is complete.
+Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-28-bring-up-evidence-and-diagnosis.tar.gz
-git add tests/MyRestaurant.WebApplication.Tests/Deployment/DevInstanceLoopbackContractTests.cs
+tar -xzf m6-slice-29-compose-substitution.tar.gz
+git add scripts/check_compose_substitution.sh
+git add tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeSubstitutionContractTests.cs
 git status
 ```
 
-**Files to DELETE: none.** Nothing is renamed and nothing is superseded.
+**Files to DELETE: none.**
 
-**`git add` is required** for the one new file above. `scripts/check_tree.sh` enumerates with
+**`git add` is required** for the two new files above — `scripts/check_tree.sh` enumerates with
 `git ls-files`, so an untracked file is a file no gate looks at.
 
 ---
 
-## What this slice is about
+## Your log answered it, and the answer was not a variable
 
-`time bash scripts/dev_instance.sh` on virginia took six minutes and fifty-five seconds to report
-success over an instance that had never served a request. It did not hang — Slice 27 fixed that. It
-waited out a 300-second readiness deadline against a container that had already exited, printed the
-`DEV INSTANCE — DETACHED` banner with a public URL in it, spent twenty more seconds probing that URL,
-warned that it had not answered, and **exited 0**.
+```
+web:      Configuration error: RESTAURANT_TIME_ZONE '${RESTAURANT_TIME_ZONE:-America/New_York}' …
+postgres: FATAL: invalid character in extension owner: must not contain any of ""$'\
+          STATEMENT: CREATE EXTENSION plpgsql;
+          initdb: removing contents of data directory "/var/lib/postgresql/data"
+```
 
-The reason had been available since the tenth second, in a log nothing ever printed.
+**Your compose engine does not apply the branch after `:-`.** Every value in `compose.yaml` is written
+`${NAME:-default}`, and every variable that was not already set in your environment reached its
+container as the placeholder text. That single fact killed both containers:
 
----
+- **web** validates five of them, so it printed five errors and returned 1 — the exit code Slice 28
+  reasoned from before any log existed.
+- **postgres** got `POSTGRES_USER=${POSTGRES_USER:-myrestaurant}`, so initdb's bootstrap
+  `CREATE EXTENSION plpgsql` failed on the punctuation in the owner name, initdb wiped the data
+  directory, the container exited, the engine restarted it — forever. **The crash loop was never about
+  your volume**, and `reset` would not have helped: initdb was already erasing that directory on every
+  attempt. Both `podman system prune -a` runs were beside the point too.
 
-## The diagnosis, and the one inference it rests on
+**Proof of the mechanism, from your own run:** `RESTAURANT_PUBLIC_ORIGIN` was the one value that
+arrived correct, and it is the one `dev_instance.sh` exports. So substitution works when the variable is
+**set**; it is the *default* branch that is unapplied. `${RESTAURANT_CURRENCY_CODE:-USD}` failed too,
+which rules out an escaping problem — `USD` is as plain as a default gets.
 
-From the transcript: `postgres` was created six minutes before `podman ps` reported `Up 1 second`,
-which is the engine restarting it in a loop; `web` had **`Exited (1)`**.
+### The five errors were the good case
 
-**Exit code 1 is reachable from exactly one place in this program.** `Program.cs` binds and validates
-configuration before a host exists, and on failure prints each error to stderr and `return 1`s.
-Nothing else in that file returns 1 — a `SchemaMigrationRunner` failure throws, and an unhandled
-exception on .NET aborts with 134. So the application refused its own environment, said which
-variable and with what value, and exited, all within the first second.
+Eleven more variables were wrong and said nothing:
 
-That message is still on virginia. `podman logs myrestaurant_web_1 | tail -40` prints it. This slice
-does not need to know what it says to fix the defect, because the defect is that nothing printed it —
-but it is worth reading, and if you send it I will put the specific variable in F-55's row rather than
-the general case.
-
----
-
-## Two findings
-
-**F-55 — a wait with a deadline and no evidence.** F-53 was a wait with no deadline; Slice 27 put
-deadlines on every compose call and, in the same script, left a 300-second HTTP poll that never asked
-whether the container it was polling still existed. The two failures look alike and need opposite
-fixes: a deadline stops a wait that cannot *end*, and only a liveness check stops a wait that cannot
-*succeed*. Alongside it: the success banner printed unconditionally, the settle phase probed a public
-URL for an application that was not answering on loopback, `status` described a container that had
-exited 1 as `(stopped, health: starting)`, `logs` could only show the tunnel's log, and `up` exited 0.
-
-**F-56 — three helpers dial one port and only `run.sh` names the address that exists.**
-`compose.yaml` publishes `127.0.0.1:8080:8080`; `run.sh` has probed the literal since M1; both tunnel
-helpers defaulted `TUNNEL_TARGET` to `http://localhost:8080`. curl and GNU wget fall back to the
-second address; **BusyBox wget does not**, and it is the second entry in the probe chain of a script
-whose premise is a host that may not have curl. The visible cost is worse than the risk: cloudflared
-reports the address it failed on, so the F-55 tunnel log is full of `dial tcp [::1]:8080: connect:
-connection refused` and sends an operator after an IPv6 problem that is not there. F-51's shape for
-the third time — a rule reasoned through once, applied to one file, never stated.
-
----
-
-## Every file, and why it changed
-
-### `scripts/dev_instance.sh` — rewritten
-
-| Change | Why |
+| Variable | What the placeholder text does |
 |---|---|
-| both waits bounded **and** watched | F-55. The readiness wait polls container state; the new database wait uses `pg_isready` inside the container. Each ends early — crash loop, or a container that will not stay started — instead of running the deadline down. |
-| database wait separated from readiness wait | "the app did not answer" is equally true of a crash-looping database, a rejected configuration and an image that never started. One message cannot diagnose three failures. |
-| a stopped container is started again, up to `DEV_INSTANCE_START_ATTEMPTS` (3) | `SchemaMigrationRunner` gives up after sixty seconds (ADR-0012). A slower first `postgres` boot outlives it and leaves a correct image stopped with nothing wrong. The engine's restart policy usually covers this; *usually* is not worth 300 seconds. |
-| failure prints both log tails, with state, **exit code** and restart count | The whole finding. `podman logs` held the answer for seven minutes. |
-| a reading key for six real symptoms | `Configuration error:` → it refused its environment. `Database not ready (attempt n/30)` → the cause is in the *other* log. Four PostgreSQL data-directory failures → `reset`. `address already in use`. Both containers up and the probe still failing → check the address. |
-| `logs [web\|postgres\|database\|tunnel]`, default **web**, `--tail N` | The one command an operator reaches for could only show cloudflared. |
-| new `diagnose` | The failure report, on demand, later, without re-running `up`. |
-| new `reset` | The one failure the helper cannot repair: a data directory that will not start survives `down` (which keeps volumes deliberately) and `podman system prune -a` (which does not touch them). Removes this project's volumes **enumerated from the engine**, after saying what that destroys, and refuses rather than assumes consent when stdin is not a terminal. |
-| a stopped container reports its exit code, never a health status | `(stopped, health: starting)` reads as a container on its way up. It had exited 1 six minutes earlier. |
-| settle phase skipped when readiness failed | Probing a public URL for an application that does not answer on loopback cannot produce information. It produced a warning. |
-| `up` exits 0 only if the application answered | `time bash scripts/dev_instance.sh` is how this is invoked, and a `&&` chain believes an exit code. The stack is **left running** on failure: the containers are the evidence. |
-| state file written **before** readiness is decided | The tunnel and its hostname are real whatever the application is doing, so `url` and `down` must work on a failed bring-up. A URL nobody recorded is a tunnel nobody can close. |
-| `TUNNEL_TARGET` defaults to `http://127.0.0.1:8080` | F-56. |
-| `wait_for_http` deleted | It became unreachable once readiness moved into `wait_for_application`. shellcheck's SC2329 said so; acted on rather than suppressed. |
+| `RESTAURANT_NAME` | renders `${RESTAURANT_NAME:-My Restaurant}` as the restaurant's name, on every page |
+| `ARGON2_*`, `KITCHEN_…`, `TABLE_…` (seven) | unparseable as an integer, therefore indistinguishable from absent: compiled-in values are used silently |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | **its emptiness is the off switch.** The literal is not empty, so the exporter attaches and points at a hostname made of braces |
+| `RESTAURANT_DATABASE_CONNECTION_STRING` | three nested placeholders in one folded scalar; non-empty, so it passes validation and fails at connect |
 
-### `scripts/quick_tunnel.sh`
+---
 
-`TUNNEL_TARGET` defaults to the literal, with the reasoning beside the assignment. Three lines,
-comments aside. Nothing else about that script changes — it is still the foreground demo helper.
+## The fix: ask the engine, refuse early, make `.env` sufficient
 
-### `.env.example`
+**New `scripts/check_compose_substitution.sh`.** It does not guess from a version number:
 
-`TUNNEL_TARGET`'s documented default corrected, and the new knobs listed with what they are ceilings
-*for*: `DEV_INSTANCE_DATABASE_WAIT`, `DEV_INSTANCE_START_ATTEMPTS`,
-`DEV_INSTANCE_CRASH_LOOP_RESTARTS`, `DEV_INSTANCE_LOG_TAIL`. **All fourteen added lines are
-comments**, so `ConfigurationSurfaceTests`'s key set is untouched — verified, not assumed.
+1. enumerate the `${NAME…}` placeholders in `compose.yaml`;
+2. subtract the ones that do not need a default — set in the environment, or assigned in `.env` —
+   because the *set* branch is the half your log proves works. Nothing left → exit 0, nobody asked;
+3. otherwise render with `compose config` under a deadline and look for a surviving `${`.
 
-### `docs/TECHNICAL_SPECIFICATION.md` → **v1.13**
+Exit **3** the engine does not apply defaults · **2** could not be determined here (no usable `config`)
+· **0** fine. The middle value matters: a missing subcommand is not a broken engine, and conflating
+them would either block correct hosts or pass broken ones.
 
-§14.3a gains four normative paragraphs (no wait outlives its evidence; a failure prints the log and
-`logs` reaches the application; `up`'s exit status is a claim about the instance; `reset` exists and
-what it must ask before acting) plus the address-literal rule. §16.4 gains the loopback contract test
-*and what it deliberately does not assert*. Appendix A gains F-55 and F-56. Header and changelog both
-moved, together — F-48 is what happens when only one does.
+**Three helpers run it before doing work.** `dev_instance.sh` refuses **before** the twenty-minute
+build. `quick_tunnel.sh` refuses before publishing a hostname. `run.sh` refuses before `compose up`.
 
-**No `REQUIREMENTS.md` edit**, on the v1.11 and v1.12 reasoning: R§8 asks for an operable instance and
-ADR-0004 has named podman-compose canonical since M1, so a helper reporting success over a dead
-instance is a mechanism failing a contract this tree already carried, not new intent. No schema
-change, no ADR edit, no `.slnx` edit, and **`compose.yaml` is not touched by this slice**.
+**`dev_instance.sh` asks again after `up -d`, from the containers' own environment** — one `inspect`
+each, `{{range .Config.Env}}`, grep for `${`. Ground truth: no subcommand needed, cannot be fooled by a
+`config` that renders differently from what it runs, and it is the only thing that can settle whether an
+*empty* assignment satisfies your engine. It runs before any waiting, because a placeholder in
+`POSTGRES_USER` means the database question is already settled.
 
-### `docs/OPERATIONS.md`
+**`.env.example` now assigns every variable the stack interpolates.** It was assigning 19 of 22 —
+`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` and `CLOUDFLARE_TUNNEL_TOKEN` were commented
+out, and a commented-out line supplies nothing. So the documented remediation was incomplete in exactly
+the place that hurts most: an empty OTLP endpoint switches the exporter off, the literal switches it on.
 
-§10a's command table gains `logs`, `diagnose` and `reset` and records the exit-code contract. A new
-**"When it does not come up"** subsection: what `up` prints on failure, the two log lines that point
-in opposite directions, and the data-directory case with `reset` as its answer. §15's verification
-`curl` uses the literal, for F-56's reason.
+**One thing I changed that you did not ask for, and it is F-50 again.** `.env.example` spelled
+`RESTAURANT_SOURCE_URL=https://github.com/kusl/myrestaurant`. F-50 ruled that `compose.yaml` must pass
+that variable with an *empty* default so `RestaurantOptions.DefaultSourceUrl` stays the one place the
+fallback lives — and then left the upstream URL in the file operators are told to copy. A fork whose
+first edit is that constant would have had it silently overridden by their own `.env`. It is assigned
+empty now, with the fork example in a comment beside it. This is what fact 3 of the new test caught
+while I was proving it sensitive; I did not go looking for it.
 
-### `README.md`
+**`compose.yaml` is not edited.** The file is correct; the engine reading it is not.
 
-The command block gains the three new subcommands; the F-53 paragraph gains the F-55 sequel, because
-a reader who is told the script once hung forever should also be told what the fix to that produced.
+---
 
-### `docs/DOCUMENTATION_REVIEW.md`
+## The build break — fixed properly, and it will not come back
 
-F-55 and F-56 rows, the status line, and three closing paragraphs: F-53's fix producing F-53's shape
-in reverse (**a bound on how long you will wait is not a bound on how long you will be wrong**), the
-exit-code rule this project had not stated, and F-51's shape reaching its third occurrence — with the
-habit that would have caught all three: *when a comment explains why a value is what it is, grep the
-tree for the other places that value is written.*
+`DevInstanceLoopbackContractTests` wrapped one assertion message in
+`string.Create(CultureInfo.InvariantCulture, …)`, and the concatenation fed to it ended with a **plain**
+string literal instead of an interpolated one. An additive expression converts to an interpolated string
+handler only when *every* operand is itself `$"…"`, so the call bound to no overload. I checked the tree
+afterwards: **every** `string.Create` concatenation in it prefixes every operand with `$`, including
+operands with no holes. That file broke a uniform idiom.
 
-### `docs/BUILD_PROGRESS.md`
+The repair is not to add the missing `$`. Every hole in that message is already a `string`, so there was
+nothing culture-sensitive to format and `string.Create` was never earning anything — it is a plain
+interpolated string now, `using System.Globalization;` is gone with it (an unused using is an error
+under CI's `TreatWarningsAsErrors`), and the reasoning sits above the assertion so nobody reaches for
+the habit again. Two more idioms hardened while the file was open: `Assert.Equal` on a collection size
+replaced with `Assert.True` (xUnit's analyzer has opinions), and `Assert.False(string.IsNullOrEmpty(x))`
+replaced with a length comparison.
 
-Slice 28, shipped whole. The mock-engine harness, the six scenarios with their measured timings, the
-sensitivity proofs, and what could not be verified from here.
+The file shipped here is the authority — it supersedes your local edit and contains the same fix.
 
-### `tests/…/Deployment/DevInstanceLoopbackContractTests.cs` — new
+---
 
-F-50's pattern, not a grep: the published port in `compose.yaml` is authoritative, each helper's
-`TUNNEL_TARGET` default is a restatement, and the test derives the first to check the second. Four
-facts — the scan found everything (F-41 non-vacuity), each helper dials the published host and port,
-each host is an address literal, and what is published is still loopback. The last one exists because
-the rule is *argued* from there being one address: publish on `0.0.0.0` and the justification is gone,
-and a test that stayed green through that change would be asserting a coincidence.
+## Every file, and why
 
-Deliberately **not** asserted: that no script says `localhost`. `run.sh` prints it in a sentence for a
-human to paste into a browser, which is correct, and failing on it would report a finding on a correct
-tree (F-41).
+| File | Change |
+|---|---|
+| `scripts/check_compose_substitution.sh` | **new.** The decisive check, standalone and runnable by hand, with the whole account in its header |
+| `scripts/dev_instance.sh` | preflight before the build; container-environment gate after `up -d`; the `.env` warning corrected (it said an absent `.env` was "fine"; on your engine it is fatal); two new reading-key entries for the placeholder and initdb symptoms |
+| `scripts/quick_tunnel.sh` | refuses before opening a tunnel over a stack that cannot start |
+| `run.sh` | refuses before `compose up` |
+| `.env.example` | all 22 interpolated variables assigned; OTEL pair and tunnel token empty rather than commented; `RESTAURANT_SOURCE_URL` empty per F-50 |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.14** — §14.1 third normative rule + the `.env.example` requirement + what is deliberately not claimed; §16.4 the test and why the script is a preflight and not a CI gate; Appendix A F-57; header and changelog moved together |
+| `docs/OPERATIONS.md` | §10a opens with the substitution check; §2's `.env` step upgraded from advice to near-prerequisite |
+| `README.md` | the third-run paragraph, and the script in the layout list |
+| `docs/DOCUMENTATION_REVIEW.md` | F-57 row, status line, and two closing paragraphs |
+| `docs/BUILD_PROGRESS.md` | Slice 29, whole |
+| `tests/…/ComposeSubstitutionContractTests.cs` | **new**, 3 facts |
+| `tests/…/DevInstanceLoopbackContractTests.cs` | build break fixed, idioms hardened |
 
 ---
 
 ## Verification
 
-No .NET SDK and no container engine here, so the script was run against a **mock engine** — `podman`,
-`podman-compose` and `curl` shims driven by state files — with the production-length deadlines in
-place, so the timings are the ones an operator sees:
+- **The check run against three simulated engines** (`config` substitutes / leaves `${…}` literal /
+  no `config` at all) plus a fourth case with a complete `.env`: exit 0, exit 3 listing all 23
+  variables, exit 2 with the *undetermined* message, exit 0 without asking the engine. Each intended.
+- **`bash -n` + `shellcheck`** on all four scripts, clean at `--severity=warning` and `--severity=style`;
+  nine pre-existing scripts baselined style-clean first. One suppression with its reason on the line
+  above: `SC2016`, where `'${'` is the literal being searched for.
+- **New test ported to Python and proven sensitive** one regression at a time — six mutations across the
+  three facts, a throw on a broken `services:` marker, and a comment-only control that changes nothing.
+- **`DevInstanceLoopbackContractTests`, `ConfigurationSurfaceTests`, `ComposeDependencyContractTests`
+  and `SpecificationVersionTests` re-run** against the edited tree. All pass. Header 1.14, entries
+  descending.
+- **Balance walk** over both C# files with two controls; **byte hygiene** on all eleven files.
 
-| Scenario | Result |
-|---|---|
-| healthy | `DETACHED` banner, **exit 0** |
-| `web` exits 1 on a `Configuration error:` line | `NOT SERVING`, both logs, reading key, **exit 1, 15s** |
-| `postgres` crash-looping (`PANIC: could not locate a valid checkpoint record`) | crash loop named at three restarts, readiness skipped, **exit 1, 7s** |
-| `logs` / `logs postgres` / `logs tunnel` / `logs database --tail 2` | right container every time |
-| `reset --yes` | removed `myrestaurant_postgres-data` and `myrestaurant_dataprotection-keys`, left `other_project_data` alone |
-| `reset` with no tty and no `--yes` | **exit 1, nothing removed** |
-| five argument errors | each names itself, each exits non-zero |
+**Test count 1063 → 1066.** Three `[Fact]` methods, none removed.
 
-**415 seconds and exit 0 became 7–15 seconds and exit 1.**
-
-Also: `bash -n` and `shellcheck --severity=style` clean on both scripts (all nine existing scripts
-baselined style-clean first with shellcheck 0.11.0); the new test ported to Python, run, and proven
-sensitive one regression at a time — including two non-vacuity mutations and a comment-only control
-that must change nothing; `SpecificationVersionTests`, `ConfigurationSurfaceTests` and
-`ComposeDependencyContractTests` re-run against the edited tree; a string- and comment-aware balance
-walk over the new C# file with two controls; every doc edit applied by exact-match replacement with a
-one-occurrence assertion; byte hygiene on all nine files.
-
-**Test count 1059 → 1063.** Four `[Fact]` methods, none removed, no `[Theory]`. Arithmetic, not an
-observation.
+**Not verified:** nothing compiled, and no real engine ran the check — the shims imitate the two
+behaviours, and if your `podman-compose` has no `config` subcommand the preflight exits 2 and the
+post-`up` container check is what fires. That is why both exist.
 
 ---
 
-## What is not verified
-
-- **Nothing has compiled.** No `dotnet build` on the new test file.
-- **Nothing ran on virginia.** Every timing is from the mock. What the mock cannot say is which
-  variable the real `Configuration error:` line names.
-- **`{{.RestartCount}}`** is read from documentation, not from a running engine. Absent reads as 0,
-  which loses the crash-loop early exit and keeps everything else.
-
-## Suggested run on virginia
+## On virginia
 
 ```bash
-cd ~/src/dotnet/myrestaurant
-git pull
-podman logs myrestaurant_web_1 | tail -40      # the answer that has been sitting there
-bash scripts/dev_instance.sh diagnose          # the same thing, framed, with the reading key
-time bash scripts/dev_instance.sh              # now exits 1 fast if it is still broken
+cd ~/src/dotnet/myrestaurant && git pull
+bash scripts/check_compose_substitution.sh ; echo "exit=$?"
 ```
 
-If `logs postgres` shows a data-directory failure: `bash scripts/dev_instance.sh reset`, then `up`.
-That destroys the database and the key ring on that instance, which on a tester box with no data worth
-keeping is the right trade — and is exactly what `podman system prune -a` could not do for you.
+If it exits 3 (or 2):
+
+```bash
+cp .env.example .env
+bash scripts/check_compose_substitution.sh ; echo "exit=$?"    # should be 0 now
+time bash scripts/dev_instance.sh
+```
+
+`.env` carries `POSTGRES_PASSWORD=myrestaurant` — a development credential, fine on a Tailscale-only
+box, worth changing on anything else. Old volumes are harmless: initdb never finished, so there is no
+half-built database to clear. If the check still refuses after copying `.env`, your engine is not
+honouring an empty assignment either — send me the output of
+`podman-compose config | head -40` and `podman-compose --version` and I will take the second
+remediation properly rather than pointing you at three options.
 
 ################################################################################
 # FILE: compose.yaml
@@ -4282,15 +4290,15 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  540.5 KiB (553466 bytes)
-  Last modified:         2026-08-10 14:53:01.000000000 -0400
+  Size:                  552.8 KiB (566065 bytes)
+  Last modified:         2026-08-10 17:32:28.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 35139436
+  Inode:                 35606643
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               bdbbda46498eb24385ffd843fa9b2ec3dc7c54ca3a1ea31a25dc5c1f5db6bf65
-  Last git commit:       a899317 2026-08-10 16:11:06 -0400 add claude response
+  SHA-256:               24253207a4d42513e0d9cdfbb5df62de018ccdc82bc0cd27ff0cde0e8f8b4af5
+  Last git commit:       dfa8a40 2026-08-10 17:37:08 -0400 add claude changes
 
 --- CONTENT ---
 # Build progress
@@ -12600,6 +12608,198 @@ intentions.** Nobody has audited them.
 **Two operator actions** no archive can contain: enabling private vulnerability reporting on GitHub,
 and setting the repository description (F-42).
 
+## M6 Slice 29 — the engine that does not read its own defaults (F-57)
+
+Slice 28 shipped a diagnosis and said what it could not know:
+
+> **Nothing ran on virginia.** Every timing is from the mock. What the mock cannot say is which
+> variable the real `Configuration error:` line names.
+
+It named five. And the answer was not a variable at all.
+
+### What the diagnosis printed
+
+```
+  ── postgres (myrestaurant_postgres_1), last 40 line(s) ──
+  | 2026-08-10 21:11:23.698 UTC [31] FATAL:  invalid character in extension owner: must not contain
+  |     any of ""$'\
+  | 2026-08-10 21:11:23.698 UTC [31] STATEMENT:  CREATE EXTENSION plpgsql;
+  | child process exited with exit code 1
+  | initdb: removing contents of data directory "/var/lib/postgresql/data"
+
+  ── web (myrestaurant_web_1), last 40 line(s) ──
+  | Configuration error: RESTAURANT_TIME_ZONE '${RESTAURANT_TIME_ZONE:-America/New_York}' is not a
+  |     resolvable time zone on this host.
+  | Configuration error: RESTAURANT_CLOCK_FORMAT must be '12-hour' or '24-hour' (was
+  |     '${RESTAURANT_CLOCK_FORMAT:-12-hour}').
+  | Configuration error: RESTAURANT_CURRENCY_CODE must be a 3-letter ISO 4217 code (was
+  |     '${RESTAURANT_CURRENCY_CODE:-USD}').
+  | Configuration error: RESTAURANT_SOURCE_URL must be an absolute http or https URL (was
+  |     '${RESTAURANT_SOURCE_URL:-}').
+  | Configuration error: RESTAURANT_TRUSTED_ORIGIN_PATTERNS entry
+  |     '${RESTAURANT_TRUSTED_ORIGIN_PATTERNS:-https://*.trycloudflare.com}' must be an https origin…
+```
+
+`1m51s`, exit 1, and both halves of the cause on one screen. The previous run took `6m55s` to exit 0.
+
+### One engine behaviour, both containers
+
+`compose.yaml` sets twenty-three values as `${NAME:-default}`. This engine does not apply the branch
+after `:-`, so every variable not already set in the environment arrived as the placeholder text.
+
+- **`web`**: five of those are validated, so `Program.cs` printed five errors and returned 1 — which is
+  exactly the inference Slice 28's `_CHANGES.md` drew from the exit code, before any log was available.
+- **`postgres`**: `POSTGRES_USER` arrived as `${POSTGRES_USER:-myrestaurant}`, so initdb's bootstrap
+  `CREATE EXTENSION plpgsql` failed on the punctuation in the owner name, initdb erased the data
+  directory, the container exited, the engine restarted it, and it did that forever. **The crash loop
+  Slice 28 attributed to a possibly-poisoned volume was never about the volume.**
+
+The `reset` command shipped in Slice 28 would not have helped, and that is worth recording rather than
+quietly correcting: it removes a data directory that cannot start, and this data directory was being
+removed by initdb on every attempt already.
+
+### What is known about the behaviour, and what is not
+
+**Known, from the same run.** `RESTAURANT_PUBLIC_ORIGIN` was the one value that arrived correct, and it
+is the one `dev_instance.sh` exports. So substitution works when the variable is **set**; it is the
+default branch that is unapplied. `${RESTAURANT_CURRENCY_CODE:-USD}` failed too, which rules out an
+escaping problem with `/`, `:` or `*` — `USD` is as plain as a default gets.
+
+**Not known, and deliberately not claimed anywhere in this slice.** Which podman-compose releases behave
+this way, and whether assigning a variable **empty** in `.env` counts as supplying it. Both are
+properties of a host. So nothing here predicts them: the new script asks the engine, and
+`dev_instance.sh` asks again from the containers' own environment.
+
+### The eleven that arrive wrong in silence
+
+The five errors are the *good* case. What else was wrong:
+
+| Variable | What arriving as placeholder text does |
+|---|---|
+| `RESTAURANT_NAME` | renders `${RESTAURANT_NAME:-My Restaurant}` as the restaurant's name, on every page |
+| `ARGON2_*` (four) | `ReadInt` cannot parse it, so it is indistinguishable from absent — compiled-in values are used and nothing says so |
+| `KITCHEN_…`, `TABLE_JOIN_…`, `TABLE_DISPLAY_…` | the same, silently |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | **its emptiness is the off switch.** The literal is not empty, so the exporter is attached and pointed at a hostname made of braces |
+| `RESTAURANT_DATABASE_CONNECTION_STRING` | three nested placeholders inside one folded scalar; non-empty, so it passes validation and fails at connect time |
+
+`OTEL_EXPORTER_OTLP_ENDPOINT` is the one that decided the shape of the fix. A setting whose whole
+purpose is to be absent is the one that fails loudest when it is merely *unwritten*.
+
+### The fix: ask, refuse, and make `.env` sufficient
+
+**New `scripts/check_compose_substitution.sh`.** It does not predict from a version number:
+
+1. enumerate the `${NAME…}` placeholders in `compose.yaml`;
+2. subtract the ones that do not need a default — set and non-empty in the environment, or assigned in
+   `.env` — because the *set* branch is the half observed working. If nothing is left, exit 0 without
+   asking anybody anything;
+3. otherwise render the file with `compose config` under a deadline and look for a surviving `${`.
+
+Three-valued exit, and the middle value is the point: **3** the engine does not apply defaults, **2**
+could not be determined here (no usable `config`), **0** fine. A missing subcommand is not a broken
+engine, and a check that conflated the two would either block correct hosts or pass broken ones.
+
+**Three helpers run it before doing work.** `dev_instance.sh` refuses *before* the twenty-minute image
+build — a cold build is a poor thing to hand somebody along with the news that their stack was never
+going to start. `quick_tunnel.sh` refuses before publishing a hostname. `run.sh` refuses before
+`compose up`.
+
+**`dev_instance.sh` asks again after `up -d`, from the containers' own environment.** One `inspect` per
+container, `{{range .Config.Env}}`, grep for `${`. This is ground truth: it needs no subcommand, it
+cannot be fooled by a `config` that renders differently from what it runs, and it is the only thing that
+can settle the empty-assignment question. It runs *before* any waiting, because a placeholder in
+`POSTGRES_USER` means initdb is already failing and the database wait would spend its deadline on a
+settled question.
+
+**`.env.example` now assigns every variable the stack interpolates.** It was assigning nineteen of
+twenty-two — `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` and `CLOUDFLARE_TUNNEL_TOKEN`
+were commented out, and a commented-out line supplies nothing. So the documented remediation
+(`cp .env.example .env`, OPERATIONS §2) was incomplete in exactly the place that matters most.
+
+**And `RESTAURANT_SOURCE_URL` is assigned empty there**, which is F-50's ruling applied one layer over.
+That file spelled `https://github.com/kusl/myrestaurant`, so a fork whose first edit is
+`RestaurantOptions.DefaultSourceUrl` — the edit F-50 says is the natural one — would have had it
+silently overridden by the `.env` they were told to copy, and served their users a §13 offer pointing at
+this repository. F-50 fixed that in `compose.yaml` and left the same value in `.env.example`.
+
+### The build break Slice 28 shipped, and why
+
+`DevInstanceLoopbackContractTests` did not compile. The assertion message was wrapped in
+`string.Create(CultureInfo.InvariantCulture, …)`, and the concatenation fed to it ended with a **plain**
+string literal rather than an interpolated one. An additive expression converts to an interpolated
+string handler only when *every* operand is itself an interpolated string, so the call bound to no
+overload. Checked against the tree afterwards: **every** `string.Create` concatenation in it prefixes
+every operand with `$`, including the operands that have no holes — the idiom is uniform and this file
+broke it.
+
+The repair is not to add the missing `$`. Every hole in that message is already a `string`, so there is
+nothing culture-sensitive to format and `string.Create` was never earning anything. It is a plain
+interpolated string now, `using System.Globalization;` is gone with it (an unused using is an error
+under CI's `TreatWarningsAsErrors`), and the reasoning is written above the assertion so the next person
+does not reach for the same habit. Two other idioms were hardened while the file was open:
+`Assert.Equal(collection.Count, …)` avoided in favour of `Assert.True`, since xUnit's analyzer has
+opinions about the former, and `Assert.False(string.IsNullOrEmpty(x))` replaced with a length comparison.
+
+### What was verified, and how
+
+- **`scripts/check_compose_substitution.sh` run against three simulated engines** — a `podman-compose`
+  shim whose `config` substitutes correctly, one that leaves `${…}` literal the way Debian's does, and
+  one with no `config` subcommand at all — plus a fourth case with a complete `.env`. Results: exit 0,
+  exit 3 with all 23 variables listed, exit 2 with the *undetermined* message, and exit 0 without asking
+  the engine anything. Each is the intended path.
+- **`bash -n` and `shellcheck`** on all four touched scripts, clean at `--severity=warning` (blocking in
+  CI) and `--severity=style` (advisory), with the nine pre-existing scripts baselined style-clean first.
+  One suppression, with its reason on the line above it: `SC2016` inside the container-environment grep,
+  where `'${'` is the literal text being searched for.
+- **`ComposeSubstitutionContractTests` ported to Python and proven sensitive** one regression at a time:
+  either OTEL variable or the tunnel token commented out again (fact 2), a new variable added to
+  `compose.yaml` and not to `.env.example` (fact 2), a plausible value given to
+  `OTEL_EXPORTER_OTLP_ENDPOINT` (fact 3), the upstream URL restored to `RESTAURANT_SOURCE_URL` (fact 3),
+  the `web` service's `environment:` key renamed so the scan misses twenty of twenty-two variables
+  (fact 1, the non-vacuity guard), and a broken `services:` marker (throws rather than passing
+  vacuously). A comment-only edit changes nothing, as a control.
+- **`DevInstanceLoopbackContractTests` re-run** against the edited tree: four facts, still passing, and
+  still failing on the six mutations Slice 28 recorded.
+- **`ConfigurationSurfaceTests` re-run**: seventeen keys derived from `FromConfiguration`, all still
+  present in `.env.example` — including `RESTAURANT_SOURCE_URL`, whose assignment is now empty, which
+  that test accepts because it asserts the key appears rather than what it says.
+- **`SpecificationVersionTests` ported and run**: header 1.14, entries 1.14 … 1.0 descending.
+- **`ComposeDependencyContractTests` re-run**: four services, three edges, all `service_started`.
+  `compose.yaml` is **not edited by this slice** — the file is correct and the engine reading it is not.
+- **Brace, parenthesis and bracket balance walked** over both C# files with a string- and comment-aware
+  scanner, with two existing files as controls.
+- **Byte hygiene on every delivered file**: LF, one final newline, no CR, no whitespace-only lines, no
+  trailing whitespace, no context-dump separator.
+
+### The test count
+
+1063 → **1066**. Three `[Fact]` methods added, none removed, no `[Theory]`. This assumes the local fix
+to Slice 28's build break kept all four of that file's facts — it removed a call inside one assertion
+message, not a method — and the file shipped here is the authority either way.
+
+### What was NOT verified, and cannot be from here
+
+**No engine ran this.** The substitution check was exercised against shims that imitate the two
+behaviours; the real `podman-compose config` output on virginia has never been seen. If `config` is one
+of the subcommands that version does not implement, the preflight exits 2 and the post-`up` container
+check is what fires — which is why that second check exists.
+
+**Nothing has compiled.** Two test files, balanced and ported and exercised, with `dotnet build` not run
+on either.
+
+**Whether `cp .env.example .env` is sufficient on that host is unknown**, and the honest answer is in the
+tool rather than in this document: the check will say. If an empty assignment does not satisfy the
+engine, the second remediation — a compose that applies defaults — is the one to take.
+
+### Still open
+
+**A CI job that runs the canonical stack on the canonical engine.** Fifth consecutive slice where this
+is the real embodiment of a finding and is not in the archive. F-51, F-52, F-53, F-55 and F-57 were all
+found by one person running one command on one machine that is not the workstation.
+
+**`Permissions-Policy`**, carried since Slice 24. **Two operator actions** no archive can contain
+(F-42).
+
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
 ################################################################################
@@ -12608,20 +12808,20 @@ and setting the repository description (F-42).
   File name:             DOCUMENTATION_REVIEW.md
   Relative path:         docs/DOCUMENTATION_REVIEW.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/DOCUMENTATION_REVIEW.md
-  Size:                  102.3 KiB (104710 bytes)
-  Last modified:         2026-08-10 14:47:17.000000000 -0400
+  Size:                  107.5 KiB (110083 bytes)
+  Last modified:         2026-08-10 17:31:24.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 35139438
+  Inode:                 35606645
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               1178f8979546fa4732e4dbe90d978b126c4e163c77f888cfba1fa3fa7a1fb87d
-  Last git commit:       a899317 2026-08-10 16:11:06 -0400 add claude response
+  SHA-256:               706b9522fc0472567146930517ce0f78e3c971a75608a018d531283f0569d3b2
+  Last git commit:       dfa8a40 2026-08-10 17:37:08 -0400 add claude changes
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
 
-**Status:** All findings resolved. **F-36** (timestamps ignored `RESTAURANT_TIME_ZONE`) closed in the M4 close-out slice, on the schedule its row recorded. **F-37** (no guest registration surface existed) closed in M6 Slice 5, with one part deliberately left open and named — see its row. **F-38** (the restore path had never been executed and could not have completed) closed in M6 Slice 16; it is now rehearsed by CI on every push rather than documented as a procedure. **F-39** (the program could not say what build it was, and offered nobody its source) closed in the M6 close-out slice, ahead of the first tag. **F-40** (twenty-one tracked files carried an appended context-dump separator, one of them `Directory.Build.props`, which failed every MSBuild verb in the repository) closed in M6 Slice 18; the tree is now gated on being machine-readable before anything tries to build it. **F-41** (that gate then failed 1321 times on a clean tree, blocking every gate behind it, because its scope was the whole checkout rather than the authored text it has opinions about) closed in M6 Slice 19. **F-53** (the documented bring-up command started the whole stack and then never returned, printing nothing) and **F-54** (a runbook step asserting behaviour no script has, cited from F-16's row in this very file) closed in M6 Slice 27. **F-55** (the same command, one slice later: it waited out a five-minute deadline against a container that had already exited, published a URL over a dead application, printed neither container's log, and returned 0) and **F-56** (three helpers dial one port and only `run.sh` named the address compose actually publishes) closed in M6 Slice 28.
+**Status:** All findings resolved. **F-36** (timestamps ignored `RESTAURANT_TIME_ZONE`) closed in the M4 close-out slice, on the schedule its row recorded. **F-37** (no guest registration surface existed) closed in M6 Slice 5, with one part deliberately left open and named — see its row. **F-38** (the restore path had never been executed and could not have completed) closed in M6 Slice 16; it is now rehearsed by CI on every push rather than documented as a procedure. **F-39** (the program could not say what build it was, and offered nobody its source) closed in the M6 close-out slice, ahead of the first tag. **F-40** (twenty-one tracked files carried an appended context-dump separator, one of them `Directory.Build.props`, which failed every MSBuild verb in the repository) closed in M6 Slice 18; the tree is now gated on being machine-readable before anything tries to build it. **F-41** (that gate then failed 1321 times on a clean tree, blocking every gate behind it, because its scope was the whole checkout rather than the authored text it has opinions about) closed in M6 Slice 19. **F-53** (the documented bring-up command started the whole stack and then never returned, printing nothing) and **F-54** (a runbook step asserting behaviour no script has, cited from F-16's row in this very file) closed in M6 Slice 27. **F-57** (the canonical engine does not apply the default values in `compose.yaml`, so the stack was configured with placeholder text and both containers died of it) closed in M6 Slice 29. **F-55** (the same command, one slice later: it waited out a five-minute deadline against a container that had already exited, published a URL over a dead application, printed neither container's log, and returned 0) and **F-56** (three helpers dial one port and only `run.sh` named the address compose actually publishes) closed in M6 Slice 28.
 **Scope of the original review (2026-07-16):** `REQUIREMENTS.md` rev 1 (commit `af51017`) and the `dump.txt` produced by `export.sh`.
 **Rulings:** the owner ruled on every finding on 2026-07-17 — F-01–05, F-09–11, F-13–19, F-21–24 accepted as raised; F-06, F-07 (Q1), F-08 (Q2/Q3), and F-12 (Q4/Q5) resolved with the defaults proposed in the ruling exchange ("all of this is fine").
 
@@ -12725,6 +12925,8 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 | F-54 | **A step in the production runbook asserted behaviour no script has, and the citation it offered was this file.** `OPERATIONS.md` §2 step 2 told an operator to copy `.env.example` to `.env`, and added in parentheses: *"`run.sh` and the scripts do this automatically when `.env` is absent — F-16"*. All nine scripts were grepped; not one writes `.env`. And the citation is accurate — **F-16's row above says `".env` is copied from `.env.example` when absent"** — so this is not a document drifting from code. It is a decision that was ruled on 2026-07-17, recorded in the *Embodied in* column, never implemented, and then restated in the indicative by the runbook that relies on it. **Which makes it F-38 exactly, at one-tenth the stakes and pointed inward.** F-38 was S§15, S§19, O§6 and F-16's own row agreeing that the Data Protection key ring was backed up, when no script captured it; this is O§2 and F-16's own row agreeing that `.env` is created, when no script writes it. Same ledger, same column, same year, and the reason it cost nothing is luck of a specific kind: an absent `.env` is a **working** state, because `compose.yaml` carries a development default for every key, so the documented procedure produces a running instance either way. It was recorded as an open item in Slice 26 rather than fixed there, on the grounds that the interesting question was which of the two halves is right. | **The document is wrong and the scripts are right; that clause of F-16's ruling is reversed rather than implemented**, and the reasoning is worth more than the fix. A script that materialised `.env.example` would write an untracked file containing `POSTGRES_PASSWORD=myrestaurant` that nobody knowingly created, on a path `.gitignore` hides from every tool that reads the tree — which is the class of artefact F-45 was about, arriving by a different door. And because the stack starts without it, auto-creation buys nothing except the removal of the one moment an operator is supposed to make a decision about credentials. §2 now says to copy it by hand and says why in the same breath, §10a says it in a clause, and `scripts/dev_instance.sh` says it in the warning it already prints when the file is absent — so the correction reaches a reader at the terminal and not only a reader of the runbook. Deliberately **not** made executable: the assertion would have to be *no document claims a script writes `.env`*, which is a grep for one sentence rather than a rule, and the general form of it — a document asserting behaviour of a script in this tree — is not decidable by anything cheaper than reading. Recorded as a habit instead, in the paragraph below. | O§2, O§10a · `docs/OPERATIONS.md`, `scripts/dev_instance.sh` · BUILD_PROGRESS M6 Slice 27 |
 | F-55 | **The command came back this time. It took six minutes and fifty-five seconds to report success over an instance that had never served a request.** One slice after F-53, on the same machine, `time bash scripts/dev_instance.sh` printed a build, opened a tunnel, started the stack — and then: `postgres` was being restarted in a loop by the engine, `web` had exited **1**, and the script polled `/healthz/ready` for the full 300 seconds without ever asking whether the container it was polling was alive. Then it printed the `DEV INSTANCE — DETACHED` banner, with a public URL in it, and the sentence about passkeys working. Then it spent twenty more seconds probing that public URL — for an application that was not answering on loopback, which cannot succeed — warned that it had not answered, and **exited 0**. Six of the seven minutes were spent waiting for something that had already failed, and the seventh was spent announcing it as ready. **The reason was one line of text, and it had been available since second ten.** Exit code 1 is reachable from exactly one place in this program: `Program.cs` validates its configuration before a host exists, prints `Configuration error: …` to stderr, and returns 1; every other failure path aborts with a different status. So `podman logs myrestaurant_web_1` named the variable and the value the entire time — and nothing in this script ever printed a container log. `status` described the corpse as `(stopped, health: starting)`, which reads as a container on its way up. And `logs`, the one command an operator reaches for, could only show the *tunnel's* log: forty lines of cloudflared reporting `connection refused`, which is the symptom, forty times, and never the cause. **F-53 was a wait with no deadline; this is a wait with a deadline and no evidence — and they need opposite fixes.** A deadline stops a wait that cannot end. Only a liveness check stops a wait that cannot succeed. Slice 27 fixed the first and, in the same breath, wrote a 300-second instance of the second. Not reachable by any gate, and this time not for a subtle reason: every property here is behaviour of a script on a host, `bash -n` and shellcheck at `--severity=style` were clean on all of it, and there is nothing in the text of the file that is wrong. Found the way F-51, F-52 and F-53 were, by running the documented command on the second machine — the third consecutive slice in which that act, and only that act, produced the finding. | Four rules in **§14.3a**, and the fourth is a new command. **No wait may outlive its own evidence:** every wait is bounded *and* watched; the database wait ends early when `postgres` has been restarted `DEV_INSTANCE_CRASH_LOOP_RESTARTS` times, the readiness wait ends early when `web` will not stay started, both start a stopped container again up to `DEV_INSTANCE_START_ATTEMPTS` times first — because ADR-0012's retry is bounded at sixty seconds and a slower first `postgres` boot outlives it, leaving a correct image stopped with nothing wrong — and the settle phase is skipped entirely when readiness has already failed. The two waits are **separated**, because "the app did not answer" is equally true of a crash-looping database, a rejected configuration and an image that never started. **A failure must print the log:** state, exit code and restart count for each service, a bounded tail of *both* logs, and a key mapping the symptoms this program actually emits to their causes — `Configuration error:` means it refused its environment, `Database not ready (attempt n/30)` means the cause is in the other log. `logs` takes a target and defaults to `web`; a stopped container is described by its exit code and never by a health status. **`up`'s exit status is a claim about the instance,** not about the script: 0 only if the application answered, non-zero otherwise, with the stack left running because the containers are the evidence. **And `reset`,** for the failure the helper cannot repair — a data directory that will not start survives `down` (which keeps volumes deliberately) and `podman system prune -a` (which does not touch them at all), so nothing in this tree could clear one; `reset` removes this project's volumes, enumerated from the engine rather than guessed at, after printing what that destroys and requiring confirmation, and refusing rather than assuming consent when stdin is not a terminal. Measured against the failure this row is about: a rejected configuration reports itself in about fifteen seconds and a crash-looping database in about seven, both with the causing line on screen. | S§14.3a · O§10a · `scripts/dev_instance.sh`, `.env.example` · BUILD_PROGRESS M6 Slice 28 |
 | F-56 | **Three things in this tree dial the same port; one of them named the address that exists.** `compose.yaml` publishes `web` as `127.0.0.1:8080:8080` — one address, IPv4, nothing listening on `::1`. `run.sh` probes `http://127.0.0.1:8080/healthz/ready`, and has since M1. Both tunnel helpers defaulted `TUNNEL_TARGET` to `http://localhost:8080`, and that one value is dialled by three separate clients: cloudflared, and then whichever of curl or wget the host happens to have. curl and GNU wget try the next address when the first refuses. **BusyBox wget does not** — and it is the second entry in the probe chain of a script whose entire premise is a host that might not have curl, so on exactly the minimal host this helper was written for, readiness would have been unverifiable against an application that was up. The *visible* cost is what made this findable at all: cloudflared reports the address it failed on, so F-55's tunnel log reads `dial tcp [::1]:8080: connect: connection refused` forty times over, and an operator debugging that spends their evening on an IPv6 misconfiguration that does not exist. **This is F-51's shape for the third time:** a rule reasoned through once, applied to one file, and never stated — F-51 was `DRILL_POSTGRES_IMAGE` fully qualified in the drill and short in the stack it rehearses; this is the loopback literal in `run.sh` and a hostname in both tunnel helpers. | Both helpers default `TUNNEL_TARGET` to `http://127.0.0.1:8080`, with the reasoning written beside the assignment where somebody changing it will read it, and **§14.3a states the rule generally**: what a program in this tree dials is an address literal, because compose publishes exactly one address and a name is a dependency on every client's fallback behaviour. **The row names something executable** (F-38's lesson, ninth application): `DevInstanceLoopbackContractTests` derives the published host and port from `compose.yaml` and checks both helpers' defaults against them — the F-50 pattern, one authoritative side and two restatements — and additionally asserts that what is published *is* a loopback address, because the justification for the rule evaporates if that ever changes and a test that kept passing through that change would be asserting a coincidence. Deliberately **not** asserted: that no script says `localhost` anywhere. `run.sh` prints `http://localhost:8080` in a sentence telling a human what to type into a browser, which is correct — browsers resolve and try both — and failing on it would be reporting a finding on a correct tree (F-41). The rule is about what a program dials, and each helper dials exactly one variable. | S§14.3a, S§16.4 · `scripts/dev_instance.sh`, `scripts/quick_tunnel.sh`, `tests/MyRestaurant.WebApplication.Tests/Deployment/DevInstanceLoopbackContractTests.cs` · BUILD_PROGRESS M6 Slice 28 |
+
+| F-57 | **The engine does not apply the defaults in `compose.yaml`, and that one fact killed both containers.** `compose.yaml` sets twenty-three values as `${NAME:-default}`. On Debian trixie's podman-compose — ADR-0004's canonical engine — the branch after `:-` is not applied, so every variable not already set in the environment reached its container as literal text. `web` printed five `Configuration error:` lines naming values like `'${RESTAURANT_TIME_ZONE:-America/New_York}'` and exited 1. `postgres` was worse: `POSTGRES_USER` reached `initdb` as punctuation, `CREATE EXTENSION plpgsql` failed with *invalid character in extension owner*, initdb erased the data directory, the container exited, the engine restarted it, and it did that forever. **The eleven that arrive wrong in silence are the half that would have hurt longest:** `RESTAURANT_NAME` renders the placeholder as the restaurant's name on every page; an unparseable integer is indistinguishable from an absent one, so all four Argon2 parameters quietly took compiled-in values; and `OTEL_EXPORTER_OTLP_ENDPOINT`, whose *emptiness* is the switch that stops the exporter attaching, arrived non-empty — turning OpenTelemetry export on and pointing it at a hostname made of braces. **Not findable by reading this tree, and that is the distinction from F-51.** F-51 was a value this repository wrote in a form the engine could not resolve. This is a substitution *feature* of the canonical engine that does not work, on a file that is correct by every available reading: valid YAML, keys audited by F-50's test, conditions audited by F-53's, and CI runs Docker Compose, where defaults are applied. What found it was the diagnosis added one slice earlier — `web`'s log tail and `postgres`'s log tail, printed together for the first time, with one cause visible across both. | Verified in three places rather than assumed, and the remediation made complete. **New `scripts/check_compose_substitution.sh`** asks the engine instead of predicting from a version: it first works out which variables actually depend on a default *right now* — one set in the environment or assigned in `.env` does not, since the *set* branch is the half observed working — then renders the file with `config` and reports a surviving `${` as the finding, with two ordered remediations. Three-valued exit: **3** is the finding, **2** is *undetermined*, **0** is fine, and the middle value exists because a missing subcommand is not a broken engine. **All three helpers that start the stack run it first** and refuse rather than work; `dev_instance.sh` refuses before a twenty-minute image build, and **asks again after `up -d` from the containers' own environment**, which needs no subcommand, cannot be fooled by a `config` that renders differently from what it runs, and is the only way to settle whether an empty assignment satisfies a given engine. **§14.1 requires every interpolated variable to be assigned in `.env.example`** — it was assigning nineteen of twenty-two, and a commented-out line supplies nothing — empty where empty is the value. `RESTAURANT_SOURCE_URL` is assigned empty there for F-50's reason one layer over: a file spelling the upstream URL would silently override a fork's first edit. **The row names something executable** (F-38's lesson, tenth application): `ComposeSubstitutionContractTests`, three facts, each proven sensitive one regression at a time. | S§14.1, S§16.4 · O§2, O§10a · `scripts/check_compose_substitution.sh` (new), `scripts/dev_instance.sh`, `scripts/quick_tunnel.sh`, `run.sh`, `.env.example`, `tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeSubstitutionContractTests.cs` · BUILD_PROGRESS M6 Slice 29 |
 
 ## Going forward
 
@@ -12966,6 +13168,23 @@ does nothing, the question is not what it did wrong but what it is waiting for**
 answer it is the tool's source, not its output. That is what reading podman-compose 1.3.0's
 `compose_up` produced in about ten minutes, having produced nothing in the hour before.
 
+**F-57 is the first finding in this ledger that the previous slice's own tooling found, and that is the
+only reason it is here.** F-55's fix printed two container logs side by side for the first time. The five
+`Configuration error:` lines and the `initdb` loop had both been happening for hours across three
+sessions; neither had ever been on screen. Put together they name one cause, and it takes about ten
+seconds to see it. The lesson is not about compose: **a defect often survives because nobody has ever
+seen its two halves at the same time**, and printing the evidence is cheaper than any amount of
+reasoning about it. Every earlier finding here was found by a person reading the tree or running a
+command; this one was found by a diagnostic that had existed for one day.
+
+**And it settles what F-51's class actually is.** F-51 was a *value* this repository wrote in a form the
+canonical engine could not resolve. F-57 is a *feature* of that engine which does not work, on a file
+that is correct by every reading. Both produce "the canonical stack does not start on a supported host",
+and only the first is fixable by editing the file — which is why the answer here is a check that asks
+the engine and refuses, rather than a rewrite of `compose.yaml` guessing at which forms are safe. The
+general rule, now in §14.1: **where the stack depends on the engine doing something, ask whether it did,
+and do not spend twenty minutes of work first.**
+
 **F-55 is F-53's fix producing F-53's shape in the opposite direction, in the same file, one slice
 later.** F-53 was a wait with no deadline. Slice 27 put deadlines on every compose call and wrote,
 in the same script, a 300-second wait that polled HTTP without once asking whether the thing it was
@@ -13016,15 +13235,15 @@ behaviour, not the row.
   File name:             OPERATIONS.md
   Relative path:         docs/OPERATIONS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/OPERATIONS.md
-  Size:                  53.3 KiB (54609 bytes)
-  Last modified:         2026-08-10 14:46:12.000000000 -0400
+  Size:                  55.6 KiB (56946 bytes)
+  Last modified:         2026-08-10 17:30:15.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 35139439
+  Inode:                 35606646
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               4dd4457f35238a2c44111b70f7c2a4e1fbed4e4a305321e049fb12fe76609aaf
-  Last git commit:       a899317 2026-08-10 16:11:06 -0400 add claude response
+  SHA-256:               0ff72763eba01c40253f764586310e9370b15570ec64f1a094df2afeb1f58b11
+  Last git commit:       dfa8a40 2026-08-10 17:37:08 -0400 add claude changes
 
 --- CONTENT ---
 # myrestaurant — Operations
@@ -13218,7 +13437,19 @@ loginctl enable-linger "$USER"
 
 **The first build is slow and the script says so before it starts.** Measured cold on the machine this was written for: about nineteen minutes, almost all of it the SDK image pull and the `dotnet publish`. Nothing is public during that time — the tunnel is opened *after* the build, which is the ordering fix in §14.3a. Subsequent runs reuse the layer cache and take seconds.
 
-**Copy `.env.example` to `.env` first if the box is reachable by anything you do not control.** Copy it yourself — no script here writes it (**F-54**, and §2 says why). Without it the stack runs on `compose.yaml`'s development defaults, including `POSTGRES_PASSWORD=myrestaurant`. Do not put `RESTAURANT_PUBLIC_ORIGIN` in that `.env`: the script sets it from the tunnel URL through the process environment, which takes precedence, so a pinned value would be ignored and the file would disagree with the running instance. The script warns when it finds one.
+**Copy `.env.example` to `.env`.** Copy it yourself — no script here writes it (**F-54**, and §2 says why). This used to be advice for a box reachable by anything you do not control; on the canonical engine it is closer to a prerequisite (**F-57**), because without it every value in `compose.yaml` depends on the engine applying the default after `:-`, and Debian trixie's podman-compose does not. `scripts/check_compose_substitution.sh` is what tells you which case you are in. Note also that `.env.example` carries `POSTGRES_PASSWORD=myrestaurant`, which is a development credential — change it on anything exposed. Do not put `RESTAURANT_PUBLIC_ORIGIN` in that `.env`: the script sets it from the tunnel URL through the process environment, which takes precedence, so a pinned value would be ignored and the file would disagree with the running instance. The script warns when it finds one.
+
+### First: does your compose engine apply the defaults in `compose.yaml`?
+
+```bash
+scripts/check_compose_substitution.sh
+```
+
+**On Debian trixie's podman-compose it does not, and until that is settled nothing else matters (F-57).** Every value in `compose.yaml` is written `${NAME:-default}`, and where the engine does not apply the part after `:-`, the placeholder text itself is what reaches the containers. Measured on a real host: the application printed five `Configuration error:` lines naming values like `'${RESTAURANT_TIME_ZONE:-America/New_York}'` and exited 1, and `POSTGRES_USER` arrived as punctuation so `initdb` failed on `CREATE EXTENSION plpgsql`, erased the data directory, and crash-looped. **Eleven more variables were wrong without saying anything** — the restaurant's name would have rendered as the placeholder, the Argon2 parameters silently fell back to compiled-in values because an unparseable integer looks like an absent one, and `OTEL_EXPORTER_OTLP_ENDPOINT` arrived non-empty, which switches the exporter on and points it at a hostname made of braces.
+
+The check exits **0** (fine, or nothing depends on a default), **3** (the finding), or **2** (could not be determined here — no `config` subcommand; `dev_instance.sh` then re-checks from the containers' own environment after `up`, which is ground truth). All three helpers that start the stack run it first and refuse on 3, so `dev_instance.sh` will not spend twenty minutes building an image for a stack that cannot start.
+
+**The fix is almost always `cp .env.example .env`.** Every variable the stack interpolates is assigned in that file, so nothing is left depending on a default — which is also why §2 asks you to copy it. If the check still fails afterwards, the engine is not honouring an empty assignment either, and the second remediation it prints is the one to take: `podman compose` (the Docker Compose provider), a newer `podman-compose` from `pipx`, or exporting the variables in the shell.
 
 ### When it does not come up
 
@@ -13727,20 +13958,20 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
   File name:             TECHNICAL_SPECIFICATION.md
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/TECHNICAL_SPECIFICATION.md
-  Size:                  186.4 KiB (190870 bytes)
-  Last modified:         2026-08-10 14:45:17.000000000 -0400
+  Size:                  195.8 KiB (200503 bytes)
+  Last modified:         2026-08-10 17:30:15.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 35139437
+  Inode:                 35606644
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               1a8aad0ea7ef72ff3f57db0bc4c009ddf117082ae3b7fb84d1806e88e11d637b
-  Last git commit:       a899317 2026-08-10 16:11:06 -0400 add claude response
+  SHA-256:               47605d0684721e070606e6f63fdec18b3ae1ce98922bb8276ef0d5df43d14569
+  Last git commit:       dfa8a40 2026-08-10 17:37:08 -0400 add claude changes
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
 
-**Version 1.13 — 2026-08-10 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
+**Version 1.14 — 2026-08-10 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
 This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md` (rev 5). It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. The decisions register in Appendix A maps every ruling to its embodiment.
 
@@ -14683,6 +14914,12 @@ Two consequences worth stating. A variable whose default is more than a formatti
 
 **Nothing is given up by the prohibition**, which is why it is stated as one. Waiting for the database to accept connections is the *application's* job and has been since M1: `SchemaMigrationRunner` retries a connection failure thirty times at two-second intervals before failing fast, and the comment beside that retry says what it is for — *"at compose start the web container can race PostgreSQL"* (ADR-0012). `web` losing that race is a race the code was written to lose safely. The health*check* on `postgres` stays, because `podman ps`, `scripts/dev_instance.sh status` and an operator at a terminal all read it; what it must not be is the thing standing between `up -d` and returning. The rule is asserted rather than remembered — see §16.4.
 
+**The engine's variable substitution must be verified rather than assumed, and every variable `compose.yaml` interpolates must be assigned in `.env.example`** (**F-57**). This is the third rule of the same kind as the two above, and it is the one with the widest blast radius: `compose.yaml` sets twenty-three values with the `${NAME:-default}` form, and on Debian trixie's podman-compose — the canonical engine — the branch after `:-` **is not applied**. Every variable not already set in the process environment reaches its container as the placeholder text. Measured: the application printed five `Configuration error:` lines naming values like `'${RESTAURANT_TIME_ZONE:-America/New_York}'` and exited 1, and `POSTGRES_USER` reached `initdb` as punctuation, so `CREATE EXTENSION plpgsql` failed with *invalid character in extension owner*, initdb erased the data directory, and the container crash-looped. One engine behaviour, both containers, and no message anywhere naming the cause.
+
+**What is known about the behaviour, and what is deliberately not claimed.** Substitution *works* when the variable is set in the environment — `RESTAURANT_PUBLIC_ORIGIN`, which `scripts/dev_instance.sh` exports, was the one value that arrived correct in the same run. So it is specifically the default branch that is unapplied. Which releases behave this way, and whether an *empty* assignment in `.env` counts as supplying a variable, are properties of a host that no file here can decide — so nothing in this repository predicts them. `scripts/check_compose_substitution.sh` asks the engine (it renders the file with `config` and looks for a surviving `${`), and `scripts/dev_instance.sh` asks again after `up -d` from the containers' own environment, which needs no subcommand and cannot be fooled by a `config` that renders differently from what it runs. The three helpers that start the stack — `dev_instance.sh`, `quick_tunnel.sh`, `run.sh` — refuse before doing work when the answer is no.
+
+**Because the remediation is `.env`, `.env.example` must make that remediation complete.** Every variable interpolated inside an `environment:` mapping is **assigned** in `.env.example`, not commented out, empty where empty is the value — and the distinction is load-bearing rather than tidy. `OTEL_EXPORTER_OTLP_ENDPOINT`'s *emptiness* is what stops the application attaching an OTLP exporter (§12); commented out, the literal `${OTEL_EXPORTER_OTLP_ENDPOINT:-}` arrives instead, which is not empty, so the exporter is switched on and pointed at a hostname made of braces. `RESTAURANT_SOURCE_URL` is likewise assigned **empty** in that file, which is F-50's ruling applied one layer over: empty means `RestaurantOptions.DefaultSourceUrl`, the one place the fallback is written down, and a file that spelled the upstream URL would silently override the first edit a fork makes. `SOURCE_REVISION` is out of scope — it is a build argument, not an environment key, and `Containerfile`'s own `ARG` decides its fallback. The rule is asserted rather than remembered — see §16.4.
+
 **14.1a Build context (normative)** — the image build must see the publish graph and nothing else. `.dockerignore` at the repository root is an **allow-list** — `.editorconfig`, `Directory.Build.props`, `Directory.Packages.props`, `global.json`, `src`, minus `src/**/bin` and `src/**/obj` — and both engines read that filename (Podman prefers `.containerignore` when both exist, so this project ships only the one). A deny-list is not acceptable here and the distinction is the whole finding (**F-45**): `.gitignore` is a deny-list, it was already correct, and it protected nothing, because a build context is not a commit. Everything it names — `.env`, the Data Protection key ring, every `*.dump` and `*-dataprotection.tar` §15 writes — was copied into the builder on every local `--build`, in the exact order OPERATIONS §12 documents. An allow-list is also the only form that covers the file nobody has added yet.
 
 **The allow-list must be asserted, not assumed.** An ignore-file is an instruction to a tool, and it can be renamed, shadowed, or overridden with `--ignorefile` without any symptom other than a slower build — so `Containerfile` carries a guard immediately after `COPY . .` that fails the build unless the context root is exactly the allowed set, every required path is present, and no `bin` or `obj` survives under `src`. Stating the list twice is deliberate: one statement is the instruction and the other is the assertion, and a build that fails when they disagree is the only thing that distinguishes *excluded* from *excluded on the machine where somebody last checked*. This is F-38's rule — a row in the embodiment column names something executable — applied where the executable thing is the build itself, so it runs on a workstation and not only in CI.
@@ -14807,6 +15044,10 @@ The **loopback target test** (`tests/MyRestaurant.WebApplication.Tests/Deploymen
 
 Deliberately **not** asserted: that no script anywhere says `localhost`. `run.sh` prints `http://localhost:8080` in a sentence telling a human what to open in a browser, which is correct — browsers resolve both and try both — and a gate that failed on it would be reporting a finding on a correct tree (F-41). The rule is about what a *program* dials, and the only programmatic dial in each helper is the one variable this test reads.
 
+The **compose-substitution contract test** (`tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeSubstitutionContractTests.cs`, an ordinary unit test in the `unit` job) asserts §14.1's `.env.example` half (**F-57**). Three assertions: that the scan read both sides — at least twenty interpolated variables and twenty assignments, because the assertion that matters passes vacuously against an empty placeholder set (**F-41**); that every variable interpolated inside an `environment:` mapping is assigned in `.env.example`; and that a variable whose compose default is *empty* is assigned empty there rather than given a plausible value, derived from the compose file rather than listed. It reads two files as text, for the reason the two tests above do.
+
+**What is deliberately not asserted, and where it is asserted instead.** Whether a given engine applies defaults is not decidable from the tree — it is a property of a host, and a test that guessed at it from a version number would be reporting findings on correct trees (F-41). That question is answered by `scripts/check_compose_substitution.sh`, which is **not** a CI gate for the same reason `check_repository.sh`'s platform half is advisory: its subject is the machine, not the repository. It is a preflight the three helpers run before they do work, and a command an operator can run by hand. Its exit codes are part of its contract: **0** the engine applies them or nothing depends on it, **3** it does not, **2** it could not be determined here.
+
 Beside it, and smaller by design, the **specification-version test** (`…/Documentation/SpecificationVersionTests.cs`) asserts that this document's header states the version its newest changelog entry states, and that the entries descend (**F-48**). Two assertions, no third. It is a test rather than a habit because it has drifted twice: the v1.3 entry below corrects exactly this from Slice 16, and Slice 22 did it again — a v1.7 entry under a v1.6 header. It deliberately checks nothing about content; a gate that reaches past what it can decide reports findings on correct trees (F-41).
 
 **The forbidden list covers package settings as well as repository settings (F-46).** The first version of this gate enumerated the switches on the repository page — issues, pull requests, discussions, the wiki — passed on its first run, and was already wrong: OPERATIONS §14 had asserted the visibility of a *package*, in the indicative, about a package that did not yet exist. A repository's visibility and a package's visibility are separate switches, and GitHub's own documentation disagrees with itself about which way the second falls for a `GITHUB_TOKEN` publish, which is the strongest available argument for not asserting it in a document at all. A rule stated as a rule and enforced as a list of examples is enforced as a list of examples; the list is therefore maintained as part of the rule rather than as an afterthought, and the correct repair is always to state the intention and name where the switch lives.
@@ -14883,6 +15124,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`) — **except 
 | F-54 | **A step in the production runbook described behaviour no script had, and the ledger's own F-16 row is where the claim came from.** OPERATIONS §2 step 2 told an operator to copy `.env.example` to `.env` and added, parenthetically, *"`run.sh` and the scripts do this automatically when `.env` is absent — F-16"*. All nine scripts were grepped: not one of them writes `.env`. F-16's ruling from 2026-07-17 does say *"`.env` is copied from `.env.example` when absent"*, so this is not a document drifting from the code — it is a *decision* that was recorded and never implemented, and then cited in the indicative by the document that depends on it. That is F-38's shape aimed inward, and the only reason it costs nothing today is that an absent `.env` is a working state: `compose.yaml` supplies a development default for every key | **The document is wrong and the scripts are right — the clause of F-16's ruling is reversed rather than implemented.** Materialising `.env.example` would create an untracked file carrying `POSTGRES_PASSWORD=myrestaurant` that nobody knowingly wrote, on a path `.gitignore` hides, which is the class of artefact F-45 was about; and because the stack starts without it, auto-creation would buy nothing while removing the one moment an operator is supposed to make decisions about credentials. §2 now says to copy it by hand and says why, §10a says the same in one clause, and `scripts/dev_instance.sh` says it in the warning it already prints when the file is missing. No script gains the behaviour | O§2, O§10a · `docs/OPERATIONS.md`, `scripts/dev_instance.sh` · BUILD_PROGRESS M6 Slice 27 |
 | F-55 | **The bring-up did not hang this time. It waited out a five-minute deadline against a container that had already exited, printed a public URL over a dead application, and returned 0.** Six minutes fifty-five seconds, on the machine F-53 was found on, one slice after F-53 was fixed. `postgres` was being restarted in a loop by the engine; `web` had exited **1**, which in this program is reachable from exactly one place — `Program.cs` prints `Configuration error: …` and returns 1, and every other failure aborts with a different status. So the reason was a line of text sitting in `podman logs myrestaurant_web_1` from the first ten seconds onward, and **nothing ever printed it**: the readiness wait polled HTTP for the full 300 seconds without once asking whether the container was still alive, the DEV INSTANCE banner was printed unconditionally, the settle phase then spent twenty more seconds probing a public URL for an application that was not answering on loopback, `status` described the corpse as `(stopped, health: starting)` — a container on its way up — and `logs` could only ever show the tunnel's log, so the one command an operator would reach for showed forty lines of cloudflared saying `connection refused` and nothing about the application. Exit status 0. **F-53 was a wait with no deadline; this is a wait with a deadline and no evidence, and they need opposite fixes** — a deadline stops a wait that cannot end, and only a liveness check stops a wait that cannot succeed. Not reachable by any gate: every one of these is a property of a script's behaviour on a host, and `bash -n` and shellcheck were clean on all of it. Found the way F-51, F-52 and F-53 were, by the same act — running the documented command on the second machine — and this is the third consecutive slice where that act produced the finding | Four rules in §14.3a, one of which is a new command. **No wait may outlive its own evidence:** every wait is bounded and watched, ends early when the container it waits on is crash-looping or will not stay started, starts a stopped container again a bounded number of times first (because ADR-0012's sixty-second retry is outlived by a slow first `postgres` boot), and the database wait is separated from the readiness wait because one message cannot diagnose both. **A failure must print the log:** state, exit code, restart count and a bounded tail of *both* logs, plus a key mapping the symptoms this program produces to their causes; `logs` takes a target and defaults to `web`; a stopped container is described by its exit code and never by a health status. **`up`'s exit status is a claim about the instance,** so a stack that was started and never answered exits non-zero while being left running for inspection. **And `reset`,** because the one failure the helper cannot repair is a data directory that cannot start: `down` keeps volumes on purpose and `podman system prune -a` does not touch them, so nothing in the tree could clear it — `reset` removes this project's volumes, enumerated from the engine, after saying what that destroys and requiring confirmation. Measured against the failure: a rejected configuration now reports itself in fifteen seconds and a crash-looping database in seven, both with the causing log line on screen | S§14.3a · O§10a · `scripts/dev_instance.sh`, `.env.example` · BUILD_PROGRESS M6 Slice 28 |
 | F-56 | **Three helpers dial the same port and one of them names it correctly.** `compose.yaml` publishes `web` as `127.0.0.1:8080:8080` — a single IPv4 loopback address, with nothing listening on `::1`. `run.sh` probes `http://127.0.0.1:8080/healthz/ready`, the literal, and has since M1. Both tunnel helpers defaulted `TUNNEL_TARGET` to `http://localhost:8080`, and that value is dialled by three different clients: cloudflared, and then whichever of curl or wget the host has. curl and GNU wget try the second address when the first refuses; **BusyBox wget does not**, and it is the second entry in the probe chain of a script whose whole premise is a host that may not have curl. The visible cost is worse than the risk, and it is what made this findable: cloudflared reports the address it failed on, so the tunnel log of the F-55 failure reads `dial tcp [::1]:8080: connect: connection refused` forty times, and an operator debugging that goes looking for an IPv6 misconfiguration that does not exist. **F-51's shape exactly, third occurrence:** a rule reasoned through once, applied to one script, never stated | `TUNNEL_TARGET` defaults to `http://127.0.0.1:8080` in both helpers, with the reason written beside it, and §14.3a states the rule generally: what a program in this tree dials is an address literal, because compose publishes one address and a name is a dependency on every client's fallback behaviour. **The row names something executable** (F-38's lesson, ninth application): `DevInstanceLoopbackContractTests` derives the published address from `compose.yaml` and checks both helpers' defaults against it — the F-50 pattern, authoritative side and restatements — and additionally asserts that what is published is a loopback address, because the rule's justification evaporates if that changes. Deliberately not asserted: that no script says `localhost` anywhere. `run.sh` prints it in a sentence for a human to paste into a browser, which is correct, and failing that would be a finding on a correct tree (F-41) | S§14.3a, S§16.4 · `scripts/dev_instance.sh`, `scripts/quick_tunnel.sh`, `tests/MyRestaurant.WebApplication.Tests/Deployment/DevInstanceLoopbackContractTests.cs` · BUILD_PROGRESS M6 Slice 28 |
+| F-57 | **The canonical engine does not apply the default values in `compose.yaml`, so the stack was configured with the placeholder text, and both containers died of it.** `compose.yaml` sets twenty-three values as `${NAME:-default}`. On Debian trixie's podman-compose — ADR-0004's canonical engine — the branch after `:-` is not applied, so every variable not already set in the environment arrived as literal text. The application validates five of them and refused to start, naming values like `'${RESTAURANT_TIME_ZONE:-America/New_York}'`; `POSTGRES_USER` reached `initdb` as punctuation, so `CREATE EXTENSION plpgsql` failed with *invalid character in extension owner*, initdb erased the data directory, and the engine restarted it into the same failure, forever. **The eleven that arrive wrong in silence are the worse half:** `RESTAURANT_NAME` would render the placeholder as the restaurant's name on every page, an unparseable integer is indistinguishable from an absent one so the four Argon2 parameters quietly fell back to compiled-in values, and `OTEL_EXPORTER_OTLP_ENDPOINT` — whose *emptiness* is what switches the exporter off — arrived non-empty, which switches it on and points it at a hostname made of braces. **This is F-51's class and not F-51's mistake:** not a value this repository wrote wrongly, but a substitution feature of the canonical engine that does not work, so no reading of this tree could have found it. It was found by the diagnosis added one slice earlier — `web`'s log tail printed the five errors, `postgres`'s printed the initdb loop, and the two together name one cause. Green everywhere: the file is valid YAML, F-50's test audits its keys, F-53's audits its conditions, and CI runs Docker Compose, which applies defaults correctly. | Verified, not assumed, in three places, and the remediation made complete. **New `scripts/check_compose_substitution.sh`** asks the engine: it works out which variables actually depend on a default right now (a variable set in the environment or assigned in `.env` does not — the *set* branch is the half observed working), renders the file with `config`, and reports a surviving `${` as the finding, with the whole account and two ordered remediations. Exit 3 is the finding, 2 is *undetermined*, and the difference matters because a missing subcommand is not a broken engine. **`dev_instance.sh`, `quick_tunnel.sh` and `run.sh` run it before doing work** — the first refuses before a twenty-minute image build — and **`dev_instance.sh` asks again after `up -d` from the containers' own environment**, which needs no subcommand and is ground truth, because whether an empty assignment satisfies a given engine is not knowable from here. **§14.1 requires every interpolated variable to be assigned in `.env.example`**, empty where empty is the value: it was assigning nineteen of twenty-two, and a commented-out line supplies nothing. `RESTAURANT_SOURCE_URL` is now assigned empty there too — F-50's ruling one layer over, since that file spelling the upstream URL would silently override a fork's first edit. **The row names something executable** (F-38's lesson, tenth application): `ComposeSubstitutionContractTests`, three facts, each proven sensitive. | S§14.1, S§16.4 · O§2, O§10a · `scripts/check_compose_substitution.sh` (new), `scripts/dev_instance.sh`, `scripts/quick_tunnel.sh`, `run.sh`, `.env.example`, `tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeSubstitutionContractTests.cs` · BUILD_PROGRESS M6 Slice 29 |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP re-enrollment only if enrolled pre-reset; obligations pipeline runs on passkey path too; counter fallback = same rotating QR (no short-code) | §10.1–10.2, §3.5, §3.7, §4.5 · ledger notes |
@@ -14890,6 +15132,8 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`) — **except 
 ---
 
 ## Changelog
+
+**v1.14 — 2026-08-10.** The engine that does not read its own defaults. **§14.1** gains a third rule of the same kind as v1.11's and v1.12's, and the widest of the three: the engine's variable substitution must be verified rather than assumed, because on the canonical engine the branch after `:-` is not applied and every value in this file arrives as placeholder text — five errors from the application, an `initdb` loop from a `POSTGRES_USER` made of punctuation, and eleven more wrong in silence, including the OpenTelemetry endpoint whose emptiness is what switches the exporter off. The same section requires every interpolated variable to be **assigned** in `.env.example`, empty where empty is the value, because `.env` is the remediation and a commented-out line supplies nothing; and it records `RESTAURANT_SOURCE_URL` being assigned empty there as F-50's ruling applied one layer over. It also states what is deliberately not claimed: which releases behave this way, and whether an empty assignment satisfies them, are properties of a host. **§16.4** gains the contract test and records why the new script is a preflight rather than a CI gate — its subject is the machine, not the repository — along with its three-valued exit contract. **Appendix A** gains **F-57**. No `REQUIREMENTS.md` edit, on the v1.11–v1.13 reasoning. No schema change, no ADR edit, no `.slnx` edit, and **no `compose.yaml` edit**: the file is correct, and the engine that reads it is not.
 
 **v1.13 — 2026-08-10.** Why the documented command came back saying nothing was wrong. **§14.3a** gains four rules and loses an assumption. No wait in the helper may outlive its own evidence: every wait is bounded *and* watched, ends early when the container it is waiting on is crash-looping or will not stay started, and the database wait is separated from the readiness wait because one timeout message cannot diagnose both — F-53 was a wait with no deadline, this is a wait with a deadline and no liveness check, and the two need opposite fixes. A failed bring-up must print each container's state, exit code, restart count and log tail, with a key mapping this program's actual symptoms to their causes; `logs` takes a target and defaults to `web`; a stopped container is described by its exit code and never by a health status. `up`'s exit status is a claim about the instance rather than about the script, so a stack that was started and never answered exits non-zero while being left running to read. And `reset` is specified, because the one failure the helper cannot repair is a PostgreSQL data directory that cannot start: `down` keeps the named volumes on purpose and `podman system prune -a` does not touch them, so until now nothing in this tree could clear one. §14.3a also states the address rule — what a program here dials is an IPv4 literal, because `compose.yaml` publishes exactly one address and a name is a dependency on every client's fallback. **§16.4** gains the loopback contract test and records what it deliberately does not assert. **Appendix A** gains **F-55** and **F-56**. No `REQUIREMENTS.md` edit, on the v1.11 and v1.12 reasoning: R§8 asks for an operable instance and ADR-0004 has named podman-compose canonical since M1, so a helper that reports success over a dead instance is a mechanism failing a contract this tree already carried. No schema change, no ADR edit, no `.slnx` edit.
 
@@ -15736,15 +15980,15 @@ and the directives that should be narrower are taken to `'none'` by name.
   File name:             run.sh
   Relative path:         run.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/run.sh
-  Size:                  15.5 KiB (15915 bytes)
-  Last modified:         2026-07-26 20:40:23.000000000 -0400
+  Size:                  16.8 KiB (17182 bytes)
+  Last modified:         2026-08-10 17:25:35.000000000 -0400
   Permissions:           -rwxr-xr-x
   Owner:                 kushal:kushal
-  Inode:                 25951189
+  Inode:                 35606629
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               541d1dd2fa64d037f55fdcdcaad3df99e165e96cac182d7e468a5157903475b2
-  Last git commit:       1bc4434 2026-07-29 08:20:55 -0400 add chmod +x to run
+  SHA-256:               e5e62af9a341de0dccc3373b6a6064299c639d427b711e1e8e12ae845473da5f
+  Last git commit:       dfa8a40 2026-08-10 17:37:08 -0400 add claude changes
 
 --- CONTENT ---
 #!/usr/bin/env bash
@@ -15803,6 +16047,25 @@ elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1
     COMPOSE=(docker compose)
 else
     echo "error: need podman-compose, 'podman compose', or 'docker compose' on PATH." >&2
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# 1a. Does this engine apply compose.yaml's defaults? (F-57)
+#
+# Every value in compose.yaml is written ${NAME:-default}, and Debian trixie's podman-compose does not
+# apply the part after ':-' — the placeholder text reaches the containers, the application refuses its
+# own configuration, and initdb fails on a POSTGRES_USER made of braces and wipes the data directory.
+# Checked here rather than diagnosed later, and non-fatal: this script's default mode runs the web app
+# on the HOST, where the shell's own environment applies, so a failing check affects the database
+# container and --containers-only rather than everything.
+# ---------------------------------------------------------------------------------------------------
+substitution_status=0
+bash scripts/check_compose_substitution.sh --quiet || substitution_status=$?
+if (( substitution_status == 3 )); then
+    echo "error: this compose engine does not apply the defaults in compose.yaml (F-57)." >&2
+    echo "       The report above says what reaches the containers and what to do about it." >&2
+    echo "       Fix that first: 'cp .env.example .env' is usually all it takes." >&2
     exit 1
 fi
 
@@ -16391,6 +16654,259 @@ if (( WITH_KEYS )) && (( ! KEYS_CAPTURED )); then
 fi
 exit 0
 
+
+################################################################################
+# FILE: scripts/check_compose_substitution.sh
+################################################################################
+
+--- METADATA ---
+  File name:             check_compose_substitution.sh
+  Relative path:         scripts/check_compose_substitution.sh
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/check_compose_substitution.sh
+  Size:                  10.6 KiB (10827 bytes)
+  Last modified:         2026-08-10 17:23:53.000000000 -0400
+  Permissions:           -rwxr-xr-x
+  Owner:                 kushal:kushal
+  Inode:                 35606633
+  Hard links:            1
+  MIME type:             text/x-shellscript
+  SHA-256:               b4291bbeddb74aec41ed62a61e1f484dc9f368ab2ca8c5cd8d857d919598e1f3
+  Last git commit:       dfa8a40 2026-08-10 17:37:08 -0400 add claude changes
+
+--- CONTENT ---
+#!/usr/bin/env bash
+#
+# Does this host's compose engine apply the DEFAULT VALUES in compose.yaml?
+# (TECHNICAL_SPECIFICATION §14.1, §16.4, F-57.) Reads the tree and the engine; changes nothing.
+#
+#   scripts/check_compose_substitution.sh          check, and explain a failure
+#   scripts/check_compose_substitution.sh --quiet  say nothing unless it fails
+#   scripts/check_compose_substitution.sh --help   this text
+#
+# Exit status:
+#   0  nothing depends on the engine's defaults, or the engine applies them
+#   3  THE FINDING: the engine leaves `${NAME:-default}` in place as literal text
+#   2  could not be determined here (no compose, or no usable `config` subcommand)
+#   1  usage error, or this is not a checkout of the repository
+#
+# WHY THIS EXISTS
+#
+# `compose.yaml` sets twenty-three values with the `${NAME:-default}` form. On 2026-08-10, on Debian
+# trixie's podman-compose — which ADR-0004 calls the canonical engine — every one of those whose
+# variable was not already set in the environment reached the container AS THE PLACEHOLDER TEXT:
+#
+#   Configuration error: RESTAURANT_TIME_ZONE '${RESTAURANT_TIME_ZONE:-America/New_York}' is not a
+#   resolvable time zone on this host.
+#
+# Five of those the application validates, so it printed five errors and exited 1. The rest arrived
+# just as wrong and silently: `RESTAURANT_NAME` would have rendered the placeholder text as the
+# restaurant's name on every page, the four Argon2 parameters fell back to compiled-in defaults
+# because an unparseable integer is indistinguishable from an absent one, and
+# `OTEL_EXPORTER_OTLP_ENDPOINT` — whose default is EMPTY, and whose emptiness is what switches the
+# exporter off — arrived non-empty, which switches it on and points it at a hostname made of braces.
+#
+# And the database did not come up at all. `POSTGRES_USER` reached initdb as literal text, so the
+# bootstrap statement failed on the punctuation in it:
+#
+#   FATAL:  invalid character in extension owner: must not contain any of ""$'\"
+#   STATEMENT:  CREATE EXTENSION plpgsql;
+#   initdb: removing contents of data directory "/var/lib/postgresql/data"
+#
+# — after which the container exited, the engine restarted it, and initdb wiped and retried, forever.
+# One engine behaviour, two containers, and no message anywhere naming the cause.
+#
+# WHAT IS AND IS NOT KNOWN ABOUT THE BEHAVIOUR
+#
+# Known, because it was observed in the same run: substitution WORKS when the variable is set in the
+# process environment. `RESTAURANT_PUBLIC_ORIGIN` is exported by scripts/dev_instance.sh and it was
+# the one variable that arrived correct. So it is specifically the DEFAULT branch — the part after
+# `:-` — that is not applied.
+#
+# Not known from a transcript, and the reason this script asks the engine rather than assuming: which
+# releases behave this way, and whether assigning a variable EMPTY in `.env` counts as supplying it.
+# So nothing here predicts. It renders the file through the engine and reads the answer.
+#
+# WHAT A FAILURE MEANS FOR AN OPERATOR
+#
+# It is not a formatting problem, and it is not confined to the five variables that produce an error.
+# Everything the stack is configured with is affected, and most of it fails silently. Do not run an
+# instance you care about on an engine that fails this check.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+QUIET=0
+while (( $# > 0 )); do
+    case "$1" in
+        --quiet | -q) QUIET=1 ;;
+        --help | -h)
+            awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
+            exit 0
+            ;;
+        *)
+            printf 'error: unknown argument %s (try --help).\n' "$1" >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+say()  { (( QUIET )) || printf '[compose-substitution] %s\n' "$*" >&2; }
+tell() { printf '[compose-substitution] %s\n' "$*" >&2; }
+
+[[ -f "compose.yaml" ]] || {
+    tell "compose.yaml is not here; run this from a checkout of the repository."
+    exit 1
+}
+
+# ---------------------------------------------------------------------------------------------------
+# 1. The engine's compose command, chosen the way scripts/dev_instance.sh chooses it (F-43): the
+#    engine first, then a compose that matches it.
+# ---------------------------------------------------------------------------------------------------
+if [[ -n "${CONTAINER_ENGINE:-}" ]] && command -v "$CONTAINER_ENGINE" >/dev/null 2>&1; then
+    ENGINE="$CONTAINER_ENGINE"
+elif command -v podman >/dev/null 2>&1; then
+    ENGINE="podman"
+elif command -v docker >/dev/null 2>&1; then
+    ENGINE="docker"
+else
+    tell "no podman and no docker on PATH; nothing to ask."
+    exit 2
+fi
+
+if [[ "$ENGINE" == "podman" ]]; then
+    if command -v podman-compose >/dev/null 2>&1; then
+        COMPOSE=(podman-compose)
+    elif podman compose version >/dev/null 2>&1; then
+        COMPOSE=(podman compose)
+    else
+        tell "podman is on PATH but no compose is; nothing to ask."
+        exit 2
+    fi
+elif docker compose version >/dev/null 2>&1; then
+    COMPOSE=(docker compose)
+else
+    tell "docker is on PATH but 'docker compose' is not available; nothing to ask."
+    exit 2
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# 2. Which variables actually depend on the engine's defaults right now
+#
+# A placeholder whose variable is set in the environment, or assigned in `.env`, does not need the
+# default branch — and the set branch is the half that was observed working. So the question is only
+# about the remainder. When the remainder is empty there is nothing to check and this exits 0, which
+# is the case on any host where `.env` has been copied and every key filled in.
+# ---------------------------------------------------------------------------------------------------
+placeholders="$(grep --only-matching --extended-regexp '\$\{[A-Za-z_][A-Za-z0-9_]*' compose.yaml \
+    | cut -c3- | sort --unique || true)"
+
+if [[ -z "$placeholders" ]]; then
+    say "compose.yaml interpolates nothing; there is no default to apply."
+    exit 0
+fi
+
+env_assigned=""
+if [[ -f ".env" ]]; then
+    env_assigned="$(grep --extended-regexp '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' .env \
+        | sed --expression='s/^[[:space:]]*//' --expression='s/=.*//' | sort --unique || true)"
+fi
+
+depends_on_defaults=""
+while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    # Set and non-empty in this process's environment?
+    if [[ -n "${!name:-}" ]]; then
+        continue
+    fi
+    # Assigned in .env, even to an empty value? Whether an empty assignment is enough is exactly what
+    # is not known from outside the engine, so it counts as supplied here and the render below is what
+    # settles it.
+    if [[ -n "$env_assigned" ]] && printf '%s\n' "$env_assigned" | grep --quiet --line-regexp --fixed-strings "$name"; then
+        continue
+    fi
+    depends_on_defaults="${depends_on_defaults}${name}"$'\n'
+done <<< "$placeholders"
+
+depends_count="$(printf '%s' "$depends_on_defaults" | grep --count . || true)"
+
+if (( depends_count == 0 )); then
+    say "every variable compose.yaml interpolates is supplied by the environment or .env;"
+    say "  nothing here depends on the engine applying a default."
+    exit 0
+fi
+
+say "${depends_count} of the variables compose.yaml interpolates are not supplied by the environment"
+say "  or by .env, so they depend on the engine applying the default after ':-'. Asking the engine…"
+
+# ---------------------------------------------------------------------------------------------------
+# 3. Ask the engine, under a deadline
+#
+# `config` renders the file the way the engine will hand it to the containers. A surviving `${` in
+# that render is the finding, stated by the engine itself rather than predicted from a version number.
+# ---------------------------------------------------------------------------------------------------
+rendered=""
+render_status=0
+if command -v timeout >/dev/null 2>&1; then
+    rendered="$(timeout --kill-after=10s 60s "${COMPOSE[@]}" config 2>/dev/null)" || render_status=$?
+else
+    rendered="$("${COMPOSE[@]}" config 2>/dev/null)" || render_status=$?
+fi
+
+if (( render_status != 0 )) || [[ -z "$rendered" ]]; then
+    tell "'${COMPOSE[*]} config' did not render (exit ${render_status}), so this could not be decided here."
+    tell "  scripts/dev_instance.sh re-checks it from the containers' own environment after 'up',"
+    tell "  which is ground truth and needs no subcommand. Nothing is wrong yet."
+    exit 2
+fi
+
+surviving="$(printf '%s\n' "$rendered" \
+    | grep --only-matching --extended-regexp '\$\{[A-Za-z_][A-Za-z0-9_]*' \
+    | cut -c3- | sort --unique || true)"
+
+if [[ -z "$surviving" ]]; then
+    say "the engine applied every default. Nothing to do."
+    exit 0
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# 4. The finding
+# ---------------------------------------------------------------------------------------------------
+tell ""
+tell "THIS ENGINE DOES NOT APPLY THE DEFAULTS IN compose.yaml (F-57)."
+tell ""
+tell "  engine:   ${ENGINE}"
+tell "  compose:  ${COMPOSE[*]}"
+tell ""
+tell "  These variables would reach the containers as literal placeholder text:"
+while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    tell "    \${${name}:-…}"
+done <<< "$surviving"
+tell ""
+tell "  What that costs, from the run that found it: the application refuses to start and names"
+tell "  five of them; POSTGRES_USER reaches initdb as punctuation, so the database never"
+tell "  initialises and crash-loops; and the rest are wrong in silence — RESTAURANT_NAME renders"
+tell "  the placeholder as the restaurant's name, an unparseable integer is indistinguishable from"
+tell "  an absent one, and OTEL_EXPORTER_OTLP_ENDPOINT arrives non-empty, which turns the exporter"
+tell "  ON and points it at a hostname made of braces."
+tell ""
+tell "  Two remediations, in order:"
+tell ""
+tell "    1. cp .env.example .env"
+tell "       Every variable compose.yaml interpolates is assigned in that file, so nothing is left"
+tell "       depending on a default. Then run this check again — it will tell you whether it was"
+tell "       enough on your engine, which is not something this repository can know for you."
+tell ""
+tell "    2. Use a compose that applies defaults:"
+tell "         podman compose …            the Docker Compose provider, if it is installed"
+tell "         pipx install podman-compose a newer release than the distribution's"
+tell "       or export the variables in the shell that runs the stack."
+tell ""
+tell "  Do not run an instance you care about on an engine that fails this check. Only five of the"
+tell "  affected settings are ones this application validates; the others do not announce themselves."
+tell ""
+exit 3
 
 ################################################################################
 # FILE: scripts/check_repository.sh
@@ -17466,15 +17982,15 @@ echo "────────────────────────�
   File name:             dev_instance.sh
   Relative path:         scripts/dev_instance.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/dev_instance.sh
-  Size:                  59.8 KiB (61282 bytes)
-  Last modified:         2026-08-10 14:54:09.000000000 -0400
+  Size:                  65.4 KiB (66939 bytes)
+  Last modified:         2026-08-10 17:25:09.000000000 -0400
   Permissions:           -rwxr-xr-x
   Owner:                 kushal:kushal
-  Inode:                 35139428
+  Inode:                 35606634
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               9084fa721318ff770f804385477ba721c7a764098006a0064329c1d00443c7f5
-  Last git commit:       a899317 2026-08-10 16:11:06 -0400 add claude response
+  SHA-256:               5e0f58eded8b0f7e72c56e664b80bc41bb671568605df3f21ba7ffb089e1970c
+  Last git commit:       dfa8a40 2026-08-10 17:37:08 -0400 add claude changes
 
 --- CONTENT ---
 #!/usr/bin/env bash
@@ -17577,6 +18093,21 @@ echo "────────────────────────�
 # volumes, which is the database AND the key ring — every account, every passkey, every enrolled
 # TOTP secret on this instance. It asks before doing it, and needs --yes when stdin is not a
 # terminal. Take a backup first (OPERATIONS §6) if the data mattered.
+#
+# THE ENGINE'S DEFAULTS ARE VERIFIED, NOT ASSUMED (F-57)
+#
+# `compose.yaml` sets twenty-three values with the `${NAME:-default}` form, and on Debian trixie's
+# podman-compose — the canonical engine — the DEFAULT branch is not applied. Every variable not already
+# set in the environment reaches the container as the placeholder text. That is one engine behaviour
+# with two victims: the application refuses its own configuration and exits 1, and `POSTGRES_USER`
+# reaches initdb as punctuation, so the database wipes its data directory and crash-loops forever.
+# Both of the failures this script was rewritten to diagnose had that single cause.
+#
+# So `up` asks scripts/check_compose_substitution.sh BEFORE the build, and refuses rather than
+# spending twenty minutes producing an image the stack cannot use. And after `up -d` it re-reads the
+# question from the containers' own environment, which needs no subcommand and cannot be fooled —
+# because whether an EMPTY assignment in `.env` counts as supplying a variable is a property of the
+# engine that no file in this repository can know.
 #
 # ADDRESSES ARE LITERALS HERE, NOT NAMES (F-56)
 #
@@ -18012,6 +18543,19 @@ print_reading_key() {
       postgres never accepted a connection within sixty seconds, which is where ADR-0012's bounded
       boot retry gives up. The cause is in the POSTGRES log above, not in this one.
 
+  web names a variable whose value is '${NAME:-something}' — braces and all
+      The compose engine did not apply that default, so the placeholder text itself was handed to
+      the container (F-57). This is not a bad value you chose; it is substitution that did not
+      happen. 'cp .env.example .env', then 'up' again, and read
+      scripts/check_compose_substitution.sh for the whole account.
+
+  postgres says 'invalid character in extension owner' and then 'initdb: removing contents of
+  data directory'
+      The same thing, one container over: POSTGRES_USER arrived as placeholder text, so initdb's
+      bootstrap statement failed on the punctuation in it. initdb then wipes the directory and the
+      engine restarts the container, forever. Nothing is wrong with your volume — fix the
+      substitution and the next 'up' initialises cleanly.
+
   postgres says 'database files are incompatible', 'directory … exists but is not empty',
   'could not locate a valid checkpoint record', or PANIC
       The named volume holds a data directory this image cannot start — an interrupted first initdb,
@@ -18420,11 +18964,29 @@ esac
 [[ -f "compose.yaml" ]] || die "compose.yaml is not here; run this from a checkout of the repository."
 
 if [[ ! -f ".env" ]]; then
-    warn "no .env in this checkout, so compose is using the development defaults from compose.yaml —"
-    warn "  including POSTGRES_PASSWORD=myrestaurant. Fine for a tester instance on a private network."
-    warn "  'cp .env.example .env' first if this box is reachable by anything you do not control."
-    warn "  Nothing here writes that file for you (F-54): copying it is a decision, not a formality."
+    warn "no .env in this checkout. Whether that works at all depends on your compose engine (F-57):"
+    warn "  every value in compose.yaml is written '\${NAME:-default}', and Debian trixie's"
+    warn "  podman-compose does not apply the part after ':-'. Where it does not, the placeholder text"
+    warn "  itself reaches the containers — the application refuses to start and the database cannot"
+    warn "  initialise. The check below settles it for this host rather than guessing."
+    warn "  'cp .env.example .env' assigns every one of them, and is what §2 asks for on any host"
+    warn "  reachable by anything you do not control. Nothing here writes it for you (F-54)."
 fi
+
+# The engine question, asked before the build rather than after it. A twenty-minute image is a poor
+# thing to hand somebody along with the news that their stack was never going to start (F-57).
+substitution_status=0
+bash scripts/check_compose_substitution.sh || substitution_status=$?
+case "$substitution_status" in
+    0) ;;
+    3)
+        die "this engine does not apply compose.yaml's defaults, so the stack cannot start. Nothing was built (the report above says what to do)."
+        ;;
+    *)
+        warn "the substitution check could not decide (exit ${substitution_status}); the containers'"
+        warn "  own environment is read after 'up -d', which is ground truth."
+        ;;
+esac
 
 # The origin has to come from this script, and the environment is how it gets there. Compose gives
 # the process environment precedence over .env, so a pinned value in .env does not silently win —
@@ -18577,6 +19139,59 @@ for service in postgres web; do
             || warn "'${service_container}' would not start on the first try; the wait below will say why."
     fi
 done
+
+# ---------------------------------------------------------------------------------------------------
+# 12a. `up` — what the containers were actually given (F-57)
+#
+# Ground truth, and the reason this exists beside the preflight: the preflight asks the engine to
+# render a file, and this asks the engine what it put in the containers. The second cannot be fooled by
+# a `config` subcommand that renders differently from what it runs, and it needs no subcommand at all —
+# one `inspect` per container. It runs before any waiting, because a placeholder in POSTGRES_USER means
+# initdb is already failing and the database wait would spend its whole deadline on a settled question.
+# ---------------------------------------------------------------------------------------------------
+# shellcheck disable=SC2016  # '${' is the literal text being searched for, not an expansion.
+unsubstituted() {
+    local name="$1"
+    "$ENGINE" inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$name" 2>/dev/null \
+        | grep --fixed-strings '${' \
+        | cut --delimiter='=' --fields=1 \
+        | sort --unique || true
+}
+
+placeholders_found=""
+for service in postgres web; do
+    service_container="$(compose_container "$service")"
+    [[ -n "$service_container" ]] || continue
+    found="$(unsubstituted "$service_container")"
+    if [[ -n "$found" ]]; then
+        placeholders_found="${placeholders_found}${found}"$'\n'
+    fi
+done
+
+if [[ -n "$placeholders_found" ]]; then
+    warn ""
+    warn "THE CONTAINERS WERE GIVEN PLACEHOLDER TEXT, NOT VALUES (F-57)."
+    warn ""
+    warn "  These variables reached a container with '\${' still in them:"
+    while IFS= read -r placeholder_name; do
+        [[ -n "$placeholder_name" ]] || continue
+        warn "    ${placeholder_name}"
+    done <<< "$(printf '%s\n' "$placeholders_found" | sort --unique)"
+    warn ""
+    warn "  '${COMPOSE[*]}' did not apply the defaults in compose.yaml. Nothing downstream of this can"
+    warn "  work: the application validates five of these and refuses to start, POSTGRES_USER reaches"
+    warn "  initdb as punctuation so the database wipes its data directory and retries forever, and the"
+    warn "  rest are wrong without saying so. Read the whole account with:"
+    warn "     scripts/check_compose_substitution.sh"
+    warn ""
+    warn "  The usual fix is 'cp .env.example .env' and then '$0 up' again. If that is already done,"
+    warn "  this engine is not honouring an empty assignment either, and the second remediation in that"
+    warn "  report is the one to take."
+    warn ""
+    log "the stack is left running so you can read it. Not waiting on a settled question."
+    print_diagnosis "$LOG_TAIL"
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------------------------------
 # 13. `up` — record where this instance lives
@@ -18764,15 +19379,15 @@ exit 0
   File name:             quick_tunnel.sh
   Relative path:         scripts/quick_tunnel.sh
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/scripts/quick_tunnel.sh
-  Size:                  8.8 KiB (9013 bytes)
-  Last modified:         2026-08-10 14:43:54.000000000 -0400
+  Size:                  9.4 KiB (9655 bytes)
+  Last modified:         2026-08-10 17:25:35.000000000 -0400
   Permissions:           -rwxr-xr-x
   Owner:                 kushal:kushal
-  Inode:                 35139427
+  Inode:                 35606632
   Hard links:            1
   MIME type:             text/x-shellscript
-  SHA-256:               c0e051cac533d6ca5a1d813ac9d15db7b07f6c66b0dfea575526cd183da2e0bf
-  Last git commit:       a899317 2026-08-10 16:11:06 -0400 add claude response
+  SHA-256:               329eccbe64c20258e6fb810d3ceb89759872353d29876d090a5f21e0e628b87a
+  Last git commit:       dfa8a40 2026-08-10 17:37:08 -0400 add claude changes
 
 --- CONTENT ---
 #!/usr/bin/env bash
@@ -18869,6 +19484,16 @@ wait_ready() {
 #    step 3, then (re)create web with it so the QR join URLs point at the tunnel. Passkeys do not
 #    depend on this — they self-heal from the request origin (ADR-0005) — but join links do.
 # ---------------------------------------------------------------------------------------------------
+# Does this engine apply compose.yaml's defaults? On Debian trixie's podman-compose it does not, and
+# the placeholder text itself reaches the containers — the application refuses to start and initdb
+# wipes its data directory on a POSTGRES_USER made of braces (F-57). Asked before anything starts,
+# because the alternative is a tunnel published over a stack that was never going to come up.
+substitution_status=0
+bash scripts/check_compose_substitution.sh || substitution_status=$?
+if (( substitution_status == 3 )); then
+    die "this engine does not apply compose.yaml's defaults, so the stack cannot start (see the report above)."
+fi
+
 log "starting the database…"
 "${COMPOSE[@]}" up -d postgres
 
@@ -87136,6 +87761,435 @@ public sealed class ComposeDependencyContractTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeSubstitutionContractTests.cs
+################################################################################
+
+--- METADATA ---
+  File name:             ComposeSubstitutionContractTests.cs
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeSubstitutionContractTests.cs
+  Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeSubstitutionContractTests.cs
+  Size:                  16.0 KiB (16429 bytes)
+  Last modified:         2026-08-10 17:27:38.000000000 -0400
+  Permissions:           -rw-r--r--
+  Owner:                 kushal:kushal
+  Inode:                 35606638
+  Hard links:            1
+  MIME type:             text/plain
+  SHA-256:               a7222e5ed4d1b72135482a59a658534b26cadc861692a38e72b54a1cacd8a671
+  Last git commit:       dfa8a40 2026-08-10 17:37:08 -0400 add claude changes
+
+--- CONTENT ---
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests.Deployment;
+
+/// <summary>
+/// Copying <c>.env.example</c> to <c>.env</c> supplies every variable <c>compose.yaml</c> interpolates
+/// (TECHNICAL_SPECIFICATION §14.1, §16.4, <b>F-57</b>).
+///
+/// <para><b>Why this exists.</b> Every value in <c>compose.yaml</c> is written
+/// <c>${NAME:-default}</c>, and on Debian trixie's podman-compose — which ADR-0004 calls the canonical
+/// engine — the branch after <c>:-</c> is not applied. Every variable that was not already set in the
+/// environment reached its container as the placeholder text: the application printed five
+/// <c>Configuration error:</c> lines naming values like
+/// <c>'${RESTAURANT_TIME_ZONE:-America/New_York}'</c> and exited 1, and <c>POSTGRES_USER</c> reached
+/// <c>initdb</c> as punctuation, so the bootstrap statement failed, initdb wiped the data directory,
+/// and the container crash-looped. One engine behaviour, two dead containers.</para>
+///
+/// <para><b>Why this file is the assertion.</b> The remediation is to supply the variables rather than
+/// to rely on the defaults, and the documented way to supply them is
+/// <c>cp .env.example .env</c> (OPERATIONS §2). That instruction is only true if
+/// <c>.env.example</c> actually <em>assigns</em> every variable the stack interpolates — and when the
+/// finding was made it assigned nineteen of twenty-two, leaving <c>OTEL_EXPORTER_OTLP_ENDPOINT</c>,
+/// <c>OTEL_EXPORTER_OTLP_HEADERS</c> and <c>CLOUDFLARE_TUNNEL_TOKEN</c> commented out. A commented-out
+/// line supplies nothing. So this is F-50's pattern once more: <c>compose.yaml</c> is the authoritative
+/// statement of what needs supplying, <c>.env.example</c> is the restatement, and the restatement is
+/// what stops being true when somebody adds a setting.</para>
+///
+/// <para><b>Why an empty assignment is not the same as a commented-out one</b>, which is the part worth
+/// having a test about. <c>OTEL_EXPORTER_OTLP_ENDPOINT</c>'s emptiness is what switches the exporter off
+/// (<c>Program.cs</c> attaches no OTLP exporter when it is blank). Commented out, the literal
+/// <c>${OTEL_EXPORTER_OTLP_ENDPOINT:-}</c> arrives instead — which is <em>not</em> blank, so the
+/// exporter is switched on and pointed at a hostname made of braces. The setting whose whole purpose is
+/// to be absent is the one that fails loudest when it is merely unwritten.</para>
+///
+/// <para><b>Scope, stated so the gaps are deliberate.</b> Only placeholders inside an
+/// <c>environment:</c> mapping are in scope — those are what a container is handed.
+/// <c>SOURCE_REVISION</c> appears under <c>build.args</c> and is excluded: it is stamped by a pipeline
+/// or by <c>scripts/dev_instance.sh</c>, and <c>Containerfile</c>'s own <c>ARG</c> is where its
+/// fallback is decided (F-50's ruling). This test says nothing about whether any particular engine
+/// applies defaults — that is a property of a host, it is not decidable from the text, and
+/// <c>scripts/check_compose_substitution.sh</c> asks the engine directly.</para>
+///
+/// <para>Pure: reads two files off the disk it was built from. No server, no container, no engine.</para>
+/// </summary>
+public sealed class ComposeSubstitutionContractTests
+{
+    private const string SolutionFileName = "MyRestaurant.slnx";
+    private const string ComposeRelativePath = "compose.yaml";
+    private const string ExampleEnvironmentRelativePath = ".env.example";
+
+    /// <summary>
+    /// The scan read both sides. Asserted first and on its own, because every assertion below it is
+    /// satisfied by an empty placeholder set (<b>F-41</b>) — and a re-indented <c>environment:</c>
+    /// block would produce exactly that in silence.
+    /// </summary>
+    [Fact]
+    public void TheScanFindsBothSides()
+    {
+        IReadOnlyList<string> interpolated = ReadInterpolatedEnvironmentVariables();
+        IReadOnlyDictionary<string, string> assigned = ReadExampleAssignments();
+
+        Assert.True(
+            interpolated.Count >= 20,
+            $"Only {interpolated.Count} interpolated variable(s) were read out of"
+            + $" {ComposeRelativePath}'s environment mappings. There are twenty-two; if that block"
+            + $" changed shape, this scan has to follow it rather than be deleted.");
+
+        Assert.True(
+            assigned.Count >= 20,
+            $"Only {assigned.Count} assignment(s) were read out of {ExampleEnvironmentRelativePath}."
+            + $" The assertion below passes vacuously against an empty set, so this one runs first.");
+    }
+
+    /// <summary>
+    /// <b>This is F-57.</b> Every variable the stack interpolates is assigned in
+    /// <c>.env.example</c>, so that copying it leaves nothing depending on the engine applying a
+    /// default.
+    /// </summary>
+    [Fact]
+    public void EveryInterpolatedVariableIsAssignedInTheExampleEnvironment()
+    {
+        IReadOnlyList<string> interpolated = ReadInterpolatedEnvironmentVariables();
+        IReadOnlyDictionary<string, string> assigned = ReadExampleAssignments();
+
+        List<string> unsupplied = interpolated
+            .Where(name => !assigned.ContainsKey(name))
+            .ToList();
+
+        Assert.True(
+            unsupplied.Count == 0,
+            $"{ExampleEnvironmentRelativePath} does not assign: {string.Join(", ", unsupplied)}."
+            + $" {ComposeRelativePath} interpolates each of them, and on an engine that does not apply"
+            + $" the default after ':-' the placeholder text reaches the container instead — which is"
+            + $" what left the application refusing its own configuration and initdb wiping its data"
+            + $" directory (F-57). A commented-out line supplies nothing: OPERATIONS §2 says to copy"
+            + $" this file, so every variable the stack interpolates has to be assigned in it, empty if"
+            + $" that is the right value.");
+    }
+
+    /// <summary>
+    /// A variable whose <c>compose.yaml</c> default is empty is assigned <em>empty</em> here, not given
+    /// a value. Derived from the compose file rather than listed, and the reason is
+    /// <c>OTEL_EXPORTER_OTLP_ENDPOINT</c>: an empty endpoint attaches no exporter, so a plausible
+    /// example value in this file would switch OpenTelemetry export on for everybody who followed the
+    /// runbook.
+    /// </summary>
+    [Fact]
+    public void VariablesWhoseComposeDefaultIsEmptyAreAssignedEmpty()
+    {
+        IReadOnlyList<string> emptyByDefault = ReadVariablesWithEmptyComposeDefault();
+        IReadOnlyDictionary<string, string> assigned = ReadExampleAssignments();
+
+        Assert.True(
+            emptyByDefault.Count >= 3,
+            $"Only {emptyByDefault.Count} variable(s) in {ComposeRelativePath} have an empty default."
+            + $" Three are expected — the two OTEL_* exporter settings and the tunnel token — so this"
+            + $" scan is no longer finding what it is about.");
+
+        List<string> given = emptyByDefault
+            .Where(name => assigned.TryGetValue(name, out string? value) && value.Length > 0)
+            .ToList();
+
+        Assert.True(
+            given.Count == 0,
+            $"{ExampleEnvironmentRelativePath} gives a value to {string.Join(", ", given)}, and"
+            + $" {ComposeRelativePath} defaults each of them to empty. Empty is the setting: an empty"
+            + $" OTEL_EXPORTER_OTLP_ENDPOINT is what makes the application attach no OTLP exporter, so"
+            + $" a value here would turn export on for every operator who copied this file. Assign it"
+            + $" empty and put the example in a comment beside it.");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Reading the two files. Plain string work, no parser and no regular expressions — the same
+    // choice ConfigurationSurfaceTests and ComposeDependencyContractTests make about this same
+    // compose file, and for the same reason.
+    // ---------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Every <c>${NAME…}</c> that appears inside an <c>environment:</c> mapping, in any service.
+    /// Bounded to those mappings deliberately: they are what a container is handed, and
+    /// <c>build.args</c>' <c>SOURCE_REVISION</c> has its fallback decided in <c>Containerfile</c>.
+    /// </summary>
+    private static IReadOnlyList<string> ReadInterpolatedEnvironmentVariables()
+    {
+        List<string> names = [];
+
+        foreach (string line in ReadEnvironmentMappingLines())
+        {
+            foreach (string name in ReadPlaceholderNames(line))
+            {
+                if (!names.Contains(name, StringComparer.Ordinal))
+                {
+                    names.Add(name);
+                }
+            }
+        }
+
+        return names;
+    }
+
+    /// <summary>
+    /// The variables written <c>${NAME:-}</c> — a default of nothing at all — inside an
+    /// <c>environment:</c> mapping.
+    /// </summary>
+    private static IReadOnlyList<string> ReadVariablesWithEmptyComposeDefault()
+    {
+        List<string> names = [];
+
+        foreach (string line in ReadEnvironmentMappingLines())
+        {
+            foreach (string name in ReadPlaceholderNames(line))
+            {
+                if (line.Contains($"${{{name}:-}}", StringComparison.Ordinal)
+                    && !names.Contains(name, StringComparer.Ordinal))
+                {
+                    names.Add(name);
+                }
+            }
+        }
+
+        return names;
+    }
+
+    /// <summary>
+    /// The lines of every <c>environment:</c> mapping in the file, across all services. The shape
+    /// being read:
+    /// <code>
+    /// services:
+    ///   web:
+    ///     environment:
+    ///       RESTAURANT_NAME: ${RESTAURANT_NAME:-My Restaurant}
+    /// </code>
+    /// </summary>
+    private static IReadOnlyList<string> ReadEnvironmentMappingLines()
+    {
+        string[] lines = ReadRepositoryFile(ComposeRelativePath).Split('\n');
+
+        int servicesStart = IndexOfLine(lines, "services:", 0);
+        if (servicesStart < 0)
+        {
+            throw new InvalidOperationException(
+                $"{ComposeRelativePath} has no line 'services:'. Everything this test reads is a child"
+                + " of it.");
+        }
+
+        int servicesEnd = IndexOfIndent(lines, servicesStart + 1, 0);
+
+        List<string> collected = [];
+        bool insideEnvironment = false;
+
+        for (int index = servicesStart + 1; index < servicesEnd; index++)
+        {
+            string line = lines[index].TrimEnd('\r');
+            string trimmed = line.Trim();
+            if (trimmed.Length == 0 || trimmed.StartsWith('#'))
+            {
+                continue;
+            }
+
+            int indent = IndentOf(line);
+
+            if (indent <= 2)
+            {
+                insideEnvironment = false;
+                continue;
+            }
+
+            if (indent == 4)
+            {
+                insideEnvironment = string.Equals(line[indent..], "environment:", StringComparison.Ordinal);
+                continue;
+            }
+
+            if (insideEnvironment)
+            {
+                collected.Add(line[indent..]);
+            }
+        }
+
+        return collected;
+    }
+
+    /// <summary>The <c>NAME</c> of every <c>${NAME…}</c> in one line of text.</summary>
+    private static IReadOnlyList<string> ReadPlaceholderNames(string line)
+    {
+        List<string> names = [];
+        int position = 0;
+
+        while (true)
+        {
+            int open = line.IndexOf("${", position, StringComparison.Ordinal);
+            if (open < 0)
+            {
+                return names;
+            }
+
+            int start = open + 2;
+            int end = start;
+            while (end < line.Length && (char.IsAsciiLetterOrDigit(line[end]) || line[end] == '_'))
+            {
+                end++;
+            }
+
+            if (end > start)
+            {
+                names.Add(line[start..end]);
+            }
+
+            position = end;
+        }
+    }
+
+    /// <summary>
+    /// Every uncommented <c>NAME=value</c> in <c>.env.example</c>, mapped to its value. A commented
+    /// line is deliberately not an assignment — that distinction is the whole finding.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> ReadExampleAssignments()
+    {
+        Dictionary<string, string> assignments = new(StringComparer.Ordinal);
+
+        foreach (string rawLine in ReadRepositoryFile(ExampleEnvironmentRelativePath).Split('\n'))
+        {
+            string line = rawLine.TrimEnd('\r').Trim();
+            if (line.Length == 0 || line.StartsWith('#'))
+            {
+                continue;
+            }
+
+            int equals = line.IndexOf('=', StringComparison.Ordinal);
+            if (equals <= 0)
+            {
+                continue;
+            }
+
+            string name = line[..equals].Trim();
+            if (name.Length == 0 || !IsVariableName(name))
+            {
+                continue;
+            }
+
+            assignments[name] = line[(equals + 1)..].Trim();
+        }
+
+        return assignments;
+    }
+
+    private static bool IsVariableName(string candidate)
+    {
+        foreach (char character in candidate)
+        {
+            if (!char.IsAsciiLetterOrDigit(character) && character != '_')
+            {
+                return false;
+            }
+        }
+
+        return char.IsAsciiLetter(candidate[0]) || candidate[0] == '_';
+    }
+
+    private static int IndentOf(string line)
+    {
+        int indent = 0;
+        while (indent < line.Length && line[indent] == ' ')
+        {
+            indent++;
+        }
+
+        return indent;
+    }
+
+    /// <summary>The first line equal to <paramref name="value"/> at or after <paramref name="from"/>.</summary>
+    private static int IndexOfLine(string[] lines, string value, int from)
+    {
+        for (int index = from; index < lines.Length; index++)
+        {
+            if (string.Equals(lines[index].TrimEnd('\r'), value, StringComparison.Ordinal))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// The first line at or after <paramref name="from"/> whose indentation is exactly
+    /// <paramref name="indent"/> spaces and which carries content — i.e. where the enclosing block
+    /// ends. The same walk the other two Deployment tests use on this file, deliberately.
+    /// </summary>
+    private static int IndexOfIndent(string[] lines, int from, int indent)
+    {
+        for (int index = from; index < lines.Length; index++)
+        {
+            string line = lines[index].TrimEnd('\r');
+            if (line.Length <= indent)
+            {
+                continue;
+            }
+
+            if (indent > 0 && !line.StartsWith(new string(' ', indent), StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (line[indent] != ' ' && line[indent] != '#')
+            {
+                return index;
+            }
+        }
+
+        return lines.Length;
+    }
+
+    private static string ReadRepositoryFile(string relativePath)
+    {
+        string path = Path.Combine(
+            FindRepositoryRoot().FullName,
+            relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        if (!File.Exists(path))
+        {
+            throw new InvalidOperationException(
+                $"'{path}' does not exist. The repository root was found but its layout is not the one"
+                + " §2 describes.");
+        }
+
+        return File.ReadAllText(path);
+    }
+
+    /// <summary>
+    /// The same walk up to <c>MyRestaurant.slnx</c> the other contract tests use, and it fails
+    /// rather than skips for the same reason: a check that quietly declines to run is worse than none.
+    /// </summary>
+    private static DirectoryInfo FindRepositoryRoot()
+    {
+        for (DirectoryInfo? candidate = new(AppContext.BaseDirectory);
+             candidate is not null;
+             candidate = candidate.Parent)
+        {
+            if (File.Exists(Path.Combine(candidate.FullName, SolutionFileName)))
+            {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Walked up from '{AppContext.BaseDirectory}' without finding {SolutionFileName}.");
+    }
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.WebApplication.Tests/Deployment/DevInstanceLoopbackContractTests.cs
 ################################################################################
 
@@ -87143,18 +88197,17 @@ public sealed class ComposeDependencyContractTests
   File name:             DevInstanceLoopbackContractTests.cs
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Deployment/DevInstanceLoopbackContractTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.WebApplication.Tests/Deployment/DevInstanceLoopbackContractTests.cs
-  Size:                  17.1 KiB (17507 bytes)
-  Last modified:         2026-08-10 16:53:13.205053059 -0400
+  Size:                  17.8 KiB (18248 bytes)
+  Last modified:         2026-08-10 17:26:31.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 35139432
+  Inode:                 35606639
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               1c680bc8f02ac313f8e8d1fc3ef9b16df421afa48b6b6c83cdeabc7f7fc18c93
-  Last git commit:       4efcbf6 2026-08-10 16:45:57 -0400 revert
+  SHA-256:               3a63f3a8664e83c432ea1b68916675ef83f7b4a1c6b7b197c4e55298a3eed0d4
+  Last git commit:       dfa8a40 2026-08-10 17:37:08 -0400 add claude changes
 
 --- CONTENT ---
-using System.Globalization;
 using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Deployment;
@@ -87222,23 +88275,25 @@ public sealed class DevInstanceLoopbackContractTests
     {
         PublishedAddress published = ReadPublishedWebAddress();
 
-        Assert.False(
-            string.IsNullOrEmpty(published.Host),
+        Assert.True(
+            published.Host.Length > 0,
             $"No published host was read out of {ComposeRelativePath}'s web service. §14.1 publishes"
-            + " the web port on loopback; if that block moved, this scan has to follow it rather than"
-            + " be deleted.");
+            + $" the web port on loopback; if that block moved, this scan has to follow it rather than"
+            + $" be deleted.");
 
         List<HelperTarget> targets = ReadHelperTargets();
 
-        Assert.Equal(HelperRelativePaths.Length, targets.Count);
+        Assert.True(
+            targets.Count == HelperRelativePaths.Length,
+            $"Read {targets.Count} helper(s) where {HelperRelativePaths.Length} are expected.");
 
         foreach (HelperTarget target in targets)
         {
-            Assert.False(
-                string.IsNullOrEmpty(target.Host),
+            Assert.True(
+                target.Host.Length > 0,
                 $"No TUNNEL_TARGET default was read out of {target.Path}. The assignment this test"
-                + " reads is the only place that script decides what to dial, so a shape it no longer"
-                + " matches is a change this test has to be taught, not one it may ignore.");
+                + $" reads is the only place that script decides what to dial, so a shape it no longer"
+                + $" matches is a change this test has to be taught, not one it may ignore.");
         }
     }
 
@@ -87254,14 +88309,21 @@ public sealed class DevInstanceLoopbackContractTests
 
         foreach (HelperTarget target in ReadHelperTargets())
         {
+            // No string.Create here, and that is deliberate rather than a simplification: every hole
+            // in this message is already a string, so there is nothing culture-sensitive to format.
+            // The first version of this file wrapped it in string.Create(CultureInfo.InvariantCulture,
+            // …) out of habit and did not compile — an additive expression only converts to an
+            // interpolated string handler when EVERY operand is itself an interpolated string, and one
+            // of these was a plain literal, so the call bound to no overload. Every other string.Create
+            // in this tree prefixes each operand with '$'.
             Assert.True(
                 string.Equals(target.Host, published.Host, StringComparison.Ordinal)
                 && string.Equals(target.Port, published.Port, StringComparison.Ordinal),
                 $"{target.Path} dials '{target.Host}:{target.Port}' by default, and"
                 + $" {ComposeRelativePath} publishes the web port on '{published.Host}:{published.Port}'."
-                + " Those have to be the same address: the published port is the only one that"
-                + " exists on the host, and a helper that dials anything else gets a connection"
-                + " refused naming an address nobody configured.");
+                + $" Those have to be the same address: the published port is the only one that exists"
+                + $" on the host, and a helper that dials anything else gets a connection refused"
+                + $" naming an address nobody configured.");
         }
     }
 
@@ -95801,10 +96863,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 324
-  Total size     : 4.3 MiB (4489166 bytes)
+  Files dumped   : 326
+  Total size     : 4.3 MiB (4554552 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-10T16:55:14-04:00
+  Completed at   : 2026-08-10T17:37:29-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
