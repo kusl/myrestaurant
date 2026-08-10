@@ -1,206 +1,180 @@
-# M6 Slice 28 — the command that came back and said nothing was wrong (F-55, F-56)
+# M6 Slice 29 — the engine that does not read its own defaults (F-57)
 
-Extract at the repository root. Every path below is repo-relative and every file is complete.
+Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-28-bring-up-evidence-and-diagnosis.tar.gz
-git add tests/MyRestaurant.WebApplication.Tests/Deployment/DevInstanceLoopbackContractTests.cs
+tar -xzf m6-slice-29-compose-substitution.tar.gz
+git add scripts/check_compose_substitution.sh
+git add tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeSubstitutionContractTests.cs
 git status
 ```
 
-**Files to DELETE: none.** Nothing is renamed and nothing is superseded.
+**Files to DELETE: none.**
 
-**`git add` is required** for the one new file above. `scripts/check_tree.sh` enumerates with
+**`git add` is required** for the two new files above — `scripts/check_tree.sh` enumerates with
 `git ls-files`, so an untracked file is a file no gate looks at.
 
 ---
 
-## What this slice is about
+## Your log answered it, and the answer was not a variable
 
-`time bash scripts/dev_instance.sh` on virginia took six minutes and fifty-five seconds to report
-success over an instance that had never served a request. It did not hang — Slice 27 fixed that. It
-waited out a 300-second readiness deadline against a container that had already exited, printed the
-`DEV INSTANCE — DETACHED` banner with a public URL in it, spent twenty more seconds probing that URL,
-warned that it had not answered, and **exited 0**.
+```
+web:      Configuration error: RESTAURANT_TIME_ZONE '${RESTAURANT_TIME_ZONE:-America/New_York}' …
+postgres: FATAL: invalid character in extension owner: must not contain any of ""$'\
+          STATEMENT: CREATE EXTENSION plpgsql;
+          initdb: removing contents of data directory "/var/lib/postgresql/data"
+```
 
-The reason had been available since the tenth second, in a log nothing ever printed.
+**Your compose engine does not apply the branch after `:-`.** Every value in `compose.yaml` is written
+`${NAME:-default}`, and every variable that was not already set in your environment reached its
+container as the placeholder text. That single fact killed both containers:
 
----
+- **web** validates five of them, so it printed five errors and returned 1 — the exit code Slice 28
+  reasoned from before any log existed.
+- **postgres** got `POSTGRES_USER=${POSTGRES_USER:-myrestaurant}`, so initdb's bootstrap
+  `CREATE EXTENSION plpgsql` failed on the punctuation in the owner name, initdb wiped the data
+  directory, the container exited, the engine restarted it — forever. **The crash loop was never about
+  your volume**, and `reset` would not have helped: initdb was already erasing that directory on every
+  attempt. Both `podman system prune -a` runs were beside the point too.
 
-## The diagnosis, and the one inference it rests on
+**Proof of the mechanism, from your own run:** `RESTAURANT_PUBLIC_ORIGIN` was the one value that
+arrived correct, and it is the one `dev_instance.sh` exports. So substitution works when the variable is
+**set**; it is the *default* branch that is unapplied. `${RESTAURANT_CURRENCY_CODE:-USD}` failed too,
+which rules out an escaping problem — `USD` is as plain as a default gets.
 
-From the transcript: `postgres` was created six minutes before `podman ps` reported `Up 1 second`,
-which is the engine restarting it in a loop; `web` had **`Exited (1)`**.
+### The five errors were the good case
 
-**Exit code 1 is reachable from exactly one place in this program.** `Program.cs` binds and validates
-configuration before a host exists, and on failure prints each error to stderr and `return 1`s.
-Nothing else in that file returns 1 — a `SchemaMigrationRunner` failure throws, and an unhandled
-exception on .NET aborts with 134. So the application refused its own environment, said which
-variable and with what value, and exited, all within the first second.
+Eleven more variables were wrong and said nothing:
 
-That message is still on virginia. `podman logs myrestaurant_web_1 | tail -40` prints it. This slice
-does not need to know what it says to fix the defect, because the defect is that nothing printed it —
-but it is worth reading, and if you send it I will put the specific variable in F-55's row rather than
-the general case.
-
----
-
-## Two findings
-
-**F-55 — a wait with a deadline and no evidence.** F-53 was a wait with no deadline; Slice 27 put
-deadlines on every compose call and, in the same script, left a 300-second HTTP poll that never asked
-whether the container it was polling still existed. The two failures look alike and need opposite
-fixes: a deadline stops a wait that cannot *end*, and only a liveness check stops a wait that cannot
-*succeed*. Alongside it: the success banner printed unconditionally, the settle phase probed a public
-URL for an application that was not answering on loopback, `status` described a container that had
-exited 1 as `(stopped, health: starting)`, `logs` could only show the tunnel's log, and `up` exited 0.
-
-**F-56 — three helpers dial one port and only `run.sh` names the address that exists.**
-`compose.yaml` publishes `127.0.0.1:8080:8080`; `run.sh` has probed the literal since M1; both tunnel
-helpers defaulted `TUNNEL_TARGET` to `http://localhost:8080`. curl and GNU wget fall back to the
-second address; **BusyBox wget does not**, and it is the second entry in the probe chain of a script
-whose premise is a host that may not have curl. The visible cost is worse than the risk: cloudflared
-reports the address it failed on, so the F-55 tunnel log is full of `dial tcp [::1]:8080: connect:
-connection refused` and sends an operator after an IPv6 problem that is not there. F-51's shape for
-the third time — a rule reasoned through once, applied to one file, never stated.
-
----
-
-## Every file, and why it changed
-
-### `scripts/dev_instance.sh` — rewritten
-
-| Change | Why |
+| Variable | What the placeholder text does |
 |---|---|
-| both waits bounded **and** watched | F-55. The readiness wait polls container state; the new database wait uses `pg_isready` inside the container. Each ends early — crash loop, or a container that will not stay started — instead of running the deadline down. |
-| database wait separated from readiness wait | "the app did not answer" is equally true of a crash-looping database, a rejected configuration and an image that never started. One message cannot diagnose three failures. |
-| a stopped container is started again, up to `DEV_INSTANCE_START_ATTEMPTS` (3) | `SchemaMigrationRunner` gives up after sixty seconds (ADR-0012). A slower first `postgres` boot outlives it and leaves a correct image stopped with nothing wrong. The engine's restart policy usually covers this; *usually* is not worth 300 seconds. |
-| failure prints both log tails, with state, **exit code** and restart count | The whole finding. `podman logs` held the answer for seven minutes. |
-| a reading key for six real symptoms | `Configuration error:` → it refused its environment. `Database not ready (attempt n/30)` → the cause is in the *other* log. Four PostgreSQL data-directory failures → `reset`. `address already in use`. Both containers up and the probe still failing → check the address. |
-| `logs [web\|postgres\|database\|tunnel]`, default **web**, `--tail N` | The one command an operator reaches for could only show cloudflared. |
-| new `diagnose` | The failure report, on demand, later, without re-running `up`. |
-| new `reset` | The one failure the helper cannot repair: a data directory that will not start survives `down` (which keeps volumes deliberately) and `podman system prune -a` (which does not touch them). Removes this project's volumes **enumerated from the engine**, after saying what that destroys, and refuses rather than assumes consent when stdin is not a terminal. |
-| a stopped container reports its exit code, never a health status | `(stopped, health: starting)` reads as a container on its way up. It had exited 1 six minutes earlier. |
-| settle phase skipped when readiness failed | Probing a public URL for an application that does not answer on loopback cannot produce information. It produced a warning. |
-| `up` exits 0 only if the application answered | `time bash scripts/dev_instance.sh` is how this is invoked, and a `&&` chain believes an exit code. The stack is **left running** on failure: the containers are the evidence. |
-| state file written **before** readiness is decided | The tunnel and its hostname are real whatever the application is doing, so `url` and `down` must work on a failed bring-up. A URL nobody recorded is a tunnel nobody can close. |
-| `TUNNEL_TARGET` defaults to `http://127.0.0.1:8080` | F-56. |
-| `wait_for_http` deleted | It became unreachable once readiness moved into `wait_for_application`. shellcheck's SC2329 said so; acted on rather than suppressed. |
+| `RESTAURANT_NAME` | renders `${RESTAURANT_NAME:-My Restaurant}` as the restaurant's name, on every page |
+| `ARGON2_*`, `KITCHEN_…`, `TABLE_…` (seven) | unparseable as an integer, therefore indistinguishable from absent: compiled-in values are used silently |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | **its emptiness is the off switch.** The literal is not empty, so the exporter attaches and points at a hostname made of braces |
+| `RESTAURANT_DATABASE_CONNECTION_STRING` | three nested placeholders in one folded scalar; non-empty, so it passes validation and fails at connect |
 
-### `scripts/quick_tunnel.sh`
+---
 
-`TUNNEL_TARGET` defaults to the literal, with the reasoning beside the assignment. Three lines,
-comments aside. Nothing else about that script changes — it is still the foreground demo helper.
+## The fix: ask the engine, refuse early, make `.env` sufficient
 
-### `.env.example`
+**New `scripts/check_compose_substitution.sh`.** It does not guess from a version number:
 
-`TUNNEL_TARGET`'s documented default corrected, and the new knobs listed with what they are ceilings
-*for*: `DEV_INSTANCE_DATABASE_WAIT`, `DEV_INSTANCE_START_ATTEMPTS`,
-`DEV_INSTANCE_CRASH_LOOP_RESTARTS`, `DEV_INSTANCE_LOG_TAIL`. **All fourteen added lines are
-comments**, so `ConfigurationSurfaceTests`'s key set is untouched — verified, not assumed.
+1. enumerate the `${NAME…}` placeholders in `compose.yaml`;
+2. subtract the ones that do not need a default — set in the environment, or assigned in `.env` —
+   because the *set* branch is the half your log proves works. Nothing left → exit 0, nobody asked;
+3. otherwise render with `compose config` under a deadline and look for a surviving `${`.
 
-### `docs/TECHNICAL_SPECIFICATION.md` → **v1.13**
+Exit **3** the engine does not apply defaults · **2** could not be determined here (no usable `config`)
+· **0** fine. The middle value matters: a missing subcommand is not a broken engine, and conflating
+them would either block correct hosts or pass broken ones.
 
-§14.3a gains four normative paragraphs (no wait outlives its evidence; a failure prints the log and
-`logs` reaches the application; `up`'s exit status is a claim about the instance; `reset` exists and
-what it must ask before acting) plus the address-literal rule. §16.4 gains the loopback contract test
-*and what it deliberately does not assert*. Appendix A gains F-55 and F-56. Header and changelog both
-moved, together — F-48 is what happens when only one does.
+**Three helpers run it before doing work.** `dev_instance.sh` refuses **before** the twenty-minute
+build. `quick_tunnel.sh` refuses before publishing a hostname. `run.sh` refuses before `compose up`.
 
-**No `REQUIREMENTS.md` edit**, on the v1.11 and v1.12 reasoning: R§8 asks for an operable instance and
-ADR-0004 has named podman-compose canonical since M1, so a helper reporting success over a dead
-instance is a mechanism failing a contract this tree already carried, not new intent. No schema
-change, no ADR edit, no `.slnx` edit, and **`compose.yaml` is not touched by this slice**.
+**`dev_instance.sh` asks again after `up -d`, from the containers' own environment** — one `inspect`
+each, `{{range .Config.Env}}`, grep for `${`. Ground truth: no subcommand needed, cannot be fooled by a
+`config` that renders differently from what it runs, and it is the only thing that can settle whether an
+*empty* assignment satisfies your engine. It runs before any waiting, because a placeholder in
+`POSTGRES_USER` means the database question is already settled.
 
-### `docs/OPERATIONS.md`
+**`.env.example` now assigns every variable the stack interpolates.** It was assigning 19 of 22 —
+`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` and `CLOUDFLARE_TUNNEL_TOKEN` were commented
+out, and a commented-out line supplies nothing. So the documented remediation was incomplete in exactly
+the place that hurts most: an empty OTLP endpoint switches the exporter off, the literal switches it on.
 
-§10a's command table gains `logs`, `diagnose` and `reset` and records the exit-code contract. A new
-**"When it does not come up"** subsection: what `up` prints on failure, the two log lines that point
-in opposite directions, and the data-directory case with `reset` as its answer. §15's verification
-`curl` uses the literal, for F-56's reason.
+**One thing I changed that you did not ask for, and it is F-50 again.** `.env.example` spelled
+`RESTAURANT_SOURCE_URL=https://github.com/kusl/myrestaurant`. F-50 ruled that `compose.yaml` must pass
+that variable with an *empty* default so `RestaurantOptions.DefaultSourceUrl` stays the one place the
+fallback lives — and then left the upstream URL in the file operators are told to copy. A fork whose
+first edit is that constant would have had it silently overridden by their own `.env`. It is assigned
+empty now, with the fork example in a comment beside it. This is what fact 3 of the new test caught
+while I was proving it sensitive; I did not go looking for it.
 
-### `README.md`
+**`compose.yaml` is not edited.** The file is correct; the engine reading it is not.
 
-The command block gains the three new subcommands; the F-53 paragraph gains the F-55 sequel, because
-a reader who is told the script once hung forever should also be told what the fix to that produced.
+---
 
-### `docs/DOCUMENTATION_REVIEW.md`
+## The build break — fixed properly, and it will not come back
 
-F-55 and F-56 rows, the status line, and three closing paragraphs: F-53's fix producing F-53's shape
-in reverse (**a bound on how long you will wait is not a bound on how long you will be wrong**), the
-exit-code rule this project had not stated, and F-51's shape reaching its third occurrence — with the
-habit that would have caught all three: *when a comment explains why a value is what it is, grep the
-tree for the other places that value is written.*
+`DevInstanceLoopbackContractTests` wrapped one assertion message in
+`string.Create(CultureInfo.InvariantCulture, …)`, and the concatenation fed to it ended with a **plain**
+string literal instead of an interpolated one. An additive expression converts to an interpolated string
+handler only when *every* operand is itself `$"…"`, so the call bound to no overload. I checked the tree
+afterwards: **every** `string.Create` concatenation in it prefixes every operand with `$`, including
+operands with no holes. That file broke a uniform idiom.
 
-### `docs/BUILD_PROGRESS.md`
+The repair is not to add the missing `$`. Every hole in that message is already a `string`, so there was
+nothing culture-sensitive to format and `string.Create` was never earning anything — it is a plain
+interpolated string now, `using System.Globalization;` is gone with it (an unused using is an error
+under CI's `TreatWarningsAsErrors`), and the reasoning sits above the assertion so nobody reaches for
+the habit again. Two more idioms hardened while the file was open: `Assert.Equal` on a collection size
+replaced with `Assert.True` (xUnit's analyzer has opinions), and `Assert.False(string.IsNullOrEmpty(x))`
+replaced with a length comparison.
 
-Slice 28, shipped whole. The mock-engine harness, the six scenarios with their measured timings, the
-sensitivity proofs, and what could not be verified from here.
+The file shipped here is the authority — it supersedes your local edit and contains the same fix.
 
-### `tests/…/Deployment/DevInstanceLoopbackContractTests.cs` — new
+---
 
-F-50's pattern, not a grep: the published port in `compose.yaml` is authoritative, each helper's
-`TUNNEL_TARGET` default is a restatement, and the test derives the first to check the second. Four
-facts — the scan found everything (F-41 non-vacuity), each helper dials the published host and port,
-each host is an address literal, and what is published is still loopback. The last one exists because
-the rule is *argued* from there being one address: publish on `0.0.0.0` and the justification is gone,
-and a test that stayed green through that change would be asserting a coincidence.
+## Every file, and why
 
-Deliberately **not** asserted: that no script says `localhost`. `run.sh` prints it in a sentence for a
-human to paste into a browser, which is correct, and failing on it would report a finding on a correct
-tree (F-41).
+| File | Change |
+|---|---|
+| `scripts/check_compose_substitution.sh` | **new.** The decisive check, standalone and runnable by hand, with the whole account in its header |
+| `scripts/dev_instance.sh` | preflight before the build; container-environment gate after `up -d`; the `.env` warning corrected (it said an absent `.env` was "fine"; on your engine it is fatal); two new reading-key entries for the placeholder and initdb symptoms |
+| `scripts/quick_tunnel.sh` | refuses before opening a tunnel over a stack that cannot start |
+| `run.sh` | refuses before `compose up` |
+| `.env.example` | all 22 interpolated variables assigned; OTEL pair and tunnel token empty rather than commented; `RESTAURANT_SOURCE_URL` empty per F-50 |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.14** — §14.1 third normative rule + the `.env.example` requirement + what is deliberately not claimed; §16.4 the test and why the script is a preflight and not a CI gate; Appendix A F-57; header and changelog moved together |
+| `docs/OPERATIONS.md` | §10a opens with the substitution check; §2's `.env` step upgraded from advice to near-prerequisite |
+| `README.md` | the third-run paragraph, and the script in the layout list |
+| `docs/DOCUMENTATION_REVIEW.md` | F-57 row, status line, and two closing paragraphs |
+| `docs/BUILD_PROGRESS.md` | Slice 29, whole |
+| `tests/…/ComposeSubstitutionContractTests.cs` | **new**, 3 facts |
+| `tests/…/DevInstanceLoopbackContractTests.cs` | build break fixed, idioms hardened |
 
 ---
 
 ## Verification
 
-No .NET SDK and no container engine here, so the script was run against a **mock engine** — `podman`,
-`podman-compose` and `curl` shims driven by state files — with the production-length deadlines in
-place, so the timings are the ones an operator sees:
+- **The check run against three simulated engines** (`config` substitutes / leaves `${…}` literal /
+  no `config` at all) plus a fourth case with a complete `.env`: exit 0, exit 3 listing all 23
+  variables, exit 2 with the *undetermined* message, exit 0 without asking the engine. Each intended.
+- **`bash -n` + `shellcheck`** on all four scripts, clean at `--severity=warning` and `--severity=style`;
+  nine pre-existing scripts baselined style-clean first. One suppression with its reason on the line
+  above: `SC2016`, where `'${'` is the literal being searched for.
+- **New test ported to Python and proven sensitive** one regression at a time — six mutations across the
+  three facts, a throw on a broken `services:` marker, and a comment-only control that changes nothing.
+- **`DevInstanceLoopbackContractTests`, `ConfigurationSurfaceTests`, `ComposeDependencyContractTests`
+  and `SpecificationVersionTests` re-run** against the edited tree. All pass. Header 1.14, entries
+  descending.
+- **Balance walk** over both C# files with two controls; **byte hygiene** on all eleven files.
 
-| Scenario | Result |
-|---|---|
-| healthy | `DETACHED` banner, **exit 0** |
-| `web` exits 1 on a `Configuration error:` line | `NOT SERVING`, both logs, reading key, **exit 1, 15s** |
-| `postgres` crash-looping (`PANIC: could not locate a valid checkpoint record`) | crash loop named at three restarts, readiness skipped, **exit 1, 7s** |
-| `logs` / `logs postgres` / `logs tunnel` / `logs database --tail 2` | right container every time |
-| `reset --yes` | removed `myrestaurant_postgres-data` and `myrestaurant_dataprotection-keys`, left `other_project_data` alone |
-| `reset` with no tty and no `--yes` | **exit 1, nothing removed** |
-| five argument errors | each names itself, each exits non-zero |
+**Test count 1063 → 1066.** Three `[Fact]` methods, none removed.
 
-**415 seconds and exit 0 became 7–15 seconds and exit 1.**
-
-Also: `bash -n` and `shellcheck --severity=style` clean on both scripts (all nine existing scripts
-baselined style-clean first with shellcheck 0.11.0); the new test ported to Python, run, and proven
-sensitive one regression at a time — including two non-vacuity mutations and a comment-only control
-that must change nothing; `SpecificationVersionTests`, `ConfigurationSurfaceTests` and
-`ComposeDependencyContractTests` re-run against the edited tree; a string- and comment-aware balance
-walk over the new C# file with two controls; every doc edit applied by exact-match replacement with a
-one-occurrence assertion; byte hygiene on all nine files.
-
-**Test count 1059 → 1063.** Four `[Fact]` methods, none removed, no `[Theory]`. Arithmetic, not an
-observation.
+**Not verified:** nothing compiled, and no real engine ran the check — the shims imitate the two
+behaviours, and if your `podman-compose` has no `config` subcommand the preflight exits 2 and the
+post-`up` container check is what fires. That is why both exist.
 
 ---
 
-## What is not verified
-
-- **Nothing has compiled.** No `dotnet build` on the new test file.
-- **Nothing ran on virginia.** Every timing is from the mock. What the mock cannot say is which
-  variable the real `Configuration error:` line names.
-- **`{{.RestartCount}}`** is read from documentation, not from a running engine. Absent reads as 0,
-  which loses the crash-loop early exit and keeps everything else.
-
-## Suggested run on virginia
+## On virginia
 
 ```bash
-cd ~/src/dotnet/myrestaurant
-git pull
-podman logs myrestaurant_web_1 | tail -40      # the answer that has been sitting there
-bash scripts/dev_instance.sh diagnose          # the same thing, framed, with the reading key
-time bash scripts/dev_instance.sh              # now exits 1 fast if it is still broken
+cd ~/src/dotnet/myrestaurant && git pull
+bash scripts/check_compose_substitution.sh ; echo "exit=$?"
 ```
 
-If `logs postgres` shows a data-directory failure: `bash scripts/dev_instance.sh reset`, then `up`.
-That destroys the database and the key ring on that instance, which on a tester box with no data worth
-keeping is the right trade — and is exactly what `podman system prune -a` could not do for you.
+If it exits 3 (or 2):
+
+```bash
+cp .env.example .env
+bash scripts/check_compose_substitution.sh ; echo "exit=$?"    # should be 0 now
+time bash scripts/dev_instance.sh
+```
+
+`.env` carries `POSTGRES_PASSWORD=myrestaurant` — a development credential, fine on a Tailscale-only
+box, worth changing on anything else. Old volumes are harmless: initdb never finished, so there is no
+half-built database to clear. If the check still refuses after copying `.env`, your engine is not
+honouring an empty assignment either — send me the output of
+`podman-compose config | head -40` and `podman-compose --version` and I will take the second
+remediation properly rather than pointing you at three options.

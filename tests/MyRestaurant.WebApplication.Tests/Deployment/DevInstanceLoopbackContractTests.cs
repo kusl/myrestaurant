@@ -1,4 +1,3 @@
-using System.Globalization;
 using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Deployment;
@@ -66,23 +65,25 @@ public sealed class DevInstanceLoopbackContractTests
     {
         PublishedAddress published = ReadPublishedWebAddress();
 
-        Assert.False(
-            string.IsNullOrEmpty(published.Host),
+        Assert.True(
+            published.Host.Length > 0,
             $"No published host was read out of {ComposeRelativePath}'s web service. §14.1 publishes"
-            + " the web port on loopback; if that block moved, this scan has to follow it rather than"
-            + " be deleted.");
+            + $" the web port on loopback; if that block moved, this scan has to follow it rather than"
+            + $" be deleted.");
 
         List<HelperTarget> targets = ReadHelperTargets();
 
-        Assert.Equal(HelperRelativePaths.Length, targets.Count);
+        Assert.True(
+            targets.Count == HelperRelativePaths.Length,
+            $"Read {targets.Count} helper(s) where {HelperRelativePaths.Length} are expected.");
 
         foreach (HelperTarget target in targets)
         {
-            Assert.False(
-                string.IsNullOrEmpty(target.Host),
+            Assert.True(
+                target.Host.Length > 0,
                 $"No TUNNEL_TARGET default was read out of {target.Path}. The assignment this test"
-                + " reads is the only place that script decides what to dial, so a shape it no longer"
-                + " matches is a change this test has to be taught, not one it may ignore.");
+                + $" reads is the only place that script decides what to dial, so a shape it no longer"
+                + $" matches is a change this test has to be taught, not one it may ignore.");
         }
     }
 
@@ -98,14 +99,21 @@ public sealed class DevInstanceLoopbackContractTests
 
         foreach (HelperTarget target in ReadHelperTargets())
         {
+            // No string.Create here, and that is deliberate rather than a simplification: every hole
+            // in this message is already a string, so there is nothing culture-sensitive to format.
+            // The first version of this file wrapped it in string.Create(CultureInfo.InvariantCulture,
+            // …) out of habit and did not compile — an additive expression only converts to an
+            // interpolated string handler when EVERY operand is itself an interpolated string, and one
+            // of these was a plain literal, so the call bound to no overload. Every other string.Create
+            // in this tree prefixes each operand with '$'.
             Assert.True(
                 string.Equals(target.Host, published.Host, StringComparison.Ordinal)
                 && string.Equals(target.Port, published.Port, StringComparison.Ordinal),
                 $"{target.Path} dials '{target.Host}:{target.Port}' by default, and"
                 + $" {ComposeRelativePath} publishes the web port on '{published.Host}:{published.Port}'."
-                + " Those have to be the same address: the published port is the only one that"
-                + " exists on the host, and a helper that dials anything else gets a connection"
-                + " refused naming an address nobody configured.");
+                + $" Those have to be the same address: the published port is the only one that exists"
+                + $" on the host, and a helper that dials anything else gets a connection refused"
+                + $" naming an address nobody configured.");
         }
     }
 

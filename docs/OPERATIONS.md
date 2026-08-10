@@ -189,7 +189,19 @@ loginctl enable-linger "$USER"
 
 **The first build is slow and the script says so before it starts.** Measured cold on the machine this was written for: about nineteen minutes, almost all of it the SDK image pull and the `dotnet publish`. Nothing is public during that time — the tunnel is opened *after* the build, which is the ordering fix in §14.3a. Subsequent runs reuse the layer cache and take seconds.
 
-**Copy `.env.example` to `.env` first if the box is reachable by anything you do not control.** Copy it yourself — no script here writes it (**F-54**, and §2 says why). Without it the stack runs on `compose.yaml`'s development defaults, including `POSTGRES_PASSWORD=myrestaurant`. Do not put `RESTAURANT_PUBLIC_ORIGIN` in that `.env`: the script sets it from the tunnel URL through the process environment, which takes precedence, so a pinned value would be ignored and the file would disagree with the running instance. The script warns when it finds one.
+**Copy `.env.example` to `.env`.** Copy it yourself — no script here writes it (**F-54**, and §2 says why). This used to be advice for a box reachable by anything you do not control; on the canonical engine it is closer to a prerequisite (**F-57**), because without it every value in `compose.yaml` depends on the engine applying the default after `:-`, and Debian trixie's podman-compose does not. `scripts/check_compose_substitution.sh` is what tells you which case you are in. Note also that `.env.example` carries `POSTGRES_PASSWORD=myrestaurant`, which is a development credential — change it on anything exposed. Do not put `RESTAURANT_PUBLIC_ORIGIN` in that `.env`: the script sets it from the tunnel URL through the process environment, which takes precedence, so a pinned value would be ignored and the file would disagree with the running instance. The script warns when it finds one.
+
+### First: does your compose engine apply the defaults in `compose.yaml`?
+
+```bash
+scripts/check_compose_substitution.sh
+```
+
+**On Debian trixie's podman-compose it does not, and until that is settled nothing else matters (F-57).** Every value in `compose.yaml` is written `${NAME:-default}`, and where the engine does not apply the part after `:-`, the placeholder text itself is what reaches the containers. Measured on a real host: the application printed five `Configuration error:` lines naming values like `'${RESTAURANT_TIME_ZONE:-America/New_York}'` and exited 1, and `POSTGRES_USER` arrived as punctuation so `initdb` failed on `CREATE EXTENSION plpgsql`, erased the data directory, and crash-looped. **Eleven more variables were wrong without saying anything** — the restaurant's name would have rendered as the placeholder, the Argon2 parameters silently fell back to compiled-in values because an unparseable integer looks like an absent one, and `OTEL_EXPORTER_OTLP_ENDPOINT` arrived non-empty, which switches the exporter on and points it at a hostname made of braces.
+
+The check exits **0** (fine, or nothing depends on a default), **3** (the finding), or **2** (could not be determined here — no `config` subcommand; `dev_instance.sh` then re-checks from the containers' own environment after `up`, which is ground truth). All three helpers that start the stack run it first and refuse on 3, so `dev_instance.sh` will not spend twenty minutes building an image for a stack that cannot start.
+
+**The fix is almost always `cp .env.example .env`.** Every variable the stack interpolates is assigned in that file, so nothing is left depending on a default — which is also why §2 asks you to copy it. If the check still fails afterwards, the engine is not honouring an empty assignment either, and the second remediation it prints is the one to take: `podman compose` (the Docker Compose provider), a newer `podman-compose` from `pipx`, or exporting the variables in the shell.
 
 ### When it does not come up
 

@@ -45,6 +45,8 @@ the web layer depends on data-access and the domain; the domain depends on nothi
   and every reader/mutation over real PostgreSQL, web-layer configuration/wiring/enforcement tests,
   and the end-to-end scenario matrix with its Playwright harness (see *End-to-end scenarios*).
 - `scripts/` — the operational scripts: `check_tree.sh` (repository hygiene, the first CI gate),
+  `check_compose_substitution.sh` (does this host's compose engine apply the defaults in
+  `compose.yaml`? — a preflight, not a CI gate, because its subject is the machine),
   `check_repository.sh` (the governance surface, and an advisory read of the published repository's
   settings), `ci_local.sh` (every CI gate, locally), `backup.sh` / `restore.sh` / `restore_drill.sh` (§15
   recovery sets and the rehearsal CI runs on every push), `quick_tunnel.sh` (a demo origin, held in
@@ -313,6 +315,15 @@ version of this script hung forever on its first real run (**F-53**). Not in the
 time. `compose.yaml` no longer asks for a health condition, which removes the cause, and the
 deadline is there because a script whose job is to hand the terminal back must not contain a call
 that can keep it.
+
+**The third run found the cause of both failures, and it was not in this repository (F-57).** Every
+value in `compose.yaml` is written `${NAME:-default}`, and Debian trixie's podman-compose does not
+apply the part after `:-` — so the placeholder text itself reached the containers. The application
+validated five of them and exited 1; `POSTGRES_USER` reached `initdb` as punctuation, which erased the
+data directory and crash-looped. Eleven more were wrong in silence. `scripts/check_compose_substitution.sh`
+asks the engine that question directly, all three helpers that start the stack run it first and refuse
+rather than work, and `cp .env.example .env` — which now assigns every variable the stack interpolates,
+empty where empty is the value — is the remediation.
 
 **The second run of that script found the opposite defect (F-55), and it is why `up` now has an exit
 code worth reading.** It did not hang; it waited out a five-minute readiness deadline against a

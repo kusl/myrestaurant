@@ -99,6 +99,21 @@
 # TOTP secret on this instance. It asks before doing it, and needs --yes when stdin is not a
 # terminal. Take a backup first (OPERATIONS §6) if the data mattered.
 #
+# THE ENGINE'S DEFAULTS ARE VERIFIED, NOT ASSUMED (F-57)
+#
+# `compose.yaml` sets twenty-three values with the `${NAME:-default}` form, and on Debian trixie's
+# podman-compose — the canonical engine — the DEFAULT branch is not applied. Every variable not already
+# set in the environment reaches the container as the placeholder text. That is one engine behaviour
+# with two victims: the application refuses its own configuration and exits 1, and `POSTGRES_USER`
+# reaches initdb as punctuation, so the database wipes its data directory and crash-loops forever.
+# Both of the failures this script was rewritten to diagnose had that single cause.
+#
+# So `up` asks scripts/check_compose_substitution.sh BEFORE the build, and refuses rather than
+# spending twenty minutes producing an image the stack cannot use. And after `up -d` it re-reads the
+# question from the containers' own environment, which needs no subcommand and cannot be fooled —
+# because whether an EMPTY assignment in `.env` counts as supplying a variable is a property of the
+# engine that no file in this repository can know.
+#
 # ADDRESSES ARE LITERALS HERE, NOT NAMES (F-56)
 #
 # `compose.yaml` publishes the web port as `127.0.0.1:8080:8080` — an IPv4 loopback address and
@@ -533,6 +548,19 @@ print_reading_key() {
       postgres never accepted a connection within sixty seconds, which is where ADR-0012's bounded
       boot retry gives up. The cause is in the POSTGRES log above, not in this one.
 
+  web names a variable whose value is '${NAME:-something}' — braces and all
+      The compose engine did not apply that default, so the placeholder text itself was handed to
+      the container (F-57). This is not a bad value you chose; it is substitution that did not
+      happen. 'cp .env.example .env', then 'up' again, and read
+      scripts/check_compose_substitution.sh for the whole account.
+
+  postgres says 'invalid character in extension owner' and then 'initdb: removing contents of
+  data directory'
+      The same thing, one container over: POSTGRES_USER arrived as placeholder text, so initdb's
+      bootstrap statement failed on the punctuation in it. initdb then wipes the directory and the
+      engine restarts the container, forever. Nothing is wrong with your volume — fix the
+      substitution and the next 'up' initialises cleanly.
+
   postgres says 'database files are incompatible', 'directory … exists but is not empty',
   'could not locate a valid checkpoint record', or PANIC
       The named volume holds a data directory this image cannot start — an interrupted first initdb,
@@ -941,11 +969,29 @@ esac
 [[ -f "compose.yaml" ]] || die "compose.yaml is not here; run this from a checkout of the repository."
 
 if [[ ! -f ".env" ]]; then
-    warn "no .env in this checkout, so compose is using the development defaults from compose.yaml —"
-    warn "  including POSTGRES_PASSWORD=myrestaurant. Fine for a tester instance on a private network."
-    warn "  'cp .env.example .env' first if this box is reachable by anything you do not control."
-    warn "  Nothing here writes that file for you (F-54): copying it is a decision, not a formality."
+    warn "no .env in this checkout. Whether that works at all depends on your compose engine (F-57):"
+    warn "  every value in compose.yaml is written '\${NAME:-default}', and Debian trixie's"
+    warn "  podman-compose does not apply the part after ':-'. Where it does not, the placeholder text"
+    warn "  itself reaches the containers — the application refuses to start and the database cannot"
+    warn "  initialise. The check below settles it for this host rather than guessing."
+    warn "  'cp .env.example .env' assigns every one of them, and is what §2 asks for on any host"
+    warn "  reachable by anything you do not control. Nothing here writes it for you (F-54)."
 fi
+
+# The engine question, asked before the build rather than after it. A twenty-minute image is a poor
+# thing to hand somebody along with the news that their stack was never going to start (F-57).
+substitution_status=0
+bash scripts/check_compose_substitution.sh || substitution_status=$?
+case "$substitution_status" in
+    0) ;;
+    3)
+        die "this engine does not apply compose.yaml's defaults, so the stack cannot start. Nothing was built (the report above says what to do)."
+        ;;
+    *)
+        warn "the substitution check could not decide (exit ${substitution_status}); the containers'"
+        warn "  own environment is read after 'up -d', which is ground truth."
+        ;;
+esac
 
 # The origin has to come from this script, and the environment is how it gets there. Compose gives
 # the process environment precedence over .env, so a pinned value in .env does not silently win —
@@ -1098,6 +1144,59 @@ for service in postgres web; do
             || warn "'${service_container}' would not start on the first try; the wait below will say why."
     fi
 done
+
+# ---------------------------------------------------------------------------------------------------
+# 12a. `up` — what the containers were actually given (F-57)
+#
+# Ground truth, and the reason this exists beside the preflight: the preflight asks the engine to
+# render a file, and this asks the engine what it put in the containers. The second cannot be fooled by
+# a `config` subcommand that renders differently from what it runs, and it needs no subcommand at all —
+# one `inspect` per container. It runs before any waiting, because a placeholder in POSTGRES_USER means
+# initdb is already failing and the database wait would spend its whole deadline on a settled question.
+# ---------------------------------------------------------------------------------------------------
+# shellcheck disable=SC2016  # '${' is the literal text being searched for, not an expansion.
+unsubstituted() {
+    local name="$1"
+    "$ENGINE" inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$name" 2>/dev/null \
+        | grep --fixed-strings '${' \
+        | cut --delimiter='=' --fields=1 \
+        | sort --unique || true
+}
+
+placeholders_found=""
+for service in postgres web; do
+    service_container="$(compose_container "$service")"
+    [[ -n "$service_container" ]] || continue
+    found="$(unsubstituted "$service_container")"
+    if [[ -n "$found" ]]; then
+        placeholders_found="${placeholders_found}${found}"$'\n'
+    fi
+done
+
+if [[ -n "$placeholders_found" ]]; then
+    warn ""
+    warn "THE CONTAINERS WERE GIVEN PLACEHOLDER TEXT, NOT VALUES (F-57)."
+    warn ""
+    warn "  These variables reached a container with '\${' still in them:"
+    while IFS= read -r placeholder_name; do
+        [[ -n "$placeholder_name" ]] || continue
+        warn "    ${placeholder_name}"
+    done <<< "$(printf '%s\n' "$placeholders_found" | sort --unique)"
+    warn ""
+    warn "  '${COMPOSE[*]}' did not apply the defaults in compose.yaml. Nothing downstream of this can"
+    warn "  work: the application validates five of these and refuses to start, POSTGRES_USER reaches"
+    warn "  initdb as punctuation so the database wipes its data directory and retries forever, and the"
+    warn "  rest are wrong without saying so. Read the whole account with:"
+    warn "     scripts/check_compose_substitution.sh"
+    warn ""
+    warn "  The usual fix is 'cp .env.example .env' and then '$0 up' again. If that is already done,"
+    warn "  this engine is not honouring an empty assignment either, and the second remediation in that"
+    warn "  report is the one to take."
+    warn ""
+    log "the stack is left running so you can read it. Not waiting on a settled question."
+    print_diagnosis "$LOG_TAIL"
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------------------------------
 # 13. `up` — record where this instance lives

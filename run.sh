@@ -58,6 +58,25 @@ else
 fi
 
 # ---------------------------------------------------------------------------------------------------
+# 1a. Does this engine apply compose.yaml's defaults? (F-57)
+#
+# Every value in compose.yaml is written ${NAME:-default}, and Debian trixie's podman-compose does not
+# apply the part after ':-' — the placeholder text reaches the containers, the application refuses its
+# own configuration, and initdb fails on a POSTGRES_USER made of braces and wipes the data directory.
+# Checked here rather than diagnosed later, and non-fatal: this script's default mode runs the web app
+# on the HOST, where the shell's own environment applies, so a failing check affects the database
+# container and --containers-only rather than everything.
+# ---------------------------------------------------------------------------------------------------
+substitution_status=0
+bash scripts/check_compose_substitution.sh --quiet || substitution_status=$?
+if (( substitution_status == 3 )); then
+    echo "error: this compose engine does not apply the defaults in compose.yaml (F-57)." >&2
+    echo "       The report above says what reaches the containers and what to do about it." >&2
+    echo "       Fix that first: 'cp .env.example .env' is usually all it takes." >&2
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------------------------------
 # 2. Helpers (health waits, per F-17: "start the stack -> health wait -> developer watch/URLs")
 # ---------------------------------------------------------------------------------------------------
 

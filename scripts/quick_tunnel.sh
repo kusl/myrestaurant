@@ -92,6 +92,16 @@ wait_ready() {
 #    step 3, then (re)create web with it so the QR join URLs point at the tunnel. Passkeys do not
 #    depend on this — they self-heal from the request origin (ADR-0005) — but join links do.
 # ---------------------------------------------------------------------------------------------------
+# Does this engine apply compose.yaml's defaults? On Debian trixie's podman-compose it does not, and
+# the placeholder text itself reaches the containers — the application refuses to start and initdb
+# wipes its data directory on a POSTGRES_USER made of braces (F-57). Asked before anything starts,
+# because the alternative is a tunnel published over a stack that was never going to come up.
+substitution_status=0
+bash scripts/check_compose_substitution.sh || substitution_status=$?
+if (( substitution_status == 3 )); then
+    die "this engine does not apply compose.yaml's defaults, so the stack cannot start (see the report above)."
+fi
+
 log "starting the database…"
 "${COMPOSE[@]}" up -d postgres
 

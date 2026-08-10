@@ -8304,3 +8304,195 @@ intentions.** Nobody has audited them.
 
 **Two operator actions** no archive can contain: enabling private vulnerability reporting on GitHub,
 and setting the repository description (F-42).
+
+## M6 Slice 29 — the engine that does not read its own defaults (F-57)
+
+Slice 28 shipped a diagnosis and said what it could not know:
+
+> **Nothing ran on virginia.** Every timing is from the mock. What the mock cannot say is which
+> variable the real `Configuration error:` line names.
+
+It named five. And the answer was not a variable at all.
+
+### What the diagnosis printed
+
+```
+  ── postgres (myrestaurant_postgres_1), last 40 line(s) ──
+  | 2026-08-10 21:11:23.698 UTC [31] FATAL:  invalid character in extension owner: must not contain
+  |     any of ""$'\
+  | 2026-08-10 21:11:23.698 UTC [31] STATEMENT:  CREATE EXTENSION plpgsql;
+  | child process exited with exit code 1
+  | initdb: removing contents of data directory "/var/lib/postgresql/data"
+
+  ── web (myrestaurant_web_1), last 40 line(s) ──
+  | Configuration error: RESTAURANT_TIME_ZONE '${RESTAURANT_TIME_ZONE:-America/New_York}' is not a
+  |     resolvable time zone on this host.
+  | Configuration error: RESTAURANT_CLOCK_FORMAT must be '12-hour' or '24-hour' (was
+  |     '${RESTAURANT_CLOCK_FORMAT:-12-hour}').
+  | Configuration error: RESTAURANT_CURRENCY_CODE must be a 3-letter ISO 4217 code (was
+  |     '${RESTAURANT_CURRENCY_CODE:-USD}').
+  | Configuration error: RESTAURANT_SOURCE_URL must be an absolute http or https URL (was
+  |     '${RESTAURANT_SOURCE_URL:-}').
+  | Configuration error: RESTAURANT_TRUSTED_ORIGIN_PATTERNS entry
+  |     '${RESTAURANT_TRUSTED_ORIGIN_PATTERNS:-https://*.trycloudflare.com}' must be an https origin…
+```
+
+`1m51s`, exit 1, and both halves of the cause on one screen. The previous run took `6m55s` to exit 0.
+
+### One engine behaviour, both containers
+
+`compose.yaml` sets twenty-three values as `${NAME:-default}`. This engine does not apply the branch
+after `:-`, so every variable not already set in the environment arrived as the placeholder text.
+
+- **`web`**: five of those are validated, so `Program.cs` printed five errors and returned 1 — which is
+  exactly the inference Slice 28's `_CHANGES.md` drew from the exit code, before any log was available.
+- **`postgres`**: `POSTGRES_USER` arrived as `${POSTGRES_USER:-myrestaurant}`, so initdb's bootstrap
+  `CREATE EXTENSION plpgsql` failed on the punctuation in the owner name, initdb erased the data
+  directory, the container exited, the engine restarted it, and it did that forever. **The crash loop
+  Slice 28 attributed to a possibly-poisoned volume was never about the volume.**
+
+The `reset` command shipped in Slice 28 would not have helped, and that is worth recording rather than
+quietly correcting: it removes a data directory that cannot start, and this data directory was being
+removed by initdb on every attempt already.
+
+### What is known about the behaviour, and what is not
+
+**Known, from the same run.** `RESTAURANT_PUBLIC_ORIGIN` was the one value that arrived correct, and it
+is the one `dev_instance.sh` exports. So substitution works when the variable is **set**; it is the
+default branch that is unapplied. `${RESTAURANT_CURRENCY_CODE:-USD}` failed too, which rules out an
+escaping problem with `/`, `:` or `*` — `USD` is as plain as a default gets.
+
+**Not known, and deliberately not claimed anywhere in this slice.** Which podman-compose releases behave
+this way, and whether assigning a variable **empty** in `.env` counts as supplying it. Both are
+properties of a host. So nothing here predicts them: the new script asks the engine, and
+`dev_instance.sh` asks again from the containers' own environment.
+
+### The eleven that arrive wrong in silence
+
+The five errors are the *good* case. What else was wrong:
+
+| Variable | What arriving as placeholder text does |
+|---|---|
+| `RESTAURANT_NAME` | renders `${RESTAURANT_NAME:-My Restaurant}` as the restaurant's name, on every page |
+| `ARGON2_*` (four) | `ReadInt` cannot parse it, so it is indistinguishable from absent — compiled-in values are used and nothing says so |
+| `KITCHEN_…`, `TABLE_JOIN_…`, `TABLE_DISPLAY_…` | the same, silently |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | **its emptiness is the off switch.** The literal is not empty, so the exporter is attached and pointed at a hostname made of braces |
+| `RESTAURANT_DATABASE_CONNECTION_STRING` | three nested placeholders inside one folded scalar; non-empty, so it passes validation and fails at connect time |
+
+`OTEL_EXPORTER_OTLP_ENDPOINT` is the one that decided the shape of the fix. A setting whose whole
+purpose is to be absent is the one that fails loudest when it is merely *unwritten*.
+
+### The fix: ask, refuse, and make `.env` sufficient
+
+**New `scripts/check_compose_substitution.sh`.** It does not predict from a version number:
+
+1. enumerate the `${NAME…}` placeholders in `compose.yaml`;
+2. subtract the ones that do not need a default — set and non-empty in the environment, or assigned in
+   `.env` — because the *set* branch is the half observed working. If nothing is left, exit 0 without
+   asking anybody anything;
+3. otherwise render the file with `compose config` under a deadline and look for a surviving `${`.
+
+Three-valued exit, and the middle value is the point: **3** the engine does not apply defaults, **2**
+could not be determined here (no usable `config`), **0** fine. A missing subcommand is not a broken
+engine, and a check that conflated the two would either block correct hosts or pass broken ones.
+
+**Three helpers run it before doing work.** `dev_instance.sh` refuses *before* the twenty-minute image
+build — a cold build is a poor thing to hand somebody along with the news that their stack was never
+going to start. `quick_tunnel.sh` refuses before publishing a hostname. `run.sh` refuses before
+`compose up`.
+
+**`dev_instance.sh` asks again after `up -d`, from the containers' own environment.** One `inspect` per
+container, `{{range .Config.Env}}`, grep for `${`. This is ground truth: it needs no subcommand, it
+cannot be fooled by a `config` that renders differently from what it runs, and it is the only thing that
+can settle the empty-assignment question. It runs *before* any waiting, because a placeholder in
+`POSTGRES_USER` means initdb is already failing and the database wait would spend its deadline on a
+settled question.
+
+**`.env.example` now assigns every variable the stack interpolates.** It was assigning nineteen of
+twenty-two — `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` and `CLOUDFLARE_TUNNEL_TOKEN`
+were commented out, and a commented-out line supplies nothing. So the documented remediation
+(`cp .env.example .env`, OPERATIONS §2) was incomplete in exactly the place that matters most.
+
+**And `RESTAURANT_SOURCE_URL` is assigned empty there**, which is F-50's ruling applied one layer over.
+That file spelled `https://github.com/kusl/myrestaurant`, so a fork whose first edit is
+`RestaurantOptions.DefaultSourceUrl` — the edit F-50 says is the natural one — would have had it
+silently overridden by the `.env` they were told to copy, and served their users a §13 offer pointing at
+this repository. F-50 fixed that in `compose.yaml` and left the same value in `.env.example`.
+
+### The build break Slice 28 shipped, and why
+
+`DevInstanceLoopbackContractTests` did not compile. The assertion message was wrapped in
+`string.Create(CultureInfo.InvariantCulture, …)`, and the concatenation fed to it ended with a **plain**
+string literal rather than an interpolated one. An additive expression converts to an interpolated
+string handler only when *every* operand is itself an interpolated string, so the call bound to no
+overload. Checked against the tree afterwards: **every** `string.Create` concatenation in it prefixes
+every operand with `$`, including the operands that have no holes — the idiom is uniform and this file
+broke it.
+
+The repair is not to add the missing `$`. Every hole in that message is already a `string`, so there is
+nothing culture-sensitive to format and `string.Create` was never earning anything. It is a plain
+interpolated string now, `using System.Globalization;` is gone with it (an unused using is an error
+under CI's `TreatWarningsAsErrors`), and the reasoning is written above the assertion so the next person
+does not reach for the same habit. Two other idioms were hardened while the file was open:
+`Assert.Equal(collection.Count, …)` avoided in favour of `Assert.True`, since xUnit's analyzer has
+opinions about the former, and `Assert.False(string.IsNullOrEmpty(x))` replaced with a length comparison.
+
+### What was verified, and how
+
+- **`scripts/check_compose_substitution.sh` run against three simulated engines** — a `podman-compose`
+  shim whose `config` substitutes correctly, one that leaves `${…}` literal the way Debian's does, and
+  one with no `config` subcommand at all — plus a fourth case with a complete `.env`. Results: exit 0,
+  exit 3 with all 23 variables listed, exit 2 with the *undetermined* message, and exit 0 without asking
+  the engine anything. Each is the intended path.
+- **`bash -n` and `shellcheck`** on all four touched scripts, clean at `--severity=warning` (blocking in
+  CI) and `--severity=style` (advisory), with the nine pre-existing scripts baselined style-clean first.
+  One suppression, with its reason on the line above it: `SC2016` inside the container-environment grep,
+  where `'${'` is the literal text being searched for.
+- **`ComposeSubstitutionContractTests` ported to Python and proven sensitive** one regression at a time:
+  either OTEL variable or the tunnel token commented out again (fact 2), a new variable added to
+  `compose.yaml` and not to `.env.example` (fact 2), a plausible value given to
+  `OTEL_EXPORTER_OTLP_ENDPOINT` (fact 3), the upstream URL restored to `RESTAURANT_SOURCE_URL` (fact 3),
+  the `web` service's `environment:` key renamed so the scan misses twenty of twenty-two variables
+  (fact 1, the non-vacuity guard), and a broken `services:` marker (throws rather than passing
+  vacuously). A comment-only edit changes nothing, as a control.
+- **`DevInstanceLoopbackContractTests` re-run** against the edited tree: four facts, still passing, and
+  still failing on the six mutations Slice 28 recorded.
+- **`ConfigurationSurfaceTests` re-run**: seventeen keys derived from `FromConfiguration`, all still
+  present in `.env.example` — including `RESTAURANT_SOURCE_URL`, whose assignment is now empty, which
+  that test accepts because it asserts the key appears rather than what it says.
+- **`SpecificationVersionTests` ported and run**: header 1.14, entries 1.14 … 1.0 descending.
+- **`ComposeDependencyContractTests` re-run**: four services, three edges, all `service_started`.
+  `compose.yaml` is **not edited by this slice** — the file is correct and the engine reading it is not.
+- **Brace, parenthesis and bracket balance walked** over both C# files with a string- and comment-aware
+  scanner, with two existing files as controls.
+- **Byte hygiene on every delivered file**: LF, one final newline, no CR, no whitespace-only lines, no
+  trailing whitespace, no context-dump separator.
+
+### The test count
+
+1063 → **1066**. Three `[Fact]` methods added, none removed, no `[Theory]`. This assumes the local fix
+to Slice 28's build break kept all four of that file's facts — it removed a call inside one assertion
+message, not a method — and the file shipped here is the authority either way.
+
+### What was NOT verified, and cannot be from here
+
+**No engine ran this.** The substitution check was exercised against shims that imitate the two
+behaviours; the real `podman-compose config` output on virginia has never been seen. If `config` is one
+of the subcommands that version does not implement, the preflight exits 2 and the post-`up` container
+check is what fires — which is why that second check exists.
+
+**Nothing has compiled.** Two test files, balanced and ported and exercised, with `dotnet build` not run
+on either.
+
+**Whether `cp .env.example .env` is sufficient on that host is unknown**, and the honest answer is in the
+tool rather than in this document: the check will say. If an empty assignment does not satisfy the
+engine, the second remediation — a compose that applies defaults — is the one to take.
+
+### Still open
+
+**A CI job that runs the canonical stack on the canonical engine.** Fifth consecutive slice where this
+is the real embodiment of a finding and is not in the archive. F-51, F-52, F-53, F-55 and F-57 were all
+found by one person running one command on one machine that is not the workstation.
+
+**`Permissions-Policy`**, carried since Slice 24. **Two operator actions** no archive can contain
+(F-42).
