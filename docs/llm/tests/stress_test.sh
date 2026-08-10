@@ -15,8 +15,8 @@ URLS=(
 OUTPUT_FILENAME="stress_test_details.log"
 
 # Testing parameters / Assumptions
-TOTAL_REQUESTS=1000
-CONCURRENT_REQUESTS=50
+TOTAL_REQUESTS=100000
+CONCURRENT_REQUESTS=2000
 
 # ==========================================
 # SCRIPT LOGIC
