@@ -16,6 +16,21 @@
 # then fails its own `depends_on` with a message about a missing container. scripts/restore_drill.sh
 # has defaulted DRILL_POSTGRES_IMAGE to a fully qualified name since Slice 16 for exactly this
 # reason; the rule was applied to the drill and not to the stack the drill rehearses.
+#
+# NO `depends_on` HERE MAY BE GATED ON A HEALTH CONDITION (F-53), and that is the same kind of rule
+# as the one above: a correctness requirement on the canonical engine, not a preference. The only
+# condition this file may use is `service_started`. podman-compose 1.3.0 — what Debian trixie ships —
+# implements `up -d` as `podman run -d` for every container FOLLOWED BY a wait on each dependency's
+# condition, in an unbounded `while True:` retry loop that logs at debug level and nothing else. So a
+# condition that is never satisfied does not fail: `up -d` starts the whole stack, prints the
+# container ids, and then never returns, with no output to say why. On a host where the container
+# health status never flips — no systemd user session to run podman's healthcheck timer, or a podman
+# too old for `wait --condition=healthy` — that is a permanent hang on the documented command.
+#
+# Nothing is lost by dropping the condition, because the application never needed it:
+# SchemaMigrationRunner retries a connection failure thirty times at two-second intervals before
+# giving up (ADR-0012, and its own comment says "at compose start the web container can race
+# PostgreSQL"). `web` starting first is a race the code was written to lose safely.
 
 services:
   postgres:
@@ -31,6 +46,9 @@ services:
       # Loopback only: lets a host-run `dotnet watch` (see run.sh) reach the database in dev.
       - "127.0.0.1:5432:5432"
     healthcheck:
+      # Kept, and deliberately not depended on. It is what `podman ps`, `scripts/dev_instance.sh
+      # status` and an operator at a terminal read to answer "is the database actually up"; what it
+      # must not be is the thing standing between `up -d` and returning (F-53, and the header above).
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-myrestaurant} -d ${POSTGRES_DB:-myrestaurant}"]
       interval: 5s
       timeout: 5s
@@ -50,7 +68,12 @@ services:
     restart: unless-stopped
     depends_on:
       postgres:
-        condition: service_healthy
+        # service_started, and NEVER service_healthy — see the header (F-53). This orders the two
+        # containers and nothing more; waiting for the database to accept connections is the
+        # application's job, and SchemaMigrationRunner does it with a bounded retry that predates
+        # this line. A health condition here hangs `podman-compose up -d` forever on any host whose
+        # health status does not flip, with no output naming the cause.
+        condition: service_started
     environment:
       RESTAURANT_NAME: ${RESTAURANT_NAME:-My Restaurant}
       RESTAURANT_PUBLIC_ORIGIN: ${RESTAURANT_PUBLIC_ORIGIN:-https://localhost:8443}
@@ -101,7 +124,8 @@ services:
     profiles: ["dev"]
     restart: unless-stopped
     depends_on:
-      - web
+      web:
+        condition: service_started
     ports:
       - "8443:8443"
     volumes:
@@ -114,7 +138,8 @@ services:
     profiles: ["production"]
     restart: unless-stopped
     depends_on:
-      - web
+      web:
+        condition: service_started
     command: ["tunnel", "--no-autoupdate", "run"]
     environment:
       # Empty default (deliberately NOT `${...:?}`): podman-compose — the canonical engine

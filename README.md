@@ -92,8 +92,9 @@ Then trust Caddy's local CA on first use and open `https://localhost:8443`.
 
 ## Configuration
 
-All configuration is environment-only. Copy `.env.example` to `.env` and adjust; the file documents
-every variable and its default. The application validates security-relevant settings at startup and
+All configuration is environment-only. Copy `.env.example` to `.env` yourself and adjust — **no script
+in this tree writes that file** (**F-54**; a runbook step used to say otherwise). It documents every
+variable and its default. The application validates security-relevant settings at startup and
 refuses to start on a bad value (non-https origin, Argon2 below the floor, an unresolvable time zone,
 a missing connection string, and so on).
 
@@ -262,6 +263,13 @@ The stack is defined in `compose.yaml` with two profiles:
 podman-compose --profile production up -d
 ```
 
+Two rules about `compose.yaml` are correctness requirements on rootless Podman rather than style, and
+both are stated in the file's own header: **every image reference is fully qualified** (`docker.io/library/postgres:17-alpine`,
+not `postgres:17-alpine`, because a stock Debian resolves no short names — F-51), and **no `depends_on`
+is gated on a health condition** (`service_started` only; Debian's podman-compose waits on a health
+condition forever and silently — F-53). Waiting for the database is the application's job, and it has
+retried its first connection thirty times since M1.
+
 `RESTAURANT_PUBLIC_ORIGIN` is the single origin from which the WebAuthn relying-party ID and all QR
 and link URLs are derived. In-house guests hairpin through the tunnel, so LAN ordering depends on WAN
 health — an accepted tradeoff for this design.
@@ -285,7 +293,7 @@ second script that exits and leaves the instance running:
 ```bash
 scripts/dev_instance.sh          # builds, opens the tunnel, prints the URL, and exits
 scripts/dev_instance.sh url      # that URL again, on stdout
-scripts/dev_instance.sh status   # what is running
+scripts/dev_instance.sh status   # what is running, and how healthy
 scripts/dev_instance.sh down     # the only thing that closes the tunnel
 ```
 
@@ -294,6 +302,15 @@ return to the prompt; builds the image *before* announcing a URL, so the hostnam
 minutes ahead of anything that answers it; and **reuses the hostname on a re-run**, because passkeys
 are bound to it and a fresh random subdomain would discard every one. `--new-url` is how you ask for
 a new hostname on purpose. See OPERATIONS §10a.
+
+Every compose command it runs is under a deadline, and that is not belt-and-braces — the first
+version of this script hung forever on its first real run (**F-53**). Not in the script: inside
+`podman-compose up -d`, which on Debian's version starts every container and *then* waits on each
+`depends_on` health condition in a loop that prints nothing. The stack was up and serving the whole
+time. `compose.yaml` no longer asks for a health condition, which removes the cause, and the
+deadline is there because a script whose job is to hand the terminal back must not contain a call
+that can keep it. When one trips you get the finding named, both containers' state and health read
+straight from the engine, and readiness verified independently.
 
 **Passkeys work on the quick tunnel**, including a passkey-only account: the WebAuthn relying-party
 ID is derived per request from the host the browser is on (ADR-0005), and `https://*.trycloudflare.com`

@@ -35,6 +35,22 @@
 #   • Nothing else will ever stop it. `down` is not optional housekeeping here — it is the only
 #     thing that closes the tunnel.
 #
+# NO CALL IN HERE MAY OWN THE TERMINAL INDEFINITELY (F-53)
+#
+# The first run of this script hung, silently, forever — and not in anything below. It hung inside
+# `podman-compose up -d`. podman-compose 1.3.0, which is what Debian trixie ships, implements
+# `up -d` as `podman run -d` for every container FOLLOWED BY a wait on each dependency's
+# `depends_on` condition, in an unbounded `while True:` retry loop that logs at debug level and
+# prints nothing at all. So the stack was up, the tunnel was open, the public URL was serving —
+# and the command never returned, with no output to say why.
+#
+# `compose.yaml` no longer asks for a health condition, which removes that cause. The shape of the
+# failure is the lasting lesson though: a script whose entire purpose is to hand the terminal back
+# must not contain a call that can keep it. So every compose invocation here runs under a deadline,
+# and when one trips this script says so, reports what the containers are actually doing, repairs
+# anything that was created but not started, and goes on to verify readiness itself — because a
+# compose command that did not return is not the same thing as a stack that did not start.
+#
 # THE HOST THIS TARGETS
 #
 # Debian, rootless Podman, podman-compose, and no .NET SDK — `run.sh` is unusable there, since
@@ -76,6 +92,8 @@
 # Environment:
 #   TUNNEL_TARGET                  what cloudflared points at (default http://localhost:8080)
 #   TUNNEL_URL_WAIT                seconds to wait for the tunnel URL          (default 120)
+#   DEV_INSTANCE_COMPOSE_WAIT      seconds any one compose command may take    (default 240)
+#   DEV_INSTANCE_BUILD_WAIT        seconds the image build may take            (default 5400)
 #   DEV_INSTANCE_READY_WAIT        seconds to wait for /healthz/ready          (default 300)
 #   DEV_INSTANCE_SETTLE_SECONDS    seconds to re-probe the public URL before exiting (default 20)
 #   DEV_INSTANCE_TUNNEL_CONTAINER  the tunnel container's name (default myrestaurant_quicktunnel)
@@ -84,6 +102,7 @@
 #   CLOUDFLARED_IMAGE              fully qualified, so a short-name registry prompt cannot hang an
 #                                  unattended bring-up (default docker.io/cloudflare/cloudflared:latest)
 #   CONTAINER_ENGINE               force podman or docker instead of taking the first on PATH
+#   COMPOSE_PROJECT_NAME           overrides the project name the engine labels containers with
 #   SOURCE_REVISION                stamped into the image; defaults to the checked-out commit
 
 set -euo pipefail
@@ -130,6 +149,8 @@ done
 # ---------------------------------------------------------------------------------------------------
 TUNNEL_TARGET="${TUNNEL_TARGET:-http://localhost:8080}"
 URL_WAIT="${TUNNEL_URL_WAIT:-120}"
+COMPOSE_WAIT="${DEV_INSTANCE_COMPOSE_WAIT:-240}"
+BUILD_WAIT="${DEV_INSTANCE_BUILD_WAIT:-5400}"
 READY_WAIT="${DEV_INSTANCE_READY_WAIT:-300}"
 SETTLE_SECONDS="${DEV_INSTANCE_SETTLE_SECONDS:-20}"
 TUNNEL_CONTAINER="${DEV_INSTANCE_TUNNEL_CONTAINER:-myrestaurant_quicktunnel}"
@@ -177,22 +198,134 @@ else
     die "docker is on PATH but 'docker compose' is not available."
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 3. Container helpers
-# ---------------------------------------------------------------------------------------------------
+# The project name both engines derive from the directory this file sits in, unless the environment
+# overrides it. It is used only to NARROW container discovery below, so nothing breaks if the
+# derivation is wrong: discovery falls back to the service label on its own.
+PROJECT_NAME="${COMPOSE_PROJECT_NAME:-}"
+if [[ -z "$PROJECT_NAME" ]]; then
+    PROJECT_NAME="$(basename "$PWD" | tr '[:upper:]' '[:lower:]' | tr --complement --delete 'a-z0-9_-')"
+fi
 
+# ---------------------------------------------------------------------------------------------------
+# 3. Compose, under a deadline (F-53)
+#
+# `timeout` is coreutils and present on every host this project targets; where it is not, the call
+# runs unguarded and the preflight says so, because silently dropping a safety net is worse than
+# not having one. 124 is timeout's own "the deadline passed"; 137 is what it reports when SIGTERM
+# was ignored and it escalated to SIGKILL. Both mean the same thing to a caller here.
+#
+# Killing a compose command is safe in the one way that matters: the containers it has already
+# created belong to the engine, not to this shell, so they keep running. That is the same property
+# the detached tunnel relies on.
+# ---------------------------------------------------------------------------------------------------
+HAVE_TIMEOUT=0
+if command -v timeout >/dev/null 2>&1; then
+    HAVE_TIMEOUT=1
+fi
+
+# compose_guarded <seconds> <compose arguments...>
+compose_guarded() {
+    local seconds="$1"
+    shift
+
+    local status=0
+    if (( HAVE_TIMEOUT )); then
+        timeout --kill-after=15s "${seconds}s" "${COMPOSE[@]}" "$@" || status=$?
+        if (( status == 124 || status == 137 )); then
+            return 124
+        fi
+    else
+        "${COMPOSE[@]}" "$@" || status=$?
+    fi
+
+    return "$status"
+}
+
+report_deadline() {
+    local seconds="$1"
+    shift
+    warn "'${COMPOSE[*]} $*' did not return within ${seconds}s and was stopped."
+    warn "  That is F-53's shape: podman-compose 1.3.0 starts every container and THEN waits on"
+    warn "  each depends_on condition in an unbounded loop, printing nothing while it waits. The"
+    warn "  containers are normally already running by then, so this is not fatal by itself."
+}
+
+# ---------------------------------------------------------------------------------------------------
+# 4. Container helpers
+#
 # The name of the compose-managed container for a service, or empty. Found by LABEL rather than by
 # guessing at "<project>_<service>_1", because the naming scheme is the engine's business and both
-# engines label what they create.
+# engines label what they create. The project label is tried first, so that a `web` service
+# belonging to a different compose project on the same host cannot be mistaken for this one; the
+# service label alone is the fallback, because the project name is derived here and the engine is
+# the authority on it.
+# ---------------------------------------------------------------------------------------------------
 compose_container() {
-    local service="$1"
-    "$ENGINE" ps --all \
-        --filter "label=com.docker.compose.service=${service}" \
-        --format '{{.Names}}' 2>/dev/null | head -n 1 || true
+    local service="$1" found=""
+
+    if [[ -n "$PROJECT_NAME" ]]; then
+        found="$("$ENGINE" ps --all \
+            --filter "label=com.docker.compose.project=${PROJECT_NAME}" \
+            --filter "label=com.docker.compose.service=${service}" \
+            --format '{{.Names}}' 2>/dev/null | head -n 1 || true)"
+    fi
+
+    if [[ -z "$found" ]]; then
+        found="$("$ENGINE" ps --all \
+            --filter "label=com.docker.compose.service=${service}" \
+            --format '{{.Names}}' 2>/dev/null | head -n 1 || true)"
+    fi
+
+    printf '%s\n' "$found"
 }
 
 container_state() {
     "$ENGINE" inspect --format '{{.State.Status}}' "$1" 2>/dev/null || true
+}
+
+# The health status of a container, or empty when it has no healthcheck. REPORTED, never waited on,
+# and that distinction is the whole of F-53: a health status of "starting" that never advances is
+# exactly what hung the documented command, so this prints it and moves on. It is worth printing
+# because it is also the fastest way to tell an operator that their database is genuinely unwell.
+container_health() {
+    "$ENGINE" inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$1" 2>/dev/null || true
+}
+
+# One line describing a service, on stdout. Callers redirect: `status` writes to stdout because that
+# is its output, and `up` writes to stderr because `up` puts nothing on stdout at all.
+describe_service() {
+    local service="$1" name state health
+    name="$(compose_container "$service")"
+    if [[ -z "$name" ]]; then
+        printf '  %-10s not created\n' "${service}:"
+        return 0
+    fi
+
+    state="$(container_state "$name")"
+    health="$(container_health "$name")"
+    if [[ -n "$health" ]]; then
+        printf '  %-10s %s (%s, health: %s)\n' "${service}:" "$name" "${state:-unknown}" "$health"
+    else
+        printf '  %-10s %s (%s)\n' "${service}:" "$name" "${state:-unknown}"
+    fi
+}
+
+# Start a container the engine already knows about but which is not running. Engine-level and
+# deliberately not a compose call: the repair needed after a compose command was cut short is
+# "start what was created", and asking compose again invites the same wait that was just abandoned.
+start_if_stopped() {
+    local service="$1" name state
+    name="$(compose_container "$service")"
+    [[ -n "$name" ]] || return 1
+
+    state="$(container_state "$name")"
+    if [[ "$state" == "running" ]]; then
+        return 0
+    fi
+
+    log "starting ${name} (it is ${state:-absent})…"
+    "$ENGINE" start "$name" >/dev/null 2>&1 || return 1
+    [[ "$(container_state "$name")" == "running" ]]
 }
 
 tunnel_is_running() { [[ "$(container_state "$TUNNEL_CONTAINER")" == "running" ]]; }
@@ -207,7 +340,7 @@ tunnel_url() {
 }
 
 # ---------------------------------------------------------------------------------------------------
-# 4. HTTP probing without assuming the host has an HTTP client
+# 5. HTTP probing without assuming the host has an HTTP client
 #
 # A machine chosen for having Podman on it is not necessarily a machine with curl on it. Three ways
 # are tried in order of directness, and the last one is the reason this works on a bare host: the
@@ -236,7 +369,7 @@ http_ok() {
     "$ENGINE" exec "$web" curl --fail --silent --output /dev/null --max-time 10 "$url" >/dev/null 2>&1
 }
 
-# Poll $1 until it answers, $2 seconds pass, or the tunnel container dies.
+# Poll $1 until it answers, $2 seconds pass, or there is no way to ask.
 #   0 answered | 1 timed out | 2 no way to probe
 wait_for_http() {
     local url="$1" seconds="$2" deadline outcome
@@ -254,7 +387,7 @@ wait_for_http() {
 }
 
 # ---------------------------------------------------------------------------------------------------
-# 5. Commands other than `up`
+# 6. Commands other than `up`
 # ---------------------------------------------------------------------------------------------------
 read_recorded_url() {
     [[ -f "$STATE_FILE" ]] || return 1
@@ -283,6 +416,7 @@ case "$COMMAND" in
     status)
         echo "engine:   ${ENGINE}"
         echo "compose:  ${COMPOSE[*]}"
+        echo "project:  ${PROJECT_NAME:-<unknown>}"
         echo "state:    ${STATE_FILE}"
         if tunnel_exists; then
             echo "tunnel:   ${TUNNEL_CONTAINER} ($(container_state "$TUNNEL_CONTAINER"))"
@@ -297,8 +431,20 @@ case "$COMMAND" in
                 echo "url:      ${recorded} (last recorded; the tunnel is not running, so that URL is dead)"
             fi
         fi
+
+        # Read straight from the engine, and before compose is asked anything: these two lines are
+        # the facts an operator needs, and they arrive even on a host where compose itself is stuck.
         echo
-        "${COMPOSE[@]}" ps || true
+        echo "containers (engine):"
+        describe_service postgres
+        describe_service web
+
+        echo
+        status_result=0
+        compose_guarded "$COMPOSE_WAIT" ps || status_result=$?
+        if (( status_result == 124 )); then
+            report_deadline "$COMPOSE_WAIT" ps
+        fi
         exit 0
         ;;
 
@@ -315,8 +461,20 @@ case "$COMMAND" in
             log "closing the quick tunnel (${TUNNEL_CONTAINER}) — its URL dies here."
             "$ENGINE" rm --force "$TUNNEL_CONTAINER" >/dev/null 2>&1 || true
         fi
+
         log "stopping the stack…"
-        "${COMPOSE[@]}" down || true
+        down_result=0
+        compose_guarded "$COMPOSE_WAIT" down || down_result=$?
+        if (( down_result == 124 )); then
+            report_deadline "$COMPOSE_WAIT" down
+            warn "  removing the containers directly instead; the named volumes are untouched."
+            for service in web postgres; do
+                container="$(compose_container "$service")"
+                [[ -n "$container" ]] || continue
+                "$ENGINE" rm --force "$container" >/dev/null 2>&1 || true
+            done
+        fi
+
         rm -f "$STATE_FILE" 2>/dev/null || true
         log "down. Named volumes are untouched: the database and the Data Protection key ring survive."
         exit 0
@@ -324,7 +482,7 @@ case "$COMMAND" in
 esac
 
 # ---------------------------------------------------------------------------------------------------
-# 6. `up` — preflight
+# 7. `up` — preflight
 # ---------------------------------------------------------------------------------------------------
 [[ -f "compose.yaml" ]] || die "compose.yaml is not here; run this from a checkout of the repository."
 
@@ -332,6 +490,7 @@ if [[ ! -f ".env" ]]; then
     warn "no .env in this checkout, so compose is using the development defaults from compose.yaml —"
     warn "  including POSTGRES_PASSWORD=myrestaurant. Fine for a tester instance on a private network."
     warn "  'cp .env.example .env' first if this box is reachable by anything you do not control."
+    warn "  Nothing here writes that file for you (F-54): copying it is a decision, not a formality."
 fi
 
 # The origin has to come from this script, and the environment is how it gets there. Compose gives
@@ -342,8 +501,25 @@ if [[ -f ".env" ]] && grep --quiet --extended-regexp '^[[:space:]]*RESTAURANT_PU
     warn "  (the process environment beats .env), so that line will not be what is served."
 fi
 
+# The compose file in this checkout is the one about to be handed to the engine, and a health-gated
+# dependency in it is what hung the first run of this script (F-53). One grep buys an operator who
+# pulled a branch, or resolved a merge the wrong way, a sentence naming the cause instead of a
+# terminal that stops.
+if grep --quiet --extended-regexp '^[[:space:]]*condition:[[:space:]]*service_healthy' compose.yaml; then
+    warn "compose.yaml declares a 'condition: service_healthy' dependency (F-53)."
+    warn "  podman-compose 1.3.0 waits on that condition forever, printing nothing, AFTER it has"
+    warn "  already started every container — so 'up -d' can simply never return on this host."
+    warn "  The deadline below cuts that short, but the file should say 'service_started'."
+fi
+
 if [[ -z "$PROBE" ]]; then
     log "no curl or wget on this host; readiness will be probed with the curl inside the web container."
+fi
+
+if (( ! HAVE_TIMEOUT )); then
+    warn "no 'timeout' on this host, so compose commands run with no deadline (F-53)."
+    warn "  If one stops printing and never returns, Ctrl+C is safe: the containers it already"
+    warn "  started belong to the engine and keep running. '$0 status' will show them."
 fi
 
 LINGER="unknown"
@@ -358,23 +534,35 @@ fi
 export SOURCE_REVISION
 
 # ---------------------------------------------------------------------------------------------------
-# 7. `up` — build the image before anything announces a URL
+# 8. `up` — build the image before anything announces a URL
+#
+# The build gets its own, far longer deadline: a cold `dotnet publish` inside the SDK image was
+# measured at nineteen minutes on this hardware, and a watchdog that cuts off a legitimate build
+# would be a worse defect than the one it guards against.
 # ---------------------------------------------------------------------------------------------------
 if (( NO_BUILD )); then
     log "skipping the build (--no-build); the existing image will be used."
 else
     log "building the web image — the .NET SDK runs INSIDE the builder, so this host needs no dotnet."
     log "  on a cold host with nothing cached this is tens of minutes. Nothing is public yet."
+
+    build_arguments=(build web)
     if (( NO_CACHE )); then
-        "${COMPOSE[@]}" build --no-cache web
-    else
-        "${COMPOSE[@]}" build web
+        build_arguments=(build --no-cache web)
     fi
+
+    build_result=0
+    compose_guarded "$BUILD_WAIT" "${build_arguments[@]}" || build_result=$?
+    if (( build_result == 124 )); then
+        report_deadline "$BUILD_WAIT" "${build_arguments[@]}"
+        die "the image build did not finish within ${BUILD_WAIT}s. Nothing has been published."
+    fi
+    (( build_result == 0 )) || die "the image build failed (exit ${build_result}). Nothing has been published."
     log "image built."
 fi
 
 # ---------------------------------------------------------------------------------------------------
-# 8. `up` — the tunnel, as a detached container this script does not own
+# 9. `up` — the tunnel, as a detached container this script does not own
 # ---------------------------------------------------------------------------------------------------
 if (( NEW_URL )) && tunnel_exists; then
     log "--new-url: discarding the existing tunnel. Passkeys registered against its URL stop working."
@@ -418,12 +606,41 @@ fi
 log "public URL: ${PUBLIC_URL}"
 
 # ---------------------------------------------------------------------------------------------------
-# 9. `up` — the stack, created with the real origin already in hand
+# 10. `up` — the stack, created with the real origin already in hand
+#
+# One invocation, under a deadline, with the build already done. No extra flags: podman-compose and
+# docker compose both build only what is missing on a plain `up`, so the image built in section 8 is
+# reused, and a flag this script does not need is one more thing that can be unsupported on some
+# host nobody tested.
 # ---------------------------------------------------------------------------------------------------
 export RESTAURANT_PUBLIC_ORIGIN="$PUBLIC_URL"
 
-log "starting postgres and web against that origin…"
-"${COMPOSE[@]}" up -d
+log "starting postgres and web against that origin (deadline ${COMPOSE_WAIT}s)…"
+up_result=0
+compose_guarded "$COMPOSE_WAIT" up -d || up_result=$?
+
+if (( up_result == 124 )); then
+    report_deadline "$COMPOSE_WAIT" up -d
+elif (( up_result != 0 )); then
+    warn "'${COMPOSE[*]} up -d' exited ${up_result}. What the containers are doing is below."
+fi
+
+log "containers (engine):"
+describe_service postgres >&2
+describe_service web >&2
+
+# Readiness means nothing until both containers are running, and "created but never started" is a
+# state a cut-short compose command can leave behind — so it is repaired here rather than reported.
+for service in postgres web; do
+    service_container="$(compose_container "$service")"
+    if [[ -z "$service_container" ]]; then
+        die "no '${service}' container exists — '${COMPOSE[*]} up -d' never created it (output above)."
+    fi
+    if [[ "$(container_state "$service_container")" != "running" ]]; then
+        start_if_stopped "$service" \
+            || die "'${service_container}' is not running and would not start. Read: ${ENGINE} logs ${service_container}"
+    fi
+done
 
 log "waiting for ${TUNNEL_TARGET}/healthz/ready (up to ${READY_WAIT}s; first boot runs the migrations)…"
 ready=0
@@ -434,11 +651,12 @@ case "$ready" in
     *)
         warn "the app did not answer /healthz/ready within ${READY_WAIT}s."
         warn "  the stack is left running so you can read it: ${COMPOSE[*]} logs web"
+        warn "  a database that never came up shows as such in: $0 status"
         ;;
 esac
 
 # ---------------------------------------------------------------------------------------------------
-# 10. `up` — record where this instance lives
+# 11. `up` — record where this instance lives
 # ---------------------------------------------------------------------------------------------------
 mkdir -p "$STATE_DIRECTORY"
 {
@@ -446,12 +664,13 @@ mkdir -p "$STATE_DIRECTORY"
     echo "PUBLIC_URL=${PUBLIC_URL}"
     echo "TUNNEL_CONTAINER=${TUNNEL_CONTAINER}"
     echo "ENGINE=${ENGINE}"
+    echo "PROJECT_NAME=${PROJECT_NAME}"
     echo "SOURCE_REVISION=${SOURCE_REVISION:-not recorded}"
     echo "STARTED_AT=$(date --iso-8601=seconds 2>/dev/null || date)"
 } > "$STATE_FILE"
 
 # ---------------------------------------------------------------------------------------------------
-# 11. `up` — say it, then prove it, then let go of the terminal
+# 12. `up` — say it, then prove it, then let go of the terminal
 # ---------------------------------------------------------------------------------------------------
 cat >&2 <<BANNER
 

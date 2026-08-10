@@ -1,10 +1,22 @@
-# M6 Slice 26 — the stack that would not start anywhere else
+# M6 Slice 27 — the command that started everything and never came back
 
-Two findings, one new script, one behavioural fix to `compose.yaml`, and the documentation that has to
-move with them. No C#, no Razor, no migration, no test. **Test count is unchanged at 1056.**
+**Findings closed:** F-53 (the documented bring-up command never returns), F-54 (a runbook step
+asserting behaviour no script has).
 
-Extract this archive at the repository root. Every file in it is a complete file at its exact
-repo-relative path.
+Extract this archive at the repository root. Every file in it is complete; nothing is a patch.
+
+```bash
+cd ~/src/dotnet/myrestaurant
+tar -xzf m6-slice-27-compose-dependency-hang.tar.gz
+git add tests/MyRestaurant.WebApplication.Tests/Deployment
+git status
+```
+
+**Before anything else, on virginia**, because the killed run left containers behind:
+
+```bash
+bash scripts/dev_instance.sh down
+```
 
 ---
 
@@ -12,257 +24,193 @@ repo-relative path.
 
 | Path | New? | Why |
 |---|---|---|
-| `scripts/dev_instance.sh` | **new** | The script this slice is for. Detached demo instance on a host with no .NET SDK. |
-| `compose.yaml` | changed | F-51: fully-qualified image references. Plus `SOURCE_REVISION` as a build arg. |
-| `.env.example` | changed | Documents the new script's knobs, and warns against pinning `RESTAURANT_PUBLIC_ORIGIN`. |
-| `README.md` | changed | F-52: corrects the "cannot print a URL and exit" claim; adds the new script to the inventory and to Prerequisites. |
-| `docs/TECHNICAL_SPECIFICATION.md` | changed | §14.1 image rule; new §14.3a; Appendix A F-51/F-52; header **v1.11** and matching changelog entry. |
-| `docs/OPERATIONS.md` | changed | §1 profile table gains a third column; §10 corrected; new §10a runbook. |
-| `docs/adr/0005-origins-and-tls-cloudflare-named-tunnel.md` | changed | New point 7: tunnel lifetime is a property of ownership, not of tunnels. |
-| `docs/DOCUMENTATION_REVIEW.md` | changed | F-51 and F-52 ledger rows, plus the closing narrative. |
-| `docs/BUILD_PROGRESS.md` | changed | Slice 26 section appended. Ships whole, as every archive does now. |
-| `_CHANGES.md` | changed | This file. |
+| `compose.yaml` | | The fix. `web`'s dependency on `postgres` is `service_started`, not `service_healthy` |
+| `scripts/dev_instance.sh` | | Every compose call under a deadline; health reported; created-but-not-started repaired |
+| `tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeDependencyContractTests.cs` | **new** | Three facts asserting the rule on every `dotnet test` |
+| `docs/TECHNICAL_SPECIFICATION.md` | | v1.12: §14.1 prohibition, §14.3a deadline, §16.4 test, Appendix A F-53/F-54, changelog |
+| `docs/DOCUMENTATION_REVIEW.md` | | F-53 and F-54 rows, status line, two closing paragraphs |
+| `docs/OPERATIONS.md` | | §2 `.env` correction, §10a deadline + troubleshooting + `--no-build` row |
+| `docs/BUILD_PROGRESS.md` | | Slice 27 entry (ships whole) |
+| `README.md` | | The two `compose.yaml` rules, the deadline, the `.env` correction |
+| `_CHANGES.md` | | This file |
 
-## Files to DELETE
+**Files to DELETE: none.**
 
-**None.** Nothing in the tree is superseded by this slice. In particular
-`scripts/quick_tunnel.sh` **stays** — see the ruling below.
+**`git add` reminder:** `tests/MyRestaurant.WebApplication.Tests/Deployment/` is a new directory. The
+gate scripts enumerate with `git ls-files`, so an untracked file is invisible to `check_tree.sh` and to
+`ComposeDependencyContractTests`' own hygiene checks. `git add` it before running the gates.
 
-## After extracting
+---
+
+## What was actually wrong
+
+The hang is not in the script. It is in `podman-compose up -d`.
+
+podman-compose 1.3.0 — Debian trixie's version, and podman-compose is the canonical engine (ADR-0004) —
+implements `up -d` as `podman run -d` for **every** container, followed by a wait on each dependency's
+`depends_on` condition, in an unbounded `while True:` loop whose only two exits are logged at *debug*
+level. `compose.yaml` asked `web` to wait for `postgres` to be `service_healthy`; the health status
+never advanced past `starting`; the loop ran once a second forever.
+
+Your four output lines map exactly onto four calls:
+
+| Line | Call |
+|---|---|
+| `331b32fc…` | `podman pod create` |
+| pull, then `c7ba751d…` | `podman run -d` (postgres) |
+| `myrestaurant_postgres_1` | `podman start`, echoing the name |
+| `6fe37290…` | `podman run -d` (web) |
+| *nothing* | `check_dep_conditions()` → `podman wait --condition=healthy` |
+
+Upstream: issues **#1178** (reported from Debian, with a `Ctrl+C` traceback landing on precisely those
+frames) and **#1183**, which names the design error — dependents are started first and the conditions
+checked afterwards, so the wait can only delay a return.
+
+**Your instance was serving the whole time.** Both containers were started before the wait began. The
+only thing that was broken was the terminal coming back.
+
+## Decisions, and why
+
+**1. The condition is prohibited, not worked around.** `service_started` is now the only condition
+`compose.yaml` may use (§14.1, beside F-51's fully-qualified-images rule).
+
+Three reasons it had to be a prohibition:
+
+- **There is no flag.** `--no-deps` is accepted by `up`'s parser in 1.3.0 and consulted only by
+  `compose_run`. Splitting into `up -d postgres` then `up -d web` does not help either: `get_excluded`
+  subtracts a named service's dependencies from the exclusion set, so `up -d web` processes `postgres`
+  too and reaches the same wait.
+- **Satisfiability is a property of the host.** A health status advances only if something runs the
+  healthcheck, and under rootless Podman that is a transient systemd timer in your user session.
+  Upstream's own fix (PR #1184) says it in a commit title: *run the healthy state validation only when
+  systemd is available*.
+- **It was never needed.** `SchemaMigrationRunner` retries a connection failure thirty times at
+  two-second intervals, and the comment beside it, written in M1, says what for: *"at compose start the
+  web container can race PostgreSQL"*. `web` losing that race is a race the code was written to lose
+  safely.
+
+The health**check** on `postgres` stays. `podman ps` reads it, `dev_instance.sh status` prints it, and
+an operator debugging a sick database needs it. It simply stops standing between `up -d` and returning.
+
+`caddy` and `cloudflared` moved from the list form to the explicit mapping form with
+`condition: service_started`. Identical semantics — both engines normalize the list form to exactly
+that — written out so the file states the rule everywhere it applies.
+
+**2. Every compose call runs under a deadline, and that outlives the cause.** `compose.yaml` is fixed;
+podman-compose is not, and the next blocking path will arrive by some other route. A script whose whole
+purpose is to hand the terminal back must not contain a call that can keep it (§14.3a).
+
+- `DEV_INSTANCE_COMPOSE_WAIT`, default 240s, for ordinary commands.
+- `DEV_INSTANCE_BUILD_WAIT`, default 5400s, for the image build — a watchdog that cut off your
+  legitimate nineteen-minute cold build would be a worse defect than the one it guards against.
+- A tripped deadline is **not** treated as failure: F-53 is named, both services' state *and health*
+  are printed straight from the engine, anything created-but-not-started is started, and
+  `/healthz/ready` is verified independently of compose.
+- `status` prints those engine-read lines *before* asking compose anything, so they arrive even when
+  compose is wedged. `down` falls back to removing the containers directly.
+- Killing compose is safe in the one way that matters, and it is the same property the detached tunnel
+  relies on: containers it already created belong to the engine, not to this shell.
+
+**3. `service_healthy` is grepped for in the preflight.** The file about to be handed to the engine is
+the one in your checkout, so a branch or a bad merge that reintroduces the condition gets a sentence
+naming the cause instead of a terminal that stops.
+
+**4. Two smaller things found while in the file.** `compose_container` filtered on
+`com.docker.compose.service` alone — the correct label, podman-compose does set it — so a `web` service
+from any other compose project on the host could have matched; it now tries a project-scoped filter
+first and falls back, because the project name is derived here and the engine is the authority.
+`container_health` is new: reported, never waited on, which is the entire distinction this slice is
+about.
+
+**5. F-54 — the `.env` claim, ruled against the document.** `OPERATIONS.md` §2 said *"`run.sh` and the
+scripts do this automatically when `.env` is absent — F-16"*. All nine scripts were grepped; none writes
+`.env`. The citation is accurate: F-16's row in `DOCUMENTATION_REVIEW.md` really does say that. So this
+is a decision that was recorded and never implemented, then restated in the indicative by the runbook
+depending on it — F-38's shape, pointed inward.
+
+**Ruled the other way: the document is wrong, the scripts are right, and that clause of F-16's ruling is
+reversed rather than implemented.** Materialising `.env.example` would write an untracked file carrying
+`POSTGRES_PASSWORD=myrestaurant` that nobody knowingly created, on a path `.gitignore` hides from every
+tool that reads the tree — F-45's class of artefact, arriving by a different door. And because the stack
+starts without it, auto-creation buys nothing except the removal of the one moment an operator is
+supposed to decide about credentials.
+
+**This is yours to overrule.** If you want the scripts to create `.env`, say so and it moves to the
+other side in a slice of its own; F-16's row then needs a note either way.
+
+## Verification
+
+No SDK and no container engine available, so everything that could be executed was.
+
+- **podman-compose 1.3.0's source fetched and read** — `compose_up`, `run_container`,
+  `check_dep_conditions`, `get_excluded`, the healthcheck translation, `ServiceDependencyCondition`, and
+  `Podman.run`'s contract (returns an exit code, never raises). 1.2.0, 1.3.0, 1.4.0 and `main` compared:
+  `main` has the fix and honours `--no-deps`; 1.3.0 has neither.
+- **`scripts/dev_instance.sh` run end to end against fake `podman` / `podman-compose` / `curl`
+  stand-ins.** The `up` path completes, exit 0, banner and settle phase included. Then, individually:
+  - compose starts the containers then hangs, `postgres` health pinned at `starting` — **your exact
+    failure**: deadline trips, F-53 named, containers reported `running, health: starting`, readiness
+    verified, terminal released in **3 seconds**.
+  - compose creates but does not start, then hangs: the repair path runs —
+    `starting build_postgres_1 (it is created)`.
+  - compose wedged from the first call: `status` reports engine facts first; `down` removes both
+    containers directly and leaves nothing behind.
+- **Preflight grep proven sensitive**: silent on the delivered file, fires with all four lines when the
+  old condition is planted back.
+- **`bash -n` clean; `shellcheck` clean at `--severity=warning` and `--severity=style`.** Baselined
+  against all nine existing scripts first, so the installed shellcheck agrees with CI's on this tree.
+- **`compose.yaml` parsed with a real YAML parser**: four services, three edges, all `service_started`,
+  twenty `web` environment keys.
+- **`ComposeDependencyContractTests` ported to Python, run, and proven sensitive** one regression at a
+  time: `service_healthy` on three edges, on one edge, `service_completed_successfully`, a dangling
+  dependency target, all `depends_on` removed (fact 1's non-vacuity guard), and a broken `services:`
+  marker (throws rather than passing vacuously). The **list form passes** — deliberately, since both
+  engines normalize it to `service_started` and failing it would report a finding on a correct file
+  (F-41).
+- **`ConfigurationSurfaceTests`' compose scan re-run**: still twenty keys, no duplicates,
+  `RESTAURANT_SOURCE_URL` present, `SOURCE_REVISION` not miscounted. Block boundaries moved (web
+  38→98 became 56→121) because comments were added — which is why that test computes them.
+- **`SpecificationVersionTests` ported and run**: header 1.12, entries descending. `Version.TryParse`
+  reads `1.12` as minor twelve, so it sorts above 1.11 — checked, because a string compare gets it
+  backwards.
+- **Brace/paren/bracket balance walked** over the new C# file (string- and comment-aware), with
+  `ConfigurationSurfaceTests` as a control. Both balanced.
+- **Every documentation edit by exact-match replacement, asserting the anchor occurs exactly once.**
+- **Byte hygiene on every file**: LF only, one final newline, no CR, no whitespace-only lines, no
+  trailing whitespace, no context-dump separator.
+
+**Test count: 1056 → 1059.** Three `[Fact]` methods, none removed, no `[Theory]`. That is arithmetic,
+not an observation — nothing here has compiled.
+
+## What is not verified
+
+**The fix has not been watched working on virginia.** The claim is that `service_started` makes
+`check_dep_conditions` wait on `--condition=running` against a container that is already running, which
+returns immediately. That is read out of podman-compose's source and podman's documented `wait`
+semantics. The deadline is why a wrong answer there is survivable rather than another silent hang.
+
+**Nothing has compiled.** The new test file is balanced, its logic ported and exercised, and its idioms
+copied from a file in this tree that compiles — but `dotnet build` has not seen it.
+
+## After you extract
 
 ```bash
-git add scripts/dev_instance.sh
+bash scripts/dev_instance.sh down          # first: clear the containers the killed run left
+git add tests/MyRestaurant.WebApplication.Tests/Deployment
+bash scripts/check_tree.sh
+bash scripts/dev_instance.sh               # on virginia
 ```
 
-Required. `scripts/check_tree.sh` and the CI `shell-scripts` job both enumerate with
-`git ls-files`, so an unadded script is a script no gate looks at.
+On the Fedora box, `dotnet test` is the one that matters — it is the first thing to compile the new
+file.
 
----
+Expected on virginia, in order: the `.env` warning (four lines now), the build (cached, seconds), the
+tunnel URL — **reused**, since `down` removes the tunnel, so this run mints a new one and any passkey
+registered against `state-dust-pty-cfr` is gone either way — then `starting postgres and web … (deadline
+240s)`, then two `containers (engine):` lines with `postgres: … running, health: healthy`, then `the app
+is ready on this host`, the banner, and the terminal back.
 
-## The two findings
-
-### F-51 — the canonical stack could not start on a stock Debian
-
-`compose.yaml` named `postgres:17-alpine` and `caddy:2-alpine` by short name. A short name is not an
-image reference, it is a query resolved through `unqualified-search-registries` in
-`/etc/containers/registries.conf` — which Fedora's `containers-common` populates and a stock Debian
-ships commented out. On Debian, rootless Podman answers `podman-compose up` with:
-
-```
-Error: short-name "postgres:17-alpine" did not resolve to an alias and no
-       unqualified-search registries are defined in "/etc/containers/registries.conf"
-Error: no container with name or ID "myrestaurant_postgres_1" found: no such container
-Error: "myrestaurant_postgres_1" is not a valid container, cannot be used as a dependency
-```
-
-Errors two and three are consequences of error one, and none of the three names `compose.yaml`.
-
-**Nothing in this repository could have caught it.** `check_tree.sh` reads tracked text and this file
-is correct as text. `ConfigurationSurfaceTests` audits this exact file — the `environment` mapping,
-four lines below the `image:` line. CI runs on Ubuntu with Docker, which resolves short names. And no
-test starts `compose.yaml` at all: the Testcontainers fixtures build their own container
-specification, boot-smoke boots the image with an environment the workflow supplies.
-
-**The rule already existed, applied to one place.** `scripts/restore_drill.sh` has defaulted
-`DRILL_POSTGRES_IMAGE` to `docker.io/library/postgres:17-alpine` since Slice 16, with the reason
-written beside it. Somebody solved this once, for a scratch container in a rehearsal, and left the
-stack being rehearsed alone.
-
-### F-52 — two documents explained why something was impossible
-
-`README.md` said a quick tunnel *"cannot 'print a URL and exit', because exiting kills the URL"*.
-OPERATIONS §10 said *"there is no detached mode … because the tunnel dies with the process that owns
-it"* — a sentence containing its own refutation. The tunnel does die with its owner, and
-`quick_tunnel.sh` **is** the owner, because it runs `cloudflared` as a foreground child and blocks on
-it. Ownership is a choice: as a detached container, the engine owns it and the shell can exit.
-
-The cost was the closed door. The case that needed it — a spare LAN machine over SSH, no .NET SDK,
-serving testers for days — had been documented as impossible for four milestones.
-
----
-
-## Decisions, and how to reverse each one
-
-### 1. A second script rather than a flag on `quick_tunnel.sh`
-
-`quick_tunnel.sh` is unchanged and stays. Its foreground shape is correct for a demo somebody is
-standing in front of: the URL dies with the terminal, which is the safe default for a throwaway. The
-detached shape has an obligation attached — `down` is the only thing that stops it — and folding both
-into one script with a `--detach` flag means one of the two behaviours is a surprise. Two scripts, two
-names, two runbooks (§14.3 and §14.3a).
-
-*Reverse:* delete `scripts/dev_instance.sh`. Nothing else depends on it.
-
-### 2. Fully-qualified image references — **required, not optional**
-
-`docker.io/library/postgres:17-alpine` and `docker.io/library/caddy:2-alpine`. Valid on Docker
-(`docker.io/library/…` is the canonical long form of a Hub library image), required on Debian Podman.
-**The new script cannot work without this**, because it is `podman-compose up` underneath.
-
-*Reverse:* delete the two `docker.io/library/` prefixes, and accept that the canonical stack does not
-start on a stock Debian.
-
-### 3. `SOURCE_REVISION` as a compose build argument — optional
-
-```yaml
-      args:
-        SOURCE_REVISION: ${SOURCE_REVISION:-}
-```
-
-`dev_instance.sh` sets it from `git rev-parse HEAD`, so `/source` names the commit a tester actually
-reached instead of "not recorded" — worth having when bug reports arrive from testers.
-
-**Empty default, on F-50's ruling.** `Containerfile`'s own `ARG SOURCE_REVISION=` is the one place the
-fallback lives, and it renders an unstamped build as *not recorded* rather than guessing. Repeating a
-value here would override the one place the default is written down, which is F-50 one layer up.
-
-**Placement is load-bearing and was proven, not assumed.** `ConfigurationSurfaceTests` reads the `web`
-service's environment keys by indentation, and `      args:` is a six-space key — the same depth as an
-environment key. It sits **above** `environment:`, so it falls outside the scanned span. Verified by
-porting the scan and running it against the delivered file (twenty keys, `SOURCE_REVISION` absent), and
-proven sensitive by moving the same block below `environment:` (twenty-one keys, `SOURCE_REVISION`
-present, F-50's assertion would fail).
-
-**Failure mode if wrong is benign:** an engine that ignored `build.args` would produce an unstamped
-image, not a broken one.
-
-*Reverse:* delete the `args:` key and its two lines. The `Containerfile` `ARG` default takes over.
-
-### 4. F-51 is deliberately **not** made executable
-
-This declines F-38's habit — a row in the embodiment column names something that runs — for the first
-time in eight applications, on F-41's reasoning. The available check is "no `image:` value lacks a
-registry component": a text assertion about a file whose contract is behavioural. It would pass on a
-tree where the images are qualified and the stack still cannot start for the next reason, and it would
-report a finding the day somebody legitimately references a local image. What catches this class is a
-CI job that runs the canonical stack on the canonical engine, which is recorded as an open item rather
-than closed with a grep that resembles one.
-
-### 5. State lives outside the repository
-
-`${XDG_STATE_HOME:-~/.local/state}/myrestaurant/dev-instance.env`. No `.gitignore` change, nothing for
-`check_tree.sh` to classify, and no untracked file appearing in a working tree an operator might
-commit. The running tunnel's log is the source of truth for the URL; the file is a cache for `url`
-after the tunnel is gone.
-
-### 6. Order of operations: build → tunnel → stack
-
-The one thing in the script that is a fix rather than a feature.
-
-`quick_tunnel.sh` opens the tunnel and *then* builds. On the cold Debian host that produced F-51 the
-public URL was printed at minute zero and the application became reachable nineteen minutes later.
-
-Building first means the tunnel URL is in hand **before** `web` is created, so `RESTAURANT_PUBLIC_ORIGIN`
-is exported and `up -d` runs once. That also avoids `up --force-recreate web`, whose behaviour is not
-what its name suggests. From podman-compose 1.3.0 `compose_up`:
-
-```python
-if args.force_recreate or len(diff_hashes):
-    down_args = argparse.Namespace(**dict(args.__dict__, volumes=False))
-    await compose.commands["down"](compose, down_args)
-```
-
-It is a `down` of the **whole project**, then an `up` of the named service — it restarts the database
-and deletes and recreates the network. Both of your terminal logs show this as an unexplained network
-id appearing twice.
-
-The engine's own recreate-on-change is relied on instead, and it is sound: `self.yaml_hash` is computed
-*after* `rec_subs(content, self.environ)`, so a changed origin is a changed config hash and a later run
-with a new URL recreates by itself.
-
-### 7. A second `up` reuses the hostname
-
-Not an optimisation. `*.trycloudflare.com` is on the Public Suffix List and the subdomain is random per
-tunnel, so a tester's registered passkey is bound to that exact hostname. Restart the app, rebuild after
-a `git pull`, reboot the host — the hostname holds as long as the tunnel container does. `--new-url` is
-how to discard it deliberately, and it says what it is about to break.
-
-### 8. Probing without assuming the host has an HTTP client
-
-`curl`, then `wget`, then the `curl` the runtime image installs for its own compose healthcheck, reached
-with `podman exec`. The third path is why this works on a minimal Debian: it is a client guaranteed to
-exist whenever there is anything worth probing, and it reaches both the application (it *is* the
-application) and the public URL (same egress as the tunnel).
-
-### 9. Engine and compose chosen together; containers found by label
-
-The engine is selected first and the compose command selected *for it*. Two independent `PATH` searches
-can disagree on a host with both engines, leaving the stack in one store while `logs`, `exec` and `rm`
-look in the other — F-43 with a different pair of commands. Containers are found with
-`--filter label=com.docker.compose.service=web` rather than by guessing `<project>_web_1`; both engines
-label what they create.
-
----
-
-## What was verified
-
-No .NET SDK and no container engine available, so everything below is a check that could actually run.
-
-- `bash -n` and `shellcheck` on `scripts/dev_instance.sh` at `--severity=warning` (blocking in CI) and
-  `--severity=style` (advisory). Clean at both. Baselined against the nine existing scripts first, to
-  confirm the installed shellcheck agrees with CI's on this tree.
-- podman-compose 1.3.0 **read, not remembered**, for the four behaviours the design rests on: `.env`
-  does not beat the process environment (lines 1927–1928); `build.args` is forwarded as `--build-arg`
-  (line 2516); `build` accepts a service name; `up --force-recreate` downs the whole project.
-- `compose.yaml` parsed with a real YAML parser and the parsed document inspected.
-- `ConfigurationSurfaceTests` ported to Python and run against the edited tree — all three restatement
-  assertions pass; compose scan reports the same twenty keys with the same block boundaries. Sensitivity
-  proven by planting the `args` block in the wrong place.
-- `SpecificationVersionTests` ported and run: header **1.11**, entries 1.11 … 1.0 descending. Note
-  `Version.TryParse` reads `1.11` as minor **eleven**, so it sorts above 1.10 — checked, because a
-  string comparison gets it backwards.
-- Every documentation edit applied by exact-match replacement, asserting the anchor occurs exactly once.
-  Nothing edited by position.
-- Byte hygiene on every delivered file: LF endings, exactly one final newline, no CR, no whitespace-only
-  lines, no trailing whitespace, no context-dump separator.
-
-## What was NOT verified
-
-**`scripts/dev_instance.sh` has never been executed.** A parser and a linter have looked at it; nothing
-else. Everything it does to a container engine is reasoned from podman-compose's source and your two
-terminal logs. Expect a second pass after the first real run.
-
-**F-51's fix has not been observed to work.** Fully-qualified names resolving without
-`unqualified-search-registries` is how the registry code is documented to behave and how
-`restore_drill.sh` has behaved since Slice 16 — but the machine that produced the error has not run the
-corrected file.
-
----
-
-## Suggested first run on the test host
-
-```bash
-cd ~/src/dotnet/myrestaurant
-git pull
-git add scripts/dev_instance.sh
-
-bash scripts/dev_instance.sh --help
-time bash scripts/dev_instance.sh
-
-bash scripts/dev_instance.sh url
-bash scripts/dev_instance.sh status
-```
-
-Then the thing this slice is actually about — **close the SSH session, reconnect, and check the URL
-still answers.** If it does not, the linger line the script printed is where to look.
-
-To confirm F-51 independently, before any of the above:
-
-```bash
-podman-compose config | grep image:
-podman-compose up -d postgres
-```
-
-The second command is the one that produced three errors before this slice.
-
-## Still open
-
-- **A CI job that runs the canonical stack on the canonical engine.** F-51's real embodiment, not in
-  this slice. Nothing CI does today executes `compose.yaml`.
-- **`OPERATIONS.md` §2 asserts behaviour no code has** — it says `.env` is created automatically by
-  `run.sh` and the scripts. All nine were grepped; none touches `.env`. That is F-38's shape aimed
-  inward and deserves its own slice, because the interesting question is which side is right.
-  `dev_instance.sh` warns rather than creating, which is the conservative choice while it is open.
-- `Permissions-Policy`, carried forward from Slice 24.
-- Two operator actions no archive can contain: private vulnerability reporting, and the repository
-  description (F-42).
+If `postgres` reports `health: starting` and never changes, that is the root cause of F-53 showing
+itself on your host: nothing is running the container's healthcheck timer. The stack works anyway now —
+which is the point of the prohibition — but it is worth knowing, and `loginctl enable-linger "$USER"`
+is the first thing to try.
