@@ -8095,3 +8095,212 @@ recorded in that file's closing section; the audit itself is not done.
 
 **Two operator actions** no archive can contain: enabling private vulnerability reporting on GitHub,
 and setting the repository description (F-42).
+
+## M6 Slice 28 — the command that came back and said nothing was wrong (F-55, F-56)
+
+Slice 27 fixed a bring-up that never returned. This slice fixes what it returned *with*.
+
+`time bash scripts/dev_instance.sh` on virginia, one slice later:
+
+```
+[dev-instance] waiting for http://localhost:8080/healthz/ready (up to 300s; first boot runs the migrations)…
+[dev-instance] warning: the app did not answer /healthz/ready within 300s.
+[…]
+  DEV INSTANCE — DETACHED
+
+  PUBLIC URL:  https://tablets-opponents-vip-each.trycloudflare.com
+[…]
+[dev-instance] holding 20s to confirm the public URL answers, then releasing this terminal…
+[dev-instance] warning: the public URL did not answer in 4 attempt(s) over 20s.
+[dev-instance] releasing the terminal. The instance keeps running.
+
+real    6m55.837s
+```
+
+Exit status 0. Then, from `status`:
+
+```
+  postgres:  myrestaurant_postgres_1 (running, health: starting)
+  web:       myrestaurant_web_1 (stopped, health: starting)
+```
+
+`postgres` had been created six minutes earlier and reported `Up 1 second` — the engine restarting it
+in a loop. `web` had exited **1**. And `logs -f`, the command the banner recommends, printed forty
+lines of cloudflared saying `connection refused`, which is the symptom of the failure repeated forty
+times and never once its cause.
+
+### The exit code was the tell
+
+**Exit code 1 is reachable from exactly one place in this program.** `Program.cs` binds and validates
+configuration before a host exists, and on a validation failure it prints each error to stderr and
+`return 1`s. Nothing else in the file returns 1: a `SchemaMigrationRunner` failure throws, and an
+unhandled exception on .NET aborts with 134. So the application had written the reason to its own
+stderr within the first second, and `podman logs myrestaurant_web_1` had been holding it ever since.
+
+Nothing in the script had ever printed a container log. That is the finding.
+
+### F-55 — a wait with a deadline and no evidence
+
+Slice 27's rule was *no call may own the terminal indefinitely*, and it was applied correctly to every
+compose invocation. The readiness wait was not a compose invocation. It polled HTTP every three
+seconds for 300 seconds without once asking whether the container it was polling still existed — and
+then the script printed the success banner unconditionally, spent twenty more seconds probing a public
+URL for an application that was not answering on loopback, and exited 0.
+
+Six of the seven minutes were spent waiting for something that had already failed. The seventh was
+spent announcing it as ready.
+
+**F-53 and F-55 look like the same defect and need opposite fixes.** A deadline stops a wait that
+cannot *end*. Only a liveness check stops a wait that cannot *succeed*. Both were reasoned about
+carefully in Slice 27 and neither reasoning covered the other case, which is why §14.3a now states the
+rule as its own paragraph rather than as a clause of the deadline rule.
+
+What changed, all of it in `scripts/dev_instance.sh`:
+
+| | Before | Now |
+|---|---|---|
+| readiness wait | HTTP poll only, 300s | polls the container's state too; starts a stopped `web` up to `DEV_INSTANCE_START_ATTEMPTS` times, then ends |
+| database | not waited on at all | its own bounded wait via `pg_isready` inside the container, ending early on a crash loop |
+| a failure | one warning line | `NOT SERVING` banner, state + **exit code** + restart count, both log tails, a reading key |
+| `logs` | the tunnel's, only | takes `web` (default), `postgres`, `database` or `tunnel`; `--tail N` |
+| `diagnose` | — | the whole failure report, on demand, at any time |
+| `reset` | — | `down` plus this project's volumes, enumerated from the engine, after confirmation |
+| a stopped container | `(stopped, health: starting)` | `(exited, exit code 1, restarted 3x)` |
+| settle phase | always ran | skipped when readiness already failed |
+| exit status | 0 | 0 only if the application answered; 1 otherwise, stack left running |
+
+The two waits are **separated** because one message cannot diagnose both: "the app did not answer" is
+equally true of a crash-looping database, a rejected configuration and an image that never started.
+
+**Why `web` is started again rather than only reported.** `SchemaMigrationRunner` retries a connection
+failure thirty times at two-second intervals and then throws (ADR-0012), so the application gives up
+after sixty seconds. A first `postgres` boot slower than that — an `initdb` on a cold volume, on a
+spare machine, while an image build's page cache is still being written back — outlives the retry and
+leaves a correctly built image stopped with nothing wrong with it. The engine's restart policy usually
+covers this. *Usually* is not a thing to spend 300 seconds on.
+
+**The reading key is the part that turns a report into a diagnosis.** Six symptoms this program can
+actually produce, each paired with what it means and what to do: `Configuration error:` (it refused its
+environment; the line names the variable; nothing retries it), `Database not ready (attempt n/30)` (the
+cause is in the *other* log), the four PostgreSQL data-directory failures, `address already in use`, and
+the case where both containers are healthy and the probe still fails.
+
+### The failure `down` cannot repair, and `reset`
+
+A PostgreSQL data directory that will not start — an interrupted first `initdb`, a hard reboot
+mid-write, a directory from another major version — survives `down`, because `down` keeps the named
+volumes deliberately: the database and the Data Protection key ring are what make a test instance
+worth returning to. It also survives `podman system prune -a`, which does not remove volumes at all.
+So an operator can clear every container and every image on the host, twice, and start the same broken
+directory each time. That is exactly what the virginia session did.
+
+Nothing in this tree could clear it. `reset` can, and it is destructive by construction: this project's
+volumes, enumerated from the engine rather than guessed at by name, after printing what that destroys —
+every account, every passkey, every enrolled TOTP secret — and requiring confirmation, refusing rather
+than assuming consent when stdin is not a terminal.
+
+### F-56 — three helpers, one port, one correct address
+
+`compose.yaml` publishes `web` as `127.0.0.1:8080:8080`. `run.sh` has probed
+`http://127.0.0.1:8080/healthz/ready` since M1. Both tunnel helpers defaulted `TUNNEL_TARGET` to
+`http://localhost:8080`, and that value is dialled by three clients: `cloudflared`, and then whichever
+of `curl` or `wget` the host has. curl and GNU wget try the second address when the first refuses.
+**BusyBox wget does not** — and it is the second entry in the probe chain of a script whose whole
+premise is a host that may not have curl.
+
+The visible cost is what made it findable: cloudflared reports the address it failed on, so the tunnel
+log of the F-55 failure reads `dial tcp [::1]:8080: connect: connection refused` over and over, and an
+operator debugging that spends the evening on an IPv6 problem that does not exist.
+
+This is **F-51's shape for the third time** — a rule reasoned through once, applied to one file, never
+stated. Both helpers now dial the literal, with the reasoning beside the assignment, and §14.3a states
+it generally.
+
+### What was verified, and how
+
+No .NET SDK and no container engine were available, so the script was exercised against a **mock
+engine**: a `podman` shim answering `ps --filter label=…`, `inspect --format` for `.State.Status`,
+`.State.ExitCode`, `.RestartCount` and `.State.Health.Status`, `logs`, `start`, `run --detach`, `rm`,
+`volume ls/rm` and `exec`, plus a `podman-compose` shim and a `curl` shim, all driven by state files.
+Six scenarios, with the production-length deadlines in place (`DEV_INSTANCE_DATABASE_WAIT=180`,
+`DEV_INSTANCE_READY_WAIT=300`) so the timings below are the timings an operator would see:
+
+| Scenario | Observed |
+|---|---|
+| everything healthy | ready, `DETACHED` banner, **exit 0** |
+| `web` exits 1 with a `Configuration error:` line | three restart attempts, `NOT SERVING`, both logs, **exit 1, 15s** |
+| `postgres` crash-looping with `PANIC: could not locate a valid checkpoint record` | crash loop named at three restarts, readiness wait skipped, **exit 1, 7s** |
+| `logs` with no argument | the **web** container's log |
+| `logs postgres` / `logs database` / `logs tunnel` / `--tail 2` | the right container, bounded |
+| `reset` | enumerated `myrestaurant_postgres-data` and `myrestaurant_dataprotection-keys`, ignored `other_project_data`, removed both under `--yes`; **refused with exit 1** and removed nothing without it |
+
+Against the same failure the transcript records — a stack that never served — this is **7 to 15 seconds
+and exit 1** where it was **415 seconds and exit 0**.
+
+Also verified:
+
+- **Argument handling**: two commands, two log targets, `--tail abc`, an unknown flag, and a log target
+  given to `status` each fail with their own message and a non-zero status. `--help` still renders the
+  header comment block.
+- **`bash -n` and `shellcheck`** on both edited scripts, clean at `--severity=warning` (blocking in CI)
+  and at `--severity=style` (advisory). Baselined first: all nine existing scripts are style-clean with
+  shellcheck 0.11.0, so the tool agrees with CI's on this tree. One finding was acted on rather than
+  suppressed — SC2329, `wait_for_http` became unreachable once readiness moved to
+  `wait_for_application`, so it was deleted instead of left as a function nothing calls.
+- **`DevInstanceLoopbackContractTests` ported to Python and run against the tree**, then proven
+  sensitive one regression at a time: either helper dialling `localhost` again (fails facts 2 and 3),
+  a helper on the wrong port (fact 2), the port published as `8080:8080` or on a LAN address (facts 2
+  and 4), the `TUNNEL_TARGET` default removed (facts 1, 2, 3), the `ports:` block rewritten as a flow
+  sequence (facts 1, 2, 4), and a broken `services:` marker (throws rather than passing vacuously). A
+  comment-only edit changes nothing, as a control.
+- **`SpecificationVersionTests` ported and run**: header 1.13, entries 1.13 … 1.0 descending. Both
+  assertions hold. `Version.TryParse` reads `1.13` as minor **thirteen**, so it sorts above 1.12 —
+  checked, because a string comparison would get it backwards.
+- **`ConfigurationSurfaceTests` re-run against the edited tree**: seventeen keys derived from
+  `FromConfiguration`, all seventeen still in `.env.example` and in the `web` service's twenty-key
+  `environment` mapping. The fourteen lines added to `.env.example` are **all comments**, so no key was
+  added, removed or duplicated.
+- **`ComposeDependencyContractTests` re-run**: four services, three `depends_on` edges, all
+  `service_started`. `compose.yaml` is not edited by this slice.
+- **Brace, parenthesis and bracket balance walked** over the new C# file with a string- and
+  comment-aware scanner, with `ComposeDependencyContractTests` and `ConfigurationSurfaceTests` as
+  controls. All balanced.
+- **Every documentation edit applied by exact-match replacement with an assertion that the anchor
+  occurs exactly once**, so nothing was edited by position.
+- **Byte hygiene on every delivered file**: LF endings, exactly one final newline, no CR, no
+  whitespace-only lines, no trailing whitespace, no context-dump separator.
+
+### The test count
+
+1059 → **1063**, and that is arithmetic rather than an observation: four `[Fact]` methods added, none
+removed, no `[Theory]`. Nothing in this slice touches application code, a Razor file or a migration, so
+no existing test's subject moved.
+
+### What was NOT verified, and cannot be from here
+
+**The fix has not been observed on the machine that produced the failure.** Every timing above is from
+a mock engine driven by state files. What the mock cannot tell anybody is which of the reading key's
+symptoms virginia will actually print — the exit code says the application refused its configuration,
+and the variable it named is in a log this slice makes visible for the first time.
+
+**Nothing has compiled.** The new test file is balanced, its logic ported and exercised, and its idioms
+copied from two files in this tree that compile — but `dotnet build` has not run on it.
+
+**`podman inspect --format '{{.RestartCount}}'`** is read from documentation rather than from a running
+engine. A host whose engine omits the field reads as 0, which loses the crash-loop early exit and keeps
+every other behaviour, so a wrong answer here costs a fast failure and not a correct one.
+
+### Still open, and deliberately not answered here
+
+**A CI job that runs the canonical stack on the canonical engine.** Fourth slice in a row where this is
+the real embodiment of a finding and is not in the archive. F-51, F-52, F-53 and now F-55 were all found
+by a human running one command on a second machine, and the honest expectation after this slice is the
+same as after the last one: the next run gets further and finds the next one.
+
+**Every pre-F-38 row in `DOCUMENTATION_REVIEW.md` names embodiments that were, when written,
+intentions.** Nobody has audited them.
+
+**`Permissions-Policy`**, carried forward from Slice 24 and still not urgent.
+
+**Two operator actions** no archive can contain: enabling private vulnerability reporting on GitHub,
+and setting the repository description (F-42).

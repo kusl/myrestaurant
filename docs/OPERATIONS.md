@@ -168,11 +168,14 @@ It returns you to the prompt and the instance keeps serving. You can close the S
 
 | | |
 |---|---|
-| `scripts/dev_instance.sh` | bring it up; prints the public URL and exits |
+| `scripts/dev_instance.sh` | bring it up; **exits 0 only if the app answers**, 1 if it does not |
 | `scripts/dev_instance.sh url` | that URL again, on stdout and nothing else |
-| `scripts/dev_instance.sh status` | tunnel state, current URL, `compose ps` |
-| `scripts/dev_instance.sh logs -f` | the tunnel's log; `Ctrl+C` stops watching, not the instance |
-| `scripts/dev_instance.sh down` | the only thing that closes the tunnel |
+| `scripts/dev_instance.sh status` | tunnel state, current URL, container states with exit codes |
+| `scripts/dev_instance.sh logs` | the **application's** log; add `-f` to stream it, `--tail N` to bound it |
+| `scripts/dev_instance.sh logs postgres` | the database's; `logs tunnel` for cloudflared's |
+| `scripts/dev_instance.sh diagnose` | both logs at once, with a key for reading them |
+| `scripts/dev_instance.sh down` | the only thing that closes the tunnel; **keeps** the volumes |
+| `scripts/dev_instance.sh reset` | `down`, and then **destroys** the volumes — see below |
 | `scripts/dev_instance.sh --new-url` | discard the hostname and mint a new one — **breaks every passkey** |
 | `scripts/dev_instance.sh --no-build` | skip the image build and use whatever is already tagged |
 
@@ -188,9 +191,32 @@ loginctl enable-linger "$USER"
 
 **Copy `.env.example` to `.env` first if the box is reachable by anything you do not control.** Copy it yourself — no script here writes it (**F-54**, and §2 says why). Without it the stack runs on `compose.yaml`'s development defaults, including `POSTGRES_PASSWORD=myrestaurant`. Do not put `RESTAURANT_PUBLIC_ORIGIN` in that `.env`: the script sets it from the tunnel URL through the process environment, which takes precedence, so a pinned value would be ignored and the file would disagree with the running instance. The script warns when it finds one.
 
-**If it appears to hang, it is not hanging any more — but read this anyway, because the first version did (F-53).** Every compose command this script runs has a deadline (`DEV_INSTANCE_COMPOSE_WAIT`, 240s; the image build gets `DEV_INSTANCE_BUILD_WAIT`, 5400s, since a cold build legitimately takes twenty minutes). When one trips you get a paragraph naming F-53, then a two-line report of what the containers are actually doing, then readiness verified independently of compose — so the terminal comes back either way. The failure it guards against is worth recognising, because nothing in the output points at it: podman-compose 1.3.0 (Debian trixie's version) runs `podman run -d` for every container and *then* waits on each `depends_on` condition in an unbounded loop that prints nothing, so `up -d` prints the container ids and stops, forever, with the stack already up and serving. If you ever see that from `podman-compose` directly, `Ctrl+C` is safe: the containers belong to the engine, not to the shell, and `scripts/dev_instance.sh status` will show them.
+### When it does not come up
 
-**`status` answers from the engine before it asks compose**, for the same reason — the two lines that matter (`postgres: … running, health: healthy` and `web: … running`) arrive even on a host where compose itself is wedged. A `health: starting` on `postgres` that never advances is the specific symptom behind F-53: it means nothing is running the container's healthcheck, which under rootless Podman is a systemd timer in your user session.
+**`up` tells you, and it tells you fast.** It exits **0 only when the application answered `/healthz/ready` on this host**, and **1** when the stack was started and it never did — so `time bash scripts/dev_instance.sh` in a script or a `&&` chain now fails on a broken instance instead of reporting success over one. On failure it prints a `DEV INSTANCE — NOT SERVING` banner instead of the URL banner, then each container's state, **exit code** and restart count, then the last forty lines of *both* the application's and the database's log, then a key for reading them. Nothing is stopped or removed: the containers and their logs are the evidence.
+
+It also stops waiting the moment waiting is pointless (**F-55**). A crash-looping database reports itself in about seven seconds and a rejected configuration in about fifteen, rather than at the end of a five-minute readiness deadline. Both waits are bounded *and* watched: `DEV_INSTANCE_DATABASE_WAIT` (180s) and `DEV_INSTANCE_READY_WAIT` (300s) are ceilings for a slow host, not the time a failure takes to announce itself. A stopped container is started again up to `DEV_INSTANCE_START_ATTEMPTS` (3) times first, because the application's own database retry gives up after sixty seconds (ADR-0012) and a first `postgres` boot slower than that leaves a perfectly good image stopped.
+
+The two log lines worth recognising, because they point in opposite directions:
+
+| The application's log says | What it means |
+|---|---|
+| `Configuration error: <VARIABLE> …` | The app refused its own environment and exited **1** before opening a socket — the only path in this program that exits 1. The line names the variable and the value. Nothing retries it: fix the value, run `up` again. |
+| `Database not ready (attempt n/30)` then nothing | The database never accepted a connection in sixty seconds. **The cause is in `logs postgres`, not here.** |
+
+**A database that cannot start is the one failure no restart fixes, and `reset` is the only thing that does.** If `logs postgres` says `directory "/var/lib/postgresql/data" exists but is not empty`, `database files are incompatible`, `could not locate a valid checkpoint record`, or `PANIC`, then the named volume holds a data directory this image will not start — an interrupted first `initdb`, a hard reboot mid-write, a directory from a different major version. It survives `down`, which keeps volumes on purpose, and it survives `podman system prune -a`, which does not remove volumes at all, so you can clear every container and image on the host and start the same broken directory again.
+
+```bash
+scripts/dev_instance.sh reset       # asks first; --yes to skip the prompt
+```
+
+**`reset` destroys the database and the Data Protection key ring** — every account, every passkey, every enrolled TOTP secret on that instance (§8). It prints what it will remove, names the volumes it found, and refuses outright rather than assume consent when stdin is not a terminal. Take a backup first (§6) if the data mattered. The next `up` initialises an empty database, mints a fresh key ring, and `/setup` is reachable again because there are no administrators (§3).
+
+**If it appears to hang, it is not hanging any more — but read this anyway, because the first version did (F-53).** Every compose command this script runs has a deadline (`DEV_INSTANCE_COMPOSE_WAIT`, 240s; the image build gets `DEV_INSTANCE_BUILD_WAIT`, 5400s, since a cold build legitimately takes twenty minutes). When one trips you get a paragraph naming F-53, then a report of what the containers are actually doing, then readiness verified independently of compose — so the terminal comes back either way. The failure it guards against is worth recognising, because nothing in the output points at it: podman-compose 1.3.0 (Debian trixie's version) runs `podman run -d` for every container and *then* waits on each `depends_on` condition in an unbounded loop that prints nothing, so `up -d` prints the container ids and stops, forever, with the stack already up and serving. If you ever see that from `podman-compose` directly, `Ctrl+C` is safe: the containers belong to the engine, not to the shell, and `scripts/dev_instance.sh status` will show them.
+
+**`status` answers from the engine before it asks compose**, for the same reason — the lines that matter arrive even on a host where compose itself is wedged. A container that is not running is reported with its **exit code** and its restart count rather than with a health status, and `status` then points at `logs` and `diagnose`: `(stopped, health: starting)` is what the previous version printed for a container that had exited 1 six minutes earlier, which reads as one still on its way up (F-55). A `health: starting` on a *running* `postgres` that never advances is the specific symptom behind F-53: it means nothing is running the container's healthcheck, which under rootless Podman is a systemd timer in your user session.
+
+**One address, and it is a literal (F-56).** `compose.yaml` publishes the web port on `127.0.0.1` and nowhere else, so `TUNNEL_TARGET` defaults to `http://127.0.0.1:8080` in both tunnel helpers rather than naming `localhost`. If you override it, use a literal for the same reason: a name that resolves to `::1` first works only if every client falling back — curl and GNU wget do, BusyBox wget does not — and cloudflared will report `dial tcp [::1]:8080: connect: connection refused`, which sends you looking for an IPv6 problem that is not there.
 
 **What this is still not.** Everything §10 says applies unchanged, and applies harder because the instance is long-lived: the hostname is random and on the Public Suffix List, passkeys do not survive `--new-url`, and **you must not bootstrap a real instance (§3) here** — the first administrator's credentials would be tied to a hostname you will eventually discard. Take a backup (§6) before you tear a test instance down if the data in it mattered; `down` leaves the named volumes alone, so the database and the key ring survive a normal stop.
 
@@ -344,7 +370,7 @@ Publish your modified source at that URL, and the footer of every page already l
 **Then check that it took, because for four milestones it would not have.** `compose.yaml`'s `web` service names its environment variable by variable and takes no `env_file`, and until Slice 25 it did not name this one — so a value set in `.env` never reached the process, the application used its compiled-in default, and `/source` offered *this* repository to the users of a modified program. Nothing failed: the container started, the page rendered, the link resolved (F-50). The check is one command and it is the only thing that distinguishes the two outcomes:
 
 ```bash
-curl --silent http://localhost:8080/source | grep 'git.example.com'
+curl --silent http://127.0.0.1:8080/source | grep 'git.example.com'
 ```
 
 Your own URL, not this one. `ConfigurationSurfaceTests` now asserts on every `dotnet test` that every variable the program reads is passed by that service — so the class of defect is closed — but the value itself is yours, and only you can see whether it is the right one.

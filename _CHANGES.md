@@ -1,216 +1,206 @@
-# M6 Slice 27 — the command that started everything and never came back
+# M6 Slice 28 — the command that came back and said nothing was wrong (F-55, F-56)
 
-**Findings closed:** F-53 (the documented bring-up command never returns), F-54 (a runbook step
-asserting behaviour no script has).
+Extract at the repository root. Every path below is repo-relative and every file is complete.
 
-Extract this archive at the repository root. Every file in it is complete; nothing is a patch.
-
-```bash
-cd ~/src/dotnet/myrestaurant
-tar -xzf m6-slice-27-compose-dependency-hang.tar.gz
-git add tests/MyRestaurant.WebApplication.Tests/Deployment
+```
+tar -xzf m6-slice-28-bring-up-evidence-and-diagnosis.tar.gz
+git add tests/MyRestaurant.WebApplication.Tests/Deployment/DevInstanceLoopbackContractTests.cs
 git status
 ```
 
-**Before anything else, on virginia**, because the killed run left containers behind:
+**Files to DELETE: none.** Nothing is renamed and nothing is superseded.
 
-```bash
-bash scripts/dev_instance.sh down
-```
-
----
-
-## Files in this archive
-
-| Path | New? | Why |
-|---|---|---|
-| `compose.yaml` | | The fix. `web`'s dependency on `postgres` is `service_started`, not `service_healthy` |
-| `scripts/dev_instance.sh` | | Every compose call under a deadline; health reported; created-but-not-started repaired |
-| `tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeDependencyContractTests.cs` | **new** | Three facts asserting the rule on every `dotnet test` |
-| `docs/TECHNICAL_SPECIFICATION.md` | | v1.12: §14.1 prohibition, §14.3a deadline, §16.4 test, Appendix A F-53/F-54, changelog |
-| `docs/DOCUMENTATION_REVIEW.md` | | F-53 and F-54 rows, status line, two closing paragraphs |
-| `docs/OPERATIONS.md` | | §2 `.env` correction, §10a deadline + troubleshooting + `--no-build` row |
-| `docs/BUILD_PROGRESS.md` | | Slice 27 entry (ships whole) |
-| `README.md` | | The two `compose.yaml` rules, the deadline, the `.env` correction |
-| `_CHANGES.md` | | This file |
-
-**Files to DELETE: none.**
-
-**`git add` reminder:** `tests/MyRestaurant.WebApplication.Tests/Deployment/` is a new directory. The
-gate scripts enumerate with `git ls-files`, so an untracked file is invisible to `check_tree.sh` and to
-`ComposeDependencyContractTests`' own hygiene checks. `git add` it before running the gates.
+**`git add` is required** for the one new file above. `scripts/check_tree.sh` enumerates with
+`git ls-files`, so an untracked file is a file no gate looks at.
 
 ---
 
-## What was actually wrong
+## What this slice is about
 
-The hang is not in the script. It is in `podman-compose up -d`.
+`time bash scripts/dev_instance.sh` on virginia took six minutes and fifty-five seconds to report
+success over an instance that had never served a request. It did not hang — Slice 27 fixed that. It
+waited out a 300-second readiness deadline against a container that had already exited, printed the
+`DEV INSTANCE — DETACHED` banner with a public URL in it, spent twenty more seconds probing that URL,
+warned that it had not answered, and **exited 0**.
 
-podman-compose 1.3.0 — Debian trixie's version, and podman-compose is the canonical engine (ADR-0004) —
-implements `up -d` as `podman run -d` for **every** container, followed by a wait on each dependency's
-`depends_on` condition, in an unbounded `while True:` loop whose only two exits are logged at *debug*
-level. `compose.yaml` asked `web` to wait for `postgres` to be `service_healthy`; the health status
-never advanced past `starting`; the loop ran once a second forever.
+The reason had been available since the tenth second, in a log nothing ever printed.
 
-Your four output lines map exactly onto four calls:
+---
 
-| Line | Call |
+## The diagnosis, and the one inference it rests on
+
+From the transcript: `postgres` was created six minutes before `podman ps` reported `Up 1 second`,
+which is the engine restarting it in a loop; `web` had **`Exited (1)`**.
+
+**Exit code 1 is reachable from exactly one place in this program.** `Program.cs` binds and validates
+configuration before a host exists, and on failure prints each error to stderr and `return 1`s.
+Nothing else in that file returns 1 — a `SchemaMigrationRunner` failure throws, and an unhandled
+exception on .NET aborts with 134. So the application refused its own environment, said which
+variable and with what value, and exited, all within the first second.
+
+That message is still on virginia. `podman logs myrestaurant_web_1 | tail -40` prints it. This slice
+does not need to know what it says to fix the defect, because the defect is that nothing printed it —
+but it is worth reading, and if you send it I will put the specific variable in F-55's row rather than
+the general case.
+
+---
+
+## Two findings
+
+**F-55 — a wait with a deadline and no evidence.** F-53 was a wait with no deadline; Slice 27 put
+deadlines on every compose call and, in the same script, left a 300-second HTTP poll that never asked
+whether the container it was polling still existed. The two failures look alike and need opposite
+fixes: a deadline stops a wait that cannot *end*, and only a liveness check stops a wait that cannot
+*succeed*. Alongside it: the success banner printed unconditionally, the settle phase probed a public
+URL for an application that was not answering on loopback, `status` described a container that had
+exited 1 as `(stopped, health: starting)`, `logs` could only show the tunnel's log, and `up` exited 0.
+
+**F-56 — three helpers dial one port and only `run.sh` names the address that exists.**
+`compose.yaml` publishes `127.0.0.1:8080:8080`; `run.sh` has probed the literal since M1; both tunnel
+helpers defaulted `TUNNEL_TARGET` to `http://localhost:8080`. curl and GNU wget fall back to the
+second address; **BusyBox wget does not**, and it is the second entry in the probe chain of a script
+whose premise is a host that may not have curl. The visible cost is worse than the risk: cloudflared
+reports the address it failed on, so the F-55 tunnel log is full of `dial tcp [::1]:8080: connect:
+connection refused` and sends an operator after an IPv6 problem that is not there. F-51's shape for
+the third time — a rule reasoned through once, applied to one file, never stated.
+
+---
+
+## Every file, and why it changed
+
+### `scripts/dev_instance.sh` — rewritten
+
+| Change | Why |
 |---|---|
-| `331b32fc…` | `podman pod create` |
-| pull, then `c7ba751d…` | `podman run -d` (postgres) |
-| `myrestaurant_postgres_1` | `podman start`, echoing the name |
-| `6fe37290…` | `podman run -d` (web) |
-| *nothing* | `check_dep_conditions()` → `podman wait --condition=healthy` |
+| both waits bounded **and** watched | F-55. The readiness wait polls container state; the new database wait uses `pg_isready` inside the container. Each ends early — crash loop, or a container that will not stay started — instead of running the deadline down. |
+| database wait separated from readiness wait | "the app did not answer" is equally true of a crash-looping database, a rejected configuration and an image that never started. One message cannot diagnose three failures. |
+| a stopped container is started again, up to `DEV_INSTANCE_START_ATTEMPTS` (3) | `SchemaMigrationRunner` gives up after sixty seconds (ADR-0012). A slower first `postgres` boot outlives it and leaves a correct image stopped with nothing wrong. The engine's restart policy usually covers this; *usually* is not worth 300 seconds. |
+| failure prints both log tails, with state, **exit code** and restart count | The whole finding. `podman logs` held the answer for seven minutes. |
+| a reading key for six real symptoms | `Configuration error:` → it refused its environment. `Database not ready (attempt n/30)` → the cause is in the *other* log. Four PostgreSQL data-directory failures → `reset`. `address already in use`. Both containers up and the probe still failing → check the address. |
+| `logs [web\|postgres\|database\|tunnel]`, default **web**, `--tail N` | The one command an operator reaches for could only show cloudflared. |
+| new `diagnose` | The failure report, on demand, later, without re-running `up`. |
+| new `reset` | The one failure the helper cannot repair: a data directory that will not start survives `down` (which keeps volumes deliberately) and `podman system prune -a` (which does not touch them). Removes this project's volumes **enumerated from the engine**, after saying what that destroys, and refuses rather than assumes consent when stdin is not a terminal. |
+| a stopped container reports its exit code, never a health status | `(stopped, health: starting)` reads as a container on its way up. It had exited 1 six minutes earlier. |
+| settle phase skipped when readiness failed | Probing a public URL for an application that does not answer on loopback cannot produce information. It produced a warning. |
+| `up` exits 0 only if the application answered | `time bash scripts/dev_instance.sh` is how this is invoked, and a `&&` chain believes an exit code. The stack is **left running** on failure: the containers are the evidence. |
+| state file written **before** readiness is decided | The tunnel and its hostname are real whatever the application is doing, so `url` and `down` must work on a failed bring-up. A URL nobody recorded is a tunnel nobody can close. |
+| `TUNNEL_TARGET` defaults to `http://127.0.0.1:8080` | F-56. |
+| `wait_for_http` deleted | It became unreachable once readiness moved into `wait_for_application`. shellcheck's SC2329 said so; acted on rather than suppressed. |
 
-Upstream: issues **#1178** (reported from Debian, with a `Ctrl+C` traceback landing on precisely those
-frames) and **#1183**, which names the design error — dependents are started first and the conditions
-checked afterwards, so the wait can only delay a return.
+### `scripts/quick_tunnel.sh`
 
-**Your instance was serving the whole time.** Both containers were started before the wait began. The
-only thing that was broken was the terminal coming back.
+`TUNNEL_TARGET` defaults to the literal, with the reasoning beside the assignment. Three lines,
+comments aside. Nothing else about that script changes — it is still the foreground demo helper.
 
-## Decisions, and why
+### `.env.example`
 
-**1. The condition is prohibited, not worked around.** `service_started` is now the only condition
-`compose.yaml` may use (§14.1, beside F-51's fully-qualified-images rule).
+`TUNNEL_TARGET`'s documented default corrected, and the new knobs listed with what they are ceilings
+*for*: `DEV_INSTANCE_DATABASE_WAIT`, `DEV_INSTANCE_START_ATTEMPTS`,
+`DEV_INSTANCE_CRASH_LOOP_RESTARTS`, `DEV_INSTANCE_LOG_TAIL`. **All fourteen added lines are
+comments**, so `ConfigurationSurfaceTests`'s key set is untouched — verified, not assumed.
 
-Three reasons it had to be a prohibition:
+### `docs/TECHNICAL_SPECIFICATION.md` → **v1.13**
 
-- **There is no flag.** `--no-deps` is accepted by `up`'s parser in 1.3.0 and consulted only by
-  `compose_run`. Splitting into `up -d postgres` then `up -d web` does not help either: `get_excluded`
-  subtracts a named service's dependencies from the exclusion set, so `up -d web` processes `postgres`
-  too and reaches the same wait.
-- **Satisfiability is a property of the host.** A health status advances only if something runs the
-  healthcheck, and under rootless Podman that is a transient systemd timer in your user session.
-  Upstream's own fix (PR #1184) says it in a commit title: *run the healthy state validation only when
-  systemd is available*.
-- **It was never needed.** `SchemaMigrationRunner` retries a connection failure thirty times at
-  two-second intervals, and the comment beside it, written in M1, says what for: *"at compose start the
-  web container can race PostgreSQL"*. `web` losing that race is a race the code was written to lose
-  safely.
+§14.3a gains four normative paragraphs (no wait outlives its evidence; a failure prints the log and
+`logs` reaches the application; `up`'s exit status is a claim about the instance; `reset` exists and
+what it must ask before acting) plus the address-literal rule. §16.4 gains the loopback contract test
+*and what it deliberately does not assert*. Appendix A gains F-55 and F-56. Header and changelog both
+moved, together — F-48 is what happens when only one does.
 
-The health**check** on `postgres` stays. `podman ps` reads it, `dev_instance.sh status` prints it, and
-an operator debugging a sick database needs it. It simply stops standing between `up -d` and returning.
+**No `REQUIREMENTS.md` edit**, on the v1.11 and v1.12 reasoning: R§8 asks for an operable instance and
+ADR-0004 has named podman-compose canonical since M1, so a helper reporting success over a dead
+instance is a mechanism failing a contract this tree already carried, not new intent. No schema
+change, no ADR edit, no `.slnx` edit, and **`compose.yaml` is not touched by this slice**.
 
-`caddy` and `cloudflared` moved from the list form to the explicit mapping form with
-`condition: service_started`. Identical semantics — both engines normalize the list form to exactly
-that — written out so the file states the rule everywhere it applies.
+### `docs/OPERATIONS.md`
 
-**2. Every compose call runs under a deadline, and that outlives the cause.** `compose.yaml` is fixed;
-podman-compose is not, and the next blocking path will arrive by some other route. A script whose whole
-purpose is to hand the terminal back must not contain a call that can keep it (§14.3a).
+§10a's command table gains `logs`, `diagnose` and `reset` and records the exit-code contract. A new
+**"When it does not come up"** subsection: what `up` prints on failure, the two log lines that point
+in opposite directions, and the data-directory case with `reset` as its answer. §15's verification
+`curl` uses the literal, for F-56's reason.
 
-- `DEV_INSTANCE_COMPOSE_WAIT`, default 240s, for ordinary commands.
-- `DEV_INSTANCE_BUILD_WAIT`, default 5400s, for the image build — a watchdog that cut off your
-  legitimate nineteen-minute cold build would be a worse defect than the one it guards against.
-- A tripped deadline is **not** treated as failure: F-53 is named, both services' state *and health*
-  are printed straight from the engine, anything created-but-not-started is started, and
-  `/healthz/ready` is verified independently of compose.
-- `status` prints those engine-read lines *before* asking compose anything, so they arrive even when
-  compose is wedged. `down` falls back to removing the containers directly.
-- Killing compose is safe in the one way that matters, and it is the same property the detached tunnel
-  relies on: containers it already created belong to the engine, not to this shell.
+### `README.md`
 
-**3. `service_healthy` is grepped for in the preflight.** The file about to be handed to the engine is
-the one in your checkout, so a branch or a bad merge that reintroduces the condition gets a sentence
-naming the cause instead of a terminal that stops.
+The command block gains the three new subcommands; the F-53 paragraph gains the F-55 sequel, because
+a reader who is told the script once hung forever should also be told what the fix to that produced.
 
-**4. Two smaller things found while in the file.** `compose_container` filtered on
-`com.docker.compose.service` alone — the correct label, podman-compose does set it — so a `web` service
-from any other compose project on the host could have matched; it now tries a project-scoped filter
-first and falls back, because the project name is derived here and the engine is the authority.
-`container_health` is new: reported, never waited on, which is the entire distinction this slice is
-about.
+### `docs/DOCUMENTATION_REVIEW.md`
 
-**5. F-54 — the `.env` claim, ruled against the document.** `OPERATIONS.md` §2 said *"`run.sh` and the
-scripts do this automatically when `.env` is absent — F-16"*. All nine scripts were grepped; none writes
-`.env`. The citation is accurate: F-16's row in `DOCUMENTATION_REVIEW.md` really does say that. So this
-is a decision that was recorded and never implemented, then restated in the indicative by the runbook
-depending on it — F-38's shape, pointed inward.
+F-55 and F-56 rows, the status line, and three closing paragraphs: F-53's fix producing F-53's shape
+in reverse (**a bound on how long you will wait is not a bound on how long you will be wrong**), the
+exit-code rule this project had not stated, and F-51's shape reaching its third occurrence — with the
+habit that would have caught all three: *when a comment explains why a value is what it is, grep the
+tree for the other places that value is written.*
 
-**Ruled the other way: the document is wrong, the scripts are right, and that clause of F-16's ruling is
-reversed rather than implemented.** Materialising `.env.example` would write an untracked file carrying
-`POSTGRES_PASSWORD=myrestaurant` that nobody knowingly created, on a path `.gitignore` hides from every
-tool that reads the tree — F-45's class of artefact, arriving by a different door. And because the stack
-starts without it, auto-creation buys nothing except the removal of the one moment an operator is
-supposed to decide about credentials.
+### `docs/BUILD_PROGRESS.md`
 
-**This is yours to overrule.** If you want the scripts to create `.env`, say so and it moves to the
-other side in a slice of its own; F-16's row then needs a note either way.
+Slice 28, shipped whole. The mock-engine harness, the six scenarios with their measured timings, the
+sensitivity proofs, and what could not be verified from here.
+
+### `tests/…/Deployment/DevInstanceLoopbackContractTests.cs` — new
+
+F-50's pattern, not a grep: the published port in `compose.yaml` is authoritative, each helper's
+`TUNNEL_TARGET` default is a restatement, and the test derives the first to check the second. Four
+facts — the scan found everything (F-41 non-vacuity), each helper dials the published host and port,
+each host is an address literal, and what is published is still loopback. The last one exists because
+the rule is *argued* from there being one address: publish on `0.0.0.0` and the justification is gone,
+and a test that stayed green through that change would be asserting a coincidence.
+
+Deliberately **not** asserted: that no script says `localhost`. `run.sh` prints it in a sentence for a
+human to paste into a browser, which is correct, and failing on it would report a finding on a correct
+tree (F-41).
+
+---
 
 ## Verification
 
-No SDK and no container engine available, so everything that could be executed was.
+No .NET SDK and no container engine here, so the script was run against a **mock engine** — `podman`,
+`podman-compose` and `curl` shims driven by state files — with the production-length deadlines in
+place, so the timings are the ones an operator sees:
 
-- **podman-compose 1.3.0's source fetched and read** — `compose_up`, `run_container`,
-  `check_dep_conditions`, `get_excluded`, the healthcheck translation, `ServiceDependencyCondition`, and
-  `Podman.run`'s contract (returns an exit code, never raises). 1.2.0, 1.3.0, 1.4.0 and `main` compared:
-  `main` has the fix and honours `--no-deps`; 1.3.0 has neither.
-- **`scripts/dev_instance.sh` run end to end against fake `podman` / `podman-compose` / `curl`
-  stand-ins.** The `up` path completes, exit 0, banner and settle phase included. Then, individually:
-  - compose starts the containers then hangs, `postgres` health pinned at `starting` — **your exact
-    failure**: deadline trips, F-53 named, containers reported `running, health: starting`, readiness
-    verified, terminal released in **3 seconds**.
-  - compose creates but does not start, then hangs: the repair path runs —
-    `starting build_postgres_1 (it is created)`.
-  - compose wedged from the first call: `status` reports engine facts first; `down` removes both
-    containers directly and leaves nothing behind.
-- **Preflight grep proven sensitive**: silent on the delivered file, fires with all four lines when the
-  old condition is planted back.
-- **`bash -n` clean; `shellcheck` clean at `--severity=warning` and `--severity=style`.** Baselined
-  against all nine existing scripts first, so the installed shellcheck agrees with CI's on this tree.
-- **`compose.yaml` parsed with a real YAML parser**: four services, three edges, all `service_started`,
-  twenty `web` environment keys.
-- **`ComposeDependencyContractTests` ported to Python, run, and proven sensitive** one regression at a
-  time: `service_healthy` on three edges, on one edge, `service_completed_successfully`, a dangling
-  dependency target, all `depends_on` removed (fact 1's non-vacuity guard), and a broken `services:`
-  marker (throws rather than passing vacuously). The **list form passes** — deliberately, since both
-  engines normalize it to `service_started` and failing it would report a finding on a correct file
-  (F-41).
-- **`ConfigurationSurfaceTests`' compose scan re-run**: still twenty keys, no duplicates,
-  `RESTAURANT_SOURCE_URL` present, `SOURCE_REVISION` not miscounted. Block boundaries moved (web
-  38→98 became 56→121) because comments were added — which is why that test computes them.
-- **`SpecificationVersionTests` ported and run**: header 1.12, entries descending. `Version.TryParse`
-  reads `1.12` as minor twelve, so it sorts above 1.11 — checked, because a string compare gets it
-  backwards.
-- **Brace/paren/bracket balance walked** over the new C# file (string- and comment-aware), with
-  `ConfigurationSurfaceTests` as a control. Both balanced.
-- **Every documentation edit by exact-match replacement, asserting the anchor occurs exactly once.**
-- **Byte hygiene on every file**: LF only, one final newline, no CR, no whitespace-only lines, no
-  trailing whitespace, no context-dump separator.
+| Scenario | Result |
+|---|---|
+| healthy | `DETACHED` banner, **exit 0** |
+| `web` exits 1 on a `Configuration error:` line | `NOT SERVING`, both logs, reading key, **exit 1, 15s** |
+| `postgres` crash-looping (`PANIC: could not locate a valid checkpoint record`) | crash loop named at three restarts, readiness skipped, **exit 1, 7s** |
+| `logs` / `logs postgres` / `logs tunnel` / `logs database --tail 2` | right container every time |
+| `reset --yes` | removed `myrestaurant_postgres-data` and `myrestaurant_dataprotection-keys`, left `other_project_data` alone |
+| `reset` with no tty and no `--yes` | **exit 1, nothing removed** |
+| five argument errors | each names itself, each exits non-zero |
 
-**Test count: 1056 → 1059.** Three `[Fact]` methods, none removed, no `[Theory]`. That is arithmetic,
-not an observation — nothing here has compiled.
+**415 seconds and exit 0 became 7–15 seconds and exit 1.**
+
+Also: `bash -n` and `shellcheck --severity=style` clean on both scripts (all nine existing scripts
+baselined style-clean first with shellcheck 0.11.0); the new test ported to Python, run, and proven
+sensitive one regression at a time — including two non-vacuity mutations and a comment-only control
+that must change nothing; `SpecificationVersionTests`, `ConfigurationSurfaceTests` and
+`ComposeDependencyContractTests` re-run against the edited tree; a string- and comment-aware balance
+walk over the new C# file with two controls; every doc edit applied by exact-match replacement with a
+one-occurrence assertion; byte hygiene on all nine files.
+
+**Test count 1059 → 1063.** Four `[Fact]` methods, none removed, no `[Theory]`. Arithmetic, not an
+observation.
+
+---
 
 ## What is not verified
 
-**The fix has not been watched working on virginia.** The claim is that `service_started` makes
-`check_dep_conditions` wait on `--condition=running` against a container that is already running, which
-returns immediately. That is read out of podman-compose's source and podman's documented `wait`
-semantics. The deadline is why a wrong answer there is survivable rather than another silent hang.
+- **Nothing has compiled.** No `dotnet build` on the new test file.
+- **Nothing ran on virginia.** Every timing is from the mock. What the mock cannot say is which
+  variable the real `Configuration error:` line names.
+- **`{{.RestartCount}}`** is read from documentation, not from a running engine. Absent reads as 0,
+  which loses the crash-loop early exit and keeps everything else.
 
-**Nothing has compiled.** The new test file is balanced, its logic ported and exercised, and its idioms
-copied from a file in this tree that compiles — but `dotnet build` has not seen it.
-
-## After you extract
+## Suggested run on virginia
 
 ```bash
-bash scripts/dev_instance.sh down          # first: clear the containers the killed run left
-git add tests/MyRestaurant.WebApplication.Tests/Deployment
-bash scripts/check_tree.sh
-bash scripts/dev_instance.sh               # on virginia
+cd ~/src/dotnet/myrestaurant
+git pull
+podman logs myrestaurant_web_1 | tail -40      # the answer that has been sitting there
+bash scripts/dev_instance.sh diagnose          # the same thing, framed, with the reading key
+time bash scripts/dev_instance.sh              # now exits 1 fast if it is still broken
 ```
 
-On the Fedora box, `dotnet test` is the one that matters — it is the first thing to compile the new
-file.
-
-Expected on virginia, in order: the `.env` warning (four lines now), the build (cached, seconds), the
-tunnel URL — **reused**, since `down` removes the tunnel, so this run mints a new one and any passkey
-registered against `state-dust-pty-cfr` is gone either way — then `starting postgres and web … (deadline
-240s)`, then two `containers (engine):` lines with `postgres: … running, health: healthy`, then `the app
-is ready on this host`, the banner, and the terminal back.
-
-If `postgres` reports `health: starting` and never changes, that is the root cause of F-53 showing
-itself on your host: nothing is running the container's healthcheck timer. The stack works anyway now —
-which is the point of the prohibition — but it is worth knowing, and `loginctl enable-linger "$USER"`
-is the first thing to try.
+If `logs postgres` shows a data-directory failure: `bash scripts/dev_instance.sh reset`, then `up`.
+That destroys the database and the key ring on that instance, which on a tester box with no data worth
+keeping is the right trade — and is exactly what `podman system prune -a` could not do for you.

@@ -291,10 +291,13 @@ serving a build that testers will use for days, **with no .NET SDK installed on 
 second script that exits and leaves the instance running:
 
 ```bash
-scripts/dev_instance.sh          # builds, opens the tunnel, prints the URL, and exits
-scripts/dev_instance.sh url      # that URL again, on stdout
-scripts/dev_instance.sh status   # what is running, and how healthy
-scripts/dev_instance.sh down     # the only thing that closes the tunnel
+scripts/dev_instance.sh            # builds, opens the tunnel, prints the URL, and exits
+scripts/dev_instance.sh url        # that URL again, on stdout
+scripts/dev_instance.sh status     # what is running, with exit codes if it is not
+scripts/dev_instance.sh logs       # the application's log (postgres and tunnel are arguments)
+scripts/dev_instance.sh diagnose   # both logs at once, with a key for reading them
+scripts/dev_instance.sh down       # the only thing that closes the tunnel; keeps the volumes
+scripts/dev_instance.sh reset      # down, and destroy the volumes — the database and the key ring
 ```
 
 It runs `cloudflared` as a detached container rather than a child process, which is what lets it
@@ -309,8 +312,20 @@ version of this script hung forever on its first real run (**F-53**). Not in the
 `depends_on` health condition in a loop that prints nothing. The stack was up and serving the whole
 time. `compose.yaml` no longer asks for a health condition, which removes the cause, and the
 deadline is there because a script whose job is to hand the terminal back must not contain a call
-that can keep it. When one trips you get the finding named, both containers' state and health read
-straight from the engine, and readiness verified independently.
+that can keep it.
+
+**The second run of that script found the opposite defect (F-55), and it is why `up` now has an exit
+code worth reading.** It did not hang; it waited out a five-minute readiness deadline against a
+container that had already exited 1, printed the public URL banner over a dead application, and
+returned 0 — and never printed either container's log, which is where the reason had been from the
+first ten seconds. So every wait is now bounded *and* watched: it ends as soon as the container it
+is waiting on is crash-looping or will not stay started, which turns a seven-minute non-answer into
+a seven-second diagnosis. On failure you get a `NOT SERVING` banner, each container's state, exit
+code and restart count, both log tails, and a key mapping the symptoms this program actually
+produces to their causes; `up` exits non-zero and leaves everything running so you can read it. And
+because a PostgreSQL data directory that will not start survives both `down` and
+`podman system prune -a` — neither removes volumes — there is now `reset`, which does, after telling
+you that it destroys the database and the Data Protection key ring. See OPERATIONS §10a.
 
 **Passkeys work on the quick tunnel**, including a passkey-only account: the WebAuthn relying-party
 ID is derived per request from the host the browser is on (ADR-0005), and `https://*.trycloudflare.com`

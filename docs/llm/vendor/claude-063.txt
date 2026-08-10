@@ -254,3 +254,407 @@ Claude is AI and can make mistakes. Please double-check responses.
 
 please continue 
 
+
+/
+Claude finished the response
+I ran the new script time bash scripts/dev_instance.sh
+and it is stuck 
+you can see it in virginia-terminal.txt which I have included in the project files 
+something is not quite right here... 
+please fix everything thoroughly 
+and remember to update documentation and readme 
+when we make substantial changes
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+please avoid giving me bespoke scripts to manipulate text in code / documentation 
+remember to give full files for all files that need to change 
+I will likely miss those bespoke scripts
+
+
+Architected shell script with validation, argument parsing, and diagnostic logging
+Architected shell script with validation, argument parsing, and diagnostic logging
+
+Reading virginia terminal output to see where the script is stuck
+
+Reading truncated middle portion of virginia terminal output
+Diagnosing container crashes and postgres restart loops.
+
+
+Checking project file sizes
+
+Reading command file and dump header format
+
+Inspecting dump.txt structure markers
+
+Reconstructing repo tree from dump.txt with SHA verification
+Examined script execution issue and debugging requirements.
+
+
+Checking export.sh dump framing logic
+
+Checking what export.sh emits after file content
+
+Checking per-file emission loop framing
+
+Check export.sh truncation in my reconstruction
+Identifying parsing error in heredoc delimiter handling.
+
+Diagnosed parser error causing file truncation issue.
+
+
+Byte-exact reconstruction using recorded sizes, verifying SHA-256
+Verified successful completion of file processing task.
+
+
+Listing reconstructed repository files
+
+Reading dev_instance.sh, the script that hung
+
+Reading compose.yaml
+Diagnosing persistent volume conflicts causing Postgres failures.
+
+Diagnosing web container startup failure and networking issues.
+
+Diagnosing postgres volume ownership and permission issues.
+
+Diagnosing persistent volume corruption blocking postgres initialization.
+
+Diagnosing container startup failures and refactoring health check logic.
+
+Diagnosing restart policy behavior and container exit timing inconsistencies.
+
+Diagnosed container crash-loops and redesigned startup script comprehensively.
+
+
+Finding highest F-number used in defect ledger
+
+Reading defect ledger entries F-50..F-54
+
+Listing test files and reading end of BUILD_PROGRESS
+
+Reading Program.cs startup
+Diagnosing postgres startup failures and permission issues.
+
+Architecting diagnostic logging and health monitoring for container startup.
+
+
+Reading stress test terminal for context
+
+Skimming claude-terminal.txt for context
+
+Checking test counts from last full local run
+Reviewing and updating key documentation files thoroughly.
+
+Inventoried test metrics and orchestrated documentation overhaul.
+
+
+Mapping spec structure and doc sizes
+
+Reading spec §14 deployment section
+
+Mapping OPERATIONS.md structure
+
+Reading OPERATIONS §10 and §10a
+
+Finding all references to dev_instance.sh
+
+Reading README sections that mention dev_instance
+
+Continue reading README quick tunnel/dev instance section
+
+Reading ComposeDependencyContractTests
+
+Reading check_tree.sh gate header
+
+Checking ci_local shellcheck gate and script enumeration
+
+Reading SchemaMigrationRunner retry behavior
+Diagnosing deployment script failures and logging gaps.
+
+
+Reading RestaurantOptions validation
+Scrutinizing database connection string formatting issues.
+
+Investigating environment variable formatting issues in configuration.
+
+Diagnosing container failure by examining build configuration and logs.
+
+Investigated container exit code and configuration failures systematically.
+
+
+Reading csproj, build props, and Containerfile
+Diagnosing ASP.NET container binding configuration issues.
+
+Surfacing container logs and documenting error resolution strategies.
+
+Refining diagnostics, exit codes, and shellcheck compliance.
+
+Deliberating whether to modify compose.yaml or leave it unchanged.
+
+Crafting defensive test assertions around IPv4 loopback configuration.
+
+Diagnosed container startup failures and architected comprehensive script overhaul.
+
+
+Checking quick_tunnel.sh for the same localhost/IPv6 trap
+
+Reading quick_tunnel.sh in full
+
+Finding every localhost:8080 reference in the tree
+Refining readiness check logic for IPv4 fallback handling.
+
+
+Checking run.sh readiness probe implementation
+Identifying inconsistency patterns in tunnel script implementations.
+
+
+Reading .env.example tunnel section
+
+Reading rest of .env.example
+
+Reading spec header and changelog format
+
+Reading spec §16.4 gates section
+
+Reading Appendix A decisions register tail
+
+Reading DOCUMENTATION_REVIEW header and table structure
+Finalizing documentation updates and executing comprehensive script fixes.
+
+Architecting failure path logic and diagnostic workflows.
+
+Architected comprehensive dev instance script with crash-loop detection.
+
+
+Checking available lint tooling in sandbox
+
+Attempting to install shellcheck for linting
+
+Installing shellcheck-py with break-system-packages
+
+Baselining shellcheck against existing scripts
+Crafting shellcheck-compliant script with heredoc syntax.
+
+Architected shell script with validation, argument parsing, and diagnostic logging.
+
+Done
+Now I have the full picture. Let me write the rewritten script.
+
+
+Ran 2 commands
+Ran 2 commands
+
+Writing first part of new dev_instance.sh
+
+Writing second part: diagnosis, waits, and non-up commands
+Done
+I hit the tool limit mid-build, so let me give you what I've established — the diagnosis is solid, and it's not what the script's output claimed.
+
+What actually happened on virginia
+Your run didn't hang. It did something worse and took 6m55s to do it:
+
+postgres was crash-looping. podman ps shows Up 1 second (starting) for a container created 7 minutes earlier — the engine restarting it over and over. In the prior session it shows Exited (1).
+web exited 1 and stayed dead. Exit code 1 is significant: it's the only clean exit-1 path in Program.cs — the configuration-error branch (Console.Error.WriteLine("Configuration error: …"); return 1). An unhandled exception from SchemaMigrationRunner would abort with 134, not 1. So the app printed a reason to its own stderr and nobody ever read it.
+The script waited out the full 300s readiness deadline against an already-dead container, then printed the DEV INSTANCE — DETACHED banner with a public URL, held 20 more seconds probing that URL, warned it hadn't answered, and exited 0.
+logs -f couldn't help — it only ever shows the tunnel's log, which is why you got 40 lines of cloudflared saying connection refused and zero lines about the actual failure.
+The information you needed was sitting in podman logs myrestaurant_web_1 the whole time.
+
+Two findings, both real
+F-55 — F-53 was a wait with no deadline; this is a wait with a deadline and no evidence. A deadline stops a wait that cannot end; only a liveness check stops a wait that cannot succeed. And the failure path never printed a log. Also: up exited 0 over a dead instance, so time bash scripts/dev_instance.sh reported success.
+F-56 — TUNNEL_TARGET defaults to http://localhost:8080, but compose.yaml publishes 127.0.0.1:8080:8080 — IPv4 only. run.sh has probed the literal http://127.0.0.1:8080 since M1; both tunnel helpers name the host. A rule applied to one example and never generalised (F-51's shape). BusyBox wget — the second entry in the script's own probe chain — does not fall back to a second address.
+There's also a third, unfixable-by-restart case I found: down keeps the named volumes on purpose, and podman system prune -a doesn't touch volumes either — so a PostgreSQL data directory that cannot start (interrupted first initdb, hard reboot mid-write) survives every cycle you ran, including both prunes. There is currently no command in the tree that clears it.
+
+What I have written so far
+scripts/dev_instance.sh, rewritten (~930 lines, two parts drafted): both waits now bounded and watched — the database wait ends early on a crash loop, the readiness wait restarts web up to 3 times then gives up; settle skipped when readiness already failed; logs [web|postgres|tunnel] defaulting to web; new diagnose printing both log tails plus a reading key mapping each symptom to its cause; new reset (destroys volumes, confirmation required); describe_service reporting exit codes and restart counts instead of health: starting on a corpse; up exiting 1 when the app never answered. shellcheck 0.11.0 is installed here and your nine existing scripts baseline clean at --severity=style, so I can hold the new one to that.
+
+Still to write: scripts/quick_tunnel.sh (loopback literal), .env.example, spec v1.13 (§14.3a, §16.4, Appendix A, changelog, header), OPERATIONS.md §10a, README.md, DOCUMENTATION_REVIEW.md F-55/F-56, BUILD_PROGRESS.md Slice 28, a new DevInstanceLoopbackContractTests.cs (3 facts, 1059 → 1062), and _CHANGES.md. No files to delete.
+
+Say "go" and I'll finish the archive. One thing that would help either way: on virginia, podman logs myrestaurant_web_1 | tail -40 and podman logs myrestaurant_postgres_1 | tail -40. That names the exact variable or PostgreSQL error, and I'll write it into the ledger row instead of listing candidates.
+
+please continue
+
+
+Validated script functionality and pivoted toward documentation automation
+Validated script functionality and pivoted toward documentation automation
+
+Writing up flow, assembling, and linting the new script
+
+Removing now-unused wait_for_http and re-linting
+Fabricating mock container tools for scenario testing.
+
+Architected comprehensive test harness with mocked container tools.
+
+
+Building a mock container engine to exercise the script's paths
+
+Scenario A: happy path end to end
+
+Scenario A via a runner script
+Diagnosed mock configuration flaw and devised corrective strategy.
+
+
+Scenario A with corrected mock seeding
+Analyzing diagnostic logs and startup timing sequences.
+
+Analyzed startup failure scenarios and diagnostic timing constraints.
+
+
+Scenario B: web exits 1 with a configuration error
+Analyzing inconsistency between error reporting and UI display.
+
+Diagnosed startup issues and restructured error handling logic.
+
+
+Making both waits symmetric with bounded restart repair
+
+Re-running scenario B with the unified failure path
+
+Scenario C: crash-looping postgres with production-length deadlines
+
+Exercising every non-up subcommand and argument error path
+Assembled fragmented thoughts into coherent continuation.
+
+
+Verifying reset volume enumeration, confirmation, and exit codes
+Crafting documentation files with Python text replacements.
+
+Validated script functionality and pivoted toward documentation automation.
+
+
+Editing quick_tunnel.sh and .env.example
+Done
+Now the specification, operations doc, and README:
+
+
+Examined incomplete request for clarification
+Examined incomplete request for clarification
+
+Writing TECHNICAL_SPECIFICATION.md v1.13
+
+Writing OPERATIONS.md §10a and README.md
+
+Reading the closing narrative sections of DOCUMENTATION_REVIEW.md
+
+Writing DOCUMENTATION_REVIEW.md with F-55 and F-56
+
+Checking idioms in ConfigurationSurfaceTests for the new test file
+
+New contract test asserting the loopback address rule (F-56)
+Recounting facts and verifying bracket balance carefully.
+
+Validated bracket balance and reconciled test assertion count discrepancies.
+
+
+Checking local const naming conventions in the tree
+
+Reading editorconfig naming rules and existing local const style
+Examined incomplete request for clarification.
+
+
+Balance walk and static checks on the new C# file
+Done
+Now let me port the test logic to Python and prove each fact is individually sensitive:
+
+
+Refined regex pattern to isolate configuration keys precisely
+Refined regex pattern to isolate configuration keys precisely
+
+Porting the new test to Python and running it against both trees
+
+Proving each fact of the new test individually sensitive
+Evaluating fact sensitivity across multiple configurations.
+
+Verifying configuration keys persist through selective test porting.
+
+Scrutinized fact sensitivity across configurations and verified test integrity.
+
+
+Reading check_tree.sh gate implementations
+
+Reading check_tree.sh gates 1-3 implementation
+
+Byte hygiene gates on every shipped file
+
+Running byte hygiene checks properly with bash
+Diagnosing regex pattern bug in tab character handling.
+
+Diagnosed regex pattern flaw and identified root cause.
+
+
+Correctly checking for trailing whitespace
+
+Verifying existing contract tests still pass against the modified tree
+Refining regex pattern to extract configuration keys accurately.
+
+Refined regex pattern to isolate configuration keys precisely.
+
+
+Re-verifying ConfigurationSurfaceTests with a correct port
+
+Finding BUILD_PROGRESS section structure for Slice 28
+
+Reading the Slice 27 section format
+
+Extending the test doc comment and re-verifying
+Done
+Now BUILD_PROGRESS Slice 28 and _CHANGES.md:
+
+
+Ran 4 commands, created a file, read a file
+Ran 4 commands, created a file, read a file
+
+Appending Slice 28 to BUILD_PROGRESS.md as a full file
+
+_CHANGES.md explaining every decision in this slice
+
+Adding the rewritten script to the ship tree and re-running hygiene
+
+Final gate sweep across all delivered files
+
+Building and verifying the delivery archive
+
+Presented file
+Done
+What was wrong
+Your script didn't hang. It waited out a 300-second readiness deadline against a container that had already exited, printed the DEV INSTANCE — DETACHED banner with a public URL in it, held 20 more seconds probing that URL, warned it hadn't answered, and exited 0. 6m55s to report success over an instance that never served a request.
+
+The exit code was the tell. web shows Exited (1), and exit code 1 is reachable from exactly one place in Program.cs — configuration validation prints Configuration error: … to stderr and return 1s. Everything else throws (unhandled → 134). So the application named the bad variable within the first second, and nothing in the script ever printed a container log. logs -f showed only cloudflared, which is why you got 40 lines of connection refused and zero lines of cause.
+
+Two findings
+F-55 — F-53 was a wait with no deadline. Slice 27 fixed that and left, in the same script, a wait with a deadline and no liveness check. They look alike and need opposite fixes: a deadline stops a wait that cannot end; only a liveness check stops a wait that cannot succeed.
+F-56 — compose.yaml publishes 127.0.0.1:8080, run.sh has dialed the literal since M1, both tunnel helpers said localhost. curl and GNU wget fall back from ::1; BusyBox wget doesn't — and it's the second entry in this script's own probe chain. F-51's shape, third occurrence.
+Extract at the repo root
+bash
+tar -xzf m6-slice-28-bring-up-evidence-and-diagnosis.tar.gz
+git add tests/MyRestaurant.WebApplication.Tests/Deployment/DevInstanceLoopbackContractTests.cs
+Files to DELETE: none. 10 full files: scripts/dev_instance.sh (rewritten), scripts/quick_tunnel.sh, .env.example, spec v1.13, OPERATIONS.md, README.md, DOCUMENTATION_REVIEW.md, BUILD_PROGRESS.md (whole), the new test, _CHANGES.md. compose.yaml is untouched.
+
+Measured against your failure on a mock engine with production deadlines: 415s/exit 0 → 7–15s/exit 1, with the causing log line on screen. A rejected config reports in 15s (3 restart attempts), a crash-looping database in 7s. New: logs [web|postgres|tunnel] defaulting to web, diagnose, and reset — because a poisoned data directory survives both down and podman system prune -a, which is why your two prunes changed nothing.
+
+Verified: both scripts style-clean under shellcheck 0.11.0 (all nine existing scripts baselined first), the new test's 4 facts each proven sensitive one regression at a time plus a comment-only control, SpecificationVersionTests/ConfigurationSurfaceTests/ComposeDependencyContractTests re-run green, byte hygiene on all 10 files. 1059 → 1063 tests (arithmetic). Nothing compiled; nothing ran on virginia.
+
+First thing to run there:
+
+bash
+podman logs myrestaurant_web_1 | tail -40
+That's the answer that's been sitting on the box for hours. Send it and I'll put the specific variable into F-55's row instead of the general case.
+
+
+M6 slice 28 bring up evidence and diagnosis.tar
+GZ 
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+76
+25
+

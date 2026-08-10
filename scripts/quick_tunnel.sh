@@ -17,13 +17,20 @@
 #   scripts/quick_tunnel.sh
 #
 # Environment:
-#   TUNNEL_TARGET         what cloudflared points at (default http://localhost:8080)
+#   TUNNEL_TARGET         what cloudflared points at (default http://127.0.0.1:8080)
 #   TUNNEL_URL_WAIT       seconds to wait for the tunnel URL to appear (default 90)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-TARGET="${TUNNEL_TARGET:-http://localhost:8080}"
+# 127.0.0.1 rather than localhost, and that is a correctness choice rather than a style one (F-56).
+# compose.yaml publishes the web port as `127.0.0.1:8080:8080` — one address, IPv4, and no listener on
+# ::1. A name that resolves to ::1 first therefore depends on every client that dials it falling back
+# to the second address: curl and GNU wget do, BusyBox wget does not, and cloudflared's error names the
+# address it failed on, so the operator reads `dial tcp [::1]:8080: connection refused` and goes looking
+# for an IPv6 problem that is not there. run.sh has probed the literal since M1; this is that rule
+# stated once for every helper instead of applied to one of them.
+TARGET="${TUNNEL_TARGET:-http://127.0.0.1:8080}"
 URL_WAIT="${TUNNEL_URL_WAIT:-90}"
 
 log()  { printf '[quick-tunnel] %s\n' "$*" >&2; }
@@ -44,7 +51,7 @@ fi
 
 # ---------------------------------------------------------------------------------------------------
 # cloudflared runner: prefer a host binary; fall back to a container on the host network so
-# localhost:8080 (the loopback-published web port) is reachable.
+# 127.0.0.1:8080 (the loopback-published web port) is reachable.
 # ---------------------------------------------------------------------------------------------------
 if command -v cloudflared >/dev/null 2>&1; then
     TUNNEL_RUNNER=(cloudflared)
