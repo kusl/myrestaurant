@@ -1,0 +1,128 @@
+kushal@fedora:~/src/dotnet/myrestaurant$ pwd; cat /home/kushal/src/dotnet/myrestaurant/docs/llm/tests/stress_test.sh; time bash /home/kushal/src/dotnet/myrestaurant/docs/llm/tests/stress_test.sh; pwd;
+/home/kushal/src/dotnet/myrestaurant
+#!/bin/bash
+
+# ==========================================
+# CONFIGURATION VARIABLES
+# ==========================================
+
+# The list of URLs to test
+URLS=(
+    "https://rider-nevada-keeping-judicial.trycloudflare.com/healthz/live"
+    "https://rider-nevada-keeping-judicial.trycloudflare.com/healthz/ready"
+)
+
+# The name of the file where detailed logs will be appended
+# (It will be created in the same folder as this script)
+OUTPUT_FILENAME="stress_test_details.log"
+
+# Testing parameters / Assumptions
+TOTAL_REQUESTS=1000
+CONCURRENT_REQUESTS=50
+
+# ==========================================
+# SCRIPT LOGIC
+# ==========================================
+
+# Resolve the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_FILE="$SCRIPT_DIR/$OUTPUT_FILENAME"
+
+echo "==================================================="
+echo " Starting Stress Test"
+echo " Detailed logs appended to: $LOG_FILE"
+echo "==================================================="
+echo ""
+
+for URL in "${URLS[@]}"; do
+    echo "Testing URL: $URL"
+    
+    # Create a temporary file to store raw metrics (Status Code and Time)
+    TEMP_FILE=$(mktemp)
+    
+    # Record start time
+    START_TIME=$(date +%s.%N)
+    
+    # Fire off the requests. 
+    # Output format is strictly "%{http_code} %{time_total}" for easy parsing.
+    seq "$TOTAL_REQUESTS" | xargs -P "$CONCURRENT_REQUESTS" -I{} curl -s -o /dev/null -w "%{http_code} %{time_total}\n" "$URL" > "$TEMP_FILE"
+    
+    # Record end time
+    END_TIME=$(date +%s.%N)
+    
+    # 1. Format and append the details to the permanent log file
+    echo "=== Run Date: $(date) | URL: $URL ===" >> "$LOG_FILE"
+    awk '{print "Status: " $1 " - Total Time: " $2 "s"}' "$TEMP_FILE" >> "$LOG_FILE"
+    echo "" >> "$LOG_FILE"
+    
+    # 2. Calculate and display the summary in the terminal using awk
+    awk -v start="$START_TIME" -v end="$END_TIME" -v reqs="$TOTAL_REQUESTS" -v conc="$CONCURRENT_REQUESTS" '
+        BEGIN {
+            min = 999999;
+            max = 0;
+            sum = 0;
+            successes = 0;
+            failures = 0;
+        }
+        {
+            # $1 is HTTP status, $2 is time taken
+            if ($1 >= 200 && $1 < 300) successes++;
+            else failures++;
+            
+            sum += $2;
+            if ($2 < min) min = $2;
+            if ($2 > max) max = $2;
+        }
+        END {
+            duration = end - start;
+            avg = sum / reqs;
+            rps = reqs / duration;
+            
+            printf "  -> Total Requests:  %d\n", reqs;
+            printf "  -> Concurrency:     %d\n", conc;
+            printf "  -> Success (2xx):   %d\n", successes;
+            printf "  -> Failed:          %d\n", failures;
+            printf "  -> Total Run Time:  %.2fs\n", duration;
+            printf "  -> Req / Second:    %.2f RPS\n", rps;
+            printf "  -> Average Latency: %.3fs\n", avg;
+            printf "  -> Min/Max Latency: %.3fs / %.3fs\n\n", min, max;
+        }
+    ' "$TEMP_FILE"
+    
+    # Clean up the temp file before moving to the next URL
+    rm -f "$TEMP_FILE"
+done
+
+echo "Testing complete."
+===================================================
+ Starting Stress Test
+ Detailed logs appended to: /home/kushal/src/dotnet/myrestaurant/docs/llm/tests/stress_test_details.log
+===================================================
+
+Testing URL: https://rider-nevada-keeping-judicial.trycloudflare.com/healthz/live
+  -> Total Requests:  1000
+  -> Concurrency:     50
+  -> Success (2xx):   1000
+  -> Failed:          0
+  -> Total Run Time:  2.71s
+  -> Req / Second:    368.61 RPS
+  -> Average Latency: 0.124s
+  -> Min/Max Latency: 0.071s / 0.709s
+
+Testing URL: https://rider-nevada-keeping-judicial.trycloudflare.com/healthz/ready
+  -> Total Requests:  1000
+  -> Concurrency:     50
+  -> Success (2xx):   1000
+  -> Failed:          0
+  -> Total Run Time:  2.41s
+  -> Req / Second:    414.73 RPS
+  -> Average Latency: 0.106s
+  -> Min/Max Latency: 0.068s / 0.338s
+
+Testing complete.
+
+real	0m5.164s
+user	0m23.842s
+sys	0m10.660s
+/home/kushal/src/dotnet/myrestaurant
+kushal@fedora:~/src/dotnet/myrestaurant$ 
