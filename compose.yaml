@@ -7,10 +7,19 @@
 # `web` and `postgres` have no profile, so they always start. `caddy` and `cloudflared` are behind
 # profiles. The web port is published on loopback only — the app trusts X-Forwarded-* headers and is
 # meant to be reached through the proxy, never directly from the LAN/WAN.
+#
+# EVERY IMAGE REFERENCE HERE IS FULLY QUALIFIED (F-51), and that is a correctness requirement rather
+# than a style preference. A short name like `postgres:17-alpine` is resolved through
+# `unqualified-search-registries`, which Fedora's containers-common populates and a stock Debian
+# leaves commented out — so on Debian, rootless Podman answers the canonical stack with
+# `short-name "postgres:17-alpine" did not resolve to an alias`, `postgres` never starts, and `web`
+# then fails its own `depends_on` with a message about a missing container. scripts/restore_drill.sh
+# has defaulted DRILL_POSTGRES_IMAGE to a fully qualified name since Slice 16 for exactly this
+# reason; the rule was applied to the drill and not to the stack the drill rehearses.
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: docker.io/library/postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-myrestaurant}
@@ -31,6 +40,13 @@ services:
     build:
       context: .
       dockerfile: Containerfile
+      args:
+        # What this build is (§11.9). Passed through with an EMPTY default, on F-50's ruling: the
+        # fallback belongs to Containerfile's own ARG, which reports an unstamped build as "not
+        # recorded" rather than guessing. Repeating a value here would override the one place the
+        # default is written down — the same mistake one layer up. scripts/dev_instance.sh sets this
+        # from `git rev-parse HEAD` so /source names the commit a tester actually reached.
+        SOURCE_REVISION: ${SOURCE_REVISION:-}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -81,7 +97,7 @@ services:
       start_period: 40s
 
   caddy:
-    image: caddy:2-alpine
+    image: docker.io/library/caddy:2-alpine
     profiles: ["dev"]
     restart: unless-stopped
     depends_on:

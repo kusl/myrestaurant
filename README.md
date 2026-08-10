@@ -47,13 +47,16 @@ the web layer depends on data-access and the domain; the domain depends on nothi
 - `scripts/` — the operational scripts: `check_tree.sh` (repository hygiene, the first CI gate),
   `check_repository.sh` (the governance surface, and an advisory read of the published repository's
   settings), `ci_local.sh` (every CI gate, locally), `backup.sh` / `restore.sh` / `restore_drill.sh` (§15
-  recovery sets and the rehearsal CI runs on every push), and `quick_tunnel.sh` (a demo origin).
+  recovery sets and the rehearsal CI runs on every push), `quick_tunnel.sh` (a demo origin, held in
+  the foreground), and `dev_instance.sh` (the same origin, detached — for a spare machine with no
+  .NET SDK that serves testers for days).
 - `.github/workflows/` — the CI and release pipelines (see *Continuous integration*).
 
 ## Prerequisites
 
 - The .NET SDK pinned in `global.json` — `10.0.100` with `rollForward: latestMinor`, so any 10.0
-  feature band satisfies it.
+  feature band satisfies it. Needed to build, test, or run on the host; **not** needed to run the
+  containers, since the Containerfile builds inside the SDK image (see `scripts/dev_instance.sh`).
 - A container engine — rootless **Podman** is the primary target; Docker works too.
 - For integration tests, the container engine's API socket must be reachable (see *Testing*). For
   the end-to-end scenarios, a Chromium build as well (see *End-to-end scenarios*).
@@ -272,8 +275,25 @@ scripts/quick_tunnel.sh
 The script brings PostgreSQL up, opens a `*.trycloudflare.com` tunnel, discovers the assigned URL,
 sets `RESTAURANT_PUBLIC_ORIGIN` to it (so QR join links resolve), (re)starts the web app against
 that URL, waits for it to answer, prints the URL in a banner, and then holds the tunnel in the
-foreground. The URL lives exactly as long as the script runs (Ctrl+C ends the demo) — a quick
-tunnel cannot "print a URL and exit", because exiting kills the URL.
+foreground. The URL lives exactly as long as *that script* runs, because it owns `cloudflared` as a
+foreground child — Ctrl+C ends the demo.
+
+For a test instance that has to outlive the terminal — a spare machine on the LAN, reached over SSH,
+serving a build that testers will use for days, **with no .NET SDK installed on it** — there is a
+second script that exits and leaves the instance running:
+
+```bash
+scripts/dev_instance.sh          # builds, opens the tunnel, prints the URL, and exits
+scripts/dev_instance.sh url      # that URL again, on stdout
+scripts/dev_instance.sh status   # what is running
+scripts/dev_instance.sh down     # the only thing that closes the tunnel
+```
+
+It runs `cloudflared` as a detached container rather than a child process, which is what lets it
+return to the prompt; builds the image *before* announcing a URL, so the hostname is not published
+minutes ahead of anything that answers it; and **reuses the hostname on a re-run**, because passkeys
+are bound to it and a fresh random subdomain would discard every one. `--new-url` is how you ask for
+a new hostname on purpose. See OPERATIONS §10a.
 
 **Passkeys work on the quick tunnel**, including a passkey-only account: the WebAuthn relying-party
 ID is derived per request from the host the browser is on (ADR-0005), and `https://*.trycloudflare.com`

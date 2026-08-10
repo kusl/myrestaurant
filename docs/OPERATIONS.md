@@ -6,12 +6,15 @@ Runbooks for deploying, running, and maintaining one instance. The technical spe
 
 ## 1. Deployment profiles at a glance
 
-| | Development | Production |
-|---|---|---|
-| Command | `./run.sh` (or `podman-compose up`) | `podman-compose --profile production up -d` |
-| Services | `web`, `postgres`, `caddy` | `web`, `postgres`, `cloudflared` (+ `caddy` only if §7 enabled) |
-| Origin | `https://localhost:8443` (Caddy internal CA) | `https://<your-domain>` (Cloudflare named tunnel; TLS at the edge) |
-| Passkeys | work, bound to `localhost` | work, bound to your domain — durable |
+| | Development | Shared test instance | Production |
+|---|---|---|---|
+| Command | `./run.sh` (or `podman-compose up`) | `scripts/dev_instance.sh` | `podman-compose --profile production up -d` |
+| Services | `web`, `postgres`, `caddy` | `web`, `postgres`, a detached `cloudflared` quick tunnel | `web`, `postgres`, `cloudflared` (+ `caddy` only if §7 enabled) |
+| Origin | `https://localhost:8443` (Caddy internal CA) | `https://<random>.trycloudflare.com` (per tunnel) | `https://<your-domain>` (Cloudflare named tunnel; TLS at the edge) |
+| Passkeys | work, bound to `localhost` | work, bound to that random host — survive a restart, **not** `--new-url` | work, bound to your domain — durable |
+| Needs the .NET SDK on the host | yes | **no** | no |
+
+The middle column is §10a: a spare machine on the LAN, reached over SSH, serving a build that testers use for days. It is the only profile here that runs entirely in containers *and* survives the terminal that started it.
 
 Everything runs rootless. Host ports stay ≥ 1024; if you insist on 80/443 directly, that is a host decision (`sysctl net.ipv4.ip_unprivileged_port_start=80`), not a project default.
 
@@ -146,9 +149,45 @@ Show-and-tell over the public internet is a **one-command** flow (spec §14.3/§
 scripts/quick_tunnel.sh        # brings the stack up, exposes it, stays in the foreground
 ```
 
-The script stages the bring-up in the GoTunnels spirit: it detects your compose engine and a `cloudflared` runner (host binary or a container on the host network), starts PostgreSQL, opens the quick tunnel, and **polls the tunnel log for the assigned `https://<something>.trycloudflare.com` hostname**. Once it has the URL it exports it as `RESTAURANT_PUBLIC_ORIGIN` (so QR join links and the form-post host fallback resolve to the tunnel, not an internal address), force-recreates the `web` service against that origin, and waits for `/healthz/ready`. It then prints the URL in an unmissable banner and **stays in the foreground streaming tunnel logs** — the URL lives exactly as long as the process. `Ctrl+C` ends the demo; there is no detached mode and no "print the URL and exit," because the tunnel dies with the process that owns it. The script does not touch your `.env`; it passes the origin through the shell environment for this run only.
+The script stages the bring-up in the GoTunnels spirit: it detects your compose engine and a `cloudflared` runner (host binary or a container on the host network), starts PostgreSQL, opens the quick tunnel, and **polls the tunnel log for the assigned `https://<something>.trycloudflare.com` hostname**. Once it has the URL it exports it as `RESTAURANT_PUBLIC_ORIGIN` (so QR join links and the form-post host fallback resolve to the tunnel, not an internal address), force-recreates the `web` service against that origin, and waits for `/healthz/ready`. It then prints the URL in an unmissable banner and **stays in the foreground streaming tunnel logs** — the URL lives exactly as long as the process. `Ctrl+C` ends the demo. That script has no detached mode, and the reason is worth being precise about (**F-52**): the tunnel dies with the process that owns it, and this script *is* that process, because it runs `cloudflared` as a foreground child and blocks on it. Ownership is a choice, not a property of quick tunnels — run `cloudflared` as a detached container and the engine owns it, and the shell can walk away. That is §10a, and it is a different script. The script does not touch your `.env`; it passes the origin through the shell environment for this run only.
 
 **Passkeys work on the quick tunnel**, including a passkey-only account — the RP ID is derived per request and `https://*.trycloudflare.com` is trusted by default (ADR-0005, §3.3), so you can register a passkey, sign out, and sign in with it, all within the demo. The one caveat, which the script prints loudly: every run gets a fresh random subdomain (`trycloudflare.com` is on the Public Suffix List), so **a passkey registered on one run will not match the next run's URL** and must be re-registered — quick-tunnel passkeys are not durable. Password + TOTP is the durable baseline. **Never bootstrap a real instance (§3) through a quick tunnel** — the first administrator's passkey would not survive the next run — and never point a real instance's `RESTAURANT_PUBLIC_ORIGIN` at one; use the stable named tunnel for anything that must persist.
+
+## 10a. Shared test instance on a spare machine (no .NET SDK)
+
+The case: a box on the LAN — reachable over Tailscale or plain SSH — running the build that testers will use for the next few days. Rootless Podman and podman-compose are installed. **`dotnet` is not, and does not need to be:** `run.sh` cannot help you here (its default and `--smoke` modes both require the SDK on the host), while the image is built by the SDK container `Containerfile` names.
+
+```bash
+ssh spare-box
+cd ~/src/myrestaurant
+git pull
+scripts/dev_instance.sh                # builds, opens the tunnel, prints the URL, EXITS
+```
+
+It returns you to the prompt and the instance keeps serving. You can close the SSH session.
+
+| | |
+|---|---|
+| `scripts/dev_instance.sh` | bring it up; prints the public URL and exits |
+| `scripts/dev_instance.sh url` | that URL again, on stdout and nothing else |
+| `scripts/dev_instance.sh status` | tunnel state, current URL, `compose ps` |
+| `scripts/dev_instance.sh logs -f` | the tunnel's log; `Ctrl+C` stops watching, not the instance |
+| `scripts/dev_instance.sh down` | the only thing that closes the tunnel |
+| `scripts/dev_instance.sh --new-url` | discard the hostname and mint a new one — **breaks every passkey** |
+
+**Re-running it reuses the URL.** That is the point, not an optimisation: a tester who has registered a passkey has registered it against that hostname, and a new random subdomain throws it away. Restart the app, `git pull` and rebuild, reboot the host and bring it back — the hostname holds as long as the tunnel container does. Only `down` and `--new-url` end it.
+
+**Before you disconnect, check the linger line the script prints.** Rootless containers belong to your user session. Debian's logind default (`KillUserProcesses=no`) leaves them running when you log out, so in practice this works untouched — but the guarantee is one command, the same one §2 asks for on a production host:
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+**The first build is slow and the script says so before it starts.** Measured cold on the machine this was written for: about nineteen minutes, almost all of it the SDK image pull and the `dotnet publish`. Nothing is public during that time — the tunnel is opened *after* the build, which is the ordering fix in §14.3a. Subsequent runs reuse the layer cache and take seconds.
+
+**Copy `.env.example` to `.env` first if the box is reachable by anything you do not control.** Without it the stack runs on `compose.yaml`'s development defaults, including `POSTGRES_PASSWORD=myrestaurant`. Do not put `RESTAURANT_PUBLIC_ORIGIN` in that `.env`: the script sets it from the tunnel URL through the process environment, which takes precedence, so a pinned value would be ignored and the file would disagree with the running instance. The script warns when it finds one.
+
+**What this is still not.** Everything §10 says applies unchanged, and applies harder because the instance is long-lived: the hostname is random and on the Public Suffix List, passkeys do not survive `--new-url`, and **you must not bootstrap a real instance (§3) here** — the first administrator's credentials would be tied to a hostname you will eventually discard. Take a backup (§6) before you tear a test instance down if the data in it mattered; `down` leaves the named volumes alone, so the database and the key ring survive a normal stop.
 
 ## 11. WAN outage behavior
 
