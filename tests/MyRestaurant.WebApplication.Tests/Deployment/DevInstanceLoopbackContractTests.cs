@@ -101,13 +101,11 @@ public sealed class DevInstanceLoopbackContractTests
             Assert.True(
                 string.Equals(target.Host, published.Host, StringComparison.Ordinal)
                 && string.Equals(target.Port, published.Port, StringComparison.Ordinal),
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"{target.Path} dials '{target.Host}:{target.Port}' by default, and"
-                    + $" {ComposeRelativePath} publishes the web port on '{published.Host}:{published.Port}'."
-                    + " Those have to be the same address: the published port is the only one that"
-                    + " exists on the host, and a helper that dials anything else gets a connection"
-                    + " refused naming an address nobody configured."));
+                $"{target.Path} dials '{target.Host}:{target.Port}' by default, and"
+                + $" {ComposeRelativePath} publishes the web port on '{published.Host}:{published.Port}'."
+                + " Those have to be the same address: the published port is the only one that"
+                + " exists on the host, and a helper that dials anything else gets a connection"
+                + " refused naming an address nobody configured.");
         }
     }
 
