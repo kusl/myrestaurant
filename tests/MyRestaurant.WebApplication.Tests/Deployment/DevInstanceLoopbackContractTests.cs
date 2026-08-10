@@ -122,7 +122,7 @@ public sealed class DevInstanceLoopbackContractTests
         foreach (HelperTarget target in ReadHelperTargets())
         {
             Assert.True(
-                System.Net.IPAddress.TryParse(target.Host, out System.Net.IPAddress _),
+                System.Net.IPAddress.TryParse(target.Host, out _),
                 $"{target.Path} dials the host '{target.Host}', which is a name rather than an address."
                 + $" {ComposeRelativePath} publishes the web port on one address and nothing listens on"
                 + " ::1, so a name that resolves to ::1 first is a dependency on every client falling"
