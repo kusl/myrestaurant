@@ -1,0 +1,80 @@
+00
+18
+
+I ran the new script `time bash scripts/dev_instance.sh`
+and it is stuck 
+you can see it in `virginia-terminal.txt` which I have included in the project files 
+something is not quite right here... 
+please fix everything thoroughly 
+and remember to update documentation and readme 
+when we make substantial changes
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+please avoid giving me bespoke scripts to manipulate text in code / documentation 
+remember to give full files for all files that need to change 
+I will likely miss those bespoke scripts 
+
+
+/
+Claude finished the response
+I ran the new script time bash scripts/dev_instance.sh
+and it is stuck 
+you can see it in virginia-terminal.txt which I have included in the project files 
+something is not quite right here... 
+please fix everything thoroughly 
+and remember to update documentation and readme 
+when we make substantial changes
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+please avoid giving me bespoke scripts to manipulate text in code / documentation 
+remember to give full files for all files that need to change 
+I will likely miss those bespoke scripts
+
+
+Architected shell script with validation, argument parsing, and diagnostic logging
+Architected shell script with validation, argument parsing, and diagnostic logging
+Now I have the full picture. Let me write the rewritten script.
+
+
+Ran 2 commands
+Ran 2 commands
+I hit the tool limit mid-build, so let me give you what I've established — the diagnosis is solid, and it's not what the script's output claimed.
+
+What actually happened on virginia
+Your run didn't hang. It did something worse and took 6m55s to do it:
+
+postgres was crash-looping. podman ps shows Up 1 second (starting) for a container created 7 minutes earlier — the engine restarting it over and over. In the prior session it shows Exited (1).
+web exited 1 and stayed dead. Exit code 1 is significant: it's the only clean exit-1 path in Program.cs — the configuration-error branch (Console.Error.WriteLine("Configuration error: …"); return 1). An unhandled exception from SchemaMigrationRunner would abort with 134, not 1. So the app printed a reason to its own stderr and nobody ever read it.
+The script waited out the full 300s readiness deadline against an already-dead container, then printed the DEV INSTANCE — DETACHED banner with a public URL, held 20 more seconds probing that URL, warned it hadn't answered, and exited 0.
+logs -f couldn't help — it only ever shows the tunnel's log, which is why you got 40 lines of cloudflared saying connection refused and zero lines about the actual failure.
+The information you needed was sitting in podman logs myrestaurant_web_1 the whole time.
+
+Two findings, both real
+F-55 — F-53 was a wait with no deadline; this is a wait with a deadline and no evidence. A deadline stops a wait that cannot end; only a liveness check stops a wait that cannot succeed. And the failure path never printed a log. Also: up exited 0 over a dead instance, so time bash scripts/dev_instance.sh reported success.
+F-56 — TUNNEL_TARGET defaults to http://localhost:8080, but compose.yaml publishes 127.0.0.1:8080:8080 — IPv4 only. run.sh has probed the literal http://127.0.0.1:8080 since M1; both tunnel helpers name the host. A rule applied to one example and never generalised (F-51's shape). BusyBox wget — the second entry in the script's own probe chain — does not fall back to a second address.
+There's also a third, unfixable-by-restart case I found: down keeps the named volumes on purpose, and podman system prune -a doesn't touch volumes either — so a PostgreSQL data directory that cannot start (interrupted first initdb, hard reboot mid-write) survives every cycle you ran, including both prunes. There is currently no command in the tree that clears it.
+
+What I have written so far
+scripts/dev_instance.sh, rewritten (~930 lines, two parts drafted): both waits now bounded and watched — the database wait ends early on a crash loop, the readiness wait restarts web up to 3 times then gives up; settle skipped when readiness already failed; logs [web|postgres|tunnel] defaulting to web; new diagnose printing both log tails plus a reading key mapping each symptom to its cause; new reset (destroys volumes, confirmation required); describe_service reporting exit codes and restart counts instead of health: starting on a corpse; up exiting 1 when the app never answered. shellcheck 0.11.0 is installed here and your nine existing scripts baseline clean at --severity=style, so I can hold the new one to that.
+
+Still to write: scripts/quick_tunnel.sh (loopback literal), .env.example, spec v1.13 (§14.3a, §16.4, Appendix A, changelog, header), OPERATIONS.md §10a, README.md, DOCUMENTATION_REVIEW.md F-55/F-56, BUILD_PROGRESS.md Slice 28, a new DevInstanceLoopbackContractTests.cs (3 facts, 1059 → 1062), and _CHANGES.md. No files to delete.
+
+Say "go" and I'll finish the archive. One thing that would help either way: on virginia, podman logs myrestaurant_web_1 | tail -40 and podman logs myrestaurant_postgres_1 | tail -40. That names the exact variable or PostgreSQL error, and I'll write it into the ledger row instead of listing candidates.
+
+Claude reached its tool-use limit for this turn.
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
