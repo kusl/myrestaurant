@@ -87,3 +87,127 @@ Say **go** and I'll ship `m6-slice-31-image-references-and-single-fire-cleanup.t
 
 please continue 
 
+
+/
+Claude finished the response
+
+Architected shell script fixes and bash error handling logic
+Architected shell script fixes and bash error handling logic
+Baseline is clean. Now authoring the slice.
+
+
+Edited 10 files, ran 8 commands
+Edited 10 files, ran 8 commands
+Now the new contract test. Let me validate the scanner logic against the edited tree first.
+
+
+Identified self-referential test flaw and devised naming convention solution
+Identified self-referential test flaw and devised naming convention solution
+Now let me port the C# logic to Python exactly and run it against the tree, including sensitivity checks.
+
+
+Identified and resolved recursive naming conflict in constant identifiers
+Identified and resolved recursive naming conflict in constant identifiers
+All three facts pass. Now proving each is sensitive — a test that cannot fail is not a test.
+
+
+Orchestrated systematic validation across multiple test probes
+Orchestrated systematic validation across multiple test probes
+Slice 31 authored and verified — packaging blocked
+I hit the tool limit at the packaging step, so there is no .tar.gz in this response. Everything below is written and verified in my sandbox; the next turn is tar -czf plus the documentation set. Here is the state so it isn't lost.
+
+The two findings
+F-60 — the fully-qualified-image rule was applied to two examples, not to the repository. §14.1 states it normatively and F-51's row calls it a correctness requirement. It held in compose.yaml and scripts/restore_drill.sh. It did not hold in tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs, tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs, or .github/workflows/ci.yml (twice). F-46's shape for the third time.
+
+I verified the mechanism from source rather than assuming it, which was the open question from last turn. Testcontainers hands the reference to the engine verbatim: MatchImage.Match records a registry only when the first slash-separated segment contains a . or a :, and the comment beside that line says it does not resolve or set the default domain and repository prefix. So on a host whose unqualified-search-registries is unpopulated the pull fails — and both fixtures catch every startup failure and turn it into a skip, correctly and by design. The result is not a red suite. It is a green one in which the data-access integration tests and all fifteen §16.3 scenarios declined to run, behind a message whose headline said the container engine was unreachable when it was not.
+
+F-61 — scripts/quick_tunnel.sh ran its cleanup twice per Ctrl+C. Two trap installs on INT TERM EXIT; a signal trap and the EXIT trap are independent, so one keystroke ran the body twice and printed the closing line twice. I could not reproduce the double fire in the sandbox — different bash, no controlling terminal, kill -INT <pid> is not a terminal ^C to a foreground process group — so your log stays the authoritative observation. I did verify the fixed handler fires exactly once, and the guard is correct under every ordering, so the fix does not depend on pinning which pair fired. Class audit: run.sh:235 has the same shape but its handler is silent and idempotent, so no change; backup.sh, restore.sh, restore_drill.sh are EXIT-only.
+
+Code, written and checked
+Changed: scripts/quick_tunnel.sh (guarded single-fire cleanup; cloudflared image moved into an overridable CLOUDFLARED_IMAGE, matching dev_instance.sh), tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs, tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs, .github/workflows/ci.yml. New: tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerImageReferenceContractTests.cs.
+
+Both fixtures now split the skip diagnosis — an unresolvable reference is no longer reported as an unreachable engine — and both name the image, which the old message omitted entirely.
+
+The new test reads three positions (a YAML image: key, a Containerfile FROM operand, a value assigned to a name ending in _IMAGE/Image), skips docs/ because those files quote both forms on purpose, and asserts three facts. Ported to Python and run: 12 references found, all qualified, every image name resolving to exactly one reference. Each fact proven sensitive by a separate probe — reintroducing F-60 fails facts 2 and 3; a version drift that is fully qualified fails only fact 3, which is why fact 3 exists; moving references out of scope fails fact 1.
+
+Two structural notes worth your veto. The references in quick_tunnel.sh and PostgreSqlFixture.cs were spelled inline, invisible to any audit, so moving them into named constants is what puts them in scope rather than tidiness. And the test reads its own file, so no constant in it may be named with a trailing Image — I tripped that exact trap once and fixed it.
+
+On F-51's ruling: it declined to make this executable, and I am not reversing it. Its objection was that a grep is no substitute for running the stack, and that open item stays open. This test asserts a different thing — that a rule stated for the tree is applied everywhere in the tree — which is entirely a property of the tree. The new test's remarks say so explicitly.
+
+bash -n and shellcheck --severity=style clean (0.9.0 here versus your 0.11.0); brace-balance clean on all three C# files with an untouched sibling as control; byte hygiene clean; both workflows and compose.yaml parse.
+
+Two things to correct in the documentation
+ci.yml ends with two newlines in your current tree — pre-existing, not mine, and check_tree.sh passes it, so the gate's rule is looser than my scan. I'll match the gate and leave it.
+
+And Slice 30's test-count prediction was 1072; your run reports 1070. The rewritten SpecificationVersionTests now has two [Fact]s where it previously had four, which is the two. BUILD_PROGRESS should carry that correction rather than let a stale prediction stand. Slice 31 predicts 1073 — three new facts, arithmetic, nothing compiled or run.
+
+Say go and I'll ship m6-slice-31-image-references-and-single-fire-cleanup.tar.gz: the five files above plus §14.1 generalised, §14.3, §16.4, Appendix A rows F-60/F-61, spec v1.16, the two ledger rows, BUILD_PROGRESS.md complete, README.md, _CHANGES.md, and the Stage 2 plan correction. Full files, git add line for the one new test, deletions listed explicitly, no inline scripts.
+
+please continue
+
+
+Orchestrated documentation revisions and version updates systematically
+Orchestrated documentation revisions and version updates systematically
+Now the documentation edits.
+
+
+Scrutinized regex patterns and validated gate scanning scope
+Scrutinized regex patterns and validated gate scanning scope
+Governance gate clean. Packaging.
+
+
+Ran 2 commands, read a file
+Ran 2 commands, read a file
+M6 Slice 31 — F-60 and F-61
+Extract at the repository root. Twelve complete files, verified byte-identical after extraction.
+
+tar -xzf m6-slice-31-image-references-and-single-fire-cleanup.tar.gz
+git add tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerImageReferenceContractTests.cs
+git status
+Files to DELETE: none.
+
+git add is required for the one new file — check_tree.sh enumerates with git ls-files, so an untracked file is a file no gate looks at.
+
+F-60 — a green suite that ran nothing
+§14.1 has required a fully qualified image reference since v1.11. compose.yaml obeys it; restore_drill.sh has obeyed it since Slice 16. Four references did not: both Testcontainers fixtures, and CI's service container and drill image.
+
+The one claim this rests on I verified from source rather than assumed. Testcontainers does not normalise the reference — MatchImage.Match records a registry only when the first slash-separated segment carries a . or a :, and the comment above that line says the implementation does not resolve or set the default domain and repository prefix. So the short name reaches the engine as a short name and resolution goes through unqualified-search-registries, which a stock Debian ships commented out.
+
+Why this is worse than F-51 rather than merely wider. F-51 was loud — three errors, nothing started. This is silent, because both fixtures turn a container that will not start into a skip, which is deliberate and correct. On the canonical host dotnet test exits 0 with the data-access integration tests and all fifteen §16.3 scenarios declining to run, behind a skip reason headlined "A container engine (Podman/Docker) was not reachable" that prescribes activating a socket already active. Both fixtures now split that diagnosis and both name the image.
+
+Two references were invisible to any audit — one in a podman run line, one inline at new PostgreSqlBuilder(…). They move into CLOUDFLARED_IMAGE and a PostgreSqlImage constant, and the reason recorded beside each is that naming them is what puts them in scope.
+
+F-46's shape for the third time, and the sharpest: F-46 enforced a general rule as six phrasings about one page, F-58 against one file, F-60 in the same commit that applied it to one file.
+
+Not a reversal of F-51's ruling. That ruling rejected a text check as a substitute for running the stack; that stands and the CI job stays open. This test asserts a different proposition — that a rule stated for the repository is applied everywhere in it — which is wholly a property of the tree. Three facts, each proven sensitive by its own regression: reintroducing F-60 fails facts 2 and 3; a fully qualified drift to postgres:18-alpine fails only fact 3, which is why fact 3 exists; renaming the *_IMAGE variables fails fact 1.
+
+F-61 — two closing lines for one Ctrl+C
+Two trap installs on INT TERM EXIT; a signal trap and the EXIT trap are independent, so the body ran twice. Nothing it did was harmful — that is the finding, not a mitigation. What was wrong was the sentence, from a helper whose whole job at that moment is telling you the machine's state. Third consecutive slice where a helper's output was the defect and its actions were correct.
+
+I could not reproduce the double fire in the sandbox, so your log is the evidence and the fix is made correct under every ordering — a first-entry guard plus trap - on entry — rather than by choosing different signals. run.sh's smoke trap has the identical registration and is unchanged: its handler is silent and idempotent, and a rule calling that a defect would fail on a correct tree.
+
+Two things in those logs that are not findings
+The single 429 in 100,000 requests is Cloudflare's edge — /healthz/live carries no [EnableRateLimiting]. Recorded as a baseline instead: 737 RPS, P50 90 ms, P99 215 ms, and /healthz/ready — which opens a connection, runs SELECT 1 and asks DbUp whether the schema is current — returned 100,000 of 100,000 at P50 91 ms. The myrestaurant_caddy_1 error is podman-compose's own internal rm.
+
+Corrections carried in the documents
+Slice 30 predicted 1072 tests; your run reports 1070. SpecificationVersionTests has two [Fact]s where it had four — the rewrite replaced four with two. Slice 31 predicts 1073: arithmetic, nothing compiled.
+
+And Stage 2 of the menu plan cannot ship green as written. menu_section_identifier NOT NULL means CreateMenuItem.razor cannot create an item without a section the moment 0003 applies, and five §16.3 scenarios drive that real form. Stage 2 now pulls exactly three things forward — the section create page, the picker and description field, a harness CreateMenuSectionAsync. The nullable-then-tighten alternative is rejected in writing: three migrations for two decisions, and an "Uncategorized" state every surface written that slice would have to handle and un-handle.
+
+Verified / not verified
+Scanner ported to Python and run (12 references, all qualified, one per name, four positions populated); bash -n and shellcheck clean, though 0.9.0 here against your 0.11.0; brace balance on all three C# files with an untouched control; SpecificationVersionTests ported and run (1.16 against 1.16, seventeen entries descending); the governance gate's actual pattern list run over every delivered file; byte hygiene clean.
+
+Nothing compiled. No engine resolved any reference. CI's service container was changed without being run — Docker normalises a short name to docker.io/library/… so both should be a store hit, and the cache-sharing comment now says so, but the first push proves it. If the drill step starts pulling on every run, that comment is where to look.
+
+
+M6 slice 31 image references and single fire cleanup.tar
+GZ 
+
+Want to be notified when Claude responds?
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
