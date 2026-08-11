@@ -27,7 +27,29 @@ public sealed class RestaurantHarness : IAsyncLifetime
     /// <summary>The environment variable that opts in to the end-to-end scenarios.</summary>
     public const string OptInVariableName = "MYRESTAURANT_E2E";
 
-    private const string PostgreSqlImage = "postgres:17-alpine";
+    /// <summary>
+    /// Fully qualified, and the same reference <c>compose.yaml</c> gives the <c>postgres</c> service
+    /// (TECHNICAL_SPECIFICATION §14.1, <b>F-60</b>). Testcontainers passes this to the engine
+    /// verbatim — <c>MatchImage.Match</c> records a registry only when the first slash-separated
+    /// segment contains a <c>.</c> or a <c>:</c>, and its own comment says it "does not resolve or
+    /// set the default domain and repository prefix" — so a short name here is resolved through
+    /// <c>unqualified-search-registries</c>, which a stock Debian ships commented out. That is
+    /// F-51's mechanism, and here its consequence is quieter and worse: the catch below turns it into
+    /// a skip, so all fifteen §16.3 scenarios decline to run and the suite reports success.
+    /// </summary>
+    private const string PostgreSqlImage = "docker.io/library/postgres:17-alpine";
+
+    /// <summary>
+    /// Fragments a container engine uses when it cannot turn an image reference into a registry.
+    /// Matched case-insensitively against the whole exception chain, because the wording differs
+    /// between Podman's own error and the Docker-compatible API's relay of it.
+    /// </summary>
+    private static readonly string[] UnresolvableReferenceMarkers =
+    [
+        "short-name",
+        "unqualified-search",
+        "did not resolve to an alias",
+    ];
 
     /// <summary>
     /// Installs only Chromium. The scenarios are single-browser by design: §16.3 is about this
@@ -107,11 +129,7 @@ public sealed class RestaurantHarness : IAsyncLifetime
         }
         catch (Exception exception)
         {
-            SkipReason =
-                "A container engine (Podman/Docker) was not reachable: " + exception.Message +
-                " — on a rootless-Podman host, activate the user API socket once with" +
-                " `systemctl --user enable --now podman.socket` and re-run; the tests discover it" +
-                " automatically.";
+            SkipReason = DescribeContainerFailure(exception);
         }
     }
 
@@ -172,6 +190,74 @@ public sealed class RestaurantHarness : IAsyncLifetime
             tableJoinTokenRotationSeconds,
             kitchenSubmissionReminderSeconds,
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Names what actually went wrong rather than the most common thing that goes wrong (<b>F-60</b>).
+    /// Every unavailability used to be reported as "a container engine was not reachable", with a
+    /// remediation about activating the Podman socket — so an operator whose engine was reachable and
+    /// whose *image reference* was unresolvable was told to fix something that was not broken. Here
+    /// the mis-diagnosis costs more than in the data-access fixture, because these fifteen scenarios
+    /// are the only thing in this repository that exercises the product end to end, and their
+    /// declining to run looks exactly like their passing.
+    ///
+    /// <para>Both branches name the image, which the previous message omitted entirely and which is
+    /// the single most useful fact when a pull is what failed.</para>
+    /// </summary>
+    private static string DescribeContainerFailure(Exception exception)
+    {
+        string detail = Flatten(exception);
+
+        if (MentionsUnresolvableReference(detail))
+        {
+            return
+                $"The image reference '{PostgreSqlImage}' could not be resolved to a registry by this"
+                + " container engine: " + detail
+                + " — this is not an unreachable engine. A reference without a registry component is"
+                + " resolved through `unqualified-search-registries`, which a stock Debian ships"
+                + " commented out (F-51, F-60). The reference above is fully qualified, so if this is"
+                + " what failed then the engine could not reach the registry it names, or the local"
+                + " store has the image under a different name. Check network egress to that"
+                + " registry, or pre-pull it by hand.";
+        }
+
+        return
+            "A container engine (Podman/Docker) was not reachable: " + exception.Message
+            + $" — the image this harness starts is '{PostgreSqlImage}'. On a rootless-Podman host,"
+            + " activate the user API socket once with `systemctl --user enable --now podman.socket`"
+            + " and re-run; the tests discover it automatically.";
+    }
+
+    private static bool MentionsUnresolvableReference(string detail)
+    {
+        foreach (string marker in UnresolvableReferenceMarkers)
+        {
+            if (detail.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The whole exception chain's text. Testcontainers wraps the engine's response, so the sentence
+    /// that names the cause is routinely on an inner exception rather than on the one thrown.
+    /// </summary>
+    private static string Flatten(Exception exception)
+    {
+        List<string> messages = [];
+
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current.Message.Length > 0)
+            {
+                messages.Add(current.Message);
+            }
+        }
+
+        return string.Join(" | ", messages);
     }
 
     private static bool IsOptedIn()

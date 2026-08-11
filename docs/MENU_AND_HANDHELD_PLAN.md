@@ -112,7 +112,10 @@ lies inside the viewport. One scenario, one assertion, and it is the assertion F
 Deliberately **not** done in Slice 30, and the reason is F-41's: the fifteen §16.3 scenarios all run in one
 default context, and giving one of them a second viewport is either a second browser context per run or a
 resize that every subsequent scenario inherits. Getting that wrong produces a suite that fails on a correct
-tree, which is worse than the gap. It is the first item in Stage 6.
+tree, which is worse than the gap. It is the first item in Stage 6 — which is a typo for "it is the first open item", since Stage 6 is
+comments and has nothing to do with a viewport. Recorded rather than silently corrected because the same
+sentence is quoted in S§16.4 and in the Slice 30 BUILD_PROGRESS entry, and a cross-document citation that
+quietly changes meaning is F-50's class at the smallest possible stakes.
 
 ---
 
@@ -202,6 +205,26 @@ runs at startup on somebody else's box. `0003` drops every CHECK constraint on t
 splitter handles dollar-quoting correctly (verified against `PostgresqlQueryParser.ParseRawQuery` in
 `DbUp/dbup-postgresql` — the `DollarQuoted` state machine consumes the whole tagged block, so a `;` inside
 the `DO` body does not split the statement), so the block is safe in an embedded script.
+
+### A correction to this stage's boundary, made before it was authored
+
+**Stage 2 as written above cannot ship green, and the reason is one word in its own schema.**
+`menu_section_identifier` is `NOT NULL`, so the moment migration `0003` applies, `CreateMenuItem.razor`
+cannot create an item without naming a section — and `AdministrationJourneys.CreateMenuItemAsync` drives
+that real form in five of the fifteen §16.3 scenarios. A slice that lands the schema and the data access
+and leaves the surfaces for Stage 3 therefore lands a red suite, whatever the quality of the two halves.
+
+So Stage 2 pulls three things forward out of Stage 3, and only three: the **section create page**, the
+**section picker and description field on the item form**, and a harness `CreateMenuSectionAsync` the five
+scenarios call before their first `CreateMenuItemAsync`. The section *index*, the section *editor* with its
+event history, the rewritten guest menu and the kitchen panel's grouping all stay in Stage 3 — none of
+them is on the path between `NOT NULL` and a green suite.
+
+The alternative was considered and rejected: make the column nullable in `0003`, ship the surfaces in
+Stage 3, and tighten it in `0004`. That is three migrations for two decisions, it puts an
+"Uncategorized" state into the schema for exactly one slice, and every reading surface written during
+that slice acquires a code path for it that then has to be removed. The ruling above — that an item under
+no heading is an item nobody decided about — is worth more than the neatness of the stage boundary.
 
 ### The migration, in order
 

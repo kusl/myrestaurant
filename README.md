@@ -275,12 +275,21 @@ The stack is defined in `compose.yaml` with two profiles:
 podman-compose --profile production up -d
 ```
 
-Two rules about `compose.yaml` are correctness requirements on rootless Podman rather than style, and
-both are stated in the file's own header: **every image reference is fully qualified** (`docker.io/library/postgres:17-alpine`,
+Two rules are correctness requirements on rootless Podman rather than style, and both are stated in
+`compose.yaml`'s own header: **every image reference is fully qualified** (`docker.io/library/postgres:17-alpine`,
 not `postgres:17-alpine`, because a stock Debian resolves no short names — F-51), and **no `depends_on`
 is gated on a health condition** (`service_started` only; Debian's podman-compose waits on a health
 condition forever and silently — F-53). Waiting for the database is the application's job, and it has
 retried its first connection thirty times since M1.
+
+The first rule is not about `compose.yaml`. Reading it that way was a finding of its own (**F-60**): it
+holds at every image reference in the repository, and the four places it was missing were the two
+Testcontainers fixtures and CI's two — where a short name does not fail the suite, because both fixtures
+turn a container that will not start into a *skip*, so the canonical host answers with a green run in
+which no integration test and no end-to-end scenario executed. A reference must also sit somewhere that
+can be read: a YAML `image:` key, a `Containerfile` `FROM`, or a value assigned to a name ending in
+`_IMAGE` or `Image`. Two of them did not, and moving those into named constants is what put them back
+inside the audit rather than a tidy-up.
 
 `RESTAURANT_PUBLIC_ORIGIN` is the single origin from which the WebAuthn relying-party ID and all QR
 and link URLs are derived. In-house guests hairpin through the tunnel, so LAN ordering depends on WAN
@@ -296,7 +305,8 @@ The script brings PostgreSQL up, opens a `*.trycloudflare.com` tunnel, discovers
 sets `RESTAURANT_PUBLIC_ORIGIN` to it (so QR join links resolve), (re)starts the web app against
 that URL, waits for it to answer, prints the URL in a banner, and then holds the tunnel in the
 foreground. The URL lives exactly as long as *that script* runs, because it owns `cloudflared` as a
-foreground child — Ctrl+C ends the demo.
+foreground child — Ctrl+C ends the demo, once (**F-61**: it used to say so twice, because one handler
+was registered on both the signal and on exit).
 
 For a test instance that has to outlive the terminal — a spare machine on the LAN, reached over SSH,
 serving a build that testers will use for days, **with no .NET SDK installed on it** — there is a

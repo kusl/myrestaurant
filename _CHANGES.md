@@ -1,223 +1,191 @@
-# M6 Slice 30 — the screen it is read on (F-59), the gate that named one file (F-58), and a plan for the menu
+# M6 Slice 31 — the rule that was true of two files (F-60), and the helper that said it twice (F-61)
 
 Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-30-handheld-contract-and-menu-plan.tar.gz
-git add docs/MENU_AND_HANDHELD_PLAN.md
-git add docs/adr/0014-menu-sections-and-item-descriptions.md
-git add src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationArea.cs
-git add src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationAreaLinks.razor
-git add tests/MyRestaurant.WebApplication.Tests/Components/HandheldLayoutContractTests.cs
+tar -xzf m6-slice-31-image-references-and-single-fire-cleanup.tar.gz
+git add tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerImageReferenceContractTests.cs
 git status
 ```
 
 **Files to DELETE: none.**
 
-**`git add` is required** for the five new files above — `scripts/check_tree.sh` enumerates with
+**`git add` is required** for the one new file above — `scripts/check_tree.sh` enumerates with
 `git ls-files`, so an untracked file is a file no gate looks at.
 
 ---
 
-## Your user found something in ninety seconds that 1066 tests could not
+## Both findings came out of the logs from a run in which everything passed
 
-> the manage button was on the right side as the user was trying to manage a table
-
-Exactly reproducible, and the mechanism is four lines of CSS repeated four times. `AdministrationHome`,
-`AdministrationTables`, `AdministrationMenu` and `AdministrationSittings` each declared their own inline
-copy of the same eighty lines of table rules, and each copy ended in:
-
-```css
-.admin-people .admin-row-actions {
-    white-space: nowrap;
-    text-align: right;
-}
-```
-
-inside a wrapper carrying `overflow-x: auto`. A five-to-eight column table in a 375px viewport scrolls
-sideways; the action column is the last thing in it; so the only way into a row was reachable only by
-scrolling past every other column of that row. Nobody decided that — it was one paste, four times. The same
-four pastes had also invented the chip vocabulary **five** times over (four inline, plus `app.css`, which
-carried a comment apologising for the duplication and inviting somebody to fold it in) and
-`.visually-hidden` **seven** times.
-
-**Nothing here could have caught it, and the reason is precise rather than embarrassing.** `REQUIREMENTS.md`
-§1 has said since rev 1 that guests order from their own phones. §11.7 budgets the footer clock for a
-handset in real detail. But **no section said a staff surface has to be operable on one** — so there was no
-rule to enforce, no gate that could have been written, and every gate was green while four pages an
-operator uses standing at a table were unusable on the device they would be holding.
-
-That is the first finding in the ledger this project did not find itself, and it is recorded as its own
-lesson: **a project can only find the defects its own premises admit.** The instrument that finds the rest
-is a person who has not read the documents.
+No user reported either of these. They are in the three terminal logs from Slice 30's verification: 1070
+tests green on two hosts, fifteen §16.3 scenarios green, `ci_local.sh --with-all --with-e2e` clear,
+`dev_instance.sh` up on virginia in 76 seconds, and a hundred thousand requests through a quick tunnel at
+737 RPS.
 
 ---
 
-## Why the layout landed and the menu did not
+## F-60 — four image references, and a green suite that ran nothing
 
-Your enhancement request came first and is second in this slice. Two reasons, and the second decided it.
-
-The menu work adds four surfaces — a section index, a section editor, a rewritten item form, and a guest
-menu that is a grouped list of described items instead of one `<select>`. All four are read from a phone.
-Written before the responsive vocabulary exists, they are written against the shape F-59 was found in, and
-then all four need touching again.
-
-And: **F-59 blocks user testing, the menu does not.** A menu without sections is a menu somebody can still
-order from.
-
-So the menu is shipped **decided and planned** rather than half-built. `docs/MENU_AND_HANDHELD_PLAN.md` is
-the plan, `docs/adr/0014-*.md` is the ruling, §7 and §19 point at both, and Stage 2 is a migration and a
-file list rather than a design exercise. If you disagree with the ordering, Stage 2 is self-contained and
-can be taken next without re-reading any of this.
-
----
-
-## What §11.12 says, in the four sentences worth reading
-
-**The direction is the rule, not a preference.** `app.css` states the narrow layout unconditionally and
-contains exactly one `@media (min-width: 48rem)` query — the only place a width appears in the file. A
-`max-width` query would make the wide layout the default and the handset the exception, and it fails in the
-worst available direction: whatever is forgotten lands on the screen the software is actually used from.
-That was the previous arrangement.
-
-**Every record-list cell states its own label, and this is not decoration.** Overriding `display` on a
-table's parts drops table semantics in every engine, so below the breakpoint `<thead>` stops being what
-associates a cell with a column. An unlabelled card is a column of bare values — `Table 4`, `2`, `19:04`,
-`$18.50` — with nothing on screen or in the accessibility tree saying which is which. `data-label` is the
-replacement for the header; a self-describing cell opts out with `data-label=""`, which is a decision
-written down rather than an omission.
-
-**A row's action is the full width of the foot of its card, and its primary cell is also a link.** Both,
-not either: the link alone leaves a card with no visible affordance, and the button alone puts the target
-at the bottom of a card whose top is what somebody taps.
-
-**A 16px floor on every text control**, because iOS Safari zooms the whole viewport when a focused field's
-text is smaller and does not zoom back — so one undersized field breaks the layout of the page around it,
-on the platform most of your guests are holding.
-
----
-
-## Two decisions I made that you might veto
-
-**1. `.page-head`, not `.admin-header`.** The obvious move was to hoist the existing class name into
-`app.css`. That is wrong for a mechanical reason: three pages this slice does not restructure still declare
-`.admin-header` inline, and **an inline copy of a shared name wins on source order at equal specificity** —
-so those pages would silently keep the old behaviour while the stylesheet claimed otherwise. A new name
-cannot lose that argument. The two coexist for exactly as long as Stage 1b takes.
-
-*To revert:* rename `.page-head*` back to `.admin-header*` in `app.css` and the four pages, and accept
-that the three unconverted pages override it.
-
-**2. `AdministrationAreaLinks` is a new component.** The six area links were copy-pasted into six pages and
-each copy omitted a different one — **its own** — so the row of links was a different row on every page and
-no page was reachable from every other. It is rendered once now, self-link included and marked
-`aria-current="page"`, because on a handset it is a horizontally scrolled strip and a strip whose contents
-shift between pages cannot be navigated from memory.
-
-*To revert:* inline the `<ul class="page-head-areas">` back into each page and delete
-`AdministrationAreaLinks.razor` and `AdministrationArea.cs`.
-
----
-
-## F-58, found by accident
-
-`REQUIREMENTS.md` said **"Revision 4 — 2026-08-05"** in its header while its own revision history's newest
-entry said **"Rev 5 — 2026-08-06"**. Six slices, green on every `dotnet test`.
-
-`SpecificationVersionTests` exists precisely to stop that — it was F-48's fix, two slices after the
-specification did the same thing. It asserts header-matches-newest and entries-descend, and both are true.
-What nobody noticed is that the file it asserts them *about* is a `const string`, and **a `const string`
-naming one path reads as configuration rather than as a scope decision.** F-46 established that a rule
-enforced as a list of examples is enforced as a list of examples. This is the sharper corner: a list of one
-does not look like a list.
-
-Its subject is computed now — every `docs/*.md` with both a header version and a history section, both
-vocabularies read by one pattern, and a half-versioned document reported as a finding rather than skipped.
-Ported to Python and run against the tree **before** the fix: it fails on `REQUIREMENTS.md`, header 4
-against newest entry 5. That is F-58 reproduced by the gate that should have had it.
-
----
-
-## Every file, and why
-
-| File | Change |
-|---|---|
-| `docs/MENU_AND_HANDHELD_PLAN.md` | **new.** Six stages, with the schema, the migration order, the file list, and the two stages that are recorded as *not startable* and why |
-| `docs/adr/0014-menu-sections-and-item-descriptions.md` | **new.** Seven rulings on the menu model, each with the argument and the accepted cost |
-| `src/…/Administration/AdministrationArea.cs` | **new.** The six-member enum behind the shared nav |
-| `src/…/Administration/AdministrationAreaLinks.razor` | **new.** The area links, rendered once |
-| `tests/…/Components/HandheldLayoutContractTests.cs` | **new.** Four facts, each proven sensitive |
-| `src/…/wwwroot/app.css` | rewritten handheld-first; one `min-width: 48rem` query; the `.record-*` and `.page-head*` vocabulary; `--touch-target`; the 16px input floor; `select` and `textarea` styled for the first time (the `textarea` is Stage 3's description field, added while the file was open); `.chip`, `.muted` and `.visually-hidden` declared once, with `clip-path` rather than the deprecated `clip` |
-| `src/…/Administration/AdministrationHome.razor` | record list; username is the link; action at the foot of the card; **inline `<style>` removed entirely** |
-| `src/…/Administration/AdministrationTables.razor` | same, and this is the page F-59 was reported against |
-| `src/…/Administration/AdministrationMenu.razor` | same. Restructured and **deliberately not given sections** — it says so in its own header, and its `Describe` fallback already renders an unknown event type as itself, so Stage 2's two new types read correctly here before this page learns their names |
-| `src/…/Administration/AdministrationSittings.razor` | same, plus the batch-close tick moved to the **first** thing in each card with the table's label as its accessible name — a bare checkbox at the top of a card is a control with nothing saying what it closes, and this is the one control on an administration index that charges somebody money |
-| `tests/…/Documentation/SpecificationVersionTests.cs` | subject computed rather than named; both version vocabularies; half-versioned documents are findings; two facts, renamed, not added to |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.15** — new §11.12; §7 forward-references ADR-0014 and restates the two rules easiest to lose while rewriting a menu; §16.4 gains both gates and what the handheld one cannot assert; §19 gains M7 and why its stages run in that order; Appendix A gains F-58, F-59 and one row that is not a finding; header and changelog moved together |
-| `docs/REQUIREMENTS.md` | **rev 6** — one new §8 principle; §6.8 gains sections, descriptions and ordering, plus what stays out of scope and why; the F-58 header correction recorded in its own rev 6 entry; the stale specification-version citation dropped rather than corrected |
-| `docs/DOCUMENTATION_REVIEW.md` | F-58 and F-59 rows, the status line, and two closing paragraphs — one of which is the only lesson in this file that came from outside it |
-| `docs/BUILD_PROGRESS.md` | Slice 30, whole file |
-| `README.md` | M7 in the roadmap and in the opening; `docs/` added to the layout list, which it had never been in |
-
----
-
-## Verification
-
-- **`HandheldLayoutContractTests` ported to Python, run, then attacked.** Four facts pass on the tree.
-  Nine mutations, one at a time — a second breakpoint; the breakpoint inverted to `max-width`; the block
-  emptied; a page re-declaring `.record-actions` inline; one `<td>` losing its `data-label`; the wrapper
-  renamed on one page; a page not on the expected list acquiring the retired vocabulary; and a page on that
-  list half-converted, which is caught by the label-parity fact rather than the list fact because a
-  half-converted page has cells and no labels. Both non-vacuity guards then attacked directly by deleting
-  every `.page-head*` and then every `.record-*` **selector** from `app.css` while leaving the comments
-  that name them — the guard asserts a selector begins a line, so both fire. A comment-only edit changes
-  nothing, as a control.
-- **The generalised version gate run against the tree before the fix**: fails on `REQUIREMENTS.md`, 4
-  against 5. After: two documents versioned, four skipped, zero half-versioned, both facts passing.
-- **Razor tag-tree and `@code` brace balance** over all five new and rewritten components: clean. Three
-  untouched components as controls, of which `TableOrderSurface.razor` fails — and the failure is the
-  checker's, not the file's (`IReadOnlyList<OrderLineView>` inside an `@{ }` block is a generic argument
-  that looks like a tag). Recorded rather than suppressed, because a checker that passes on everything is
-  not looking.
-- **`<td>` / `data-label` parity**: 5/5, 5/5, 9/9, 14/14.
-- **Byte hygiene on all sixteen files**: LF, one final newline, no CR, no trailing whitespace, no
-  whitespace-only lines, no context-dump separator.
-- **DbUp's statement splitter read from source** before the plan committed to a `DO` block:
-  `PostgresqlQueryParser.ParseRawQuery`'s `DollarQuoted` state consumes a whole tagged block, so a `;`
-  inside `DO $$ … $$` does not split the statement.
-
-**Test count 1066 → 1072.** Four new `[Fact]` methods; the two in `SpecificationVersionTests` are rewritten
-and renamed, not added to. Arithmetic prediction — nothing was compiled or run.
-
-**Not verified, and it is the honest limit of this slice:** no browser rendered any of this. §11.12 is a
-claim about what a stylesheet does at two viewport widths, and the strongest thing asserted here is its
-*structure*. The four pages have not been seen at 375px by anything. That is exactly the gap Stage 1c
-exists to close, which is why the plan names the Playwright barrier as its first open item instead of
-leaving it implied.
-
----
-
-## On virginia
-
-```bash
-cd ~/src/dotnet/myrestaurant && git pull
-bash scripts/ci_local.sh          # check_tree first, then the unit gates
-```
-
-Then look at it on the phone, which is the only thing that can actually check this slice:
+§14.1 has required a fully qualified image reference since v1.11. `compose.yaml` obeys it.
+`scripts/restore_drill.sh` has obeyed it since Slice 16. Four references did not:
 
 ```
-/administration            → the People index
-/administration/tables     → the page the report was about
-/administration/sittings    → the batch-close tick, which is now the first thing in each card
+tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs:36        postgres:17-alpine
+tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs:30  postgres:17-alpine
+.github/workflows/ci.yml:265                                       postgres:17-alpine
+.github/workflows/ci.yml:396                                       postgres:17-alpine
 ```
 
-What to look for: each row is a bordered card, every value has a small caps label above it, and the
-**Manage** button is the full width of the bottom of its card. The row of area links across the top is one
-horizontally scrolling strip with the current page filled in — that strip is the same six links in the same
-order on all four pages now, which it was not before. Rotate to landscape or open it on a laptop and the
-cards should become the table you had, header row and all.
+**The claim this rests on was verified from source rather than assumed.** Testcontainers does not
+normalise the reference before the engine sees it. `MatchImage.Match` records a registry only when the
+first slash-separated segment carries a `.` or a `:`, and the comment above that line says the
+implementation "does not resolve or set the default domain and repository prefix". So the short name
+reaches the engine as a short name, and resolution goes through `unqualified-search-registries` — which
+Fedora populates and a stock Debian ships commented out. F-51's mechanism, one layer over.
 
-If a card looks like a stack of unlabelled values, the `data-label` rules did not apply and I want to know
-the browser. If the strip has wrapped into a pile instead of scrolling, `.page-head-areas` lost its
-`overflow-x` and the same applies.
+**Why this is worse than F-51 rather than merely wider.** F-51 was loud: three errors, nothing started.
+This is silent, because both fixtures catch every startup failure and turn it into a skip — deliberately,
+documented, and correctly, since a missing engine is not a broken product. So on the canonical host
+`dotnet test` exits 0 with the data-access integration tests and all fifteen §16.3 scenarios declining to
+run. And the skip reason says **"A container engine (Podman/Docker) was not reachable"** and prescribes
+activating a socket that is already active; the engine's own sentence naming the real cause sits three
+clauses further along, contradicting its own headline.
+
+Both fixtures now split that diagnosis, and both name the image — which neither message did, and which is
+the first thing you want when a pull is what failed.
+
+**Two of the references were invisible to any audit that could be written.** One spelled into a
+`podman run` command line in `scripts/quick_tunnel.sh`, one passed inline to `new PostgreSqlBuilder(…)`.
+They move into `CLOUDFLARED_IMAGE` and a `PostgreSqlImage` constant, and the reason is recorded beside
+each: **naming them is what puts them in scope.** `scripts/dev_instance.sh` has read a `CLOUDFLARED_IMAGE`
+variable since Slice 27, so `quick_tunnel.sh` also gains an override it should always have had.
+
+**This is F-46's shape for the third time, and the sharpest yet.** F-46 was a rule stated generally and
+enforced as six phrasings about one settings page. F-58 was a rule stated generally and enforced against
+one file. F-60 is a rule stated generally *in the same commit that applied it to one file*, by the person
+who chose the scope.
+
+### The gate — and this is not a reversal of F-51's ruling
+
+F-51's row declined to make §14.1 executable, on the grounds that a check for a missing registry component
+is a text assertion about a file whose real contract is behavioural. **That stands.** The CI job on the
+canonical engine is still the open item, and this test is not offered instead of it.
+
+What the new test asserts is a different proposition and one that is wholly a property of the tree: that a
+rule stated for the repository is applied everywhere in the repository it applies to. Three facts:
+
+1. **The scan found a reference in each position it reads, and at least ten in total** — first and on its
+   own, because both facts below pass against an empty set (F-41).
+2. **Every reference names a registry.** This is F-60.
+3. **Every image name resolves to exactly one reference.** The fact the other two cannot reach: a
+   reference that is fully qualified and has drifted to a different *version* than the canonical stack
+   runs breaks no gate, prints nothing, and means the suite passed against a database you do not deploy.
+
+Each proven sensitive by its own regression. Reintroducing F-60 fails facts 2 **and** 3; changing one
+fixture to `postgres:18-alpine` — fully qualified, no short name anywhere — fails **only** fact 3;
+renaming the `*_IMAGE` variables fails fact 1.
+
+The scan skips `docs/` entirely: those files quote both spellings on purpose, because F-51's whole ledger
+row is about the difference.
+
+---
+
+## F-61 — two closing lines for one Ctrl+C
+
+```
+^C[quick-tunnel] closing the tunnel (the stack keeps running; stop it with 'podman-compose down').
+[quick-tunnel] closing the tunnel (the stack keeps running; stop it with 'podman-compose down').
+```
+
+`trap cleanup INT TERM EXIT` at line 123, and a second handler on the same three at line 185. A signal
+trap and the `EXIT` trap are independent registrations, so the body ran twice for one keystroke.
+
+**Nothing it did was harmful, and that is the finding rather than a mitigation.** `kill` on a reaped
+process returns immediately and `rm -f` is idempotent. What was wrong was the sentence: two identical
+lines read as two tunnels, or as one that would not close, from a helper whose whole job at that moment is
+to tell you what state the machine is in. Third consecutive slice where a helper's *output* was the defect
+and its actions were correct — F-53 printed nothing, F-55 printed success over a dead container.
+
+**The fix does not depend on knowing which trap fired first.** I could not reproduce the double fire in
+the sandbox: different bash, no controlling terminal, and `kill -INT <pid>` is not a `^C` delivered to a
+foreground process group. Your log is the evidence; the structural explanation is the mechanism; and the
+handler is made correct under *every* ordering with a first-entry guard plus `trap - INT TERM EXIT` on
+entry, rather than by choosing a different set of signals. The guarded handler was exercised and fires
+once.
+
+**The class was audited, not the instance.** `run.sh`'s smoke trap carries the identical registration and
+is **unchanged**, because its handler is silent and idempotent by construction and a rule that called that
+a defect would report findings on a correct tree (F-41). `backup.sh`, `restore.sh` and `restore_drill.sh`
+register on `EXIT` alone. Deliberately not made executable, for the same reason: the assertion would have
+to be *no handler on both a signal and EXIT*, which is false of `run.sh` for good reasons.
+
+---
+
+## Two things in those logs that are NOT findings
+
+**The single HTTP 429 in 100,000 requests is Cloudflare's edge, not your application.** `/healthz/live`
+carries no `[EnableRateLimiting]` and there is no global limiter. Recorded as a baseline in
+BUILD_PROGRESS instead: 737 RPS, P50 90 ms, P99 215 ms — and `/healthz/ready`, which opens a connection,
+runs `SELECT 1` and asks DbUp whether the schema is current, returned 100,000 of 100,000 at P50 91 ms. A
+readiness probe that does real work being indistinguishable from a liveness probe that does none, at that
+volume, is worth knowing.
+
+**`Error: no container with name or ID "myrestaurant_caddy_1" found`** is podman-compose's own internal
+`rm` of a container that does not exist yet. Engine noise at error level, not yours to fix.
+
+---
+
+## A correction to Slice 30's entry
+
+It predicted 1072 tests from a baseline of 1066. Your run reports **1070**. The rewritten
+`SpecificationVersionTests` has two `[Fact]` methods where it previously had **four**, not two — so the
+rewrite replaced four facts with two and the count landed two lower than predicted. Corrected in
+BUILD_PROGRESS rather than left standing.
+
+Slice 31 predicts **1073**. Three new facts, arithmetic, nothing compiled or run.
+
+---
+
+## A correction to the menu plan, made before Stage 2 is authored
+
+**Stage 2 as the plan wrote it cannot ship green.** `menu_section_identifier` is `NOT NULL`, so the moment
+`0003` applies, `CreateMenuItem.razor` cannot create an item without naming a section — and
+`AdministrationJourneys.CreateMenuItemAsync` drives that real form in five of the fifteen §16.3 scenarios.
+Schema plus data access, with the surfaces left for Stage 3, is a red suite whatever the quality of the two
+halves.
+
+So Stage 2 pulls exactly three things forward: the section create page, the picker and description field on
+the item form, and a harness `CreateMenuSectionAsync`. The section index, the section editor with its event
+history, the rewritten guest menu and the kitchen panel's grouping all stay in Stage 3.
+
+The alternative — nullable in `0003`, tighten in `0004` — is three migrations for two decisions and puts an
+"Uncategorized" state in the schema for exactly one slice, which every surface written during that slice
+then has to handle and un-handle. The ruling that an item under no heading is an item nobody decided about
+is worth more than a neat stage boundary.
+
+---
+
+## Verified
+
+- Scanner **ported to Python line for line** and run: 12 references, all qualified, one reference per image
+  name, all four positions populated.
+- **Each fact proven sensitive** by its own regression, including the fully-qualified version drift that
+  only fact 3 catches.
+- `bash -n` and `shellcheck --severity=style` clean — but shellcheck **0.9.0** here against your 0.11.0, so
+  your run is the one that counts.
+- Brace balance on all three C# files, with an untouched sibling as a control.
+- `SpecificationVersionTests` **ported and run**: header 1.16 against newest entry 1.16, seventeen entries
+  descending, two documents qualified, none half-versioned. My first port was too strict — it scanned whole
+  files rather than the text after a history heading and flagged `BUILD_PROGRESS.md`. Corrected against the
+  real regexes, which is the reason to port rather than reason.
+- Byte hygiene on every delivered file. One pre-existing exception left alone: `ci.yml` ends with two
+  newlines in your tree and `check_tree.sh` accepts it, so the gate is looser than my scan.
+- Both workflows and `compose.yaml` parse as YAML.
+
+## Not verified
+
+**Nothing compiled.** **No engine resolved any reference** — the Debian failure is F-51's observation plus a
+verified reading of Testcontainers' source, not a reproduction. **CI's service container was changed
+without being run:** Docker normalises a short name to `docker.io/library/…`, so both references should be
+a store hit rather than a second pull and the cache-sharing comment now says so, but the first push is what
+proves it. If the drill step starts pulling on every run, that comment is where to look.

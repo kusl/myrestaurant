@@ -8748,3 +8748,273 @@ extension is the stage, not a tidy-up afterwards (F-46).
 **Stage 1c** — the 375px Playwright barrier.
 
 **Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive can contain (F-42).
+
+---
+
+# M6 Slice 31 — the rule that was true of two files (F-60), and the helper that said it twice (F-61)
+
+Two findings, neither of them reported by anybody. Both came out of reading the three terminal logs from
+Slice 30's verification run — a run in which every gate was green on two hosts, 1070 tests passed, all
+fifteen §16.3 scenarios passed, and a hundred thousand requests went through a quick tunnel at 737 RPS.
+That is the useful shape of this slice: the evidence was in the output of a successful run.
+
+## F-60 — a green suite that ran nothing
+
+`compose.yaml` names its images `docker.io/library/postgres:17-alpine`. `scripts/restore_drill.sh` has
+defaulted `DRILL_POSTGRES_IMAGE` to the same form since Slice 16. §14.1 has stated the rule since v1.11,
+and F-51's ledger row explains at length why it is a correctness requirement rather than a preference.
+
+Four references in the tree did not obey it:
+
+```
+tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs:36        postgres:17-alpine
+tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs:30  postgres:17-alpine
+.github/workflows/ci.yml:265                                       postgres:17-alpine
+.github/workflows/ci.yml:396                                       postgres:17-alpine
+```
+
+### The one claim this rests on was verified, not assumed
+
+Everything else follows from whether Testcontainers normalises the reference before the engine sees it. It
+does not, and the source says so in a comment. `MatchImage.Match`, in
+`testcontainers/testcontainers-dotnet`, splits the remote name and records a registry **only** when the
+first slash-separated segment contains a `.` or a `:`:
+
+```csharp
+var (registry, repository) = slices.Length == 2 && slices[0].LastIndexOfAny(['.', ':']) > -1
+    ? (slices[0], slices[1]) : (null, remoteName);
+```
+
+with the comment above it stating that the implementation "does not resolve or set the default domain and
+repository prefix." `DockerImage.FullName` then emits the registry only when one was recorded. So
+`postgres:17-alpine` reaches the engine as `postgres:17-alpine`, and resolution is the engine's job —
+through `unqualified-search-registries`, which Fedora's `containers-common` populates and a stock Debian
+ships commented out. That is F-51's mechanism exactly, one layer over.
+
+Read from the GitHub API rather than from memory, on the same discipline that read
+`dotnet/aspnetcore` before the passkey slices.
+
+### Why this is worse than F-51 rather than merely wider
+
+F-51 was loud. `podman-compose up` printed three errors in three vocabularies and nothing started.
+
+This is silent, and the reason is a design decision that is correct and stays. Both fixtures catch every
+startup failure and set `SkipReason`, so the tests skip rather than fail — because a missing container
+engine is not a broken product, and a suite that cannot tell the difference is a suite people stop
+reading. The consequence on a host where the *reference* is what fails:
+
+- `dotnet test` exits 0.
+- Every test in `MyRestaurant.DataAccess.Tests` that touches the database skips.
+- All fifteen §16.3 scenarios skip.
+- The summary reports success.
+
+And the skip reason an operator reads begins **"A container engine (Podman/Docker) was not reachable"**
+and tells them to run `systemctl --user enable --now podman.socket`. If the engine was reachable, that
+advice fixes nothing, the re-run produces the identical sentence, and the engine's own message naming the
+real cause is three clauses further along, contradicting the headline it sits under.
+
+### Two references no reading of this tree could have found
+
+```bash
+TUNNEL_RUNNER=(podman run --rm --network host docker.io/cloudflare/cloudflared)
+```
+
+```csharp
+_container = new PostgreSqlBuilder("postgres:17-alpine")
+```
+
+Both are correct-looking lines, and both are outside the reach of any audit that could be written, because
+an audit has to know where to look. This is why the remediation includes moving them into
+`CLOUDFLARED_IMAGE` and a `PostgreSqlImage` constant. **Naming them is what puts them in scope** — not
+that it reads better, which it also does.
+
+`scripts/dev_instance.sh` has read a `CLOUDFLARED_IMAGE` variable since Slice 27, so `quick_tunnel.sh`
+also gains an override it should always have had, and its reference gains the explicit `:latest` that
+`compose.yaml` already writes.
+
+### F-46, for the third time, and the sharpest instance of it
+
+- **F-46**: a rule stated generally, enforced as six phrasings about one settings page.
+- **F-58**: a rule stated generally, enforced against one file in a `const string`.
+- **F-60**: a rule stated generally **in the same commit that applied it to one file**, by the person who
+  chose the scope.
+
+Each is narrower than the last, and each was written down correctly at the time. F-58's row already
+recorded the general form of this — *a list of one does not look like a list* — and the register keeps
+dropping.
+
+### The gate, and why it is not a reversal of F-51's ruling
+
+F-51's row is explicit: **"Deliberately not made executable, and the reason is F-41's:** the check would
+have to be 'no `image:` value lacks a registry component', which is a text assertion about a file whose
+real contract is behavioural, and it would pass on a tree where the images are qualified and the stack
+still cannot start for the next reason."
+
+That reasoning is right and is not being overturned. The CI job that runs the canonical stack on the
+canonical engine remains the open item it has been for seven slices. What the new test asserts is a
+different proposition, and one that is entirely a property of the tree: **a rule stated for the repository
+is applied at every place in the repository it applies to.** F-51's objection is about substituting a grep
+for a behaviour; this is not a substitute for a behaviour, it is a consistency check on the text, which is
+the level a gate can reach without reporting findings on correct trees.
+
+`ContainerImageReferenceContractTests`, three facts:
+
+1. **The scan found a reference in each of the three positions it reads, and at least ten in total.**
+   First and on its own, because both facts below pass against an empty set (F-41) — and a renamed
+   constant, a re-indented workflow, or a `Containerfile` that grows a stage would produce exactly that
+   without anything turning red.
+2. **Every reference names a registry.** This is F-60.
+3. **Every image name resolves to exactly one reference.** This is the fact the first two cannot reach.
+   A reference that is fully qualified and has drifted to a different *version* from the one the canonical
+   stack runs breaks no gate, produces no message, and means the suite passed against a database this
+   project does not deploy.
+
+The three positions a reference may occupy are a closed set on purpose: a YAML `image:` key, a
+`Containerfile` `FROM` operand, or a value assigned to a name ending in `_IMAGE` (shell, YAML) or `Image`
+(C#). The set is closed because a reference outside it is a reference no gate has an opinion about, which
+is the state two of them were in.
+
+The scan skips `docs/` entirely. Those files quote both the correct and the incorrect spelling on
+purpose — the whole of F-51's row is about the difference — and a gate that failed on prose describing a
+defect would be the same mistake in a new place.
+
+**The test reads its own file**, which is a property worth keeping and one that has to be written for: a
+constant in it named for what it holds, ending in `Image` and containing the string `image`, is read back
+as a short-named image reference and fails fact 2. That happened once during authoring and is recorded in
+the file beside the constant that caused it.
+
+## F-61 — two closing lines for one Ctrl+C
+
+From the end of the Slice 30 verification run:
+
+```
+^C[quick-tunnel] closing the tunnel (the stack keeps running; stop it with 'podman-compose down').
+[quick-tunnel] closing the tunnel (the stack keeps running; stop it with 'podman-compose down').
+```
+
+`scripts/quick_tunnel.sh` ran `trap cleanup INT TERM EXIT` at line 123, and at line 185 registered a
+second handler on the same three signals. A signal trap and the `EXIT` trap are independent
+registrations, not one, so the body ran for the signal and then again on the way out.
+
+**Nothing it did was harmful, and that is the finding rather than a mitigation.** `kill` on a reaped
+process returns immediately, `rm -f` is idempotent, and the second pass had no work left. What was wrong
+was the sentence. Two identical lines read as two tunnels, or as one that would not close, from a helper
+whose entire job at that moment is to tell an operator what state the machine is in.
+
+Third consecutive slice in which a helper's **output** was the defect while its actions were correct:
+F-53 printed nothing, F-55 printed success over a dead container, this printed the truth twice.
+
+### The fix does not depend on knowing which trap fired first
+
+Which of `INT`, `TERM` or `EXIT` runs first depends on the bash version and on whether the terminal
+signalled the whole foreground process group. The double fire **could not be reproduced in the authoring
+sandbox** — a different bash, no controlling terminal, and `kill -INT <pid>` is not a `^C` delivered to a
+process group — so the observation in the log stands as the evidence and the mechanism stands as the
+structural explanation, rather than a claim about ordering that was never measured here.
+
+The handler therefore carries a first-entry guard and calls `trap - INT TERM EXIT` on entry, so it runs
+once under every ordering. The guarded handler *was* exercised in the sandbox and fires exactly once. The
+second registration is deleted and its work — killing the log tail — folded into the one handler, with the
+reason left at the site so nobody re-adds it.
+
+### The class was audited, not the instance
+
+| Script | Registration | Ruling |
+|---|---|---|
+| `scripts/quick_tunnel.sh` | twice, on `INT TERM EXIT`, handler prints | **the defect** |
+| `run.sh` (smoke) | once, on `EXIT INT TERM`, handler silent and idempotent | **unchanged** — a rule that called this a defect would report findings on a correct tree (F-41) |
+| `scripts/backup.sh` | `EXIT` only | correct by construction |
+| `scripts/restore.sh` | `EXIT` only | correct by construction |
+| `scripts/restore_drill.sh` | `EXIT` only | correct by construction |
+
+**Deliberately not made executable.** The assertion would have to be *no handler is registered on both a
+signal and `EXIT`*, which is false of `run.sh` for good reasons, so the gate would fail on a correct tree.
+The rule that is actually true is about idempotence, and that is not decidable from the text. §14.3 states
+it as a rule about the announcement.
+
+## Two things from the same logs that are NOT findings
+
+**The single HTTP 429 in 100,000 requests is Cloudflare's edge, not this application.**
+`/healthz/live` carries no `[EnableRateLimiting]`, there is no global limiter, and §4.2's policy applies
+to `/display/pair` alone. Recorded here as a baseline rather than in the ledger: 100,000 requests at 2,000
+concurrency through a free quick tunnel, **737 RPS**, P50 90 ms, P95 125 ms, P99 215 ms, max 5.07 s, one
+429. The same run against `/healthz/ready` — which opens a connection, executes `SELECT 1`, and asks DbUp
+whether the schema is current — returned **100,000 of 100,000** with P50 91 ms. A readiness probe that
+does real work being indistinguishable from a liveness probe that does none, at that volume, is worth
+knowing.
+
+**`Error: no container with name or ID "myrestaurant_caddy_1" found`** during
+`run.sh --containers-only` is podman-compose's own internal `rm` of a container that does not exist yet.
+Noise from the engine, printed at error level, and not this repository's to fix.
+
+## What was verified, and how
+
+- **The scanner ported to Python line for line** and run against the tree: 12 references, all fully
+  qualified, every image name resolving to exactly one reference, all four positions populated.
+- **Each of the three facts proven sensitive by its own regression**, which is the part that matters:
+  reintroducing F-60 in `ci.yml` fails facts 2 **and** 3; changing one fixture to `postgres:18-alpine` —
+  fully qualified, no short name anywhere — fails **only** fact 3, which is why fact 3 exists; renaming
+  the three `*_IMAGE` variables fails fact 1 on both the total and the missing position.
+- **`bash -n` and `shellcheck --severity=style`** clean on the edited script. Note the version: 0.9.0 in
+  the authoring sandbox against 0.11.0 on the workstation, so this is weaker evidence than usual and the
+  workstation's run is the one that counts.
+- **The guarded cleanup handler executed** in a simulation of the script's shape: one signal, one line.
+  The *unguarded* shape could not be made to double-fire there, which is recorded above rather than
+  presented as a reproduction.
+- **Razor-free slice**: no component touched, so none of Slice 30's tag-tree walking was needed.
+- **Brace balance** on all three C# files with an untouched sibling as a control: clean.
+- **`SpecificationVersionTests` ported and run** over `docs/`: two documents qualified, header 1.16 against
+  newest changelog entry 1.16, seventeen entries descending, no half-versioned document. The first port
+  was written too strictly — it scanned whole files for entry patterns rather than the text after a
+  history heading, and reported `BUILD_PROGRESS.md` as half-versioned. Corrected against the real test's
+  regexes, which is the reason to port rather than to reason about it.
+- **Byte hygiene** on every delivered file: LF, one final newline, no CR, no trailing whitespace, no
+  whitespace-only lines, no context-dump separator. One exception, and it is pre-existing:
+  `.github/workflows/ci.yml` ends with two newlines in the current tree and `check_tree.sh` passes it, so
+  the gate's rule is looser than the scan and the file is left as the gate finds acceptable.
+- **Both workflows and `compose.yaml` parse** as YAML.
+
+## Test count
+
+Observed **1070** (workstation and `ci_local.sh --with-all --with-e2e`, both). Predicted **1073** after
+three new `[Fact]` methods in `ContainerImageReferenceContractTests`. Arithmetic, not an observation:
+nothing here was compiled or run.
+
+**A correction to Slice 30's entry.** It predicted 1072 from a baseline of 1066. The run reports 1070. The
+rewritten `SpecificationVersionTests` has **two** `[Fact]` methods where it previously had four, not two —
+so the two rewritten facts replaced four rather than two, and the count landed two lower than predicted.
+The prediction was wrong in the direction predictions in this project tend to be wrong: it counted what
+was added and under-counted what was replaced.
+
+## What was NOT verified, and cannot be from here
+
+**Nothing compiled.** One new test file and two rewritten fixtures, balance-checked and port-tested, with
+`dotnet build` run on none of them.
+
+**No engine resolved any reference.** The claim that a short name fails on Debian rootless Podman is
+F-51's observation plus a verified reading of Testcontainers' source; it was not reproduced. What *is*
+asserted here is only that the tree is now consistent, which is all the new test claims.
+
+**CI's service container was changed without being run.** `image: docker.io/library/postgres:17-alpine`
+under `services:` and `DRILL_POSTGRES_IMAGE` set to the same string. Docker normalises a short name to
+exactly that reference, so both should be a store hit rather than a second pull, and the comment
+explaining the cache-sharing intent was updated to say so — but the first push is what proves it. If the
+drill's step starts pulling on every run, that comment is where to look.
+
+## Still open
+
+**A CI job that runs the canonical stack on the canonical engine.** Seventh consecutive slice where this
+is the real embodiment of a finding and is not in the archive. F-60 makes the case slightly stronger:
+there is now a second class of defect — a fixture that skips instead of failing — that only a run on that
+host would surface.
+
+**Stage 1b** — four pages still carry the retired table vocabulary.
+
+**Stage 1c** — the 375px Playwright barrier.
+
+**Stage 2's boundary is corrected in the plan, not yet built.** `menu_section_identifier NOT NULL` means
+the schema and the data access cannot land without the section-create page, the item form's picker, and a
+harness `CreateMenuSectionAsync` — five §16.3 scenarios drive the real create form. Three things pull
+forward out of Stage 3; the rest of Stage 3 stays where it is.
+
+**Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive can contain (F-42).

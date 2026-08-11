@@ -260,9 +260,13 @@ jobs:
     # compose.yaml is deliberately not used here: its data-protection volume carries Podman's ':U'
     # suffix (ADR-0004 — rootless Podman is canonical), which Docker Compose rejects outright. A
     # service container plus one `docker run` is the same topology with none of that argument.
+    # Fully qualified, like every other image reference in this repository (§14.1, F-60). Docker
+    # normalises `postgres:17-alpine` to exactly this reference, so on this runner the two forms name
+    # the same image and the same layer cache — which means writing it out costs nothing here and
+    # makes one rule true of the whole tree instead of true of compose.yaml and the restore drill.
     services:
       postgres:
-        image: postgres:17-alpine
+        image: docker.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: myrestaurant
           POSTGRES_PASSWORD: myrestaurant
@@ -386,14 +390,19 @@ jobs:
       # tightening this is a one-word edit.
       #
       # CONTAINER_ENGINE=docker for a second reason as well as the first. The drill creates its own
-      # scratch container, so either engine would work — but postgres:17-alpine is already in the
-      # Docker daemon's store, because the service container above pulled it. Left to its default the
-      # drill would pull the same image again into podman's store, and pay for it on every push.
+      # scratch container, so either engine would work — but this exact image is already in the Docker
+      # daemon's store, because the service container above pulled it. Left to its default the drill
+      # would pull the same image again into podman's store, and pay for it on every push.
+      #
+      # The reference is spelled the same way as the service container's, which is what keeps that
+      # sentence true: Docker normalises a short name to `docker.io/library/…`, so the qualified form
+      # is a hit in the store rather than a second pull. Writing both out fully is §14.1's rule
+      # applied to every image reference in the tree rather than to two of them (F-60).
       - name: drill the restore
         env:
           BACKUP_DIRECTORY: ${{ github.workspace }}/ci-backups
           CONTAINER_ENGINE: docker
-          DRILL_POSTGRES_IMAGE: postgres:17-alpine
+          DRILL_POSTGRES_IMAGE: docker.io/library/postgres:17-alpine
         run: bash scripts/restore_drill.sh
 
       - name: container logs

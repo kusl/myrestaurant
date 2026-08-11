@@ -19,6 +19,10 @@
 # Environment:
 #   TUNNEL_TARGET         what cloudflared points at (default http://127.0.0.1:8080)
 #   TUNNEL_URL_WAIT       seconds to wait for the tunnel URL to appear (default 90)
+#   CLOUDFLARED_IMAGE     the tunnel client image, used only when no host cloudflared is on PATH
+#                         (default docker.io/cloudflare/cloudflared:latest — fully qualified, and
+#                         held in a named variable rather than written into the run command, per
+#                         §14.1 and F-60; scripts/dev_instance.sh reads the same variable)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -32,6 +36,16 @@ cd "$(dirname "$0")/.."
 # stated once for every helper instead of applied to one of them.
 TARGET="${TUNNEL_TARGET:-http://127.0.0.1:8080}"
 URL_WAIT="${TUNNEL_URL_WAIT:-90}"
+
+# Fully qualified, and in a variable rather than in the run command below (§14.1, F-60). Two reasons,
+# and the second is the one that made it a variable. A short name is resolved through
+# `unqualified-search-registries`, which a stock Debian ships commented out — so `cloudflared` alone
+# would fail on the canonical host with a message about aliases. And a reference written inline at a
+# `podman run` is a reference no reading of this tree can find: the audit in
+# ContainerImageReferenceContractTests reads YAML `image:` keys, `Containerfile`'s `FROM` operands,
+# and values assigned to a name ending in `_IMAGE`, so a literal spelled anywhere else is outside
+# every gate this project has. scripts/dev_instance.sh has read this same variable since Slice 27.
+CLOUDFLARED_IMAGE="${CLOUDFLARED_IMAGE:-docker.io/cloudflare/cloudflared:latest}"
 
 log()  { printf '[quick-tunnel] %s\n' "$*" >&2; }
 die()  { printf '[quick-tunnel] error: %s\n' "$*" >&2; exit 1; }
@@ -56,9 +70,9 @@ fi
 if command -v cloudflared >/dev/null 2>&1; then
     TUNNEL_RUNNER=(cloudflared)
 elif command -v podman >/dev/null 2>&1; then
-    TUNNEL_RUNNER=(podman run --rm --network host docker.io/cloudflare/cloudflared)
+    TUNNEL_RUNNER=(podman run --rm --network host "$CLOUDFLARED_IMAGE")
 elif command -v docker >/dev/null 2>&1; then
-    TUNNEL_RUNNER=(docker run --rm --network host docker.io/cloudflare/cloudflared)
+    TUNNEL_RUNNER=(docker run --rm --network host "$CLOUDFLARED_IMAGE")
 else
     die "need cloudflared, podman, or docker on PATH."
 fi
@@ -114,11 +128,33 @@ log "opening a quick tunnel to $TARGET …"
 "${TUNNEL_RUNNER[@]}" tunnel --no-autoupdate --url "$TARGET" >"$TUNNEL_LOG" 2>&1 &
 TUNNEL_PID=$!
 
+TAIL_PID=""
+CLEANED_UP=0
+
+# Installed on INT, TERM and EXIT, which are three independent traps rather than one. On Ctrl+C bash
+# runs the INT handler and then runs the EXIT handler on its way out, so a handler registered for both
+# executes twice for one keystroke — and this one announces itself, so it printed its closing line
+# twice (F-61). Neither the kill nor the rm cared; the message did, because two identical lines read
+# like two tunnels or one that would not close.
+#
+# The guard is what fixes it, not a different set of signals: whichever of the three arrives first,
+# the body runs once. `trap -` then disarms the remaining two so the later arrival is absent rather
+# than merely quiet, which is also what keeps `wait` from being re-entered after the child is reaped.
 cleanup() {
+    if (( CLEANED_UP )); then
+        return 0
+    fi
+    CLEANED_UP=1
+    trap - INT TERM EXIT
+
     log "closing the tunnel (the stack keeps running; stop it with '${COMPOSE[*]} down')."
+    if [[ -n "$TAIL_PID" ]]; then
+        kill "$TAIL_PID" 2>/dev/null || true
+    fi
     kill "$TUNNEL_PID" 2>/dev/null || true
     wait "$TUNNEL_PID" 2>/dev/null || true
     rm -f "$TUNNEL_LOG" 2>/dev/null || true
+    return 0
 }
 trap cleanup INT TERM EXIT
 
@@ -182,7 +218,11 @@ BANNER
 log "streaming cloudflared log (Ctrl+C to stop):"
 tail -n +1 -f "$TUNNEL_LOG" &
 TAIL_PID=$!
-trap 'kill "$TAIL_PID" 2>/dev/null || true; cleanup' INT TERM EXIT
 
-# Block on the tunnel; when it exits (or Ctrl+C), the traps clean up.
+# No second `trap` here, deliberately. The one installed above already kills whatever $TAIL_PID names,
+# and re-installing the handler is how the closing line came to be printed twice (F-61): a second
+# `trap` on the same three signals replaces the first but changes nothing about the fact that a signal
+# trap and the EXIT trap both run.
+#
+# Block on the tunnel; when it exits (or Ctrl+C), cleanup runs — once.
 wait "$TUNNEL_PID"
