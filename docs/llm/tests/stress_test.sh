@@ -13,8 +13,8 @@
 # ==========================================
 
 URLS=(
-    "https://rider-nevada-keeping-judicial.trycloudflare.com/healthz/live"
-    "https://rider-nevada-keeping-judicial.trycloudflare.com/healthz/ready"
+    "https://allan-steps-fighter-herbal.trycloudflare.com/healthz/live"
+    "https://allan-steps-fighter-herbal.trycloudflare.com/healthz/ready"
 )
 
 # Output log file (Created in the same folder as this script)
