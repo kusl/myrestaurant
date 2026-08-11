@@ -1,117 +1,140 @@
-# M6 Slice 29 — the engine that does not read its own defaults (F-57)
+# M6 Slice 30 — the screen it is read on (F-59), the gate that named one file (F-58), and a plan for the menu
 
 Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-29-compose-substitution.tar.gz
-git add scripts/check_compose_substitution.sh
-git add tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeSubstitutionContractTests.cs
+tar -xzf m6-slice-30-handheld-contract-and-menu-plan.tar.gz
+git add docs/MENU_AND_HANDHELD_PLAN.md
+git add docs/adr/0014-menu-sections-and-item-descriptions.md
+git add src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationArea.cs
+git add src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationAreaLinks.razor
+git add tests/MyRestaurant.WebApplication.Tests/Components/HandheldLayoutContractTests.cs
 git status
 ```
 
 **Files to DELETE: none.**
 
-**`git add` is required** for the two new files above — `scripts/check_tree.sh` enumerates with
+**`git add` is required** for the five new files above — `scripts/check_tree.sh` enumerates with
 `git ls-files`, so an untracked file is a file no gate looks at.
 
 ---
 
-## Your log answered it, and the answer was not a variable
+## Your user found something in ninety seconds that 1066 tests could not
 
+> the manage button was on the right side as the user was trying to manage a table
+
+Exactly reproducible, and the mechanism is four lines of CSS repeated four times. `AdministrationHome`,
+`AdministrationTables`, `AdministrationMenu` and `AdministrationSittings` each declared their own inline
+copy of the same eighty lines of table rules, and each copy ended in:
+
+```css
+.admin-people .admin-row-actions {
+    white-space: nowrap;
+    text-align: right;
+}
 ```
-web:      Configuration error: RESTAURANT_TIME_ZONE '${RESTAURANT_TIME_ZONE:-America/New_York}' …
-postgres: FATAL: invalid character in extension owner: must not contain any of ""$'\
-          STATEMENT: CREATE EXTENSION plpgsql;
-          initdb: removing contents of data directory "/var/lib/postgresql/data"
-```
 
-**Your compose engine does not apply the branch after `:-`.** Every value in `compose.yaml` is written
-`${NAME:-default}`, and every variable that was not already set in your environment reached its
-container as the placeholder text. That single fact killed both containers:
+inside a wrapper carrying `overflow-x: auto`. A five-to-eight column table in a 375px viewport scrolls
+sideways; the action column is the last thing in it; so the only way into a row was reachable only by
+scrolling past every other column of that row. Nobody decided that — it was one paste, four times. The same
+four pastes had also invented the chip vocabulary **five** times over (four inline, plus `app.css`, which
+carried a comment apologising for the duplication and inviting somebody to fold it in) and
+`.visually-hidden` **seven** times.
 
-- **web** validates five of them, so it printed five errors and returned 1 — the exit code Slice 28
-  reasoned from before any log existed.
-- **postgres** got `POSTGRES_USER=${POSTGRES_USER:-myrestaurant}`, so initdb's bootstrap
-  `CREATE EXTENSION plpgsql` failed on the punctuation in the owner name, initdb wiped the data
-  directory, the container exited, the engine restarted it — forever. **The crash loop was never about
-  your volume**, and `reset` would not have helped: initdb was already erasing that directory on every
-  attempt. Both `podman system prune -a` runs were beside the point too.
+**Nothing here could have caught it, and the reason is precise rather than embarrassing.** `REQUIREMENTS.md`
+§1 has said since rev 1 that guests order from their own phones. §11.7 budgets the footer clock for a
+handset in real detail. But **no section said a staff surface has to be operable on one** — so there was no
+rule to enforce, no gate that could have been written, and every gate was green while four pages an
+operator uses standing at a table were unusable on the device they would be holding.
 
-**Proof of the mechanism, from your own run:** `RESTAURANT_PUBLIC_ORIGIN` was the one value that
-arrived correct, and it is the one `dev_instance.sh` exports. So substitution works when the variable is
-**set**; it is the *default* branch that is unapplied. `${RESTAURANT_CURRENCY_CODE:-USD}` failed too,
-which rules out an escaping problem — `USD` is as plain as a default gets.
-
-### The five errors were the good case
-
-Eleven more variables were wrong and said nothing:
-
-| Variable | What the placeholder text does |
-|---|---|
-| `RESTAURANT_NAME` | renders `${RESTAURANT_NAME:-My Restaurant}` as the restaurant's name, on every page |
-| `ARGON2_*`, `KITCHEN_…`, `TABLE_…` (seven) | unparseable as an integer, therefore indistinguishable from absent: compiled-in values are used silently |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | **its emptiness is the off switch.** The literal is not empty, so the exporter attaches and points at a hostname made of braces |
-| `RESTAURANT_DATABASE_CONNECTION_STRING` | three nested placeholders in one folded scalar; non-empty, so it passes validation and fails at connect |
+That is the first finding in the ledger this project did not find itself, and it is recorded as its own
+lesson: **a project can only find the defects its own premises admit.** The instrument that finds the rest
+is a person who has not read the documents.
 
 ---
 
-## The fix: ask the engine, refuse early, make `.env` sufficient
+## Why the layout landed and the menu did not
 
-**New `scripts/check_compose_substitution.sh`.** It does not guess from a version number:
+Your enhancement request came first and is second in this slice. Two reasons, and the second decided it.
 
-1. enumerate the `${NAME…}` placeholders in `compose.yaml`;
-2. subtract the ones that do not need a default — set in the environment, or assigned in `.env` —
-   because the *set* branch is the half your log proves works. Nothing left → exit 0, nobody asked;
-3. otherwise render with `compose config` under a deadline and look for a surviving `${`.
+The menu work adds four surfaces — a section index, a section editor, a rewritten item form, and a guest
+menu that is a grouped list of described items instead of one `<select>`. All four are read from a phone.
+Written before the responsive vocabulary exists, they are written against the shape F-59 was found in, and
+then all four need touching again.
 
-Exit **3** the engine does not apply defaults · **2** could not be determined here (no usable `config`)
-· **0** fine. The middle value matters: a missing subcommand is not a broken engine, and conflating
-them would either block correct hosts or pass broken ones.
+And: **F-59 blocks user testing, the menu does not.** A menu without sections is a menu somebody can still
+order from.
 
-**Three helpers run it before doing work.** `dev_instance.sh` refuses **before** the twenty-minute
-build. `quick_tunnel.sh` refuses before publishing a hostname. `run.sh` refuses before `compose up`.
-
-**`dev_instance.sh` asks again after `up -d`, from the containers' own environment** — one `inspect`
-each, `{{range .Config.Env}}`, grep for `${`. Ground truth: no subcommand needed, cannot be fooled by a
-`config` that renders differently from what it runs, and it is the only thing that can settle whether an
-*empty* assignment satisfies your engine. It runs before any waiting, because a placeholder in
-`POSTGRES_USER` means the database question is already settled.
-
-**`.env.example` now assigns every variable the stack interpolates.** It was assigning 19 of 22 —
-`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` and `CLOUDFLARE_TUNNEL_TOKEN` were commented
-out, and a commented-out line supplies nothing. So the documented remediation was incomplete in exactly
-the place that hurts most: an empty OTLP endpoint switches the exporter off, the literal switches it on.
-
-**One thing I changed that you did not ask for, and it is F-50 again.** `.env.example` spelled
-`RESTAURANT_SOURCE_URL=https://github.com/kusl/myrestaurant`. F-50 ruled that `compose.yaml` must pass
-that variable with an *empty* default so `RestaurantOptions.DefaultSourceUrl` stays the one place the
-fallback lives — and then left the upstream URL in the file operators are told to copy. A fork whose
-first edit is that constant would have had it silently overridden by their own `.env`. It is assigned
-empty now, with the fork example in a comment beside it. This is what fact 3 of the new test caught
-while I was proving it sensitive; I did not go looking for it.
-
-**`compose.yaml` is not edited.** The file is correct; the engine reading it is not.
+So the menu is shipped **decided and planned** rather than half-built. `docs/MENU_AND_HANDHELD_PLAN.md` is
+the plan, `docs/adr/0014-*.md` is the ruling, §7 and §19 point at both, and Stage 2 is a migration and a
+file list rather than a design exercise. If you disagree with the ordering, Stage 2 is self-contained and
+can be taken next without re-reading any of this.
 
 ---
 
-## The build break — fixed properly, and it will not come back
+## What §11.12 says, in the four sentences worth reading
 
-`DevInstanceLoopbackContractTests` wrapped one assertion message in
-`string.Create(CultureInfo.InvariantCulture, …)`, and the concatenation fed to it ended with a **plain**
-string literal instead of an interpolated one. An additive expression converts to an interpolated string
-handler only when *every* operand is itself `$"…"`, so the call bound to no overload. I checked the tree
-afterwards: **every** `string.Create` concatenation in it prefixes every operand with `$`, including
-operands with no holes. That file broke a uniform idiom.
+**The direction is the rule, not a preference.** `app.css` states the narrow layout unconditionally and
+contains exactly one `@media (min-width: 48rem)` query — the only place a width appears in the file. A
+`max-width` query would make the wide layout the default and the handset the exception, and it fails in the
+worst available direction: whatever is forgotten lands on the screen the software is actually used from.
+That was the previous arrangement.
 
-The repair is not to add the missing `$`. Every hole in that message is already a `string`, so there was
-nothing culture-sensitive to format and `string.Create` was never earning anything — it is a plain
-interpolated string now, `using System.Globalization;` is gone with it (an unused using is an error
-under CI's `TreatWarningsAsErrors`), and the reasoning sits above the assertion so nobody reaches for
-the habit again. Two more idioms hardened while the file was open: `Assert.Equal` on a collection size
-replaced with `Assert.True` (xUnit's analyzer has opinions), and `Assert.False(string.IsNullOrEmpty(x))`
-replaced with a length comparison.
+**Every record-list cell states its own label, and this is not decoration.** Overriding `display` on a
+table's parts drops table semantics in every engine, so below the breakpoint `<thead>` stops being what
+associates a cell with a column. An unlabelled card is a column of bare values — `Table 4`, `2`, `19:04`,
+`$18.50` — with nothing on screen or in the accessibility tree saying which is which. `data-label` is the
+replacement for the header; a self-describing cell opts out with `data-label=""`, which is a decision
+written down rather than an omission.
 
-The file shipped here is the authority — it supersedes your local edit and contains the same fix.
+**A row's action is the full width of the foot of its card, and its primary cell is also a link.** Both,
+not either: the link alone leaves a card with no visible affordance, and the button alone puts the target
+at the bottom of a card whose top is what somebody taps.
+
+**A 16px floor on every text control**, because iOS Safari zooms the whole viewport when a focused field's
+text is smaller and does not zoom back — so one undersized field breaks the layout of the page around it,
+on the platform most of your guests are holding.
+
+---
+
+## Two decisions I made that you might veto
+
+**1. `.page-head`, not `.admin-header`.** The obvious move was to hoist the existing class name into
+`app.css`. That is wrong for a mechanical reason: three pages this slice does not restructure still declare
+`.admin-header` inline, and **an inline copy of a shared name wins on source order at equal specificity** —
+so those pages would silently keep the old behaviour while the stylesheet claimed otherwise. A new name
+cannot lose that argument. The two coexist for exactly as long as Stage 1b takes.
+
+*To revert:* rename `.page-head*` back to `.admin-header*` in `app.css` and the four pages, and accept
+that the three unconverted pages override it.
+
+**2. `AdministrationAreaLinks` is a new component.** The six area links were copy-pasted into six pages and
+each copy omitted a different one — **its own** — so the row of links was a different row on every page and
+no page was reachable from every other. It is rendered once now, self-link included and marked
+`aria-current="page"`, because on a handset it is a horizontally scrolled strip and a strip whose contents
+shift between pages cannot be navigated from memory.
+
+*To revert:* inline the `<ul class="page-head-areas">` back into each page and delete
+`AdministrationAreaLinks.razor` and `AdministrationArea.cs`.
+
+---
+
+## F-58, found by accident
+
+`REQUIREMENTS.md` said **"Revision 4 — 2026-08-05"** in its header while its own revision history's newest
+entry said **"Rev 5 — 2026-08-06"**. Six slices, green on every `dotnet test`.
+
+`SpecificationVersionTests` exists precisely to stop that — it was F-48's fix, two slices after the
+specification did the same thing. It asserts header-matches-newest and entries-descend, and both are true.
+What nobody noticed is that the file it asserts them *about* is a `const string`, and **a `const string`
+naming one path reads as configuration rather than as a scope decision.** F-46 established that a rule
+enforced as a list of examples is enforced as a list of examples. This is the sharper corner: a list of one
+does not look like a list.
+
+Its subject is computed now — every `docs/*.md` with both a header version and a history section, both
+vocabularies read by one pattern, and a half-versioned document reported as a finding rather than skipped.
+Ported to Python and run against the tree **before** the fix: it fails on `REQUIREMENTS.md`, header 4
+against newest entry 5. That is F-58 reproduced by the gate that should have had it.
 
 ---
 
@@ -119,41 +142,58 @@ The file shipped here is the authority — it supersedes your local edit and con
 
 | File | Change |
 |---|---|
-| `scripts/check_compose_substitution.sh` | **new.** The decisive check, standalone and runnable by hand, with the whole account in its header |
-| `scripts/dev_instance.sh` | preflight before the build; container-environment gate after `up -d`; the `.env` warning corrected (it said an absent `.env` was "fine"; on your engine it is fatal); two new reading-key entries for the placeholder and initdb symptoms |
-| `scripts/quick_tunnel.sh` | refuses before opening a tunnel over a stack that cannot start |
-| `run.sh` | refuses before `compose up` |
-| `.env.example` | all 22 interpolated variables assigned; OTEL pair and tunnel token empty rather than commented; `RESTAURANT_SOURCE_URL` empty per F-50 |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.14** — §14.1 third normative rule + the `.env.example` requirement + what is deliberately not claimed; §16.4 the test and why the script is a preflight and not a CI gate; Appendix A F-57; header and changelog moved together |
-| `docs/OPERATIONS.md` | §10a opens with the substitution check; §2's `.env` step upgraded from advice to near-prerequisite |
-| `README.md` | the third-run paragraph, and the script in the layout list |
-| `docs/DOCUMENTATION_REVIEW.md` | F-57 row, status line, and two closing paragraphs |
-| `docs/BUILD_PROGRESS.md` | Slice 29, whole |
-| `tests/…/ComposeSubstitutionContractTests.cs` | **new**, 3 facts |
-| `tests/…/DevInstanceLoopbackContractTests.cs` | build break fixed, idioms hardened |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | **new.** Six stages, with the schema, the migration order, the file list, and the two stages that are recorded as *not startable* and why |
+| `docs/adr/0014-menu-sections-and-item-descriptions.md` | **new.** Seven rulings on the menu model, each with the argument and the accepted cost |
+| `src/…/Administration/AdministrationArea.cs` | **new.** The six-member enum behind the shared nav |
+| `src/…/Administration/AdministrationAreaLinks.razor` | **new.** The area links, rendered once |
+| `tests/…/Components/HandheldLayoutContractTests.cs` | **new.** Four facts, each proven sensitive |
+| `src/…/wwwroot/app.css` | rewritten handheld-first; one `min-width: 48rem` query; the `.record-*` and `.page-head*` vocabulary; `--touch-target`; the 16px input floor; `select` and `textarea` styled for the first time (the `textarea` is Stage 3's description field, added while the file was open); `.chip`, `.muted` and `.visually-hidden` declared once, with `clip-path` rather than the deprecated `clip` |
+| `src/…/Administration/AdministrationHome.razor` | record list; username is the link; action at the foot of the card; **inline `<style>` removed entirely** |
+| `src/…/Administration/AdministrationTables.razor` | same, and this is the page F-59 was reported against |
+| `src/…/Administration/AdministrationMenu.razor` | same. Restructured and **deliberately not given sections** — it says so in its own header, and its `Describe` fallback already renders an unknown event type as itself, so Stage 2's two new types read correctly here before this page learns their names |
+| `src/…/Administration/AdministrationSittings.razor` | same, plus the batch-close tick moved to the **first** thing in each card with the table's label as its accessible name — a bare checkbox at the top of a card is a control with nothing saying what it closes, and this is the one control on an administration index that charges somebody money |
+| `tests/…/Documentation/SpecificationVersionTests.cs` | subject computed rather than named; both version vocabularies; half-versioned documents are findings; two facts, renamed, not added to |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.15** — new §11.12; §7 forward-references ADR-0014 and restates the two rules easiest to lose while rewriting a menu; §16.4 gains both gates and what the handheld one cannot assert; §19 gains M7 and why its stages run in that order; Appendix A gains F-58, F-59 and one row that is not a finding; header and changelog moved together |
+| `docs/REQUIREMENTS.md` | **rev 6** — one new §8 principle; §6.8 gains sections, descriptions and ordering, plus what stays out of scope and why; the F-58 header correction recorded in its own rev 6 entry; the stale specification-version citation dropped rather than corrected |
+| `docs/DOCUMENTATION_REVIEW.md` | F-58 and F-59 rows, the status line, and two closing paragraphs — one of which is the only lesson in this file that came from outside it |
+| `docs/BUILD_PROGRESS.md` | Slice 30, whole file |
+| `README.md` | M7 in the roadmap and in the opening; `docs/` added to the layout list, which it had never been in |
 
 ---
 
 ## Verification
 
-- **The check run against three simulated engines** (`config` substitutes / leaves `${…}` literal /
-  no `config` at all) plus a fourth case with a complete `.env`: exit 0, exit 3 listing all 23
-  variables, exit 2 with the *undetermined* message, exit 0 without asking the engine. Each intended.
-- **`bash -n` + `shellcheck`** on all four scripts, clean at `--severity=warning` and `--severity=style`;
-  nine pre-existing scripts baselined style-clean first. One suppression with its reason on the line
-  above: `SC2016`, where `'${'` is the literal being searched for.
-- **New test ported to Python and proven sensitive** one regression at a time — six mutations across the
-  three facts, a throw on a broken `services:` marker, and a comment-only control that changes nothing.
-- **`DevInstanceLoopbackContractTests`, `ConfigurationSurfaceTests`, `ComposeDependencyContractTests`
-  and `SpecificationVersionTests` re-run** against the edited tree. All pass. Header 1.14, entries
-  descending.
-- **Balance walk** over both C# files with two controls; **byte hygiene** on all eleven files.
+- **`HandheldLayoutContractTests` ported to Python, run, then attacked.** Four facts pass on the tree.
+  Nine mutations, one at a time — a second breakpoint; the breakpoint inverted to `max-width`; the block
+  emptied; a page re-declaring `.record-actions` inline; one `<td>` losing its `data-label`; the wrapper
+  renamed on one page; a page not on the expected list acquiring the retired vocabulary; and a page on that
+  list half-converted, which is caught by the label-parity fact rather than the list fact because a
+  half-converted page has cells and no labels. Both non-vacuity guards then attacked directly by deleting
+  every `.page-head*` and then every `.record-*` **selector** from `app.css` while leaving the comments
+  that name them — the guard asserts a selector begins a line, so both fire. A comment-only edit changes
+  nothing, as a control.
+- **The generalised version gate run against the tree before the fix**: fails on `REQUIREMENTS.md`, 4
+  against 5. After: two documents versioned, four skipped, zero half-versioned, both facts passing.
+- **Razor tag-tree and `@code` brace balance** over all five new and rewritten components: clean. Three
+  untouched components as controls, of which `TableOrderSurface.razor` fails — and the failure is the
+  checker's, not the file's (`IReadOnlyList<OrderLineView>` inside an `@{ }` block is a generic argument
+  that looks like a tag). Recorded rather than suppressed, because a checker that passes on everything is
+  not looking.
+- **`<td>` / `data-label` parity**: 5/5, 5/5, 9/9, 14/14.
+- **Byte hygiene on all sixteen files**: LF, one final newline, no CR, no trailing whitespace, no
+  whitespace-only lines, no context-dump separator.
+- **DbUp's statement splitter read from source** before the plan committed to a `DO` block:
+  `PostgresqlQueryParser.ParseRawQuery`'s `DollarQuoted` state consumes a whole tagged block, so a `;`
+  inside `DO $$ … $$` does not split the statement.
 
-**Test count 1063 → 1066.** Three `[Fact]` methods, none removed.
+**Test count 1066 → 1072.** Four new `[Fact]` methods; the two in `SpecificationVersionTests` are rewritten
+and renamed, not added to. Arithmetic prediction — nothing was compiled or run.
 
-**Not verified:** nothing compiled, and no real engine ran the check — the shims imitate the two
-behaviours, and if your `podman-compose` has no `config` subcommand the preflight exits 2 and the
-post-`up` container check is what fires. That is why both exist.
+**Not verified, and it is the honest limit of this slice:** no browser rendered any of this. §11.12 is a
+claim about what a stylesheet does at two viewport widths, and the strongest thing asserted here is its
+*structure*. The four pages have not been seen at 375px by anything. That is exactly the gap Stage 1c
+exists to close, which is why the plan names the Playwright barrier as its first open item instead of
+leaving it implied.
 
 ---
 
@@ -161,20 +201,23 @@ post-`up` container check is what fires. That is why both exist.
 
 ```bash
 cd ~/src/dotnet/myrestaurant && git pull
-bash scripts/check_compose_substitution.sh ; echo "exit=$?"
+bash scripts/ci_local.sh          # check_tree first, then the unit gates
 ```
 
-If it exits 3 (or 2):
+Then look at it on the phone, which is the only thing that can actually check this slice:
 
-```bash
-cp .env.example .env
-bash scripts/check_compose_substitution.sh ; echo "exit=$?"    # should be 0 now
-time bash scripts/dev_instance.sh
+```
+/administration            → the People index
+/administration/tables     → the page the report was about
+/administration/sittings    → the batch-close tick, which is now the first thing in each card
 ```
 
-`.env` carries `POSTGRES_PASSWORD=myrestaurant` — a development credential, fine on a Tailscale-only
-box, worth changing on anything else. Old volumes are harmless: initdb never finished, so there is no
-half-built database to clear. If the check still refuses after copying `.env`, your engine is not
-honouring an empty assignment either — send me the output of
-`podman-compose config | head -40` and `podman-compose --version` and I will take the second
-remediation properly rather than pointing you at three options.
+What to look for: each row is a bordered card, every value has a small caps label above it, and the
+**Manage** button is the full width of the bottom of its card. The row of area links across the top is one
+horizontally scrolling strip with the current page filled in — that strip is the same six links in the same
+order on all four pages now, which it was not before. Rotate to landscape or open it on a laptop and the
+cards should become the table you had, header row and all.
+
+If a card looks like a stack of unlabelled values, the `data-label` rules did not apply and I want to know
+the browser. If the strip has wrapped into a pile instead of scrolling, `.page-head-areas` lost its
+`overflow-x` and the same applies.

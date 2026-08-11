@@ -8496,3 +8496,255 @@ found by one person running one command on one machine that is not the workstati
 
 **`Permissions-Policy`**, carried since Slice 24. **Two operator actions** no archive can contain
 (F-42).
+
+---
+
+# M6 Slice 30 — the screen it is read on (F-59), the gate that named one file (F-58), and a plan for the menu
+
+Two things arrived in one conversation with the first person outside this project to be shown the running
+application: an enhancement request for the menu, and a report that the Manage button on the
+administration tables page sat off the right-hand edge of a phone screen.
+
+The defect is shipped fixed. The enhancement is shipped **decided and planned** rather than half-built,
+and the ordering is deliberate — the reason is in the plan and repeated below, because it is the one
+judgement in this slice somebody might reasonably disagree with.
+
+## What was found, and why nothing here could have found it
+
+`AdministrationHome`, `AdministrationTables`, `AdministrationMenu` and `AdministrationSittings` each
+declared their own inline copy of the same eighty lines of table CSS. Each copy ended in:
+
+```css
+.admin-people .admin-row-actions {
+    white-space: nowrap;
+    text-align: right;
+}
+```
+
+inside a wrapper carrying `overflow-x: auto`. A five-to-eight column table in a 375px viewport scrolls
+sideways, the action column is the last thing in it, so the only way into a row was reachable only by
+scrolling past every other column of that row. Nobody decided that. It was one paste, four times — and the
+same four pastes had invented the chip vocabulary **five** times over (four inline plus `app.css`, which
+carried a comment apologising for the duplication and inviting somebody to fold it in) and
+`.visually-hidden` **seven** times.
+
+**The uncomfortable part is that no gate could have caught it and no test could have been written.** R§1
+has said since rev 1 that guests order from their own phones. S§11.7 budgets the footer clock for a
+handset in real detail — one wake per visible second, `contain: content` so a ticking clock does not
+re-lay-out the page sixty times a minute. But **no section said a staff surface has to be operable on a
+phone**, so there was no rule to enforce. 1066 tests green, fifteen §16.3 scenarios green,
+`ci_local.sh --with-all` clear, and four pages an operator uses while standing at a table were unusable on
+the device they would be standing there holding.
+
+That is F-49's shape without its mitigating half. F-49 was a control that existed, worked, and that nobody
+had decided on. This is a property everything assumed and nothing stated.
+
+## Why the layout landed before the menu
+
+The menu work adds four surfaces: a section index, a section editor, a rewritten item editor, and a guest
+menu that is a grouped list of described items instead of one `<select>`. All four are read from a phone.
+
+Written before the responsive vocabulary exists, they are written against the shape F-59 was found in, and
+then all four need touching again. That is the engineering argument and it is real, but it is not the one
+that decided it. **F-59 blocks user testing and the menu does not.** A menu without sections is a menu
+somebody can still order from; a Manage button off the edge of the screen is a page an operator cannot use.
+
+## S§11.12 — the rule, not the four pages
+
+New normative section. The parts worth reading twice:
+
+**The direction is the rule.** `app.css` states the narrow layout unconditionally and contains exactly one
+`@media (min-width: 48rem)` query — the only place a width appears in the file. A `max-width` query would
+say the wide layout is the default and the handset is the exception, and it fails in the worst available
+direction: whatever is forgotten, or unapplied, lands on the layout that does not work on the screen the
+software is actually used from. That was the previous arrangement, and it is what produced the defect.
+
+**Every record-list cell states its own label, and this is not decoration.** Overriding `display` on a
+table's parts drops the element's table semantics in every engine, so below the breakpoint the `<thead>`
+stops being what associates a cell with a column. An unlabelled card is a column of bare values — `Table
+4`, `2`, `19:04`, `$18.50` — with nothing on screen or in the accessibility tree saying which is which.
+`data-label` is the replacement for the header, a cell whose content already says what it is opts out with
+`data-label=""` (a decision written down rather than an omission), and the `<thead>` is clipped rather than
+`display: none` so it survives for a reader in table mode at any width.
+
+**A row's action is never a right-hand column.** It is the full width of the foot of the card, and the
+row's primary cell is *also* a link — so the way in is at x=0 whatever the viewport does. Both, not either:
+the link alone would leave a card with no visible affordance, and the button alone would put the target at
+the bottom of a card whose top is what somebody taps.
+
+**A 16px floor on every text control.** iOS Safari zooms the whole viewport when a focused control's text
+is smaller, and it does not zoom back out — so one undersized field breaks the layout of the page around
+it, on the platform most guests are holding. `.form-field select` and `textarea` are styled beside `input`
+for the first time; the `textarea` is for Stage 3's description field, added now because the file was open.
+
+**What the section does not require:** that every surface be *optimised* for a handset. `/kitchen` forces
+the distinction — §11.2 and §10.3 describe a wall-mounted kiosk with a wake lock and a loud alert, so its
+primary reader is a large screen. It satisfies §11.12 by being legible and operable at 375px, not by being
+designed for one.
+
+## What changed, and one thing that did not
+
+**`.page-head`, not `.admin-header`.** The obvious move was to hoist the existing name into `app.css`.
+That would have been wrong for a mechanical reason rather than a stylistic one: three pages this slice does
+not restructure still declare `.admin-header` inline, and an inline copy of a shared name **wins on source
+order at equal specificity** — so those pages would silently keep the old behaviour while the stylesheet
+claimed otherwise. A new name cannot lose that argument. The two coexist for exactly as long as Stage 1b
+takes, and `HandheldLayoutContractTests` holds the list of pages still carrying the old one.
+
+**`AdministrationAreaLinks` + `AdministrationArea`.** The six area links were copy-pasted into six pages
+and each copy omitted a different one — its own — so the row was a different row on every page and no page
+was reachable from every other. Rendered once now, self-link included and marked `aria-current="page"`,
+because on a handset it is a horizontally scrolled strip and a strip whose contents shift between pages
+cannot be navigated from memory: the third pill has to be the third pill everywhere.
+
+**The four pages lost their `<style>` blocks entirely.** Not reduced — removed. Every rule they held is
+either shared vocabulary in `app.css` now or was a duplicate of one.
+
+**`AdministrationMenu` is restructured and NOT given sections.** It says so in its own header comment, and
+the `Describe` method's existing fallback — return the raw event type for anything it does not recognise —
+means Stage 2's two new event types will read as themselves on that page before anybody teaches it their
+names. Faking the grouping from a naming convention in the meantime would have been a second model to
+delete.
+
+## F-58, found by accident on the way to a §8 principle
+
+`REQUIREMENTS.md` said **"Revision 4 — 2026-08-05"** in its header. Its revision history's newest entry
+said **"Rev 5 — 2026-08-06"**. Six slices, green on every `dotnet test`.
+
+`SpecificationVersionTests` exists precisely to stop that, and F-48's row in the ledger describes what it
+asserts — header-matches-newest, entries-descend — both of which are true. What the row does not say is
+*which file*, because the answer is a `const string`, and **a `const string` naming one path reads as
+configuration rather than as a scope decision.** That is why six slices of readers took it for the former.
+F-46 already established that a rule enforced as a list of examples is enforced as a list of examples;
+this is the sharper corner: a list of one does not look like a list.
+
+The subject is computed now — every `docs/*.md` with both a header version and a history section — with
+both vocabularies read by one pattern rather than tabled per filename, and a **half-versioned** document
+reported as a finding rather than skipped, because a header version with no readable history is one of the
+two shapes in which a document could quietly leave the subject.
+
+The same header also cited *"the companion `docs/TECHNICAL_SPECIFICATION.md` v1.6"* while that document
+was at v1.14. That citation **loses its version number** rather than gaining a correct one: a version of
+another document is F-50's class at the smallest possible stakes — a restatement joined to its subject only
+by somebody remembering to edit it.
+
+## The menu: decided, not built
+
+ADR-0014 and `docs/MENU_AND_HANDHELD_PLAN.md` Stage 2. Every ruling is a `CREATE TABLE` or an
+`ALTER TABLE`, and all of them are cheaper to argue with on a page than in a migration. The ones most
+likely to draw a veto:
+
+**Every item is in exactly one section, and the column is `NOT NULL`.** The alternative is a nullable
+column and an "Uncategorized" bucket, which is a second branch on every reading surface forever, for a
+state that exists only because the schema permitted it. The cost is accepted and named: on a database with
+no sections, no menu item can be created, so the first ever use of the menu screen has one extra step and
+the create-item form's job is to say so and link to section creation.
+
+**`menu_section.name` is `citext NOT NULL UNIQUE`; `menu_item.name` stays neither.** §7 already rules that
+a duplicate item name is a real menu — a weekly special genuinely is two rows called "Soup". A duplicate
+*section* is never a real menu; it is a mis-tap the guest sees as the same heading twice with the items
+split arbitrarily between them.
+
+**`description` is `text NOT NULL DEFAULT ''`, and this one was forced rather than chosen.** §7's log ties
+each nullable payload column to exactly the event types that carry it with paired *equality* CHECKs. An
+optional payload cannot be tied that way: clearing a description has to write something, and if that
+something is NULL the CHECK is violated by the very event recording the clearing. With `''` as "none",
+clearing is a value like any other. This tree carries both idioms — `person.display_name` is nullable and
+read through `NULLIF(btrim(…), '')` — so there was no house rule, and the constraint is the tie-breaker.
+
+**`created` keeps carrying name and price only.** An item created with a description and a section writes
+three events in one transaction, and the log reads *"Created as "Soup" at $4.50 / Description set / Filed
+under Starters"*. Widening `created` would break `0001`'s two paired CHECKs against every `created` row
+already in the database, because they are equalities and a description is optional. Three lines where one
+would do, paid in prose rather than in a constraint that cannot be stated.
+
+**`0003` replaces `menu_item_event`'s CHECK constraints by querying `pg_constraint` in a `DO` block.**
+`0001` declared them inline, so PostgreSQL generated `menu_item_event_event_type_check`,
+`menu_item_event_check` and `menu_item_event_check1` — deterministic, undocumented, and not a thing to
+depend on in a script that runs at startup on somebody else's box. Verified before committing to it:
+DbUp's PostgreSQL splitter is `PostgresqlQueryParser.ParseRawQuery`, whose `DollarQuotedStart` /
+`DollarQuoted` states consume a whole tagged block, so the `;` inside a `DO $$ … $$` body does not split
+the statement. Read from `DbUp/dbup-postgresql` at `main`, not from memory.
+
+**Images: `bytea`, and the argument is F-38's.** §15 *defines* a recovery set as exactly two files, and
+`restore_drill.sh` gates both on every push. A volume of image files makes it three, which means editing
+that definition, both scripts, the drill and the runbook — and an operator who keeps taking backups the old
+way has a set that restores an application whose menu has no pictures. Sixty items at 200 KB is 12 MB
+inside a `pg_dump -Fc` that already compresses. And the direction is the reversible one: `bytea` → volume
+is a migration that reads rows and writes files, volume → `bytea` is a migration that cannot find the
+files.
+
+**Comments are recorded as not startable, with three reasons rather than a hand-wave.** §17 already
+records that `/register` has no rate limit and *why* it is not a two-line addition — a second naive
+`AddRateLimiter` policy hijacks §4.2's single-valued rejection handler, so a refused registration would
+answer *"too many pairing attempts"*. Comments hit the identical wall. Beyond that: a comment signed with a
+display name is this system disclosing one person's name to strangers for the first time, against §5.3's
+absolute table-to-table privacy, which is a `REQUIREMENTS.md` revision and not a schema decision. **Likes
+are recommended instead**, and they need no new idiom at all: §8.3's `order_visibility_event` +
+`order_visibility_current` is already an append-only per-person boolean folded by `DISTINCT ON`.
+
+## What was verified, and how
+
+- **`HandheldLayoutContractTests` ported to Python and run against the edited tree**: four facts, all
+  passing. Then proven sensitive one regression at a time — a second breakpoint added; the one breakpoint
+  inverted to `max-width`; the breakpoint block emptied; a page re-declaring `.record-actions` inline; one
+  `<td>` losing its `data-label`; the wrapper class renamed on one page (caught by the fewer-than-four
+  guard); a page not on the expected list acquiring the retired vocabulary; and a page on that list
+  converted *without* the list being updated — caught, as it happens, by the label-parity fact rather than
+  by the list fact, because a half-converted page has cells and no labels. Both non-vacuity guards were
+  then attacked directly, by deleting every `.page-head*` and then every `.record-*` **selector** from
+  `app.css` while leaving the comments that mention them: the guard asserts a selector begins a line
+  rather than that the string appears anywhere, so both fire. A comment-only edit changes nothing, as a
+  control.
+- **The generalised `SpecificationVersionTests` ported and run against the tree *before* the fix**: it
+  fails on `REQUIREMENTS.md`, header 4 against newest entry 5, which is F-58 reproduced by the gate that
+  should have had it. After the rev 6 edit: two documents versioned, four skipped, zero half-versioned,
+  both facts passing.
+- **Razor tag-tree and `@code` brace balance** walked over all five new and rewritten components with a
+  string-aware scanner: clean. Three untouched components as controls, of which `TableOrderSurface.razor`
+  fails — and the failure is the checker's, not the file's: `IReadOnlyList<OrderLineView>` inside an `@{ }`
+  block is a generic argument that looks like a tag. Worth recording rather than suppressing, because a
+  checker that passes on everything is not looking.
+- **`<td>` / `data-label` parity** across the four restructured pages: 5/5, 5/5, 9/9, 14/14.
+- **Byte hygiene on every delivered file**: LF, one final newline, no CR, no trailing whitespace, no
+  whitespace-only lines, no context-dump separator.
+- **DbUp's statement splitter read from source** before the `DO` block was committed to in the plan.
+
+## Test count
+
+1066 → **1072**. Four `[Fact]` methods in the new `HandheldLayoutContractTests`, and the two in
+`SpecificationVersionTests` are rewritten and renamed rather than added to —
+`TheHeaderVersionMatchesTheNewestChangelogEntry` and `TheChangelogEntriesDescend` become
+`EveryVersionedDocumentsHeaderMatchesItsNewestHistoryEntry` and
+`EveryVersionedDocumentsHistoryEntriesDescend`, so the count there is unchanged at two. This is an
+arithmetic prediction, not an observation: nothing was compiled or run.
+
+## What was NOT verified, and cannot be from here
+
+**Nothing compiled.** Two test files, five Razor components and one C# enum, balance-checked and
+port-tested, with `dotnet build` run on none of them.
+
+**No browser rendered any of this.** The whole of §11.12 is a claim about what a stylesheet does at two
+viewport widths, and the strongest thing asserted here is its *structure*. The four pages have not been
+seen at 375px by anything. That is the honest limit of this slice, it is exactly the gap Stage 1c exists to
+close, and it is why the plan names the Playwright barrier as the first open item rather than leaving it
+implied.
+
+**`aria-current="@(area == Current ? "page" : null)"`** relies on Blazor omitting an attribute whose value
+is null. That is the framework's documented behaviour for object-valued attributes and it is used
+elsewhere in this tree, but it has not been observed in a rendered page here.
+
+## Still open
+
+**A CI job that runs the canonical stack on the canonical engine.** Sixth consecutive slice where this is
+the real embodiment of a finding and is not in the archive.
+
+**Stage 1b** — four pages still carry the retired table vocabulary, and
+`HandheldLayoutContractTests.StillExpectedToCarryRetiredTableVocabularyIsExactlyWhatTheTreeCarries` names
+all four, so finishing is deleting entries from that list. Then `.chip` and `.visually-hidden` come out of
+the remaining nine components and the forbidden-prefix list is extended **in the same commit** — that
+extension is the stage, not a tidy-up afterwards (F-46).
+
+**Stage 1c** — the 375px Playwright barrier.
+
+**Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive can contain (F-42).

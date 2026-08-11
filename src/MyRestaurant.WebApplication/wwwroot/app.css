@@ -1,10 +1,19 @@
 /*
- * Milestone 1 skeleton styling, extended for the Milestone 2 account surfaces (sign-in, two-factor,
- * forced password change) and the shared session header. Deliberately small and self-contained: no
- * external fonts or CDNs, because the application is self-hosted and must render behind a tunnel
- * with no outbound calls. The palette is a cool near-white with a single pine accent — quiet on
- * purpose; the interfaces that carry real weight (guest ordering, kitchen board) get their identity
- * in later milestones.
+ * The application's only stylesheet. App.razor links this file rather than the component-scoped
+ * bundle, so component CSS isolation is not active anywhere in this tree: a rule read by more than
+ * one component belongs here, and a rule read by exactly one may stay inline in that component.
+ *
+ * Deliberately small and self-contained: no external fonts or CDNs, because the application is
+ * self-hosted and must render behind a tunnel with no outbound calls. The palette is a cool
+ * near-white with a single pine accent.
+ *
+ * ORDER OF WRITING: handheld first (TECHNICAL_SPECIFICATION §11.12). Every layout rule below is
+ * written for the narrow screen and widened by exactly one min-width query near the bottom of this
+ * file. That direction is normative rather than stylistic, and the reason is in §11.12: a browser
+ * that never applies the query — or a reader who has never been asked about one — lands on the
+ * layout that works on the screen this software is actually used from. The previous direction was
+ * the other one, and it produced F-59: an administration row whose only affordance sat off the
+ * right-hand edge of a 375px screen, reachable only by scrolling sideways.
  */
 
 :root {
@@ -19,10 +28,30 @@
     --danger-surface: #fbeaea;
     --danger-ink: #7f1d1d;
     --danger-hairline: #f0c7c7;
+    --ok-surface: #e6f4ea;
+    --ok-ink: #1e7a37;
+    --caution-ink: #b45309;
 
     --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-monospace: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
     --measure: 42rem;
+
+    /*
+     * The smallest comfortable touch target, per §11.12. 2.75rem is 44px at the default root size,
+     * which is the figure both platform guidelines converge on; it is a variable because it is
+     * asserted on every control rather than remembered for some of them.
+     */
+    --touch-target: 2.75rem;
 }
+
+/*
+ * The one layout breakpoint (§11.12). It is written as a literal in the single min-width query
+ * below, because a custom property cannot be used in a media query — so the value lives in exactly
+ * one place in this file and this comment is where a reader is told which place. 48rem is 768px:
+ * above it a five-to-eight column record table is legible, below it every such table is a list of
+ * cards. The primary target is a 375px handset, which is nowhere near the boundary in either
+ * direction, so nothing in this project depends on behaviour at the edge.
+ */
 
 * {
     box-sizing: border-box;
@@ -56,7 +85,7 @@ body {
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 0.5rem 1rem;
-    padding: 0.65rem clamp(1rem, 3vw, 2rem);
+    padding: 0.65rem clamp(0.85rem, 3vw, 2rem);
     background-color: var(--surface-raised);
     border-bottom: 1px solid var(--hairline);
 }
@@ -72,7 +101,7 @@ body {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: 0.4rem 0.75rem;
     font-size: 0.95rem;
 }
 
@@ -81,7 +110,16 @@ body {
     font-weight: 600;
 }
 
+/*
+ * The session links are the chrome a guest reaches for with a thumb while holding a phone in one
+ * hand and a fork in the other, so they carry the §11.12 target height even though they are text.
+ * Vertical padding rather than a min-height, so the row does not grow on a wide screen where they
+ * sit on one line with the brand.
+ */
 .session-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.25rem;
     color: var(--accent-strong);
     font-weight: 600;
     text-decoration: none;
@@ -99,6 +137,9 @@ body {
 }
 
 .link-button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.25rem;
     padding: 0;
     border: none;
     background: none;
@@ -124,7 +165,7 @@ body {
 .app-footer {
     flex: 0 0 auto;
     contain: content;
-    padding: 0.55rem clamp(1rem, 3vw, 2rem) 0.3rem;
+    padding: 0.55rem clamp(0.85rem, 3vw, 2rem) 0.3rem;
     background-color: var(--surface-raised);
     border-top: 1px solid var(--hairline);
 }
@@ -184,7 +225,7 @@ body {
     justify-content: center;
     gap: 0.05rem 0.5rem;
     margin: 0;
-    padding: 0 clamp(1rem, 3vw, 2rem) 0.5rem;
+    padding: 0 clamp(0.85rem, 3vw, 2rem) 0.5rem;
     padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
     background-color: var(--surface-raised);
     font-size: 0.7rem;
@@ -216,10 +257,14 @@ body {
 
 /* --- The source offer page (§11.9) -------------------------------------------------------------- */
 
+/*
+ * One column on a handset, label-then-value; two columns once there is room. A 40-character commit
+ * hash beside a label in a 375px viewport is the case the two-column form cannot serve.
+ */
 .source-facts {
     display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.35rem 1rem;
+    grid-template-columns: 1fr;
+    gap: 0.15rem 1rem;
     margin: 1.25rem 0;
 }
 
@@ -232,7 +277,7 @@ body {
 }
 
 .source-facts dd {
-    margin: 0;
+    margin: 0 0 0.6rem;
 }
 
 /*
@@ -242,7 +287,7 @@ body {
  * copied.
  */
 .source-revision {
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-family: var(--font-monospace);
     font-size: 0.85em;
     overflow-wrap: anywhere;
 }
@@ -267,7 +312,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: clamp(1.5rem, 4vw, 4rem);
+    padding: clamp(0.6rem, 4vw, 4rem);
 }
 
 .landing,
@@ -277,8 +322,17 @@ body {
     background-color: var(--surface-raised);
     border: 1px solid var(--hairline);
     border-radius: 14px;
-    padding: clamp(1.75rem, 4vw, 3rem);
+    padding: clamp(1rem, 4vw, 3rem);
     box-shadow: 0 1px 2px rgba(22, 32, 43, 0.04), 0 12px 32px rgba(22, 32, 43, 0.05);
+}
+
+/*
+ * An administration index is a list of every account, table, menu item or sitting in the
+ * restaurant, and --measure is a reading width for prose. A wide panel is not a licence to be
+ * wide on a phone: this only takes effect where there is room, because the width is a maximum.
+ */
+.panel-wide {
+    max-width: 64rem;
 }
 
 .account-panel {
@@ -304,10 +358,11 @@ body {
 
 .panel h1 {
     margin: 0 0 1rem;
-    font-size: clamp(1.5rem, 4vw, 2rem);
+    font-size: clamp(1.4rem, 4vw, 2rem);
     font-weight: 700;
     letter-spacing: -0.02em;
     line-height: 1.15;
+    overflow-wrap: anywhere;
 }
 
 .landing-lede,
@@ -320,7 +375,7 @@ body {
 .facts {
     display: flex;
     flex-wrap: wrap;
-    gap: 1.5rem 3rem;
+    gap: 1rem 3rem;
     margin: 0 0 2rem;
     padding: 1.25rem 0;
     border-top: 1px solid var(--hairline);
@@ -354,6 +409,7 @@ body {
 .health-links a {
     display: inline-flex;
     align-items: center;
+    min-height: var(--touch-target);
     padding: 0.5rem 0.9rem;
     border: 1px solid var(--hairline);
     border-radius: 8px;
@@ -369,7 +425,7 @@ body {
     border-color: var(--accent);
 }
 
-/* --- Forms (account pages) --------------------------------------------------------------------- */
+/* --- Forms --------------------------------------------------------------------------------------- */
 
 .form-field {
     margin: 0 0 1.1rem;
@@ -383,20 +439,46 @@ body {
     color: var(--ink-soft);
 }
 
-.form-field input {
+/*
+ * `select` and `textarea` are here beside `input` rather than left to the browser, and the font-size
+ * floor is the §11.12 rule that is easiest to get wrong: iOS Safari zooms the whole viewport when a
+ * focused control's text is under 16px, and it does not zoom back out. One under-sized field
+ * therefore breaks the layout of the page around it, on the platform most guests are holding.
+ */
+.form-field input,
+.form-field select,
+.form-field textarea {
     width: 100%;
+    min-height: var(--touch-target);
     padding: 0.6rem 0.75rem;
     font: inherit;
+    font-size: max(1rem, 1em);
     color: var(--ink);
     background-color: var(--surface-raised);
     border: 1px solid var(--hairline);
     border-radius: 8px;
 }
 
-.form-field input:focus-visible {
+.form-field textarea {
+    min-height: 5.5rem;
+    line-height: 1.5;
+    resize: vertical;
+}
+
+.form-field input:focus-visible,
+.form-field select:focus-visible,
+.form-field textarea:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 1px;
     border-color: var(--accent);
+}
+
+.form-hint {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--ink-soft);
 }
 
 /* Checkboxes and radios are `input` too, and the rule above would stretch one across the whole
@@ -408,18 +490,24 @@ body {
 .choice input[type="checkbox"],
 .choice input[type="radio"] {
     flex: 0 0 auto;
-    width: 1.15rem;
-    height: 1.15rem;
+    width: 1.35rem;
+    height: 1.35rem;
+    min-height: 0;
     margin: 0;
     padding: 0;
     border-radius: 0.25rem;
     accent-color: var(--accent);
 }
 
+/*
+ * Stacked and full-width by default, side by side once there is room. A row of buttons that wraps is
+ * a row whose second line is a different width from its first, and on a form whose primary action is
+ * "Close the ticked sittings" the thumb should not have to find an edge.
+ */
 .form-actions {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
     gap: 0.6rem;
     margin-top: 1.5rem;
 }
@@ -460,6 +548,7 @@ body {
     gap: 0.7rem;
     margin: 0;
     padding: 0.7rem 0.85rem;
+    min-height: var(--touch-target);
     background-color: var(--surface-raised);
     border: 1px solid var(--hairline);
     border-radius: 8px;
@@ -505,23 +594,52 @@ body {
     line-height: 1.45;
 }
 
-.button-primary {
+/* --- Buttons -------------------------------------------------------------------------------------- */
+
+.button-primary,
+.button-secondary {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    min-height: var(--touch-target);
     padding: 0.65rem 1.4rem;
     font: inherit;
     font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+    transition: background-color 120ms ease;
+}
+
+.button-primary {
     color: #ffffff;
     background-color: var(--accent);
     border: 1px solid var(--accent-strong);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background-color 120ms ease;
 }
 
 .button-primary:hover {
     background-color: var(--accent-strong);
+}
+
+.button-secondary {
+    color: var(--accent-strong);
+    background-color: var(--surface-raised);
+    border: 1px solid var(--accent);
+}
+
+.button-secondary:hover {
+    background-color: var(--surface);
+}
+
+.button-primary:disabled,
+.button-secondary:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.link-button.danger {
+    color: var(--danger-ink);
 }
 
 .form-footnote {
@@ -591,7 +709,7 @@ ul.status-error {
 .totp-secret {
     margin: 0 0 1.5rem;
     padding: 0.6rem 0.75rem;
-    font-family: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+    font-family: var(--font-monospace);
     font-size: 1.05rem;
     letter-spacing: 0.08em;
     word-break: break-all;
@@ -604,7 +722,7 @@ ul.status-error {
 .recovery-codes {
     list-style: none;
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem 0.75rem;
     margin: 0 0 1.25rem;
     padding: 0;
@@ -612,7 +730,7 @@ ul.status-error {
 
 .recovery-codes li {
     padding: 0.5rem 0.65rem;
-    font-family: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+    font-family: var(--font-monospace);
     font-size: 1rem;
     letter-spacing: 0.06em;
     text-align: center;
@@ -625,7 +743,8 @@ ul.status-error {
 a:focus-visible,
 .health-links a:focus-visible,
 .link-button:focus-visible,
-.button-primary:focus-visible {
+.button-primary:focus-visible,
+.button-secondary:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
 }
@@ -650,34 +769,8 @@ a:focus-visible,
 }
 
 /* -----------------------------------------------------------------------------
- * Passkeys (§3.3): the sign-in alternative button, the management list, and the
- * two shared button variants they introduce. Same quiet palette as the rest —
- * the secondary button is an outline of the pine accent, destructive actions
- * borrow the danger ink already used for alerts.
+ * Passkeys (§3.3): the sign-in alternative button and the management list.
  * ---------------------------------------------------------------------------*/
-
-.button-secondary {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.65rem 1.4rem;
-    font: inherit;
-    font-weight: 600;
-    color: var(--accent-strong);
-    background-color: var(--surface-raised);
-    border: 1px solid var(--accent);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background-color 120ms ease;
-}
-
-.button-secondary:hover {
-    background-color: var(--surface);
-}
-
-.link-button.danger {
-    color: var(--danger-ink);
-}
 
 /* The passkey button on the sign-in form sits under the primary action, split
  * off by a faint "or". */
@@ -721,12 +814,13 @@ a:focus-visible,
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
-    min-width: 12rem;
+    min-width: 0;
 }
 
 .passkey-name {
     font-weight: 600;
     color: var(--ink);
+    overflow-wrap: anywhere;
 }
 
 .passkey-date {
@@ -742,8 +836,10 @@ a:focus-visible,
 }
 
 .passkey-rename {
+    min-height: var(--touch-target);
     padding: 0.4rem 0.6rem;
     font: inherit;
+    font-size: max(1rem, 1em);
     color: var(--ink);
     background-color: var(--surface);
     border: 1px solid var(--hairline);
@@ -756,7 +852,7 @@ a:focus-visible,
 }
 
 /* First-administrator setup wizard (§3.6). Reuses the account-panel, form-field, TOTP, and
-   recovery-code styles above; these cover only what is specific to the wizard, in the same palette. */
+   recovery-code styles above; these cover only what is specific to the wizard. */
 
 .optional {
     font-weight: 400;
@@ -823,8 +919,9 @@ a:focus-visible,
 
 .setup-summary > div {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
-    gap: 1rem;
+    gap: 0.25rem 1rem;
     padding-bottom: 0.6rem;
     border-bottom: 1px solid var(--hairline);
 }
@@ -837,7 +934,7 @@ a:focus-visible,
     margin: 0;
     font-weight: 600;
     color: var(--ink);
-    text-align: right;
+    overflow-wrap: anywhere;
 }
 
 .setup-restart {
@@ -846,7 +943,7 @@ a:focus-visible,
 
 .setup-callout {
     margin-bottom: 2rem;
-    padding: 1.25rem 1.5rem;
+    padding: 1rem 1.15rem;
     border: 1px solid var(--accent);
     border-radius: 12px;
     background-color: var(--surface-raised);
@@ -868,13 +965,14 @@ a:focus-visible,
 }
 
 /* -----------------------------------------------------------------------------
- * Status chips and the person's own profile page (§4.6, §11.6).
+ * Status chips, the person's own profile page (§4.6, §11.6), and the shared
+ * pieces every record surface reads.
  *
- * The chip vocabulary was invented twice inline — once in AdministrationHome
- * (namespaced under .admin-people) and once in ManagePerson (bare) — so a third
- * page wanting one had nowhere to reach. It lives here now: "Active" should look
- * the same wherever it appears. The two inline copies are redundant but harmless
- * and are left alone; fold them in whenever those pages are next edited.
+ * The chip vocabulary was invented five times — once here and once inline in
+ * each of four administration pages — which is what a shared stylesheet is for.
+ * The four inline copies are gone; anything still declaring one inline is a page
+ * this slice did not restructure, and `HandheldLayoutContractTests` names the
+ * set that may not be re-declared.
  * ---------------------------------------------------------------------------*/
 
 .chip {
@@ -894,8 +992,8 @@ a:focus-visible,
 }
 
 .chip-ok {
-    background-color: #e6f4ea;
-    color: #1e7a37;
+    background-color: var(--ok-surface);
+    color: var(--ok-ink);
 }
 
 .chip-warn {
@@ -905,6 +1003,24 @@ a:focus-visible,
 
 .muted {
     color: var(--ink-soft);
+}
+
+/*
+ * One declaration for the whole tree. Every page that needs it may use it; no page needs to invent
+ * it. `clip-path` rather than the deprecated `clip`, and the element keeps a single pixel of size so
+ * that it stays in the accessibility tree — a `display: none` label is a label no screen reader
+ * reads, which defeats the reason these exist.
+ */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
 }
 
 .account-facts {
@@ -920,7 +1036,7 @@ a:focus-visible,
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 0.5rem 1rem;
+    gap: 0.25rem 1rem;
 }
 
 .account-facts dt {
@@ -935,6 +1051,7 @@ a:focus-visible,
 .account-facts dd {
     margin: 0;
     font-weight: 600;
+    overflow-wrap: anywhere;
 }
 
 .account-heading {
@@ -948,8 +1065,8 @@ a:focus-visible,
     border-top: 1px solid var(--hairline);
 }
 
-/* One row per credential: what it is, whether it is set, and the way to change it. Wraps to two
- * lines on a narrow phone rather than squeezing the button. */
+/* One row per credential: what it is, whether it is set, and the way to change it. Stacked on a
+ * phone rather than squeezing the button onto the same line. */
 .account-security {
     display: flex;
     flex-direction: column;
@@ -983,14 +1100,301 @@ a:focus-visible,
 }
 
 /* -----------------------------------------------------------------------------
+ * THE RECORD LIST (§11.12)
+ *
+ * The shared shape behind every administration index: every account, every
+ * table, every menu item, every open and settled sitting. One vocabulary,
+ * declared once, read by four pages — replacing `.admin-people`,
+ * `.admin-tables`, `.admin-menu` and `.admin-sittings`, which were four
+ * near-identical inline copies of the same eighty lines.
+ *
+ * Handheld first, and this is the file's central rule rather than an example of
+ * it. Below the breakpoint each row is a CARD: the table's own display roles are
+ * dropped, every cell states its own label from `data-label`, and the row's
+ * action is a full-width control at the bottom of the card. Above it, the same
+ * markup is a table with a header row.
+ *
+ * Why the cells label themselves. Overriding `display` on table parts drops the
+ * element's table semantics in every engine, so the `<thead>` stops being what
+ * associates a cell with a column — which means a card whose cells are unlabelled
+ * is a column of bare values with nothing saying what they are. `data-label` is
+ * therefore not decoration: it is the replacement for the header, it is required
+ * on every cell that is not self-describing, and `HandheldLayoutContractTests`
+ * is what keeps a new page from omitting it.
+ *
+ * Why the action is not a right-hand column. That is F-59 exactly: `text-align:
+ * right` inside `overflow-x: auto` put the only affordance on the row off the
+ * right-hand edge of a 375px screen. It is now the last thing in the card and
+ * the full width of it, and the row's primary cell is also a link — so the way
+ * in is at x=0 whatever the viewport does.
+ * ---------------------------------------------------------------------------*/
+
+.record-list {
+    margin: 0.5rem 0 0;
+}
+
+.record-list table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+}
+
+/*
+ * The header exists for the wide layout. On a handset it is removed from the visual flow but kept in
+ * the document, because a `display: none` header is one a screen reader in table mode cannot fall
+ * back to at any width.
+ */
+.record-list thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.record-list table,
+.record-list tbody,
+.record-list tr,
+.record-list td {
+    display: block;
+}
+
+.record-list tr {
+    margin: 0 0 0.6rem;
+    padding: 0.75rem 0.85rem;
+    background-color: var(--surface-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+}
+
+.record-list td {
+    padding: 0.15rem 0;
+    border: 0;
+    overflow-wrap: anywhere;
+}
+
+/*
+ * The label. `attr()` in `content` is the one form of `attr()` with universal support, and it is
+ * exactly what is needed here — a string, not a length.
+ */
+.record-list td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+
+/* A cell whose content says what it is — a name, a row of chips — opts out with an empty label. */
+.record-list td[data-label=""]::before {
+    content: none;
+}
+
+.record-primary {
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.record-link {
+    color: var(--accent-strong);
+    font-weight: 600;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+
+.record-link:hover {
+    text-decoration: underline;
+}
+
+.record-secondary {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--ink-soft);
+}
+
+.record-numeric {
+    font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The row's way in. A full-width control at the foot of the card on a handset, a plain right-aligned
+ * link in a table cell once there is room.
+ */
+.record-actions {
+    margin-top: 0.55rem;
+}
+
+.record-actions .button-secondary,
+.record-actions .button-primary {
+    width: 100%;
+}
+
+/*
+ * The one control on an administration index that changes money (§5.4's batch close), so it is the first
+ * thing in the card and the whole width of it is the target. Its height is `--touch-target` because
+ * §11.12 says so, not because this list has an opinion — the rule it replaced was an inline
+ * `input { width: 1.35rem }` on one page, which is the same number arrived at privately.
+ */
+.record-tick {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.3rem;
+    min-height: var(--touch-target);
+}
+
+.record-tick label {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    min-height: var(--touch-target);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.record-tick input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 1.35rem;
+    height: 1.35rem;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.record-empty {
+    margin: 0.5rem 0 0;
+    color: var(--ink-soft);
+}
+
+/*
+ * The count-and-caveat line under a record list. Distinct from `.form-footnote`, which has a rule
+ * above it and belongs to a form.
+ */
+.record-note {
+    margin: 0.4rem 0 0;
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+}
+
+.record-corrected {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--caution-ink);
+}
+
+/* -----------------------------------------------------------------------------
+ * THE PAGE HEAD (§11.4, §11.12)
+ *
+ * A title, and the way to every other surface in the same area. On a handset the
+ * area links are a horizontally scrollable single row rather than a wrapped pile
+ * of six: a pile pushes the page's first record below the fold, and the links are
+ * navigation rather than the thing the operator came for. The page's own primary
+ * action is not in that row — it is a full-width button underneath, because it is
+ * the thing the operator came for.
+ *
+ * `.page-head` rather than `.admin-header`, which is the name four pages declared
+ * inline. The two coexist on purpose for exactly as long as the migration takes:
+ * a shared declaration under the old name would be overridden on every page that
+ * still carries the inline copy — same specificity, later in the document — so
+ * the four restructured pages would silently keep the old behaviour and the
+ * stylesheet would say otherwise. A new name cannot lose that argument. Stage 1b
+ * of `docs/MENU_AND_HANDHELD_PLAN.md` retires `.admin-header` from the tree.
+ * ---------------------------------------------------------------------------*/
+
+.page-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+/* Lets the scrolling strip inside shrink to the column rather than widening its parent. */
+.page-head-nav {
+    min-width: 0;
+}
+
+.page-head-areas {
+    display: flex;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0.15rem 0 0.35rem;
+    list-style: none;
+    overflow-x: auto;
+    /* Keeps a partly-scrolled row from resting between two links, so the row always reads as a row. */
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.page-head-areas li {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+}
+
+.page-head-areas a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch-target);
+    padding: 0.4rem 0.85rem;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    background-color: var(--surface);
+    color: var(--accent-strong);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.page-head-areas a:hover {
+    border-color: var(--accent);
+}
+
+.page-head-areas a[aria-current="page"] {
+    background-color: var(--accent);
+    border-color: var(--accent-strong);
+    color: #ffffff;
+}
+
+.page-head-action {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+}
+
+.record-heading {
+    margin: 1.4rem 0 0.3rem;
+    font-size: 1.1rem;
+}
+
+.record-rule {
+    margin: 1.6rem 0 0;
+    border: 0;
+    border-top: 1px solid var(--hairline);
+}
+
+.record-warning {
+    margin: 0.9rem 0 0;
+    padding: 0.6rem 0.85rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--danger-hairline);
+    background-color: var(--danger-surface);
+    color: var(--danger-ink);
+}
+
+/* -----------------------------------------------------------------------------
  * The table surface: roster, staging area, living order, party orders (§11.1).
  *
  * These live here rather than inline in the component for one concrete reason:
  * /table/{id} is a static-SSR page hosting an interactive island, so the markup
  * is split across two components and an inline <style> in one of them styling
- * the other's markup would be a dependency nobody could see. The .order-* half
- * is also what §11.3's counter drill-in and §11.2's kitchen tickets will reuse —
- * a line badged "with the kitchen" should look the same wherever it is read.
+ * the other's markup would be a dependency nobody could see.
  * ---------------------------------------------------------------------------*/
 
 .table-heading {
@@ -1046,16 +1450,17 @@ a:focus-visible,
 
 .order-picker {
     margin: 0.75rem 0 1rem;
-    padding: 0.9rem 1rem 0.4rem;
+    padding: 0.9rem 0.85rem 0.4rem;
     border: 1px solid var(--hairline);
     border-radius: 10px;
     background-color: var(--surface-raised);
 }
 
-/* A quantity box wants to be a box, not a full-width text field. */
+/* A quantity box wants to be a box, not a full-width text field — but only where there is room for
+   it to be one. On a handset a 6rem field beside its label is a field two thumbs wide. */
 .order-picker-quantity input,
 .order-basket-quantity input {
-    width: 6rem;
+    max-width: 8rem;
 }
 
 .order-basket-empty {
@@ -1111,10 +1516,10 @@ a:focus-visible,
 
 .order-send {
     margin-top: 1rem;
-    align-items: center;
 }
 
 .order-send-total {
+    align-self: center;
     font-weight: 600;
     color: var(--ink-soft);
 }
@@ -1186,12 +1591,16 @@ a:focus-visible,
     align-items: flex-start;
     gap: 0.5rem;
     margin-top: 0.5rem;
+    min-height: var(--touch-target);
     font-size: 0.9rem;
 }
 
 .order-line-remove input[type="checkbox"] {
-    width: auto;
+    flex: 0 0 auto;
+    width: 1.35rem;
+    height: 1.35rem;
     margin-top: 0.2rem;
+    accent-color: var(--accent);
 }
 
 /* --- totals and the rest of the party ------------------------------------------------------------- */
@@ -1242,6 +1651,10 @@ a:focus-visible,
     gap: 0.5rem;
 }
 
+.order-party-line-name {
+    color: var(--ink);
+}
+
 /* --- the all-or-nothing rejection panel (§6.5.9) --------------------------------------------------- */
 
 .order-reject-lede {
@@ -1253,4 +1666,168 @@ a:focus-visible,
     padding-left: 1.1rem;
     display: grid;
     gap: 0.2rem;
+}
+
+/* -----------------------------------------------------------------------------
+ * THE ONE LAYOUT BREAKPOINT (§11.12)
+ *
+ * 48rem. Everything above this comment is the handheld layout; everything inside
+ * this query is what changes once there is room for a table to be a table and a
+ * row of buttons to be a row. There is deliberately exactly one of these, and
+ * `HandheldLayoutContractTests` asserts both that fact and its direction — a
+ * second breakpoint, or one written as `max-width`, is the rule being abandoned
+ * one page at a time, which is how F-59 happened.
+ * ---------------------------------------------------------------------------*/
+
+@media (min-width: 48rem) {
+    .page-head {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .page-head-areas {
+        flex-wrap: wrap;
+        overflow-x: visible;
+    }
+
+    .page-head-action {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .form-actions {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .source-facts {
+        grid-template-columns: auto 1fr;
+    }
+
+    .source-facts dd {
+        margin-bottom: 0;
+    }
+
+    /* The record list becomes a table again. */
+    .record-list table {
+        display: table;
+    }
+
+    .record-list tbody {
+        display: table-row-group;
+    }
+
+    .record-list tr {
+        display: table-row;
+        margin: 0;
+        padding: 0;
+        background-color: transparent;
+        border: 0;
+        border-radius: 0;
+    }
+
+    .record-list td {
+        display: table-cell;
+        padding: 0.6rem 0.75rem;
+        border-bottom: 1px solid var(--hairline);
+        vertical-align: top;
+    }
+
+    .record-list thead {
+        position: static;
+        width: auto;
+        height: auto;
+        margin: 0;
+        overflow: visible;
+        clip-path: none;
+        white-space: normal;
+    }
+
+    .record-list th {
+        padding: 0.6rem 0.75rem;
+        text-align: left;
+        font-weight: 600;
+        color: var(--ink-soft);
+        border-bottom: 2px solid var(--hairline);
+        vertical-align: bottom;
+    }
+
+    .record-list td[data-label]::before {
+        content: none;
+    }
+
+    .record-primary {
+        font-size: inherit;
+    }
+
+    .record-numeric {
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    .record-actions {
+        margin-top: 0;
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    /* In a table cell the action is a link again: a full-width button in a 6rem column is not one. */
+    .record-actions .button-secondary,
+    .record-actions .button-primary {
+        width: auto;
+        min-height: 0;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--accent-strong);
+        font-weight: 600;
+        text-decoration: underline;
+    }
+
+    .record-actions .button-secondary:hover,
+    .record-actions .button-primary:hover {
+        background: none;
+        color: var(--accent);
+    }
+
+    .record-tick {
+        display: table-cell;
+        width: 2.75rem;
+        margin: 0;
+        padding: 0.6rem 0.75rem;
+        border-bottom: 1px solid var(--hairline);
+        vertical-align: top;
+    }
+
+    .record-tick label {
+        min-height: 0;
+    }
+
+    /*
+     * The tick's visible verb is the card layout's replacement for a column header, so it goes away
+     * where the header itself is on screen — otherwise every row repeats the word above it.
+     */
+    .record-tick-verb {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .order-picker-quantity input,
+    .order-basket-quantity input {
+        max-width: 6rem;
+    }
+
+    .order-send {
+        flex-direction: row;
+        align-items: center;
+    }
 }

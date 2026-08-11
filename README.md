@@ -22,7 +22,13 @@ found that it could not have completed — and that nothing had ever backed up t
 ring, so every backup ever taken would have restored the accounts and none of their enrolled
 authenticators. Both are in `docs/DOCUMENTATION_REVIEW.md` as F-37 and F-38.
 
-See *Roadmap* and `docs/BUILD_PROGRESS.md`.
+**M7 is open, and it is the first milestone driven by a user.** The application was shown to somebody,
+and what came back was one enhancement request — the menu needs sections and every item needs a
+description — and one defect: on a phone, the Manage button on the administration tables page sat off the
+right-hand edge of the screen. The defect is fixed and its rule is written down (`§11.12`, F-59); the
+enhancement is decided (ADR-0014) and staged. `docs/MENU_AND_HANDHELD_PLAN.md` is the plan.
+
+See *Roadmap*, `docs/MENU_AND_HANDHELD_PLAN.md` and `docs/BUILD_PROGRESS.md`.
 
 ## Layout
 
@@ -52,6 +58,10 @@ the web layer depends on data-access and the domain; the domain depends on nothi
   recovery sets and the rehearsal CI runs on every push), `quick_tunnel.sh` (a demo origin, held in
   the foreground), and `dev_instance.sh` (the same origin, detached — for a spare machine with no
   .NET SDK that serves testers for days).
+- `docs/` — `REQUIREMENTS.md` (intent), `TECHNICAL_SPECIFICATION.md` (the normative mechanism),
+  `DOCUMENTATION_REVIEW.md` (the defect ledger, F-01 to F-59), `OPERATIONS.md` (the runbooks),
+  `BUILD_PROGRESS.md` (what was built, slice by slice, and what was not verified),
+  `MENU_AND_HANDHELD_PLAN.md` (M7's staged plan), and `adr/` (fourteen decision records).
 - `.github/workflows/` — the CI and release pipelines (see *Continuous integration*).
 
 ## Prerequisites
@@ -503,4 +513,19 @@ every reader the issue tracker was closed — while it was open, and had always 
 produce readers, readers are who find security defects, and the only channel that worked was a public
 one the documentation denied. `SECURITY.md` and `scripts/check_repository.sh` are the answer (F-42).
 
-Every milestone is complete. What follows is maintenance and whatever the restaurant asks for next.
+- ⧗ **M7** — the menu, and the screen it is read on. The first work in this project that came from
+  somebody using it rather than from a document. **Stage 1** is the handheld layout contract (§11.12):
+  every surface laid out for a phone first and widened by exactly one breakpoint, 44-pixel touch
+  targets, a 16-pixel floor under every text field so iOS Safari does not zoom the page and leave it
+  zoomed, and administration indexes that are lists of cards on a narrow screen instead of wide tables
+  whose only affordance is off the right-hand edge (F-59). **Stage 2** is the schema — menu sections,
+  item descriptions, and explicit ordering on both (ADR-0014). **Stage 3** is the surfaces that read
+  it, including a guest menu that is a grouped list of described items rather than one `<select>` with
+  sixty things in it. **Stages 4–6** are images, likes, and comments — with comments recorded as *not
+  startable* until §17's rate-limit ruling is revisited and a decision is made about showing one
+  guest's name to another.
+
+The order is not the order it was asked in, and the reason is worth stating: the menu work adds four
+surfaces that are all read from a phone, so building them before the responsive vocabulary exists means
+building them against the shape the defect was found in and then touching all four again. The defect
+also blocked user testing and the menu did not.

@@ -5,29 +5,31 @@
 @inject ITableDirectory Tables
 @inject RestaurantTime RestaurantClock
 
-@* The administration tables list (TECHNICAL_SPECIFICATION §4.1, §11.4 — `area.administration`). It
-   lists every table with its status and when its join secret was last rotated, links each to its
+@* The administration tables list (TECHNICAL_SPECIFICATION §4.1, §11.4, §11.12 — `area.administration`).
+   It lists every table with its status and when its join secret was last rotated, links each to its
    management page, and offers table creation. Static SSR, like every administration surface, so the
    management pages it links can post full pages. Endpoint authorization enforces the policy on the
    server (anonymous → /sign-in, signed-in non-administrator → /access-denied). Not exempt from the
-   obligations pipeline. Join secrets are never read or shown here (§4.1). *@
+   obligations pipeline. Join secrets are never read or shown here (§4.1).
+
+   The markup is the shared §11.12 record list and there is no inline <style> block; the table label is
+   itself the link, and the row's action is the foot of its card rather than a right-hand column. This
+   page is the one F-59 was reported against: an operator standing at a table, on a phone, scrolling
+   sideways to reach Manage. *@
 
 <PageTitle>Administration — tables</PageTitle>
 
-<section class="panel">
-    <div class="admin-header">
+<section class="panel panel-wide">
+    <div class="page-head">
         <div>
             <p class="eyebrow">Administration</p>
             <h1>Tables</h1>
         </div>
-        <div class="admin-header-actions">
-            <a class="button-secondary" href="/administration">People</a>
-            <a class="button-secondary" href="/administration/menu">Menu</a>
-            <a class="button-secondary" href="/administration/sittings">Sittings</a>
-            <a class="button-secondary" href="/administration/hidden-records">Hidden records</a>
-            <a class="button-secondary" href="/administration/events">Events</a>
-            <a class="button-primary" href="/administration/tables/new">Create table</a>
-        </div>
+        <AdministrationAreaLinks Current="AdministrationArea.Tables" />
+    </div>
+
+    <div class="page-head-action">
+        <a class="button-primary" href="/administration/tables/new">Create table</a>
     </div>
 
     <p class="lede">
@@ -38,15 +40,15 @@
 
     @if (_tables is null)
     {
-        <p class="lede">Loading…</p>
+        <p class="record-empty">Loading…</p>
     }
     else if (_tables.Count == 0)
     {
-        <p class="lede">No tables yet. Create the first one to start pairing displays and taking orders.</p>
+        <p class="record-empty">No tables yet. Create the first one to start pairing displays and taking orders.</p>
     }
     else
     {
-        <div class="admin-tables">
+        <div class="record-list">
             <table>
                 <thead>
                     <tr>
@@ -61,8 +63,10 @@
                     @foreach (RestaurantTableSummary table in _tables)
                     {
                         <tr>
-                            <td><span class="table-label">@table.Label</span></td>
-                            <td>
+                            <td class="record-primary" data-label="">
+                                <a class="record-link" href="@ManagePath(table)">@table.Label</a>
+                            </td>
+                            <td data-label="">
                                 @if (table.IsActive)
                                 {
                                     <span class="chip chip-ok">Active</span>
@@ -72,7 +76,7 @@
                                     <span class="chip chip-warn">Deactivated</span>
                                 }
                             </td>
-                            <td>
+                            <td data-label="Join secret rotated">
                                 @if (table.JoinSecretRotatedAt is { } rotatedAt)
                                 {
                                     <span>@RestaurantClock.DateAndTime(rotatedAt)</span>
@@ -82,15 +86,20 @@
                                     <span class="muted">Never</span>
                                 }
                             </td>
-                            <td>@RestaurantClock.DateAndTime(table.CreatedAt)</td>
-                            <td class="admin-row-actions">
-                                <a href="@($"/administration/tables/{table.TableIdentifier}")">Manage</a>
+                            <td data-label="Created">@RestaurantClock.DateAndTime(table.CreatedAt)</td>
+                            <td class="record-actions" data-label="">
+                                <a class="button-secondary" href="@ManagePath(table)"
+                                   aria-label="@($"Manage {table.Label}")">Manage</a>
                             </td>
                         </tr>
                     }
                 </tbody>
             </table>
         </div>
+
+        <p class="record-note">
+            @_activeCount of @_tables.Count @(_tables.Count == 1 ? "table" : "tables") active.
+        </p>
     }
 
     <p class="form-footnote">
@@ -102,99 +111,16 @@
     <p><a href="/administration">Back to administration</a></p>
 </section>
 
-@* Table rules namespaced under .admin-tables, inline for the same reason AdministrationHome keeps
-   its own: App.razor links the static stylesheet, so component CSS isolation is not active here. *@
-<style>
-    .admin-header {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 1rem;
-        align-items: flex-start;
-        justify-content: space-between;
-    }
-
-    .admin-header-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-
-    .admin-tables {
-        overflow-x: auto;
-    }
-
-    .admin-tables table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.95rem;
-    }
-
-    .admin-tables th,
-    .admin-tables td {
-        text-align: left;
-        padding: 0.6rem 0.75rem;
-        border-bottom: 1px solid var(--rule, #e5e5e5);
-        vertical-align: top;
-    }
-
-    .admin-tables thead th {
-        font-weight: 600;
-        color: var(--muted-foreground, #666);
-        border-bottom-width: 2px;
-    }
-
-    .admin-tables .table-label {
-        display: block;
-        font-weight: 600;
-    }
-
-    .admin-tables .muted {
-        color: var(--muted-foreground, #999);
-    }
-
-    .admin-tables .chip {
-        display: inline-block;
-        margin: 0.1rem 0.2rem 0.1rem 0;
-        padding: 0.1rem 0.5rem;
-        border-radius: 999px;
-        font-size: 0.8rem;
-        line-height: 1.5;
-        background: var(--chip-background, #f0f0f0);
-        color: var(--chip-foreground, #333);
-        white-space: nowrap;
-    }
-
-    .admin-tables .chip-ok {
-        background: #e6f4ea;
-        color: #1e7a37;
-    }
-
-    .admin-tables .chip-warn {
-        background: #fdecea;
-        color: #a3261c;
-    }
-
-    .admin-tables .admin-row-actions {
-        white-space: nowrap;
-        text-align: right;
-    }
-
-    .visually-hidden {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        margin: -1px;
-        padding: 0;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        border: 0;
-    }
-</style>
-
 @code {
     private IReadOnlyList<RestaurantTableSummary>? _tables;
+    private int _activeCount;
 
     protected override async Task OnInitializedAsync()
-        => _tables = await Tables.ListTablesAsync();
+    {
+        _tables = await Tables.ListTablesAsync();
+        _activeCount = _tables.Count(table => table.IsActive);
+    }
+
+    private static string ManagePath(RestaurantTableSummary table)
+        => $"/administration/tables/{table.TableIdentifier}";
 }

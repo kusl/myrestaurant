@@ -12,8 +12,8 @@
 @inject RestaurantTime RestaurantClock
 @inject NavigationManager Navigation
 
-@* Administration sittings (TECHNICAL_SPECIFICATION §5.4, §11.4 — "Sittings (open + recent, end-of-day
-   batch close, post-close corrective actions per §6.7)"). Two lists and one button.
+@* Administration sittings (TECHNICAL_SPECIFICATION §5.4, §11.4, §11.12 — "Sittings (open + recent,
+   end-of-day batch close, post-close corrective actions per §6.7)"). Two lists and one button.
 
    §5.4 is one sentence: "Administration provides batch close: list open sittings with last-activity
    timestamps, select, close each via the same §5.3 transaction." The last-activity column is why the
@@ -28,23 +28,23 @@
    and TableDisplays) is not what §5.4 describes.
 
    The counter reaches the same §5.3 transaction from /counter, one table at a time, with a guest standing
-   in front of it. This is the deliberate end-of-service pass over what is left. *@
+   in front of it. This is the deliberate end-of-service pass over what is left.
+
+   Two shared §11.12 record lists and no inline <style>. The tick is the FIRST thing in each card and
+   carries the table's label as its visible text — on a handset a bare checkbox at the top of a card is a
+   control with nothing saying what it closes, and this is the one control on an administration index that
+   charges somebody money. Its 2.75rem row height is the §11.12 minimum rather than this page's own
+   opinion, which is what the old inline `.sittings-tick input { width: 1.35rem }` was. *@
 
 <PageTitle>Administration — sittings</PageTitle>
 
-<section class="panel">
-    <div class="admin-header">
+<section class="panel panel-wide">
+    <div class="page-head">
         <div>
             <p class="eyebrow">Administration</p>
             <h1>Sittings</h1>
         </div>
-        <div class="admin-header-actions">
-            <a class="button-secondary" href="/administration">People</a>
-            <a class="button-secondary" href="/administration/tables">Tables</a>
-            <a class="button-secondary" href="/administration/menu">Menu</a>
-            <a class="button-secondary" href="/administration/hidden-records">Hidden records</a>
-            <a class="button-secondary" href="/administration/events">Events</a>
-        </div>
+        <AdministrationAreaLinks Current="AdministrationArea.Sittings" />
     </div>
 
     <p class="lede">
@@ -64,22 +64,22 @@
     }
 
     @* ---- open sittings: §5.4's end-of-day pass ---------------------------------------------------- *@
-    <h2 class="sittings-heading">Open</h2>
+    <h2 class="record-heading">Open</h2>
 
     @if (_open is null)
     {
-        <p class="lede">Loading…</p>
+        <p class="record-empty">Loading…</p>
     }
     else if (_open.Count == 0)
     {
-        <p class="lede">No table is open. The floor is clear.</p>
+        <p class="record-empty">No table is open. The floor is clear.</p>
     }
     else
     {
         <form method="post" @formname="end-of-day" @onsubmit="CloseSelectedAsync">
             <AntiforgeryToken />
 
-            <div class="admin-sittings">
+            <div class="record-list">
                 <table>
                     <thead>
                         <tr>
@@ -96,39 +96,45 @@
                     <tbody>
                         @foreach (CounterSittingSummary sitting in _open)
                         {
-                            <tr>
-                                <td class="sittings-tick">
+                            <tr @key="sitting.SittingIdentifier">
+                                <td class="record-tick" data-label="">
                                     @* A plain input, not InputCheckbox: every row shares one field name
-                                       and the handler reads the posted values directly. The id/label pair
-                                       keeps the box reachable without a mouse. *@
+                                       and the handler reads the posted values directly. The label is
+                                       visible rather than screen-reader-only, because in the card layout
+                                       this is the first thing in the card and "Close Table 4" is what it
+                                       means; in the table layout the column header says it instead, and
+                                       the label text is what the header cell would have repeated. *@
                                     <input type="checkbox"
                                            id="@CheckboxId(sitting)"
                                            name="@SelectedSittingField"
                                            value="@sitting.SittingIdentifier" />
-                                    <label class="visually-hidden" for="@CheckboxId(sitting)">
-                                        Close @sitting.TableLabel
+                                    <label for="@CheckboxId(sitting)">
+                                        <span class="record-tick-verb">Close</span>
+                                        <span class="visually-hidden"> @sitting.TableLabel</span>
                                     </label>
                                 </td>
-                                <td><span class="sitting-label">@sitting.TableLabel</span></td>
-                                <td>@RestaurantClock.DateAndTime(sitting.OpenedAt)</td>
-                                <td>
+                                <td class="record-primary" data-label="">
+                                    <a class="record-link" href="@RecordPath(sitting)">@sitting.TableLabel</a>
+                                </td>
+                                <td data-label="Opened">@RestaurantClock.DateAndTime(sitting.OpenedAt)</td>
+                                <td data-label="Last activity">
                                     @if (sitting.LastEventAt is { } lastEventAt)
                                     {
                                         <span>@RestaurantClock.DateAndTime(lastEventAt)</span>
-                                        <span class="muted">@AgeOf(lastEventAt)</span>
+                                        <span class="record-secondary">@AgeOf(lastEventAt)</span>
                                     }
                                     else
                                     {
                                         <span class="muted">Nothing ordered yet</span>
                                     }
                                 </td>
-                                <td class="numeric">
+                                <td class="record-numeric" data-label="At the table">
                                     @sitting.MemberCount
-                                    <span class="muted">
+                                    <span class="record-secondary">
                                         @sitting.OrderCount @(sitting.OrderCount == 1 ? "order" : "orders")
                                     </span>
                                 </td>
-                                <td>
+                                <td data-label="Lines">
                                     @if (sitting.PendingLineCount > 0)
                                     {
                                         <span class="chip chip-warn">@sitting.PendingLineCount with the kitchen</span>
@@ -142,9 +148,10 @@
                                         <span class="muted">—</span>
                                     }
                                 </td>
-                                <td class="numeric">@Money(sitting.CurrentTotalAmount)</td>
-                                <td class="admin-row-actions">
-                                    <a href="@RecordPath(sitting)">Record</a>
+                                <td class="record-numeric" data-label="Running total">@Money(sitting.CurrentTotalAmount)</td>
+                                <td class="record-actions" data-label="">
+                                    <a class="button-secondary" href="@RecordPath(sitting)"
+                                       aria-label="@($"Record for {sitting.TableLabel}")">Record</a>
                                 </td>
                             </tr>
                         }
@@ -156,7 +163,7 @@
             {
                 @* §5.3 puts this warning before the button, and it belongs here too: an end-of-day pass
                    is the most likely moment for somebody to charge for a plate nobody carried. *@
-                <p class="sittings-warning" role="alert">
+                <p class="record-warning" role="alert">
                     <strong>
                         @_pendingAcrossOpenSittings
                         @(_pendingAcrossOpenSittings == 1 ? "line is" : "lines are")
@@ -180,21 +187,21 @@
     }
 
     @* ---- recently settled -------------------------------------------------------------------------- *@
-    <hr class="sittings-rule" />
+    <hr class="record-rule" />
 
-    <h2 class="sittings-heading">Settled recently</h2>
+    <h2 class="record-heading">Settled recently</h2>
 
     @if (_closed is null)
     {
-        <p class="lede">Loading…</p>
+        <p class="record-empty">Loading…</p>
     }
     else if (_closed.Count == 0)
     {
-        <p class="lede">Nothing has been settled in the last @RecentWindowDays days.</p>
+        <p class="record-empty">Nothing has been settled in the last @RecentWindowDays days.</p>
     }
     else
     {
-        <div class="admin-sittings">
+        <div class="record-list">
             <table>
                 <thead>
                     <tr>
@@ -209,15 +216,17 @@
                 <tbody>
                     @foreach (CounterSittingSummary sitting in _closed)
                     {
-                        <tr>
-                            <td><span class="sitting-label">@sitting.TableLabel</span></td>
-                            <td>
+                        <tr @key="sitting.SittingIdentifier">
+                            <td class="record-primary" data-label="">
+                                <a class="record-link" href="@RecordPath(sitting)">@sitting.TableLabel</a>
+                            </td>
+                            <td data-label="Settled">
                                 @if (sitting.ClosedAt is { } closedAt)
                                 {
                                     <span>@RestaurantClock.DateAndTime(closedAt)</span>
                                 }
                             </td>
-                            <td>
+                            <td data-label="By">
                                 @if (string.IsNullOrWhiteSpace(sitting.ClosedByName))
                                 {
                                     <span class="muted">—</span>
@@ -227,21 +236,22 @@
                                     <span>@sitting.ClosedByName</span>
                                 }
                             </td>
-                            <td class="numeric">@sitting.MemberCount</td>
-                            <td class="numeric">
+                            <td class="record-numeric" data-label="At the table">@sitting.MemberCount</td>
+                            <td class="record-numeric" data-label="Settled total">
                                 @Money(sitting.SettledTotalAmount ?? 0m)
                                 @if (sitting.HasPostCloseCorrections)
                                 {
                                     @* §5.3: the stamped total is never rewritten, so when §6.7
                                        corrections exist both numbers are shown — they answer two
                                        different questions. *@
-                                    <span class="sitting-corrected">
+                                    <span class="record-corrected">
                                         corrected to @Money(sitting.CurrentTotalAmount)
                                     </span>
                                 }
                             </td>
-                            <td class="admin-row-actions">
-                                <a href="@RecordPath(sitting)">Record</a>
+                            <td class="record-actions" data-label="">
+                                <a class="button-secondary" href="@RecordPath(sitting)"
+                                   aria-label="@($"Record for {sitting.TableLabel}")">Record</a>
                             </td>
                         </tr>
                     }
@@ -249,7 +259,7 @@
             </table>
         </div>
 
-        <p class="form-footnote">
+        <p class="record-note">
             The newest @_closed.Count, capped — this is the end-of-service check, not the archive. A
             sitting's own record is permanent and is reached from its Record link.
         </p>
@@ -257,142 +267,6 @@
 
     <p><a href="/administration">Back to people</a></p>
 </section>
-
-@* Table rules namespaced under .admin-sittings, matching .admin-people and .admin-menu. App.razor links
-   the static wwwroot/app.css rather than the component-scoped bundle, so component CSS isolation is not
-   active here; these live inline to avoid editing the shared stylesheet for one screen. *@
-<style>
-    .admin-header {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 1rem;
-        align-items: flex-start;
-        justify-content: space-between;
-    }
-
-    .admin-header-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-
-    .sittings-heading {
-        margin: 1.4rem 0 0.3rem;
-        font-size: 1.15rem;
-    }
-
-    .sittings-rule {
-        margin: 1.6rem 0 0;
-        border: 0;
-        border-top: 1px solid var(--rule, #e5e5e5);
-    }
-
-    .admin-sittings {
-        overflow-x: auto;
-    }
-
-    .admin-sittings table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.95rem;
-    }
-
-    .admin-sittings th,
-    .admin-sittings td {
-        text-align: left;
-        padding: 0.6rem 0.75rem;
-        border-bottom: 1px solid var(--rule, #e5e5e5);
-        vertical-align: top;
-    }
-
-    .admin-sittings thead th {
-        font-weight: 600;
-        color: var(--muted-foreground, #666);
-        border-bottom-width: 2px;
-    }
-
-    .admin-sittings .sitting-label {
-        display: block;
-        font-weight: 600;
-    }
-
-    .admin-sittings .muted {
-        display: block;
-        color: var(--muted-foreground, #999);
-        font-size: 0.85rem;
-    }
-
-    .admin-sittings .numeric {
-        font-variant-numeric: tabular-nums;
-        white-space: nowrap;
-    }
-
-    .admin-sittings .sitting-corrected {
-        display: block;
-        font-size: 0.8rem;
-        font-weight: 700;
-        color: #b45309;
-    }
-
-    /* The tick column is deliberately generous: this is the one control on the page that closes a
-       bill, and it is pressed with a thumb on a phone as often as with a mouse. */
-    .admin-sittings .sittings-tick {
-        width: 2.75rem;
-    }
-
-    .admin-sittings .sittings-tick input {
-        width: 1.35rem;
-        height: 1.35rem;
-    }
-
-    .admin-sittings .chip {
-        display: inline-block;
-        margin: 0.1rem 0.2rem 0.1rem 0;
-        padding: 0.1rem 0.5rem;
-        border-radius: 999px;
-        font-size: 0.8rem;
-        line-height: 1.5;
-        background: var(--chip-background, #f0f0f0);
-        color: var(--chip-foreground, #333);
-        white-space: nowrap;
-    }
-
-    .admin-sittings .chip-ok {
-        background: #e6f4ea;
-        color: #1e7a37;
-    }
-
-    .admin-sittings .chip-warn {
-        background: #fdecea;
-        color: #a3261c;
-    }
-
-    .admin-sittings .admin-row-actions {
-        white-space: nowrap;
-        text-align: right;
-    }
-
-    .sittings-warning {
-        margin: 0.9rem 0 0;
-        padding: 0.6rem 0.85rem;
-        border-radius: 0.5rem;
-        border: 1px solid #f5c2c0;
-        background: #fdecea;
-        color: #7f1d1d;
-    }
-
-    .visually-hidden {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        margin: -1px;
-        padding: 0;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        border: 0;
-    }
-</style>
 
 @code {
     /// <summary>
