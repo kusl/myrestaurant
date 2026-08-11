@@ -264,3 +264,175 @@ Claude is AI and can make mistakes. Please double-check responses.
 30
 
 please continue 
+
+
+/
+Claude finished the response
+
+Message collapsed
+I'll start by reconstructing the repository from the dump so I'm working against the real current state.
+
+
+Weighed mobile-first redesign against menu modernization scope
+Weighed mobile-first redesign against menu modernization scope
+I've reconstructed the tree and verified it (326/326 files hash-match against the dump metadata; the only two "misses" are export.sh's self-referential separator, which is expected). Before I write a line of code, here's what I found and the plan I want your sign-off on — because one thing I found changes how I'd sequence the work.
+
+What the current menu actually is
+menu_item is four columns: name, price_amount, is_active, created_at. No description, no grouping, no ordering beyond ORDER BY name. menu_item_event's CHECK admits exactly five types (created | name_changed | price_changed | activated | deactivated) with two paired CHECKs binding new_name and new_price_amount to the types that carry them. The guest picker in TableOrderSurface.razor is a single <select> with every item flattened into one list; the kitchen's 86 panel is a flat <ul>; AdministrationMenu.razor is one wide <table>.
+
+So "sections + descriptions" is a schema change (menu_section table, two new menu_item columns, two new event types with two new payload columns, and a menu_section_event log), and it touches roughly 30 files including five test files, the E2E harness, and OrderTestWorld.
+
+The mobile defect is exactly what you described, and it's structural
+Every administration index page wraps its table in overflow-x: auto with .admin-row-actions { text-align: right; white-space: nowrap }. On a 375px screen the Manage link is genuinely off-canvas — you have to scroll sideways to reach the only affordance on the row. Four pages share that shape (AdministrationHome, AdministrationTables, AdministrationMenu, AdministrationSittings), and each re-declares ~80 lines of near-identical inline <style> — the chip vocabulary is defined four times inline plus once in app.css, which app.css already has a comment apologising for.
+
+Two findings worth F-numbers
+F-58 — REQUIREMENTS.md's header says "Revision 4 — 2026-08-05" while its own revision history's newest entry is "Rev 5 — 2026-08-06". This is F-48's third occurrence, sitting in the tree since Slice 24. SpecificationVersionTests pins docs/TECHNICAL_SPECIFICATION.md by a const string — so the gate that exists to make this unrepeatable was written about one document rather than about the class. The same header also cites "TECHNICAL_SPECIFICATION.md v1.6" as the companion, which is eight versions stale.
+
+F-59 — the handheld layout. Nothing in the tree is normative about mobile. R§1 says guests order "from their own phones" and §11.7 has a "handheld budget" paragraph for the clock — but no section says a staff surface must be operable on one, so no gate, test, or review could have caught this. It's the same shape as F-49: a property everything assumed and no document stated.
+
+The sequencing question
+I want to do the handheld contract first, in this slice, because the menu rework adds four new surfaces (section create/manage, a redesigned item form, a grouped guest menu) — and if the responsive vocabulary doesn't exist yet, those four land on the same broken pattern and need a second pass. Building the foundation first is the cheaper order, not an excuse to defer your enhancement request.
+
+So my proposal for Slice 30:
+
+docs/MENU_AND_HANDHELD_PLAN.md — the concrete staged plan, with the schema, the event vocabulary, the interfaces and the surface-by-surface work written out per stage, including the deferred stages for images and for likes/comments (both of which have real model consequences I want recorded now, while nothing is in production).
+The handheld contract, complete — a shared card/table-collapse vocabulary in app.css, the four index pages restructured (actions become a full-width affordance, not a right-hand column), their duplicated inline styles deleted, plus a global safety net that improves the pages I'm not restructuring this slice.
+New spec §11.12 + REQUIREMENTS.md rev 6 stating the rule normatively, with an executable contract test — F-38's lesson, eleventh application.
+F-58 fixed and made unrepeatable — SpecificationVersionTests computes its document set instead of naming one.
+Menu sections + descriptions specified in full (§7 rewritten, §8.2 DDL, ADR-0014) so Slice 31 is mechanical rather than a design exercise.
+Then Slice 31 is the menu vertical slice: migration 0003, the data-access layer, the workflow, and all seven surfaces — landing on a responsive foundation that already exists.
+
+Say go and I'll build Slice 30 as described, full files, structured .tar.gz, deletions listed explicitly. Or say both and I'll put the menu schema and data access into Slice 30 too — I'll flag it honestly, though: ~30 files with no compiler on this machine is where I'd expect a build break, and the last two slices each shipped one.
+
+please continue
+
+
+Architected comprehensive stylesheet with variables, resets, and components
+Architected comprehensive stylesheet with variables, resets, and components
+Building Slice 30 now.
+
+
+Architected unified navigation component and consolidated styling classes
+Architected unified navigation component and consolidated styling classes
+Good — those are comments only. Now the shared area-links component and the enum.
+
+
+Orchestrated verification strategy across multiple refactoring stages
+Orchestrated verification strategy across multiple refactoring stages
+Now let me port those four facts to Python and run them against the edited tree, plus prove each one sensitive.
+
+
+Debugged mutation testing logic and refined selector validation approach
+Debugged mutation testing logic and refined selector validation approach
+Both guards now fire. Next: generalising SpecificationVersionTests to compute its document set (F-58).
+
+
+Orchestrated comprehensive documentation overhaul and feature architecture
+Orchestrated comprehensive documentation overhaul and feature architecture
+Now the plan document — the primary deliverable for the enhancement request.
+
+
+Ran 3 commands
+Ran 3 commands
+Now the specification: new §11.12, the §7 rewrite pointer, §16.4, §19, Appendix A, and the version bump.
+
+
+Ran 3 commands
+Ran 3 commands
+Now Appendix A rows for F-58 and F-59, and the v1.15 changelog entry.
+
+
+Ran a command
+Ran a command
+Spec is consistent. Now REQUIREMENTS.md rev 6, which is where F-58 gets fixed.
+
+
+Validated document versioning status and file categorization logic
+Validated document versioning status and file categorization logic
+Now BUILD_PROGRESS.md — appended and shipped as a complete file, per the retired-append rule.
+
+
+Ran 5 commands
+Ran 5 commands
+This response didn’t load.
+please continue
+
+
+Ran a command
+Ran a command
+
+Write _CHANGES.md delivery notes
+Done
+Now the full verification sweep across every delivered file, then packaging.
+
+
+Audited C# usings and verified LINQ availability
+Audited C# usings and verified LINQ availability
+
+Byte hygiene sweep over every delivered file
+
+C# balance walk plus the project's CS1620 and CS4007 scans
+Verifying necessity of remaining using statements.
+
+Audited C# usings and verified LINQ availability.
+
+
+Confirm implicit usings and analyzer strictness
+
+Simplify the max-width assertion, check usings and re-verify
+
+Final structural verification across CSS, Razor and docs
+
+Package the delivery archive
+
+Round-trip the archive and re-run the gates against the extracted tree
+
+Presented file
+Done
+Slice 30. Extract at the repo root; 17 complete files, nothing to delete.
+
+tar -xzf m6-slice-30-handheld-contract-and-menu-plan.tar.gz
+git add docs/MENU_AND_HANDHELD_PLAN.md
+git add docs/adr/0014-menu-sections-and-item-descriptions.md
+git add src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationArea.cs
+git add src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationAreaLinks.razor
+git add tests/MyRestaurant.WebApplication.Tests/Components/HandheldLayoutContractTests.cs
+Five new files need git add — check_tree.sh enumerates with git ls-files.
+
+Your user found in ninety seconds what 1066 tests could not
+The four administration index pages each declared their own inline copy of the same eighty lines of table CSS, and each copy ended in .admin-row-actions { white-space: nowrap; text-align: right } inside overflow-x: auto. A five-to-eight column table at 375px scrolls sideways and the action column is the last thing in it — so the only way into a row was reachable only by scrolling past every other column of that row. One paste, four times. The same four pastes had invented the chip vocabulary five times over and .visually-hidden seven times.
+
+Nothing here could have caught it. R§1 has said since rev 1 that guests order from their own phones, and §11.7 budgets the footer clock for a handset in real detail — but no section said a staff surface has to be operable on one. No rule, so no gate, so 1066 green tests over four unusable pages. That is the first finding in the ledger this project didn't find itself, and it's recorded with its own lesson: a project can only find the defects its own premises admit.
+
+Why the menu is planned and not built
+The menu work adds four surfaces — section index, section editor, rewritten item form, and a guest menu that's a grouped list of described items instead of one <select>. All four are read from a phone. Built before the responsive vocabulary exists, they're built against the shape F-59 was found in, and then all four need touching again. And F-59 blocked your user testing; the menu didn't.
+
+So docs/MENU_AND_HANDHELD_PLAN.md is six stages, and ADR-0014 rules the model — every item in exactly one section (NOT NULL, and the accepted cost is that the first item can't be created until a section exists); citext UNIQUE on a section name where an item name stays deliberately neither; description text NOT NULL DEFAULT '', which was forced rather than chosen, because a paired equality CHECK can't bind an optional payload; created still carrying name and price only, because widening it breaks 0001's CHECKs against rows already in your database. Images get a recommendation with the argument (bytea, because §15 defines a recovery set as two files and a volume makes it three). Comments are recorded as not startable — §17's rate-limit ruling blocks them and guest-name disclosure is a REQUIREMENTS revision, not a schema decision.
+
+Two things I decided that you can veto
+.page-head, not .admin-header. Three pages I didn't restructure still declare .admin-header inline, and an inline copy of a shared name wins on source order at equal specificity — so hoisting the old name would leave those pages silently on the old behaviour while the stylesheet claimed otherwise. Revert by renaming back and accepting the override.
+
+AdministrationAreaLinks as a component. Each of the six pages omitted a different area link — its own — so no page was reachable from every other. Revert by inlining the <ul> and deleting the two new files.
+
+F-58, found by accident
+REQUIREMENTS.md said "Revision 4" above a "Rev 5" entry, for six slices. SpecificationVersionTests exists to stop exactly that — F-48's fix — and pins one path in a const string. A const string reads as configuration, not as a scope decision. F-46 said a rule enforced as a list of examples is enforced as a list of examples; this is the sharper corner: a list of one doesn't look like a list. Its subject is computed now, and ported to Python it fails on the pre-fix tree at header 4 against entry 5.
+
+1066 → 1072 (arithmetic prediction; nothing compiled). Nine mutations proved the new facts sensitive, both non-vacuity guards were attacked directly, and the archive was round-tripped byte-identical with the gates re-run against the extracted tree.
+
+The honest limit: no browser rendered any of this. §11.12 is a claim about a stylesheet at two viewport widths and the strongest thing asserted is its structure. Open /administration/tables on the phone — each row should be a bordered card with small-caps labels and a full-width Manage button at the bottom, and the area strip across the top should scroll horizontally rather than wrap. If a card looks like a stack of unlabelled values, tell me the browser.
+
+
+M6 slice 30 handheld contract and menu plan.tar
+GZ 
+
+Now using credits • Your plan limit resets Aug 11 at 1:50 PM.
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+100
+37
