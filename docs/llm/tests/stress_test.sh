@@ -74,12 +74,14 @@ for URL in "${URLS[@]}"; do
     sort -k2 -n "$TEMP_FILE" > "$SORTED_FILE"
     
     # 1. Format and append the details to the permanent log file
-    echo "=== Run Date: $(date) | URL: $URL ===" >> "$LOG_FILE"
-    awk '{
-        desc = ($1 == "000") ? "(Timeout/Drop)" : "";
-        print "Status: " $1 " " desc " - Total Time: " $2 "s"
-    }' "$SORTED_FILE" >> "$LOG_FILE"
-    echo "" >> "$LOG_FILE"
+        {
+            echo "=== Run Date: $(date) | URL: $URL ==="
+            awk '{
+                desc = ($1 == "000") ? "(Timeout/Drop)" : "";
+                print "Status: " $1 " " desc " - Total Time: " $2 "s"
+            }' "$SORTED_FILE"
+            echo ""
+        } >> "$LOG_FILE"
     
     # 2. Process metrics and generate terminal summary using the sorted data
     awk -v start="$START_TIME" -v end="$END_TIME" -v reqs="$TOTAL_REQUESTS" -v conc="$CONCURRENT_REQUESTS" '
