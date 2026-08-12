@@ -1,0 +1,44 @@
+63
+48
+
+please continue 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+please avoid giving me bespoke scripts to manipulate text in code / documentation 
+remember to give full files for all files that need to change 
+I will likely miss those bespoke scripts 
+also please remember to update all documentation as necessary 
+
+I'll start by reviewing the current repository state.## Where things stand
+
+I reconstructed the full tree from `dump.txt` (334 files, 333 SHA-verified byte-for-byte; `export.sh` is approximate only because the dump embeds its own separator lines) and read the three terminal logs alongside it.
+
+**Slice 32 landed clean.** Your workstation run reports **1074 tests, 0 failed** — exactly the arithmetic prediction — and `ci_local.sh --with-all --with-e2e` passed all eight gates with 16 of 16 §16.3 scenarios green. The handheld reachability barrier passed on its first real run, which is the thing Slice 32 explicitly could not verify from the sandbox. The stress test is worth recording too: 200,000 requests through the quick tunnel, 199,999 × 200 and one 429 (Cloudflare's edge, not the app), p99 ~0.21s.
+
+## What I found while scoping the next slice
+
+**A real finding, and it blocks the work I was about to do.** §11.12 says the stylesheet is written handheld-first through *exactly one* breakpoint. `HandheldLayoutContractTests.TheStylesheetIsWrittenHandheldFirstThroughExactlyOneBreakpoint` reads **only `app.css`**. Every page's inline `<style>` block is invisible to it — so a component can declare its own `@media (max-width: …)` and no gate in the tree notices. Today no component does, so the rule is true; it is just not *enforced*. This is F-46's shape again: a rule stated as a rule and checked against one example.
+
+It stops being hypothetical the moment Stage 1b starts. `HiddenRecords.razor` has `.hidden-record-money { text-align: right }` and a `.hidden-facts` auto-fit grid — both want a narrow/wide difference, and the obvious way to write that is an inline media query on the page. I'd rather fix the gate than write around it silently.
+
+## Proposed Slice 33 — Stage 1b, part one
+
+The two filtered explorers, `EventExplorer.razor` and `HiddenRecords.razor`, plus F-63:
+
+- They are the **last two copies** of the hand-rolled five-link `.admin-header-actions` row that `AdministrationAreaLinks` was built to replace. Each omits itself, so the strip is still a different strip on two of six pages — the exact thing §11.12's "third pill has to be the third pill everywhere" sentence forbids.
+- They are also **two copies of one filter form** (`.event-filter` and `.hidden-filter` are the same twelve lines). That becomes a shared `.filter-form` / `.filter-actions` vocabulary in `app.css`, inside the existing single breakpoint.
+- Both are already in the area-link list, so both go into `HandheldAdministrationPaths` — the E2E barrier grows from four surfaces to six. `ReachSelector` extends to cover `.filter-actions` controls, which raises the expected count from 7 to 9 (floor 8).
+- **F-63:** the breakpoint assertion extends to scan every component `<style>` block, and §11.12's sentence is amended to say "the tree" rather than "the stylesheet".
+
+That leaves `ManageSitting.razor` (1123 lines) and `TableDisplays.razor` (441) for Slice 34, then the `.chip` / `.visually-hidden` de-duplication and the `SharedSelectorPrefixes` extension that empties them.
+
+**Before I build it, one thing worth your veto:** I'm proposing to add both pages to the E2E barrier even though `/administration/hidden-records` will be measured **empty** — populating it needs a guest, a join, an order and a hide, which is scenario 3's and 9's machinery. That's the same trade sittings already makes, and I'd state it in the scenario rather than gloss it. If you'd rather the barrier only visited surfaces with rows on them, say so and I'll leave hidden-records out of the path list and note why.
+
+Say "go" and I'll build it as a structured `.tar.gz` — full files, no diffs, no bespoke text-manipulation scripts, with all documentation (spec §11.12/§16.4 + changelog, `DOCUMENTATION_REVIEW.md` F-63, `BUILD_PROGRESS.md`, `MENU_AND_HANDHELD_PLAN.md`, `README.md`) landing in the same archive, and an explicit list of files to delete (I expect none).
+
+00
+50
+
