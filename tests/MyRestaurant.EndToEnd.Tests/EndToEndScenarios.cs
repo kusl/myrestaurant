@@ -14,7 +14,8 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// The §16.3 end-to-end scenario matrix (TECHNICAL_SPECIFICATION), version-controlled from M1 as
 /// skipped placeholders and implemented against a real browser from M6 Slice 2 onwards.
 ///
-/// <para><b>All fifteen are live as of M6 Slice 15, and there are no placeholders left.</b> M6 Slice 2
+/// <para><b>The matrix closed at fifteen in M6 Slice 15, and there are no placeholders left; a sixteenth
+/// was appended in Slice 32.</b> M6 Slice 2
 /// brought <b>1</b> (the first-administrator bootstrap, including a real
 /// WebAuthn attestation and a real TOTP confirmation), <b>13</b> (a passkey sign-in of a TOTP-enrolled
 /// person must not be challenged for a code) and <b>14</b> (the join-token window arithmetic as a guest
@@ -56,6 +57,16 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// than something reached through it, the only one that drives one person through two browsers because a
 /// WebAuthn key cannot be in both, and the only one that asserts a mechanism is <em>released</em> as well
 /// as that it fires.</para>
+///
+/// <para><b>M6 Slice 32 appends <b>16</b>, and it is the first scenario in this matrix whose subject is
+/// not a flow.</b> An administrator works §11.4's four index pages from a 375×667 handset, and the
+/// assertions are three numbers a browser computes: no page is wider than its own viewport, every row's
+/// action lies inside it, every control is 44px tall. Nothing in this project had ever asserted anything
+/// about layout at any width, which is exactly why F-59 survived four milestones with every gate green —
+/// and <c>HandheldLayoutContractTests</c>, added with the fix, asserts the *structure* of §11.12 and by
+/// construction cannot decide whether a control is on the screen. This is the assertion F-59 would have
+/// failed. Appended as sixteen rather than inserted, because the harness and this file name scenarios by
+/// number in a great many places.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -176,6 +187,65 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     /// reset — the one it holds when it finally lands home.
     /// </summary>
     private const string ReenrolledKitchenPassword = "a new pass for a new week";
+
+    /// <summary>
+    /// The four §11.4 administration indexes §16.3 scenario 16 measures, in the order the area links
+    /// render them.
+    ///
+    /// <para>Exactly the four Slice 30 restructured, and the list grows as Stage 1b of
+    /// <c>docs/MENU_AND_HANDHELD_PLAN.md</c> converts the rest — which is the same arrangement
+    /// <c>HandheldLayoutContractTests.StillExpectedToCarryRetiredTableVocabulary</c> already has, and for
+    /// the same reason (F-47): finishing the migration is then a line added here by somebody who
+    /// decided to, rather than a page nobody remembers to check.</para>
+    /// </summary>
+    private static readonly string[] HandheldAdministrationPaths =
+    [
+        "/administration",
+        "/administration/tables",
+        "/administration/menu",
+        "/administration/sittings",
+    ];
+
+    /// <summary>
+    /// How much narrower than the configured viewport <c>document.documentElement.clientWidth</c> is
+    /// allowed to read. It excludes a classic scrollbar, headless Chromium draws one on any page that
+    /// scrolls vertically, and every administration index does — so the measured width is legitimately a
+    /// dozen-odd pixels under 375. Twenty is comfortably over any scrollbar and nowhere near a viewport
+    /// this scenario would accept as a handset.
+    /// </summary>
+    private const double ScrollbarAllowancePixels = 20.0;
+
+    /// <summary>
+    /// The floor on how many controls §16.3 scenario 16 must have measured before its verdicts mean
+    /// anything. Seven are expected; see the comment at the assertion for the arithmetic and for why the
+    /// floor is one under it rather than equal to it.
+    /// </summary>
+    private const int MinimumControlsMeasured = 6;
+
+    /// <summary>The counter account §16.3 scenario 16 creates so that the people index has two rows.</summary>
+    private const string HandheldCounterUsername = "e2e.sixteen.counter";
+
+    /// <summary>
+    /// That account's display name, and the unbroken run in it is the point rather than a joke.
+    ///
+    /// <para>A single token longer than the card is wide is the one input that can push a record card
+    /// past the viewport, and §11.12 relies on <c>overflow-wrap: anywhere</c> to stop it. The choice of
+    /// keyword is load-bearing: <c>break-word</c> breaks the line but leaves the element's
+    /// <em>min-content</em> width at the length of the token, so a flex or table context still sizes to
+    /// it and the page still scrolls sideways. Only <c>anywhere</c> shrinks min-content. A name with no
+    /// break opportunity in it is therefore the difference between asserting that the stylesheet says
+    /// the right word and asserting that it does the right thing.</para>
+    /// </summary>
+    private const string HandheldCounterDisplayName = "Anastasia Featherstonehaughwolstenholmeworthington";
+
+    /// <summary>The table §16.3 scenario 16 creates so that the tables index has a row.</summary>
+    private const string HandheldTableLabel = "E2E Sixteen";
+
+    /// <summary>The item §16.3 scenario 16 puts on the menu so that the menu index has a row.</summary>
+    private const string HandheldMenuItemName = "Handheld Soup";
+
+    /// <summary>Its price. Nothing asserts on it; it exists because §7's form requires one.</summary>
+    private const decimal HandheldMenuItemPrice = 6.50m;
 
     private readonly RestaurantHarness _harness;
 
@@ -2165,6 +2235,110 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         Assert.Equal("Active", Assert.Single(restored.StatusChips));
         Assert.Contains("Password", restored.Credentials);
         Assert.Contains("Authenticator", restored.Credentials);
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // 16. An administrator works §11.4's four index pages from a 375×667 handset: no page scrolls
+    //     sideways, every row's way in lies inside the screen, and every control is 44px tall.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Administration_IsOperableOnAHandheldViewport()
+    {
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(handheld: true, cancellationToken: cancellationToken);
+        IPage page = instance.Page;
+
+        // (a) An administrator, made on the phone, from the first screen this software ever shows.
+        // The wizard is walked at 375px rather than arranged around, because a layout barrier that
+        // only applies once somebody has signed in has a hole in the one place a new operator starts.
+        await AccountJourneys.CompleteSetupAsync(page, AccountJourneys.DefaultAdministrator);
+
+        // (b) Something in each list, because an empty list satisfies every assertion below and means
+        // nothing (F-41). One extra account so the people index has two rows: a single-row list cannot
+        // fail an assertion that only the widest row would fail, and it is a *row* that F-59 was about.
+        StaffAccount counter = await AdministrationJourneys.CreateStaffAccountAsync(
+            page, HandheldCounterUsername, HandheldCounterDisplayName, StaffRoles.Counter);
+
+        Assert.Equal(HandheldCounterUsername, counter.Username);
+
+        await AdministrationJourneys.CreateTableAsync(page, HandheldTableLabel);
+        await AdministrationJourneys.CreateMenuItemAsync(page, HandheldMenuItemName, HandheldMenuItemPrice);
+
+        // (c) Measure each surface once. Sittings is measured with nothing in it, and that is stated
+        // rather than glossed: opening one needs a guest, a token and a join, which is scenario 3's
+        // subject and not this one's. The page still has to lay out, and its record list is the same
+        // §11.12 vocabulary the other three render — so what is untested here is a *row* on that page,
+        // not the page.
+        List<HandheldReachReport> reports = [];
+
+        foreach (string path in HandheldAdministrationPaths)
+        {
+            reports.Add(await HandheldReach.MeasureAsync(page, path));
+        }
+
+        // (d) The viewport is the one this scenario claims. First, and on its own, because every number
+        // below is relative to it: if the context were laid out at Playwright's default 1280 the whole
+        // scenario would pass and assert nothing. Read from the document rather than from the option
+        // that set it — and compared as a ceiling with a scrollbar's allowance under it, because
+        // `clientWidth` excludes a classic scrollbar and headless Chromium draws one on a page that
+        // scrolls vertically, which every one of these does.
+        foreach (HandheldReachReport report in reports)
+        {
+            Assert.True(
+                report.ClientWidth <= RestaurantInstance.HandheldViewportWidth
+                    && report.ClientWidth >= RestaurantInstance.HandheldViewportWidth - ScrollbarAllowancePixels,
+                $"{report.Path} was measured in a {report.ClientWidth}px viewport, and this scenario is"
+                    + $" about {RestaurantInstance.HandheldViewportWidth}px. Either the context was not"
+                    + " created handheld, or something resized it — and at any wider width every"
+                    + " assertion below passes on a page nobody claims is reachable.");
+        }
+
+        // (e) Enough was measured to be measuring something. Seven controls are expected: two rows plus
+        // a create button on people, one plus one on tables, one plus one on menu, nothing on sittings.
+        // The floor is six rather than seven so that one surprise is not a red suite, and it is still
+        // under every way this can go quietly wrong — a renamed `.record-actions` leaves three, a
+        // renamed `.page-head-action` leaves four.
+        int measured = reports.Sum(report => report.MeasuredCount);
+
+        Assert.True(
+            measured >= MinimumControlsMeasured,
+            $"Only {measured} control(s) were measured across {reports.Count} surfaces, and seven were"
+                + " expected. A selector this barrier reads has been renamed, or a page lost its list —"
+                + " either way the assertions below are true of nothing.");
+
+        // (f) F-59, as the number it always was. A page wider than its own viewport is a page an
+        // operator reaches the far column of by dragging sideways, which is exactly what was reported.
+        string[] sideways = reports
+            .Where(report => report.ScrollsSideways)
+            .Select(report => report.DescribeOverflow())
+            .ToArray();
+
+        Assert.True(
+            sideways.Length == 0,
+            "§11.12: an administration surface must not scroll sideways on the screen it is used from."
+                + $" {string.Join(" · ", sideways)}");
+
+        // (g) And the finding itself, per control: the way into a row is on the screen.
+        MeasuredControl[] outOfReach = reports.SelectMany(report => report.OutOfReach).ToArray();
+
+        Assert.True(
+            outOfReach.Length == 0,
+            "§11.12: a row's action is the full width of the foot of its card, so its box lies inside"
+                + $" the viewport. Off the screen: {HandheldReach.Format(outOfReach)}. This is F-59, and"
+                + " a control that has moved back into a right-hand column is how it returns.");
+
+        // (h) The other half of §11.12's control rule, which no text assertion can reach either: a
+        // target a finger can hit. `--touch-target` is 2.75rem and every control declares it, so a
+        // failure here means a page overrode the declaration or invented a control without one.
+        MeasuredControl[] undersized = reports.SelectMany(report => report.Undersized).ToArray();
+
+        Assert.True(
+            undersized.Length == 0,
+            $"§11.12: every control is at least {HandheldReach.MinimumTouchTargetPixels}px tall."
+                + $" Shorter: {HandheldReach.Format(undersized)}.");
     }
 
     // --- helpers ---------------------------------------------------------------------------------

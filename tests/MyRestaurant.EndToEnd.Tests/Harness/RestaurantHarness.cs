@@ -35,7 +35,7 @@ public sealed class RestaurantHarness : IAsyncLifetime
     /// set the default domain and repository prefix" — so a short name here is resolved through
     /// <c>unqualified-search-registries</c>, which a stock Debian ships commented out. That is
     /// F-51's mechanism, and here its consequence is quieter and worse: the catch below turns it into
-    /// a skip, so all fifteen §16.3 scenarios decline to run and the suite reports success.
+    /// a skip, so every §16.3 scenario declines to run and the suite reports success.
     /// </summary>
     private const string PostgreSqlImage = "docker.io/library/postgres:17-alpine";
 
@@ -168,9 +168,21 @@ public sealed class RestaurantHarness : IAsyncLifetime
     /// application's own sixty so that §8.4's scan cannot fire during a wait about something else.
     /// The reminder <em>rule</em> does not change with it; only how long a send has to be ignored.
     /// </param>
+    /// <param name="handheld">
+    /// Lay this instance's primary context out at 375×667 (§11.12) rather than at Playwright's default.
+    /// One scenario — §16.3's sixteenth — sets it; every other leaves it alone.
+    ///
+    /// <para><b>Why this changes nothing for the other fifteen, stated because the opposite was believed
+    /// for a slice (F-62).</b> A viewport belongs to a browser context, and this harness holds one
+    /// <em>browser</em> from which <see cref="StartInstanceAsync"/> mints a fresh context per instance
+    /// and <c>OpenIsolatedPageAsync</c> mints further ones on request. There is no shared default context
+    /// to resize and nothing for a later scenario to inherit. The §11.12 barrier was deferred out of
+    /// Slice 30 on the belief that there was, and that belief is what the ledger row is about.</para>
+    /// </param>
     internal async Task<RestaurantInstance> StartInstanceAsync(
         int tableJoinTokenRotationSeconds = RestaurantInstance.DefaultTableJoinTokenRotationSeconds,
         int kitchenSubmissionReminderSeconds = RestaurantInstance.DefaultKitchenSubmissionReminderSeconds,
+        bool handheld = false,
         CancellationToken cancellationToken = default)
     {
         if (SkipReason is not null || _browser is null || _administrativeConnectionString is null || _launch is null)
@@ -189,6 +201,7 @@ public sealed class RestaurantHarness : IAsyncLifetime
             ordinal,
             tableJoinTokenRotationSeconds,
             kitchenSubmissionReminderSeconds,
+            handheld,
             cancellationToken);
     }
 
@@ -197,7 +210,7 @@ public sealed class RestaurantHarness : IAsyncLifetime
     /// Every unavailability used to be reported as "a container engine was not reachable", with a
     /// remediation about activating the Podman socket — so an operator whose engine was reachable and
     /// whose *image reference* was unresolvable was told to fix something that was not broken. Here
-    /// the mis-diagnosis costs more than in the data-access fixture, because these fifteen scenarios
+    /// the mis-diagnosis costs more than in the data-access fixture, because these scenarios
     /// are the only thing in this repository that exercises the product end to end, and their
     /// declining to run looks exactly like their passing.
     ///

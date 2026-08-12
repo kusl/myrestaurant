@@ -9018,3 +9018,185 @@ harness `CreateMenuSectionAsync` — five §16.3 scenarios drive the real create
 forward out of Stage 3; the rest of Stage 3 stays where it is.
 
 **Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive can contain (F-42).
+
+# M6 Slice 32 — the barrier F-59 would have failed, and the reason it took two slices (F-62)
+
+One finding, and it is about a sentence rather than about code. Slice 30 fixed F-59 — four administration
+index pages whose only affordance sat off the right-hand edge of a 375px screen — wrote §11.12, and made
+its *structure* executable in `HandheldLayoutContractTests`. It also recorded, carefully and in three
+places, the one assertion it deliberately did not make: that a control is **reachable** inside a 375px
+viewport. That is the assertion F-59 would have failed, and it is the only one that would have.
+
+This slice makes it. §16.3 gains a sixteenth scenario.
+
+## F-62 — a gap justified by a property the tree does not have
+
+The reason recorded for the deferral was this, verbatim from `docs/MENU_AND_HANDHELD_PLAN.md`:
+
+> the fifteen §16.3 scenarios all run in one default context, and giving one of them a second viewport is
+> either a second browser context per run or a resize that every subsequent scenario inherits
+
+`RestaurantHarness` holds one **browser**. Every scenario calls `StartInstanceAsync`, which calls
+`RestaurantInstance.StartAsync`, which calls `browser.NewContextAsync(...)` and returns a context of its
+own; `OpenIsolatedPageAsync` mints and tracks further contexts on request and closes them in reverse on
+disposal. A viewport is a property of a context. There was never a shared default context to resize, and
+nothing for a later scenario to inherit.
+
+### The contradicting evidence was in the file the claim was about
+
+`RestaurantInstance`'s class summary carries a paragraph headed *why more than one browser context*, and
+`RestaurantHarness.StartInstanceAsync`'s own summary says it brings up "a browser context with a virtual
+authenticator" per instance. Both were written in Slice 2 and neither has changed. So this was not a
+subtle property that had to be derived — it is the second paragraph of the type's documentation.
+
+### What makes it a finding rather than a wrong guess
+
+The sentence was written once, while planning, and by the close of Slice 30 the same claim had been copied
+into **S§16.4**, into **F-59's row in the ledger**, and into the plan. Three documents asserting a
+property of the test harness; none of them written by reading it.
+
+That is **F-50's shape** — a cross-document citation that outlives what it cited — applied in the worse
+direction. F-50 was a claim that stopped being true, so there was a moment at which a reader comparing the
+two could have caught it. This was never true, so there is no such moment: every copy agreed with every
+other copy, forever, and the only thing that could have found it was somebody opening the file.
+
+### And the cost was not the gap
+
+Stage 1b is roughly 2,400 further lines of Razor across four large surfaces. Scheduling it before the
+barrier meant converting those pages exactly the way the four pages in F-59 were written — by hand, with
+nothing in the tree able to decide whether the result was reachable. **So the stage order is swapped**, and
+that is the design decision in this slice most worth vetoing if it is unwelcome: the plan said 1b next,
+this ships 1c instead, and the argument is that a barrier built after the conversions cannot check them.
+Building it first also retro-proves Slice 30's four pages, which nothing until now could.
+
+## The barrier
+
+`Harness/HandheldReach.cs` (new) navigates a surface, waits on `.page-head`, and takes every measurement
+in **one** `EvaluateAsync` round trip — not one `BoundingBoxAsync` per element, because a dozen
+consecutive round trips interleaved with layout produce a dozen numbers that describe a dozen moments.
+
+Three assertions, each against the viewport with one pixel of tolerance:
+
+| What | Read from | Why it is the assertion and not a proxy for one |
+|---|---|---|
+| No surface is wider than its own viewport | `documentElement.scrollWidth` vs `clientWidth` | This is F-59's mechanism stated as a number: a page wider than the screen is a page whose far column is reached by dragging sideways |
+| Every action lies inside it | `getBoundingClientRect()` per `.record-actions` and `.page-head-action` control | The finding itself, per element |
+| Every control is ≥ 44px tall | the same rects, plus `.page-head-areas a` | §11.12's other control rule, equally undecidable from text |
+
+### Three properties of it are rulings
+
+**The viewport is asserted before anything else**, and read back from the document rather than from the
+option that set it. At Playwright's default 1280 every other assertion in the scenario passes and the
+whole thing means nothing (F-41). It is compared as a *ceiling* with twenty pixels of allowance under it,
+because `clientWidth` excludes a classic scrollbar and headless Chromium draws one on every page here —
+so the honest measurement at a 375px viewport is a dozen-odd pixels under 375, and an equality assertion
+would have failed on a correct tree on the first run.
+
+**The count of measured controls is asserted.** Seven are expected: two rows plus a create button on
+people, one and one on tables, one and one on menu, nothing on sittings. The floor is six rather than
+seven so that one surprise is not a red suite, and it is still under every way this goes quietly wrong —
+a renamed `.record-actions` leaves three, a renamed `.page-head-action` leaves four.
+
+**The widest element on the page is collected and may never fail a run.** A page may legitimately contain
+an element wider than the viewport inside a scroll container of its own, and `.page-head-areas` — the
+horizontally scrolled strip of area links §11.12 specifies — is exactly that: its pills extend past the
+right edge by design. A walk that failed on those would report a finding on a correct tree, which is the
+mistake this barrier was deferred a slice to avoid. So the walk skips anything inside a scroller, and even
+then it only ever writes the sentence that explains a failure. The two numbers decide.
+
+### The surface list is the migration
+
+Four paths today — the four Slice 30 restructured — and Stage 1b adds a line per page it converts. Same
+arrangement as `HandheldLayoutContractTests.StillExpectedToCarryRetiredTableVocabulary` and the same
+reason (F-47): finishing is then something somebody decides rather than something nobody notices.
+
+### What the scenario arranges, and the one fixture that is doing real work
+
+An administrator through §3.6's wizard **at 375px** — not arranged around, because a layout barrier that
+only applies after a wide sign-in has a hole in the one place a new operator starts. Then a staff account,
+a table and a menu item, so each index has a row; two rows on people, because a one-row list cannot fail
+an assertion only the widest row would fail, and it is a *row* that F-59 was about.
+
+The counter account's display name is `Anastasia Featherstonehaughwolstenholmeworthington`, and the
+unbroken run is the point. A single token longer than the card is wide is the one input that can push a
+record card past the viewport, and §11.12 relies on `overflow-wrap: anywhere` to stop it. **The keyword is
+load-bearing:** `break-word` breaks the line but leaves the element's *min-content* width at the length of
+the token, so a table or flex context still sizes to it and the page still scrolls sideways; only
+`anywhere` shrinks min-content. `app.css` says `anywhere`, on `.record-list td` and `.record-link`, and it
+is an inherited property so it reaches `.record-secondary` where the display name renders. Without this
+fixture the scenario asserts that the stylesheet contains the right word; with it, that the word does the
+right thing.
+
+Sittings is measured **empty**, and that is stated in the scenario rather than glossed. Opening a sitting
+needs a guest, a token and a join, which is scenario 3's subject. The page still has to lay out and its
+record list is the same §11.12 vocabulary — so what is untested there is a row on that page, not the page.
+
+## What was verified, and how
+
+- **The embedded JavaScript actually ran.** It was extracted from the raw string literal, `node --check`
+  parsed it, and it was then executed against a hand-built fake DOM. Two results are the ones that matter:
+  a pill 100px past the right edge **inside** an `overflow-x: auto` strip was correctly *ignored* by the
+  overflow walk, and a rogue element outside any scroller was correctly *named*. The false-positive guard
+  is the whole reason this barrier was safe to write, so it is demonstrated rather than argued.
+- **`describe()` output checked against real markup shapes**: whitespace collapses, so a `Manage` anchor
+  spanning two source lines reads back as one name rather than as a paragraph of indentation.
+- **Brace, paren and bracket balance** on all four C# files, string-literal-aware and raw-string-aware,
+  with an untouched sibling as a control: clean. **Proven sensitive**: deleting one closing brace is
+  reported at the line the block opened on.
+- **CS1620 scan** (every operand of a `string.Create(IFormatProvider, …)` addition chain must be `$"…"`):
+  clean, and **proven sensitive** by breaking one operand into a bare literal — three findings on one
+  call. **CS4007 scan** (no `await` in an interpolated string hole): clean, and proven sensitive.
+- **Byte hygiene** on every delivered file: LF, exactly one final newline, no CR, no trailing whitespace,
+  no whitespace-only line, no context-dump separator.
+- **Every `StartInstanceAsync` call site audited** before the parameter was inserted. Fifteen call sites;
+  every one passes either the first positional argument or named arguments, and `cancellationToken:` is
+  named at all fifteen — so a `bool handheld` before it changes no existing call.
+- **`SpecificationVersionTests` ported and run** over `docs/`: header 1.17 against newest changelog entry
+  1.17, entries descending, no half-versioned document.
+- **CA1861** was caught during authoring rather than in CI: the selector pair was an array literal at a
+  call site, which is a constant array built per call and an *error* under `ContinuousIntegrationBuild`.
+  It is a `static readonly` field now, the way `RestaurantHarness` already holds its install arguments.
+
+## What was NOT verified, and cannot be from here
+
+**Nothing compiled.** One new file, three edited, `dotnet build` run on none of them.
+
+**No browser rendered anything, and this is the slice where that hurts most.** `npm install
+playwright-core` succeeded in the authoring sandbox; the Chromium download is blocked by the egress
+allow-list, and there is no system browser. So the claim that these four pages *pass* the barrier rests on
+reading `app.css` line by line — `.record-actions .button-secondary { width: 100% }`, `overflow-wrap:
+anywhere` on the cells, `min-width: 0` on the strip's parent, `clamp()` padding on the panel — and not on
+a measurement. **The first run on the workstation is what proves it**, and it is the one run in this
+project's history where a red result would be information rather than a defect: if a page does overflow,
+the failure message names the widest element outside a scroll container, which is the diagnosis.
+
+**The `EvaluateAsync` return is parsed out of a `JsonElement` by hand** rather than deserialised into a
+type, deliberately: property naming, constructor selection and the accessibility of a nested record are
+three things that would otherwise sit between a correct measurement and a green run, none of them visible
+in the file. That choice is untested too, but it has a smaller surface than the alternative.
+
+## Test count
+
+Observed **1073** (Slice 31's run, workstation and `ci_local.sh --with-all --with-e2e`, both). Predicted
+**1074** after one new `[Fact]`. Arithmetic, not an observation: nothing here was compiled or run. The
+§16.3 subtotal moves from 15 to 16.
+
+Slice 31's prediction was 1073 from a baseline of 1070, and 1073 is what the run reported — the first
+prediction in several slices to land exactly, and it landed because it counted only additions with no
+replacements to under-count.
+
+## Still open
+
+**Stage 1b** — four pages still carry the retired table vocabulary (`EventExplorer`, `HiddenRecords`,
+`ManageSitting`, `TableDisplays`), and `.chip` / `.visually-hidden` are still declared inline by three
+more (`ManageMenuItem`, `ManagePerson`, `ManageTable`). Extending `SharedSelectorPrefixes` to cover both
+is part of emptying them, not a tidy-up afterwards (F-46). Each converted page adds a line to
+`HandheldAdministrationPaths` in the same commit.
+
+**A CI job that runs the canonical stack on the canonical engine.** Eighth consecutive slice.
+
+**Stage 2's boundary**, corrected in the plan and not yet built — and one number in it moved here:
+`CreateMenuItemAsync` now drives the real create-item form in **six** of sixteen scenarios, not five,
+because the handheld barrier needs a row on `/administration/menu` to measure.
+
+**Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive can contain (F-42).

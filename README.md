@@ -11,7 +11,7 @@ database and the tunnel.
 **All six milestones are complete.** Identity and accounts, table administration with rotating join
 QR codes, paired table displays, the living order and its locking protocol, the kitchen and counter
 boards, billing and settlement, menu management, the cross-log event explorer — and then the
-hardening milestone: continuous integration, all fifteen §16.3 end-to-end scenarios running against a
+hardening milestone: continuous integration, all sixteen §16.3 end-to-end scenarios running against a
 real browser, and a backup/restore drill that CI rehearses on every push rather than a runbook nobody
 has executed.
 
@@ -151,7 +151,7 @@ port, and a browser context with a CDP WebAuthn virtual authenticator. Nothing i
 scenarios, so they can run in any order — which matters, because scenario 1 needs a database with no
 administrator and scenario 13 needs one with an administrator who has both a passkey and TOTP.
 
-All fifteen are implemented:
+All sixteen are implemented:
 
 | # | What it proves |
 | --- | --- |
@@ -170,6 +170,7 @@ All fifteen are implemented:
 | 13 | a passkey sign-in of a TOTP-enrolled person is not challenged for a code |
 | 14 | the join-token window arithmetic as a guest experiences it |
 | 15 | rotating a join secret kills every outstanding QR while the paired display recovers by itself |
+| 16 | the four administration indexes at 375×667: nothing scrolls sideways, every row's action is on the screen, every control is 44px tall |
 
 Scenario 3 is the one that earns its runtime. §16.3 words it *"registers with passkey (slowly — grant
 outlives token)"*, and that parenthetical is the entire reason the §4.4 join grant exists. The
@@ -220,7 +221,7 @@ Every push and pull request against `main` runs six gates (`.github/workflows/ci
 | `shell-scripts` | every tracked `*.sh` parses under `bash -n` and passes shellcheck |
 | `build-and-test` | a Release build with **warnings escalated to errors**, then all ~970 facts — including the data-access integration tests, which run here rather than skipping, because a runner always has a container socket |
 | `boot-smoke` | the production `Containerfile` builds — which now also means its build context is exactly the allow-list `.dockerignore` describes, asserted by the build itself — the image boots against a real PostgreSQL until `/healthz/ready` answers 200, `/source` names the commit it was built from, and then that instance is backed up and the backup is put through a full restore drill |
-| `end-to-end` | all fifteen §16.3 scenarios in Chromium against the built application, with `MYRESTAURANT_E2E=1` |
+| `end-to-end` | all sixteen §16.3 scenarios in Chromium against the built application, with `MYRESTAURANT_E2E=1` |
 
 That third gate is the one worth understanding. `/healthz/ready` returns 200 only once DbUp has
 applied every migration and the composition root has resolved, so it catches the class of failure no
@@ -512,8 +513,9 @@ scripts/ci_local.sh --with-all
 - ✔ **M5** — counter & administration: bills, price adjustment with reason, close & settle,
   end-of-day, the counter fallback QR, menu management with its event log, the cross-log event
   explorer, hide/unhide, and post-close corrective events.
-- ✔ **M6** — hardening: the CI pipeline and publish-on-tag; the Playwright harness and all fifteen
-  §16.3 scenarios against a real browser; guest self-registration at `/register` (F-37); the
+- ✔ **M6** — hardening: the CI pipeline and publish-on-tag; the Playwright harness and all sixteen
+  §16.3 scenarios against a real browser, the last of which measures the administration surfaces on a
+  375px handset (F-59, F-62); guest self-registration at `/register` (F-37); the
   backup/restore drill, rehearsed by CI on every push rather than written down as a procedure
   (F-38); and the close-out that stamped the build and shipped the source offer (F-39).
 

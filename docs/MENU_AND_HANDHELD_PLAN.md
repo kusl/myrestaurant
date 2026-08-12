@@ -71,7 +71,7 @@ Normative in new **S§11.12**. `REQUIREMENTS.md` rev 6 carries the §8 principle
   once now, self-link included and marked `aria-current="page"`.
 - `HandheldLayoutContractTests`, four facts, each proven sensitive.
 
-### 1b — the remaining surfaces — **next**
+### 1b — the remaining surfaces — **next, and now measurable**
 
 Four pages still carry the retired per-page table vocabulary, and
 `HandheldLayoutContractTests.StillExpectedToCarryRetiredTableVocabularyIsExactlyWhatTheTreeCarries` names
@@ -98,24 +98,55 @@ so it is the one page where a wide layout is the primary case. The rule in §11.
 layout is the *default*, not that every surface is optimised for a handset; the kitchen board satisfies it
 by being legible at 375px, not by being designed for it.
 
-### 1c — an end-to-end barrier at 375px — **open, and the honest gap**
+### ~~1c — an end-to-end barrier at 375px~~ — **landed, M6 Slice 32, and ahead of 1b**
 
-Nothing in this project has ever asserted anything about layout at any width, which is exactly why F-59
+Nothing in this project had ever asserted anything about layout at any width, which is exactly why F-59
 survived four milestones with every gate green. `HandheldLayoutContractTests` asserts the *structure* of
-the rule — one breakpoint, one vocabulary, every cell labelled — and cannot assert that a control is
-reachable.
+the rule — one breakpoint, one vocabulary, every cell labelled — and by construction cannot assert that a
+control is reachable.
 
-Playwright can: the harness already drives a real browser, and a context at 375×667 with
-`ElementHandle.BoundingBoxAsync` can assert that the action on the first row of `/administration/tables`
-lies inside the viewport. One scenario, one assertion, and it is the assertion F-59 would have failed.
+Normative in **S§16.4**; the scenario is **S§16.3's sixteenth**. An administrator walks all four
+administration indexes in a context laid out at 375×667, and three numbers the page computes are asserted
+against the viewport: `documentElement.scrollWidth` against `clientWidth`, every action's
+`getBoundingClientRect` against the same, and every control's height against the 44px `--touch-target`
+resolves to. `Harness/HandheldReach.cs` takes all of it in one `EvaluateAsync` round trip, so every number
+describes the same moment rather than a dozen consecutive ones.
 
-Deliberately **not** done in Slice 30, and the reason is F-41's: the fifteen §16.3 scenarios all run in one
-default context, and giving one of them a second viewport is either a second browser context per run or a
-resize that every subsequent scenario inherits. Getting that wrong produces a suite that fails on a correct
-tree, which is worse than the gap. It is the first item in Stage 6 — which is a typo for "it is the first open item", since Stage 6 is
-comments and has nothing to do with a viewport. Recorded rather than silently corrected because the same
-sentence is quoted in S§16.4 and in the Slice 30 BUILD_PROGRESS entry, and a cross-document citation that
-quietly changes meaning is F-50's class at the smallest possible stakes.
+Three things about it are rulings rather than implementation, and each answers a way this could have been
+a barrier that asserts nothing:
+
+- **The viewport is asserted first**, and read back from the document rather than from the option that set
+  it. At Playwright's default 1280 every other assertion in the scenario passes (F-41). It is compared as
+  a ceiling with twenty pixels of allowance under it, because `clientWidth` excludes a classic scrollbar
+  and headless Chromium draws one on every page here.
+- **The count of measured controls is asserted.** Seven are expected — two rows and a create button on
+  people, one and one on tables, one and one on menu, nothing on sittings. A renamed `.record-actions`
+  leaves three and a renamed `.page-head-action` leaves four, so the floor of six catches both.
+- **The widest element is collected and may never fail a run.** An element wider than the viewport inside
+  its own scroll container is correct — `.page-head-areas` is exactly that — so the walk skips anything
+  inside a scroller and even then only writes the sentence that explains a failure. The two numbers decide.
+
+The set of surfaces it visits is a list of four and grows a line per page 1b converts, which is the same
+arrangement `StillExpectedToCarryRetiredTableVocabulary` already has and for the same reason (F-47).
+
+**Why this ran before 1b, and the correction that decided it.** Slice 30 deferred this on the stated
+ground that *the fifteen §16.3 scenarios all run in one default context*, so a second viewport meant
+either an extra context per run or a resize every later scenario inherits. **That is not true of this
+harness and never was.** `RestaurantHarness` holds one *browser*; `StartInstanceAsync` calls
+`browser.NewContextAsync` per instance and `OpenIsolatedPageAsync` mints further ones on request. A
+viewport belongs to a context, so there was nothing to share. The sentence was written once here and then
+copied into S§16.4, into F-59's ledger row and into the Slice 30 BUILD_PROGRESS entry — three documents
+asserting a property of a file none of them had read. It is **F-62**, and it is F-50's shape applied to
+something that was never true rather than to something that stopped being true.
+
+Given that, the order swapped. 1b is roughly 2,400 further lines of Razor; converting them before the
+barrier existed would have meant converting them exactly the way the four pages in F-59 were written — by
+hand, with nothing in the tree able to decide whether the result is reachable. Building the barrier first
+also retro-proves Slice 30's four pages, which nothing until now could.
+
+*(The previous version of this section closed by calling itself "the first item in Stage 6", noted at the
+time as a typo for "the first open item". The sentence is gone with the gap it described.)*
+
 
 ---
 
@@ -211,7 +242,9 @@ the `DO` body does not split the statement), so the block is safe in an embedded
 **Stage 2 as written above cannot ship green, and the reason is one word in its own schema.**
 `menu_section_identifier` is `NOT NULL`, so the moment migration `0003` applies, `CreateMenuItem.razor`
 cannot create an item without naming a section — and `AdministrationJourneys.CreateMenuItemAsync` drives
-that real form in five of the fifteen §16.3 scenarios. A slice that lands the schema and the data access
+that real form in six of the sixteen §16.3 scenarios — the five ordering scenarios and, since Slice 32,
+the handheld barrier, which needs a row on `/administration/menu` to have anything to measure. A slice
+that lands the schema and the data access
 and leaves the surfaces for Stage 3 therefore lands a red suite, whatever the quality of the two halves.
 
 So Stage 2 pulls three things forward out of Stage 3, and only three: the **section create page**, the
@@ -304,8 +337,9 @@ panel and the party totals below it do not change — this is the picker, not th
 salmon looks under the heading it is on.
 
 **One new §16.3 scenario**: create a section, create an item in it with a description, and read both back
-from the guest surface. Numbered 16, appended rather than inserted, because the harness names scenarios by
-number in fifteen places.
+from the guest surface. Numbered 17, appended rather than inserted, because the harness names scenarios by
+number in a great many places. It was numbered 16 when this was written; Slice 32's handheld barrier took
+that number, which is what appending costs and is cheaper than renumbering sixteen of them.
 
 ---
 

@@ -28,7 +28,7 @@ namespace MyRestaurant.WebApplication.Tests.Deployment;
 /// says it "does not resolve or set the default domain and repository prefix". So on a host whose
 /// <c>unqualified-search-registries</c> is unpopulated the pull fails — and both fixtures catch every
 /// startup failure and turn it into a skip, by design and correctly. The result is not a red suite. It
-/// is a green one in which the data-access integration tests and all fifteen §16.3 scenarios declined
+/// is a green one in which the data-access integration tests and every §16.3 scenario declined
 /// to run, reported through a message whose headline said the container engine was unreachable when it
 /// was not.</para>
 ///

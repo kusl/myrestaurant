@@ -92,3 +92,45 @@ Say the word and I'll finish it in one go.
 
 Please continue
 
+Now the defect ledger, the plan, and the "fifteen scenarios" sweep.Now the "fifteen scenarios" sweep across the remaining files.Now the delivery note, then verification.# M6 Slice 32 — the barrier F-59 would have failed (F-62)
+
+```
+tar -xzf m6-slice-32-handheld-reachability-barrier.tar.gz
+git add tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs
+git status
+```
+
+**Files to DELETE: none.** **`git add` required** for the one new file — `check_tree.sh` enumerates with `git ls-files`.
+
+Thirteen files, every one complete. Full breakdown in `_CHANGES.md`.
+
+## F-62
+
+Slice 30 deferred the 375px barrier on this stated ground: *the fifteen §16.3 scenarios all run in one default context.* They do not. `RestaurantHarness` holds one **browser**; each scenario calls `StartInstanceAsync` → `browser.NewContextAsync(...)` and gets a context of its own. A viewport belongs to a context — there was nothing to share.
+
+The contradicting evidence was in the file the claim was about: `RestaurantInstance`'s class summary has carried a paragraph headed *why more than one browser context* since Slice 2.
+
+What makes it a finding is the propagation. Written once while planning, and by the close of that slice the same claim was in S§16.4, in F-59's ledger row, and in the plan. F-50's shape applied to something that was **never** true rather than to something that stopped being true — the worse direction, because there's no moment at which it became wrong for a reader to notice.
+
+## The decision to veto if you want it
+
+**Stage order swapped.** The plan said 1b next; this ships 1c. 1b is ~2,400 further lines of Razor, and converting it before the barrier exists means converting it exactly the way the four pages in F-59 were written — by hand, with nothing able to check the result. Building first also retro-proves Slice 30's four pages. Reversion instructions are in `_CHANGES.md`.
+
+## What earned its place
+
+Three rulings, each answering a way this could have been a barrier that asserts nothing. **The viewport is asserted first**, read from the document, as a *ceiling* with 20px of allowance — `clientWidth` excludes a classic scrollbar and headless Chromium draws one, so an equality assertion would have failed on a correct tree on the first run. **The control count is asserted** (seven expected, floor of six). **The widest element may never fail a run** — `.page-head-areas` is a scrolled strip by design, and a walk that failed on it is exactly the mistake the deferral was meant to avoid.
+
+One fixture is doing real work: the display name `Anastasia Featherstonehaughwolstenholmeworthington`. `break-word` breaks the line but leaves min-content at the token's length; only `anywhere` shrinks it. `app.css` says `anywhere` — this is the difference between asserting the stylesheet contains the right word and asserting the word does the right thing.
+
+## Verified
+
+**The embedded JavaScript ran.** `node --check` parsed it; then it executed against a hand-built fake DOM. A pill 100px past the right edge inside an `overflow-x: auto` strip was correctly **ignored**; a rogue element outside any scroller was correctly **named**. Balance, CS1620 and CS4007 scans clean on four files with an untouched control, each proven sensitive by its own regression. All fifteen `StartInstanceAsync` call sites audited before inserting the parameter. `SpecificationVersionTests` ported: header 1.17 against newest entry 1.17. CA1861 caught during authoring — a constant array at a call site is an *error* under `ContinuousIntegrationBuild`.
+
+## Not verified
+
+Nothing compiled. **No browser rendered anything** — Chromium's download is blocked by the sandbox's egress allow-list. That these four pages *pass* rests on reading `app.css`, not on a measurement. The workstation run is what proves it, and this is the one place where red would be information: the failure message names the widest element outside a scroll container.
+
+**Predicted 1074**, from 1073. Arithmetic, not an observation.
+
+63
+48

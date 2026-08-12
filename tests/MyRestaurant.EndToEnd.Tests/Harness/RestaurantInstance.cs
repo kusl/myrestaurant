@@ -125,6 +125,25 @@ internal sealed class RestaurantInstance : IAsyncDisposable
     /// </summary>
     internal const string CurrencyCode = "USD";
 
+    /// <summary>
+    /// The width §11.12 is written for, in CSS pixels, and the project's primary handset target: an
+    /// iPhone SE (2020) in portrait.
+    ///
+    /// <para><b>Why 375 and not something smaller.</b> The rule in §11.12 is a direction rather than a
+    /// number — handheld first, widened by one query — so any narrow viewport would exercise it. 375 is
+    /// the one that makes a failure mean something to a person: it is the device F-59 was reported from,
+    /// it is the narrowest screen in common use rather than the narrowest conceivable one, and a barrier
+    /// at 320 would be asserting a property this project has never claimed.</para>
+    /// </summary>
+    internal const int HandheldViewportWidth = 375;
+
+    /// <summary>
+    /// The same handset's height. It matters less than the width — nothing here asserts on vertical
+    /// position — but a viewport 375 wide and 720 tall is not a phone, and a scenario that scrolls looks
+    /// different from one that does not.
+    /// </summary>
+    internal const int HandheldViewportHeight = 667;
+
     private const string RestaurantName = "End To End Restaurant";
     private const int DiagnosticOutputCharacterLimit = 8000;
     private const int PageTimeoutMilliseconds = 30_000;
@@ -244,6 +263,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
         int ordinal,
         int tableJoinTokenRotationSeconds,
         int kitchenSubmissionReminderSeconds,
+        bool handheld,
         CancellationToken cancellationToken)
     {
         string databaseName = string.Create(
@@ -286,7 +306,7 @@ internal sealed class RestaurantInstance : IAsyncDisposable
             await WaitForReadinessAsync(process, baseUrl, output, outputGate, cancellationToken);
             await VerifyInteractivityAsync(baseUrl, cancellationToken);
 
-            context = await browser.NewContextAsync(new BrowserNewContextOptions { BaseURL = baseUrl });
+            context = await browser.NewContextAsync(ContextOptions(baseUrl, handheld));
             IPage page = await context.NewPageAsync();
             page.SetDefaultTimeout(PageTimeoutMilliseconds);
 
@@ -332,10 +352,17 @@ internal sealed class RestaurantInstance : IAsyncDisposable
     /// would be offered back to whoever is signing in on <see cref="Page"/> and to nobody else. Pass
     /// <paramref name="withVirtualAuthenticator"/> to get one.</para>
     /// </summary>
-    internal async Task<IPage> OpenIsolatedPageAsync(bool withVirtualAuthenticator = false)
+    /// <param name="withVirtualAuthenticator">Attach a CDP virtual authenticator to the new context.</param>
+    /// <param name="handheld">
+    /// Lay this context out at <see cref="HandheldViewportWidth"/>×<see cref="HandheldViewportHeight"/>
+    /// (§11.12). A viewport is a property of the context, so this affects nothing else — which is worth
+    /// stating because the opposite was believed for a slice, and F-62 is that belief.
+    /// </param>
+    internal async Task<IPage> OpenIsolatedPageAsync(
+        bool withVirtualAuthenticator = false,
+        bool handheld = false)
     {
-        IBrowserContext context = await _browser.NewContextAsync(
-            new BrowserNewContextOptions { BaseURL = BaseUrl });
+        IBrowserContext context = await _browser.NewContextAsync(ContextOptions(BaseUrl, handheld));
 
         _isolatedContexts.Add(context);
 
@@ -349,6 +376,24 @@ internal sealed class RestaurantInstance : IAsyncDisposable
 
         return page;
     }
+
+    /// <summary>
+    /// The options every context in this instance is built from: the base URL, and a viewport only when
+    /// one was asked for.
+    ///
+    /// <para><b>Why <c>null</c> rather than a default size in the wide case.</b> Playwright's own default
+    /// is 1280×720 and leaving <see cref="BrowserNewContextOptions.ViewportSize"/> unset is what selects
+    /// it. Writing 1280×720 here would be the same number in a second place — the mechanism behind F-48,
+    /// F-50 and F-56 — and would silently pin fifteen scenarios to a figure this project never chose.
+    /// </para>
+    /// </summary>
+    private static BrowserNewContextOptions ContextOptions(string baseUrl, bool handheld) => new()
+    {
+        BaseURL = baseUrl,
+        ViewportSize = handheld
+            ? new ViewportSize { Width = HandheldViewportWidth, Height = HandheldViewportHeight }
+            : null,
+    };
 
     /// <summary>
     /// Arranges an active table with a caller-chosen join secret (§4.1), by direct insert rather than
