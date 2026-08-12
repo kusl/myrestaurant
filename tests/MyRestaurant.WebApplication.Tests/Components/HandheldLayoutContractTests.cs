@@ -772,6 +772,75 @@ public sealed class HandheldLayoutContractTests
     }
 
     /// <summary>
+    /// The overflow-wrap declaration exists exactly once, on the body element, with the value 'anywhere'.
+    ///
+    /// <para><b>Why this is a finding.</b> <c>overflow-wrap: anywhere</c> was declared eight times
+    /// across the stylesheet on elements somebody had a long-token case in mind for. Because it is an
+    /// inherited property, eight declarations are eight copies of a rule one declaration states, and the
+    /// copies are only there on the elements somebody thought of (F-48). The same display name rendered
+    /// correctly on <c>/administration</c> (which had the rule) and wrongly on
+    /// <c>/administration/people/{id}</c> (which did not) — that is F-46/F-51's shape again.</para>
+    ///
+    /// <para><c>anywhere</c> is asserted rather than <c>break-word</c> because only <c>anywhere</c>
+    /// collapses min-content, which is what the flex item propagation on the people page depends on.
+    /// <c>word-break: break-all</c> on <c>.totp-secret</c> and the two join-code blocks is deliberately
+    /// out of scope, being typesetting rather than overflow defence (F-41).</para>
+    /// </summary>
+    [Fact]
+    public void OverflowWrapIsDeclaredExactlyOnceOnTheBodyElement()
+    {
+        List<string> declarations = [];
+
+        void Read(string css, string where)
+        {
+            // Match the property and whatever it was given
+            foreach (Match match in Regex.Matches(CssComment.Replace(css, string.Empty), @"overflow-wrap\s*:\s*([^;}]+)"))
+            {
+                string value = match.Groups[1].Value.Trim();
+                declarations.Add($"{where} ({value})");
+            }
+        }
+
+        string stylesheet = ReadStylesheet();
+        Read(stylesheet, StylesheetRelativePath);
+
+        foreach (string path in EnumerateComponents())
+        {
+            string markup = RazorComment.Replace(File.ReadAllText(path), string.Empty);
+
+            foreach (Match block in StyleBlock.Matches(markup))
+            {
+                Read(block.Groups[1].Value, Path.GetFileName(path));
+            }
+        }
+
+        Assert.True(
+            declarations.Count == 1,
+            $"overflow-wrap must be declared exactly once in the tree, but was found {declarations.Count} time(s): "
+                + $"{FormatList(declarations)}. As an inherited property, one declaration on body covers "
+                + "the tree, and copies only apply where somebody remembered them (F-48).");
+
+        string only = declarations[0];
+
+        Assert.True(
+            only.StartsWith(StylesheetRelativePath, StringComparison.Ordinal),
+            $"The declaration belongs in {StylesheetRelativePath}, but was found in {only}.");
+
+        Assert.Contains(
+            "anywhere",
+            only,
+            StringComparison.Ordinal);
+
+        // Confirm it is genuinely on the body selector and not just somewhere in app.css.
+        string cleanCss = CssComment.Replace(stylesheet, string.Empty);
+        Match bodyBlock = Regex.Match(cleanCss, @"(?m)^body\s*\{([^}]+)\}");
+
+        Assert.True(
+            bodyBlock.Success && bodyBlock.Groups[1].Value.Contains("overflow-wrap", StringComparison.Ordinal),
+            "overflow-wrap was found in app.css, but not on the 'body' selector. It must be applied to body to inherit down the tree.");
+    }
+
+    /// <summary>
     /// Every simple selector a stylesheet declares a rule for, comments removed.
     ///
     /// <para>Written by hand rather than with a CSS parser, and the shape is deliberate. Splitting on
