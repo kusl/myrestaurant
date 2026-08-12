@@ -1,9 +1,15 @@
 # Menu modernization and the handheld contract — staged plan
 
-**Opened 2026-08-11, at the close of M6 Slice 30.** This is the execution plan for the first enhancement
-request the project has received from a person who was shown the running application, together with the
-defect that request arrived beside. It is a working document: a stage is struck through when it lands, and
-the ruling paragraphs are the part worth keeping afterwards.
+**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-12, at the close of Slice 33.** This
+is the execution plan for the first enhancement request the project has received from a person who was
+shown the running application, together with the defect that request arrived beside. It is a working
+document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
+afterwards.
+
+**Where Stage 1 stands.** 1a landed in Slice 30 (the vocabulary and the four administration indexes). 1c
+landed in Slice 32 and ahead of 1b (the 375px end-to-end barrier), for the reason F-62 records. 1b is
+half landed as of Slice 33: the two explorers are converted, `TableDisplays` and `ManageSitting` are not.
+Stage 2 is next once 1b closes, and its boundary correction is below.
 
 The specification governs. Where a stage below and `TECHNICAL_SPECIFICATION.md` disagree, the
 specification is right and this file is stale — with one deliberate exception, marked per stage: a decision
@@ -71,26 +77,60 @@ Normative in new **S§11.12**. `REQUIREMENTS.md` rev 6 carries the §8 principle
   once now, self-link included and marked `aria-current="page"`.
 - `HandheldLayoutContractTests`, four facts, each proven sensitive.
 
-### 1b — the remaining surfaces — **next, and now measurable**
+### 1b — the remaining surfaces — **half landed, M6 Slice 33**
 
-Four pages still carry the retired per-page table vocabulary, and
-`HandheldLayoutContractTests.StillExpectedToCarryRetiredTableVocabularyIsExactlyWhatTheTreeCarries` names
-them, so finishing this stage is deleting entries from that list:
+Four pages carried the retired per-page table vocabulary when this stage opened. Two are gone.
 
-| Page | What it holds that a record list does not | Roughly |
-|---|---|---|
-| `TableDisplays.razor` | a device roster with revoke actions and a pair-code panel | 440 lines |
-| `ManageSitting.razor` | one sitting's complete record: lines, events, corrections | 1120 lines |
-| `EventExplorer.razor` | a filter form over three event vocabularies | 570 lines |
-| `HiddenRecords.razor` | every hidden order system-wide, unprojected | 910 lines |
+| Page | What it holds that a record list does not | Roughly | State |
+|---|---|---|---|
+| ~~`EventExplorer.razor`~~ | a filter form over three event vocabularies | 570 lines | **landed, Slice 33** |
+| ~~`HiddenRecords.razor`~~ | every hidden order system-wide, unprojected | 910 lines | **landed, Slice 33** |
+| `TableDisplays.razor` | a device roster with revoke actions and a pair-code panel | 440 lines | open |
+| `ManageSitting.razor` | one sitting's complete record: lines, events, corrections | 1120 lines | open |
 
-Then the surfaces that were never record lists and were never measured on a handset: `ManagePerson`,
-`ManageTable`, `ManageMenuItem`, `CounterBoard`, `CounterSitting`, `KitchenBoard`, `TableHistory`,
-`TableJoinCode`, `CounterJoinCode`. Each keeps its own `<style>` for rules only it reads — that is this
-project's standing arrangement for a statically linked stylesheet — but `.chip` and `.visually-hidden` come
-out of all of them, and the forbidden-prefix list in `HandheldLayoutContractTests` is extended to cover
-both in the same commit that empties them. **That extension is the stage, not a tidy-up afterwards**
-(F-46: a rule enforced against a list of examples is enforced against a list of examples).
+**Why those two went together, and it is the ruling rather than the order they appear in.** They were the
+last two pages carrying a hand-rolled copy of §11.4's row of area links — five `<a class="button-secondary">`
+elements inside a `.admin-header-actions` div, each copy omitting its own page. That is the F-59 defect
+that `AdministrationAreaLinks` was written to end, and it was two-thirds ended: Slice 30 converted four
+pages and left two, so the strip was still a different strip on a third of the administration area. They
+were also the two copies of one filter form — `.event-filter` and `.hidden-filter`, the same twelve lines
+of `display: flex; flex-wrap: wrap; align-items: flex-end` with no column fallback, which on a 375px screen
+wrapped five fields into five rows of unequal width with the submit button wherever the wrap left it. One
+shared `.filter-form` / `.filter-actions` vocabulary in `app.css` replaces both.
+
+**Both are now in the §16.3 scenario 16 barrier**, which took it from four surfaces to six, and the barrier's
+reach selector grew to cover `.filter-actions` — because §11.4 makes both explorers read-only, so a filter's
+submit is the only control either page has and a barrier that measured only record actions would have
+visited two pages and measured nothing. `/administration/hidden-records` is measured **empty**, on the same
+terms sittings already was and stated the same way: putting a row on it needs a guest, a token, a join, an
+order and a close, which is scenario 11's arrangement.
+
+**Two findings came out of doing it**, and both were rules that were already true and not enforced.
+**F-63:** §11.12's *exactly one breakpoint* was asserted against `app.css` and nothing else, while the same
+section grants twenty-one components an inline `<style>` — so a width query in any of them was a second
+breakpoint nothing could see. Found by needing to write one. **F-64:** five custom properties were read
+fifty-five times across eight components and declared nowhere, and an undeclared property in CSS renders
+its fallback in silence, so eight surfaces had been drawing a palette nobody chose. Fixed across all eight
+files in the same slice rather than deferred, on F-47's reasoning — the repair is a name substitution and a
+list that exists to defer that is a list this project has ruled against writing.
+
+`HandheldLayoutContractTests` goes from four facts to six: the breakpoint fact is renamed and widened, and
+two are new — every custom property the tree reads is declared, and §11.4's area row is rendered once. That
+last one had no assertion at all until now, which is worth naming: the sentence has been in the ledger, in
+§11.12 and in the component's own doc comment since Slice 30 while nothing in the tree had an opinion about
+a seventh administration page.
+
+**What is left of 1b.** `TableDisplays` and `ManageSitting`, which are the two whose tables are genuinely
+not record lists — a device roster with a pair-code panel and one sitting's complete record. Then the
+surfaces that were never record lists and were never measured on a handset: `ManagePerson`, `ManageTable`,
+`ManageMenuItem`, `CounterBoard`, `CounterSitting`, `KitchenBoard`, `TableHistory`, `TableJoinCode`,
+`CounterJoinCode`. Each keeps its own `<style>` for rules only it reads — that is this project's standing
+arrangement for a statically linked stylesheet — but `.chip` and `.visually-hidden` come out of all of
+them, and `SharedSelectorPrefixes` is extended to cover both in the same commit that empties them. **That
+extension is the stage, not a tidy-up afterwards** (F-46: a rule enforced against a list of examples is
+enforced against a list of examples). The redundant `var(--declared, #literal)` fallbacks — over a hundred
+of them, harmless where the name exists — come out per block on the same schedule, which §11.12 states as a
+*should* rather than a *must* for exactly that reason.
 
 `KitchenBoard` needs its own judgement rather than the same treatment. It is the one surface in this
 system that is *not* read from a phone — §11.2 and §10.3 describe a wall-mounted kiosk with a wake lock —
@@ -119,15 +159,19 @@ a barrier that asserts nothing:
   it. At Playwright's default 1280 every other assertion in the scenario passes (F-41). It is compared as
   a ceiling with twenty pixels of allowance under it, because `clientWidth` excludes a classic scrollbar
   and headless Chromium draws one on every page here.
-- **The count of measured controls is asserted.** Seven are expected — two rows and a create button on
-  people, one and one on tables, one and one on menu, nothing on sittings. A renamed `.record-actions`
-  leaves three and a renamed `.page-head-action` leaves four, so the floor of six catches both.
+- **The count of measured controls is asserted.** Seven when it was written and nine since Slice 33 — two
+  rows and a create button on people, one and one on tables, one and one on menu, nothing on sittings, and
+  one filter submit on each explorer. A renamed `.record-actions` leaves five, a renamed
+  `.page-head-action` leaves six and a renamed `.filter-actions` leaves seven, so the floor of eight
+  catches all three.
 - **The widest element is collected and may never fail a run.** An element wider than the viewport inside
   its own scroll container is correct — `.page-head-areas` is exactly that — so the walk skips anything
   inside a scroller and even then only writes the sentence that explains a failure. The two numbers decide.
 
-The set of surfaces it visits is a list of four and grows a line per page 1b converts, which is the same
-arrangement `StillExpectedToCarryRetiredTableVocabulary` already has and for the same reason (F-47).
+The set of surfaces it visits is a list — four when it was written, six since Slice 33 — and it grows a
+line per page 1b converts, which is the same arrangement `StillExpectedToCarryRetiredTableVocabulary`
+already has and for the same reason (F-47). Slice 33 also widened its reach selector to cover a filter's
+own submit, because §11.4's two explorers are read-only and have no other control at all.
 
 **Why this ran before 1b, and the correction that decided it.** Slice 30 deferred this on the stated
 ground that *the fifteen §16.3 scenarios all run in one default context*, so a second viewport meant

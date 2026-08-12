@@ -9200,3 +9200,272 @@ is part of emptying them, not a tidy-up afterwards (F-46). Each converted page a
 because the handheld barrier needs a row on `/administration/menu` to measure.
 
 **Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive can contain (F-42).
+
+# M6 Slice 33 — Stage 1b's first half, and two rules that were true and unenforced (F-63, F-64)
+
+Two findings, and neither was in the work this slice set out to do. That is worth stating first, because
+the interesting part of the slice is not the conversion.
+
+The work: `EventExplorer.razor` and `HiddenRecords.razor` join §11.12's shared vocabulary. They were the
+last two pages carrying a hand-rolled copy of §11.4's row of area links, and the only two carrying a
+filter form, so they went together rather than in size order.
+
+The findings: §11.12's *exactly one breakpoint* was asserted about one file while being a rule about the
+tree (**F-63**), and five CSS custom properties were read fifty-five times across eight components and
+declared nowhere, so eight surfaces had been rendering a palette nobody chose (**F-64**).
+
+## What landed, and why these two pages
+
+Four pages carried the retired per-page table vocabulary when Stage 1b opened. These are the two smaller
+ones, and the reason they are a pair is not their size.
+
+**They were the last two copies of the row `AdministrationAreaLinks` exists to replace.** Five
+`<a class="button-secondary">` elements in a `.admin-header-actions` div, each copy omitting its own page.
+F-59's resolution named that as the defect — six sets of five links, no two the same, no page reachable
+from every other — and Slice 30 ended it on four pages of six. On a handset §11.12 makes the row a
+horizontally scrolled strip, and a strip whose contents shift between pages cannot be used from memory:
+the third pill has to be the third pill everywhere. It was, on four screens out of six.
+
+**They were the two copies of one filter form.** `.event-filter` and `.hidden-filter` were the same twelve
+lines — `display: flex; flex-wrap: wrap; align-items: flex-end`, a `.form-field { margin: 0 }` override,
+and an actions div — with no column fallback anywhere in them. On a 375px screen that wraps five fields
+into five rows of unequal width, each as wide as its own content, with the submit button wherever the wrap
+left it. One shared `.filter-form` / `.filter-fieldset` / `.filter-choice` / `.filter-actions` /
+`.filter-count` vocabulary in `app.css` replaces both, handheld-first, widened inside the existing single
+query. `.filter-` is the third entry in `SharedSelectorPrefixes`, so a third copy cannot be written.
+
+**Both are in the §16.3 scenario 16 barrier now**, which takes it from four surfaces to six.
+
+## F-63 — a rule about the tree, asserted about one file
+
+§11.12 has said since v1.15 that the layout is written handheld-first and widened by exactly one
+`min-width: 48rem` query, and Slice 30 made that executable in the same commit that wrote it.
+`HandheldLayoutContractTests` counts the width media queries in `wwwroot/app.css`, asserts there is one,
+asserts it is a `min-width`, and asserts no `max-width` appears. In `app.css`.
+
+**The same section grants every component an inline `<style>` block**, deliberately and with a stated
+reason: `App.razor` links the static stylesheet rather than the scoped bundle, so CSS isolation is not
+active anywhere in this tree, and a rule exactly one page reads may stay with that page. Twenty-one
+components carry such a block. A width query inside any of them is a second breakpoint — the same number
+written in a second place, which is the F-48 / F-50 / F-56 mechanism — and nothing here could have seen it.
+
+**No component had one.** That is the only reason this is a gap and not a defect, and it is the same kind
+of true F-59 was: true until somebody writes the page that breaks it.
+
+### How it was found
+
+By needing to write one. `HiddenRecords` has a `.hidden-record-money { text-align: right }` block and a
+`.hidden-facts` grid; `EventExplorer` had `.event-when { margin-left: auto }`. All three are a wide-layout
+preference expressed unconditionally, and the obvious repair for each is a media query on the page.
+Reaching for that and asking *what in this tree would stop me* is the whole of the discovery.
+
+**F-46's shape for the fourth time**, and the fourth time the general sentence and the narrow scope were
+written by the same person in the same commit.
+
+### The repair, and the three parts of it that are choices
+
+The fact is renamed `TheTreeIsWrittenHandheldFirstThroughExactlyOneBreakpoint` — F-38's habit applied to a
+test name — and reads every component `<style>` block as well as `app.css`.
+
+- **An inline query gets its own assertion, ahead of the count.** The count's message is *there are two of
+  these*; the message a reader needs is *yours is in the wrong file*.
+- **The surviving query is asserted to be in `app.css`.** "Exactly one breakpoint, declared in a
+  component" satisfies a count of one and abandons the arrangement the count exists to protect.
+- **The component walk carries its own non-vacuity guard** — at least eight blocks. A scan that matched no
+  `<style>` blocks would report that no component declares a query while having read nothing, which is
+  F-41 in the one place this repair could have introduced it.
+
+§11.12 says *in the whole tree* where it said the stylesheet, and adds the note the conversion earned: a
+page can usually avoid needing a query at all. Both cases here were avoidable. `margin-left: auto` inside
+a wrapping flex row pushes the timestamp to the right edge of whichever line it lands on, so on a handset
+it ended up alone on its own line, far from the event it timestamps — deleting it reads correctly at every
+width. `.hidden-facts` is already `repeat(auto-fit, minmax(9rem, 1fr))`, which is intrinsically responsive.
+And `.hidden-record-money`'s right alignment is money rather than an affordance, so §11.12's
+right-hand-column rule does not reach it — that is recorded at the rule rather than left to be rediscovered.
+
+## F-64 — fifty-five references to five properties nothing declares
+
+`--muted-foreground` is named thirty times. `--rule` sixteen. `--surface-sunken`, `--chip-background` and
+`--chip-foreground` three each. The eight components are `EventExplorer`, `HiddenRecords`,
+`ManageMenuItem`, `ManagePerson`, `ManageSitting`, `ManageTable`, `TableJoinCode` and `CounterJoinCode`.
+
+`app.css`'s `:root` declares nineteen custom properties. None of those five is among them.
+
+**An undeclared custom property is not an error in CSS.** `var(--muted-foreground, #666)` resolves to
+`#666` and renders. No browser warns, no linter runs here, MSBuild has no opinion about a stylesheet, and
+no gate in this repository looked. So all fifty-five rules worked, and all fifty-five were using a colour
+that had been typed once as a guess beside a name that never existed.
+
+The measurable consequence:
+
+| Those eight pages drew | Every other surface draws |
+|---|---|
+| `#666` and `#999` greys | `--ink-soft` `#55636f` |
+| `#e5e5e5`, `#ccc`, `#eee` hairlines | `--hairline` `#e2e6ec` |
+| `#f4f4f5` / `#f7f9fb` sunken panels | `--surface` `#f7f8fa` |
+| a chip in `#f0f0f0` on `#333` | `.chip` in `#eef1f5` on `--ink` |
+
+### Why no reader could have caught it
+
+**The mechanism is a fallback, and a fallback is what a careful author writes.**
+`var(--hairline, #e2e6ec)` and `var(--rule, #e5e5e5)` are indistinguishable at the site, on the page, in
+review, and in a diff. The code that is wrong reads as *more* careful than the code that would have been
+correct.
+
+That is F-49's shape — something that existed, worked, and that nobody had decided — plus that property.
+And it was found sideways, while checking one grey on one page during an unrelated conversion.
+
+### The repair, and the ruling inside it
+
+Every reference names the declared property the rule always wanted: `--rule` → `--hairline`,
+`--muted-foreground` → `--ink-soft`, `--surface-sunken` → `--surface`, `--chip-foreground` → `--ink`.
+`--chip-surface` is **declared** and `.chip`'s literal `#eef1f5` reads it, because two pages still carry a
+chip rule of their own until Stage 1b empties them and three copies of one hex value is precisely how
+`--chip-background` came to be referenced by pages and declared by nobody.
+
+**Fixed across all eight files rather than deferred behind a second migration list**, and that is the
+decision worth vetoing if it is unwelcome. The repair is a name substitution inside `<style>` blocks: no
+markup moves, so it cannot break a Razor compile, and it was applied programmatically and then
+diff-verified — 110 changed lines, every one a `var(--…)` line. Two of the eight (`ManageSitting`,
+`ManagePerson`) are Stage 1b's next conversion targets and are therefore touched twice, which costs
+nothing under full-file delivery. The alternative was an F-47-style expected-holders list, and a list whose
+only purpose is to defer a name substitution is a list this project has ruled against writing.
+
+**Deliberately not asserted:** that a reference to a *declared* property carries no fallback. Over a
+hundred references across sixteen components still do. Where the name exists they are dead code rather
+than a wrong colour, and a gate that failed on them today would report findings on a tree whose every
+colour is correct (F-41). §11.12 states that half as a **should**, and Stage 1b removes them as it empties
+each block — which is an arrangement rather than a promise, because the blocks are being emptied anyway.
+
+## The area row finally has an assertion
+
+`HandheldLayoutContractTests` gains a fact that has been owed since Slice 30. F-59's resolution named the
+copy-paste and the omission-per-copy as the defect; §11.12 restated it; `AdministrationAreaLinks`'s own doc
+comment restated it again. Nothing in the tree enforced it. Slice 30 converted four pages, this slice
+converted the last two, and a seventh administration page written tomorrow could have pasted the row back
+with every gate green.
+
+**How a hand-rolled row is told from a legitimate link.** By counting the distinct area paths a component
+names literally, *excluding its own route*. A hand-rolled row names five or six; a "Back to tables" link
+names one. The self-route exclusion is what makes the threshold two rather than a fudged three:
+`HiddenRecords` legitimately links to its own path — that is the "Show everything" filter reset — and a
+threshold that failed on it would report a finding on a correct tree (F-41).
+
+Two guards beneath it, failing in opposite directions: at least six components must render the shared
+component, because a page that dropped the row entirely names no paths and would pass the count; and the
+shared component must still name all six areas, because a row that had quietly lost two links is the F-59
+defect with the paste removed and the omission kept.
+
+## The barrier grew, and the reach selector grew with it
+
+Six surfaces, and `.filter-actions a, .filter-actions button` joins the reach selector.
+
+**That is a membership decision rather than a widening.** The selector's rule is *the thing an operator
+opened the page in order to press*, not *a record row's action*. §11.4 makes both explorers read-only —
+there is no record action and no page-head action on either — so a barrier that measured only the first two
+selectors would have visited two new pages and measured nothing on either, which is exactly the empty-set
+failure the count guard exists to catch (F-41).
+
+Nine controls expected, floor eight: two rows plus a create button on people, one and one on tables, one
+and one on menu, nothing on sittings, one filter submit on each explorer. A renamed `.record-actions`
+leaves five, a renamed `.page-head-action` leaves six, a renamed `.filter-actions` leaves seven.
+
+**The stream checkboxes are deliberately outside it.** A checkbox is 1.35rem by declaration —
+`.form-field input[type="checkbox"]` sets `min-height: 0` on purpose — so the target is the
+`.filter-choice` row around it, which carries `--touch-target` in `app.css`. Asserting a 44px box on the
+input itself would report a finding on a correct tree. What is untested is that the row does its job, which
+is the same honest gap `.record-tick` has.
+
+**`/administration/hidden-records` is measured empty**, on the terms sittings already was and stated the
+same way: putting a row on it needs a guest, a token, a join, an order and a close, which is scenario 11's
+arrangement rather than this scenario's. The page still lays out, its filter is the shared vocabulary, and
+its submit is measured. What is untested there is a record card, not the page.
+
+## A red suite caught before it shipped
+
+`HiddenRecordJourneys.cs` pins `form.hidden-filter #filter-username`, `form.hidden-filter
+button[type='submit']`, `form.hidden-filter .hidden-filter-actions a` and `p.hidden-count`. Renaming those
+classes without that file is scenario 11 failing on a correct page. The selectors are repointed at the
+shared names; `p.hidden-none` is kept exactly as it was, because it is the harness's handle for "the list
+is empty after an unhide" rather than a style, and that reason is now written where the class is.
+
+Every selector any harness reads was checked against both converted pages, not just the ones that changed.
+
+## What was verified, and how
+
+No .NET SDK here, so everything below is text-level and says so.
+
+- **All six facts were ported to Python and executed against the delivered tree: all six pass.** Run
+  against the tree as it was before this slice, **five fail** — the `.filter-` prefix is undeclared, four
+  pages carry retired vocabulary instead of two, only four components render the area row, both explorers
+  name five area paths besides their own, and twenty-three distinct undeclared-property references are
+  reported. That is a before/after demonstration rather than a claim.
+- **Every fact proven sensitive by a planted regression** — eight plants, eight caught:
+  a `max-width` query in a component (F-63's own regression); a second `min-width` in `app.css`; a
+  `.filter-actions` rule re-declared inline; a `data-label` deleted from a record cell; a converted page
+  left on the migration list; the area row pasted back into `EventExplorer`; one link deleted from
+  `AdministrationAreaLinks`; and `var(--text-quiet, #666)` planted in a converted page.
+- **Brace, paren and bracket balance** on all four C# files and all nine Razor files, string-, char-,
+  verbatim-, raw-string- and comment-aware, with untouched siblings as controls: clean. **Proven
+  sensitive** — deleting one closing brace is reported at the line the block opened on.
+- **CS1620 scan** (every operand of a `string.Create(IFormatProvider, …)` chain must be `$"…"`): clean,
+  and **proven sensitive** by breaking one operand into a bare literal. **CS4007 scan** (no `await` in an
+  interpolation hole): clean, and **proven sensitive**.
+- **Razor tag-tree balance** on every touched component: clean, and **proven sensitive** by deleting one
+  `</nav>`. The scanner's first version reported twenty findings that were all C# generic type arguments
+  inside `@code` read as HTML tags; it excludes `@code` and the directive lines now, which is recorded
+  because a scanner that reports findings on a correct tree is the thing F-41 is about.
+- **The `var()` substitution was diff-verified**: 110 changed lines across eight files, every one a
+  `var(--…)` line, no markup touched.
+- **Byte hygiene** on every delivered file: LF, exactly one final newline, no CR, no trailing whitespace,
+  no whitespace-only line, no context-dump separator.
+- **`SpecificationVersionTests` ported and run** over `docs/` — header 1.18 against newest changelog entry
+  1.18, entries descending, two documents qualifying, no half-versioned document. The first port of it was
+  wrong in a way worth recording: it read history entries from the whole file rather than from after the
+  `## Changelog` heading, and flagged `BUILD_PROGRESS.md` for the string `**v1.7**.` in a sentence. The
+  pristine tree failed it identically, which is what said the port was wrong rather than the tree.
+
+## What was NOT verified, and cannot be from here
+
+**Nothing compiled.** Thirteen files edited, `dotnet build` run on none of them. The Razor files are the
+likely site of a compiler complaint, and the markup changes here are small and structural.
+
+**No browser rendered anything.** The claim that these two pages pass the barrier rests on reading
+`app.css` — `.filter-actions` is a stretch column below the breakpoint, `.button-primary` carries
+`min-height: var(--touch-target)`, `.filter-form` is a flex column — and not on a measurement. The first
+run on the workstation is what proves it, and a red result here would be information: the failure message
+names the widest element outside a scroll container.
+
+**The colour change is not verified as an improvement**, only as a correction. Eight pages will render
+slightly different greys and hairlines than they did yesterday: `--ink-soft` `#55636f` is cooler and
+darker than `#666`, and `--hairline` `#e2e6ec` is lighter and cooler than `#e5e5e5`. That is the palette
+those pages were always supposed to be drawing. Whether it looks better on a phone is a judgement, and it
+belongs to whoever is holding one.
+
+## Test count
+
+Observed **1074** (Slice 32's run, workstation and `ci_local.sh --with-all --with-e2e`, both). Predicted
+**1076** after two new `[Fact]` methods in `HandheldLayoutContractTests`. Arithmetic, not an observation:
+nothing here was compiled or run. The §16.3 subtotal stays at 16 — scenario 16 walks six surfaces instead
+of four, which is a longer scenario rather than another one.
+
+Slice 32's prediction was 1074 from 1073 and 1074 is what the run reported, which is two in a row.
+
+## Still open
+
+**Stage 1b's second half** — `TableDisplays.razor` and `ManageSitting.razor` still carry the retired table
+vocabulary, and `.chip` / `.visually-hidden` are still declared inline by `ManageMenuItem`, `ManagePerson`
+and `ManageTable`. Extending `SharedSelectorPrefixes` to cover both is part of emptying them, not a
+tidy-up afterwards (F-46). Each converted page adds a line to `HandheldAdministrationPaths` and loses one
+from `StillExpectedToCarryRetiredTableVocabulary`, in the same commit.
+
+**The redundant `var(--declared, #literal)` fallbacks** — over a hundred, across sixteen components. A
+*should* rather than a *must*, removed per block as Stage 1b empties them.
+
+**A CI job that runs the canonical stack on the canonical engine.** Ninth consecutive slice.
+
+**Stage 2's boundary**, corrected in the plan and not yet built. One number moves again:
+`CreateMenuItemAsync` drives the real create-item form in **six** of sixteen scenarios, unchanged by this
+slice — the handheld barrier still needs its menu row, and the two surfaces added here need no menu item.
+
+**Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive can contain (F-42).

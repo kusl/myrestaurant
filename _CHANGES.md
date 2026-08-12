@@ -1,142 +1,134 @@
-# M6 Slice 32 — the barrier F-59 would have failed, and the reason it took two slices (F-62)
+# M6 Slice 33 — Stage 1b's first half, and two rules that were true and unenforced (F-63, F-64)
 
 Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-32-handheld-reachability-barrier.tar.gz
-git add tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs
+tar -xzf m6-slice-33-explorers-breakpoint-and-palette.tar.gz
 git status
 ```
 
 **Files to DELETE: none.**
 
-**`git add` is required** for the one new file above — `scripts/check_tree.sh` enumerates with
-`git ls-files`, so an untracked file is a file no gate looks at.
+**No `git add` is required.** Every file in this archive already exists and is tracked — there are no new
+files in this slice, which is the first time that has been true since Slice 24.
 
 ---
 
 ## What this slice is
 
-Slice 30 fixed F-59, wrote §11.12, and made its *structure* executable. It also recorded, in three
-places, the one assertion it deliberately did not make: that a control is **reachable** inside a 375px
-viewport. That is the assertion F-59 would have failed, and it is the only one that would have.
+`EventExplorer.razor` and `HiddenRecords.razor` join §11.12's shared vocabulary. They were the last two
+pages carrying a hand-rolled copy of §11.4's row of area links, and the only two carrying a filter form, so
+they went together rather than in size order. §16.3 scenario 16 goes from four surfaces to six.
 
-This slice makes it. §16.3 gains a sixteenth scenario, and it is the first in the matrix whose subject is
-not a flow.
+Two findings came out of doing it, and neither was in the work:
 
----
-
-## F-62 — the deferral rested on a fact the tree contradicts
-
-The reason recorded in Slice 30, verbatim:
-
-> the fifteen §16.3 scenarios all run in one default context, and giving one of them a second viewport is
-> either a second browser context per run or a resize that every subsequent scenario inherits
-
-`RestaurantHarness` holds one **browser**. Each scenario calls `StartInstanceAsync` → `StartAsync` →
-`browser.NewContextAsync(...)` and gets a context of its own; `OpenIsolatedPageAsync` mints further ones
-on request. A viewport belongs to a context. There was nothing to share and nothing to inherit — and
-`RestaurantInstance`'s class summary has carried a paragraph headed *why more than one browser context*
-since Slice 2.
-
-**What makes it a finding is the propagation.** The sentence was written once while planning, and by the
-close of that slice the same claim was in S§16.4, in F-59's ledger row and in the plan. Three documents
-asserting a property of a file none of them had read. F-50's shape, applied to something that was *never*
-true rather than to something that stopped being true — which is the worse direction, because there is no
-moment at which it became wrong for a reader to notice.
+- **F-63** — §11.12's *exactly one breakpoint* is a rule about the tree and was asserted about `app.css`
+  alone, while the same section grants twenty-one components an inline `<style>`. No component had a
+  second breakpoint, so the rule was true and unenforced. Found by needing to write one.
+- **F-64** — five CSS custom properties (`--muted-foreground`, `--rule`, `--surface-sunken`,
+  `--chip-background`, `--chip-foreground`) are read **fifty-five times across eight components** and
+  declared nowhere. An undeclared property in CSS renders its fallback in silence, so eight surfaces have
+  been drawing `#666` greys and `#e5e5e5` hairlines while the rest of the application draws `--ink-soft`
+  and `--hairline`.
 
 ---
 
-## The design decision to veto, if you want to
+## The decisions to veto, if you want to
 
-**The stage order is swapped.** `docs/MENU_AND_HANDHELD_PLAN.md` said Stage 1b (converting the four
-remaining surfaces) was next and 1c (this barrier) was open. This ships 1c.
+**1. F-64 is fixed across all eight files, not just the two this slice was already rewriting.**
 
-The argument: 1b is roughly 2,400 further lines of Razor, and converting it before the barrier exists
-means converting it exactly the way the four pages in F-59 were written — by hand, with nothing in the
-tree able to decide whether the result is reachable. Building the barrier first also retro-proves Slice
-30's four pages, which nothing until now could.
+The alternative was an F-47-style expected-holders list and a fix next slice. The argument against it: the
+repair is a name substitution inside `<style>` blocks — no markup moves, so it cannot break a Razor compile
+— and a list whose only purpose is to defer a substitution is a list this project has ruled against
+writing. It was applied programmatically and diff-verified: **110 changed lines, every one a `var(--…)`
+line**.
 
-**To revert:** the plan's Stage 1c section is struck through with the reasoning above it; restore it to
-`**open**`, drop the four paths from `HandheldAdministrationPaths`, and the scenario stands as a barrier
-with nothing to measure. Nothing else in the slice depends on the ordering.
+The cost is that `ManageSitting.razor` and `ManagePerson.razor` are Stage 1b's next conversion targets and
+get touched twice. Under full-file delivery that costs nothing but your review time.
+
+**To revert:** restore those six files from `HEAD` and add a `StillExpectedToReadUndeclaredProperties` list
+to the sixth fact in `HandheldLayoutContractTests`.
+
+**2. `/administration/hidden-records` is in the barrier and is measured empty.**
+
+Putting a row on it needs a guest, a token, a join, an order and a close — scenario 11's arrangement.
+Sittings has been measured on the same terms since the barrier was written, and the scenario states it
+rather than glossing it. Its filter submit *is* measured, so the surface is not contributing nothing.
+
+**To revert:** delete one line from `HandheldAdministrationPaths` and drop `MinimumControlsMeasured` from 8
+to 7.
+
+**3. Eight pages will look slightly different.** `--ink-soft` `#55636f` is cooler and darker than `#666`;
+`--hairline` `#e2e6ec` is lighter and cooler than `#e5e5e5`. That is the palette those pages were always
+supposed to be drawing, but it is a visible change and it is a judgement, so it is yours.
 
 ---
 
-## Files
+## Files in this archive
 
-| Path | What changed |
+| File | Why |
 |---|---|
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs` | **new** — the measurement: one `EvaluateAsync` round trip returning document overflow, every action's box, every control's height |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs` | `HandheldViewportWidth`/`Height` (375×667), a shared `ContextOptions(baseUrl, handheld)` factory, the same option on `OpenIsolatedPageAsync` |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs` | `handheld` parameter on `StartInstanceAsync`, and the F-62 paragraph beside it |
-| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | §16.3 scenario 16 and its fixtures |
-| `tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerImageReferenceContractTests.cs` | one doc-comment sentence that counted the scenarios |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.17** — §11.12's close, §16.3's sixteenth scenario, §16.4's barrier paragraphs, §19's M7, F-59 corrected, **F-62** added, changelog |
-| `docs/DOCUMENTATION_REVIEW.md` | **F-62**; F-59's closing sentence corrected in place |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 1c struck through; Stage 2's scenario count and Stage 3's scenario number corrected |
-| `docs/BUILD_PROGRESS.md` | Slice 32 entry (complete file) |
-| `docs/OPERATIONS.md` | §14's gate table: sixteen scenarios |
-| `README.md` | four passages that counted the scenarios, and scenario 16's row in the matrix table |
-| `.github/workflows/ci.yml` | one comment that counted the scenarios |
+| `src/…/wwwroot/app.css` | shared `.filter-*` vocabulary; `--chip-surface` declared; F-63 rule in the header |
+| `src/…/Administration/EventExplorer.razor` | `.page-head` + `AdministrationAreaLinks`, shared filter, `margin-left: auto` gone |
+| `src/…/Administration/HiddenRecords.razor` | same, plus the money-alignment ruling recorded at the rule |
+| `src/…/Administration/ManageMenuItem.razor` | F-64 only — `var()` names, no markup change |
+| `src/…/Administration/ManagePerson.razor` | F-64 only |
+| `src/…/Administration/ManageSitting.razor` | F-64 only |
+| `src/…/Administration/ManageTable.razor` | F-64 only |
+| `src/…/Administration/TableJoinCode.razor` | F-64 only |
+| `src/…/Counter/CounterJoinCode.razor` | F-64 only |
+| `tests/…/Components/HandheldLayoutContractTests.cs` | four facts → six; F-63 and F-64 made executable |
+| `tests/…/EndToEnd.Tests/Harness/HandheldReach.cs` | reach selector covers `.filter-actions` |
+| `tests/…/EndToEnd.Tests/Harness/HiddenRecordJourneys.cs` | **selectors repointed — without this, scenario 11 fails** |
+| `tests/…/EndToEnd.Tests/EndToEndScenarios.cs` | six surfaces, floor 8, comments reconciled |
+| `docs/TECHNICAL_SPECIFICATION.md` | v1.18 — §11.12, §16.3, §16.4, Appendix A F-63 + F-64 |
+| `docs/DOCUMENTATION_REVIEW.md` | F-63 and F-64 rows, status line, closing note on adjacency |
+| `docs/BUILD_PROGRESS.md` | Slice 33 entry (complete file) |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 1b half struck through; 1c's numbers reconciled |
+| `README.md` | scenario 16 row, M6 and M7 paragraphs |
 | `_CHANGES.md` | this file |
 
 ---
 
-## The three assertions
+## The red suite this nearly shipped
 
-Each against the viewport, one pixel of tolerance:
-
-1. **No surface is wider than its own viewport** — `documentElement.scrollWidth` vs `clientWidth`. F-59's
-   mechanism as a number.
-2. **Every action lies inside it** — `getBoundingClientRect()` on `.record-actions` and
-   `.page-head-action` controls. The finding itself, per element.
-3. **Every control is ≥ 44px tall** — the same rects, plus the area-link pills.
-
-### Three properties of it are rulings
-
-**The viewport is asserted first**, read from the document rather than from the option that set it: at
-Playwright's default 1280 everything else passes and means nothing (F-41). It is a *ceiling* with twenty
-pixels of allowance under it, because `clientWidth` excludes a classic scrollbar and headless Chromium
-draws one here — an equality assertion would have failed on a correct tree on the first run.
-
-**The count of measured controls is asserted.** Seven expected; floor of six. A renamed `.record-actions`
-leaves three, a renamed `.page-head-action` leaves four.
-
-**The widest element is collected and may never fail a run.** `.page-head-areas` is a horizontally
-scrolled strip by design and its pills extend past the right edge. The walk skips anything inside a
-scroller and even then only writes the sentence that explains a failure.
+`HiddenRecordJourneys.cs` pins `form.hidden-filter #filter-username`, `form.hidden-filter
+button[type='submit']`, `form.hidden-filter .hidden-filter-actions a` and `p.hidden-count`. Renaming those
+classes without that file is scenario 11 failing on a page that is correct. Repointed. `p.hidden-none` is
+kept exactly as it was, because it is the harness's handle rather than a style, and that reason is now
+written where the class is.
 
 ---
 
-## One fixture that is doing real work
+## What to run
 
-The counter account's display name is `Anastasia Featherstonehaughwolstenholmeworthington`. A single
-token longer than the card is wide is the one input that can push a record card past the viewport, and
-§11.12 relies on `overflow-wrap: anywhere`. **The keyword is load-bearing:** `break-word` breaks the line
-but leaves min-content at the token's length, so the page still scrolls sideways; only `anywhere` shrinks
-min-content. `app.css` says `anywhere`. Without this fixture the scenario asserts that the stylesheet
-contains the right word; with it, that the word does the right thing.
+```
+bash scripts/check_tree.sh
+bash scripts/ci_local.sh --with-all --with-e2e
+```
+
+**Expect:** 8 numbered gates, same order as Slice 32. **1076 tests, 0 failed** (was 1074 — two new
+`[Fact]` methods; arithmetic, not an observation). **16 of 16** §16.3 scenarios, with scenario 16 now
+walking six surfaces and measuring nine controls.
+
+The authored-text file count in gate 1 does not move: no new files.
+
+If scenario 16 fails, the message names the widest element outside a scroll container on the surface that
+overflowed — that is the diagnosis, not just the symptom.
 
 ---
 
-## Verification
+## Verified from here, and what was not
 
-- **The embedded JavaScript ran.** Extracted from the raw string literal, parsed by `node --check`, then
-  executed against a hand-built fake DOM. A pill 100px past the right edge inside an `overflow-x: auto`
-  strip was correctly **ignored**; a rogue element outside any scroller was correctly **named**.
-- **Balance, CS1620 and CS4007 scans** on all four C# files with an untouched sibling as a control: clean,
-  and each scan proven sensitive by its own regression.
-- **Every `StartInstanceAsync` call site audited** — fifteen, all naming `cancellationToken:` — before the
-  parameter was inserted before it.
-- **CA1861 caught during authoring**: the selector pair was an array literal at a call site, which is an
-  error under `ContinuousIntegrationBuild`. It is a `static readonly` field now.
-- **`SpecificationVersionTests` ported and run**: header 1.17 against newest entry 1.17, descending.
-- **Byte hygiene** on every delivered file.
+**All six contract facts were ported to Python and executed.** Against this tree: six pass. Against the
+tree as it was: five fail. **Eight planted regressions, eight caught** — one per assertion, including a
+`max-width` query planted in a component (F-63's own regression) and `var(--text-quiet, #666)` planted in a
+converted page (F-64's).
 
-**Not verified: nothing compiled, and no browser rendered anything.** The Chromium download is blocked by
-the authoring sandbox's egress allow-list. That these four pages *pass* the barrier rests on reading
-`app.css`, not on a measurement — the first run on the workstation is what proves it, and a red result
-there names the widest element outside a scroll container, which is the diagnosis.
+Balance, CS1620, CS4007, Razor tag-tree and byte hygiene: clean on all thirteen files, each check proven
+sensitive, with untouched siblings as controls. `SpecificationVersionTests` ported and run — header 1.18
+against newest entry 1.18.
 
-**Predicted test count: 1074**, from 1073, one new `[Fact]`. Arithmetic, not an observation.
+**Nothing compiled and no browser rendered anything.** Thirteen files edited, `dotnet build` run on none.
+The Razor markup changes are small and structural; the CSS claims rest on reading `app.css` line by line.
+The first run on the workstation is what proves them.

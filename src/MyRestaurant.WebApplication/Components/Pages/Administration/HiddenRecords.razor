@@ -39,19 +39,13 @@
 
 <PageTitle>Administration — hidden records</PageTitle>
 
-<section id="hidden-records-surface" class="panel">
-    <div class="admin-header">
+<section id="hidden-records-surface" class="panel panel-wide">
+    <div class="page-head">
         <div>
             <p class="eyebrow">Administration</p>
             <h1>Hidden records</h1>
         </div>
-        <div class="admin-header-actions">
-            <a class="button-secondary" href="/administration">People</a>
-            <a class="button-secondary" href="/administration/tables">Tables</a>
-            <a class="button-secondary" href="/administration/menu">Menu</a>
-            <a class="button-secondary" href="/administration/sittings">Sittings</a>
-            <a class="button-secondary" href="/administration/events">Events</a>
-        </div>
+        <AdministrationAreaLinks Current="AdministrationArea.HiddenRecords" />
     </div>
 
     <p class="lede">
@@ -71,7 +65,7 @@
     }
 
     @* ---- the filter (§6.8: username, date range, table) ------------------------------------------- *@
-    <form class="hidden-filter" method="get" action="/administration/hidden-records">
+    <form class="filter-form" method="get" action="/administration/hidden-records">
         <div class="form-field">
             <label for="filter-username">Username</label>
             <input id="filter-username" name="username" type="search" autocomplete="off"
@@ -101,7 +95,7 @@
             </select>
         </div>
 
-        <div class="hidden-filter-actions">
+        <div class="filter-actions">
             <button type="submit" class="button-primary">Narrow the list</button>
             @if (_filter.IsNarrowed)
             {
@@ -118,11 +112,13 @@
     @* ---- the list ---------------------------------------------------------------------------------- *@
     @if (_hidden is null)
     {
-        <p class="lede">Loading…</p>
+        <p class="record-empty">Loading…</p>
     }
     else if (_hidden.Count == 0)
     {
-        <p class="lede hidden-none">
+        @* `hidden-none` is kept: HiddenRecordJourneys reads this element to prove the list is empty
+           after an unhide, and the class is that assertion's handle rather than a style. *@
+        <p class="record-empty hidden-none">
             @(_filter.IsNarrowed
                 ? "Nothing hidden matches that. Widen the filter, or show everything."
                 : "Nothing is hidden anywhere in the restaurant.")
@@ -130,7 +126,7 @@
     }
     else
     {
-        <p class="hidden-count">@CountSentence(_hidden.Count)</p>
+        <p class="filter-count">@CountSentence(_hidden.Count)</p>
 
         @foreach (HiddenOrderSummary summary in _hidden)
         {
@@ -367,60 +363,29 @@
     <p><a href="/administration">Back to people</a></p>
 </section>
 
-@* Namespaced under .hidden-*, matching .admin-people, .admin-menu and .admin-sittings. App.razor links
-   the static wwwroot/app.css rather than the component-scoped bundle, so component CSS isolation is not
-   active here; these live inline to avoid editing the shared stylesheet for one screen. *@
+@* What is left after Stage 1b: one expandable record and the three logs inside it, read by this page
+   and nothing else. The page head, the filter, the count line and the empty state are the shared §11.12
+   vocabulary in app.css now, and the twelve lines of `.hidden-filter` that used to be here were the
+   first of two inline copies of one shape.
+
+   App.razor links the static wwwroot/app.css rather than the component-scoped bundle, so component CSS
+   isolation is not active here; a rule exactly one page reads may stay inline, and a width media query
+   may not, in any component, ever (§11.12, F-63).
+
+   Every `var()` below names a property `:root` actually declares. Nine rules in this file used to name
+   `--muted-foreground` or `--surface-sunken`, which nothing has ever declared, so nine rules rendered
+   their literal fallback instead and this page's greys were a different grey from every other page's
+   (F-64). *@
 <style>
-    .admin-header {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 1rem;
-        align-items: flex-start;
-        justify-content: space-between;
-    }
-
-    .admin-header-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-
-    .hidden-filter {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-        align-items: flex-end;
-        margin: 1.1rem 0 0;
-        padding: 0.75rem 0.85rem;
-        border: 1px solid var(--hairline, #e2e6ec);
-        border-radius: 0.5rem;
-    }
-
-    .hidden-filter .form-field {
-        margin: 0;
-    }
-
-    .hidden-filter-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-
-    .hidden-count {
-        margin: 1rem 0 0;
-        font-size: 0.9rem;
-        color: var(--muted-foreground, #666);
-    }
-
     .hidden-record {
         margin: 0.75rem 0 0;
         padding: 0.8rem 0.9rem;
-        border: 1px solid var(--hairline, #e2e6ec);
+        border: 1px solid var(--hairline);
         border-radius: 0.6rem;
     }
 
     .hidden-record-open {
-        border-color: var(--accent, #0f766e);
+        border-color: var(--accent);
     }
 
     .hidden-record-header {
@@ -439,13 +404,18 @@
     .hidden-record-meta {
         margin: 0.15rem 0 0;
         font-size: 0.85rem;
-        color: var(--muted-foreground, #666);
+        color: var(--ink-soft);
     }
 
     .hidden-username {
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     }
 
+    /*
+     * Money, and §11.12's right-hand-column rule deliberately does not reach it: that rule is about the
+     * affordance an operator presses, and this is a number. The header wraps, so on a handset this block
+     * is its own line with the amount at the card's right edge, which is where a total belongs.
+     */
     .hidden-record-money {
         text-align: right;
     }
@@ -459,7 +429,7 @@
     .hidden-record-note {
         display: block;
         font-size: 0.8rem;
-        color: var(--muted-foreground, #666);
+        color: var(--ink-soft);
         font-variant-numeric: tabular-nums;
     }
 
@@ -467,7 +437,7 @@
         display: block;
         font-size: 0.8rem;
         font-weight: 700;
-        color: #b45309;
+        color: var(--caution-ink);
     }
 
     .hidden-record-actions {
@@ -477,7 +447,7 @@
 
     .hidden-record-separator {
         margin: 0 0.35rem;
-        color: var(--muted-foreground, #999);
+        color: var(--ink-soft);
     }
 
     .hidden-heading {
@@ -485,7 +455,7 @@
         font-size: 0.95rem;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        color: var(--muted-foreground, #666);
+        color: var(--ink-soft);
     }
 
     .hidden-facts {
@@ -499,7 +469,7 @@
         font-size: 0.75rem;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        color: var(--muted-foreground, #666);
+        color: var(--ink-soft);
     }
 
     .hidden-facts dd {
@@ -523,7 +493,7 @@
 
     .hidden-event-sequence {
         font-variant-numeric: tabular-nums;
-        color: var(--muted-foreground, #999);
+        color: var(--ink-soft);
     }
 
     .hidden-event-type {
@@ -542,20 +512,20 @@
     .hidden-muted {
         margin: 0.3rem 0 0;
         font-size: 0.85rem;
-        color: var(--muted-foreground, #666);
+        color: var(--ink-soft);
     }
 
     .hidden-muted-inline {
         font-size: 0.85rem;
-        color: var(--muted-foreground, #666);
+        color: var(--ink-soft);
     }
 
     .hidden-unhide {
         margin: 1.1rem 0 0;
         padding: 0.75rem 0.85rem;
         border-radius: 0.5rem;
-        border: 1px solid var(--hairline, #e2e6ec);
-        background: var(--surface-sunken, #f7f9fb);
+        border: 1px solid var(--hairline);
+        background: var(--surface);
     }
 
     .hidden-unhide p {

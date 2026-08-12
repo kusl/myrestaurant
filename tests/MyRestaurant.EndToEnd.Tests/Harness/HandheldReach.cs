@@ -119,11 +119,24 @@ internal static class HandheldReach
     internal const double MinimumTouchTargetPixels = 44.0;
 
     /// <summary>
-    /// The controls that must be inside the viewport: a record row's way in, and the page's own primary
-    /// action. Both are the thing an operator opened the page in order to press.
+    /// The controls that must be inside the viewport: a record row's way in, the page's own primary
+    /// action, and a filter's submit. All three are the thing an operator opened the page in order to
+    /// press — which is the whole membership rule, and the reason <c>.filter-actions</c> joined it in M6
+    /// Slice 33 rather than being left out as "just a form". On <c>/administration/events</c> and
+    /// <c>/administration/hidden-records</c> there is no record action and no page-head action at all:
+    /// §11.4 makes both read-only, so the filter is the only control on the surface, and a barrier that
+    /// skipped it would visit two pages and measure nothing on either (F-41).
+    ///
+    /// <para>The stream checkboxes inside the filter are deliberately <em>not</em> here. A checkbox is
+    /// 1.35rem by declaration — <c>.form-field input[type="checkbox"]</c> sets <c>min-height: 0</c> on
+    /// purpose — so the thing a thumb finds is the <c>.filter-choice</c> row around it, and asserting a
+    /// 44px box on the input itself would report a finding on a correct tree. The row carries the
+    /// touch-target height in app.css; what is untested is that it does, which is the same honest gap
+    /// <c>.record-tick</c> has.</para>
     /// </summary>
     private const string ReachSelector =
-        ".record-actions a, .record-actions button, .page-head-action a, .page-head-action button";
+        ".record-actions a, .record-actions button, .page-head-action a, .page-head-action button,"
+            + " .filter-actions a, .filter-actions button";
 
     /// <summary>
     /// Measured for height only. The area links are a horizontally scrolled strip by design (§11.12,

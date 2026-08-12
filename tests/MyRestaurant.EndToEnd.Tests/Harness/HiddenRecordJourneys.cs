@@ -113,18 +113,25 @@ internal static class HiddenRecordJourneys
     private const string ExpandLinkSelector = "a:has-text('Open the complete record')";
     private const string SittingLinkSelector = "a:has-text('The whole sitting')";
 
-    private const string FilterUsernameSelector = SurfaceSelector + " form.hidden-filter #filter-username";
+    /// <summary>
+    /// The filter, named for the shared §11.12 vocabulary as of M6 Slice 33. It was
+    /// <c>form.hidden-filter</c> with a <c>.hidden-filter-actions</c> block inside it; both were one of
+    /// two inline copies of the same twelve lines, and both now come from <c>app.css</c> under
+    /// <c>.filter-form</c> and <c>.filter-actions</c>. The scoping root is unchanged, so these three
+    /// selectors still cannot match anything on another surface.
+    /// </summary>
+    private const string FilterUsernameSelector = SurfaceSelector + " form.filter-form #filter-username";
     private const string FilterSubmitSelector =
-        SurfaceSelector + " form.hidden-filter button[type='submit']";
+        SurfaceSelector + " form.filter-form button[type='submit']";
 
     /// <summary>
     /// §11.4's escape from a narrowed list. Rendered from <c>_filter.IsNarrowed</c> and from nothing else,
     /// which makes its presence the surface's own answer to "is this list filtered".
     /// </summary>
     private const string ShowEverythingSelector =
-        SurfaceSelector + " form.hidden-filter .hidden-filter-actions a";
+        SurfaceSelector + " form.filter-form .filter-actions a";
 
-    private const string CountSelector = SurfaceSelector + " p.hidden-count";
+    private const string CountSelector = SurfaceSelector + " p.filter-count";
 
     /// <summary>
     /// §11.4's empty sentence, given a class of its own as of M6 Slice 14. It carries two different

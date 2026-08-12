@@ -25,25 +25,28 @@
    URL-building live in EventExplorerQuery rather than here, which is what lets both be tested without a
    browser or a container — the thing HiddenRecords' identical inline logic cannot be.
 
+   §11.12, Stage 1b: the page head and the filter are the shared vocabulary now (`.page-head`,
+   `AdministrationAreaLinks`, `.filter-form`, `.filter-actions` — all in app.css), and the five
+   hand-rolled area links that used to sit in a `.admin-header-actions` div are gone. This page was one
+   of the last two carrying that copy: each of the six copies omitted its own page, so the row was a
+   different row on every screen and no page was reachable from every other. The `.event-*` rules that
+   remain are read by this page alone — a badge palette and an event row — which is what an inline
+   <style> is for here. It contains no media query, and cannot: §11.12's one breakpoint is a rule about
+   the tree rather than about app.css, and for a slice it was asserted only about app.css (F-63).
+
    §6.8's order_visibility_event is deliberately not a fourth stream: §11.4 names three, and gives
    visibility its own screen at /administration/hidden-records, where its log sits beside the order it is
    about and next to the Unhide button that is its only counterpart. *@
 
 <PageTitle>Administration — events</PageTitle>
 
-<section class="panel">
-    <div class="admin-header">
+<section class="panel panel-wide">
+    <div class="page-head">
         <div>
             <p class="eyebrow">Administration</p>
             <h1>Events</h1>
         </div>
-        <div class="admin-header-actions">
-            <a class="button-secondary" href="/administration">People</a>
-            <a class="button-secondary" href="/administration/tables">Tables</a>
-            <a class="button-secondary" href="/administration/menu">Menu</a>
-            <a class="button-secondary" href="/administration/sittings">Sittings</a>
-            <a class="button-secondary" href="/administration/hidden-records">Hidden records</a>
-        </div>
+        <AdministrationAreaLinks Current="AdministrationArea.Events" />
     </div>
 
     <p class="lede">
@@ -59,27 +62,29 @@
     }
 
     @* ---- the filter (§11.4: subject, actor, type, time) --------------------------------------------- *@
-    <form class="event-filter" method="get" action="@EventExplorerQuery.BasePath">
-        <fieldset class="event-streams">
+    <form class="filter-form" method="get" action="@EventExplorerQuery.BasePath">
+        <fieldset class="filter-fieldset">
             <legend>Streams</legend>
 
-            <label class="event-stream-choice">
-                <input type="checkbox" name="@EventExplorerQuery.StreamField"
-                       value="@EventStream.Security" checked="@_query.IncludeSecurityEvents" />
-                Security
-            </label>
+            <div class="filter-choices">
+                <label class="filter-choice">
+                    <input type="checkbox" name="@EventExplorerQuery.StreamField"
+                           value="@EventStream.Security" checked="@_query.IncludeSecurityEvents" />
+                    Security
+                </label>
 
-            <label class="event-stream-choice">
-                <input type="checkbox" name="@EventExplorerQuery.StreamField"
-                       value="@EventStream.Order" checked="@_query.IncludeOrderEvents" />
-                Orders
-            </label>
+                <label class="filter-choice">
+                    <input type="checkbox" name="@EventExplorerQuery.StreamField"
+                           value="@EventStream.Order" checked="@_query.IncludeOrderEvents" />
+                    Orders
+                </label>
 
-            <label class="event-stream-choice">
-                <input type="checkbox" name="@EventExplorerQuery.StreamField"
-                       value="@EventStream.Menu" checked="@_query.IncludeMenuEvents" />
-                Menu
-            </label>
+                <label class="filter-choice">
+                    <input type="checkbox" name="@EventExplorerQuery.StreamField"
+                           value="@EventStream.Menu" checked="@_query.IncludeMenuEvents" />
+                    Menu
+                </label>
+            </div>
         </fieldset>
 
         <div class="form-field">
@@ -138,7 +143,7 @@
             <input id="filter-to" name="@EventExplorerQuery.ToField" type="date" value="@_query.To" />
         </div>
 
-        <div class="event-filter-actions">
+        <div class="filter-actions">
             <button type="submit" class="button-primary">Narrow the list</button>
             @if (_query.IsNarrowed)
             {
@@ -150,11 +155,11 @@
     @* ---- the list ------------------------------------------------------------------------------------ *@
     @if (_events is null)
     {
-        <p class="lede">Loading…</p>
+        <p class="record-empty">Loading…</p>
     }
     else if (_events.Count == 0)
     {
-        <p class="lede">
+        <p class="record-empty">
             @(_query.IsNarrowed
                 ? "Nothing matches that. Widen the filter, or show everything."
                 : "Nothing has happened yet — no sign-ins, no orders, no menu changes.")
@@ -162,7 +167,7 @@
     }
     else
     {
-        <p class="event-count">@CountSentence(_events.Count)</p>
+        <p class="filter-count">@CountSentence(_events.Count)</p>
 
         <ol class="event-list">
             @foreach (ExplorerEvent entry in _events)
@@ -245,75 +250,19 @@
     <p><a href="/administration">Back to people</a></p>
 </section>
 
-@* Namespaced under .event-*, matching .admin-people, .admin-menu, .admin-sittings and .hidden-*.
+@* What is left after Stage 1b: a badge palette and an event row, read by this page and nothing else.
+   The page head, the filter, the count line and the empty state are the shared §11.12 vocabulary in
+   app.css now, and the twelve lines of `.event-filter` that used to be here were the second of two
+   inline copies of one shape.
+
    App.razor links the static wwwroot/app.css rather than the component-scoped bundle, so component CSS
-   isolation is not active here; these live inline to avoid editing the shared stylesheet for one screen. *@
+   isolation is not active here; a rule exactly one page reads may stay inline, and a width media query
+   may not, in any component, ever (§11.12, F-63).
+
+   `--ink-soft` rather than `--muted-foreground`: the latter was never declared in :root, so every rule
+   here that named it was silently falling through to its literal fallback and this page's greys were a
+   different grey from every other page's. *@
 <style>
-    .admin-header {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 1rem;
-        align-items: flex-start;
-        justify-content: space-between;
-    }
-
-    .admin-header-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-
-    .event-filter {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-        align-items: flex-end;
-        margin: 1.1rem 0 0;
-        padding: 0.75rem 0.85rem;
-        border: 1px solid var(--hairline, #e2e6ec);
-        border-radius: 0.5rem;
-    }
-
-    .event-filter .form-field {
-        margin: 0;
-    }
-
-    .event-streams {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.15rem 0.9rem;
-        margin: 0;
-        padding: 0.35rem 0.6rem 0.5rem;
-        border: 1px solid var(--hairline, #e2e6ec);
-        border-radius: 0.4rem;
-    }
-
-    .event-streams legend {
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: var(--muted-foreground, #666);
-    }
-
-    .event-stream-choice {
-        display: inline-flex;
-        gap: 0.3rem;
-        align-items: center;
-        font-size: 0.9rem;
-    }
-
-    .event-filter-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-
-    .event-count {
-        margin: 1rem 0 0;
-        font-size: 0.9rem;
-        color: var(--muted-foreground, #666);
-    }
-
     .event-list {
         list-style: none;
         margin: 0.5rem 0 0;
@@ -324,7 +273,7 @@
 
     .event-row {
         padding: 0.6rem 0.75rem;
-        border: 1px solid var(--hairline, #e2e6ec);
+        border: 1px solid var(--hairline);
         border-radius: 0.5rem;
     }
 
@@ -364,17 +313,24 @@
         font-weight: 600;
     }
 
+    /*
+     * No `margin-left: auto`, which is what this rule used to open with. Inside a wrapping flex row
+     * that pushes the time to the right-hand edge of whichever line it lands on, so on a handset it
+     * ended up alone on its own line, far from the event it timestamps — the wide layout taken as the
+     * default, which is the direction §11.12 exists to reverse. It reads correctly at every width as
+     * the third thing on the line, and needs no breakpoint to do it, which is the better answer than
+     * moving a rule one page reads into the shared query (F-63).
+     */
     .event-when {
-        margin-left: auto;
         font-size: 0.8rem;
         font-variant-numeric: tabular-nums;
-        color: var(--muted-foreground, #666);
+        color: var(--ink-soft);
     }
 
     .event-meta {
         margin: 0.2rem 0 0;
         font-size: 0.85rem;
-        color: var(--muted-foreground, #666);
+        color: var(--ink-soft);
     }
 
     .event-subject-detail {
@@ -383,7 +339,7 @@
 
     .event-separator {
         margin: 0 0.15rem;
-        color: var(--muted-foreground, #999);
+        color: var(--ink-soft);
     }
 
     .event-narrow {

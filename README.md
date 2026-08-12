@@ -170,7 +170,7 @@ All sixteen are implemented:
 | 13 | a passkey sign-in of a TOTP-enrolled person is not challenged for a code |
 | 14 | the join-token window arithmetic as a guest experiences it |
 | 15 | rotating a join secret kills every outstanding QR while the paired display recovers by itself |
-| 16 | the four administration indexes at 375×667: nothing scrolls sideways, every row's action is on the screen, every control is 44px tall |
+| 16 | six administration surfaces at 375×667: nothing scrolls sideways, every row's action and every filter's submit is on the screen, every control is 44px tall |
 
 Scenario 3 is the one that earns its runtime. §16.3 words it *"registers with passkey (slowly — grant
 outlives token)"*, and that parenthetical is the entire reason the §4.4 join grant exists. The
@@ -515,7 +515,7 @@ scripts/ci_local.sh --with-all
   explorer, hide/unhide, and post-close corrective events.
 - ✔ **M6** — hardening: the CI pipeline and publish-on-tag; the Playwright harness and all sixteen
   §16.3 scenarios against a real browser, the last of which measures the administration surfaces on a
-  375px handset (F-59, F-62); guest self-registration at `/register` (F-37); the
+  375px handset (F-59, F-62, F-63); guest self-registration at `/register` (F-37); the
   backup/restore drill, rehearsed by CI on every push rather than written down as a procedure
   (F-38); and the close-out that stamped the build and shipped the source offer (F-39).
 
@@ -527,10 +527,12 @@ one the documentation denied. `SECURITY.md` and `scripts/check_repository.sh` ar
 
 - ⧗ **M7** — the menu, and the screen it is read on. The first work in this project that came from
   somebody using it rather than from a document. **Stage 1** is the handheld layout contract (§11.12):
-  every surface laid out for a phone first and widened by exactly one breakpoint, 44-pixel touch
-  targets, a 16-pixel floor under every text field so iOS Safari does not zoom the page and leave it
-  zoomed, and administration indexes that are lists of cards on a narrow screen instead of wide tables
-  whose only affordance is off the right-hand edge (F-59). **Stage 2** is the schema — menu sections,
+  every surface laid out for a phone first and widened by exactly one breakpoint — one, in the whole
+  tree, which is a rule that was asserted about a single file until F-63 — 44-pixel touch targets, a
+  16-pixel floor under every text field so iOS Safari does not zoom the page and leave it zoomed, one
+  declared palette rather than five colour names nothing declared (F-64), and administration surfaces
+  that are lists of cards on a narrow screen instead of wide tables whose only affordance is off the
+  right-hand edge (F-59). **Stage 2** is the schema — menu sections,
   item descriptions, and explicit ordering on both (ADR-0014). **Stage 3** is the surfaces that read
   it, including a guest menu that is a grouped list of described items rather than one `<select>` with
   sixty things in it. **Stages 4–6** are images, likes, and comments — with comments recorded as *not

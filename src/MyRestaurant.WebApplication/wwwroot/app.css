@@ -14,6 +14,14 @@
  * layout that works on the screen this software is actually used from. The previous direction was
  * the other one, and it produced F-59: an administration row whose only affordance sat off the
  * right-hand edge of a 375px screen, reachable only by scrolling sideways.
+ *
+ * AND THIS FILE IS THE ONLY PLACE A WIDTH MAY APPEAR (F-63). "Exactly one breakpoint" is a rule
+ * about the tree, not about this file. A component may keep an inline <style> for rules nobody else
+ * reads — that is this project's standing arrangement, since App.razor links this stylesheet rather
+ * than the scoped bundle — but a width media query inside one is a second breakpoint whatever file
+ * it is written in, and for a slice it was a second breakpoint no gate could see: the assertion read
+ * this file and nothing else. A page whose wide layout differs from its narrow one puts the
+ * difference in the one query at the bottom of this file, beside every other page's.
  */
 
 :root {
@@ -31,6 +39,13 @@
     --ok-surface: #e6f4ea;
     --ok-ink: #1e7a37;
     --caution-ink: #b45309;
+
+    /*
+     * A neutral chip's background. Declared rather than written into `.chip` as a literal because two
+     * pages still carry their own chip rule until Stage 1b empties them, and three copies of one hex
+     * value is how `--chip-background` came to be referenced by pages and declared by nobody (F-64).
+     */
+    --chip-surface: #eef1f5;
 
     --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-monospace: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -983,7 +998,7 @@ a:focus-visible,
     font-size: 0.8rem;
     line-height: 1.5;
     white-space: nowrap;
-    background-color: #eef1f5;
+    background-color: var(--chip-surface);
     color: var(--ink);
 }
 
@@ -1389,6 +1404,98 @@ a:focus-visible,
 }
 
 /* -----------------------------------------------------------------------------
+ * THE FILTER FORM (§11.4, §11.12)
+ *
+ * The shape both administration explorers take: a bookmarkable GET question over
+ * a log. Declared once here, replacing `.event-filter` and `.hidden-filter`,
+ * which were two inline copies of the same twelve lines — the same duplication
+ * `.admin-people` and its three siblings were, one register smaller, and caught
+ * for the same reason.
+ *
+ * Handheld first, and the direction matters here for a specific reason. The
+ * retired copies were `display: flex; flex-wrap: wrap; align-items: flex-end`
+ * with no column fallback, so on a 375px screen five fields wrapped into five
+ * rows of unequal width, each field as wide as its own content, and the submit
+ * button ended up wherever the wrap left it. A column is what a stack of fields
+ * on a phone is; the row is what there is room for above the breakpoint.
+ *
+ * The actions are a block of their own rather than the last flex child, because
+ * a submit button that has wrapped onto a line with a date field beside it is a
+ * target whose width is decided by the field. §16.3 scenario 16 measures the
+ * controls in here for exactly that reason: on these two pages the filter's
+ * submit IS what the operator opened the page to press, so it is held to the
+ * same reach and touch-target rules as a record row's action.
+ * ---------------------------------------------------------------------------*/
+
+.filter-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 1.1rem 0 0;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid var(--hairline);
+    border-radius: 0.5rem;
+}
+
+/* A field inside a filter carries no bottom margin: the flex gap is the spacing. */
+.filter-form .form-field {
+    margin: 0;
+}
+
+/*
+ * A group of checkbox options — the event explorer's three streams. `min-width: 0` so the group can
+ * shrink to the column rather than widening its parent, which is the same rule `.page-head-nav`
+ * carries and for the same reason.
+ */
+.filter-fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 0.35rem 0.75rem 0.6rem;
+    border: 1px solid var(--hairline);
+    border-radius: 0.4rem;
+}
+
+.filter-fieldset legend {
+    padding: 0 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+
+/*
+ * One option. A row rather than an inline label, and `--touch-target` tall, because the checkbox
+ * itself is 1.35rem and the thing a thumb finds is the row — the same arrangement `.record-tick`
+ * arrived at for the one administration control that charges somebody money.
+ */
+.filter-choice {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: var(--touch-target);
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+.filter-choices {
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+}
+
+/* The count-and-caveat line above a filtered list. */
+.filter-count {
+    margin: 1rem 0 0;
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+}
+
+/* -----------------------------------------------------------------------------
  * The table surface: roster, staging area, living order, party orders (§11.1).
  *
  * These live here rather than inline in the component for one concrete reason:
@@ -1701,6 +1808,28 @@ a:focus-visible,
     .form-actions {
         flex-direction: row;
         flex-wrap: wrap;
+        align-items: center;
+    }
+
+    /*
+     * The filter becomes the row it used to be unconditionally. `flex-end` so the submit button and
+     * the fields sit on one baseline, which is what the retired inline copies were reaching for and
+     * what there is room for here.
+     */
+    .filter-form {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+
+    .filter-choices {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0 0.9rem;
+    }
+
+    .filter-actions {
+        flex-direction: row;
         align-items: center;
     }
 
