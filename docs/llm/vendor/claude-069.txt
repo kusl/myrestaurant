@@ -106,3 +106,252 @@ remember to give full files for all files that need to change
 I will likely miss those bespoke scripts 
 also please remember to update all documentation as necessary 
 
+
+/
+Claude finished the response
+
+Message collapsed
+
+Audited CSS refactoring impact and verified selector safety
+Audited CSS refactoring impact and verified selector safety
+Thinking about diagnosing and fixing two failing .NET tests
+
+Analyzing test failures and identifying root causes.
+
+
+Check project files and dump size
+
+Inspect dump format
+
+Split dump into repo tree
+
+Check repo tree and mismatch file
+
+Locate trailer in mismatched file
+
+Inspect tail bytes
+
+Trim trailer and verify SHA
+
+Test candidates for SHA match
+
+Finalize file and count tree
+
+Read CSP contract tests
+Identified discrepancy between documented and actual style block counts.
+
+
+Count inline style blocks
+
+List docs
+
+Read spec header
+
+Read spec changelog tail
+Diagnosing inline style block count discrepancies and viewport overflow issues.
+
+Diagnosed style block count mismatch and viewport overflow issues.
+
+
+List administration pages
+
+Read ManagePerson.razor
+
+Read HandheldReach harness
+
+Read E2E scenario 16
+
+Find scenario constants
+
+Read scenario path constants
+Diagnosing viewport overflow detection logic malfunction.
+
+Investigated overflow detection logic and identified text node culprit.
+
+
+Find overflow-wrap rules in app.css
+
+Read top of app.css
+
+Read app.css 280-420
+Identifying styling inconsistencies between elements.
+
+
+Read TableDisplays.razor
+Analyzing code element rendering and font sizing behavior.
+
+Analyzed code element rendering and viewport width constraints.
+
+
+Check code element rules
+
+Find code element usages
+Analyzing CSS word-breaking rules for unbreakable content.
+
+Diagnosing overflow issues by applying overflow-wrap styling.
+
+
+Locate §11.12
+
+Read §11.12 in full
+Diagnosing inline style block count discrepancy.
+
+Distinguishing fragile census guards from legitimate safety floors.
+
+Analyzing CSS overflow patterns and missing text-wrapping rules.
+
+Diagnosed assertion thresholds and CSS overflow issues comprehensively.
+
+
+Read record list section
+
+Read chips + record list + page-head
+
+Read page head + manage vocabulary
+
+Read remainder of manage vocabulary
+
+Read end of app.css including breakpoint
+
+Read forms/buttons section
+
+Read HandheldLayoutContractTests part 1
+
+Read HandheldLayoutContractTests part 2
+
+Read HandheldLayoutContractTests part 3
+Recognizing that census counts undermine test resilience.
+
+Reconsidering whether executable rules should replace census-style assertions.
+
+Architecting a helper function to unify guard assertions.
+
+Reconsidering the E2E test's overflow detection approach.
+
+Verifying overflow-wrap inheritance won't regress tight flex or table contexts.
+
+Cataloging redundant overflow-wrap declarations across selectors.
+
+Reconciling overflow-wrap declarations across stylesheets and components.
+
+Calculating character width and font metrics for overflow diagnosis.
+
+Analyzing URL line-breaking behavior and overflow calculations.
+
+Reconciling scrollWidth measurements against viewport overflow calculations.
+
+Scrutinizing flexbox min-content sizing and overflow detection logic.
+
+Reconciling flex item min-content sizing with scrollWidth measurements.
+
+Refining overflow detection to identify elements with content exceeding bounds.
+
+
+Inspect Appendix A structure
+Diagnosing markdown table formatting corruption issues.
+
+Architecting validation logic for documentation table integrity.
+
+Diagnosed documentation table corruption and planned structural fixes.
+
+
+Find Appendix A start
+
+Print Appendix A header lines
+
+Analyze Appendix A table structure
+Diagnosing markdown formatting inconsistencies and cell count discrepancies.
+
+Identified markdown formatting inconsistencies and structural data issues.
+
+
+Inspect multi-cell rows
+Diagnosing misaligned table structure and header columns.
+
+Validating table structure and detecting malformed pipe characters.
+
+Diagnosed structural table corruption and reconciled stylesheet redundancies.
+
+
+Read DOCUMENTATION_REVIEW head
+
+Read DOCUMENTATION_REVIEW tail
+Consolidating documentation formatting issues across multiple files.
+
+Analyzed documentation structure and formulated comprehensive testing strategy.
+
+
+Find files with F-rows and bold citations
+Identifying F-row documentation files and establishing nesting criteria.
+
+Scrutinized file validation criteria and cross-referenced citation coverage.
+
+
+Inspect DOCUMENTATION_REVIEW rows and citations
+Reconciling documentation inconsistencies between references and table rows.
+
+Deliberating cell count enforcement across documentation tables.
+
+Architected validation logic and restructured documentation tables.
+
+
+Analyze register table integrity
+Scrutinizing markdown table formatting inconsistencies across documentation files.
+
+Scrutinized documentation inconsistencies and structural table formatting issues.
+
+
+Locate stray pipes
+Parsing backslash escaping in shell command representation.
+
+Debugged escape sequences and mapped comprehensive multi-file corrections.
+
+
+Check other references
+Verifying .source-link class removal safety across codebase.
+
+Audited CSS refactoring impact and verified selector safety.
+
+
+Check source-link references and Source.razor
+Done
+I hit the tool budget before I could write and verify the changes, so rather than hand you a half-built archive, here's the diagnosis — which is complete, and both failures are in the code, not the tests.
+
+Failure 1 — CSP contract test: "only 19 inline <style> blocks were found"
+ContentSecurityPolicyContractTests.TheScanReadsTheTreeAndClassifiesIt asserts InlineStyleBlockCount >= 20. The tree now has 19 blocks across 18 files — because Slice 34 emptied four inline blocks, and three of those pages ended with no <style> block at all. The count went 21 → 19 exactly as the ledger row for F-66 says it should have.
+
+The guard is a census standing where a non-vacuity guard belongs. Its own message says "only {n} inline <style> blocks were found", and its three sibling guards say "no <script src> was found, so nothing below is tested" above thresholds of 4, 1 and 6 — messages that state the vacuous case over numbers that state how big the tree was on the day the test was written. Non-vacuity is >= 1; anything above that is a claim about tree size, and Stage 1b's entire purpose is to reduce the number this one counted. The class doc comment also says "twenty-one components carry a scoped <style> block" twice — the same number in a second place, also now wrong.
+
+Fix: thresholds match the messages, expressed through one helper that takes no threshold so a census cannot be written into one again (F-67's "one helper, one definition" shape). The file-walk floor stays separate, with its reason stated — a walk that found two files is a different failure from one that found none.
+
+Failure 2 — two surfaces scroll sideways at 375px
+Both are one mechanism: an unbreakable token in running text, and I verified both arithmetically against the reported pixel numbers.
+
+/administration/people/{id} — <p class="lede">@_person.DisplayName</p> holding Anastasia Featherstonehaughwolstenholmeworthington. At Arial/Liberation metrics that word is 335.2px against a 313px content box; 375 + 22.2 = 397.2 → the reported 397. .lede has no wrapping rule. The hint says "not identified" because the overflowing thing is a text node, and the hint walk enumerates body *.
+/administration/tables/{id}/displays — <code>@PairingUrl</code> inside a .lede. 36 chars of monospace at 16.8px = 363px, starting at x=31 → right edge 394, which is the reported number to the pixel. Chrome did not break the URL, and there is no rule for code anywhere in the tree.
+overflow-wrap: anywhere is declared eight times in app.css — .panel h1, .record-list td, .record-link, .account-facts dd, .setup-summary dd, .passkey-name, .source-revision, .source-link — i.e. on the elements somebody had a long-token case in mind for. It is an inherited property, so eight declarations are eight copies of a rule one declaration states, and the copies are only there on the elements somebody thought of. The same display name renders correctly on /administration (a .record-list td, which has the rule) and wrongly on /administration/people/{id} (a .lede, which does not) — same string, same slice, one screen right and one wrong. That is F-46/F-51's shape again with F-48's mechanism on top.
+
+Fix: body { overflow-wrap: anywhere } once, with the reason; the eight copies deleted (.source-link's rule and its class disappear entirely, since wrapping was all it was for). anywhere rather than break-word because only anywhere collapses min-content, which is what the flex item propagation on the people page depends on. An eighth fact in HandheldLayoutContractTests asserts the declaration is in the tree exactly once, on body, with that value — and word-break: break-all on .totp-secret and the two join-code blocks is deliberately out of scope, being typesetting rather than overflow defence (F-41).
+
+A third finding, found while going to add the ledger rows
+Both defect registers stopped rendering as tables. In docs/TECHNICAL_SPECIFICATION.md Appendix A the header declares three columns while every row from F-38 on carries four, so GFM has been dropping the "Embodied in" column for 26 rows — the column F-38's own lesson is about. F-41's row carries \\| inside a code span, which escapes the backslash and not the pipe, splitting a fifth cell. A --- before F-63 terminates the table, so F-63, F-64, F-66 and F-67 render as literal pipes. And F-65 has no row at all — it is glued onto the tail of F-64's line, while the v1.19 changelog says "Appendix A gains F-65". docs/DOCUMENTATION_REVIEW.md has the same break after F-37: 28 rows outside any table, one stray pipe in F-38, and no row for F-41 despite its Status paragraph citing it.
+
+That is executable: a DefectRegisterContractTests computing its subject as every docs/**.md carrying an F-NN row, asserting each row sits inside a table, each table's rows match its header's cell count, no number appears twice, and every **F-NN** cited in a file has a row there. Re-inserting the ---, re-gluing F-64/F-65, or deleting F-65's row each reports.
+
+Predicted count: 1077 → 1079 (two new facts), arithmetic not observation.
+
+Say the word and I'll deliver the archive — app.css, Source.razor, the three test files, the new DefectRegisterContractTests.cs, and full TECHNICAL_SPECIFICATION.md (v1.20, §11.12, §16.4, Appendix A repaired, F-68/69/70), DOCUMENTATION_REVIEW.md, BUILD_PROGRESS.md, MENU_AND_HANDHELD_PLAN.md and _CHANGES.md, complete files, no scripts, with the git add reminder for the new test file.
+
+Claude reached its tool-use limit for this turn.
+
+
+Now using credits • Your plan limit resets Aug 12 at 9:00 PM.
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+99
+66
