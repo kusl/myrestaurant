@@ -9469,3 +9469,224 @@ from `StillExpectedToCarryRetiredTableVocabulary`, in the same commit.
 slice — the handheld barrier still needs its menu row, and the two surfaces added here need no menu item.
 
 **Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive can contain (F-42).
+
+# M6 Slice 34 — the number written twice (F-65), the fifth copy (F-66), and the gate that read prose (F-67)
+
+Stage 1b's second half, which was supposed to be a conversion and an extension of one list. The conversion
+happened. The extension turned out to be blocked by the gate it was an extension of, and two more findings
+were sitting in the pages it was meant to cover.
+
+## What was asked for
+
+"Continue." Stage 1b of `docs/MENU_AND_HANDHELD_PLAN.md` had two pages left carrying the retired table
+vocabulary and nine more that were never record lists, and the plan said `.chip` and `.visually-hidden`
+come out of all of them with `SharedSelectorPrefixes` extended in the same commit — F-46's rule, that a rule
+enforced against a list of examples is enforced against a list of examples.
+
+## The three findings, in the order they were found
+
+**F-67 came first, because it blocked the work.** Adding `.chip` and `.muted` to `SharedSelectorPrefixes`
+reported findings on `KitchenBoard`, `CounterBoard` and `CounterSitting` — three pages that are correct.
+Each carries a CSS comment naming the shared vocabulary it leans on: *"Anything shared — .panel, .chip,
+.muted"*. The fact matched a prefix against the **text** of a `<style>` block. It stripped Razor comments
+and not CSS comments, while `EveryCustomPropertyTheTreeReadsIsDeclaredInTheStylesheet` — thirty lines below
+it, in the same file — stripped both.
+
+So the set of prefixes that gate could hold was the set of shared names nobody had written a sentence
+about. That is not a rule about the tree; it is a rule about the tree's comments, and it bounded the
+migration Stage 1b existed to finish. The gate had also never applied its own standard evenly: two
+assertions further down it checks that `app.css` *declares* rather than merely mentions each prefix, with a
+comment saying "Declared, not merely mentioned".
+
+**F-66 is the fifth copy of F-59, one register down.** Four pages — `ManageMenuItem`, `ManagePerson`,
+`ManageTable`, `TableDisplays` — each declared their own inline copy of one `.manage-*` detail vocabulary.
+Twenty duplicated rules, five of them drifted between copies. The duplication is the cheap half; three
+overlaps with `app.css` are the finding, and each fails in a different way:
+
+- **`.visually-hidden` was still `clip: rect(0, 0, 0, 0)` on all four.** Slice 30's own plan entry says
+  `.visually-hidden` was centralised "with `clip-path` rather than the deprecated `clip`". The inline copy
+  wins from later in the document at equal specificity, so those four pages never received it, and every
+  document in this tree said they had.
+- **`.chip-ok` and `.chip-warn` were pinned to literals absent from `:root`** — `#fdecea` / `#a3261c`
+  against `--danger-surface` `#fbeaea` and `--danger-ink` `#7f1d1d`. Four screens drew a visibly different
+  red from the palette. That is F-64 with the property *declared and overridden* rather than undeclared and
+  defaulted, which is the harder direction to notice, because `:root` is correct.
+- **`.manage-inline-form input` and `select` had no `min-height` and no font-size floor** — just
+  `padding: 0.45rem 0.6rem`. So the one control each of those pages exists for (rename this table, revoke
+  this role, change this price, revoke this display) was about 34px against §11.12's 44, and typing in it
+  zoomed an iPhone's viewport and left it there. **Both halves of the control rule, broken on four
+  surfaces, by a page-local rule.**
+
+None of the four had ever been laid out at 375px by anything, because scenario 16 walked indexes only.
+
+**F-65 was found by writing the assertion F-66 needed.** §11.12 requires `--touch-target` (2.75rem, 44px)
+of "buttons, links that act as buttons, checkbox rows, and the session links in the header". `.session-link`
+and `.link-button` both declared `min-height: 2.25rem`. That is 36px, and between them those two rules are
+the **sign-out control in the header of every page in both layouts** and the destructive action on four
+administration surfaces: "Revoke role", "Revoke display", "Deactivate account", "Deactivate table".
+
+The comment above `.session-link` is the reason nobody caught it. It said the links *"carry the §11.12
+target height"* and that the rule used *"vertical padding rather than a min-height, so the row does not grow
+on a wide screen"*. The three lines beneath declared a `min-height` and no padding at all. Two claims, both
+false about the declaration they introduce, in the precise place a reader checking compliance stops.
+
+Nothing measured it either: the barrier's reach selector covers a record row's action, a page-head action
+and a filter's submit, and a `.link-button` is none of those on any surface. This is F-48's mechanism inside
+a stylesheet — the number written a second time in a second place, where a custom property exists so it is
+written once — with the extra property that the second copy is the one that renders.
+
+## What the gate reads now
+
+Simple selectors, from one helper both halves of the fact consult. CSS comments stripped; each rule's
+prelude taken as the text following the previous rule's closing brace; an at-rule's prelude discarded by its
+leading `@` while the rules nested inside it are still read; every prelude split on commas and on each
+combinator.
+
+That last split is what catches the harder half. `.chip-ok` matches `.chip` by prefix, which a text scan
+also managed — but `.sitting-record .muted` is a page overriding a shared name at *higher* specificity, and
+under the old scan an ancestor selector was a hiding place. `ManageSitting` had exactly that, adding a
+`font-size` to `.muted` within its own panel.
+
+**The prefix list is seven now:** `.record-`, `.page-head`, `.filter-`, `.manage-`, `.chip`, `.muted`,
+`.visually-hidden`.
+
+## The name that was kept, and why that is the opposite of last time
+
+`.page-head` exists because `.admin-header` could not be reused: a shared declaration under the old name
+would have been overridden on every page still carrying the inline copy, so the four converted pages would
+have silently kept the old behaviour while the stylesheet said otherwise. That argument is about a migration
+that **spans slices**.
+
+This one spans none. All four holders are emptied in the same commit that declares the shared version, so
+there is no window in which a page could win the specificity argument, and the name is kept. The reasoning
+is recorded beside the declaration, because the two decisions look contradictory and the difference between
+them is the only thing that makes either correct.
+
+## The list that became an emptiness assertion
+
+`StillExpectedToCarryRetiredTableVocabulary` named the files still holding a retired name, compared for set
+equality so that neither the list nor the tree could quietly be wrong about the other. Four pages in Slice
+30, two in Slice 33, two here — and then the expected set is empty, at which point the list is a name for
+zero things and F-47 says to delete it rather than keep it as a monument.
+
+What replaces it is **stronger** than what it asserted: a new page reaching for the old shape now fails
+without anybody deciding that it should. It gains a non-vacuity guard the list did not need, because an
+emptiness assertion over a walk that found nothing passes, and a list compared for equality does not.
+
+## The barrier grew from six surfaces to ten
+
+Six indexes, then four detail surfaces built from identifiers the scenario already mints and reads back off
+each surface's own success panel: an account, a table, that table's display roster, a menu item.
+`.manage-inline-form button` joins the reach selector on the same membership rule — *the thing an operator
+opened the page in order to press*. `.manage-back` stays outside it, because leaving is not that thing.
+
+**Converting a page and not measuring it is how F-59 survived four milestones.** All four of those pages had
+34px form controls at the moment they were added here.
+
+**Fifteen controls expected, floor fourteen.** Three on people, two on tables, two on menu, none on
+sittings, one filter submit on each explorer, two on the account, one on the table, two on the item, one on
+the roster. A renamed `.record-actions` leaves eleven, a renamed `.page-head-action` eleven, a renamed
+`.manage-inline-form` nine, and a renamed `.filter-actions` thirteen — the smallest loss, so it is what sets
+the floor.
+
+**`/administration/sittings/{sitting}` is converted and deliberately not measured.** Reaching a sitting needs
+a guest, a table token and a join before there is an identifier for the route, which is scenario 3's
+arrangement and three scenarios of setup for one measurement; and an invented identifier meets the not-found
+panel, which has no page head, so the barrier would fail on arrival rather than measure anything. That
+page's conversion rests on the contract test and on reading `app.css`. It is the trade hidden-records is
+already measured with, one route deeper — and the page head being what distinguishes an arrived detail
+surface from the not-found panel is now written where the barrier waits.
+
+## What was verified, and how
+
+No .NET SDK here, so everything below is text-level and says so.
+
+- **All seven facts were ported to Python and executed against the delivered tree: all seven pass.** Run
+  against the tree as it was before this slice, **five fail** — 54 shared-name re-declarations across five
+  components, two controls under the touch target, four record-list pages where seven are now expected, and
+  two retired-vocabulary holders. Before and after rather than a claim.
+- **Every fact proven sensitive by a planted regression — ten plants, ten results as designed:** a
+  re-declared `.manage-heading`; `.link-button` back at 2.25rem; `/kitchen`'s line button shortened to 2rem;
+  a deleted `data-label`; `admin-header` returning to `ManageSitting`; a `max-width` query inside a
+  component; the whole `.manage-` prefix renamed out of `app.css`; every `var(--touch-target)` replaced by a
+  literal `44px`; and a `.sitting-record .muted` descendant override — all reported. And **the plant that
+  must not fire does not**: a CSS comment naming `.chip`, `.muted`, `.manage-rule` and `.record-list`, which
+  is what three counter and kitchen components actually contain, passes. That is F-67 demonstrated rather
+  than asserted.
+- **Brace, paren and bracket balance** on all three C# files and all five Razor files, string-, char-,
+  verbatim-, raw-string- and comment-aware, with untouched siblings as controls: clean. **Proven sensitive**
+  by deleting one `</div>`, which is reported at the line the block opened on.
+- **CS1620 scan** (every operand of a `string.Create(IFormatProvider, …)` chain must be `$"…"`): clean, and
+  **proven sensitive** by breaking one operand into a bare literal. **CS4007 scan** (no `await` in an
+  interpolation hole): clean.
+- **Razor tag-tree balance** on every touched component: clean. **The scanner had to be fixed first, and
+  that is worth recording** — its first version ended each tag at the next `>` and reported twenty-seven
+  findings on a correct tree, every one a self-closing component whose attribute held a lambda:
+  `For="@(() => Input.Name)"` contains a `>` inside quotes, so the match ended early and the trailing slash
+  was never seen. It reads quoted attribute values now. A scanner that reports findings on a correct tree is
+  the thing F-41 is about, and it very nearly caused five correct files to be "fixed".
+- **One report remains on an untouched file** and is the same class of limitation: `TableOrderSurface.razor`
+  has `IReadOnlyList<OrderLineView>` inside an inline code region, read as an HTML tag. The scanner excludes
+  `@code` blocks and not inline `@{ }` regions. That file is not touched by this slice; the report is noted
+  rather than acted on.
+- **`SpecificationVersionTests` ported and run** over `docs/`: header 1.19 against newest changelog entry
+  1.19, entries descending, two documents qualifying, no half-versioned document. **The first port was wrong
+  in the same way Slice 33's was**, and it said so the same way: it matched history entries as `**vN` /
+  `**Rev N` at the start of a line and missed `REQUIREMENTS.md`'s `- **Rev 6 — …**` bullets, so only one
+  document qualified. **The pristine tree failed it identically**, which is what said the port was wrong
+  rather than the tree. Corrected against the gate's own two regexes.
+- **Byte hygiene** on every delivered file: LF, exactly one final newline, no CR, no trailing whitespace, no
+  whitespace-only line, no context-dump separator.
+
+## What was NOT verified, and cannot be from here
+
+**Nothing compiled.** Fourteen files edited, `dotnet build` run on none of them. The Razor files are the
+likely site of a compiler complaint, and two of the five are substantially restructured.
+
+**No browser rendered anything.** The claim that four detail surfaces now pass the barrier rests on reading
+`app.css` — `.manage-inline-form` is a flex column below the breakpoint, its controls carry
+`min-height: var(--touch-target)` and `font-size: max(1rem, 1em)`, its buttons are `width: 100%` — and not
+on a measurement. **A red result on first run would be information rather than a surprise**, and it is worth
+saying which way: these four pages have never been measured, so if one of them lays out wider than 375px the
+failure message names the widest element outside a scroll container, and that is a finding this slice
+created the means to see rather than a regression this slice introduced.
+
+**Slice 33 has not been run either.** The terminal logs in this repository are Slice 32's — 1074 tests, 16
+scenarios. Slice 33's tree was committed and not yet exercised, and this slice is built on top of it. If the
+first run is red, the two slices' changes are both candidates, and the honest order to read them in is
+Slice 33 first.
+
+**The colour and layout changes are not verified as improvements**, only as corrections. Four detail pages
+will render a different warning red than they did yesterday (`--danger-ink` `#7f1d1d` rather than `#a3261c`),
+their small forms will be a stack rather than a row on a phone, and the header's sign-out control is 8px
+taller on every page in the application. Whether that reads better is a judgement, and it belongs to
+whoever is holding the phone.
+
+## Test count
+
+Observed **1074** (Slice 32's run). Predicted **1077**: Slice 33 added two `[Fact]` methods and this slice
+adds one. Arithmetic, not an observation — nothing here was compiled or run, and the 1074 baseline predates
+both slices. The §16.3 subtotal stays at **16**: scenario 16 walks ten surfaces instead of six, which is a
+longer scenario rather than another one.
+
+## Still open
+
+**1b's last surfaces** — `CounterBoard`, `CounterSitting`, `KitchenBoard`, `TableHistory`, `TableJoinCode`,
+`CounterJoinCode`. None re-declares a shared name any more, so there is nothing left to extend and no list
+to empty; what remains is a judgement per surface about its own layout at 375px, which is a different kind
+of work. `KitchenBoard` needs its own judgement rather than the same treatment, for the reason §11.2 gives.
+
+**The redundant `var(--declared, #literal)` fallbacks** — around a hundred, across the components that still
+have blocks. A *should* rather than a *must*.
+
+**`.sitting-meta` is declared by two components** — `ManageSitting` and `TableArea` — which is a two-copy
+duplicate of a name `app.css` does not own. Not in this slice's scope and recorded so that it is a decision
+next time rather than a discovery.
+
+**A CI job that runs the canonical stack on the canonical engine.** Tenth consecutive slice.
+
+**Stage 2's boundary**, corrected in the plan and not yet built. `CreateMenuItemAsync` still drives the real
+create-item form in six of sixteen scenarios, and as of this slice the handheld barrier also opens that
+item's management page — so the menu row it needs is now load-bearing twice.
+
+**Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive can contain (F-42).

@@ -53,7 +53,7 @@ else
     <section class="panel sitting-record">
         <p class="eyebrow">Administration — sittings</p>
 
-        <div class="admin-header">
+        <div class="page-head">
             <div>
                 <h1>@_sitting.TableLabel</h1>
                 <p class="sitting-meta">
@@ -70,7 +70,7 @@ else
                     @* §5.3: settled_total_amount is never rewritten. When §6.7 corrections exist both
                        numbers are shown, because they answer two different questions — what was charged,
                        and what the record now says is owed. *@
-                    <span class="sitting-corrected">corrected to @Money(_sitting.CurrentTotalAmount)</span>
+                    <span class="record-corrected">corrected to @Money(_sitting.CurrentTotalAmount)</span>
                 }
             </div>
         </div>
@@ -97,7 +97,7 @@ else
 
         @if (_sitting.IsOpen)
         {
-            <p class="sitting-note" role="note">
+            <p class="manage-note" role="note">
                 This table is still open, so there is nothing to correct yet — a correction is what happens
                 <em>after</em> a close (§6.7). To adjust a price, take a line off, or settle the bill while
                 the table is still here, use the counter screen; you already hold that capability.
@@ -108,9 +108,9 @@ else
         }
 
         @* ---- who was at the table (§5.1, §5.2) -------------------------------------------------- *@
-        <hr class="sitting-rule" />
+        <hr class="record-rule" />
 
-        <h2 class="sitting-heading">At the table</h2>
+        <h2 class="record-heading">At the table</h2>
         @if (_members.Count == 0)
         {
             <p class="lede">Nobody is recorded as having joined this sitting.</p>
@@ -122,7 +122,7 @@ else
                 {
                     <li>
                         <span class="sitting-roster-name">@member.RosterName</span>
-                        <span class="muted">
+                        <span class="record-secondary">
                             joined @RestaurantClock.DateAndTime(member.JoinedAt)
                             @if (!HasAnOrder(member.PersonIdentifier))
                             {
@@ -135,14 +135,14 @@ else
         }
 
         @* ---- the bill, person by person (§8.3) --------------------------------------------------- *@
-        <h2 class="sitting-heading">The bill</h2>
+        <h2 class="record-heading">The bill</h2>
         @if (_bill.Count == 0)
         {
             <p class="lede">Nothing was ordered on this table.</p>
         }
         else
         {
-            <div class="admin-sitting-table">
+            <div class="record-list">
                 <table>
                     <thead>
                         <tr>
@@ -154,12 +154,12 @@ else
                     <tbody>
                         @foreach (SittingBillEntry entry in _bill)
                         {
-                            <tr>
-                                <td><span class="sitting-roster-name">@entry.BillName</span></td>
-                                <td>
+                            <tr @key="entry.GuestOrderIdentifier">
+                                <td class="record-primary" data-label="">@entry.BillName</td>
+                                <td data-label="Current lines">
                                     @if (LinesFor(entry.GuestOrderIdentifier).Count == 0)
                                     {
-                                        <span class="muted">Every line was removed</span>
+                                        <span class="record-secondary">Every line was removed</span>
                                     }
                                     else
                                     {
@@ -168,7 +168,7 @@ else
                                             {
                                                 <li>
                                                     @line.Quantity × @line.MenuItemName
-                                                    <span class="muted">
+                                                    <span class="record-secondary">
                                                         @Money(line.CurrentUnitPriceAmount) each ·
                                                         @(line.IsFulfilled ? "delivered" : "still with the kitchen")
                                                         @if (line.CustomizationNote is { } note)
@@ -181,7 +181,7 @@ else
                                         </ul>
                                     }
                                 </td>
-                                <td class="numeric">@Money(entry.PersonTotalAmount)</td>
+                                <td class="record-numeric" data-label="Total now">@Money(entry.PersonTotalAmount)</td>
                             </tr>
                         }
                     </tbody>
@@ -190,16 +190,16 @@ else
 
             <p class="sitting-tally">
                 <span>Current total across the table</span>
-                <strong class="numeric">@Money(TableTotal)</strong>
+                <strong class="record-numeric">@Money(TableTotal)</strong>
             </p>
         }
 
         @* ---- post-close corrections (§6.7) ------------------------------------------------------- *@
         @if (!_sitting.IsOpen)
         {
-            <hr class="sitting-rule" />
+            <hr class="record-rule" />
 
-            <h2 class="sitting-heading">Corrections</h2>
+            <h2 class="record-heading">Corrections</h2>
             <p class="lede">
                 Appended events, never edits. The settled total above stays exactly as it was stamped;
                 everything written here lives beside it and shows as the corrected total (§5.3, §6.7).
@@ -213,7 +213,7 @@ else
             }
             else
             {
-                <h3 class="sitting-subheading">Correct a line</h3>
+                <h3 class="manage-subheading">Correct a line</h3>
                 <EditForm Model="CorrectInput" method="post" OnValidSubmit="CorrectLineAsync"
                           FormName="sitting-correct-line">
                     <DataAnnotationsValidator />
@@ -269,7 +269,7 @@ else
                 </p>
             }
 
-            <h3 class="sitting-subheading">Add a line that was missed</h3>
+            <h3 class="manage-subheading">Add a line that was missed</h3>
             <p class="lede">
                 For the plate that went out and never reached a bill. It joins the order of whoever you
                 name — creating that order if they never sent anything themselves (§6.1) — and is priced
@@ -339,9 +339,9 @@ else
         }
 
         @* ---- the complete stored record (§11.4) -------------------------------------------------- *@
-        <hr class="sitting-rule" />
+        <hr class="record-rule" />
 
-        <h2 class="sitting-heading">The record</h2>
+        <h2 class="record-heading">The record</h2>
 
         @if (_records.Count == 0)
         {
@@ -363,7 +363,7 @@ else
                 <article class="sitting-order">
                     <header class="sitting-order-header">
                         <h3>@orderRecord.OwnerName</h3>
-                        <span class="muted">
+                        <span class="record-secondary">
                             order opened @RestaurantClock.DateAndTime(orderRecord.CreatedAt) ·
                             @orderRecord.Events.Count @(orderRecord.Events.Count == 1 ? "event" : "events")
                         </span>
@@ -371,7 +371,7 @@ else
 
                     @if (orderRecord.Events.Count == 0)
                     {
-                        <p class="muted">
+                        <p class="record-secondary">
                             The order row exists with no events on it. Only reachable if a write created it
                             and then rolled back its event, which the transaction does not do — worth
                             reporting if you are seeing it.
@@ -386,7 +386,7 @@ else
                                     <div class="sitting-event-head">
                                         <span class="sitting-event-sequence">#@stored.SequenceNumber</span>
                                         <span class="sitting-event-type">@DescribeEventType(stored.EventType)</span>
-                                        <span class="muted">
+                                        <span class="record-secondary">
                                             @stored.ActorName as @DescribeActorRole(stored.ActorRole) ·
                                             @RestaurantClock.DateAndTimeWithSeconds(stored.OccurredAt)
                                         </span>
@@ -394,7 +394,7 @@ else
 
                                     @if (stored.Operations.Count == 0)
                                     {
-                                        <p class="muted">
+                                        <p class="record-secondary">
                                             No operations recorded, which §6.5.1 forbids — worth reporting.
                                         </p>
                                     }
@@ -419,32 +419,28 @@ else
     </section>
 }
 
-@* Namespaced under .sitting-* and .admin-sitting-table. App.razor links the static wwwroot/app.css rather
-   than the component-scoped bundle, so component CSS isolation is not active here; these live inline to
-   avoid editing the shared stylesheet for one screen. *@
+@* Rules nobody else reads: this page's own totals, roster, tally and event stream. Everything it
+   shares — the page head, the record list, the headings, the rules, the corrected total, the numeric
+   treatment, the small forms — is app.css's §11.12 vocabulary and is not restated here (M6 Slice 34).
+   App.razor links the static stylesheet rather than the scoped bundle, so component CSS isolation is
+   not active; a page-local block is the arrangement, and re-declaring a shared name in one would win
+   silently from later in the document, which is F-66. *@
 <style>
-    .admin-header {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 1rem;
-        align-items: flex-start;
-        justify-content: space-between;
-    }
-
-    .admin-header h1 {
-        margin: 0;
-    }
-
     .sitting-meta {
         margin: 0.2rem 0 0;
         font-size: 0.85rem;
         color: var(--ink-soft);
     }
 
+    /*
+     * Left-aligned rather than pinned to the right edge, which is what it was when the head was a
+     * space-between row. In a handheld-first column the total reads under the meta line, and there is
+     * nothing to align it to on the right.
+     */
     .sitting-total {
         display: flex;
         flex-direction: column;
-        align-items: flex-end;
+        align-items: flex-start;
     }
 
     .sitting-total-label {
@@ -461,41 +457,11 @@ else
         font-variant-numeric: tabular-nums;
     }
 
-    .sitting-corrected {
-        font-size: 0.8rem;
-        font-weight: 700;
-        color: #b45309;
-    }
-
-    .sitting-heading {
-        margin: 1.4rem 0 0.3rem;
-        font-size: 1.15rem;
-    }
-
-    .sitting-subheading {
-        margin: 1.2rem 0 0.3rem;
-        font-size: 1rem;
-    }
-
-    .sitting-rule {
-        margin: 1.6rem 0 0;
-        border: 0;
-        border-top: 1px solid var(--hairline);
-    }
-
-    .sitting-note {
-        margin: 0.9rem 0 0;
-        padding: 0.6rem 0.85rem;
-        border-radius: 0.5rem;
-        border: 1px solid var(--hairline);
-        background: var(--surface, #f7f8fa);
-        color: var(--ink-soft);
-    }
-
+    /* §6.5.9 refuses all-or-nothing, so this names every reason at once. */
     .sitting-rejection {
         margin: 0.4rem 0 0;
         padding-left: 1.1rem;
-        color: #b91c1c;
+        color: var(--danger-ink);
         font-weight: 600;
     }
 
@@ -512,40 +478,6 @@ else
 
     .sitting-roster-name {
         font-weight: 600;
-    }
-
-    .sitting-record .muted {
-        color: var(--ink-soft);
-        font-size: 0.85rem;
-    }
-
-    .admin-sitting-table {
-        overflow-x: auto;
-    }
-
-    .admin-sitting-table table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.95rem;
-    }
-
-    .admin-sitting-table th,
-    .admin-sitting-table td {
-        text-align: left;
-        padding: 0.6rem 0.75rem;
-        border-bottom: 1px solid var(--hairline);
-        vertical-align: top;
-    }
-
-    .admin-sitting-table thead th {
-        font-weight: 600;
-        color: var(--ink-soft);
-        border-bottom-width: 2px;
-    }
-
-    .sitting-record .numeric {
-        font-variant-numeric: tabular-nums;
-        white-space: nowrap;
     }
 
     .sitting-lines {
@@ -599,7 +531,7 @@ else
         padding: 0.45rem 0.55rem;
         margin-bottom: 0.4rem;
         border-left: 3px solid var(--hairline);
-        background: var(--surface, #fafbfc);
+        background-color: var(--surface);
     }
 
     .sitting-event-head {
@@ -626,11 +558,6 @@ else
 
     .sitting-operations li {
         padding: 0.1rem 0;
-    }
-
-    .sitting-record .optional {
-        font-weight: 400;
-        color: var(--ink-soft);
     }
 </style>
 

@@ -24,22 +24,24 @@ namespace MyRestaurant.WebApplication.Tests.Components;
 /// property the tree reads is one the tree declares. Each is arithmetic on text, which is the level a
 /// gate can reach without reporting findings on correct trees (F-41).</para>
 ///
-/// <para><b>Two of the six facts are here because the other four were not enough</b>, and both gaps had
-/// the same shape. The breakpoint fact read <c>app.css</c> and nothing else, so "exactly one breakpoint"
-/// — a rule about the tree — was enforced about one file, and a component could have declared a second
-/// one in an inline <c>&lt;style&gt;</c> with nothing to notice (<b>F-63</b>). And nothing anywhere
+/// <para><b>Three of the seven facts are here because the other four were not enough</b>, and all three
+/// gaps had the same shape. The breakpoint fact read <c>app.css</c> and nothing else, so "exactly one
+/// breakpoint" — a rule about the tree — was enforced about one file, and a component could have declared
+/// a second one in an inline <c>&lt;style&gt;</c> with nothing to notice (<b>F-63</b>). Nothing anywhere
 /// asserted that a <c>var(--name)</c> a component reads is a name <c>:root</c> declares, so five
 /// properties were read fifty-five times across eight components and declared nowhere, every reference
-/// silently falling through to a hard-coded literal (<b>F-64</b>). Both are F-46's lesson: a rule stated
-/// as a rule and enforced against the file that prompted it is enforced against the file that prompted
-/// it.</para>
+/// silently falling through to a hard-coded literal (<b>F-64</b>). And nothing asserted the one number
+/// §11.12 states outright, so two control rules in <c>app.css</c> sat eight pixels under it, one of them
+/// under a comment claiming otherwise (<b>F-65</b>). Each is F-46's lesson: a rule stated as a rule and
+/// enforced against the file that prompted it is enforced against the file that prompted it.</para>
 ///
-/// <para><b>Why the forbidden list is small and lives beside its reason.</b> Same lesson, applied to the
-/// shape of this file. The list is three prefixes rather than an enumeration of class names, and the two
-/// names it pointedly does <em>not</em> cover — <c>.chip</c> and <c>.visually-hidden</c>, both still
-/// declared inline by pages Stage 1b has not reached — are named in
-/// <see cref="StillExpectedToCarryRetiredTableVocabulary"/>'s comment with the slice that empties them.
-/// Extending the list is part of finishing the migration, not a chore for afterwards.</para>
+/// <para><b>Why the forbidden list is a list of prefixes.</b> Same lesson, applied to the shape of this
+/// file: seven prefixes rather than an enumeration of class names, so a shared name nobody has invented
+/// yet is covered. Extending it is what finishing a stage of the migration <em>means</em> — and until
+/// Slice 34 it could not be extended past three, because the scan behind it read a
+/// <c>&lt;style&gt;</c> block as text and three components describe the shared vocabulary in a CSS
+/// comment (<b>F-67</b>). A gate whose reach is bounded by which names appear in somebody's prose is a
+/// gate about prose.</para>
 /// </summary>
 public sealed class HandheldLayoutContractTests
 {
@@ -48,41 +50,44 @@ public sealed class HandheldLayoutContractTests
     private const string ComponentsRelativePath = "src/MyRestaurant.WebApplication/Components";
 
     /// <summary>
-    /// The prefixes app.css owns. A component that declares a selector containing one of these is a page
-    /// re-inventing the shared shape, which is the state F-59 was found in. <c>.filter-</c> joined them
-    /// in M6 Slice 33, when the two administration explorers stopped carrying an inline copy each of the
-    /// same twelve-line filter form.
+    /// The prefixes app.css owns. A component that declares a selector beginning with one of these is a
+    /// page re-inventing the shared shape, which is the state F-59 was found in. <c>.filter-</c> joined
+    /// them in M6 Slice 33, when the two administration explorers stopped carrying an inline copy each of
+    /// the same twelve-line filter form; <c>.manage-</c>, <c>.chip</c>, <c>.muted</c> and
+    /// <c>.visually-hidden</c> joined in Slice 34, when the four detail surfaces stopped carrying an
+    /// inline copy each of the detail vocabulary and of the chip set (<b>F-66</b>).
+    ///
+    /// <para><b>Extending this list is what finishing the migration means</b>, and it could not be
+    /// extended until the gate below could tell a declaration from a sentence about one (<b>F-67</b>).
+    /// <c>KitchenBoard</c>, <c>CounterBoard</c> and <c>CounterSitting</c> each explain in a CSS comment
+    /// which names they lean on from app.css, and three of those names are on this list — so under a scan
+    /// that read a block as text, adding <c>.chip</c> here reported a finding on three correct
+    /// pages.</para>
     /// </summary>
-    private static readonly string[] SharedSelectorPrefixes = [".record-", ".page-head", ".filter-"];
+    private static readonly string[] SharedSelectorPrefixes =
+        [".record-", ".page-head", ".filter-", ".manage-", ".chip", ".muted", ".visually-hidden"];
 
     /// <summary>
     /// The per-page table vocabularies §11.12's record list replaces. Retired from four pages in M6 Slice
-    /// 30 and from two more in Slice 33; the remaining holders are listed in
-    /// <see cref="StillExpectedToCarryRetiredTableVocabulary"/> below.
+    /// 30, from the two explorers in Slice 33, and from the last two — <c>TableDisplays</c> and
+    /// <c>ManageSitting</c> — in Slice 34, which is why
+    /// <see cref="TheRetiredTableVocabularyHasLeftTheTree"/> is now an emptiness assertion and no longer
+    /// carries a list of who still holds one.
     /// </summary>
     private static readonly string[] RetiredWrapperClasses =
         ["admin-people", "admin-tables", "admin-menu", "admin-sittings", "admin-row-actions", "admin-header"];
 
     /// <summary>
-    /// The files that may still use a retired name, and the reason the list is a list rather than an
-    /// emptiness assertion: the migration is staged across slices, and each stage is a decision somebody
-    /// takes rather than a page nobody remembers. Slice 30 restructured the four administration
-    /// <em>index</em> pages, which is where F-59 was reported. Slice 33 converted the two explorers,
-    /// <c>EventExplorer</c> and <c>HiddenRecords</c> — the last two carrying a hand-rolled row of area
-    /// links, which is why those two went together. What is left is the two detail surfaces, whose tables
-    /// are not record lists at all: a device roster with a pair-code panel, and one sitting's complete
-    /// record.
-    ///
-    /// <para>This is F-47's shape, applied on purpose. The test keeps exactly one list — this one — and
-    /// compares it against the set the tree actually produces, so the two can only agree by both being
-    /// right. Finishing the migration means deleting entries from here; and a <em>new</em> page reaching
-    /// for the old vocabulary fails immediately rather than joining a silent majority.</para>
+    /// §11.12's touch-target minimum in CSS pixels: <c>--touch-target</c> is <c>2.75rem</c>, 44px at the
+    /// default root size. Written as the number here for the same reason
+    /// <c>HandheldReach.MinimumTouchTargetPixels</c> is — the rule is about the height a finger has to
+    /// hit, and a check that read the value back out of the stylesheet would be satisfied by a stylesheet
+    /// that had lowered it.
     /// </summary>
-    private static readonly string[] StillExpectedToCarryRetiredTableVocabulary =
-    [
-        "ManageSitting.razor",
-        "TableDisplays.razor",
-    ];
+    private const double MinimumTouchTargetPixels = 44.0;
+
+    /// <summary>The default root font size, which is what turns a <c>rem</c> in this tree into pixels.</summary>
+    private const double PixelsPerRem = 16.0;
 
     /// <summary>
     /// §11.4's six administration surfaces, as paths. The subject of
@@ -124,6 +129,17 @@ public sealed class HandheldLayoutContractTests
 
     /// <summary>A custom property being declared: <c>--name:</c> at the head of a declaration.</summary>
     private static readonly Regex CustomPropertyDeclaration = new(@"(?m)^\s*(--[a-z0-9-]+)\s*:");
+
+    /// <summary>
+    /// A <c>min-height</c> and whatever it was given, up to the end of the declaration.
+    /// </summary>
+    private static readonly Regex MinimumHeightDeclaration = new(@"min-height\s*:\s*([^;}]+)");
+
+    /// <summary>A length in <c>rem</c> or <c>px</c>, which are the two units this tree writes heights in.</summary>
+    private static readonly Regex CssLength = new(@"^([0-9]*\.?[0-9]+)(rem|px)$");
+
+    /// <summary>Anything a combinator or a descendant space can separate two simple selectors with.</summary>
+    private static readonly char[] SelectorSeparators = [' ', '\t', '\n', '\r', '>', '+', '~'];
 
     /// <summary>A custom property being read: the name inside a <c>var()</c>, fallback or not.</summary>
     private static readonly Regex CustomPropertyReference = new(@"var\(\s*(--[a-z0-9-]+)");
@@ -272,11 +288,26 @@ public sealed class HandheldLayoutContractTests
     /// that is this project's standing arrangement for a statically linked stylesheet — but not one of
     /// these, because a second declaration of the same name is a page quietly overriding the contract
     /// (same specificity, later in the document, so the page always wins and app.css always loses).
+    ///
+    /// <para><b>It reads declarations rather than text, and that is the correction it carries
+    /// (F-67).</b> The previous version asked whether the prefix appeared <em>anywhere</em> in the
+    /// <c>&lt;style&gt;</c> block. Razor comments were stripped first and CSS comments were not — while
+    /// the sibling custom-property fact in this same file stripped both — so a page that explained in a
+    /// comment which shared names it leans on was indistinguishable from a page that re-declared them.
+    /// Three components do exactly that, naming <c>.chip</c> and <c>.muted</c> in prose, which meant the
+    /// list above could only ever hold prefixes that happened not to appear in anybody's sentence. That
+    /// is not a rule about the tree; it is a rule about the tree's comments, and it bounded the migration
+    /// Stage 1b was written to finish.</para>
+    ///
+    /// <para>The standard applied is the one this fact already applied to <c>app.css</c> two assertions
+    /// below — <em>declared, not merely mentioned</em> — and it now applies to both sides. A prefix
+    /// matches when it begins a simple selector in a rule's prelude: <c>.chip-ok</c> matches
+    /// <c>.chip</c>, and so does <c>.sitting-record .muted</c>, which is a page overriding a shared name
+    /// at higher specificity and is the harder half of the same defect.</para>
     /// </summary>
     [Fact]
     public void NoComponentRedeclaresTheSharedHandheldVocabulary()
     {
-        string stylesheet = ReadStylesheet();
         int blocksScanned = 0;
         List<string> problems = [];
 
@@ -288,11 +319,14 @@ public sealed class HandheldLayoutContractTests
             {
                 blocksScanned++;
 
-                foreach (string prefix in SharedSelectorPrefixes)
+                foreach (string selector in SimpleSelectorsDeclaredIn(block.Groups[1].Value))
                 {
-                    if (block.Groups[1].Value.Contains(prefix, StringComparison.Ordinal))
+                    foreach (string prefix in SharedSelectorPrefixes)
                     {
-                        problems.Add($"{Path.GetFileName(path)} declares '{prefix}…' inline");
+                        if (selector.StartsWith(prefix, StringComparison.Ordinal))
+                        {
+                            problems.Add($"{Path.GetFileName(path)} declares '{selector}' inline");
+                        }
                     }
                 }
             }
@@ -307,12 +341,13 @@ public sealed class HandheldLayoutContractTests
                 + " the tree it is about. Razor comments are stripped first — a <style> mentioned inside"
                 + " an @* … *@ comment is prose, and counting it would make this guard pass on nothing.");
 
-        // Declared, not merely mentioned: the prefix has to begin a line, so a stylesheet that talks
-        // about `.record-list` in a comment and defines nothing does not satisfy this.
-        string[] stylesheetLines = stylesheet.Split('\n');
+        // The same standard, on the other side: the prefix has to begin a simple selector app.css
+        // actually declares, so a stylesheet that only talks about `.record-list` in a comment does not
+        // satisfy this. Reading it with the same helper is the point — one definition of "declared".
+        string[] declaredInStylesheet = SimpleSelectorsDeclaredIn(ReadStylesheet()).ToArray();
         string[] undeclared = SharedSelectorPrefixes
-            .Where(prefix => !stylesheetLines.Any(
-                line => line.TrimStart().StartsWith(prefix, StringComparison.Ordinal)))
+            .Where(prefix => !declaredInStylesheet.Any(
+                selector => selector.StartsWith(prefix, StringComparison.Ordinal)))
             .ToArray();
 
         Assert.True(
@@ -323,7 +358,9 @@ public sealed class HandheldLayoutContractTests
         Assert.True(
             problems.Count == 0,
             "The §11.12 vocabulary is declared in app.css and nowhere else. Re-declared by:"
-                + $" {FormatList(problems)}.");
+                + $" {FormatList(problems)}. A page-local block is for rules nobody else reads; a second"
+                + " declaration of a shared name wins from later in the document at the same specificity,"
+                + " so the stylesheet says one thing and the screen does another (F-66).");
     }
 
     /// <summary>
@@ -369,9 +406,11 @@ public sealed class HandheldLayoutContractTests
         }
 
         Assert.True(
-            pagesChecked >= 4,
-            $"Only {pagesChecked} pages render a record list, and Slice 30 restructured four. Either the"
-                + " wrapper class was renamed without this test, or a page lost its list.");
+            pagesChecked >= 7,
+            $"Only {pagesChecked} pages render a record list. Slice 30 restructured four indexes and"
+                + " Slice 34 added three more — a device roster, one sitting's bill, and one menu item's"
+                + " history. Either the wrapper class was renamed without this test, or a page lost its"
+                + " list.");
 
         Assert.True(
             problems.Count == 0,
@@ -380,20 +419,30 @@ public sealed class HandheldLayoutContractTests
     }
 
     /// <summary>
-    /// The vocabulary §11.12 replaces has left every page that is not still expected to hold it. See
-    /// <see cref="StillExpectedToCarryRetiredTableVocabulary"/> for why that set is not empty yet and
-    /// what empties it.
+    /// The vocabulary §11.12's record list replaces has left the tree entirely.
+    ///
+    /// <para><b>This used to be a list, and emptying it is what Slice 34 finished.</b> The migration ran
+    /// across three slices — four index pages in Slice 30, the two explorers in Slice 33, the two detail
+    /// surfaces in Slice 34 — and for two of those the honest assertion was "these named files still hold
+    /// one", compared for set equality so that neither the list nor the tree could quietly be wrong about
+    /// the other. That arrangement exists to be dismantled: the moment the expected set is empty, the list
+    /// is a name for zero things and F-47 says to delete it rather than keep it as a monument. What
+    /// replaces it is stronger than what it asserted, because a <em>new</em> page reaching for the old
+    /// shape now fails without anybody having to decide it should.</para>
     /// </summary>
     [Fact]
-    public void StillExpectedToCarryRetiredTableVocabularyIsExactlyWhatTheTreeCarries()
+    public void TheRetiredTableVocabularyHasLeftTheTree()
     {
+        int componentsScanned = 0;
         SortedSet<string> found = [];
 
         foreach (string path in EnumerateComponents())
         {
             // Comments are stripped, so a page explaining that it is *namespaced like* the retired
-            // vocabulary is prose and not a use of it. Three pages say exactly that.
+            // vocabulary is prose and not a use of it. Several pages say exactly that.
             string markup = RazorComment.Replace(File.ReadAllText(path), string.Empty);
+
+            componentsScanned++;
 
             if (RetiredWrapperClasses.Any(name => markup.Contains(name, StringComparison.Ordinal)))
             {
@@ -401,16 +450,19 @@ public sealed class HandheldLayoutContractTests
             }
         }
 
-        SortedSet<string> expected = new(StillExpectedToCarryRetiredTableVocabulary, StringComparer.Ordinal);
+        // Non-vacuity: an emptiness assertion over a walk that found nothing is the one failure mode a
+        // list did not have, because a list had to be matched exactly (F-41).
+        Assert.True(
+            componentsScanned >= 20,
+            $"Only {componentsScanned} components were scanned, so this fact is not looking at the tree it"
+                + " is about — and unlike the list it replaced, an empty result is what it expects.");
 
         Assert.True(
-            found.SetEquals(expected),
-            $"The pages still carrying the retired per-page table vocabulary are {FormatList(found)};"
-                + $" this test expects {FormatList(expected)}. If a page was converted, delete it from"
-                + " StillExpectedToCarryRetiredTableVocabulary in the same commit — the list exists so"
-                + " that finishing the migration is a decision rather than something nobody notices"
-                + " (F-47). If a page acquired the old vocabulary, it is a new page reaching for the"
-                + " shape F-59 was about.");
+            found.Count == 0,
+            $"These pages carry the retired per-page table vocabulary: {FormatList(found)}. It left the"
+                + " tree in M6 Slice 34, so this is a page reaching for the shape F-59 was about —"
+                + " an eighty-line table declared inline, with the row's only affordance in a right-hand"
+                + " column. §11.12's shared record list is what to reach for instead.");
     }
 
     /// <summary>
@@ -610,6 +662,151 @@ public sealed class HandheldLayoutContractTests
                 + " the fallback beside it — so the rule keeps working and quietly stops using the"
                 + " palette. Either declare the name in app.css's :root, or name the property that"
                 + " already means what the rule wants (F-64).");
+    }
+
+    /// <summary>
+    /// Every height a control declares is the one §11.12 states (<b>F-65</b>).
+    ///
+    /// <para><b>Why this is a finding and not a preference.</b> §11.12 names four kinds of control that
+    /// carry <c>--touch-target</c> — buttons, links that act as buttons, checkbox rows, and the session
+    /// links in the header — and <c>app.css</c> declared two of them at <c>2.25rem</c>. That is 36px
+    /// against 44, and between them those two rules are "Sign out" in the header of every page in both
+    /// layouts and the destructive action on four administration surfaces. The comment above one of them
+    /// said it carried the §11.12 height and that it used "vertical padding rather than a min-height",
+    /// above three lines that declared a <c>min-height</c> and no padding — so the file asserted its own
+    /// compliance in prose while contradicting it in the declaration, which is exactly why no reader had
+    /// caught it. Nothing measured it either: §16.3 scenario 16's reach selector covers a record row's
+    /// action, a page-head action and a filter's submit, and none of those is ever a
+    /// <c>.link-button</c>.</para>
+    ///
+    /// <para><b>What it asserts, in the form that does not report findings on correct trees.</b> A
+    /// <c>min-height</c> is acceptable when it is <c>var(--touch-target)</c>, when it is exactly zero — an
+    /// explicit opt-out, which is what a checkbox declares before its row carries the target instead — or
+    /// when it is a length of at least 44px. A literal <em>under</em> the target is the finding; a literal
+    /// <em>over</em> it is a page that wants more room and says so, which <c>KitchenBoard</c> does with a
+    /// comment naming gloves, steam and a hurry (§11.2's wall-mounted kiosk). Values in viewport or
+    /// percentage units are not control heights and are left alone, which is what <c>100dvh</c> on the
+    /// app shell is.</para>
+    ///
+    /// <para>The literal is also F-48's mechanism in a stylesheet: <c>--touch-target</c> exists so the
+    /// number is written once, and every literal beside it is a second copy waiting to disagree.</para>
+    /// </summary>
+    [Fact]
+    public void EveryDeclaredControlHeightIsTheTouchTargetOrLarger()
+    {
+        List<string> problems = [];
+        int declarationsRead = 0;
+        int readFromTheProperty = 0;
+
+        void Read(string css, string where)
+        {
+            foreach (Match match in MinimumHeightDeclaration.Matches(CssComment.Replace(css, string.Empty)))
+            {
+                string value = match.Groups[1].Value.Trim();
+                declarationsRead++;
+
+                if (value.Contains("--touch-target", StringComparison.Ordinal))
+                {
+                    readFromTheProperty++;
+                    continue;
+                }
+
+                Match length = CssLength.Match(value);
+                if (!length.Success)
+                {
+                    // Not a plain length: 100dvh on the app shell is a layout height, not a control's.
+                    continue;
+                }
+
+                double magnitude = double.Parse(
+                    length.Groups[1].Value, CultureInfo.InvariantCulture);
+                double pixels = length.Groups[2].Value == "rem" ? magnitude * PixelsPerRem : magnitude;
+
+                if (pixels == 0.0 || pixels >= MinimumTouchTargetPixels)
+                {
+                    continue;
+                }
+
+                problems.Add(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{where} declares min-height: {value} ({pixels:0.#}px)"));
+            }
+        }
+
+        Read(ReadStylesheet(), Path.GetFileName(StylesheetRelativePath));
+
+        foreach (string path in EnumerateComponents())
+        {
+            string markup = RazorComment.Replace(File.ReadAllText(path), string.Empty);
+
+            foreach (Match block in StyleBlock.Matches(markup))
+            {
+                Read(block.Groups[1].Value, Path.GetFileName(path));
+            }
+        }
+
+        // Non-vacuity, both directions. A scan that read no declarations would report a clean tree having
+        // looked at nothing, and a tree that had stopped reading the property at all would satisfy the
+        // assertion below by writing 44px everywhere — which is the drift the property exists to stop.
+        Assert.True(
+            declarationsRead >= 10,
+            $"Only {declarationsRead} min-height declaration(s) were found in the tree, and §11.12's"
+                + " control rule is declared on well over ten. Either the scan is not reading the"
+                + " stylesheets it is about or the rule has moved.");
+
+        Assert.True(
+            readFromTheProperty >= 5,
+            $"Only {readFromTheProperty} min-height declaration(s) read --touch-target. The number is"
+                + " supposed to be written once and referred to; a tree that had replaced every reference"
+                + " with the literal 44px would pass the assertion below and have lost the arrangement.");
+
+        string target = MinimumTouchTargetPixels.ToString("0", CultureInfo.InvariantCulture);
+
+        Assert.True(
+            problems.Count == 0,
+            $"{problems.Count} control(s) declare a height under §11.12's"
+                + $" {target}px touch target: {FormatList(problems)}. Declare"
+                + " var(--touch-target) rather than a literal — the property is where the number lives,"
+                + " and a literal under it is a control a thumb misses (F-65). A control that wants MORE"
+                + " room may say so with a larger length and a comment giving the reason.");
+    }
+
+    /// <summary>
+    /// Every simple selector a stylesheet declares a rule for, comments removed.
+    ///
+    /// <para>Written by hand rather than with a CSS parser, and the shape is deliberate. Splitting on
+    /// <c>{</c> gives one segment per rule; everything after that segment's last <c>}</c> is the next
+    /// rule's prelude, and a declaration block contains no <c>{</c> so it never masquerades as one. An
+    /// at-rule's prelude comes back too and is discarded by its leading <c>@</c> — but the rules
+    /// <em>inside</em> it are found, which is what makes a shared name re-declared inside a media query
+    /// visible to the caller. The prelude is then split on commas and on every combinator, so
+    /// <c>.sitting-record .muted</c> yields both halves and a page overriding a shared name at higher
+    /// specificity cannot hide behind an ancestor.</para>
+    /// </summary>
+    private static IEnumerable<string> SimpleSelectorsDeclaredIn(string css)
+    {
+        string[] segments = CssComment.Replace(css, string.Empty).Split('{');
+
+        for (int index = 0; index < segments.Length - 1; index++)
+        {
+            string segment = segments[index];
+            int closed = segment.LastIndexOf('}');
+            string prelude = (closed >= 0 ? segment[(closed + 1)..] : segment).Trim();
+
+            if (prelude.Length == 0 || prelude.StartsWith('@'))
+            {
+                continue;
+            }
+
+            foreach (string alternative in prelude.Split(','))
+            {
+                foreach (string simple in alternative.Split(
+                    SelectorSeparators, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    yield return simple.Trim();
+                }
+            }
+        }
     }
 
     private static int CountOccurrences(string text, string value)

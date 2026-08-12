@@ -128,13 +128,17 @@ body {
 /*
  * The session links are the chrome a guest reaches for with a thumb while holding a phone in one
  * hand and a fork in the other, so they carry the §11.12 target height even though they are text.
- * Vertical padding rather than a min-height, so the row does not grow on a wide screen where they
- * sit on one line with the brand.
+ *
+ * That sentence was here before the height was (F-65). The rule read `min-height: 2.25rem` — 36px,
+ * eight under the 44px §11.12 names these links in by name — under a comment that said it complied
+ * and that it used "vertical padding rather than a min-height", which was two claims about three
+ * lines that declared a min-height and no padding at all. The value is now the property, so the
+ * number is written once and cannot drift from it.
  */
 .session-link {
     display: inline-flex;
     align-items: center;
-    min-height: 2.25rem;
+    min-height: var(--touch-target);
     color: var(--accent-strong);
     font-weight: 600;
     text-decoration: none;
@@ -151,10 +155,18 @@ body {
     margin: 0;
 }
 
+/*
+ * A link that acts as a button, which §11.12 names in the same breath as a button — so it carries the
+ * same target height, and the 2.25rem literal that was here is the other half of F-65. This one is
+ * "Sign out" in the header of every page in both layouts, and it is the destructive action on four
+ * administration surfaces: "Revoke role", "Revoke display", "Deactivate account", "Deactivate table".
+ * None of those was ever measured, because §16.3 scenario 16's reach selector covers a record row's
+ * action, a page-head action and a filter's submit, and none of those is a .link-button.
+ */
 .link-button {
     display: inline-flex;
     align-items: center;
-    min-height: 2.25rem;
+    min-height: var(--touch-target);
     padding: 0;
     border: none;
     background: none;
@@ -1313,12 +1325,22 @@ a:focus-visible,
  * the thing the operator came for.
  *
  * `.page-head` rather than `.admin-header`, which is the name four pages declared
- * inline. The two coexist on purpose for exactly as long as the migration takes:
- * a shared declaration under the old name would be overridden on every page that
- * still carries the inline copy — same specificity, later in the document — so
- * the four restructured pages would silently keep the old behaviour and the
- * stylesheet would say otherwise. A new name cannot lose that argument. Stage 1b
- * of `docs/MENU_AND_HANDHELD_PLAN.md` retires `.admin-header` from the tree.
+ * inline. The two coexisted on purpose for exactly as long as the migration took:
+ * a shared declaration under the old name would have been overridden on every page
+ * that still carried the inline copy — same specificity, later in the document —
+ * so the four restructured pages would have silently kept the old behaviour while
+ * the stylesheet said otherwise. A new name cannot lose that argument.
+ * `.admin-header` left the tree in Slice 34 with the last page that declared it,
+ * and `HandheldLayoutContractTests` now asserts that the retired set is empty
+ * rather than listing who still holds it.
+ *
+ * **The area row is an optional child.** An index surface renders
+ * `AdministrationAreaLinks` inside the head; a detail surface — one table, one
+ * account, one menu item, one sitting — renders a title and, where it has one,
+ * its own primary action. Both are heads: what the class provides is the column,
+ * the gap, and the row it becomes above the breakpoint. Every surface §16.3
+ * scenario 16 measures has one, which is what the barrier waits on to know the
+ * page arrived.
  * ---------------------------------------------------------------------------*/
 
 .page-head {
@@ -1493,6 +1515,129 @@ a:focus-visible,
     margin: 1rem 0 0;
     color: var(--ink-soft);
     font-size: 0.9rem;
+}
+
+/* -----------------------------------------------------------------------------
+ * THE DETAIL SURFACE (§11.4, §11.12)
+ *
+ * One table, one account, one menu item, one sitting: a set of facts at the top,
+ * then a rule and a heading per thing that can be changed, then one small form
+ * under each. Four pages declared this vocabulary inline — `ManageMenuItem`,
+ * `ManagePerson`, `ManageTable`, `TableDisplays` — which made it the fifth copy
+ * of F-59 one register down, and it had drifted in five rules by the time
+ * anybody diffed them (**F-66**).
+ *
+ * The drift was the cheap half. The expensive half is `.manage-inline-form`,
+ * which was `display: flex; align-items: center` with its `input` and `select`
+ * given `padding: 0.45rem 0.6rem` and NO `min-height` and NO font-size floor. So
+ * the one control each of those pages exists for — rename this table, revoke
+ * this role, change this price, revoke this display — was about 34px tall
+ * against §11.12's 44, and typing in it zoomed an iPhone's viewport and left it
+ * there. Both halves of §11.12's control rule, broken on four surfaces, by a
+ * page-local rule that overrode the shared one from later in the document.
+ *
+ * It is a column here for the same reason `.filter-form` is: a stack of fields
+ * is what a form on a phone is, and the row is what there is room for above the
+ * breakpoint. The controls inherit the field treatment rather than restating it,
+ * so the 44px and the 16px are read from `--touch-target` and from
+ * `.form-field`'s own floor and are not written a second time.
+ *
+ * Where the two retired copies disagreed on a number, one had to win and the
+ * choice is written down: `min-width` above the breakpoint was 8rem in
+ * `ManageMenuItem` and 12rem in the other three, and 12rem wins because it is
+ * the one a label fits in.
+ * ---------------------------------------------------------------------------*/
+
+.manage-facts {
+    display: grid;
+    gap: 0.75rem;
+    margin: 1rem 0;
+}
+
+.manage-label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-soft);
+}
+
+.manage-heading {
+    margin: 0 0 0.35rem;
+    font-size: 1.05rem;
+}
+
+.manage-subheading {
+    margin: 1.2rem 0 0.3rem;
+    font-size: 1rem;
+}
+
+.manage-rule {
+    margin: 1.5rem 0;
+    border: 0;
+    border-top: 1px solid var(--hairline);
+}
+
+/*
+ * A statement about why there is nothing to do here — "this table is still open,
+ * so there is nothing to correct yet". Distinct from `.record-warning`, which is
+ * the danger palette and says something went wrong.
+ */
+.manage-note {
+    margin: 0.9rem 0 0;
+    padding: 0.6rem 0.85rem;
+    border: 1px solid var(--hairline);
+    border-radius: 0.5rem;
+    background-color: var(--surface);
+    color: var(--ink-soft);
+}
+
+/* The currency code beside a bare price field, which is a unit rather than a label. */
+.manage-currency {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+.manage-inline-form {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+    margin: 0.75rem 0;
+}
+
+.manage-inline-form input,
+.manage-inline-form select {
+    width: 100%;
+    min-height: var(--touch-target);
+    padding: 0.6rem 0.75rem;
+    font: inherit;
+    font-size: max(1rem, 1em);
+    color: var(--ink);
+    background-color: var(--surface-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+}
+
+.manage-inline-form input:focus-visible,
+.manage-inline-form select:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+    border-color: var(--accent);
+}
+
+.manage-inline-form button {
+    width: 100%;
+}
+
+/* A full-width text button reads as a button when its label is centred in it. */
+.manage-inline-form .link-button {
+    justify-content: center;
+}
+
+.manage-back {
+    margin-top: 1.5rem;
 }
 
 /* -----------------------------------------------------------------------------
@@ -1831,6 +1976,31 @@ a:focus-visible,
     .filter-actions {
         flex-direction: row;
         align-items: center;
+    }
+
+    /*
+     * The detail surface's facts spread into as many columns as fit, and its small forms become the
+     * row they used to be unconditionally. `flex-end` so a field and its button sit on one baseline,
+     * which is what the four retired copies were reaching for and what there is room for here.
+     */
+    .manage-facts {
+        grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    }
+
+    .manage-inline-form {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+
+    .manage-inline-form input,
+    .manage-inline-form select {
+        width: auto;
+        min-width: 12rem;
+    }
+
+    .manage-inline-form button {
+        width: auto;
     }
 
     .source-facts {

@@ -11,7 +11,7 @@
 @inject NavigationManager Navigation
 @inject RestaurantTime RestaurantClock
 
-@* Display devices for one table (TECHNICAL_SPECIFICATION §4.2, §11.4 — `area.administration`).
+@* Display devices for one table (TECHNICAL_SPECIFICATION §4.2, §11.4, §11.12 — `area.administration`).
    Static SSR, like every administration surface.
 
    Generate deliberately does NOT post/redirect/get: the plaintext code exists exactly once, in the
@@ -21,7 +21,20 @@
 
    Revoke does use post/redirect/get, and picks its device from a select rather than rendering a form
    per row — the same shape ManagePerson uses for role revocation, and the reason is the same: one
-   named form per action keeps static-SSR form matching unambiguous. *@
+   named form per action keeps static-SSR form matching unambiguous.
+
+   §11.12 vocabulary throughout and no inline copy of any of it (M6 Slice 34). The roster is a shared
+   `.record-list`, so below the breakpoint each display is a card whose cells state their own labels;
+   the small forms and the facts are the shared `.manage-*` detail vocabulary. What this page used to
+   declare inline was the retired per-page table wrapper, a second chip set pinned to literals off the
+   palette, a
+   `.visually-hidden` still using the deprecated `clip`, and a `.manage-inline-form select` with no
+   touch-target height at all — which is F-66, and the whole of it is now read from app.css.
+
+   Generating a code is the thing an administrator opens this page to do, so it is the page head's own
+   action rather than a form further down. That also puts it where §16.3 scenario 16 measures it: this
+   surface is in the barrier as of Slice 34, and with no display ever paired the generate button is the
+   only control on it. *@
 
 <PageTitle>@(_table is null ? "Display devices" : $"Displays — {_table.Label}")</PageTitle>
 
@@ -36,9 +49,22 @@
 }
 else
 {
-    <section class="panel account-panel">
-        <p class="eyebrow">Administration — display devices</p>
-        <h1>@_table.Label</h1>
+    <section class="panel panel-wide">
+        <div class="page-head">
+            <div>
+                <p class="eyebrow">Administration — display devices</p>
+                <h1>@_table.Label</h1>
+            </div>
+            @if (_table.IsActive)
+            {
+                <div class="page-head-action">
+                    <form method="post" @formname="display-generate-code" @onsubmit="GenerateCodeAsync">
+                        <AntiforgeryToken />
+                        <button type="submit" class="button-primary">Generate pairing code</button>
+                    </form>
+                </div>
+            }
+        </div>
 
         @if (_flashMessage is not null)
         {
@@ -68,22 +94,15 @@ else
             </div>
         }
 
-        <h2 class="manage-heading">Pair a new display</h2>
         @if (_table.IsActive)
         {
             <p class="lede">
-                Generate a one-time code, then open <code>@PairingUrl</code> on the tablet and type it in.
-                Codes last @Options.TableDisplayPairingCodeMinutes
+                Generate a one-time code with the button above, then open <code>@PairingUrl</code> on the
+                tablet and type it in. Codes last @Options.TableDisplayPairingCodeMinutes
                 minute@(Options.TableDisplayPairingCodeMinutes == 1 ? "" : "s"), work once, and the
                 pairing page is rate-limited to @DisplayRoutes.PairingAttemptsPerWindow attempts a minute
                 per device.
             </p>
-            <form method="post" @formname="display-generate-code" @onsubmit="GenerateCodeAsync">
-                <AntiforgeryToken />
-                <div class="form-actions">
-                    <button type="submit" class="button-primary">Generate pairing code</button>
-                </div>
-            </form>
         }
         else
         {
@@ -98,11 +117,11 @@ else
         <h2 class="manage-heading">Paired displays</h2>
         @if (_devices.Count == 0)
         {
-            <p class="lede">No display has ever been paired to this table.</p>
+            <p class="record-empty">No display has ever been paired to this table.</p>
         }
         else
         {
-            <div class="admin-tables">
+            <div class="record-list">
                 <table>
                     <thead>
                         <tr>
@@ -115,9 +134,9 @@ else
                     <tbody>
                         @foreach (TableDisplayDeviceSummary device in _devices)
                         {
-                            <tr>
-                                <td><span class="table-label">@device.DeviceLabel</span></td>
-                                <td>
+                            <tr @key="device.DeviceIdentifier">
+                                <td class="record-primary" data-label="">@device.DeviceLabel</td>
+                                <td data-label="">
                                     @if (device.IsRevoked)
                                     {
                                         <span class="chip chip-warn">Revoked</span>
@@ -127,14 +146,14 @@ else
                                         <span class="chip chip-ok">Live</span>
                                     }
                                 </td>
-                                <td>
+                                <td data-label="Paired">
                                     @RestaurantClock.DateAndTime(device.PairedAt)
-                                    <span class="muted">by @device.PairedByUsername</span>
+                                    <span class="record-secondary">by @device.PairedByUsername</span>
                                 </td>
-                                <td>
+                                <td data-label="Last seen">
                                     @if (device.IsRevoked && device.RevokedAt is { } revokedAt)
                                     {
-                                        <span class="muted">
+                                        <span class="record-secondary">
                                             revoked @RestaurantClock.DateAndTime(revokedAt)
                                             @if (device.RevokedByUsername is { } revokedBy)
                                             {
@@ -148,7 +167,7 @@ else
                                     }
                                     else
                                     {
-                                        <span class="muted">Never</span>
+                                        <span class="record-secondary">Never</span>
                                     }
                                 </td>
                             </tr>
@@ -159,10 +178,12 @@ else
 
             @if (_revocableDevices.Count > 0)
             {
+                <h2 class="manage-heading">Revoke a display</h2>
+
                 @* No explicit <AntiforgeryToken />: EditForm renders one itself for a named SSR form
                    (RenderSSRFormHandlingChildren), and a second field of the same name would make the
-                   value ambiguous to the token store. The plain <form> above is not an EditForm, so it
-                   does carry one — the same split ManageTable already uses. *@
+                   value ambiguous to the token store. The plain <form> in the page head is not an
+                   EditForm, so it does carry one — the same split ManageTable already uses. *@
                 <EditForm Model="RevokeInput" method="post" OnValidSubmit="RevokeDeviceAsync"
                           FormName="display-revoke" class="manage-inline-form">
                     <label class="visually-hidden" for="revoke-display">Display to revoke</label>
@@ -189,114 +210,32 @@ else
     </section>
 }
 
-@* Namespaced and inline for the same reason the other administration pages keep their CSS inline:
-   App.razor links the static stylesheet, so component CSS isolation is not active. *@
+@* Two rules nobody else reads: the one-time pairing code, and the panel it is shown in. Everything
+   else this page draws is app.css's (§11.12). App.razor links the static stylesheet rather than the
+   scoped bundle, so component CSS isolation is not active — which is why a page-local block is the
+   arrangement here and why re-declaring a shared name in one would silently win. *@
 <style>
-    .manage-heading {
-        font-size: 1.05rem;
-        margin: 1.25rem 0 0.35rem;
-    }
-
-    .manage-rule {
-        border: 0;
-        border-top: 1px solid var(--hairline, #e2e6ec);
-        margin: 1.5rem 0;
-    }
-
-    .manage-inline-form {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.6rem;
-        align-items: center;
-        margin: 0.75rem 0;
-    }
-
-    .manage-inline-form select {
-        padding: 0.45rem 0.6rem;
-        border: 1px solid var(--hairline, #ccc);
-        border-radius: 0.4rem;
-        min-width: 12rem;
-    }
-
-    .manage-back {
-        margin-top: 1.5rem;
-    }
-
     .pairing-issued {
         margin: 1rem 0;
         padding: 1rem;
-        border: 1px solid var(--hairline, #e2e6ec);
+        border: 1px solid var(--hairline);
         border-radius: 0.6rem;
-        background: var(--surface, #f7f8fa);
+        background-color: var(--surface);
         text-align: center;
     }
 
     .pairing-issued-label {
         margin: 0;
         font-size: 0.85rem;
-        color: var(--ink-soft, #55636f);
+        color: var(--ink-soft);
     }
 
     .pairing-code {
         margin: 0.35rem 0 0.5rem;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-family: var(--font-monospace);
         font-size: clamp(1.75rem, 6vw, 2.5rem);
         font-weight: 700;
         letter-spacing: 0.22em;
-    }
-
-    .admin-tables table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 0.75rem 0;
-        font-size: 0.95rem;
-    }
-
-    .admin-tables th,
-    .admin-tables td {
-        text-align: left;
-        padding: 0.5rem 0.6rem;
-        border-bottom: 1px solid var(--hairline, #e2e6ec);
-        vertical-align: top;
-    }
-
-    .table-label {
-        font-weight: 600;
-    }
-
-    .muted {
-        color: var(--ink-soft, #99a3ad);
-    }
-
-    .chip {
-        display: inline-block;
-        padding: 0.1rem 0.5rem;
-        border-radius: 999px;
-        font-size: 0.8rem;
-        line-height: 1.5;
-        white-space: nowrap;
-    }
-
-    .chip-ok {
-        background: #e6f4ea;
-        color: #1e7a37;
-    }
-
-    .chip-warn {
-        background: #fdecea;
-        color: #a3261c;
-    }
-
-    .visually-hidden {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        margin: -1px;
-        padding: 0;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        border: 0;
     }
 </style>
 

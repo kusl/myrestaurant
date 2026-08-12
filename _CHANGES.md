@@ -1,134 +1,169 @@
-# M6 Slice 33 — Stage 1b's first half, and two rules that were true and unenforced (F-63, F-64)
+# M6 Slice 34 — the number written twice (F-65), the fifth copy (F-66), and the gate that read prose (F-67)
 
 Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-33-explorers-breakpoint-and-palette.tar.gz
+tar -xzf m6-slice-34-detail-vocabulary-and-touch-targets.tar.gz
 git status
 ```
 
 **Files to DELETE: none.**
 
-**No `git add` is required.** Every file in this archive already exists and is tracked — there are no new
-files in this slice, which is the first time that has been true since Slice 24.
+**No `git add` is required.** Every file in this archive already exists and is tracked — no new files and no
+new directories in this slice, so `git ls-files` already sees everything the gates read.
+
+---
+
+## Read this first
+
+**Slice 33 is in the tree and has not been run.** The terminal logs here are Slice 32's — 1074 tests, 16
+scenarios — and the Slice 33 commit was applied without being exercised. This slice is built on top of it,
+against the actual text of it. If the first run is red, both slices' changes are candidates, and the honest
+order to read them in is Slice 33 first.
 
 ---
 
 ## What this slice is
 
-`EventExplorer.razor` and `HiddenRecords.razor` join §11.12's shared vocabulary. They were the last two
-pages carrying a hand-rolled copy of §11.4's row of area links, and the only two carrying a filter form, so
-they went together rather than in size order. §16.3 scenario 16 goes from four surfaces to six.
+Stage 1b's second half. Five components stop declaring their own copy of one vocabulary, the last two
+retired names leave the tree, and §16.3 scenario 16 goes from six surfaces to ten.
 
-Two findings came out of doing it, and neither was in the work:
+Three findings came out of doing it, and the first one was **blocking**:
 
-- **F-63** — §11.12's *exactly one breakpoint* is a rule about the tree and was asserted about `app.css`
-  alone, while the same section grants twenty-one components an inline `<style>`. No component had a
-  second breakpoint, so the rule was true and unenforced. Found by needing to write one.
-- **F-64** — five CSS custom properties (`--muted-foreground`, `--rule`, `--surface-sunken`,
-  `--chip-background`, `--chip-foreground`) are read **fifty-five times across eight components** and
-  declared nowhere. An undeclared property in CSS renders its fallback in silence, so eight surfaces have
-  been drawing `#666` greys and `#e5e5e5` hairlines while the rest of the application draws `--ink-soft`
-  and `--hairline`.
+- **F-67** — adding `.chip` and `.muted` to `SharedSelectorPrefixes`, which the plan required, reported
+  findings on `KitchenBoard`, `CounterBoard` and `CounterSitting`. All three are correct: each names the
+  shared vocabulary it leans on in a **CSS comment**. The fact matched a prefix against the *text* of a
+  `<style>` block, stripping Razor comments and not CSS comments — while the custom-property fact thirty
+  lines below it in the same file stripped both. So the rule's reach was bounded by which shared names
+  happened not to appear in somebody's prose.
+- **F-66** — `ManageMenuItem`, `ManagePerson`, `ManageTable` and `TableDisplays` each declared their own
+  inline copy of one `.manage-*` vocabulary: twenty duplicated rules, five drifted. Three overlaps with
+  `app.css` are the substance. `.visually-hidden` was still the deprecated `clip: rect(…)` on all four,
+  which is exactly what Slice 30 said it centralised the name to remove. `.chip-ok`/`.chip-warn` were pinned
+  to `#fdecea`/`#a3261c` against the palette's `#fbeaea`/`#7f1d1d`. And `.manage-inline-form input`/`select`
+  had **no `min-height` and no font-size floor**, so the one control each page exists for was ~34px against
+  §11.12's 44 and zoomed an iPhone's viewport on focus without zooming back.
+- **F-65** — found by writing the assertion F-66 needed. `.session-link` and `.link-button` both declared
+  `min-height: 2.25rem`. That is 36px against the 44 §11.12 names those exact controls in by name, and
+  between them they are the **sign-out control in the header of every page in both layouts** and the
+  destructive action on four administration surfaces. The comment above `.session-link` said the links
+  "carry the §11.12 target height" and used "vertical padding rather than a min-height" — above three lines
+  declaring a `min-height` and no padding at all.
 
 ---
 
 ## The decisions to veto, if you want to
 
-**1. F-64 is fixed across all eight files, not just the two this slice was already rewriting.**
+**1. The barrier grew to ten surfaces, which is the thing I asked you about and you said continue to.**
 
-The alternative was an F-47-style expected-holders list and a fix next slice. The argument against it: the
-repair is a name substitution inside `<style>` blocks — no markup moves, so it cannot break a Razor compile
-— and a list whose only purpose is to defer a substitution is a list this project has ruled against
-writing. It was applied programmatically and diff-verified: **110 changed lines, every one a `var(--…)`
-line**.
+Six indexes plus four detail pages, built from identifiers scenario 16 already mints. Fifteen controls
+expected, floor fourteen. The alternative was leaving the barrier at six and recording four newly converted
+pages as unmeasured — but converting a page and not measuring it is how F-59 survived four milestones, and
+all four had 34px form controls at the moment they were added.
 
-The cost is that `ManageSitting.razor` and `ManagePerson.razor` are Stage 1b's next conversion targets and
-get touched twice. Under full-file delivery that costs nothing but your review time.
+**A red first run is a real possibility and would be information.** These four pages have never been laid
+out at 375px by anything. If one overflows, the failure message names the widest element outside a scroll
+container.
 
-**To revert:** restore those six files from `HEAD` and add a `StillExpectedToReadUndeclaredProperties` list
-to the sixth fact in `HandheldLayoutContractTests`.
+**2. `/administration/sittings/{sitting}` is converted and deliberately not measured.**
 
-**2. `/administration/hidden-records` is in the barrier and is measured empty.**
+Reaching a sitting needs a guest, a table token and a join before there is an identifier for the route —
+scenario 3's arrangement — and an invented identifier meets the not-found panel, which has no page head, so
+the barrier would fail on arrival rather than measure anything. Its conversion rests on the contract test and
+on reading `app.css`. Same trade hidden-records is already measured with, one route deeper.
 
-Putting a row on it needs a guest, a token, a join, an order and a close — scenario 11's arrangement.
-Sittings has been measured on the same terms since the barrier was written, and the scenario states it
-rather than glossing it. Its filter submit *is* measured, so the surface is not contributing nothing.
+**3. The `.manage-` name is kept rather than renamed, which is the opposite of what `.admin-header` got.**
 
-**To revert:** delete one line from `HandheldAdministrationPaths` and drop `MinimumControlsMeasured` from 8
-to 7.
+`.page-head` exists because a shared declaration under the old name would have lost the specificity argument
+on every page still carrying an inline copy — an argument about a migration that **spans slices**. This one
+spans none: all four holders empty in the same commit. The reasoning is recorded beside the declaration,
+because the two decisions look contradictory and the difference is what makes either correct.
 
-**3. Eight pages will look slightly different.** `--ink-soft` `#55636f` is cooler and darker than `#666`;
-`--hairline` `#e2e6ec` is lighter and cooler than `#e5e5e5`. That is the palette those pages were always
-supposed to be drawing, but it is a visible change and it is a judgement, so it is yours.
+**4. Three of the four `.manage-*` pages end with no `<style>` block at all.**
 
----
+`ManageTable`, `ManagePerson` and `ManageMenuItem` turned out to declare nothing that was theirs alone. Each
+keeps a Razor comment saying so, because an empty absence and a deliberate one look identical.
 
-## Files in this archive
+**5. `.link-button` is 8px taller everywhere, including "Sign out" in the header of every page.**
 
-| File | Why |
-|---|---|
-| `src/…/wwwroot/app.css` | shared `.filter-*` vocabulary; `--chip-surface` declared; F-63 rule in the header |
-| `src/…/Administration/EventExplorer.razor` | `.page-head` + `AdministrationAreaLinks`, shared filter, `margin-left: auto` gone |
-| `src/…/Administration/HiddenRecords.razor` | same, plus the money-alignment ruling recorded at the rule |
-| `src/…/Administration/ManageMenuItem.razor` | F-64 only — `var()` names, no markup change |
-| `src/…/Administration/ManagePerson.razor` | F-64 only |
-| `src/…/Administration/ManageSitting.razor` | F-64 only |
-| `src/…/Administration/ManageTable.razor` | F-64 only |
-| `src/…/Administration/TableJoinCode.razor` | F-64 only |
-| `src/…/Counter/CounterJoinCode.razor` | F-64 only |
-| `tests/…/Components/HandheldLayoutContractTests.cs` | four facts → six; F-63 and F-64 made executable |
-| `tests/…/EndToEnd.Tests/Harness/HandheldReach.cs` | reach selector covers `.filter-actions` |
-| `tests/…/EndToEnd.Tests/Harness/HiddenRecordJourneys.cs` | **selectors repointed — without this, scenario 11 fails** |
-| `tests/…/EndToEnd.Tests/EndToEndScenarios.cs` | six surfaces, floor 8, comments reconciled |
-| `docs/TECHNICAL_SPECIFICATION.md` | v1.18 — §11.12, §16.3, §16.4, Appendix A F-63 + F-64 |
-| `docs/DOCUMENTATION_REVIEW.md` | F-63 and F-64 rows, status line, closing note on adjacency |
-| `docs/BUILD_PROGRESS.md` | Slice 33 entry (complete file) |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 1b half struck through; 1c's numbers reconciled |
-| `README.md` | scenario 16 row, M6 and M7 paragraphs |
-| `_CHANGES.md` | this file |
+That is the fix for half of F-65 and it is not confined to the administration area. If the header looks
+wrong to you on a phone, that is a judgement I cannot make from here.
+
+**6. `ManageMenuItem`'s history table became a shared record list.**
+
+It was a table inside `overflow-x: auto`, so the *document* never scrolled sideways and the barrier would
+have passed it — but three unlabelled cells in a card is the half of F-59 about the reader rather than the
+affordance.
 
 ---
 
-## The red suite this nearly shipped
+## Files in this archive (14, all complete, none new)
 
-`HiddenRecordJourneys.cs` pins `form.hidden-filter #filter-username`, `form.hidden-filter
-button[type='submit']`, `form.hidden-filter .hidden-filter-actions a` and `p.hidden-count`. Renaming those
-classes without that file is scenario 11 failing on a page that is correct. Repointed. `p.hidden-none` is
-kept exactly as it was, because it is the harness's handle rather than a style, and that reason is now
-written where the class is.
+```
+docs/BUILD_PROGRESS.md
+docs/DOCUMENTATION_REVIEW.md
+docs/MENU_AND_HANDHELD_PLAN.md
+docs/TECHNICAL_SPECIFICATION.md
+src/MyRestaurant.WebApplication/wwwroot/app.css
+src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuItem.razor
+src/MyRestaurant.WebApplication/Components/Pages/Administration/ManagePerson.razor
+src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageSitting.razor
+src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageTable.razor
+src/MyRestaurant.WebApplication/Components/Pages/Administration/TableDisplays.razor
+tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
+tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs
+tests/MyRestaurant.WebApplication.Tests/Components/HandheldLayoutContractTests.cs
+_CHANGES.md
+```
+
+`docs/TECHNICAL_SPECIFICATION.md` moves to **v1.19**; the header and the newest changelog entry move
+together, which is F-48's rule and is asserted by `SpecificationVersionTests`.
 
 ---
 
-## What to run
+## Where to look when you run it
 
 ```
 bash scripts/check_tree.sh
-bash scripts/ci_local.sh --with-all --with-e2e
+#    expect: 5 gates, "tree hygiene passed.", exit 0. The authored-text count does NOT move —
+#    no new files. If it moves, something else is in your working tree.
+
+bash scripts/check_repository.sh
+#    expect: 3 gates plus a SKIP, exit 0. Gate 3 must still report "none": nothing added here
+#    asserts a repository setting.
+
+bash scripts/ci_local.sh
+#    expect: 8 numbered gates, same number and same order as Slice 33.
+
+dotnet build
+#    the five Razor files are the likely site of a complaint. TableDisplays and ManageSitting are
+#    substantially restructured; the other three lost a <style> block and gained a .page-head wrapper.
+
+dotnet test
+#    expect: 1077 total, 0 failed. Arithmetic from 1074 (Slice 32's observed run) plus Slice 33's two
+#    new facts plus this slice's one. If Slice 33 has not run, this number is a prediction about two
+#    slices at once.
+
+MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+#    expect: 16 passed, 0 skipped. Scenario 16 is THE ONE TO WATCH: it now opens four pages nothing has
+#    ever measured. A failure there names the surface, the two numbers, and the widest element outside a
+#    scroll container.
 ```
 
-**Expect:** 8 numbered gates, same order as Slice 32. **1076 tests, 0 failed** (was 1074 — two new
-`[Fact]` methods; arithmetic, not an observation). **16 of 16** §16.3 scenarios, with scenario 16 now
-walking six surfaces and measuring nine controls.
-
-The authored-text file count in gate 1 does not move: no new files.
-
-If scenario 16 fails, the message names the widest element outside a scroll container on the surface that
-overflowed — that is the diagnosis, not just the symptom.
+**If scenario 16 is red on a detail surface**, the message distinguishes the three cases: a page wider than
+its viewport, a control whose box lies outside it, or a control under 44px. The first two are layout
+findings on a page that has never been measured; the third would mean a rule in `app.css` is being overridden
+by something I did not find.
 
 ---
 
-## Verified from here, and what was not
+## What I could not verify
 
-**All six contract facts were ported to Python and executed.** Against this tree: six pass. Against the
-tree as it was: five fail. **Eight planted regressions, eight caught** — one per assertion, including a
-`max-width` query planted in a component (F-63's own regression) and `var(--text-quiet, #666)` planted in a
-converted page (F-64's).
+No .NET SDK and no browser here. All seven contract facts were ported to Python and run: **seven pass on the
+delivered tree, five fail on the tree as it stands**, which is a before/after rather than a claim. Ten
+planted regressions, ten results as designed — including the one that must **not** fire, a CSS comment
+naming `.chip` and `.muted`, which is F-67 demonstrated rather than asserted. Brace, paren, bracket, CS1620,
+CS4007, Razor tag-tree and byte hygiene all clean, each proven sensitive.
 
-Balance, CS1620, CS4007, Razor tag-tree and byte hygiene: clean on all thirteen files, each check proven
-sensitive, with untouched siblings as controls. `SpecificationVersionTests` ported and run — header 1.18
-against newest entry 1.18.
-
-**Nothing compiled and no browser rendered anything.** Thirteen files edited, `dotnet build` run on none.
-The Razor markup changes are small and structural; the CSS claims rest on reading `app.css` line by line.
-The first run on the workstation is what proves them.
+Nothing compiled. No browser rendered anything. `docs/BUILD_PROGRESS.md` has the full account, including one
+scanner defect I introduced and fixed that would otherwise have had me "correcting" five correct files.

@@ -127,6 +127,14 @@ internal static class HandheldReach
     /// §11.4 makes both read-only, so the filter is the only control on the surface, and a barrier that
     /// skipped it would visit two pages and measure nothing on either (F-41).
     ///
+    /// <para><c>.manage-inline-form button</c> joined in Slice 34, with the four detail surfaces the
+    /// barrier now walks, and it is the same membership decision one register in: rename this table,
+    /// revoke this role, reprice this item, revoke this display. Each of those is the whole reason an
+    /// operator opened the page, and each was 34px tall with no font floor until that slice, because the
+    /// four pages declared their own form controls inline and the copies had no touch-target height at all
+    /// (F-66). The `.manage-back` link is deliberately outside the set: leaving is not the thing anybody
+    /// came for.</para>
+    ///
     /// <para>The stream checkboxes inside the filter are deliberately <em>not</em> here. A checkbox is
     /// 1.35rem by declaration — <c>.form-field input[type="checkbox"]</c> sets <c>min-height: 0</c> on
     /// purpose — so the thing a thumb finds is the <c>.filter-choice</c> row around it, and asserting a
@@ -136,7 +144,7 @@ internal static class HandheldReach
     /// </summary>
     private const string ReachSelector =
         ".record-actions a, .record-actions button, .page-head-action a, .page-head-action button,"
-            + " .filter-actions a, .filter-actions button";
+            + " .filter-actions a, .filter-actions button, .manage-inline-form button";
 
     /// <summary>
     /// Measured for height only. The area links are a horizontally scrolled strip by design (§11.12,
@@ -149,6 +157,11 @@ internal static class HandheldReach
     /// Present on every surface this barrier visits. Waited on rather than a record list, because a page
     /// with no records still has to lay out correctly — waiting for a list would make an empty surface
     /// hang for thirty seconds and then report the wrong thing.
+    ///
+    /// <para>It is also what tells an arrived detail surface from the not-found panel the same route
+    /// renders, which matters as of Slice 34: four of the ten surfaces are <c>/…/{identifier}</c> routes,
+    /// and a stale identifier answers 200 with a "not found" panel that has no head. So a wrong identifier
+    /// fails here, naming the path, rather than passing a barrier that measured nothing.</para>
     /// </summary>
     private const string PageHeadSelector = ".page-head";
 

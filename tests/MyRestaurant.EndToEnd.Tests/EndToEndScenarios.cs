@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using Microsoft.Playwright;
 using MyRestaurant.Domain.Security;
@@ -66,9 +67,10 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// and <c>HandheldLayoutContractTests</c>, added with the fix, asserts the *structure* of §11.12 and by
 /// construction cannot decide whether a control is on the screen. This is the assertion F-59 would have
 /// failed. Appended as sixteen rather than inserted, because the harness and this file name scenarios by
-/// number in a great many places. It walked four surfaces when it was written and walks six since Slice
-/// 33 converted the two explorers; <see cref="HandheldAdministrationPaths"/> is the list, and growing it
-/// is what converting a page costs.</para>
+/// number in a great many places. It walked four surfaces when it was written, six once Slice 33 converted
+/// the two explorers, and ten since Slice 34 finished the indexes and added the detail surfaces beside
+/// them — see <see cref="HandheldAdministrationIndexPaths"/> and <see cref="HandheldDetailPaths"/>.
+/// Measuring a page is what converting one costs.</para>
 ///
 /// <para>Every scenario begins with <see cref="SkipUnlessHarnessAvailable"/>. The scenarios are opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) and additionally need a container engine, a Chromium build and a
@@ -191,15 +193,14 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     private const string ReenrolledKitchenPassword = "a new pass for a new week";
 
     /// <summary>
-    /// The §11.4 administration surfaces §16.3 scenario 16 measures, in the order the area links render
-    /// them.
+    /// The §11.4 administration <em>index</em> surfaces §16.3 scenario 16 measures, in the order the area
+    /// links render them.
     ///
     /// <para>Four when the barrier was built — the four Slice 30 restructured — and six since Slice 33
-    /// converted the two explorers. The list grows as Stage 1b of
-    /// <c>docs/MENU_AND_HANDHELD_PLAN.md</c> converts the rest, which is the same arrangement
-    /// <c>HandheldLayoutContractTests.StillExpectedToCarryRetiredTableVocabulary</c> has, and for the same
-    /// reason (F-47): finishing the migration is then a line added here by somebody who decided to,
-    /// rather than a page nobody remembers to check.</para>
+    /// converted the two explorers. Slice 34 finished the indexes and added the <em>detail</em> surfaces
+    /// beside them; those are not in this array because their routes carry an identifier, so they are
+    /// built from what the scenario minted (see <see cref="HandheldDetailPaths"/>). Ten surfaces
+    /// altogether.</para>
     ///
     /// <para><c>/administration/hidden-records</c> is measured <b>empty</b>, and that is stated rather
     /// than glossed. Putting a row on it needs a guest, a token, a join, an order and a close before
@@ -208,7 +209,7 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     /// and its submit button is measured; what is untested there is a <em>record card</em> on that page,
     /// not the page. Sittings has been measured on the same terms since the barrier was written.</para>
     /// </summary>
-    private static readonly string[] HandheldAdministrationPaths =
+    private static readonly string[] HandheldAdministrationIndexPaths =
     [
         "/administration",
         "/administration/tables",
@@ -217,6 +218,35 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         "/administration/hidden-records",
         "/administration/events",
     ];
+
+    /// <summary>
+    /// The §11.4 detail surfaces the same scenario measures: one account, one table, that table's
+    /// displays, one menu item.
+    ///
+    /// <para><b>Why these four and not five.</b> They are the four whose identifier this scenario already
+    /// holds — an account and a table and an item it created, and a table's display roster reached from
+    /// the table. Every one of them was carrying its own inline copy of the detail vocabulary until Slice
+    /// 34, with form controls 34px tall and no font floor, and none of them had ever been laid out at
+    /// 375px by anything (F-66). Converting a page and not measuring it is how F-59 survived four
+    /// milestones.</para>
+    ///
+    /// <para><c>/administration/sittings/{sitting}</c> is the fifth, is converted in the same slice, and
+    /// is deliberately <b>not</b> here. Reaching a sitting needs a guest, a table token and a join before
+    /// there is an identifier to put in the route — scenario 3's arrangement, three scenarios' worth of
+    /// setup for one measurement — and a barrier that navigated to a made-up identifier would meet the
+    /// not-found panel, which has no page head and would fail on arrival rather than measure anything.
+    /// So that page's conversion rests on the contract test and on reading app.css, and this sentence is
+    /// the record of it. It is the same honest gap <c>/administration/hidden-records</c> is measured
+    /// with, one route deeper.</para>
+    /// </summary>
+    private static string[] HandheldDetailPaths(Guid personIdentifier, Guid tableIdentifier, Guid menuItemIdentifier)
+        =>
+        [
+            string.Create(CultureInfo.InvariantCulture, $"/administration/people/{personIdentifier:D}"),
+            string.Create(CultureInfo.InvariantCulture, $"/administration/tables/{tableIdentifier:D}"),
+            string.Create(CultureInfo.InvariantCulture, $"/administration/tables/{tableIdentifier:D}/displays"),
+            string.Create(CultureInfo.InvariantCulture, $"/administration/menu/{menuItemIdentifier:D}"),
+        ];
 
     /// <summary>
     /// How much narrower than the configured viewport <c>document.documentElement.clientWidth</c> is
@@ -229,10 +259,11 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
     /// <summary>
     /// The floor on how many controls §16.3 scenario 16 must have measured before its verdicts mean
-    /// anything. Nine are expected since Slice 33; see the comment at the assertion for the arithmetic
-    /// and for why the floor is one under it rather than equal to it.
+    /// anything. Fifteen are expected since Slice 34; see the comment at the assertion for the arithmetic,
+    /// for which renamed selector sets the floor, and for why it is one under the expectation rather than
+    /// equal to it.
     /// </summary>
-    private const int MinimumControlsMeasured = 8;
+    private const int MinimumControlsMeasured = 14;
 
     /// <summary>The counter account §16.3 scenario 16 creates so that the people index has two rows.</summary>
     private const string HandheldCounterUsername = "e2e.sixteen.counter";
@@ -2251,8 +2282,9 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
     // -------------------------------------------------------------------------------------------
     // 16. An administrator works §11.4's administration surfaces from a 375×667 handset: no page
-    //     scrolls sideways, every row's way in and every filter's submit lies inside the screen, and
-    //     every control is 44px tall. Six surfaces since Slice 33; the list is the migration.
+    //     scrolls sideways, every row's way in, every filter's submit and every detail form's button
+    //     lies inside the screen, and every control is 44px tall. Ten surfaces since Slice 34 — six
+    //     indexes and four detail pages — which is every §11.4 surface but the one that needs a sitting.
     // -------------------------------------------------------------------------------------------
     [Fact]
     public async Task Administration_IsOperableOnAHandheldViewport()
@@ -2277,18 +2309,31 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
         Assert.Equal(HandheldCounterUsername, counter.Username);
 
-        await AdministrationJourneys.CreateTableAsync(page, HandheldTableLabel);
-        await AdministrationJourneys.CreateMenuItemAsync(page, HandheldMenuItemName, HandheldMenuItemPrice);
+        // The identifiers are kept as of Slice 34, because the four detail surfaces below are
+        // `/…/{identifier}` routes and this is where the only identifiers this scenario will ever hold
+        // are minted. Read back off each surface's own success panel rather than invented — see
+        // AdministrationJourneys.CreateTableAsync for why that matters.
+        Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(page, HandheldTableLabel);
+        MenuItemOnTheMenu menuItem = await AdministrationJourneys.CreateMenuItemAsync(
+            page, HandheldMenuItemName, HandheldMenuItemPrice);
 
-        // (c) Measure each surface once. Two of the six are measured with nothing in their list, and
-        // that is stated rather than glossed: opening a sitting needs a guest, a token and a join, and
-        // hiding an order needs all of that plus an order and a close — scenario 3's and scenario 11's
-        // subjects, not this one's. Both pages still have to lay out, and hidden-records' filter is the
-        // same §11.12 vocabulary the event explorer renders and is measured — so what is untested on
-        // those two is a *row*, not the page.
+        // (c) Measure each surface once — six indexes, then the four detail surfaces whose identifiers
+        // this scenario holds. Two of the six indexes are measured with nothing in their list, and that
+        // is stated rather than glossed: opening a sitting needs a guest, a token and a join, and hiding
+        // an order needs all of that plus an order and a close — scenario 3's and scenario 11's subjects,
+        // not this one's. Both pages still have to lay out, and hidden-records' filter is the same §11.12
+        // vocabulary the event explorer renders and is measured — so what is untested on those two is a
+        // *row*, not the page. The display roster is measured the same way, with no display ever paired:
+        // pairing one needs a second browser context and §4.2's whole ceremony, which is scenario 6.
         List<HandheldReachReport> reports = [];
 
-        foreach (string path in HandheldAdministrationPaths)
+        foreach (string path in HandheldAdministrationIndexPaths)
+        {
+            reports.Add(await HandheldReach.MeasureAsync(page, path));
+        }
+
+        foreach (string path in HandheldDetailPaths(
+            counter.PersonIdentifier, tableIdentifier, menuItem.Identifier))
         {
             reports.Add(await HandheldReach.MeasureAsync(page, path));
         }
@@ -2310,18 +2355,24 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
                     + " assertion below passes on a page nobody claims is reachable.");
         }
 
-        // (e) Enough was measured to be measuring something. Nine controls are expected: two rows plus
-        // a create button on people, one plus one on tables, one plus one on menu, nothing on sittings,
-        // and one filter submit on each of hidden-records and events — which is every control §11.4
-        // leaves on those two, both being read-only surfaces with no action of their own. The floor is
-        // eight rather than nine so that one surprise is not a red suite, and it is still under every way
-        // this can go quietly wrong — a renamed `.record-actions` leaves five, a renamed
-        // `.page-head-action` leaves six, a renamed `.filter-actions` leaves seven.
+        // (e) Enough was measured to be measuring something. Fifteen controls are expected, and the
+        // arithmetic is worth writing down because the floor under it is chosen from it. On the indexes:
+        // two rows plus a create button on people, one plus one on tables, one plus one on menu, nothing
+        // at all on sittings, and one filter submit on each of hidden-records and events — which is every
+        // control §11.4 leaves on those two, both being read-only surfaces with no action of their own.
+        // On the detail surfaces: a grant form and a revoke form on the account, a rename form on the
+        // table, a rename and a reprice on the item, and the pairing button on the display roster.
+        //
+        // The floor is fourteen rather than fifteen so that one surprise is not a red suite, and it is
+        // still under every way this can go quietly wrong: a renamed `.record-actions` leaves eleven, a
+        // renamed `.page-head-action` leaves eleven, a renamed `.manage-inline-form` leaves nine, and a
+        // renamed `.filter-actions` — the smallest loss, and therefore the one that sets the floor —
+        // leaves thirteen.
         int measured = reports.Sum(report => report.MeasuredCount);
 
         Assert.True(
             measured >= MinimumControlsMeasured,
-            $"Only {measured} control(s) were measured across {reports.Count} surfaces, and nine were"
+            $"Only {measured} control(s) were measured across {reports.Count} surfaces, and fifteen were"
                 + " expected. A selector this barrier reads has been renamed, or a page lost its list —"
                 + " either way the assertions below are true of nothing.");
 

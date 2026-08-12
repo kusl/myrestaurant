@@ -1,15 +1,18 @@
 # Menu modernization and the handheld contract — staged plan
 
-**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-12, at the close of Slice 33.** This
+**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-12, at the close of Slice 34.** This
 is the execution plan for the first enhancement request the project has received from a person who was
 shown the running application, together with the defect that request arrived beside. It is a working
 document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
 afterwards.
 
 **Where Stage 1 stands.** 1a landed in Slice 30 (the vocabulary and the four administration indexes). 1c
-landed in Slice 32 and ahead of 1b (the 375px end-to-end barrier), for the reason F-62 records. 1b is
-half landed as of Slice 33: the two explorers are converted, `TableDisplays` and `ManageSitting` are not.
-Stage 2 is next once 1b closes, and its boundary correction is below.
+landed in Slice 32 and ahead of 1b (the 375px end-to-end barrier), for the reason F-62 records. **1b closed
+for the whole `/administration` area in Slice 34**: every §11.4 surface is on the shared vocabulary, the
+retired names are gone from the tree rather than tracked in a list, and nine of the ten reachable surfaces
+are measured at 375px by a browser. What remains of 1b is the counter, kitchen and table surfaces, which
+were never record lists and were never the subject of F-59. **Stage 2 is next**, and its boundary
+correction is below.
 
 The specification governs. Where a stage below and `TECHNICAL_SPECIFICATION.md` disagree, the
 specification is right and this file is stale — with one deliberate exception, marked per stage: a decision
@@ -77,16 +80,28 @@ Normative in new **S§11.12**. `REQUIREMENTS.md` rev 6 carries the §8 principle
   once now, self-link included and marked `aria-current="page"`.
 - `HandheldLayoutContractTests`, four facts, each proven sensitive.
 
-### 1b — the remaining surfaces — **half landed, M6 Slice 33**
+### 1b — the remaining surfaces — **the administration half landed, M6 Slice 34**
 
-Four pages carried the retired per-page table vocabulary when this stage opened. Two are gone.
+Four pages carried the retired per-page table vocabulary when this stage opened. All four are gone, and the
+assertion that used to name the survivors is an emptiness assertion now that there are none.
 
 | Page | What it holds that a record list does not | Roughly | State |
 |---|---|---|---|
 | ~~`EventExplorer.razor`~~ | a filter form over three event vocabularies | 570 lines | **landed, Slice 33** |
 | ~~`HiddenRecords.razor`~~ | every hidden order system-wide, unprojected | 910 lines | **landed, Slice 33** |
-| `TableDisplays.razor` | a device roster with revoke actions and a pair-code panel | 440 lines | open |
-| `ManageSitting.razor` | one sitting's complete record: lines, events, corrections | 1120 lines | open |
+| ~~`TableDisplays.razor`~~ | a device roster with revoke actions and a pair-code panel | 440 lines | **landed, Slice 34** |
+| ~~`ManageSitting.razor`~~ | one sitting's complete record: lines, events, corrections | 1120 lines | **landed, Slice 34** |
+
+Slice 34 also took the three pages that were never record lists but shared one vocabulary anyway, because
+`SharedSelectorPrefixes` could not be extended until every holder was empty (F-46) — and because the
+vocabulary they shared turned out to be the fifth copy of F-59, with the drift and the missing touch
+targets F-66 records.
+
+| Page | What it declared inline | State |
+|---|---|---|
+| ~~`ManageMenuItem.razor`~~ | `.manage-*`, a chip set, `.visually-hidden`, and its own history table | **landed, Slice 34** |
+| ~~`ManagePerson.razor`~~ | the same, plus `.chip-role` | **landed, Slice 34** |
+| ~~`ManageTable.razor`~~ | the same | **landed, Slice 34** |
 
 **Why those two went together, and it is the ruling rather than the order they appear in.** They were the
 last two pages carrying a hand-rolled copy of §11.4's row of area links — five `<a class="button-secondary">`
@@ -120,17 +135,35 @@ last one had no assertion at all until now, which is worth naming: the sentence 
 §11.12 and in the component's own doc comment since Slice 30 while nothing in the tree had an opinion about
 a seventh administration page.
 
-**What is left of 1b.** `TableDisplays` and `ManageSitting`, which are the two whose tables are genuinely
-not record lists — a device roster with a pair-code panel and one sitting's complete record. Then the
-surfaces that were never record lists and were never measured on a handset: `ManagePerson`, `ManageTable`,
-`ManageMenuItem`, `CounterBoard`, `CounterSitting`, `KitchenBoard`, `TableHistory`, `TableJoinCode`,
-`CounterJoinCode`. Each keeps its own `<style>` for rules only it reads — that is this project's standing
-arrangement for a statically linked stylesheet — but `.chip` and `.visually-hidden` come out of all of
-them, and `SharedSelectorPrefixes` is extended to cover both in the same commit that empties them. **That
-extension is the stage, not a tidy-up afterwards** (F-46: a rule enforced against a list of examples is
-enforced against a list of examples). The redundant `var(--declared, #literal)` fallbacks — over a hundred
-of them, harmless where the name exists — come out per block on the same schedule, which §11.12 states as a
-*should* rather than a *must* for exactly that reason.
+**What Slice 34 turned out to be, which is not what this paragraph used to predict.** It predicted a
+conversion plus an extension of `SharedSelectorPrefixes`, and said that the extension *is* the stage rather
+than a tidy-up afterwards (F-46). Both happened. What it did not predict is that the extension was
+**blocked, and by the gate rather than by the pages**: the fact behind it matched a prefix against the
+*text* of a `<style>` block, and three counter and kitchen components name `.chip` and `.muted` in CSS
+comments explaining what they lean on — so adding those two prefixes reported findings on three correct
+pages. That is **F-67**, and it makes three slices running whose finding was discovered by attempting the
+work the previous slice had scheduled. Two more came with it: **F-65**, two control rules in `app.css` eight
+pixels under the number §11.12 states, one of them beneath a comment asserting that it complied; and
+**F-66**, the four `.manage-*` copies, whose overlaps with the stylesheet were a deprecated `clip` on four
+pages, two chip colours off the palette, and inline form controls with no touch-target height at all.
+
+**What is left of 1b.** The surfaces that were never record lists and were never the subject of F-59:
+`CounterBoard`, `CounterSitting`, `KitchenBoard`, `TableHistory`, `TableJoinCode`, `CounterJoinCode`. Each
+keeps its own `<style>` for rules only it reads — this project's standing arrangement for a statically
+linked stylesheet — and **none of them re-declares a shared name any more**, so the prefix list already
+covers them and there is nothing left to extend. What remains is a judgement per surface about whether its
+own layout works at 375px, which is a different kind of work from a migration and is not tracked as one.
+The redundant `var(--declared, #literal)` fallbacks — around a hundred still, harmless where the name
+exists — come out per block on the same schedule, which §11.12 states as a *should* rather than a *must*
+for exactly that reason.
+
+**One honest gap, recorded rather than glossed.** `/administration/sittings/{sitting}` is converted and is
+the one §11.4 surface the barrier does not measure. Reaching a sitting needs a guest, a table token and a
+join before there is an identifier to put in the route — scenario 3's arrangement, three scenarios of setup
+for one measurement — and navigating to an invented identifier meets the not-found panel, which has no page
+head, so the barrier would fail on arrival rather than measure anything. Its conversion rests on the
+contract test and on reading `app.css`. That is the trade `/administration/hidden-records` is already
+measured with, one route deeper.
 
 `KitchenBoard` needs its own judgement rather than the same treatment. It is the one surface in this
 system that is *not* read from a phone — §11.2 and §10.3 describe a wall-mounted kiosk with a wake lock —
