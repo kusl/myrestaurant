@@ -1,0 +1,94 @@
+00
+43
+
+please continue 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+please avoid giving me bespoke scripts to manipulate text in code / documentation 
+remember to give full files for all files that need to change 
+I will likely miss those bespoke scripts 
+also please remember to update all documentation as necessary 
+
+## Where I got to
+
+I reconstructed the full working tree from `dump.txt` and verified it — **333 files, 333 SHA-256 matches, zero mismatches**. (My first splitter mis-sliced 13 files because `export.sh` embeds its own `# FILE:` banner inside a heredoc; switching to byte-exact slicing on the declared `Size:` field fixed it. Worth knowing for future sessions.)
+
+Then I read the terminal logs, the plan, and the tail of `BUILD_PROGRESS.md` to work out what "continue" means here. I ran out of tool budget partway through authoring, so this turn is a plan rather than a tarball — but the analysis below is the substance of it, and the next turn can go straight to writing files.
+
+## Current state, as the tree reports it
+
+Slice 30 is in and green: **1073 tests, 0 failed**, all eight `ci_local.sh --with-all --with-e2e` gates clear, 15 §16.3 scenarios passing, `dev_instance.sh` bringing up virginia in 76 seconds. The stress run is a clean baseline: 100,000 requests at 2,000 concurrency through a quick tunnel, 737 RPS, P50 90 ms, one 429 from Cloudflare's edge.
+
+`docs/MENU_AND_HANDHELD_PLAN.md` names **Stage 1b** as next and **Stage 1c** as "the honest gap."
+
+## What I found while reading, and it changes the order
+
+Stage 1c was deferred in Slice 30 on this stated ground:
+
+> the fifteen §16.3 scenarios all run in one default context, and giving one of them a second viewport is either a second browser context per run or a resize that every subsequent scenario inherits.
+
+**The harness does not work that way.** `RestaurantHarness` holds one *browser*; every scenario calls `StartInstanceAsync`, which calls `browser.NewContextAsync(…)` and hands back a context of its own — and `OpenIsolatedPageAsync` already mints and tracks further contexts per call. A viewport is a context-level setting, so there is nothing to leak. The deferral was justified by a property of the harness that the harness contradicts, and the same sentence is now quoted in **S§11.12**, **F-59's ledger row**, and the plan. That is a real finding in this project's sense — a reasoned decision resting on a fact the tree falsifies — and it is F-62.
+
+That matters for ordering. Stage 1b is ~2,400 lines of Razor rewritten with no compiler and no browser on my side; doing it before the barrier exists repeats exactly the process that produced F-59 — four copies of a paste nobody could check. **I recommend Slice 32 = Stage 1c**, then 1b converted against a gate that can actually catch the failure. Flagging it for veto, per the standing arrangement: if you want 1b first, say so and I'll do that instead.
+
+## What Slice 32 would contain
+
+- `Harness/RestaurantInstance.cs` — `HandheldViewportWidth = 375` / `Height = 667` (iPhone SE 2020), threaded into `NewContextAsync`; `OpenIsolatedPageAsync` gains the same option.
+- `Harness/RestaurantHarness.cs` — `StartInstanceAsync(…, bool handheld = false)`.
+- `Harness/HandheldReach.cs` — **new**; measures document overflow, action-control bounding boxes, and touch-target heights, and names the widest offending element in the failure text so a surprise costs one run rather than three.
+- `EndToEndScenarios.cs` — scenario **16**, driving `/administration`, `/tables`, `/menu`, `/sittings` at 375×667.
+- Docs, atomically: **S§11.12**, **S§16.3**, **S§16.4**, changelog **v1.17** with the header bumped to match (F-48's precedent), **F-59's row** corrected, **F-62** added, the plan's 1c struck through, `BUILD_PROGRESS.md` as a complete file, plus `README.md`, `_CHANGES.md`, `OPERATIONS.md §14`, `ci.yml`'s comment, `ContainerImageReferenceContractTests`, `RestaurantHarness`'s two doc comments, and `REQUIREMENTS.md` rev 6 — **fourteen places say "fifteen scenarios"** and every one of them moves in the same commit.
+
+**Files to delete: none.** **`git add` needed: none** — no new directories, and `HandheldReach.cs` lands in an existing one.
+
+Two honesty notes for the entry. Nothing will be compiled. And I tried to get a real browser into this sandbox to measure the layout rather than reason about it — `npm install playwright-core` succeeded, but the Chromium download is blocked by the egress allowlist, so the CSS reading stands as the evidence and the workstation's run is the one that counts.
+
+Say "go" and I'll build and ship the tarball.
+
+17
+44
+
+Please continue
+
+Now I'll author the new harness file.Now the harness changes for the handheld viewport.Now the constants the scenario reads.Now verification passes on the C#.Now the specification edits.Now the changelog entry, the F-59 correction, and the F-62 row in Appendix A.## Where Slice 32 stands
+
+The code half is written and verified. The documentation half is roughly two-thirds done. I hit the tool limit mid-way through the Appendix A edits, so this is a status report rather than the tarball — but nothing is lost, and everything below is reproducible from `dump.txt` in one pass next turn.
+
+## Built and checked
+
+**`Harness/HandheldReach.cs`** (new). Navigates a page, waits on `.page-head`, and reads everything in one `EvaluateAsync` round trip so the numbers all describe the same moment. Returns document scroll width against `clientWidth`, a bounding box per control, and a best-effort name for the widest offender.
+
+**`Harness/RestaurantInstance.cs`** — `HandheldViewportWidth = 375` / `Height = 667`, a shared `ContextOptions(baseUrl, handheld)` factory, and the same option on `OpenIsolatedPageAsync`. The wide case passes `null` rather than writing 1280×720, which would be the same number in a second place — F-48's mechanism.
+
+**`Harness/RestaurantHarness.cs`** — `handheld` parameter threaded through. I audited all fifteen call sites: every one passes either the first positional argument or named arguments, and `cancellationToken:` is always named, so inserting the parameter before it is safe.
+
+**`EndToEndScenarios.cs`** — scenario 16, plus its fixtures.
+
+## Three verification results worth stating
+
+**The C# checker is sensitive, proven one regression at a time.** Breaking a `string.Create` operand into a bare literal → caught (CS1620). Deleting a closing brace → caught. Putting `await` in an interpolation hole → caught (CS4007). All four edited files plus an untouched control are clean.
+
+**The embedded JavaScript actually ran.** `node --check` parses it, and I exercised it against a hand-built fake DOM. Two results matter: a pill 100px past the right edge *inside* an `overflow-x: auto` strip was correctly ignored, and a rogue element outside any scroller was correctly named. That false-positive guard is the whole reason this barrier was safe to write, and it is now demonstrated rather than argued.
+
+**No browser.** `npm install playwright-core` succeeded; the Chromium download is blocked by the egress allowlist. So the layout claims rest on reading `app.css` line by line, and the workstation's run is the one that counts.
+
+## F-62, which is why the order changed
+
+Slice 30 deferred this barrier on the stated ground that the scenarios share one browser context. They do not — the harness holds one *browser*, and `StartInstanceAsync` mints a fresh context per instance. A viewport belongs to a context. The deferral rested on a property of the tree that the tree contradicts, and by then the sentence had been copied into S§16.4, F-59's ledger row, and the plan. That is the finding, and it is the argument for building the barrier before Stage 1b converts 2,400 more lines of Razor blind.
+
+## Remaining next turn
+
+Appendix A's F-62 row and F-59's correction; changelog v1.17 (header already bumped to match); `DOCUMENTATION_REVIEW.md`; `BUILD_PROGRESS.md` as a complete file; the plan's 1c struck through; and the **fourteen places that say "fifteen scenarios"** — `README.md` ×4, `_CHANGES.md`, `OPERATIONS.md`, `ci.yml`, `ContainerImageReferenceContractTests`, `RestaurantHarness` ×2, `REQUIREMENTS.md` ×2. Then the `SpecificationVersionTests` port, byte hygiene over everything, and the tarball.
+
+**Files to delete: none. `git add` needed: none** — `HandheldReach.cs` lands in an existing directory.
+
+Say the word and I'll finish it in one go.
+
+47
+47
+
+Please continue
+
