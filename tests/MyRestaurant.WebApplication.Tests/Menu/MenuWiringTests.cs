@@ -59,6 +59,25 @@ public sealed class MenuWiringTests
     }
 
     /// <summary>
+    /// The two section services resolve from the same registration call as the item services (§7, §11.4).
+    /// They are asserted here rather than left to the first surface that needs them, because they are the
+    /// one pair in this group that <em>no</em> surface takes yet: Stage 2 landed the schema and the data
+    /// access, and Stage 3 writes the pages. An unwired service with no caller fails at the moment
+    /// somebody writes the caller, which is the worst time to find out.
+    /// </summary>
+    [Fact]
+    public void MenuSectionServices_AreResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        Assert.IsType<DapperMenuSectionDirectory>(
+            scope.ServiceProvider.GetRequiredService<IMenuSectionDirectory>());
+        Assert.IsType<DapperMenuSectionAdministration>(
+            scope.ServiceProvider.GetRequiredService<IMenuSectionAdministration>());
+    }
+
+    /// <summary>
     /// One workflow over both write services. §9 does not distinguish which verb changed the menu, and
     /// every subscriber responds to <see cref="MenuChanged"/> the same way, so a second workflow would only
     /// make it possible to wire an application that announces 86s and not repricings.

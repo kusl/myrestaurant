@@ -19,6 +19,13 @@
 # equivalent: same migrations, same readiness probe, but the app runs on the host rather than in the
 # image. For the real thing, `bash run.sh --containers-only`.
 #
+# That sentence said "the one gate" for fourteen slices while there were two of them (F-75). CI also
+# runs a vulnerable-package audit, advisory, and nothing here ran it — so the one gate suite anybody
+# executes on purpose was silent about a published high-severity advisory this tree was carrying
+# transitively. It is gate 7 below now, on CI's terms rather than on stricter ones: it reports and it
+# does not block. The claim above is true again, which is the repair worth having; weakening it to
+# match what the script did would have been the repair nobody revisits.
+#
 # Every invocation of run.sh here goes through `bash` rather than `./run.sh`, and that is not a style
 # preference: a checkout whose execute bit did not survive (a zip, a Windows clone, a `git apply` of a
 # patch that carried no mode) fails at `./run.sh` with "Permission denied", and under `set -e` that
@@ -163,7 +170,26 @@ dotnet test MyRestaurant.slnx \
     -p:ContinuousIntegrationBuild=true
 
 # ---------------------------------------------------------------------------------------------------
-# 5. Optional: the §16.3 end-to-end scenarios, in a real browser.
+# 5. The vulnerable-package audit, in the same place and on the same terms as CI (F-75).
+#
+# Advisory, exactly as `.github/workflows/ci.yml` runs it: `continue-on-error: true` there,
+# `|| true` here. A published advisory against a package this tree already depends on is real news,
+# but it arrives on a day nobody touched the repository, and a gate run that turns red without a
+# commit is a gate run people learn to bypass — the reasoning Directory.Build.props records for
+# keeping NU1901-NU1904 out of TreatWarningsAsErrors.
+#
+# `|| true` rather than a trusted exit code: `dotnet list package --vulnerable` has reported findings
+# with a zero status, and this gate must not depend on which. It prints, and a person reads it.
+#
+# After the test gate rather than before it, so that a run which is going to fail on a real assertion
+# fails on that and not on a report. The command is the one string CI runs, and
+# `VulnerabilityAuditParityContractTests` holds the two files to it.
+# ---------------------------------------------------------------------------------------------------
+announce "vulnerable package audit (advisory)"
+dotnet list MyRestaurant.slnx package --vulnerable --include-transitive || true
+
+# ---------------------------------------------------------------------------------------------------
+# 6. Optional: the §16.3 end-to-end scenarios, in a real browser.
 # ---------------------------------------------------------------------------------------------------
 if (( WITH_E2E )); then
     announce "end to end (§16.3 Playwright scenarios)"
@@ -176,7 +202,7 @@ if (( WITH_E2E )); then
 fi
 
 # ---------------------------------------------------------------------------------------------------
-# 6. Optional: boot once and probe /healthz/ready.
+# 7. Optional: boot once and probe /healthz/ready.
 # ---------------------------------------------------------------------------------------------------
 if (( WITH_SMOKE )); then
     announce "boot smoke (bash run.sh --smoke)"

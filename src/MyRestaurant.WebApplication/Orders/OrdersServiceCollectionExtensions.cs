@@ -77,6 +77,20 @@ public static class OrdersServiceCollectionExtensions
         services.AddScoped<IMenuEventLog, DapperMenuEventLog>();
         services.AddScoped<IMenuWorkflow, MenuWorkflow>();
 
+        // Menu sections (§7, §11.4). Registered here rather than in a group of their own: they are the
+        // same table family, the same audience, and the same lifetime, and a second
+        // AddRestaurantMenuSections() would be a fifth call the composition root has to remember (see the
+        // note above about why this method is not split).
+        //
+        // Deliberately NOT behind IMenuWorkflow yet, and the reason is worth stating rather than
+        // discovering. A section rename changes what every open guest picker renders, so it will have to
+        // announce MenuChanged (§9) exactly as a repricing does — but nothing reads sections on any
+        // surface until Stage 3, and a workflow verb with no caller is a code path no test can reach
+        // through the interface it is supposed to protect. Stage 3 brings the verbs in with the surfaces
+        // that call them; docs/MENU_AND_HANDHELD_PLAN.md carries that as an obligation rather than a hope.
+        services.AddScoped<IMenuSectionDirectory, DapperMenuSectionDirectory>();
+        services.AddScoped<IMenuSectionAdministration, DapperMenuSectionAdministration>();
+
         // Orders (§6.6, §8.3, §8.5, §11.2).
         services.AddScoped<IOrderMutations, DapperOrderMutations>();
         services.AddScoped<IOrderReadModel, DapperOrderReadModel>();

@@ -25,12 +25,19 @@ internal sealed class OrderTestWorld
         "$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHRzYWx0c2E$dGFndGFndGFndGFndGFndGFndGFndGFndGE";
 
     /// <summary>
-    /// Everything downstream of these three hangs off them by foreign key, so CASCADE clears the whole
+    /// Everything downstream of these four hangs off them by foreign key, so CASCADE clears the whole
     /// order graph — guest orders, events, all five operation tables, kitchen notifications, and
     /// visibility events — without this list having to be kept in step with the schema.
+    ///
+    /// <para><c>menu_section</c> is named rather than reached: nothing references it yet, so CASCADE from
+    /// the other three does not clear it, and a section surviving into the next test would make
+    /// <c>MAX(display_order) + 1</c> hand out a number the previous test chose. It is named here rather
+    /// than truncated locally in the one test class that writes sections, because 0004 gives
+    /// <c>menu_item</c> a NOT NULL reference to it and at that point truncating items without their
+    /// headings is the wrong order regardless of who asked.</para>
     /// </summary>
     private const string TruncateSql = """
-        TRUNCATE TABLE person, restaurant_table, menu_item CASCADE;
+        TRUNCATE TABLE person, restaurant_table, menu_item, menu_section CASCADE;
         """;
 
     private const string InsertPersonSql = """

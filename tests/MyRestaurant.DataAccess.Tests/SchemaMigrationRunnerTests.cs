@@ -17,12 +17,17 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
 
     public SchemaMigrationRunnerTests(PostgreSqlFixture fixture) => _fixture = fixture;
 
-    // A representative subset of the 22 tables and 5 views — enough to prove the script ran to the end.
+    // A representative subset of the tables and views — enough to prove every script ran to the end. The
+    // counts this comment used to carry ("the 22 tables and 5 views") are derivable from the migrations
+    // and were therefore a second copy of a fact that goes stale the moment one is added, which is what
+    // 0003 just did (F-47).
     public static TheoryData<string> KeyRelations =>
     [
         "public.person",
         "public.passkey_credential",
         "public.menu_item",
+        "public.menu_section",       // 0003
+        "public.menu_section_event", // 0003
         "public.guest_order",
         "public.order_event",
         "public.order_operation_line_added",

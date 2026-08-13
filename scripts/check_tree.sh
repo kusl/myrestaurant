@@ -261,19 +261,26 @@ done
 (( whitespace_hits == 0 )) && echo "     none"
 
 # ---------------------------------------------------------------------------------------------------
-# 3. LF endings and a final newline.
+# 3. LF endings and exactly one final newline.
 #
-# .editorconfig asks for both (end_of_line = lf, insert_final_newline = true), and both are
+# .editorconfig asks for the first two (end_of_line = lf, insert_final_newline = true), and both are
 # load-bearing rather than cosmetic. A CRLF that reaches a shell script produces
 # "bad interpreter: /usr/bin/env bash^M", which names the wrong problem. A file with no final
 # newline is what a truncated transfer looks like, so the check doubles as the cheapest
 # available detector of the other way a delivered tree can arrive damaged.
 #
-# Both halves run only over authored text (F-41). Neither property is meaningful for a
+# The third half is F-76, and it is this gate's own message turned into a check. For thirteen
+# slices this printed "all files end with exactly one LF" while testing only that the last byte
+# WAS one — and eleven tracked files ended with two, which is a trailing blank line that gate 2
+# cannot see because its pattern requires at least one space or tab and an empty line has neither.
+# Nothing here was wrong except the word "exactly", and the repair is to earn it rather than to
+# delete it: a claim weakened to match a check is a check nobody strengthens afterwards.
+#
+# All three halves run only over authored text (F-41). None of the properties is meaningful for a
 # compressed archive, and the final-newline message in particular would accuse an intact one
 # of being truncated.
 # ---------------------------------------------------------------------------------------------------
-announce "LF endings and a final newline"
+announce "LF endings and exactly one final newline"
 
 ending_hits=0
 for tracked_path in "${authored_files[@]}"; do
@@ -288,6 +295,14 @@ for tracked_path in "${authored_files[@]}"; do
     # documents having fallen into once already.
     if (( $(tail -c 1 -- "$tracked_path" | wc -l) == 0 )); then
         note_failure "${tracked_path} has no final newline (truncated, or an editor that does not add one)"
+        ending_hits=$(( ending_hits + 1 ))
+    fi
+
+    # And exactly one. The same counting trick over the last TWO bytes: a file ending "…x\n" has
+    # one newline there, a file ending "…\n\n" has two. Files of a single byte are covered — the
+    # empty set is skipped above as empty, and a one-byte file reports whatever that byte is.
+    if (( $(tail -c 2 -- "$tracked_path" | wc -l) > 1 )); then
+        note_failure "${tracked_path} ends with a blank line (two newlines; .editorconfig asks for one)"
         ending_hits=$(( ending_hits + 1 ))
     fi
 done

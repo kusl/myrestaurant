@@ -68,6 +68,33 @@
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.13.0" />
   </ItemGroup>
 
+  <ItemGroup Label="Transitive pins (F-74)">
+    <!--
+      SSH.NET is not referenced by anything in this tree. Testcontainers pins it at 2025.1.0 and
+      Testcontainers.PostgreSql pulls it into both test projects, which is why NU1903 printed twice on
+      every restore. CentralPackageTransitivePinningEnabled is true in Directory.Build.props, so this one
+      line promotes the transitive dependency to the patched release; nothing else changes.
+
+      GHSA-q939-rpr3-3284 / CVE-2026-48798, high, CVSS 7.1, published 2026-08-12. ScpClient's recursive
+      download writes files using names the remote server supplies, without checking that the result stays
+      inside the requested directory, so a malicious or man-in-the-middle SCP server can write anywhere the
+      client process can. Vulnerable at 2025.1.0 and below; first patched in 2026.0.0.
+
+      Three things make this a pin rather than a suppression, and the third is why it is worth a line at
+      all. (1) The vulnerable API is unreachable here: ScpClient appears nowhere in
+      testcontainers/testcontainers-dotnet, and nothing in this tree names Renci, SshNet, ScpClient or
+      SftpClient. (2) 2026.0.0's release notes state no known breaking changes against 2025.1.0, and the
+      data-access suite exercises Testcontainers against a real database on every run, so the claim is
+      tested rather than trusted. (3) An advisory that prints on every restore is an advisory nobody reads,
+      which is the same reasoning Directory.Build.props uses for keeping NU1901-NU1904 out of
+      TreatWarningsAsErrors — the warning has to stay meaningful for the next one to be heard.
+
+      2026.0.0 also adds a net10.0 target framework, which 2025.1.0 does not have; until now both test
+      projects resolved its net9.0 asset.
+    -->
+    <PackageVersion Include="SSH.NET" Version="2026.0.0" />
+  </ItemGroup>
+
   <ItemGroup Label="End-to-end tests (MyRestaurant.EndToEnd.Tests)">
     <PackageVersion Include="Microsoft.Playwright" Version="1.62.0" />
   </ItemGroup>

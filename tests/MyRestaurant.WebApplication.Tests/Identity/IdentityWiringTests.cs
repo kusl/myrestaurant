@@ -322,4 +322,3 @@ public sealed class IdentityWiringTests
             => throw new InvalidOperationException("Wiring tests must not open a database connection.");
     }
 }
-

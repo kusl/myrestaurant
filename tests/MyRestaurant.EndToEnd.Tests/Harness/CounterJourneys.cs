@@ -1245,4 +1245,3 @@ internal static class CounterJourneys
     private static string Money(decimal amount)
         => MoneyText.Format(amount, RestaurantInstance.CurrencyCode);
 }
-

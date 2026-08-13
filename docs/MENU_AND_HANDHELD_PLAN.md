@@ -6,6 +6,28 @@ shown the running application, together with the defect that request arrived bes
 document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
 afterwards.
 
+**Where Stage 2 stands, and the boundary correction below has itself been corrected.** Slice 37 landed
+`menu_section`, `menu_section_event`, `MenuSectionDirectory`, `MenuSectionAdministration`, their DI
+registration and twenty integration facts against a real database — and it landed **no surface and no
+change to `menu_item`**. The stage is cut between the two tables rather than between the schema and the
+surfaces, which is not what the correction further down this file proposed. That correction was right about
+the problem and picked the more expensive answer: `menu_item.menu_section_identifier NOT NULL` breaks
+`CreateMenuItem.razor` the moment migration `0003` applies, and `AdministrationJourneys.CreateMenuItemAsync`
+drives that real form in six of the sixteen §16.3 scenarios, so a slice landing both tables has to pull
+three surfaces forward to ship green. Cutting between the tables costs one extra migration script — DbUp
+journals by name, so nothing — and buys a slice that touches nothing existing at all. **The rejected
+nullable-then-tighten alternative is still rejected** and for its original reason: `menu_section_identifier`
+goes straight from non-existent to `NOT NULL` in `0004`, so no reading surface ever sees an item under no
+heading, and no "Uncategorized" state exists for even one slice. What Stage 2 has left is exactly `0004`
+and the three pulled-forward surfaces.
+
+**One obligation is deliberately deferred and is recorded here so it cannot be lost.** The five section
+writes are **not** behind `IMenuWorkflow`, so nothing publishes `MenuChanged` when a section moves. That is
+correct today — no surface reads a section, and a workflow verb with no caller is a code path no test can
+reach through the interface meant to protect it — and it becomes a defect the moment Stage 3's guest menu
+groups by section, because a renamed heading would then stay stale in every open picker until the page
+happened to reload. **Stage 3 brings the workflow verbs in with the surfaces that call them.**
+
 **Where Stage 1 stands.** 1a landed in Slice 30 (the vocabulary and the four administration indexes). 1c
 landed in Slice 32 and ahead of 1b (the 375px end-to-end barrier), for the reason F-62 records. **1b closed
 for the whole `/administration` area in Slice 34**: every §11.4 surface is on the shared vocabulary, the
@@ -246,7 +268,7 @@ time as a typo for "the first open item". The sentence is gone with the gap it d
 
 ## Stage 2 — sections and descriptions: schema and data access
 
-**Not started.** This is the schema half of the enhancement request. It is deliberately one stage on its
+**The section half landed in M6 Slice 37. The `menu_item` half has not started.** This is the schema half of the enhancement request. It is deliberately one stage on its
 own: every decision below is a `CREATE TABLE` or an `ALTER TABLE`, none of it is visible to anybody, and it
 is the half that a surface cannot be written against until it exists.
 
@@ -382,8 +404,8 @@ it is the surprising half: the schema of record grows four columns and two table
 
 | File | Change |
 |---|---|
-| `Menu/MenuSectionDirectory.cs` | **new** — `MenuSectionSummary`, `IMenuSectionDirectory`, `DapperMenuSectionDirectory` |
-| `Menu/MenuSectionAdministration.cs` | **new** — create / rename / describe / reorder / set-active, one transaction each, `FOR UPDATE` before every comparison |
+| ~~`Menu/MenuSectionDirectory.cs`~~ | **new** — `MenuSectionSummary`, `IMenuSectionDirectory`, `DapperMenuSectionDirectory` — **landed, Slice 37** |
+| ~~`Menu/MenuSectionAdministration.cs`~~ | **new** — create / rename / describe / reorder / set-active, one transaction each, `FOR UPDATE` before every comparison — **landed, Slice 37**; `display_order` is assigned by appending rather than supplied, and a rename is compared ordinally though the column is `citext` |
 | `Menu/MenuDirectory.cs` | `MenuItemSummary` gains `Description`, `MenuSectionIdentifier`, `MenuSectionName`, `DisplayOrder`; new `ListBySectionAsync` returning sections with their items |
 | `Menu/MenuAdministration.cs` | `CreateMenuItemAsync` takes a section and a description; new `DescribeMenuItemAsync`, `MoveMenuItemToSectionAsync`, `ReorderMenuItemAsync` |
 | `Menu/MenuEventLog.cs` | payload columns; `ListForSectionAsync`; `ListRecentAsync` becomes a `UNION ALL` over both logs with a subject discriminator |

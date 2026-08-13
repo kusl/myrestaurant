@@ -176,4 +176,3 @@ public static class AccountEndpoints
         return endpoints;
     }
 }
-

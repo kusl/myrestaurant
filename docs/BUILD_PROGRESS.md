@@ -10236,3 +10236,266 @@ the eleven files named, and now independently reproduced from the dump.
 
 **Stage 2's boundary.** **Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive
 can contain (F-42).
+
+# M6 Slice 37 — menu sections exist (Stage 2, section half), an advisory nobody read (F-74), the gate that could not see it (F-75), and a claim one word too strong (F-76)
+
+## Read this first: Slice 36 was green, exactly as predicted, and that is the subject
+
+```
+Test summary: total: 1082, failed: 0, succeeded: 1082, skipped: 0
+§16.3 end to end: 16 of 16
+all local CI gates passed
+```
+
+The predicted 1082 was the observed 1082, so per §18 there was no difference to chase. Every gate passed:
+tree hygiene, governance, shellcheck, restore, strict build, the full suite, the sixteen scenarios, the
+boot smoke, the compose-substitution preflight, the container stack, and the quick tunnel.
+
+**Two of this slice's three findings are things that green run printed.** They were in the scroll-back of
+the same terminal that reported all gates passing:
+
+```
+warning NU1903: Package 'SSH.NET' 2025.1.0 has a known high severity vulnerability
+```
+
+twice, on every restore. And:
+
+```
+  3. LF endings and a final newline
+     all files end with exactly one LF
+```
+
+which was not true of eleven files.
+
+## Menu — Stage 2's section half
+
+**What landed.** `menu_section` and `menu_section_event`, migration `0003_menu_sections.sql`,
+`MenuSectionDirectory`, `MenuSectionAdministration`, both registered, and twenty integration facts against a
+real PostgreSQL. **Nothing that already existed changed.** `menu_item` still has four columns, no surface
+reads a section, and no §16.3 scenario behaves differently.
+
+**The stage boundary moved, and it is the ruling of this slice.** `MENU_AND_HANDHELD_PLAN.md` already
+carried a correction saying Stage 2 as first written could not ship green: `menu_item.menu_section_identifier`
+is `NOT NULL`, so the moment `0003` applies, `CreateMenuItem.razor` cannot write a row without a section, and
+`AdministrationJourneys.CreateMenuItemAsync` drives that real form in six of the sixteen scenarios. That
+correction's answer was to pull three surfaces forward. **This slice cuts between the two tables instead**,
+which is cheaper in every direction that matters:
+
+- `0003` adds two tables and touches nothing. The suite stays green **by construction** rather than by
+  inspection — there is no existing row, column, query, form or scenario for it to affect.
+- The rejected nullable-then-tighten alternative stays rejected, for its original reason.
+  `menu_section_identifier` goes from non-existent to `NOT NULL` in `0004`; it is never nullable, so no
+  reading surface ever gains a code path for an item under no heading, and no "Uncategorized" state exists
+  for even one slice.
+- The cost is one extra migration script. DbUp journals by script name, so that is not a cost.
+
+**The seed moved with it, and for a better reason than tidiness.** The plan put a conditional one-section
+seed in the same script as the tables. It is in `0004` instead, beside the backfill that needs it: a script
+that adds a `NOT NULL` reference to a populated table is the script that has to create something to point
+the existing rows at. `0003` is therefore tables only, and a fresh installation gets **no** sections — which
+is what §7 wants, since the administrator names their own.
+
+**Three decisions inside the write service that are rulings rather than implementation.**
+
+- **`display_order` is assigned, not supplied.** `CreateMenuSectionAsync` reads
+  `COALESCE(MAX(display_order), -1) + 1` inside its own transaction, so the first heading is 0 and a new one
+  lands at the bottom where somebody adding a heading expects it. `MAX + 1` rather than `COUNT(*)`: positions
+  are neither unique nor required to be contiguous, so counting rows hands out a number an existing section
+  already sits on as soon as one has been moved.
+- **Two concurrent creates may tie, and that is not a defect.** The table is not locked, so two
+  administrators can be appended at the same number. The column is deliberately not UNIQUE, so nothing
+  fails; the reads break the tie by name, so both render stably; either can be moved. Locking a table to
+  prevent a tie nobody can see is the more expensive answer to the smaller problem.
+- **A rename is compared ordinally although the column is `citext`, and the distinction is the point.**
+  `citext` governs *collisions between two sections* — a second "Drinks" spelled "drinks" is the mis-tap the
+  type exists to refuse. It does not govern whether one section's own spelling moved: renaming "drinks" to
+  "Drinks" changes what every guest reads. Comparing with the database's semantics there would silently
+  refuse a visible change.
+
+**One obligation is deferred on purpose.** The five writes are **not** behind `IMenuWorkflow`, so nothing
+publishes `MenuChanged` when a section moves. Correct today — no surface reads a section, and a workflow verb
+with no caller is a code path no test can reach through the interface meant to protect it. It becomes a
+defect the moment Stage 3's guest menu groups by section. Recorded in the plan and in the registration's own
+comment, in the file somebody editing that group will read.
+
+## F-74 — a high-severity advisory, printed twice per restore, mentioned by nothing anybody runs
+
+`NU1903` named `SSH.NET` 2025.1.0 on every restore and build, once per test project. The advisory was
+**read rather than recalled**: GHSA-q939-rpr3-3284 / **CVE-2026-48798**, high, **CVSS 7.1**, published
+**2026-08-12** — one day before the dump this slice was authored from. `ScpClient`'s recursive download
+builds local paths out of names the remote SCP server supplies with no containment check, so a malicious or
+man-in-the-middle server writes wherever the client process can.
+
+**Nothing in this tree references the package.** `Testcontainers` pins it at exactly 2025.1.0 — confirmed in
+their own `Directory.Packages.props` at the 4.13.0 tag — and `Testcontainers.PostgreSql` drags it into both
+test projects, which is why an advisory appears against two projects that never name it, and why an audit
+that finds it must pass `--include-transitive`.
+
+The fix is one line, because `CentralPackageTransitivePinningEnabled` has been true since M1. **It is a pin
+rather than a suppression, and the ledger row says why it is not urgent rather than implying that it is:**
+`ScpClient` appears **zero times** in `testcontainers/testcontainers-dotnet`, and nothing here names `Renci`,
+`SshNet`, `ScpClient` or `SftpClient`, so the vulnerable call site is unreachable. 2026.0.0's release notes
+state *no known breaking changes* against 2025.1.0, and the data-access suite drives Testcontainers against
+a real database on every run, so that claim is tested rather than trusted. And 2026.0.0 adds a `net10.0`
+target framework that 2025.1.0 does not have — both test projects had been resolving its `net9.0` asset.
+
+## F-75 — the script that names its one blind spot had two
+
+`scripts/ci_local.sh` says *"The one gate this cannot reproduce is CI's boot-smoke job."* True about the
+container image. Silent about CI's `vulnerable package audit (advisory)` step, which had no local counterpart
+for fourteen slices, while `Directory.Build.props` asserted in the indicative that *"CI reports them in a
+dedicated non-blocking step instead"* — true of the workflow, quietly untrue of the equivalent people
+actually run.
+
+This is **F-46's shape again**: a rule applied to one of its two homes. And it is F-74's *mechanism* rather
+than a defect beside it — the audit is the only thing in this project whose job is to say an advisory out
+loud, and the eight-gate run reported `all local CI gates passed` without asking.
+
+**The header's claim is repaired by becoming true again rather than by being weakened**, which is the
+direction that matters here: a claim softened to match a check is a check nobody strengthens afterwards.
+
+## F-76 — `exactly one LF`, checked as `at least one`
+
+Gate 3 of tree hygiene printed `all files end with exactly one LF` while testing only that the last byte
+*was* one. Eleven tracked files ended with two. Nothing else could see them: gate 2 forbids whitespace-only
+lines via `^[[:space:]]+$`, which requires at least one space or tab, and an empty line has neither — so gate
+2 passed correctly.
+
+**The eleven were found before the carried note was read.** Each surfaced as a one-byte SHA-256 delta while
+reconstructing the tree from `dump.txt`, which is an independent derivation of the same set:
+
+```
+.env.example                                     scripts/backup.sh
+.github/workflows/ci.yml                         scripts/restore_drill.sh
+…/Account/Pages/SignIn.razor                     …/Identity/AccountEndpoints.cs
+…/Counter/CounterBoard.razor                     …/Identity/IdentityServiceCollectionExtensions.cs
+…/Identity/ObligationsEnforcement.cs             …/Harness/CounterJourneys.cs
+…/Identity/IdentityWiringTests.cs
+```
+
+**The claim is earned rather than deleted.** Dropping `exactly` would have made the message honest and left
+the property unchecked forever.
+
+## What is in this slice
+
+| Area | Change |
+|---|---|
+| Migration | `0003_menu_sections.sql` — **new**, two tables and one index, touching nothing existing |
+| Data access | `MenuSectionDirectory.cs`, `MenuSectionAdministration.cs` — **new** |
+| Wiring | two registrations in the menu group of `OrdersServiceCollectionExtensions` |
+| Tests | `MenuSectionAdministrationTests.cs` — **new**, twenty facts; `VulnerabilityAuditParityContractTests.cs` — **new**, two facts; one new fact in `MenuWiringTests`; two relations in `SchemaMigrationRunnerTests` |
+| Test harness | `OrderTestWorld` truncates `menu_section` as a named root |
+| Packages | `SSH.NET` 2026.0.0 transitive pin (F-74) |
+| Scripts | audit gate 7 and a corrected header claim in `ci_local.sh` (F-75); a third half in gate 3 of `check_tree.sh` (F-76) |
+| Bytes | eleven files lose one trailing newline each (F-76) |
+| Documents | S v1.22 (§7, §8.2, §16.4, Appendix A, changelog), ledger F-74/75/76, ADR-0014 amended, plan's Stage 2 |
+
+## What was verified
+
+**A real PostgreSQL 16 was installed in the authoring environment, and the schema half is measured rather
+than predicted.** `0001` and `0002` were replayed, then `0003` applied, then every constraint exercised:
+
+- The `citext` UNIQUE refuses `'drinks'` after `'Drinks'`. Negative `display_order` and an empty `name` are
+  refused. A `created` event missing its description payload is refused; a `renamed` event carrying a display
+  order it did not move is refused; an event type outside the vocabulary is refused.
+- `renamed`, `described`, `reordered` and `deactivated` are each accepted carrying exactly their own payload
+  and nothing else — including `described` carrying `''`, which is the case the `NOT NULL DEFAULT ''` column
+  exists for.
+- **Every statement the two services emit was executed**: the `FOR UPDATE` lock read, the list and get, all
+  four UPDATEs, the `MAX + 1` probe, and the §11.4 history read joined to `person`.
+- **The behaviour twenty facts assert was replayed**: appends land 0, 1, 2; stored order is
+  `Breakfast, Entrees, Drinks` and not alphabetical; after a section is moved to 9 the next append is **10**
+  and not the row count 3; two sections sharing position 0 render `Apple, Zebra`.
+- **The one that would have been easy to get backwards was checked directly**: renaming the *same row* from
+  `Apple` to `APPLE` does **not** trip the `citext` UNIQUE, so treating a capitalisation fix as a real rename
+  works rather than reporting a name collision.
+- `TRUNCATE … menu_section CASCADE` reaches `menu_section_event`, which is what `OrderTestWorld` now relies on.
+
+**F-76 was demonstrated in both directions on the real tree.** The strengthened gate was run before the
+repair and named **exactly the eleven files**, then run after it and passed. Each repaired file was then
+verified **byte-identical to its recorded SHA-256 but for the one removed newline** — so nothing else moved
+inside eleven files, two of which are over 24 KB.
+
+**F-75's two facts were simulated against the real files** rather than reasoned about: the command string is
+present in both, there is exactly one uncommented invocation locally, and it ends in `\| \|` `true`.
+
+**§16.4's contract test was simulated over the edited specification, and it caught a real failure before
+packaging.** The menu-sections paragraph stated *twenty* assertions and then used the phrase *"One assertion
+in it…"*, which that gate reads as a second count in the same paragraph and reports as unattributable. The
+sentence was reworded. Final state: twelve counted paragraphs against a floor of ten, no ambiguity, no
+disagreement, and the count is written as `20` rather than as a word because the gate's vocabulary stops at
+twelve and a spelled *twenty* would have been silently unchecked.
+
+**The Markdown table gate was simulated over every Markdown file, and it caught a second real failure.**
+F-75's Appendix A row contained `\| \|` `true` inside a code span — two unescaped pipes in a table cell,
+which is precisely F-72's finding. Escaped. Final state: zero shape problems across the repository.
+
+**`SpecificationVersionTests` ported:** header 1.22 against newest entry 1.22, twenty-three entries
+descending.
+
+**Structural verification on all five new or edited C# files**, string- and comment-aware, with untouched
+siblings as controls and **proven sensitive** by three planted defects — a deleted brace, an unterminated
+raw string, and an `await` inside an interpolated hole. CS4007 and CS1620 scans clean. Byte hygiene on every
+delivered file: no CR, one final LF, no whitespace-only lines. `bash -n` on both edited scripts.
+
+**Two package facts were read from source rather than recalled**: Testcontainers 4.13.0's pin of SSH.NET
+2025.1.0, and SSH.NET's target frameworks at both tags (`net462;netstandard2.0;net8.0;net9.0` at 2025.1.0,
+with `net10.0` added at 2026.0.0).
+
+## What was NOT verified
+
+**Nothing compiled.** There is no .NET SDK in the authoring environment. Five C# files are new or edited and
+the two new ones are the likeliest site of a complaint: `MenuSectionAdministration.cs` uses
+`ExecuteScalarAsync<int>` with a `CommandDefinition` built by named argument, skipping `parameters` —
+a shape this file introduces to the menu directory even though `SchemaMigrationRunnerTests` already uses
+`ExecuteScalarAsync` — and `ArgumentOutOfRangeException.ThrowIfGreaterThan` with an explicit third argument.
+`Assert.Null` on a nullable value type read from `World().ScalarAsync<T>` has a precedent in
+`MenuAdministrationTests` at line 210, which is why it is used rather than avoided.
+
+**No browser rendered anything, and none needed to.** No Razor file changed and no CSS changed.
+
+**The migration was verified against PostgreSQL 16, not 17.** The stack and CI both run 17. Nothing in
+`0003` uses a feature that differs between them — `citext`, `char_length`, named CHECK constraints and a
+composite index are all long-settled — but the version that ran it here was not the version that will.
+
+**DbUp did not apply it.** The script was applied with `psql`; DbUp's journalling, its statement splitter and
+its embedded-resource discovery are exercised for the first time by `SchemaMigrationRunnerTests` on the real
+run. `0003` contains no dollar-quoted block, which is the splitter behaviour `0004` will need.
+
+**Nothing here proves the advisory is gone.** The claim is that a pin at 2026.0.0 clears NU1903; the
+evidence is the advisory's own `first_patched_version`. The next restore is what settles it.
+
+## Test count
+
+Last observed: **1082**, from Slice 36, matching its prediction exactly.
+
+Predicted here: **1082 + 20 (`MenuSectionAdministrationTests`) + 2 (`VulnerabilityAuditParityContractTests`)
++ 1 (`MenuWiringTests`) + 2 (`SchemaMigrationRunnerTests` theory rows) = 1107.** Arithmetic on the last
+observed count, not an observation. §16.3 stays at **16**.
+
+Per §18: if the run returns anything other than 1107, that difference is the next thing to chase.
+
+## Still open
+
+**`0004` and Stage 2's remainder.** The three `menu_item` columns `NOT NULL` from birth, the conditional
+seed and backfill beside them, three new `menu_item_event` types with their widened CHECKs, and the three
+surfaces pulled forward — the section create page, the section picker and description field on the item
+form, and a harness `CreateMenuSectionAsync` the five ordering scenarios call before their first
+`CreateMenuItemAsync`. That last one is the file that decides whether the ordering integration tests compile.
+
+**The section writes are not behind `IMenuWorkflow`.** Deliberate, recorded twice, and Stage 3's obligation.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Carried unchanged from Slice 36: cited fifteen times in
+that file and present only in Appendix A. Still a decision rather than a repair — whether to write the row or
+to accept that Appendix A is the register of record for gate-scope rulings.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a fourth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Thirteenth consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines from `podman-compose` about a container that does not
+exist yet, then starts it successfully.** New, from this slice's reading of the terminal log, and not
+repaired: it is noise in the right place at the wrong volume, and deciding whether the fix belongs in
+`run.sh` or is the engine's to make is a judgement rather than a slice.
+
+**Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive can contain (F-42).

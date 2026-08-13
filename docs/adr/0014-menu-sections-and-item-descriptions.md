@@ -1,6 +1,6 @@
 # ADR-0014 — A menu has sections, and every item is in exactly one
 
-**Status:** Accepted (2026-08-11), implemented in Stage 2 of `docs/MENU_AND_HANDHELD_PLAN.md`
+**Status:** Accepted (2026-08-11), implemented in Stage 2 of `docs/MENU_AND_HANDHELD_PLAN.md`. **The section half landed in M6 Slice 37** (`menu_section`, `menu_section_event`, and their data access); the `menu_item` half has not. Every ruling below stands as written — what moved is the number of migration scripts, recorded under *Consequences*.
 **Trail:** the first enhancement request from a person shown the running application
 **Requirements:** `REQUIREMENTS.md` §6.8 (menu), §8 (naming, identifiers, honesty in UI)
 **Specification:** `TECHNICAL_SPECIFICATION.md` §7, §8.2, §11.1, §11.2, §11.4
@@ -81,7 +81,7 @@ equalities and a description is optional. The log then reads *"Created as "Soup"
 constraint that cannot be stated.
 
 **7. `0001` is not edited.** DbUp journals by script name (ADR-0012), so an edit to an applied script is a
-change that never runs on any database that has already seen it. `0003_menu_sections_and_item_descriptions.sql`
+change that never runs on any database that has already seen it. `0003_menu_sections.sql` and `0004_menu_item_sections_and_descriptions.sql` — two scripts rather than the one this ADR first named, and the reason is a stage boundary rather than a change of mind. `menu_item.menu_section_identifier` is `NOT NULL`, so the instant it exists the create-item form cannot write a row without a section, and six of the sixteen §16.3 scenarios drive that real form; a single script therefore cannot land without its surfaces landing in the same slice. Splitting between the **tables** lets the section half ship green while touching nothing that already exists. The alternative this ADR rejected — nullable in one script, tightened in a later one — is still rejected: the column is never nullable, so no reading surface ever acquires a code path for an item under no heading. DbUp journals by script name, so a second script costs nothing
 is additive, and its constraint replacements name their constraints — `0001` declared them inline, so
 PostgreSQL generated `menu_item_event_event_type_check`, `menu_item_event_check` and
 `menu_item_event_check1`, which are deterministic, undocumented, and not a thing to depend on in a script

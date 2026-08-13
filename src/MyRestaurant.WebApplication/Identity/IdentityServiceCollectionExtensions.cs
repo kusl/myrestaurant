@@ -251,4 +251,3 @@ public static class IdentityServiceCollectionExtensions
         return services;
     }
 }
-
