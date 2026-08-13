@@ -20,7 +20,10 @@ namespace MyRestaurant.WebApplication.Tests.Documentation;
 /// and the deployment transport dropped. F-56 was a port three helpers dialled and one named correctly.
 /// F-65 was a touch target stated as a property and re-written as a literal eight pixels short. Each is
 /// one fact recorded in two places, and in each the two places disagreed. A count of assertions in prose
-/// is exactly that shape, and §16.4 carries eight of them.</para>
+/// is exactly that shape, and §16.4 carries ten of them. <b>It said eight when this file arrived,
+/// and there were nine (F-73)</b> — a count in prose, stale on delivery, inside the class written
+/// because counts in prose go stale. The number is kept rather than removed because it is the
+/// argument for the floor below; what is added is the habit of moving it.</para>
 ///
 /// <para><b>And there was a second copy of the same fact that WAS read, and it was not chased.</b> This
 /// project predicts its own test count as arithmetic every slice — Slice 34 predicted 1077 — and the run
@@ -56,12 +59,12 @@ public sealed class TestingSectionContractTests
     private const string SectionOpening = "**16.4 CI:**";
 
     /// <summary>
-    /// How many test classes §16.4 must turn out to state a count for. Nine do. Without a floor, a
+    /// How many test classes §16.4 must turn out to state a count for. Ten do. Without a floor, a
     /// document that had stopped stating counts — or a section marker that had been reworded, so the
     /// slice read is empty — would satisfy every comparison below by having none to make, which is the
     /// failure mode of every gate that computes its own subject (F-41).
     /// </summary>
-    private const int MinimumCountedClasses = 9;
+    private const int MinimumCountedClasses = 10;
 
     /// <summary>
     /// A test class named inside backticks, in either of the two forms §16.4 uses: the full

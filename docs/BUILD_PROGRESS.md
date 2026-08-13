@@ -10003,3 +10003,236 @@ create-item form in six of sixteen scenarios and the handheld barrier opens that
 the menu row it needs is load-bearing twice.
 
 **Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive can contain (F-42).
+
+---
+
+# M6 Slice 36 — the suite that did not build (F-71), the register that was not a table (F-72), and a stale count inside the gate against stale counts (F-73)
+
+## Read this first: Slice 35 did not fail a test. It never ran one.
+
+`dotnet test` on Slice 35's tree printed `Test summary: total: 497, failed: 0, succeeded: 497, skipped: 0`
+and then `Build failed with 3 error(s)`. Those 497 are Domain, DataAccess and all sixteen §16.3 scenarios,
+and every one of them passed. **`MyRestaurant.WebApplication.Tests` did not compile**, so its roughly five
+hundred and eighty assertions did not run — including both facts Slice 35 had just added, which were the
+entire point of the slice.
+
+```
+HandheldLayoutContractTests.cs(1113,48): error CS1503: cannot convert from 'System.StringComparison' to 'int'
+HandheldLayoutContractTests.cs(1115,52): error CS1503: cannot convert from 'System.StringComparison' to 'int'
+HandheldLayoutContractTests.cs(1121,53): error CS1503: cannot convert from 'System.StringComparison' to 'int'
+```
+
+That is F-71 and it is a one-line class of mistake. Everything else on that run was green: tree hygiene,
+governance, shellcheck, `run.sh --smoke`, the compose-substitution preflight, `dotnet test
+tests/MyRestaurant.EndToEnd.Tests` at 16 of 16, and the quick tunnel.
+
+## F-71 — an overload that exists for `string` and not for `char`
+
+`DeclarationBlocksIn` is the helper Slice 35 added so the colour scan would read declaration blocks rather
+than whole files, which is what keeps `#blazor-error-ui` in a prelude from being read as a colour. It called
+`css.IndexOf('{', open + 1, StringComparison.Ordinal)`.
+
+The overload set was **read from `dotnet/runtime` at `release/10.0`** rather than recalled, because a claim
+about a framework API is exactly the kind of claim F-62 says to check before writing down.
+`System.Private.CoreLib`'s `String.Searching.cs` declares, for a `char`:
+
+| Overload | Exists |
+|---|---|
+| `IndexOf(char)` | yes |
+| `IndexOf(char, int startIndex)` | yes |
+| `IndexOf(char, StringComparison)` | yes |
+| `IndexOf(char, int startIndex, int count)` | yes |
+| `IndexOf(char, int, StringComparison)` | **no** |
+| `LastIndexOf(char, StringComparison)` | **no** |
+
+For `string` the three-argument-with-comparison form *does* exist, and so does the four-argument one. So the
+same shape is correct one keyword over, argument three binds to `count`, and the compiler reports a type
+mismatch on an argument rather than a missing member — which reads like a wrong value and not like a wrong
+overload. That asymmetry is the whole finding.
+
+**The fix is to drop the third argument**, and it is behaviour-identical rather than merely equivalent:
+`IndexOf(char, StringComparison.Ordinal)` in that same file is a `switch` whose `Ordinal` arm returns
+`IndexOf(value)`, and `IndexOf(char, int startIndex)` returns `IndexOf(value, startIndex, Length - startIndex)`,
+which is precisely the search intended. The redundant second argument on the loop's initialiser goes with
+them, so one `for` statement does not spell one search two ways; the repository's own convention already
+omits it for a `char` at eleven other sites.
+
+**No gate is added, and that is a ruling.** The compiler is the gate. It ran, it blocked, and CI would have
+blocked identically. A test asserting what CSC already rejects is a monument, which is what F-47 says to
+delete rather than build. What failed is not the tree; it is the authoring-side verification, which walked
+brace balance, scanned CS1620 and CS4007, and had no way to see an overload. §18 therefore gains the habit
+rather than the tree gaining a test: **an archive that has not been compiled is a prediction, and the first
+thing to do with one is build it.** Where a trap is mechanical it is scanned by name, and that scan now
+exists in the authoring pass: three hits against Slice 35's tree, zero against this one.
+
+## F-72 — the two registers this project runs on had both stopped being tables
+
+Found by opening Appendix A to add F-71's row, and discovering there was no way to add one without first
+deciding how many columns a row has.
+
+Three defects, in both documents:
+
+| Shape | In `TECHNICAL_SPECIFICATION.md` Appendix A | In `DOCUMENTATION_REVIEW.md` Group E |
+|---|---|---|
+| Header narrower than its rows | header declared **3** columns; every row from F-38 to F-70 carried **4**, and F-41 carried 4 with an escaped pipe | F-38's row held **5** against a 4-column header |
+| Rows outside any table | F-63 to F-70 sat after a horizontal rule with **no header and no delimiter** — eight rows, the whole of Slices 33, 34 and 35 | thirty-one rows from F-40 to F-70 split into **fourteen fragments** by blank lines and one horizontal rule |
+| A row swallowing its neighbour | **F-65 had no row**, fused onto the end of F-64's by a stray `\|\|` | F-38's fifth cell, because `` `ps \| grep -m1 postgres` `` spells a pipe a cell reads as a boundary |
+
+A Markdown renderer truncates a row to its header's width and discards the rest without a word. So the
+*Embodied in* column — the file paths and the BUILD_PROGRESS slice, which is the entire second half of what
+*ruling → embodiment* means — **was being dropped on thirty rows of the register that heading names.** And
+rows with no delimiter above them are not rows at all: they render as a paragraph of pipe characters.
+
+**Nothing was ever wrong in the source.** Every character of every row was present and correct, and an
+editor showed all of it. It was wrong only once *rendered*, which is how these two files are actually read.
+That is F-49's shape a third time — a thing that existed, worked from one angle, and that nobody had
+decided. And it accumulated in the one direction nothing could catch: each slice appended a row in the shape
+of the previous slice's rows, so the drift was invisible **because** it was consistent.
+
+### What was decided, and where to veto
+
+**Appendix A goes to four columns rather than the rows going to three.** The newer rows were right: the
+ledger has used `| ID | Finding | Ruling | Embodied in |` since Group A, and Appendix A's rows have been
+following it since F-38 while its header stayed at the compressed shape. Collapsing thirty rows to three
+columns would have meant merging each F-number into its narrative and losing the scannable left column.
+
+**The seventeen older compressed rows gain an em-dash, not a story.** `| F-20 | Hand-written fakes… | §16.1 |`
+becomes `| F-20 | — | Hand-written fakes… | §16.1 |`. Writing a narrative for a 2026-07 ruling now would be
+inventing history in the register whose job is to hold it.
+
+**F-63 to F-70 join the table after F-62**, in the numeric order the rows above them keep, ahead of the four
+summary rows (the menu enhancement, F-21 – F-24, F-25 – F-33, the judgment calls) which have always been an
+out-of-sequence tail. **The horizontal rule that had been standing inside the table moves above the next
+heading**, which is where this document puts one before every other section — the likeliest explanation for
+it being there at all is that it was aimed at that position and landed one paragraph early.
+
+**The gate is named for the property, not for the register.** `MarkdownTableContractTests`, not
+`DefectRegisterContractTests`. Naming it after the two files that prompted it would be enforcing a general
+rule against its own examples, which is F-46's lesson and the reason F-63 needed writing at all; the subject
+is computed over every Markdown file in the repository with nothing named, on F-58's shape.
+
+### Two things the gate must know about Markdown, both demonstrated by the tree
+
+Neither was planted, and the first draft reported both as findings on correct documents:
+
+- **A pipe inside a cell may be escaped.** `docs/OPERATIONS.md` writes a shell pipeline inside a table cell
+  as `\|`, correctly, and has done for slices. A scan splitting on every pipe reports that row as three cells
+  under a two-column header. The cell-boundary pattern therefore carries a lookbehind, and that lookbehind is
+  the whole of what keeps this fact off a correct tree (F-41).
+- **A fenced code block is not a table.** This file quotes the diagnosis `dev_instance.sh` prints on a failed
+  bring-up, and every line of that quoted output opens with the pipe the helper indents a container's log
+  with — **eighteen such lines, in two fences, right here in BUILD_PROGRESS.** Read as Markdown they are a
+  code block; read without fence tracking they are two runs of table lines with no delimiter, which is
+  exactly what the first fact reports. Fence tracking and Markdown's own three-space indentation rule are
+  both in the walk for that reason.
+
+Build output is excluded by name at any depth — `.git`, `.vs`, `bin`, `obj`, `llm`, `node_modules` — spelled
+the way `ContainerImageReferenceContractTests` already spells its own list. `llm` is excluded on the decision
+the tree gate makes about generated text; the rest are there because a restored tree carries other people's
+`README.md` under `obj/`, and a stranger's malformed table is not this repository's finding.
+
+## F-73 — the gate against stale counts shipped with a stale count
+
+`TestingSectionContractTests` exists because a count of assertions written in prose is one fact written in
+two places. Its own class summary said §16.4 *"carries eight of them"*. §16.4 as delivered carried **nine** —
+the ninth being the paragraph that same slice wrote about this same test. Meanwhile
+`MinimumCountedClasses` two screens below said nine, so the two numbers inside one file disagreed with each
+other.
+
+Trivial in effect, and worth a row for its position: F-69's mechanism occurring inside the repair for F-70.
+Both numbers move to **ten**, which this slice's own §16.4 paragraph makes true, and the summary records that
+it said eight when the answer was nine.
+
+**The number is kept rather than deleted, and the difference from F-69 is the point.** F-69's count was the
+argument for a rule being a *should*, so deleting the count removed the argument and the *should* with it.
+This one is the argument for a floor, and a floor is a deliberate refusal to accept whatever the tree
+currently happens to say — there is nothing to derive it from. What is added is the habit of moving it, which
+is what the test beneath it now mechanically requires of §16.4 and cannot require of its own comment.
+
+## What is in this slice
+
+| Path | Change |
+|---|---|
+| `tests/…/Components/HandheldLayoutContractTests.cs` | three call sites and one initialiser lose an argument that does not exist; the helper's summary records F-71 |
+| `tests/…/Documentation/MarkdownTableContractTests.cs` | **NEW.** Two facts: a run of table lines opens with a header and its delimiter; a row carries its header's column count |
+| `tests/…/Documentation/TestingSectionContractTests.cs` | F-73: the summary's count and `MinimumCountedClasses` both move to ten |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.21.** Appendix A restructured to four columns with F-63 – F-70 brought inside and F-65 restored; §16.4 gains two paragraphs; §18 gains the build-it-first habit; F-71, F-72, F-73; changelog |
+| `docs/DOCUMENTATION_REVIEW.md` | Group E rebuilt as one table; F-38's pipe escaped; three rows; status line; *Going forward* |
+| `docs/BUILD_PROGRESS.md` | this section |
+| `_CHANGES.md` | the archive note |
+
+**Nothing under `src/` is touched.** No application code, no stylesheet, no Razor. The only behaviour that
+changes is which assertions run.
+
+## What was verified
+
+No .NET SDK in the authoring sandbox, so all of this is text-level and says so. The point of F-71 is that
+this is not sufficient.
+
+- **The tree was reconstructed from `dump.txt` and verified by SHA-256: 334 of 334 files match.** The one
+  mismatch is `export.sh`, whose dump embeds a nested copy of the script that writes it. Incidentally, the
+  eleven files that needed a second trailing newline to hash correctly are **exactly** the eleven this
+  slice's predecessor recorded as ending in two or more LFs, which reproduces that open item from the dump
+  alone.
+- **All nine handheld facts and the testing-section fact ported to Python and run: ten facts, thirty-five
+  assertions, zero failures.** They pass against Slice 35's tree too — the compile error was the only thing
+  between that tree and a green suite, which is stated as a measurement rather than a hope.
+- **The two new facts proven sensitive by the tree**: forty-one findings against Slice 35's tree (fourteen
+  structural, twenty-seven width), zero against this one. **Proven not to fire** on the escaped pipe in
+  `OPERATIONS.md` and the eighteen fenced log lines in this file — both of which the first draft reported,
+  which is why they are recorded as demonstrations rather than as claims.
+- **The new gate caught this slice's own rows.** The first draft of F-72's ledger row wrote `\|\|` and
+  `` `ps \| grep` `` unescaped inside a table cell, and both rows came back seven cells wide against a
+  four-column header. Fixed by escaping, which is the repair the failure message names.
+- **§16.4's ten counted paragraphs each compared to their file: ten pairs, ten agree.**
+- **`SpecificationVersionTests` ported:** header 1.21 against newest entry 1.21, twenty-two entries
+  descending, two documents qualifying.
+- **Bracket balance** on all three C# files, string- and comment-aware, with an untouched sibling as a
+  control and proven sensitive by deleting one brace. **CS1620** and **CS4007** scans clean. **The
+  overload-arity scan** that would have caught F-71: three hits against Slice 35's tree, zero against this
+  one.
+- **Byte hygiene** on every delivered file: no CR, one final LF, no whitespace-only lines.
+
+## What was NOT verified
+
+**Nothing compiled** — which is the finding this slice opens with, so it is worth being exact about what
+that leaves open. `MarkdownTableContractTests` is the only new C# file and therefore the likeliest site of a
+complaint. It uses two `sealed record` declarations for `Run` and `Census`, positional and nested inside the
+class, which nothing else in this test project does; a `List<string>` inside a record used as a value; and
+`UnreadDirectoryNames.Contains(segment, StringComparer.Ordinal)`, which is the LINQ overload rather than the
+array one and needs `System.Linq` from implicit usings.
+
+**No browser rendered anything, and none needed to.** No `src/` file changed.
+
+**Nothing here confirms that either register now renders as intended in a browser.** The gate asserts the
+structure a renderer requires; whether the four-column table is *readable* at that row length is a judgement
+for whoever opens the file, and the rows are long.
+
+## Test count
+
+Slice 35's predicted 1080 was never observed, because the project holding those tests did not build. The
+last observed figure is **1078**, from Slice 34.
+
+Predicted here: **1078 + 2 (Slice 35's two new facts, now able to run) + 2 (this slice's two new facts) =
+1082.** Arithmetic on the last observed count, not an observation. §16.3 stays at **16**.
+
+Per §18: if the run returns anything other than 1082, that difference is the next thing to chase.
+
+## Still open
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** It is cited fifteen times in that file and appears only in
+Appendix A. Found by the same read that found F-72, and deliberately not repaired: whether the fix is to
+write the row or to accept that Appendix A is the register of record for gate-scope rulings is a decision,
+and it does not belong in a slice whose subject is table structure. The gate written here deliberately does
+not assert that every cited finding has a row, because that assertion would have to be right about grouped
+rows like `F-21 – F-24` and would report findings on a correct tree.
+
+**`check_tree.sh` gate 3 still prints a claim one word stronger than its check.** Carried from Slice 35 with
+the eleven files named, and now independently reproduced from the dump.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred three times now.
+
+**A CI job that runs the canonical stack on the canonical engine.** Twelfth consecutive slice.
+
+**Stage 2's boundary.** **Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive
+can contain (F-42).

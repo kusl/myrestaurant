@@ -1105,20 +1105,31 @@ public sealed class HandheldLayoutContractTests
     /// <para><b>Why the colour scan reads blocks rather than the whole file.</b> A prelude can contain an
     /// id selector, and <c>#blazor-error-ui</c> opens with the same character a hex colour does. Reading
     /// values only is what stops this fact reporting a finding on a correct tree (F-41).</para>
+    ///
+    /// <para><b>No <c>StringComparison</c> appears below, and that is the fix for F-71 rather than an
+    /// oversight.</b> This method shipped calling <c>IndexOf('{', open + 1, StringComparison.Ordinal)</c>,
+    /// an overload <c>System.String</c> declares for a <c>string</c> and <b>not</b> for a <c>char</c>: the
+    /// char set is <c>IndexOf(char)</c>, <c>IndexOf(char, int)</c>, <c>IndexOf(char, StringComparison)</c>
+    /// and <c>IndexOf(char, int, int)</c>, so argument three bound to <c>count</c> and the compiler
+    /// reported a type mismatch on an argument rather than a missing member. This project did not compile
+    /// for a slice, and because the failure was a build failure rather than a test failure, <c>dotnet
+    /// test</c> printed <c>total: 497, failed: 0</c> while the five hundred-odd assertions in this project
+    /// — including the two that slice had just written — never ran. Searching for a character is ordinal by
+    /// construction, so nothing is lost: <c>IndexOf(char, StringComparison.Ordinal)</c> delegates to
+    /// <c>IndexOf(char)</c> in the framework source, and <c>IndexOf(char, int)</c> delegates to
+    /// <c>IndexOf(value, startIndex, Length - startIndex)</c>, which is the search intended here.</para>
     /// </summary>
     private static IEnumerable<string> DeclarationBlocksIn(string css)
     {
-        for (int open = css.IndexOf('{', StringComparison.Ordinal);
-             open >= 0;
-             open = css.IndexOf('{', open + 1, StringComparison.Ordinal))
+        for (int open = css.IndexOf('{'); open >= 0; open = css.IndexOf('{', open + 1))
         {
-            int close = css.IndexOf('}', open + 1, StringComparison.Ordinal);
+            int close = css.IndexOf('}', open + 1);
             if (close < 0)
             {
                 break;
             }
 
-            int nested = css.IndexOf('{', open + 1, StringComparison.Ordinal);
+            int nested = css.IndexOf('{', open + 1);
             if (nested >= 0 && nested < close)
             {
                 // An at-rule wrapper. Its own "block" is a set of rules rather than declarations, and
