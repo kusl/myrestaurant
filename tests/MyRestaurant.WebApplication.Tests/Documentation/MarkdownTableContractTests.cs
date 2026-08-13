@@ -150,8 +150,7 @@ public sealed class MarkdownTableContractTests
                 {
                     problems.Add(string.Create(
                         CultureInfo.InvariantCulture,
-                        $"{run.Where}: a second delimiter row {index} line(s) in, which starts a table"
-                            + " inside a table"));
+                        $"{run.Where}: a second delimiter row {index} line(s) in, which starts a table inside a table"));
                 }
             }
         }
