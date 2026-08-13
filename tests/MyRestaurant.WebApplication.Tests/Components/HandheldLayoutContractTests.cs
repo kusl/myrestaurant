@@ -42,6 +42,15 @@ namespace MyRestaurant.WebApplication.Tests.Components;
 /// <c>&lt;style&gt;</c> block as text and three components describe the shared vocabulary in a CSS
 /// comment (<b>F-67</b>). A gate whose reach is bounded by which names appear in somebody's prose is a
 /// gate about prose.</para>
+///
+/// <para><b>Nine facts, and the eighth is the one worth reading the history of.</b> Seven landed across
+/// Slices 30, 33 and 34. The eighth — <see cref="OverflowWrapIsDeclaredExactlyOnceOnTheBodyElement"/> —
+/// arrived in the tree with no ledger row, no §16.4 paragraph, no changelog entry and no line in
+/// <c>_CHANGES.md</c>, which is every artefact this project's atomic-documentation rule requires of a
+/// behaviour change. It is a good rule and it is kept; what was missing was the paperwork, and the
+/// arithmetic that would have shown it up was performed and then not read — Slice 34 predicted 1077
+/// tests and the run returned 1078 (<b>F-70</b>). The ninth is the palette (<b>F-68</b>,
+/// <b>F-69</b>).</para>
 /// </summary>
 public sealed class HandheldLayoutContractTests
 {
@@ -153,6 +162,44 @@ public sealed class HandheldLayoutContractTests
 
     /// <summary>The route a routable component declares, so a page's link to itself can be discounted.</summary>
     private static readonly Regex PageDirective = new(@"(?m)^@page\s+""([^""]+)""");
+
+    /// <summary>
+    /// A colour written as a value: a hex triple, quad, sextet or octet, or an <c>rgb()</c> /
+    /// <c>hsl()</c> function with or without alpha.
+    ///
+    /// <para><c>rgb()</c> is here on purpose. <c>rgba(22, 32, 43, 0.04)</c> is <c>--ink</c> written in
+    /// decimal, and those three were the only duplicates of the palette in <c>app.css</c> that a scan
+    /// for <c>#hex</c> could never have found (<b>F-68</b>).</para>
+    ///
+    /// <para><c>transparent</c> and <c>currentColor</c> are deliberately not matched. They are keywords
+    /// rather than values: neither names a colour that could drift from another copy of itself, which is
+    /// the whole failure mode this pattern exists to find.</para>
+    /// </summary>
+    private static readonly Regex ColourLiteral =
+        new(@"#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)");
+
+    /// <summary>
+    /// The palette: <c>:root</c> and its declarations. Matched after CSS comments are stripped, which is
+    /// what makes <c>[^{}]*</c> safe — a declaration list contains no nested braces, while two of the
+    /// comments inside this particular block are prose that mentions them.
+    /// </summary>
+    private static readonly Regex PaletteBlock = new(@":root\s*\{[^{}]*\}");
+
+    /// <summary>
+    /// A <c>var()</c> reference carrying a fallback — the name, then a comma. What follows the comma is
+    /// not captured, because the finding is the comma (<b>F-69</b>): a fallback on a declared property is
+    /// dead code whatever it says, and a fallback is exactly what made an <em>undeclared</em> property
+    /// indistinguishable from a declared one in review across eight components (F-64).
+    /// </summary>
+    private static readonly Regex CustomPropertyFallback = new(@"var\(\s*--[a-z0-9-]+\s*,");
+
+    /// <summary>
+    /// The <c>overflow-wrap</c> property and whatever it was given, up to the end of the declaration.
+    /// </summary>
+    private static readonly Regex OverflowWrapDeclaration = new(@"overflow-wrap\s*:\s*([^;}]+)");
+
+    /// <summary>The <c>body</c> element's own rule, so a declaration on it can be told from one near it.</summary>
+    private static readonly Regex BodyRule = new(@"(?m)^body\s*\{([^}]+)\}");
 
     /// <summary>
     /// §11.12: the layout is written for the narrow screen and widened by exactly one query — and that is
@@ -772,32 +819,53 @@ public sealed class HandheldLayoutContractTests
     }
 
     /// <summary>
-    /// The overflow-wrap declaration exists exactly once, on the body element, with the value 'anywhere'.
+    /// <c>overflow-wrap</c> is declared exactly once in the tree, on <c>body</c>, as <c>anywhere</c>.
     ///
-    /// <para><b>Why this is a finding.</b> <c>overflow-wrap: anywhere</c> was declared eight times
-    /// across the stylesheet on elements somebody had a long-token case in mind for. Because it is an
-    /// inherited property, eight declarations are eight copies of a rule one declaration states, and the
-    /// copies are only there on the elements somebody thought of (F-48). The same display name rendered
-    /// correctly on <c>/administration</c> (which had the rule) and wrongly on
-    /// <c>/administration/people/{id}</c> (which did not) — that is F-46/F-51's shape again.</para>
+    /// <para><b>Why this is a finding.</b> <c>overflow-wrap: anywhere</c> was declared eight times across
+    /// the stylesheet, on the elements somebody had a long-token case in mind for. Because it is an
+    /// <em>inherited</em> property, eight declarations are eight copies of what one declaration states,
+    /// and the copies only reach the elements somebody thought of (F-48). The same display name rendered
+    /// correctly on <c>/administration</c>, which had the rule, and wrongly on
+    /// <c>/administration/people/{id}</c>, which did not — F-46 and F-51's shape again.</para>
     ///
     /// <para><c>anywhere</c> is asserted rather than <c>break-word</c> because only <c>anywhere</c>
-    /// collapses min-content, which is what the flex item propagation on the people page depends on.
+    /// collapses min-content, and that is what §16.3 scenario 16's long-unbroken-name fixture depends on:
+    /// <c>break-word</c> breaks the line and leaves the element's min-content width at the length of the
+    /// token, so a table or flex context still sizes to it and the page still scrolls sideways.
     /// <c>word-break: break-all</c> on <c>.totp-secret</c> and the two join-code blocks is deliberately
     /// out of scope, being typesetting rather than overflow defence (F-41).</para>
+    ///
+    /// <para><b>Where this fact came from, which is the part that is worth writing down (F-70).</b> It
+    /// arrived in the tree from outside this project's slice discipline: no row in the defect ledger, no
+    /// paragraph in §16.4, no changelog entry, no line in <c>_CHANGES.md</c>. Everything above is
+    /// reconstructed from the fact's own original comment and from what the tree shows, and the eight-times
+    /// count is that comment's claim rather than something this repository can still demonstrate — the
+    /// stylesheet it describes is two commits back. <b>The rule is right and it is kept.</b> What was
+    /// missing was the paperwork, and it stayed missing because the number that would have exposed it was
+    /// computed and then not read: Slice 34 predicted 1077 tests as arithmetic and the run returned 1078,
+    /// and one unexplained test is one undocumented gate.</para>
+    ///
+    /// <para><b>Two repairs, both of the kind this file applies to everything else.</b> The component walk
+    /// now carries a non-vacuity guard, because "declared exactly once in the tree" was satisfiable by a
+    /// scan that read <c>app.css</c> and no component at all — the count would still have been one, and
+    /// the assertion would have passed having looked at one file (F-41). And the value is asserted against
+    /// the value rather than against the composed report line, which previously meant a repository path
+    /// containing the word would have satisfied it.</para>
     /// </summary>
     [Fact]
     public void OverflowWrapIsDeclaredExactlyOnceOnTheBodyElement()
     {
+        int blocksScanned = 0;
         List<string> declarations = [];
+        List<string> values = [];
 
         void Read(string css, string where)
         {
-            // Match the property and whatever it was given
-            foreach (Match match in Regex.Matches(CssComment.Replace(css, string.Empty), @"overflow-wrap\s*:\s*([^;}]+)"))
+            foreach (Match match in OverflowWrapDeclaration.Matches(CssComment.Replace(css, string.Empty)))
             {
                 string value = match.Groups[1].Value.Trim();
                 declarations.Add($"{where} ({value})");
+                values.Add(value);
             }
         }
 
@@ -810,34 +878,179 @@ public sealed class HandheldLayoutContractTests
 
             foreach (Match block in StyleBlock.Matches(markup))
             {
+                blocksScanned++;
                 Read(block.Groups[1].Value, Path.GetFileName(path));
             }
         }
 
+        // Non-vacuity, and it is the guard this fact arrived without: "exactly once in the tree" is
+        // satisfied by app.css's one declaration whether or not a single component was ever opened.
+        Assert.True(
+            blocksScanned >= 8,
+            $"Only {blocksScanned} component <style> blocks were found, so the word 'tree' in this fact's"
+                + " name is not earned — app.css alone would satisfy the count below (F-41).");
+
         Assert.True(
             declarations.Count == 1,
-            $"overflow-wrap must be declared exactly once in the tree, but was found {declarations.Count} time(s): "
-                + $"{FormatList(declarations)}. As an inherited property, one declaration on body covers "
-                + "the tree, and copies only apply where somebody remembered them (F-48).");
+            $"overflow-wrap must be declared exactly once in the tree and was found"
+                + $" {declarations.Count} time(s): {FormatList(declarations)}. It is an inherited"
+                + " property, so one declaration on body covers every element under it and a copy only"
+                + " reaches the elements somebody remembered (F-48).");
 
         string only = declarations[0];
 
         Assert.True(
             only.StartsWith(StylesheetRelativePath, StringComparison.Ordinal),
-            $"The declaration belongs in {StylesheetRelativePath}, but was found in {only}.");
-
-        Assert.Contains(
-            "anywhere",
-            only,
-            StringComparison.Ordinal);
-
-        // Confirm it is genuinely on the body selector and not just somewhere in app.css.
-        string cleanCss = CssComment.Replace(stylesheet, string.Empty);
-        Match bodyBlock = Regex.Match(cleanCss, @"(?m)^body\s*\{([^}]+)\}");
+            $"The one declaration belongs in {StylesheetRelativePath} and was found in {only}.");
 
         Assert.True(
-            bodyBlock.Success && bodyBlock.Groups[1].Value.Contains("overflow-wrap", StringComparison.Ordinal),
-            "overflow-wrap was found in app.css, but not on the 'body' selector. It must be applied to body to inherit down the tree.");
+            values[0].Contains("anywhere", StringComparison.Ordinal),
+            $"overflow-wrap is declared as '{values[0]}' and §11.12 requires 'anywhere'. Only 'anywhere'"
+                + " collapses min-content; 'break-word' breaks the line and leaves the element as wide as"
+                + " its longest token, so a record card still pushes the page sideways — which is what"
+                + " §16.3 scenario 16's unbroken display name is in the fixture to prove.");
+
+        // On body specifically, not merely somewhere in app.css: an inherited property declared on a
+        // descendant is the eight-copy arrangement with seven of the copies deleted.
+        Match bodyRule = BodyRule.Match(CssComment.Replace(stylesheet, string.Empty));
+
+        Assert.True(
+            bodyRule.Success && bodyRule.Groups[1].Value.Contains("overflow-wrap", StringComparison.Ordinal),
+            "overflow-wrap was found in app.css but not on the body rule. body is where an inherited"
+                + " property is declared so that it reaches everything; anywhere else and it reaches"
+                + " whatever happens to be inside that selector.");
+    }
+
+    /// <summary>
+    /// Every colour the tree renders is a value <c>app.css</c>'s <c>:root</c> declares, and no reference
+    /// to a property carries a fallback (<b>F-68</b>, <b>F-69</b>).
+    ///
+    /// <para><b>Why the palette has to be a rule and not a habit.</b> A duplicated colour does not fail.
+    /// It drifts — and then one screen is a different red from every other screen and nobody can say
+    /// which of the two anybody chose. Ninety-five colour literals were written outside <c>:root</c>:
+    /// fifty inside <c>var()</c> fallbacks and forty-five bare, of which <b>twenty were byte-identical to
+    /// a property declared in <c>:root</c></b>. <c>#ffffff</c> appeared six times against
+    /// <c>--surface-raised</c>, three of them <em>inside <c>app.css</c> itself</em>; <c>#b45309</c> five
+    /// times against <c>--caution-ink</c>; and <c>rgba(22, 32, 43, …)</c> three times, which is
+    /// <c>--ink</c> in decimal and the one form no reader scanning for <c>#hex</c> would ever have
+    /// seen.</para>
+    ///
+    /// <para><b>Seven had already drifted, and two of them are F-66 found in a fifth place.</b>
+    /// <c>TableHistory</c>'s irreversible-hide warning — the one panel in the guest area whose whole job
+    /// is to look alarming — drew <c>#fdecea</c> on <c>#f5c2c0</c> against the palette's
+    /// <c>--danger-surface</c> <c>#fbeaea</c> and <c>--danger-hairline</c> <c>#f0c7c7</c>. That is the
+    /// same pair of values Slice 34 removed from four <c>.chip-warn</c> copies, and it survived because
+    /// the sweep that found those four was looking at administration and this is a guest page.
+    /// <c>EventExplorer</c>'s five badge colours were all near-copies rather than exact ones, which is the
+    /// harder half of the same defect: an exact copy is a duplicate, and a near copy is a decision nobody
+    /// made.</para>
+    ///
+    /// <para><b>Why F-64's fact could not see any of this.</b> That one asserts that every property a rule
+    /// <em>reads</em> is declared. A rule that reads nothing and writes <c>#b45309</c> is invisible to it.
+    /// Same wrong-palette failure, direction reversed — and the reason the fallbacks are asserted in the
+    /// same fact is that a fallback is what made F-64's undeclared names indistinguishable from declared
+    /// ones for eight components. The fallback assertion comes first for that reason, and because it is
+    /// the cheaper finding to clear.</para>
+    ///
+    /// <para><b>What it deliberately does not assert.</b> That a colour is the <em>right</em> colour;
+    /// that two declared properties differ by more than a few bits; or that a component's <c>&lt;style&gt;</c>
+    /// may not hold a rule of its own. A rule may be local. A colour may not.</para>
+    /// </summary>
+    [Fact]
+    public void EveryColourTheTreeRendersIsDeclaredInThePalette()
+    {
+        string stylesheet = CssComment.Replace(ReadStylesheet(), string.Empty);
+
+        Match palette = PaletteBlock.Match(stylesheet);
+
+        Assert.True(
+            palette.Success,
+            $"No ':root' rule was found in {StylesheetRelativePath}. Every assertion below is about the"
+                + " difference between the palette and everything else, so without it this fact would"
+                + " report every colour in the file as a finding on a correct tree (F-41).");
+
+        int coloursInThePalette = ColourLiteral.Matches(palette.Value).Count;
+
+        Assert.True(
+            coloursInThePalette >= 15,
+            $"Only {coloursInThePalette} colour value(s) are declared in {StylesheetRelativePath}'s :root,"
+                + " and the palette carries well over fifteen. Either the block has moved or the palette"
+                + " has emptied, and in both cases the assertions below would be measuring nothing.");
+
+        string outsideThePalette = stylesheet.Remove(palette.Index, palette.Length);
+
+        int referencesRead = 0;
+        int blocksScanned = 0;
+        List<string> fallbacks = [];
+        List<string> literals = [];
+
+        void Read(string css, string where)
+        {
+            string stripped = CssComment.Replace(css, string.Empty);
+
+            referencesRead += CustomPropertyReference.Matches(stripped).Count;
+
+            foreach (Match match in CustomPropertyFallback.Matches(stripped))
+            {
+                fallbacks.Add($"{where}: {Line(stripped, match.Index)}");
+            }
+
+            // Declaration blocks only, so that an id selector is never read as a colour. `#ffffff` in a
+            // value and `#blazor-error-ui` in a prelude are the same three characters of prefix, and a
+            // gate that confused them would report a finding on a correct tree (F-41).
+            foreach (string block in DeclarationBlocksIn(stripped))
+            {
+                foreach (Match match in ColourLiteral.Matches(block))
+                {
+                    literals.Add($"{where}: {match.Value} in '{Line(block, match.Index)}'");
+                }
+            }
+        }
+
+        Read(outsideThePalette, Path.GetFileName(StylesheetRelativePath));
+
+        foreach (string path in EnumerateComponents())
+        {
+            string markup = RazorComment.Replace(File.ReadAllText(path), string.Empty);
+
+            foreach (Match block in StyleBlock.Matches(markup))
+            {
+                blocksScanned++;
+                Read(block.Groups[1].Value, Path.GetFileName(path));
+            }
+        }
+
+        // Non-vacuity, in both directions. A scan that found no component blocks would report a clean
+        // tree having read one file, and a tree that had stopped referring to the palette at all would
+        // satisfy the fallback assertion by having nothing to put a fallback on.
+        Assert.True(
+            blocksScanned >= 8,
+            $"Only {blocksScanned} component <style> blocks were found, so this scan is not looking at the"
+                + " tree it is about. Razor comments are stripped first — a <style> named inside an"
+                + " @* … *@ comment is prose.");
+
+        Assert.True(
+            referencesRead >= 100,
+            $"Only {referencesRead} var() reference(s) were read across the stylesheet and the component"
+                + " blocks, and the tree makes over three hundred. A tree that had replaced its property"
+                + " references with literals would satisfy the fallback assertion below trivially, having"
+                + " lost the arrangement the property exists for.");
+
+        Assert.True(
+            fallbacks.Count == 0,
+            $"{fallbacks.Count} var() reference(s) carry a fallback: {FormatList(fallbacks)}. Every name"
+                + " the tree reads is declared — the fact above this one says so — which makes a fallback"
+                + " dead code, and dead code in exactly the position where a misspelled name renders in"
+                + " silence. That is how five properties came to be read fifty-five times and declared"
+                + " nowhere (F-64), so the position is closed rather than watched (F-69).");
+
+        Assert.True(
+            literals.Count == 0,
+            $"{literals.Count} colour value(s) are written outside the palette: {FormatList(literals)}."
+                + " Every colour this application renders is declared once, in app.css's :root, and read"
+                + " from there — because a second copy of a colour does not fail, it drifts, and then two"
+                + " screens disagree and neither is the one anybody chose (F-68). If the value has no"
+                + " property yet, declare one in :root and give it the name of the job it does.");
     }
 
     /// <summary>
@@ -876,6 +1089,57 @@ public sealed class HandheldLayoutContractTests
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Every declaration block a stylesheet contains — the text between a rule's braces, comments
+    /// already removed by the caller.
+    ///
+    /// <para>The mirror of <see cref="SimpleSelectorsDeclaredIn"/>, and it rests on the same property of
+    /// CSS: a declaration block contains no <c>{</c>, so the text from an opening brace to the next
+    /// closing brace is exactly one block's declarations. An at-rule wrapper is told apart by having
+    /// another <c>{</c> before its own <c>}</c>, and is skipped — the loop reaches the rules nested
+    /// inside it on its own, which is what makes a colour written inside the breakpoint query
+    /// visible.</para>
+    ///
+    /// <para><b>Why the colour scan reads blocks rather than the whole file.</b> A prelude can contain an
+    /// id selector, and <c>#blazor-error-ui</c> opens with the same character a hex colour does. Reading
+    /// values only is what stops this fact reporting a finding on a correct tree (F-41).</para>
+    /// </summary>
+    private static IEnumerable<string> DeclarationBlocksIn(string css)
+    {
+        for (int open = css.IndexOf('{', StringComparison.Ordinal);
+             open >= 0;
+             open = css.IndexOf('{', open + 1, StringComparison.Ordinal))
+        {
+            int close = css.IndexOf('}', open + 1, StringComparison.Ordinal);
+            if (close < 0)
+            {
+                break;
+            }
+
+            int nested = css.IndexOf('{', open + 1, StringComparison.Ordinal);
+            if (nested >= 0 && nested < close)
+            {
+                // An at-rule wrapper. Its own "block" is a set of rules rather than declarations, and
+                // each of those is reached by a later turn of this loop.
+                continue;
+            }
+
+            yield return css[(open + 1)..close];
+        }
+    }
+
+    /// <summary>
+    /// The one line of <paramref name="text"/> that <paramref name="index"/> falls on, trimmed — so a
+    /// failure message names the declaration rather than an offset.
+    /// </summary>
+    private static string Line(string text, int index)
+    {
+        int start = text.LastIndexOf('\n', Math.Min(index, text.Length - 1)) + 1;
+        int end = text.IndexOf('\n', index);
+
+        return (end < 0 ? text[start..] : text[start..end]).Trim();
     }
 
     private static int CountOccurrences(string text, string value)

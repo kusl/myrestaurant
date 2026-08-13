@@ -9679,6 +9679,11 @@ of work. `KitchenBoard` needs its own judgement rather than the same treatment, 
 **The redundant `var(--declared, #literal)` fallbacks** — around a hundred, across the components that still
 have blocks. A *should* rather than a *must*.
 
+> **Corrected in Slice 35 (F-69).** That figure was already wrong when this line was written: emptying four
+> blocks in this slice took it to **fifty, across seven**, and the number was the entire argument for the
+> rule being a *should*. It is left here rather than edited, because what it recorded is what was believed —
+> and it is the fourth document to carry the figure, which is the finding.
+
 **`.sitting-meta` is declared by two components** — `ManageSitting` and `TableArea` — which is a two-copy
 duplicate of a name `app.css` does not own. Not in this slice's scope and recorded so that it is a decision
 next time rather than a discovery.
@@ -9688,5 +9693,313 @@ next time rather than a discovery.
 **Stage 2's boundary**, corrected in the plan and not yet built. `CreateMenuItemAsync` still drives the real
 create-item form in six of sixteen scenarios, and as of this slice the handheld barrier also opens that
 item's management page — so the menu row it needs is now load-bearing twice.
+
+**Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive can contain (F-42).
+
+# M6 Slice 35 — the palette written twice (F-68), the count that was already wrong (F-69), and the gate nobody wrote down (F-70)
+
+Stage 1b's tidying, which was recorded as a *should* and turned out to be three findings, one of which was
+sitting inside this repository's own arithmetic.
+
+## Read this first: Slice 34 is green
+
+`docs/llm/vendor/claude-output.txt` and the terminal logs in this repository are **Slice 34's**, and Slice
+34 passed: **1078 tests, 0 failed, 0 skipped**, 16/16 §16.3 scenarios, all eight `ci_local.sh` gates, boot
+smoke clean, 334 authored text files in tree-hygiene scope. Slices 33 and 34 both landed and both work.
+
+**Slice 34 predicted 1077.** The run returned 1078, and the difference is F-70. That is where this slice
+started.
+
+## What was asked for
+
+"Continue." Slice 34's *Still open* named the seven components that still carry a `<style>` block and the
+roughly hundred redundant `var(--declared, #literal)` fallbacks inside them, and called the second one a
+*should* rather than a *must*. Both were correct about what remained. Both were wrong about it being
+tidying.
+
+## The three findings, in the order they were found
+
+**F-69 came first, because it is what the tidying was for, and the number was wrong.** §11.12 left the
+no-fallback rule as a *should* on one stated ground: *over a hundred references across sixteen components*
+still carried one, so a gate that failed on them would be reporting findings on a tree whose colours are
+all correct (F-41). That was true in v1.18. §16.4 repeated it, F-64's ledger row repeated it, and
+`MENU_AND_HANDHELD_PLAN.md` repeated it — and by the time the last of them was written, **Slice 34 had
+emptied nine of the sixteen blocks**. The true figure was **fifty, across seven**.
+
+Both halves of the sentence were wrong and the component count was wrong by more than half. This is F-50
+and F-62's shape applied to a claim about the tree — F-62's own row says *a reason for not doing something
+is a claim about the tree, and it is checked against the tree before it is written down, the more so before
+it is cited* — and this claim was cited three times by the work that falsified it. What makes it a finding
+rather than a typo is that the number was **load-bearing**: it was the entire argument for the rule being a
+*should*, and fifty across seven is an afternoon.
+
+**F-68 came second, out of the first file opened.** `TableHistory.razor`'s `.history-confirm` — the guest's
+irreversible-hide warning, the one panel in the guest area whose whole job is to look alarming before
+something that cannot be undone — was:
+
+```
+border: 1px solid #f5c2c0;
+background: #fdecea;
+color: #7f1d1d;
+```
+
+`--danger-surface` is `#fbeaea`. `--danger-hairline` is `#f0c7c7`. `--danger-ink` is `#7f1d1d`. So one of
+the three was the palette written a second time and **two were the palette copied and then drifted** — and
+`#fdecea`/`#f5c2c0` is the same pair Slice 34 removed from four `.chip-warn` copies. **F-66, found in a
+fifth place, one area over from where that sweep was looking.** It survived because F-66 was about
+administration and this is a guest page.
+
+The class is bigger than the instance. **Ninety-five colour values are written outside `:root`** — fifty
+inside `var()` fallbacks and forty-five bare — and of the forty-five:
+
+- **Twenty are byte-identical to a property declared in `:root`.** `#ffffff` six times against
+  `--surface-raised`, **three of them inside `app.css` itself**; `#b45309` five times against
+  `--caution-ink`; `#1e7a37` and `#7f1d1d` twice each; `#e6f4ea` once.
+- **Three are `rgba(22, 32, 43, α)`, which is `--ink` in decimal**, inside two box-shadows. That is the one
+  form of duplicate no reader scanning for `#hex` would ever have found, and it is why the pattern behind
+  the new gate matches `rgb()` and `hsl()` as well as hex. A fourth, `rgba(127, 29, 29, 0.94)` on the table
+  display's unavailable veil, is `--danger-ink` at 94%.
+- **Five are near-copies**, all on `/administration/events`'s stream badges: a near-black that is not
+  `--ink`, a neutral tint that is not `--chip-surface`, and three role tints a few bits off
+  `--danger-surface`, the accent tint and the amber. **An exact copy is a duplicate; a near copy is a
+  decision nobody made.**
+- **Twenty-two have no property to reach for at all** — the kitchen's alert red, the amber notice pair, the
+  accent tints in `app.css` — and that is the *cause* rather than a separate problem. Once a literal was
+  normal in a block, the ones that had properties got written as literals too, by habit.
+
+**Why F-64's gate is structurally unable to see any of it.** F-64 asks whether a custom property a rule
+*reads* is declared. A rule that reads nothing and writes `#b45309` is invisible to it. Identical
+wrong-palette failure, direction reversed — F-46's lesson arriving as a *direction* rather than as a list
+of files.
+
+**F-70 came third, from reconciling a number.** Slice 34 predicted 1077 tests; the run returned 1078.
+`HandheldLayoutContractTests` holds **eight** `[Fact]` methods. §16.4 says *"Seven assertions"*. The class's
+own summary says *"three of the seven facts"*. This file's Slice 34 write-up says *"all seven facts were
+ported to Python… all seven pass"*. The defect ledger has no row for the eighth, the specification changelog
+has no entry, and `_CHANGES.md` has no line — **every artefact §18's atomic-documentation rule requires of
+a behaviour change, absent.**
+
+The eighth assertion is `OverflowWrapIsDeclaredExactlyOnceOnTheBodyElement`, and the first thing to say is
+that **it is a good rule**. `overflow-wrap` is inherited, so eight declarations are eight copies of what one
+declaration states and the copies reach only the elements somebody thought of (F-48) — and this repository
+already contains the measured consequence, in Slice 32's own write-up: the long unbroken display name
+rendered correctly on `/administration`, which had a copy, and pushed the page sideways on
+`/administration/people/{id}`, which did not. It arrived from outside this project's slice discipline.
+
+**Two things here should have caught it, and one of them did.** §16.4 states an assertion count for nine
+test classes and **nothing in the tree had ever compared any of them to a file** — a count in prose is one
+fact written in two places, which is F-48, F-50, F-56 and F-65's mechanism met in a fifth. And the test-count
+prediction exists precisely so a run can disagree with it. It disagreed, by one, in a green summary line at
+the end of a passing run, and nobody read it.
+
+It was also carrying two defects of exactly the kind the file it lives in is otherwise scrupulous about:
+
+- **No non-vacuity guard on its component walk.** *"Declared exactly once in the tree"* was satisfied by a
+  scan that read `app.css` and opened no component at all — the count would still be one, and the assertion
+  would pass having looked at one file (F-41).
+- **Its keyword check ran against the composed report line rather than the value.** `Assert.Contains("anywhere", only)`
+  where `only` is `"src/…/app.css (anywhere)"`, so a repository path containing the word would have
+  satisfied it.
+
+## What the palette looks like now
+
+Ten new properties in `:root`, each declared at the value the literal already had, so **twenty of the
+forty-five substitutions change nothing on any screen**:
+
+| Property | Value | What it is |
+|---|---|---|
+| `--accent-ink` | `#ffffff` | the ink that sits on the accent |
+| `--accent-surface` | `#e7f4f1` | accent tint behind a result |
+| `--accent-surface-soft` | `#f2f8f7` | the paler tint marking a chosen row |
+| `--accent-hairline` | `#b9ddd6` | accent tint border |
+| `--caution-surface` | `#fff7ed` | the amber notice background |
+| `--caution-ink-strong` | `#7c2d12` | the darker amber legible *on* that surface |
+| `--danger-signal` | `#b91c1c` | the saturated red of a state seen across a room |
+| `--danger-veil` | `rgba(127, 29, 29, 0.94)` | the display's unavailable overlay |
+| `--shadow-panel` | two `rgba(22, 32, 43, …)` stops | the panel shadow, written whole |
+| `--shadow-footer` | one stop | the footer shadow |
+
+**Two naming decisions are written beside the declarations, because both look wrong at a glance.**
+`--accent-ink` is white and so is `--surface-raised` — two names for one value, on exactly the principle
+`--focus-ring` and `--accent` already were: *the ink on the accent* and *a raised surface* are different
+jobs that need not move together. And `--danger-signal` is deliberately **not** `--danger-ink-strong`,
+because it carries *less* contrast on white than `--danger-ink` does; `-strong` in this palette means more
+contrast (`--accent-strong`, `--caution-ink-strong`), and this one is louder rather than stronger.
+
+## The seven rules whose colour changes, and they are the ones to veto
+
+Everything else is byte-identical. These are near-copies collapsed to the property that already existed —
+F-66's precedent, where four chip reds were moved onto the palette — and each carries a comment beside the
+rule saying what moved:
+
+| Surface | Rule | Was | Now |
+|---|---|---|---|
+| `/table/history` | `.history-confirm` background | `#fdecea` | `--danger-surface` `#fbeaea` |
+| `/table/history` | `.history-confirm` border | `#f5c2c0` | `--danger-hairline` `#f0c7c7` |
+| `/kitchen` | `.kitchen-menu-item.is-off` background | `#fef2f2` | `--danger-surface` `#fbeaea` |
+| `/kitchen` | `.kitchen-menu-item.is-off` border | `#fca5a5` | `--danger-hairline` `#f0c7c7` |
+| `/counter/sittings/{id}` | `.counter-settle-confirm` background | `#fef2f2` | `--danger-surface` `#fbeaea` |
+| `/administration/events` | `.event-stream-badge` ink and background | `#1f2937`, `#e5e7eb` | `--ink`, `--chip-surface` |
+| `/administration/events` | the three stream tints | `#fde8e8`, `#e0f2f1`, `#fef3c7` | `--danger-surface`, `--accent-surface`, `--caution-surface` |
+
+**The rule applied, and it is the line between correction and redesign.** A literal identical to an existing
+property reads that property. A literal that is a *near*-copy of an existing property reads that property
+and the change is stated. A literal with **no** existing property gets one declared at its current value —
+because choosing between two undeclared literals is a design judgement, and this slice is a correction.
+
+`.counter-settle-confirm` keeps `--danger-signal` for its 2px border rather than dropping to
+`--danger-hairline`: it is the last thing between somebody and a settled total that is never rewritten
+(§5.3), and a 2px hairline is not what that should look like. That is recorded at the rule.
+
+## What the two new gates read
+
+**The ninth fact in `HandheldLayoutContractTests`** takes the palette in one assertion and the fallbacks in
+another, fallbacks first — because a fallback is what made F-64's undeclared names indistinguishable from
+declared ones, so it is the layer over the other, and it is the cheaper of the two to clear.
+
+It reads **declaration blocks only**, and that is the whole of what keeps it off correct trees. `#ffffff` in
+a value and `#blazor-error-ui` in a prelude open with the same character; a gate that confused them would
+report a finding on a stylesheet that is right (F-41). The helper is the mirror of the one F-67 introduced —
+`SimpleSelectorsDeclaredIn` takes preludes, `DeclarationBlocksIn` takes values, both resting on the fact
+that a declaration block contains no `{`. An at-rule wrapper is skipped by having another `{` before its own
+`}`, while the rules nested inside it are still reached, which is what makes a colour written inside the
+breakpoint query visible.
+
+**`TestingSectionContractTests` compares §16.4's counts to the files.** Subject computed, nothing named —
+F-58's fix shape, taken on the first opportunity: the section is read, every backticked `*Tests.cs` in it is
+resolved against the tree **by file name**, and where the same paragraph states a count, the two are
+compared. Both citation forms are admitted, the full repo-relative path and the elided
+`…/Documentation/SpecificationVersionTests.cs`, because §16.4 uses both and a gate that understood one would
+be a gate about typography.
+
+A paragraph naming a class and no count is out of scope and silent — prose may describe what a class asserts
+without enumerating it — and `MinimumCountedClasses` is what stops *that* becoming the way to satisfy the
+gate, since deleting a number makes a paragraph stop being a pair.
+
+## What was verified, and how
+
+No .NET SDK here, so everything below is text-level and says so.
+
+- **All nine facts of `HandheldLayoutContractTests` were ported to Python and executed against the delivered
+  tree: all nine pass.** Run against the tree as it stood before this slice, **the ninth fails twice** — 50
+  fallbacks and 95 literals. Before and after rather than a claim.
+- **The ninth fact proven sensitive seven ways, seven results as designed:** one fallback restored in
+  `KitchenBoard`; a bare `#7f1d1d` written back into `CounterSitting`; a bare colour in `app.css` outside
+  `:root`; **a colour written inside `app.css`'s one breakpoint query**, which is what demonstrates the
+  nested at-rule is read; every colour deleted from `:root`, which trips the palette floor; `:root` renamed,
+  which trips the palette-absent assertion; and every `var(--ink-soft)` in the tree replaced by an
+  equivalent `rgb()`, which trips the reference floor.
+- **And proven NOT to fire three ways, which matters more here than usual.** An id selector named
+  `#abcdef-notice` — six hex characters after a `#`, in a prelude — passes. `background-color: transparent`
+  passes. And a CSS comment naming both `#b45309` and `var(--hairline, #e2e6ec)` in prose passes. **That
+  last one is left in the delivered tree on purpose**, inside `KitchenBoard`'s block comment: a future
+  version of this fact that forgot to strip CSS comments would fail on arrival rather than quietly bounding
+  its own reach, which is what F-67 did for four slices. Measured both ways — with comment-stripping, 0
+  literals and 0 fallbacks; without it, 14 literals and 1 fallback, all of them prose.
+- **`TestingSectionContractTests` ported and run, and it is proven sensitive by the tree itself with nothing
+  planted.** Against §16.4 as delivered before this slice: **nine (class, count) pairs found, eight agree,
+  one disagrees** — `HandheldLayoutContractTests`, said seven, held eight. Against the edited specification:
+  nine pairs, nine agree. The pair count also caught something worth noting — the document-version test is
+  cited with an elided path and *was* accurate, so restricting the parse to full `tests/…` paths would have
+  found eight pairs instead of nine and silently skipped a correct claim.
+- **Brace, paren and bracket balance** on both C# files, string-, char-, verbatim-, raw-string- and
+  comment-aware, with untouched siblings as controls: clean. **Proven sensitive** by deleting one closing
+  brace, reported at the line the block opened on.
+- **CS1620 scan** (every operand of a `string.Create(IFormatProvider, …)` chain must be `$"…"`): clean.
+  **CS4007 scan** (no `await` in an interpolation hole): clean. **A CS interpolation-brace scan was added to
+  the pass and it caught a real defect during authoring**: the palette fact's first draft wrote
+  `$"No ':root { ... }' block was found"`, where `{ ... }` is an interpolation hole and not a literal brace.
+  It would not have compiled. Rephrased rather than escaped.
+- **Razor tag-tree balance** on every touched component: clean — **and the scanner had to be fixed again,
+  which is the third time in three slices and now worth calling a pattern.** Its first run reported
+  `<TableDisplay> never closed` on `TableDisplay.razor`, pointing at `@inject ILogger<TableDisplay> Logger`:
+  a C# generic argument on a directive line, read as markup. Slice 34's version had the same class of bug in
+  a different place, and Slice 34 recorded one standing false report it chose not to chase —
+  `TableOrderSurface.razor`'s `IReadOnlyList<OrderLineView>` inside an inline `@{ }` region. Both are the
+  same thing: **the scanner was reading C# as HTML wherever C# appears outside a `@code` block.** It now
+  blanks directive lines and inline `@{ … }` regions as well, and the result is worth stating precisely:
+  **zero reports across every `.razor` file in `Components/`, including the one Slice 34 left open.** Still
+  **proven sensitive** — deleting one `</div>` from `KitchenBoard` is reported twice, naming the `<div>` that
+  is now closed by a `</section>` and the `<section>` left open, both at the lines they opened on. A scanner
+  that reports findings on a correct tree is exactly what F-41 is about, and this one has now done it twice
+  and been made to stop.
+- **`SpecificationVersionTests` ported and run** over `docs/`: header 1.20 against newest changelog entry
+  1.20, entries descending, two documents qualifying, no half-versioned document.
+- **Byte hygiene** on every delivered file: LF, exactly one final newline, no CR, no trailing whitespace, no
+  whitespace-only line, no context-dump separator.
+
+## What was NOT verified, and cannot be from here
+
+**Nothing compiled.** Fourteen files edited and one created; `dotnet build` run on none of them. The new
+`TestingSectionContractTests` is the likeliest site of a complaint — it is the only new C# file, it uses
+`Dictionary` deconstruction in a `foreach`, and `Assert.True` inside a helper that returns a string is a
+shape nothing else in this tree does.
+
+**No browser rendered anything, and this time no browser could.** §16.3 scenario 16 measures geometry at
+375px; it is told nothing about which red a warning panel is, and a barrier that asserted a computed colour
+would be asserting the palette against itself. So the palette rules are text assertions and *only* text
+assertions, and §11.12 now says so where it previously said the contract is asserted at two levels. What
+they guarantee is that a drift is impossible; whether the value in `:root` is the right value is a
+judgement.
+
+**The seven colour changes are corrections, not improvements.** Four surfaces render a different warning
+red than they did yesterday, and `/administration/events`'s five badges all shift. Whether that reads better
+belongs to whoever is holding the phone.
+
+**F-70's eight-times figure is not independently verifiable from this repository.** The assertion's own
+comment says `overflow-wrap: anywhere` was declared eight times, the stylesheet it describes is two commits
+back, and there is no git history in this sandbox. It is preserved and **labelled as that assertion's own
+account** rather than restated as fact — inventing corroboration would be the F-62 error in miniature.
+
+**Nothing was done about how a gate arrives undocumented in general.** What is closed is the case that
+happened: a class §16.4 *cites* gaining an assertion the citation does not know about. A brand-new test file
+the document never mentions is still invisible, and the stronger version — *every test class is cited by
+§16.4* — is deliberately declined, because the three response-header classes are described there as a group
+by directory and that is better prose, so the assertion would report a finding on a correct tree.
+
+## Test count
+
+Observed **1078** (Slice 34's run, confirmed green). Predicted **1080**: one new `[Fact]` in
+`HandheldLayoutContractTests` and one in the new `TestingSectionContractTests`. Arithmetic, not an
+observation. The §16.3 subtotal stays at **16** — no scenario is added, and none could be: this slice's
+subject is not measurable by a browser.
+
+**And per §18's new habit, if the run returns anything other than 1080, the difference is the next thing to
+chase rather than a rounding.** That habit exists because of F-70, which was one digit.
+
+## Still open
+
+**1b's last surfaces, now genuinely a judgement.** `CounterBoard`, `CounterSitting`, `KitchenBoard`,
+`TableHistory`, `TableJoinCode`, `CounterJoinCode` keep their `<style>` blocks; none re-declares a shared
+name, none writes a colour, none carries a fallback. What is left is whether each one's own layout works at
+375px, which is not a migration and is not tracked as one. `KitchenBoard` needs its own judgement for the
+reason §11.2 gives.
+
+**`.sitting-meta` is declared by two components and the two have drifted** — `ManageSitting` has
+`margin: 0.2rem 0 0` and `TableArea` does not. Slice 34 recorded this so it would be a decision rather than
+a discovery; this slice edited `TableArea` and **deliberately did not resolve it**, because the fix is a
+choice between a shared declaration (`app.css` plus a prefix-list entry) and a rename that touches markup,
+and neither belongs in a slice whose subject is colour. It is now a decision that has been deferred twice,
+which is the point at which deferring it again should require a reason.
+
+**`check_tree.sh` gate 3 prints a claim one word stronger than the check it just ran.** It says
+`all files end with exactly one LF`, and what it asserts is `tail -c 1 | wc -l` — *at least* one. **Eleven
+tracked files end with two or more**, among them `.env.example`, `.github/workflows/ci.yml`,
+`scripts/backup.sh`, `scripts/restore_drill.sh`, `Components/Pages/Counter/CounterBoard.razor` and
+`Components/Account/Pages/SignIn.razor`. Nothing is broken by it: `.editorconfig` asks for
+`insert_final_newline = true` and does not forbid a second, and the gate's stated purpose — detecting a
+truncated transfer — is served by the check it actually performs. **The finding, if it is one, is the same
+shape as F-65:** a message asserting a property the declaration beneath it does not provide, in the one place
+a reader checking compliance would stop reading. Found by this slice's own byte-hygiene pass being stricter
+than the gate, which is how the eleven files surfaced. Not fixed here, because the choice is between
+weakening one word of a message and normalising eleven files in six directories this slice has no other
+business in, and that is a decision rather than a repair. **The one thing that would be wrong is to
+`sed` the eleventh byte off six files inside a slice about colour** — so the evidence is written down instead.
+
+**A CI job that runs the canonical stack on the canonical engine.** Eleventh consecutive slice.
+
+**Stage 2's boundary**, corrected in the plan and not yet built. `CreateMenuItemAsync` still drives the real
+create-item form in six of sixteen scenarios and the handheld barrier opens that item's management page, so
+the menu row it needs is load-bearing twice.
 
 **Permissions-Policy**, carried since Slice 24. **Two operator actions** no archive can contain (F-42).

@@ -24,21 +24,78 @@
  * difference in the one query at the bottom of this file, beside every other page's.
  */
 
+/*
+ * THE PALETTE. Every colour this application renders is a value written here and nowhere else
+ * (F-68). That is stricter than it sounds and it is stricter than this file used to be: `#ffffff`
+ * was written three times below, `rgba(22, 32, 43, …)` — which is `--ink` in decimal — three more,
+ * and twenty literals across six components were byte-identical to a property declared right here.
+ * The reason it has to be a rule is that a duplicated colour does not fail; it drifts, and then one
+ * screen is a different red from every other screen and nobody can say which one was chosen. Two
+ * of the copies had already drifted when the rule was written: the guest's irreversible-hide
+ * warning drew `#fdecea` on `#f5c2c0` against this file's `--danger-surface` `#fbeaea` on
+ * `--danger-hairline` `#f0c7c7`, which is the same defect Slice 34 removed from four chip rules,
+ * found in a fifth place one area over.
+ *
+ * `transparent` and `currentColor` are keywords rather than values and may be written anywhere:
+ * neither can drift from anything.
+ */
 :root {
     --surface: #f7f8fa;
     --surface-raised: #ffffff;
     --ink: #16202b;
     --ink-soft: #55636f;
     --hairline: #e2e6ec;
+
     --accent: #0f766e;
     --accent-strong: #0b5a54;
     --focus-ring: #0f766e;
+
+    /*
+     * The accent's three companions, all three of which were literals in this file until F-68.
+     * `--accent-ink` is white and so is `--surface-raised`; they are two names for one value on the
+     * same principle `--focus-ring` and `--accent` already were, because "the ink that sits on the
+     * accent" and "a raised surface" are different jobs that will not necessarily move together.
+     * `--accent-surface-soft` is the paler of the two tints and marks a chosen row rather than a
+     * result.
+     */
+    --accent-ink: #ffffff;
+    --accent-surface: #e7f4f1;
+    --accent-surface-soft: #f2f8f7;
+    --accent-hairline: #b9ddd6;
+
+    /*
+     * Danger describes an ACTION: this is destructive, read it before you press it. The three-part
+     * surface/ink/hairline set is the shape every semantic role in this file takes.
+     *
+     * `--danger-signal` is the fourth and is not part of that set, because its job is different:
+     * it is the saturated red of a STATE that has to be noticed from across a room — /kitchen's
+     * alert badge, an eighty-sixed row, a refused adjustment — where `--danger-ink` is the red of a
+     * sentence somebody is being asked to read. It carries less contrast on white than
+     * `--danger-ink` does, which is why it is not called `-strong`.
+     *
+     * `--danger-veil` is `--danger-ink` at 94% and is the table display's unavailable overlay. It
+     * is written out rather than composed, because composing an alpha onto a hex custom property
+     * needs relative colour syntax and nothing in this sandbox can render a page to check that it
+     * took — the value being here at all is the part that matters.
+     */
     --danger-surface: #fbeaea;
     --danger-ink: #7f1d1d;
     --danger-hairline: #f0c7c7;
+    --danger-signal: #b91c1c;
+    --danger-veil: rgba(127, 29, 29, 0.94);
+
     --ok-surface: #e6f4ea;
     --ok-ink: #1e7a37;
+
+    /*
+     * Caution is the amber between the two: a note, a customization the kitchen must not miss, a
+     * total that was corrected after a close. `--caution-ink` is legible on white and on nothing
+     * else, so `--caution-ink-strong` is the darker amber that is legible on `--caution-surface` —
+     * `-strong` meaning more contrast, the sense `--accent-strong` already carries.
+     */
+    --caution-surface: #fff7ed;
     --caution-ink: #b45309;
+    --caution-ink-strong: #7c2d12;
 
     /*
      * A neutral chip's background. Declared rather than written into `.chip` as a literal because two
@@ -46,6 +103,14 @@
      * value is how `--chip-background` came to be referenced by pages and declared by nobody (F-64).
      */
     --chip-surface: #eef1f5;
+
+    /*
+     * The two shadows, written whole. The `rgba(22, 32, 43, …)` inside them is `--ink` in decimal —
+     * three references to the palette's own ink in the one form a scan for `#hex` cannot see, which
+     * is why they are named here rather than left where they read as opaque numbers.
+     */
+    --shadow-panel: 0 1px 2px rgba(22, 32, 43, 0.04), 0 12px 32px rgba(22, 32, 43, 0.05);
+    --shadow-footer: 0 -1px 2px rgba(22, 32, 43, 0.08);
 
     --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-monospace: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -346,7 +411,7 @@ body {
     border: 1px solid var(--hairline);
     border-radius: 14px;
     padding: clamp(1rem, 4vw, 3rem);
-    box-shadow: 0 1px 2px rgba(22, 32, 43, 0.04), 0 12px 32px rgba(22, 32, 43, 0.05);
+    box-shadow: var(--shadow-panel);
 }
 
 /*
@@ -592,7 +657,7 @@ body {
 
 .choice-list .choice:has(input:checked) {
     border-color: var(--accent);
-    background-color: #f2f8f7;
+    background-color: var(--accent-surface-soft);
 }
 
 .choice-list .choice:has(input:focus-visible) {
@@ -635,7 +700,7 @@ body {
 }
 
 .button-primary {
-    color: #ffffff;
+    color: var(--accent-ink);
     background-color: var(--accent);
     border: 1px solid var(--accent-strong);
 }
@@ -696,9 +761,9 @@ ul.status-error {
 .status-success {
     margin: 0 0 1.25rem;
     padding: 0.75rem 1rem;
-    background-color: #e7f4f1;
+    background-color: var(--accent-surface);
     color: var(--accent-strong);
-    border: 1px solid #b9ddd6;
+    border: 1px solid var(--accent-hairline);
     border-radius: 8px;
     font-size: 0.95rem;
 }
@@ -780,7 +845,7 @@ a:focus-visible,
     background-color: var(--danger-surface);
     color: var(--danger-ink);
     border-top: 1px solid var(--danger-hairline);
-    box-shadow: 0 -1px 2px rgba(22, 32, 43, 0.08);
+    box-shadow: var(--shadow-footer);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -929,7 +994,7 @@ a:focus-visible,
     content: "\2713"; /* check mark */
     border-color: var(--accent);
     background-color: var(--accent);
-    color: #ffffff;
+    color: var(--accent-ink);
 }
 
 .setup-summary {
@@ -1385,7 +1450,7 @@ a:focus-visible,
 .page-head-areas a[aria-current="page"] {
     background-color: var(--accent);
     border-color: var(--accent-strong);
-    color: #ffffff;
+    color: var(--accent-ink);
 }
 
 .page-head-action {

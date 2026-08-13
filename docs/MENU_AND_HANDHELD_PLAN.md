@@ -153,9 +153,26 @@ keeps its own `<style>` for rules only it reads — this project's standing arra
 linked stylesheet — and **none of them re-declares a shared name any more**, so the prefix list already
 covers them and there is nothing left to extend. What remains is a judgement per surface about whether its
 own layout works at 375px, which is a different kind of work from a migration and is not tracked as one.
-The redundant `var(--declared, #literal)` fallbacks — around a hundred still, harmless where the name
-exists — come out per block on the same schedule, which §11.12 states as a *should* rather than a *must*
-for exactly that reason.
+
+**The fallbacks are gone, and the paragraph that used to stand here is F-69.** It said *around a hundred
+still, harmless where the name exists*, and it repeated a figure §11.12, §16.4 and F-64's ledger row all
+carried: over a hundred, across sixteen components. By the time it was written the last time, Slice 34 had
+emptied nine of the sixteen blocks and the truth was **fifty, across seven** — so the number that was the
+entire argument for the rule being a *should* had been made wrong by the work in the same slice that cited
+it. Fifty is an afternoon. All fifty are removed, §11.12 states the rule as a **must**, and no document
+carries the count any more, because a count that can be derived from the tree must not be written into
+prose beside it (F-47).
+
+**And opening those seven blocks to do it turned up the slice's actual subject.** The first file read —
+`TableHistory` — had the guest's irreversible-hide warning drawn in `#fdecea` on `#f5c2c0`, which is the
+palette's `--danger-surface` and `--danger-hairline` copied and then drifted: **the same pair of values
+Slice 34 removed from four `.chip-warn` copies, in a fifth place, one area over from where that sweep was
+looking.** The class turned out to be ninety-five colour values written outside `:root`, twenty of them
+byte-identical to a property declared there, three of those *inside `app.css` itself*, and three more
+written as `rgba(22, 32, 43, …)`, which is `--ink` in decimal and the one form no scan for `#hex` could
+have found. That is **F-68**, and it makes four slices running whose finding was discovered by attempting
+the work the previous slice had scheduled. Every colour in the tree is now a property, and a ninth fact in
+`HandheldLayoutContractTests` says so.
 
 **One honest gap, recorded rather than glossed.** `/administration/sittings/{sitting}` is converted and is
 the one §11.4 surface the barrier does not measure. Reaching a sitting needs a guest, a table token and a
