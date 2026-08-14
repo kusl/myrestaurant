@@ -103,17 +103,22 @@ public sealed class MenuWiringTests
         CreateMenuItemResult result = await WorkflowOver(administration, broadcaster).CreateMenuItemAsync(
             MenuItemIdentifier,
             "Soup",
+            "Lentil, vegan",
             4.50m,
             ActorIdentifier,
             TestContext.Current.CancellationToken);
 
         Assert.Equal(MenuItemIdentifier, administration.LastMenuItemIdentifier);
         Assert.Equal("Soup", administration.LastName);
+        Assert.Equal("Lentil, vegan", administration.LastDescription);
         Assert.Equal(4.50m, administration.LastPriceAmount);
         Assert.Equal(ActorIdentifier, administration.LastActor);
 
-        // The result is passed through untouched — the surface echoes the stored name and price back.
+        // The result is passed through untouched — the surface echoes the stored name, description and
+        // price back. The description matters here rather than being decoration: this workflow is the one
+        // place that could silently drop an argument between a form and a transaction.
         Assert.Equal("Soup", result.Name);
+        Assert.Equal("Lentil, vegan", result.Description);
         Assert.Equal(4.50m, result.PriceAmount);
 
         Assert.IsType<MenuChanged>(Assert.Single(broadcaster.Published));
@@ -233,6 +238,66 @@ public sealed class MenuWiringTests
         Assert.Empty(unchangedBroadcaster.Published);
     }
 
+    /// <summary>
+    /// A description that moved is announced; one that did not is not. Same rule as rename and reprice,
+    /// and it is asserted for the same reason: <c>MenuChanged</c> tells every open surface in the building
+    /// to re-query, and doing that for a write that committed nothing is the failure this file exists to
+    /// prevent.
+    /// </summary>
+    [Fact]
+    public async Task ADescription_IsAnnouncedOnlyWhenItActuallyMoved()
+    {
+        FakeMenuAdministration described = new() { DescribeOutcome = DescribeMenuItemOutcome.Described };
+        RecordingBroadcaster describedBroadcaster = new();
+
+        Assert.Equal(
+            DescribeMenuItemOutcome.Described,
+            await WorkflowOver(described, describedBroadcaster).DescribeMenuItemAsync(
+                MenuItemIdentifier, "Lentil", ActorIdentifier, TestContext.Current.CancellationToken));
+
+        Assert.Equal("Lentil", described.LastDescription);
+        Assert.IsType<MenuChanged>(Assert.Single(describedBroadcaster.Published));
+
+        FakeMenuAdministration unchanged = new() { DescribeOutcome = DescribeMenuItemOutcome.NoChange };
+        RecordingBroadcaster unchangedBroadcaster = new();
+
+        Assert.Equal(
+            DescribeMenuItemOutcome.NoChange,
+            await WorkflowOver(unchanged, unchangedBroadcaster).DescribeMenuItemAsync(
+                MenuItemIdentifier, "Lentil", ActorIdentifier, TestContext.Current.CancellationToken));
+
+        Assert.Empty(unchangedBroadcaster.Published);
+    }
+
+    /// <summary>
+    /// A move that committed is announced, because §11.1 and §11.2 both render the menu in display order —
+    /// so the pickers show something different even though no item's name, price or availability moved.
+    /// </summary>
+    [Fact]
+    public async Task AMove_IsAnnouncedOnlyWhenThePositionActuallyMoved()
+    {
+        FakeMenuAdministration moved = new() { ReorderOutcome = ReorderMenuItemOutcome.Reordered };
+        RecordingBroadcaster movedBroadcaster = new();
+
+        Assert.Equal(
+            ReorderMenuItemOutcome.Reordered,
+            await WorkflowOver(moved, movedBroadcaster).ReorderMenuItemAsync(
+                MenuItemIdentifier, 3, ActorIdentifier, TestContext.Current.CancellationToken));
+
+        Assert.Equal(3, moved.LastDisplayOrder);
+        Assert.IsType<MenuChanged>(Assert.Single(movedBroadcaster.Published));
+
+        FakeMenuAdministration unchanged = new() { ReorderOutcome = ReorderMenuItemOutcome.NoChange };
+        RecordingBroadcaster unchangedBroadcaster = new();
+
+        Assert.Equal(
+            ReorderMenuItemOutcome.NoChange,
+            await WorkflowOver(unchanged, unchangedBroadcaster).ReorderMenuItemAsync(
+                MenuItemIdentifier, 3, ActorIdentifier, TestContext.Current.CancellationToken));
+
+        Assert.Empty(unchangedBroadcaster.Published);
+    }
+
     // Two overloads, distinguished by their first parameter: whichever write service the test is about
     // is the one it passes, and the other is a default fake nothing under test ever calls.
     private static MenuWorkflow WorkflowOver(
@@ -279,7 +344,11 @@ public sealed class MenuWiringTests
 
         public string? LastName { get; private set; }
 
+        public string? LastDescription { get; private set; }
+
         public decimal? LastPriceAmount { get; private set; }
+
+        public int? LastDisplayOrder { get; private set; }
 
         public Guid? LastActor { get; private set; }
 
@@ -289,19 +358,29 @@ public sealed class MenuWiringTests
         public RepriceMenuItemResult RepriceResult { get; init; } = new(
             RepriceMenuItemOutcome.Repriced, MenuItemIdentifier, "Soup", 5.00m, 4.50m);
 
+        public DescribeMenuItemOutcome DescribeOutcome { get; init; } = DescribeMenuItemOutcome.Described;
+
+        public ReorderMenuItemOutcome ReorderOutcome { get; init; } = ReorderMenuItemOutcome.Reordered;
+
         public Task<CreateMenuItemResult> CreateMenuItemAsync(
             Guid menuItemIdentifier,
             string name,
+            string? description,
             decimal priceAmount,
             Guid actorPersonIdentifier,
             CancellationToken cancellationToken = default)
         {
             LastMenuItemIdentifier = menuItemIdentifier;
             LastName = name;
+            LastDescription = description;
             LastPriceAmount = priceAmount;
             LastActor = actorPersonIdentifier;
 
-            return Task.FromResult(new CreateMenuItemResult(menuItemIdentifier, name, priceAmount));
+            // The real service normalizes null and blank to "". This fake deliberately does not: what is
+            // under test here is whether the workflow hands the argument on unchanged, and a fake that
+            // trimmed would hide the one failure this file can see.
+            return Task.FromResult(new CreateMenuItemResult(
+                menuItemIdentifier, name, description ?? string.Empty, priceAmount));
         }
 
         public Task<RenameMenuItemResult> RenameMenuItemAsync(
@@ -328,6 +407,32 @@ public sealed class MenuWiringTests
             LastActor = actorPersonIdentifier;
 
             return Task.FromResult(RepriceResult);
+        }
+
+        public Task<DescribeMenuItemOutcome> DescribeMenuItemAsync(
+            Guid menuItemIdentifier,
+            string? description,
+            Guid actorPersonIdentifier,
+            CancellationToken cancellationToken = default)
+        {
+            LastMenuItemIdentifier = menuItemIdentifier;
+            LastDescription = description;
+            LastActor = actorPersonIdentifier;
+
+            return Task.FromResult(DescribeOutcome);
+        }
+
+        public Task<ReorderMenuItemOutcome> ReorderMenuItemAsync(
+            Guid menuItemIdentifier,
+            int displayOrder,
+            Guid actorPersonIdentifier,
+            CancellationToken cancellationToken = default)
+        {
+            LastMenuItemIdentifier = menuItemIdentifier;
+            LastDisplayOrder = displayOrder;
+            LastActor = actorPersonIdentifier;
+
+            return Task.FromResult(ReorderOutcome);
         }
     }
 

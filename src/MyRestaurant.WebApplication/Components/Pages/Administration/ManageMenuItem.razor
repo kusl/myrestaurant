@@ -16,10 +16,10 @@
    Successful changes redirect back here (post/redirect/get) carrying a one-word outcome so a refresh does
    not re-post; the shape ManageTable established.
 
-   Rename and reprice are two forms rather than one "save", because §7's event vocabulary has
-   `name_changed` and `price_changed` as separate types with mutually exclusive payload columns — a
-   combined save would write two events anyway and would then have to decide what to do when one half
-   changed nothing.
+   Rename, reprice, describe and reposition are four forms rather than one "save", because §7's event
+   vocabulary has `name_changed`, `price_changed`, `description_changed` and `reordered` as separate types
+   with mutually exclusive payload columns — a combined save would write four events anyway and would then
+   have to decide what to do when three of them changed nothing.
 
    The history below is complete and uncapped, oldest first. §11.4: administration renders "the complete
    stored record everywhere — full event streams … never projected or truncated for the administrator". A
@@ -72,10 +72,23 @@ else
                 <span class="record-numeric">@Money(_item.PriceAmount)</span>
             </div>
             <div>
+                <span class="manage-label">Position</span>
+                <span class="record-numeric">@_item.DisplayOrder</span>
+            </div>
+            <div>
                 <span class="manage-label">Created</span>
                 <span>@RestaurantClock.DateAndTime(_item.CreatedAt)</span>
             </div>
         </div>
+
+        @if (_item.Description.Length > 0)
+        {
+            <p class="lede">@_item.Description</p>
+        }
+        else
+        {
+            <p class="lede muted">No description. Guests see the name and the price only.</p>
+        }
 
         <hr class="manage-rule" />
 
@@ -108,6 +121,46 @@ else
             <InputNumber id="reprice-price" @bind-Value="RepriceInput.PriceAmount" step="0.01" min="0" inputmode="decimal" />
             <button type="submit" class="button-primary">Reprice</button>
             <ValidationMessage For="@(() => RepriceInput.PriceAmount)" />
+        </EditForm>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Description</h2>
+        <p class="lede">
+            One or two sentences a guest reads before ordering. Optional — clearing the box is an ordinary
+            change with an ordinary entry in the history below, not a deletion. Saving the same text again
+            records nothing.
+        </p>
+        @* A `.form-field` block rather than `.manage-inline-form`, deliberately: that class styles
+           `input` and `select` and has never styled a `textarea`, so a three-line box inside it would be
+           an unstyled control on the one page that has one. `.form-field textarea` is app.css's own
+           declaration and this page declares nothing, which is what F-66 was about. *@
+        <EditForm Model="DescribeInput" method="post" OnValidSubmit="DescribeAsync" FormName="menu-item-describe">
+            <DataAnnotationsValidator />
+            <div class="form-field">
+                <label class="visually-hidden" for="describe-description">Description</label>
+                <InputTextArea id="describe-description" @bind-Value="DescribeInput.Description" rows="3" autocomplete="off" />
+                <ValidationMessage For="@(() => DescribeInput.Description)" />
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Save description</button>
+            </div>
+        </EditForm>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Position</h2>
+        <p class="lede">
+            Where this item sits on the menu. Lower comes first; items sharing a position are ordered by
+            name, which is why every item starts at 0 and the menu reads alphabetically until somebody
+            decides otherwise. Positions do not have to be unique or contiguous.
+        </p>
+        <EditForm Model="ReorderInput" method="post" OnValidSubmit="ReorderAsync" FormName="menu-item-reorder" class="manage-inline-form">
+            <DataAnnotationsValidator />
+            <label class="visually-hidden" for="reorder-position">New position</label>
+            <InputNumber id="reorder-position" @bind-Value="ReorderInput.DisplayOrder" step="1" min="0" inputmode="numeric" />
+            <button type="submit" class="button-primary">Move</button>
+            <ValidationMessage For="@(() => ReorderInput.DisplayOrder)" />
         </EditForm>
 
         <hr class="manage-rule" />
@@ -210,6 +263,12 @@ else
     [SupplyParameterFromForm(FormName = "menu-item-reprice")]
     private RepriceInputModel RepriceInput { get; set; } = default!;
 
+    [SupplyParameterFromForm(FormName = "menu-item-describe")]
+    private DescribeInputModel DescribeInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "menu-item-reorder")]
+    private ReorderInputModel ReorderInput { get; set; } = default!;
+
     [SupplyParameterFromQuery]
     private string? Done { get; set; }
 
@@ -220,6 +279,8 @@ else
         // BL0008: a form POST binds these itself and may assign null, so the defaults live here.
         RenameInput ??= new();
         RepriceInput ??= new();
+        DescribeInput ??= new();
+        ReorderInput ??= new();
 
         _item = await MenuItems.GetAsync(MenuItemId, HttpContext.RequestAborted);
         if (_item is null)
@@ -239,6 +300,13 @@ else
             }
 
             RepriceInput.PriceAmount = _item.PriceAmount;
+
+            // Unlike the name, an empty description is a legitimate stored value, so `IsNullOrEmpty`
+            // cannot tell "nothing bound yet" from "the item has none" — and it does not need to: on a
+            // GET nothing has bound, so assigning unconditionally is both correct and simpler.
+            DescribeInput.Description = _item.Description;
+            ReorderInput.DisplayOrder = _item.DisplayOrder;
+
             _flashMessage = FlashFor(Done);
         }
     }
@@ -286,6 +354,55 @@ else
                 RedirectWithOutcome("reprice-no-change");
                 break;
             case RepriceMenuItemOutcome.MenuItemNotFound:
+                Navigation.NavigateTo("/administration/menu");
+                break;
+        }
+    }
+
+    private async Task DescribeAsync()
+    {
+        if (!TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        DescribeMenuItemOutcome outcome = await MenuChanges.DescribeMenuItemAsync(
+            MenuItemId, DescribeInput.Description, administrator, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case DescribeMenuItemOutcome.Described:
+                RedirectWithOutcome(
+                    DescribeInput.Description.Trim().Length == 0 ? "description-cleared" : "described");
+                break;
+            case DescribeMenuItemOutcome.NoChange:
+                RedirectWithOutcome("describe-no-change");
+                break;
+            case DescribeMenuItemOutcome.MenuItemNotFound:
+                Navigation.NavigateTo("/administration/menu");
+                break;
+        }
+    }
+
+    private async Task ReorderAsync()
+    {
+        if (!TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        ReorderMenuItemOutcome outcome = await MenuChanges.ReorderMenuItemAsync(
+            MenuItemId, ReorderInput.DisplayOrder, administrator, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case ReorderMenuItemOutcome.Reordered:
+                RedirectWithOutcome("moved");
+                break;
+            case ReorderMenuItemOutcome.NoChange:
+                RedirectWithOutcome("move-no-change");
+                break;
+            case ReorderMenuItemOutcome.MenuItemNotFound:
                 Navigation.NavigateTo("/administration/menu");
                 break;
         }
@@ -353,6 +470,11 @@ else
         "rename-no-change" => "That was already the name — nothing changed.",
         "repriced" => "Repriced. Lines already on an order keep the price they were added at.",
         "reprice-no-change" => "That was already the price — nothing changed.",
+        "described" => "Description saved. Guests reading the menu see it from now on.",
+        "description-cleared" => "Description cleared. Guests see the name and the price only.",
+        "describe-no-change" => "That was already the description — nothing changed.",
+        "moved" => "Moved. The menu is ordered by position, then by name.",
+        "move-no-change" => "It was already in that position — nothing changed.",
         "made-unavailable" => "Marked unavailable. It stays on the guest's menu, labelled unavailable, and cannot be ordered.",
         "made-available" => "Marked available. It can be ordered again.",
         _ => null,
@@ -361,15 +483,30 @@ else
     private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
 
     /// <summary>
-    /// A friendly label for the five event types §8.2's CHECK admits, falling back to the stored string
-    /// for anything else — §11.4 renders the record, so an unrecognised type must show as itself rather
-    /// than be swallowed.
+    /// A friendly label for each event type §8.2's vocabulary CHECK admits, falling back to the stored
+    /// string for anything else — §11.4 renders the record, so an unrecognised type must show as itself
+    /// rather than be swallowed. <c>0005</c>'s <c>section_changed</c> will read as itself here until this
+    /// arm is written, which is the fallback working rather than failing.
+    ///
+    /// <para><b>No count of the vocabulary is stated.</b> It was stated as <em>five</em> in three files
+    /// and <c>0004</c> made it seven; a number here is one fact recorded where nothing can check it, and
+    /// the arms below are the only honest census (F-77).</para>
+    ///
+    /// <para><c>description_changed</c> reads differently when the description was cleared, because
+    /// <c>""</c> is a stored value rather than an absence and "Description set to nothing" is not what
+    /// somebody reading a history wants. The arm tests the payload's length rather than for null: the
+    /// paired CHECK guarantees this type carries one, and the <c>?? string.Empty</c> is there so a row
+    /// written by something that got past the constraint still renders.</para>
     /// </summary>
     private string Describe(MenuItemEventEntry entry) => entry.EventType switch
     {
         "created" => $"Created as “{entry.NewName}” at {Money(entry.NewPriceAmount ?? 0m)}",
         "name_changed" => $"Renamed to “{entry.NewName}”",
         "price_changed" => $"Repriced to {Money(entry.NewPriceAmount ?? 0m)}",
+        "description_changed" => (entry.NewDescription ?? string.Empty).Length == 0
+            ? "Description cleared"
+            : $"Description set to “{entry.NewDescription}”",
+        "reordered" => $"Moved to position {entry.NewDisplayOrder}",
         "activated" => "Marked available",
         "deactivated" => "Marked unavailable",
         _ => entry.EventType,
@@ -386,5 +523,20 @@ else
     {
         [Range(0, 99999999.99, ErrorMessage = "The price must be between 0 and 99,999,999.99.")]
         public decimal PriceAmount { get; set; }
+    }
+
+    private sealed class DescribeInputModel
+    {
+        // No [Required]: clearing the description is a supported change. The 2,000 matches
+        // CreateMenuItem's, and is this form's opinion rather than the column's — `text` has no ceiling.
+        [StringLength(2000, ErrorMessage = "The description must be 2,000 characters or fewer.")]
+        public string Description { get; set; } = string.Empty;
+    }
+
+    private sealed class ReorderInputModel
+    {
+        // The upper bound is `integer`'s, and it is stated so the form refuses what the column would.
+        [Range(0, 2147483647, ErrorMessage = "The position must be 0 or greater.")]
+        public int DisplayOrder { get; set; }
     }
 }

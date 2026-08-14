@@ -15,14 +15,14 @@
 
    Static SSR, like every administration surface. Deactivated items are listed, not filtered: §7 is
    explicit that an 86'd item stays on the menu marked "currently unavailable", and a page that hid them
-   from the administrator would hide exactly the rows somebody is looking for. Ordered by name, which is
-   also why duplicate names — permitted, since `menu_item.name` carries no UNIQUE constraint — end up
-   adjacent and visible.
+   from the administrator would hide exactly the rows somebody is looking for. Ordered by position then by
+   name, which is also why duplicate names — permitted, since `menu_item.name` carries no UNIQUE
+   constraint — end up adjacent and visible.
 
-   Two record lists (§11.12) and no inline <style>. **Sections and descriptions are not here yet:** §7
-   specifies both and `docs/MENU_AND_HANDHELD_PLAN.md` Stage 2 lands the schema, at which point this page
-   groups by section and the flat name ordering below becomes an ordering within one. The grouping is
-   deliberately not faked from a naming convention in the meantime. *@
+   Two record lists (§11.12) and no inline <style>. **Descriptions are here as of `0004`; sections are
+   not.** `docs/MENU_AND_HANDHELD_PLAN.md` Stage 2 lands `menu_item.menu_section_identifier` in `0005`,
+   at which point this page groups by section and the flat position ordering below becomes an ordering
+   within one. The grouping is deliberately not faked from a naming convention in the meantime. *@
 
 <PageTitle>Administration — menu</PageTitle>
 
@@ -40,9 +40,10 @@
     </div>
 
     <p class="lede">
-        Every menu item, by name. Prices here are what the <em>next</em> order line costs — anything
-        already on a bill keeps the price it was added at. Open an item to rename it, reprice it, mark it
-        unavailable, or read everything that has ever happened to it.
+        Every menu item, in the order guests see them: by position, then by name. Prices here are what
+        the <em>next</em> order line costs — anything already on a bill keeps the price it was added at.
+        Open an item to rename it, reprice it, describe it, move it, mark it unavailable, or read
+        everything that has ever happened to it.
     </p>
 
     @if (_items is null)
@@ -62,7 +63,7 @@
                         <th scope="col">Item</th>
                         <th scope="col">Price</th>
                         <th scope="col">Availability</th>
-                        <th scope="col">Created</th>
+                        <th scope="col">Position</th>
                         <th scope="col"><span class="visually-hidden">Actions</span></th>
                     </tr>
                 </thead>
@@ -72,6 +73,14 @@
                         <tr>
                             <td class="record-primary" data-label="">
                                 <a class="record-link" href="@ManagePath(item.MenuItemIdentifier)">@item.Name</a>
+                                @if (item.Description.Length > 0)
+                                {
+                                    @* Under the name rather than in a column of its own. A description is
+                                       a sentence, and a sentence in a table cell at 375px is the shape
+                                       F-59 was about; this way the handheld card reads name-then-sentence
+                                       and the wide table reads as a subtitle. *@
+                                    <span class="record-secondary">@item.Description</span>
+                                }
                             </td>
                             <td class="record-numeric" data-label="Price">@Money(item.PriceAmount)</td>
                             <td data-label="">
@@ -84,7 +93,7 @@
                                     <span class="chip chip-warn">Currently unavailable</span>
                                 }
                             </td>
-                            <td data-label="Created">@RestaurantClock.DateAndTime(item.CreatedAt)</td>
+                            <td class="record-numeric" data-label="Position">@item.DisplayOrder</td>
                             <td class="record-actions" data-label="">
                                 <a class="button-secondary" href="@ManagePath(item.MenuItemIdentifier)"
                                    aria-label="@($"Manage {item.Name}")">Manage</a>
@@ -96,9 +105,10 @@
         </div>
 
         <p class="record-note">
-            @_activeCount of @_items.Count available. An unavailable item stays on the guest's menu marked
-            unavailable and cannot be added to a send — it is never hidden and never deleted, so past
-            orders keep the item they were placed against.
+            @_activeCount of @_items.Count available, @_describedCount described. An unavailable item stays
+            on the guest's menu marked unavailable and cannot be added to a send — it is never hidden and
+            never deleted, so past orders keep the item they were placed against. The <em>Created</em>
+            column has moved to each item's own page, where the whole history it belongs to lives.
         </p>
     }
 
@@ -164,6 +174,7 @@
     private IReadOnlyList<MenuItemSummary>? _items;
     private IReadOnlyList<MenuItemEventEntry>? _recent;
     private int _activeCount;
+    private int _describedCount;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
@@ -172,6 +183,7 @@
     {
         _items = await MenuItems.ListAsync(HttpContext.RequestAborted);
         _activeCount = _items.Count(item => item.IsActive);
+        _describedCount = _items.Count(item => item.Description.Length > 0);
         _recent = await MenuEvents.ListRecentAsync(RecentActivityCount, HttpContext.RequestAborted);
     }
 
@@ -181,16 +193,26 @@
     private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
 
     /// <summary>
-    /// A friendly label for the five event types §8.2's CHECK admits, falling back to the stored string
-    /// for anything else — §11.4 renders the record, so an unrecognised type must show as itself rather
-    /// than be swallowed. That fallback is what makes Stage 2's two new types (`description_changed`,
-    /// `section_changed`) readable here before this method knows their names.
+    /// A friendly label for each event type §8.2's vocabulary CHECK admits, falling back to the stored
+    /// string for anything else — §11.4 renders the record, so an unrecognised type must show as itself
+    /// rather than be swallowed. That fallback is what makes `0005`'s `section_changed` readable here
+    /// before this method knows its name, and it is why the arms below are deliberately not counted in
+    /// prose: this comment said <em>five</em> and named <em>two</em> new types where the plan specified
+    /// three, in a sentence nothing in the tree could check (F-77).
+    ///
+    /// <para>This feed is a glance rather than an audit, so a `description_changed` says that a
+    /// description moved without quoting it — the sentence belongs on the item's own page, where the
+    /// uncapped history renders it in full.</para>
     /// </summary>
     private string Describe(MenuItemEventEntry entry) => entry.EventType switch
     {
         "created" => $"Created at {Money(entry.NewPriceAmount ?? 0m)}",
         "name_changed" => $"Renamed to {entry.NewName}",
         "price_changed" => $"Repriced to {Money(entry.NewPriceAmount ?? 0m)}",
+        "description_changed" => (entry.NewDescription ?? string.Empty).Length == 0
+            ? "Description cleared"
+            : "Description changed",
+        "reordered" => $"Moved to position {entry.NewDisplayOrder}",
         "activated" => "Marked available",
         "deactivated" => "Marked unavailable",
         _ => entry.EventType,

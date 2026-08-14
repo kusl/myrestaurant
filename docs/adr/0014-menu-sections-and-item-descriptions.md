@@ -1,6 +1,6 @@
 # ADR-0014 — A menu has sections, and every item is in exactly one
 
-**Status:** Accepted (2026-08-11), implemented in Stage 2 of `docs/MENU_AND_HANDHELD_PLAN.md`. **The section half landed in M6 Slice 37** (`menu_section`, `menu_section_event`, and their data access); the `menu_item` half has not. Every ruling below stands as written — what moved is the number of migration scripts, recorded under *Consequences*.
+**Status:** Accepted (2026-08-11), implemented in Stage 2 of `docs/MENU_AND_HANDHELD_PLAN.md`. **The section half landed in M6 Slice 37** (`menu_section`, `menu_section_event`, and their data access) and **two of the item's three columns landed in M6 Slice 38** (`0004`: `menu_item.description`, `menu_item.display_order`, `description_changed`, `reordered`). **What is outstanding is `menu_item.menu_section_identifier`** and the surfaces a `NOT NULL` heading forces, which is `0005`. Every ruling below stands as written — what moved is the number of migration scripts, recorded under *Consequences*.
 **Trail:** the first enhancement request from a person shown the running application
 **Requirements:** `REQUIREMENTS.md` §6.8 (menu), §8 (naming, identifiers, honesty in UI)
 **Specification:** `TECHNICAL_SPECIFICATION.md` §7, §8.2, §11.1, §11.2, §11.4
@@ -125,3 +125,34 @@ startable yet.
   cheaper to argue with on a page than in a migration. §7 and §8.2 are edited in the commit that implements
   it, per the atomic-documentation rule (R§10 · S§18) — which binds a behaviour change to its specification
   edit and says nothing about deciding ahead of one.
+
+- **2026-08-13, M6 Slice 37.** The section half implemented as `0003_menu_sections.sql`. One ruling was
+  *added* rather than changed, because the migration had to decide something this ADR had left open:
+  `display_order` on a section is **assigned by appending** at `MAX(display_order) + 1` inside the write
+  transaction rather than supplied by the caller, and `MAX + 1` rather than `COUNT(*)` because positions are
+  neither unique nor contiguous, so counting rows hands out a number an existing section already sits on as
+  soon as one has been moved. Two concurrent creates may tie, and that is accepted: the column is not
+  UNIQUE, the reads break the tie by name, and either can be moved.
+
+- **2026-08-13, M6 Slice 38.** Two of the item's three columns implemented as
+  `0004_menu_item_descriptions.sql`. **One ruling above is now narrower than what shipped, and it is worth
+  naming rather than glossing:** this ADR says an item's `display_order` defaults to 0, and the migration
+  makes that a *decision* rather than a default's convenience. An item is created at 0 and **not** appended
+  at `MAX + 1` — the opposite of the section rule one paragraph up — because §7 puts an item's position
+  *within its section*, and "the end of the menu" is not a defined place until `0005` gives the item a
+  heading. Appending a menu-wide number now would hand out positions `0005` would have to undo. The
+  consequence is the property that let this migration ship green by construction: every item sits at 0, so
+  ordering by `(display_order, name, identifier)` is the name ordering the table has always been read in.
+
+  A second decision was forced by the same script and is recorded because it is a vocabulary choice
+  somebody will want to revisit. The item's new event types are spelled **`description_changed`** and
+  **`reordered`**, where `menu_section_event` spells the same two verbs `described` and `reordered`. The
+  asymmetry is deliberate: each table's vocabulary is internally consistent, and `menu_item_event` has said
+  `name_changed` and `price_changed` since `0001`. Harmonising the two would mean rewriting a vocabulary
+  already present in applied history and in rows in somebody's database, to buy nothing a reader of either
+  table needs.
+
+  And `0004` did the thing the plan warned would be needed: it dropped every CHECK constraint on
+  `menu_item_event` by querying `pg_constraint` inside a dollar-quoted `DO` block, rather than depending on
+  the four names PostgreSQL generated for `0001`'s inline declarations, and added five **named** ones back.
+  `0005` can therefore widen the vocabulary by name.

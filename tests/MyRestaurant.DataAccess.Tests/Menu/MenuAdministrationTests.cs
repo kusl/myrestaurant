@@ -8,13 +8,14 @@ namespace MyRestaurant.DataAccess.Tests.Menu;
 
 /// <summary>
 /// Integration tests for <see cref="DapperMenuAdministration"/> against a real PostgreSQL 17 container —
-/// §7's create, rename, and reprice, behind §11.4's menu section.
+/// §7's create, rename, reprice, describe and reorder, behind §11.4's menu section.
 ///
 /// <para>The facts worth pinning are about the <em>pair</em> of rows, not the column. Every one of these
-/// three verbs writes a <c>menu_item</c> change and a mirroring <c>menu_item_event</c> in one
-/// transaction, and §8.2's paired CHECKs make each event type carry exactly one shape of payload —
+/// five verbs writes a <c>menu_item</c> change and a mirroring <c>menu_item_event</c> in one
+/// transaction, and §8.2's named paired CHECKs make each event type carry exactly one shape of payload —
 /// <c>created</c> both the name and the price, <c>name_changed</c> the name alone,
-/// <c>price_changed</c> the price alone. Get that wrong and the database refuses the write, which is the
+/// <c>price_changed</c> the price alone, <c>description_changed</c> the description alone,
+/// <c>reordered</c> the position alone. Get that wrong and the database refuses the write, which is the
 /// good failure; get the <em>rounding</em> wrong and the row and its event silently disagree by two
 /// hundredths, which is not, so <see cref="CreateRoundsToTheStoredScaleInBothRows"/> and
 /// <see cref="RepricingToTheSameNumberAtADifferentScaleIsANoOp"/> exist.</para>
@@ -81,7 +82,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         Guid identifier = _identifiers.Create();
 
         CreateMenuItemResult result = await Administration().CreateMenuItemAsync(
-            identifier, "Salmon", 18.00m, _administratorIdentifier, cancellationToken);
+            identifier, "Salmon", description: null, 18.00m, _administratorIdentifier, cancellationToken);
 
         Assert.Equal(identifier, result.MenuItemIdentifier);
         Assert.Equal("Salmon", result.Name);
@@ -111,7 +112,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
 
         Guid identifier = _identifiers.Create();
         await Administration().CreateMenuItemAsync(
-            identifier, "Salmon", 18.00m, _administratorIdentifier, cancellationToken);
+            identifier, "Salmon", description: null, 18.00m, _administratorIdentifier, cancellationToken);
 
         Assert.Equal(
             _administratorIdentifier,
@@ -136,7 +137,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         Guid identifier = _identifiers.Create();
 
         CreateMenuItemResult result = await Administration().CreateMenuItemAsync(
-            identifier, "Soup", 4.567m, _administratorIdentifier, cancellationToken);
+            identifier, "Soup", description: null, 4.567m, _administratorIdentifier, cancellationToken);
 
         Assert.Equal(4.57m, result.PriceAmount);
 
@@ -155,7 +156,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         Guid identifier = _identifiers.Create();
 
         CreateMenuItemResult result = await Administration().CreateMenuItemAsync(
-            identifier, "  Soup  ", 4.50m, _administratorIdentifier, cancellationToken);
+            identifier, "  Soup  ", description: null, 4.50m, _administratorIdentifier, cancellationToken);
 
         Assert.Equal("Soup", result.Name);
         Assert.Equal("Soup", await ScalarAsync<string>("new_name", identifier, cancellationToken));
@@ -173,9 +174,9 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
 
         await Administration().CreateMenuItemAsync(
-            _identifiers.Create(), "Soup", 4.50m, _administratorIdentifier, cancellationToken);
+            _identifiers.Create(), "Soup", description: null, 4.50m, _administratorIdentifier, cancellationToken);
         await Administration().CreateMenuItemAsync(
-            _identifiers.Create(), "Soup", 5.50m, _administratorIdentifier, cancellationToken);
+            _identifiers.Create(), "Soup", description: null, 5.50m, _administratorIdentifier, cancellationToken);
 
         Assert.Equal(2, await World().CountAsync(CountItemsSql, cancellationToken));
         Assert.Equal(2, (await Directory().ListAsync(cancellationToken)).Count);
@@ -396,7 +397,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
 
         Guid identifier = _identifiers.Create();
         await Administration().CreateMenuItemAsync(
-            identifier, "Soup", 4.50m, _administratorIdentifier, cancellationToken);
+            identifier, "Soup", description: null, 4.50m, _administratorIdentifier, cancellationToken);
 
         _clock.UtcNow = _clock.UtcNow.AddMinutes(5);
         await Administration().RenameMenuItemAsync(
@@ -424,6 +425,274 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
             cancellationToken);
 
         Assert.Equal("deactivated", latest);
+    }
+
+    /// <summary>
+    /// A description supplied at creation time lands on the row <b>and</b> produces a second event, because
+    /// §8.2's <c>created</c> carries the name and the price only. This is the fact most likely to be got
+    /// backwards by widening <c>created</c> instead, which the migration refuses for a stated reason.
+    /// </summary>
+    [Fact]
+    public async Task CreatingWithADescriptionWritesTwoEventsInOneTransaction()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid identifier = _identifiers.Create();
+
+        CreateMenuItemResult result = await Administration().CreateMenuItemAsync(
+            identifier,
+            "Salmon",
+            "  Pan seared, with greens  ",
+            18.00m,
+            _administratorIdentifier,
+            cancellationToken);
+
+        // Trimmed on the way in, and echoed back as stored so a surface need not re-read.
+        Assert.Equal("Pan seared, with greens", result.Description);
+        Assert.True(result.DescriptionWasSet);
+
+        MenuItemSummary? stored = await Directory().GetAsync(identifier, cancellationToken);
+        Assert.NotNull(stored);
+        Assert.Equal("Pan seared, with greens", stored.Description);
+
+        // 0004's ruling: an item is created at position 0, not appended to a menu-wide MAX + 1.
+        Assert.Equal(0, stored.DisplayOrder);
+
+        Assert.Equal(2, await World().CountAsync(CountEventsSql, cancellationToken));
+
+        // Newest-first with the UUIDv7 tiebreak, so the description event is the one this reads.
+        Assert.Equal("description_changed", await EventTypeAsync(identifier, cancellationToken));
+        Assert.Equal(
+            "Pan seared, with greens",
+            await ScalarAsync<string>("new_description", identifier, cancellationToken));
+    }
+
+    /// <summary>
+    /// A blank description at creation time is not an event. The no-op rule this class already asserts for
+    /// rename and reprice, applied to the one verb where "nothing was typed" is the common case: an
+    /// append-only log of "somebody left a field empty" is noise, and §11.4's history is meant to be read.
+    /// </summary>
+    [Fact]
+    public async Task CreatingWithABlankDescriptionWritesOneEventAndStoresTheEmptyString()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid identifier = _identifiers.Create();
+
+        CreateMenuItemResult result = await Administration().CreateMenuItemAsync(
+            identifier, "Tea", "   ", 2.00m, _administratorIdentifier, cancellationToken);
+
+        Assert.Equal(string.Empty, result.Description);
+        Assert.False(result.DescriptionWasSet);
+
+        MenuItemSummary? stored = await Directory().GetAsync(identifier, cancellationToken);
+        Assert.NotNull(stored);
+        Assert.Equal(string.Empty, stored.Description);
+
+        Assert.Equal(1, await World().CountAsync(CountEventsSql, cancellationToken));
+        Assert.Equal("created", await EventTypeAsync(identifier, cancellationToken));
+    }
+
+    /// <summary>
+    /// Describing an item moves the column and appends a <c>description_changed</c> carrying exactly the
+    /// description and nothing else — which §8.2's four paired CHECKs enforce, so getting the payload
+    /// wrong here is a loud failure rather than a wrong history.
+    /// </summary>
+    [Fact]
+    public async Task DescribeWritesTheColumnAndItsEventTogether()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid identifier = await CreateAsync("Soup", 4.50m, cancellationToken);
+
+        _clock.UtcNow = _clock.UtcNow.AddMinutes(5);
+
+        DescribeMenuItemOutcome outcome = await Administration().DescribeMenuItemAsync(
+            identifier, "Lentil, vegan", _administratorIdentifier, cancellationToken);
+
+        Assert.Equal(DescribeMenuItemOutcome.Described, outcome);
+
+        MenuItemSummary? stored = await Directory().GetAsync(identifier, cancellationToken);
+        Assert.Equal("Lentil, vegan", stored!.Description);
+
+        Assert.Equal(2, await World().CountAsync(CountEventsSql, cancellationToken));
+        Assert.Equal("description_changed", await EventTypeAsync(identifier, cancellationToken));
+        Assert.Equal(
+            "Lentil, vegan",
+            await ScalarAsync<string>("new_description", identifier, cancellationToken));
+
+        // The type carries the description alone. new_name and new_price_amount must be NULL, which is
+        // asserted rather than assumed because a caller passing the wrong payload is this file's bug and
+        // a CHECK violation is a different failure message from a wrong value.
+        Assert.Null(await ScalarAsync<string>("new_name", identifier, cancellationToken));
+        Assert.Null(await ScalarAsync<decimal?>("new_price_amount", identifier, cancellationToken));
+        Assert.Null(await ScalarAsync<int?>("new_display_order", identifier, cancellationToken));
+    }
+
+    /// <summary>
+    /// Clearing a description is an ordinary change with an ordinary event. <c>""</c> is a value, not an
+    /// absence — which is the entire reason the column is <c>NOT NULL DEFAULT ''</c> rather than nullable
+    /// (§8.2): a nullable column could not be tied to its event type by an equality.
+    /// </summary>
+    [Fact]
+    public async Task ClearingADescriptionIsAChangeAndStoresTheEmptyString()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid identifier = _identifiers.Create();
+        await Administration().CreateMenuItemAsync(
+            identifier, "Soup", "Lentil", 4.50m, _administratorIdentifier, cancellationToken);
+
+        _clock.UtcNow = _clock.UtcNow.AddMinutes(5);
+
+        Assert.Equal(
+            DescribeMenuItemOutcome.Described,
+            await Administration().DescribeMenuItemAsync(
+                identifier, null, _administratorIdentifier, cancellationToken));
+
+        MenuItemSummary? stored = await Directory().GetAsync(identifier, cancellationToken);
+        Assert.Equal(string.Empty, stored!.Description);
+
+        // created, description_changed (from the create), description_changed (this clear).
+        Assert.Equal(3, await World().CountAsync(CountEventsSql, cancellationToken));
+        Assert.Equal("description_changed", await EventTypeAsync(identifier, cancellationToken));
+        Assert.Equal(
+            string.Empty,
+            await ScalarAsync<string>("new_description", identifier, cancellationToken));
+    }
+
+    /// <summary>
+    /// Re-saving the same description writes nothing. Ordinal comparison, so recasing is a real change —
+    /// asserted in the second half, because getting that backwards would silently refuse a change every
+    /// guest can read.
+    /// </summary>
+    [Fact]
+    public async Task DescribingWithTheSameTextIsANoOp_ButRecasingIsNot()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid identifier = _identifiers.Create();
+        await Administration().CreateMenuItemAsync(
+            identifier, "Soup", "Lentil", 4.50m, _administratorIdentifier, cancellationToken);
+
+        int eventsAfterCreate = await World().CountAsync(CountEventsSql, cancellationToken);
+
+        _clock.UtcNow = _clock.UtcNow.AddMinutes(5);
+
+        // Same text, differently padded — the trim happens before the comparison.
+        Assert.Equal(
+            DescribeMenuItemOutcome.NoChange,
+            await Administration().DescribeMenuItemAsync(
+                identifier, "  Lentil  ", _administratorIdentifier, cancellationToken));
+
+        Assert.Equal(eventsAfterCreate, await World().CountAsync(CountEventsSql, cancellationToken));
+
+        Assert.Equal(
+            DescribeMenuItemOutcome.Described,
+            await Administration().DescribeMenuItemAsync(
+                identifier, "LENTIL", _administratorIdentifier, cancellationToken));
+
+        Assert.Equal(eventsAfterCreate + 1, await World().CountAsync(CountEventsSql, cancellationToken));
+    }
+
+    /// <summary>
+    /// Moving an item writes the column and a <c>reordered</c> event carrying the position alone; moving
+    /// it to where it already is writes nothing. Positions are absolute, not relative, and not unique.
+    /// </summary>
+    [Fact]
+    public async Task ReorderWritesThePositionAndItsEvent_AndAMoveToTheSamePlaceIsANoOp()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid identifier = await CreateAsync("Soup", 4.50m, cancellationToken);
+
+        _clock.UtcNow = _clock.UtcNow.AddMinutes(5);
+
+        Assert.Equal(
+            ReorderMenuItemOutcome.Reordered,
+            await Administration().ReorderMenuItemAsync(
+                identifier, 7, _administratorIdentifier, cancellationToken));
+
+        MenuItemSummary? stored = await Directory().GetAsync(identifier, cancellationToken);
+        Assert.Equal(7, stored!.DisplayOrder);
+
+        Assert.Equal(2, await World().CountAsync(CountEventsSql, cancellationToken));
+        Assert.Equal("reordered", await EventTypeAsync(identifier, cancellationToken));
+        Assert.Equal(7, await ScalarAsync<int>("new_display_order", identifier, cancellationToken));
+        Assert.Null(await ScalarAsync<string>("new_description", identifier, cancellationToken));
+
+        _clock.UtcNow = _clock.UtcNow.AddMinutes(5);
+
+        Assert.Equal(
+            ReorderMenuItemOutcome.NoChange,
+            await Administration().ReorderMenuItemAsync(
+                identifier, 7, _administratorIdentifier, cancellationToken));
+
+        Assert.Equal(2, await World().CountAsync(CountEventsSql, cancellationToken));
+    }
+
+    /// <summary>
+    /// Both new verbs report <c>MenuItemNotFound</c> for an identifier nothing has, and neither writes.
+    /// One test rather than two: the shape and the reason are identical, and the assertion is that the
+    /// event table is untouched.
+    /// </summary>
+    [Fact]
+    public async Task DescribeAndReorderRefuseAnUnknownItemWithoutWriting()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid unknown = _identifiers.Create();
+
+        Assert.Equal(
+            DescribeMenuItemOutcome.MenuItemNotFound,
+            await Administration().DescribeMenuItemAsync(
+                unknown, "Anything", _administratorIdentifier, cancellationToken));
+
+        Assert.Equal(
+            ReorderMenuItemOutcome.MenuItemNotFound,
+            await Administration().ReorderMenuItemAsync(
+                unknown, 3, _administratorIdentifier, cancellationToken));
+
+        Assert.Equal(0, await World().CountAsync(CountEventsSql, cancellationToken));
+        Assert.Equal(0, await World().CountAsync(CountItemsSql, cancellationToken));
+    }
+
+    /// <summary>
+    /// A negative position is refused by the argument guard, before a connection is opened — so the CHECK
+    /// constraint on the column is the second line of defence rather than the first, exactly as the price
+    /// bound is on <see cref="DapperMenuAdministration.RepriceMenuItemAsync"/>.
+    /// </summary>
+    [Fact]
+    public async Task ANegativePositionIsRefusedBeforeAnythingIsWritten()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid identifier = await CreateAsync("Soup", 4.50m, cancellationToken);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            async () => await Administration().ReorderMenuItemAsync(
+                identifier, -1, _administratorIdentifier, cancellationToken));
+
+        Assert.Equal(0, (await Directory().GetAsync(identifier, cancellationToken))!.DisplayOrder);
+        Assert.Equal(1, await World().CountAsync(CountEventsSql, cancellationToken));
+    }
+
+    /// <summary>Creates an item with no description, which is what most of these tests want.</summary>
+    private async Task<Guid> CreateAsync(string name, decimal price, CancellationToken cancellationToken)
+    {
+        Guid identifier = _identifiers.Create();
+        await Administration().CreateMenuItemAsync(
+            identifier, name, description: null, price, _administratorIdentifier, cancellationToken);
+
+        return identifier;
     }
 
     private async Task<string?> EventTypeAsync(Guid menuItemIdentifier, CancellationToken cancellationToken)

@@ -78,9 +78,18 @@ internal sealed class OrderTestWorld
         VALUES (@MemberIdentifier, @SittingIdentifier, @PersonIdentifier, @JoinedAt);
         """;
 
+    /// <summary>
+    /// <c>description</c> and <c>display_order</c> are named rather than left to their <c>0004</c>
+    /// defaults, so that a caller who wants either can have it and every row this class writes is
+    /// explicit about both. <c>menu_section_identifier</c> is absent because the column is: it lands in
+    /// <c>0005</c>, and that is the migration that makes this INSERT the file deciding whether every
+    /// ordering integration test compiles.
+    /// </summary>
     private const string InsertMenuItemSql = """
-        INSERT INTO menu_item (menu_item_identifier, name, price_amount, is_active, created_at)
-        VALUES (@MenuItemIdentifier, @Name, @PriceAmount, @IsActive, @CreatedAt);
+        INSERT INTO menu_item (
+            menu_item_identifier, name, description, price_amount, display_order, is_active, created_at)
+        VALUES (
+            @MenuItemIdentifier, @Name, @Description, @PriceAmount, @DisplayOrder, @IsActive, @CreatedAt);
         """;
 
     private const string InsertVisibilityEventSql = """
@@ -101,6 +110,14 @@ internal sealed class OrderTestWorld
             @EventType, @OccurredAt);
         """;
 
+    /// <summary>
+    /// The two <c>0004</c> payload columns are omitted rather than passed as NULL, which is the same
+    /// thing to PostgreSQL and a smaller surface here: no test in this project writes a
+    /// <c>description_changed</c> or a <c>reordered</c> event by hand — the ones that care about those
+    /// verbs drive <c>DapperMenuAdministration</c>, because the pair of rows is the fact worth asserting.
+    /// The casts on the two columns that remain are load-bearing: Dapper sends an untyped parameter for a
+    /// null, and §8.2's paired CHECKs are evaluated against the column's type.
+    /// </summary>
     private const string InsertMenuItemEventSql = """
         INSERT INTO menu_item_event (
             menu_item_event_identifier, menu_item_identifier, actor_person_identifier,
@@ -223,11 +240,22 @@ internal sealed class OrderTestWorld
             },
             cancellationToken);
 
+    /// <summary>
+    /// Writes one <c>menu_item</c> row and returns its identifier.
+    ///
+    /// <para><paramref name="description"/> and <paramref name="displayOrder"/> are trailing optional
+    /// parameters with the column defaults as their values, so every existing call site reads exactly as
+    /// it did and means exactly what it did. That is deliberate rather than lazy: eleven call sites across
+    /// four test classes arrange a menu they have no opinion about, and making them all restate <c>""</c>
+    /// and <c>0</c> would be eleven edits that assert nothing.</para>
+    /// </summary>
     public async Task<Guid> AddMenuItemAsync(
         string name,
         decimal priceAmount,
         CancellationToken cancellationToken,
-        bool isActive = true)
+        bool isActive = true,
+        string description = "",
+        int displayOrder = 0)
     {
         Guid menuItemIdentifier = _identifierFactory.Create();
         await ExecuteAsync(
@@ -236,7 +264,9 @@ internal sealed class OrderTestWorld
             {
                 MenuItemIdentifier = menuItemIdentifier,
                 Name = name,
+                Description = description,
                 PriceAmount = priceAmount,
+                DisplayOrder = displayOrder,
                 IsActive = isActive,
                 CreatedAt = _clock.UtcNow,
             },

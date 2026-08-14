@@ -268,12 +268,14 @@ time as a typo for "the first open item". The sentence is gone with the gap it d
 
 ## Stage 2 — sections and descriptions: schema and data access
 
-**The section half landed in M6 Slice 37. The `menu_item` half has not started.** This is the schema half of the enhancement request. It is deliberately one stage on its
-own: every decision below is a `CREATE TABLE` or an `ALTER TABLE`, none of it is visible to anybody, and it
-is the half that a surface cannot be written against until it exists.
+**The section half landed in M6 Slice 37 (`0003`). Two of the item's three columns landed in M6 Slice 38
+(`0004`). What remains is `menu_item.menu_section_identifier` and the three surfaces it forces (`0005`).**
+This is the schema half of the enhancement request. It was written as one stage on its own because every
+decision below is a `CREATE TABLE` or an `ALTER TABLE`, none of it is visible to anybody, and it is the half
+that a surface cannot be written against until it exists.
 
-The decisions here are **taken, not proposed** — they are what Slice 31 will implement unless vetoed. §7
-and §8.2 are edited in the same commit that implements them.
+The decisions here are **taken, not proposed**. §7 and §8.2 are edited in the same commit that implements
+each of them.
 
 ### `menu_section`
 
@@ -353,6 +355,33 @@ splitter handles dollar-quoting correctly (verified against `PostgresqlQueryPars
 `DbUp/dbup-postgresql` — the `DollarQuoted` state machine consumes the whole tagged block, so a `;` inside
 the `DO` body does not split the statement), so the block is safe in an embedded script.
 
+### The boundary has now moved twice, and the second move is Slice 38's
+
+**Slice 37 cut between the two tables.** The correction below explains why the stage as first written could
+not ship green, and its answer was to pull three surfaces forward. Slice 37 declined that and cut between
+`menu_section` and `menu_item` instead, so that `0003` touched nothing existing.
+
+**Slice 38 cut again, between the item's own columns**, by the same test one register lower. `0004` adds
+`menu_item.description` and `menu_item.display_order`, both `NOT NULL` with a `DEFAULT`, plus
+`description_changed` and `reordered` with their payload columns and named CHECKs. **Nothing existing
+changes meaning:** no backfill runs, no form is required to supply anything, and because `display_order`
+defaults to 0 the new `ORDER BY (display_order, name, identifier)` *is* the `ORDER BY (name, identifier)`
+every reader already had. The suite stays green by construction rather than by inspection.
+
+`0005` is therefore the whole of what is left, and it is exactly the expensive part the correction below
+identified: `menu_section_identifier uuid NOT NULL REFERENCES menu_section`, the conditional one-section
+seed and the backfill beside it, `section_changed` with its payload column and a widened vocabulary CHECK —
+droppable **by name** now, because `0004` replaced `0001`'s four generated names — and the three surfaces:
+the section create page, the section picker on the item form, and a harness `CreateMenuSectionAsync` the
+five ordering scenarios call before their first `CreateMenuItemAsync`. That last file is the one that decides
+whether the ordering integration tests compile.
+
+**Two rulings were settled by `0004` and are recorded here because they are not obvious from the schema.**
+An item is created at position **0**, not appended at `MAX + 1` as a section is, because an item's position
+is *within its section* and "the end of the menu" is undefined until `0005`. And the item's new event types
+are spelled `description_changed` and `reordered` rather than `menu_section_event`'s `described` — each
+table's vocabulary is internally consistent, and this one has said `name_changed` since `0001`.
+
 ### A correction to this stage's boundary, made before it was authored
 
 **Stage 2 as written above cannot ship green, and the reason is one word in its own schema.**
@@ -377,9 +406,11 @@ no heading is an item nobody decided about — is worth more than the neatness o
 
 ### The migration, in order
 
-`0003_menu_sections_and_item_descriptions.sql`. `0001` and `0002` are **not** touched: DbUp journals by
-script name, so editing an applied script is a change that never runs (F-34's precedent, stated in its own
-row).
+**As authored this was one script. It shipped as three.** `0003_menu_sections.sql` (Slice 37) is steps 1
+below; `0004_menu_item_descriptions.sql` (Slice 38) is steps 3 and 6 for the two columns that carry
+defaults; `0005` is steps 2, 4 and 5 plus the section half of step 6. `0001` and `0002` are **not** touched,
+and neither are `0003` and `0004` now that they are applied: DbUp journals by script name, so editing an
+applied script is a change that never runs (F-34's precedent, stated in its own row).
 
 1. `CREATE TABLE menu_section`, `CREATE TABLE menu_section_event`, indexes.
 2. Seed **one** section — and only if `menu_item` has rows. A fresh database gets no sections and the
@@ -406,10 +437,10 @@ it is the surprising half: the schema of record grows four columns and two table
 |---|---|
 | ~~`Menu/MenuSectionDirectory.cs`~~ | **new** — `MenuSectionSummary`, `IMenuSectionDirectory`, `DapperMenuSectionDirectory` — **landed, Slice 37** |
 | ~~`Menu/MenuSectionAdministration.cs`~~ | **new** — create / rename / describe / reorder / set-active, one transaction each, `FOR UPDATE` before every comparison — **landed, Slice 37**; `display_order` is assigned by appending rather than supplied, and a rename is compared ordinally though the column is `citext` |
-| `Menu/MenuDirectory.cs` | `MenuItemSummary` gains `Description`, `MenuSectionIdentifier`, `MenuSectionName`, `DisplayOrder`; new `ListBySectionAsync` returning sections with their items |
-| `Menu/MenuAdministration.cs` | `CreateMenuItemAsync` takes a section and a description; new `DescribeMenuItemAsync`, `MoveMenuItemToSectionAsync`, `ReorderMenuItemAsync` |
-| `Menu/MenuEventLog.cs` | payload columns; `ListForSectionAsync`; `ListRecentAsync` becomes a `UNION ALL` over both logs with a subject discriminator |
-| `WebApplication/Menu/MenuWorkflow.cs` | one verb per write, `MenuChanged` published only when something actually moved — the rule that file already exists to honour |
+| `Menu/MenuDirectory.cs` | `MenuItemSummary` gained `Description` and `DisplayOrder` and the reads order by position then name — **landed, Slice 38**. `MenuSectionIdentifier`, `MenuSectionName` and `ListBySectionAsync` wait for `0005` |
+| `Menu/MenuAdministration.cs` | `CreateMenuItemAsync` takes a description; `DescribeMenuItemAsync` and `ReorderMenuItemAsync` added — **landed, Slice 38**. `MoveMenuItemToSectionAsync` and the section argument wait for `0005` |
+| `Menu/MenuEventLog.cs` | `new_description` and `new_display_order` — **landed, Slice 38**. `ListForSectionAsync` and the `UNION ALL` over both logs with a subject discriminator wait for Stage 3, which is the first surface that reads a section's history |
+| `WebApplication/Menu/MenuWorkflow.cs` | a verb per write, `MenuChanged` published only when something actually moved — **the item verbs landed, Slice 38**. The five *section* writes are still not behind `IMenuWorkflow`, which is deliberate and is Stage 3's obligation |
 | `WebApplication/Orders/OrdersServiceCollectionExtensions.cs` | registers the two new services, in the menu group, for the reason recorded there |
 
 Tests that move with it: `MenuDirectoryTests`, `MenuAdministrationTests`, `MenuAvailabilityTests`,

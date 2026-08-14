@@ -19,18 +19,25 @@ namespace MyRestaurant.WebApplication.Menu;
 /// two would make it possible to wire an application that announces 86s and not repricings.</para>
 ///
 /// <para><b>Not every call publishes.</b> A rename to the name it already has, a reprice to the price it
-/// already has, and a toggle to the state it is already in all commit nothing, and announcing them would
-/// tell every open surface in the building to re-query for a change that did not happen. The write
-/// services report that distinction; this file's whole job is to honour it.</para>
+/// already has, a description equal to the stored one, a move to the position it is already at, and a
+/// toggle to the state it is already in all commit nothing, and announcing them would tell every open
+/// surface in the building to re-query for a change that did not happen. The write services report that
+/// distinction; this file's whole job is to honour it.</para>
 /// </summary>
 public interface IMenuWorkflow
 {
     /// <summary>
     /// Creates a menu item (§11.4) and announces it. A create always commits, so this always publishes.
+    ///
+    /// <para>The description travels with it and is stored on the row; when it is non-blank the write
+    /// service also appends a <c>description_changed</c> event in the same transaction, because §8.2's
+    /// <c>created</c> carries the name and the price only. That is the write service's business, not this
+    /// file's — one commit, one announcement, whether it wrote one event or two.</para>
     /// </summary>
     Task<CreateMenuItemResult> CreateMenuItemAsync(
         Guid menuItemIdentifier,
         string name,
+        string? description,
         decimal priceAmount,
         Guid actorPersonIdentifier,
         CancellationToken cancellationToken = default);
@@ -50,6 +57,29 @@ public interface IMenuWorkflow
     Task<RepriceMenuItemResult> RepriceMenuItemAsync(
         Guid menuItemIdentifier,
         decimal priceAmount,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets or clears one item's description (§7) and, if it actually moved, announces it.
+    ///
+    /// <para><b>A description is a §9 broadcast, and the reason is Stage 3 rather than today.</b> The
+    /// guest picker does not render descriptions yet — it is a <c>&lt;select&gt;</c>, and a sentence inside
+    /// an option label is the problem the picker rewrite exists to fix — so today this publish reaches a
+    /// subscriber that ignores it. It is still the right call: <c>MenuChanged</c> means "re-read the menu"
+    /// and nothing else, and a workflow that decided which columns were worth announcing would be a
+    /// workflow that has to be edited again the moment a surface starts reading one.</para>
+    /// </summary>
+    Task<DescribeMenuItemOutcome> DescribeMenuItemAsync(
+        Guid menuItemIdentifier,
+        string? description,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Moves one item to an absolute position (§7) and, if it actually moved, announces it.</summary>
+    Task<ReorderMenuItemOutcome> ReorderMenuItemAsync(
+        Guid menuItemIdentifier,
+        int displayOrder,
         Guid actorPersonIdentifier,
         CancellationToken cancellationToken = default);
 
@@ -96,12 +126,14 @@ public sealed class MenuWorkflow : IMenuWorkflow
     public async Task<CreateMenuItemResult> CreateMenuItemAsync(
         Guid menuItemIdentifier,
         string name,
+        string? description,
         decimal priceAmount,
         Guid actorPersonIdentifier,
         CancellationToken cancellationToken = default)
     {
         CreateMenuItemResult result = await _administration
-            .CreateMenuItemAsync(menuItemIdentifier, name, priceAmount, actorPersonIdentifier, cancellationToken)
+            .CreateMenuItemAsync(
+                menuItemIdentifier, name, description, priceAmount, actorPersonIdentifier, cancellationToken)
             .ConfigureAwait(false);
 
         // An unconditional publish, and the only one here: a create either commits or throws, so there
@@ -146,6 +178,44 @@ public sealed class MenuWorkflow : IMenuWorkflow
         }
 
         return result;
+    }
+
+    public async Task<DescribeMenuItemOutcome> DescribeMenuItemAsync(
+        Guid menuItemIdentifier,
+        string? description,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        DescribeMenuItemOutcome outcome = await _administration
+            .DescribeMenuItemAsync(menuItemIdentifier, description, actorPersonIdentifier, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (outcome is DescribeMenuItemOutcome.Described)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
+
+        return outcome;
+    }
+
+    public async Task<ReorderMenuItemOutcome> ReorderMenuItemAsync(
+        Guid menuItemIdentifier,
+        int displayOrder,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        ReorderMenuItemOutcome outcome = await _administration
+            .ReorderMenuItemAsync(menuItemIdentifier, displayOrder, actorPersonIdentifier, cancellationToken)
+            .ConfigureAwait(false);
+
+        // §11.1 and §11.2 both render the menu in display order, so a move that committed changes what
+        // every open picker shows even though no item's name, price or availability moved.
+        if (outcome is ReorderMenuItemOutcome.Reordered)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
+
+        return outcome;
     }
 
     public async Task<SetMenuItemAvailabilityResult> SetMenuItemActiveAsync(

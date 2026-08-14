@@ -28,6 +28,14 @@
             and is available now. Every open menu has already picked it up.
         </p>
 
+        @if (_created.DescriptionWasSet)
+        {
+            @* Echoed from the result rather than re-read, because the write service returns what it
+               actually stored — trimmed — and this is the only place a caller can see the difference
+               without a second query. *@
+            <p class="record-note">Description: @_created.Description</p>
+        }
+
         <div class="form-actions">
             <a class="button-primary" href="@($"/administration/menu/{_created.MenuItemIdentifier}")">Manage this item</a>
             <a class="button-secondary" href="/administration/menu">Back to the menu</a>
@@ -41,7 +49,9 @@ else
         <h1>Create a menu item</h1>
         <p class="lede">
             The name is what guests, the kitchen queue, and the bill all read, so write it the way it
-            should appear on a receipt. The price is in @Options.CurrencyCode and can be zero.
+            should appear on a receipt. The price is in @Options.CurrencyCode and can be zero. The
+            description is optional, is one or two sentences a guest reads before ordering — what is in
+            it, how it is served, what it comes with — and can be added or changed later.
         </p>
 
         @if (_errorMessage is not null)
@@ -56,6 +66,16 @@ else
                 <label for="name">Name</label>
                 <InputText id="name" @bind-Value="Input.Name" autocomplete="off" autofocus />
                 <ValidationMessage For="@(() => Input.Name)" />
+            </div>
+
+            @* A textarea rather than an input, and app.css has styled `.form-field textarea` since
+               Slice 30 for exactly this field — so this block declares nothing. `.muted` is the shared
+               soft-ink class rather than a new one, for the same reason. Deliberately not `required`:
+               §7 makes a description optional, and a blank one stores "" and writes no event at all. *@
+            <div class="form-field">
+                <label for="description">Description <span class="muted">(optional)</span></label>
+                <InputTextArea id="description" @bind-Value="Input.Description" rows="3" autocomplete="off" />
+                <ValidationMessage For="@(() => Input.Description)" />
             </div>
 
             <div class="form-field">
@@ -73,8 +93,8 @@ else
         <p class="form-footnote">
             Names do not have to be unique — a kitchen running a rotating special will want two rows
             called the same thing eventually. Prices are stored to two decimals and rounded if you type
-            more. You can rename, reprice, or mark the item unavailable at any time; every one of those is
-            recorded with your name against it.
+            more. You can rename, reprice, describe, reposition, or mark the item unavailable at any time;
+            every one of those is recorded with your name against it.
         </p>
     </section>
 }
@@ -107,6 +127,7 @@ else
         _created = await MenuChanges.CreateMenuItemAsync(
             IdentifierFactory.Create(),
             Input.Name.Trim(),
+            Input.Description,
             Input.PriceAmount,
             administrator,
             HttpContext.RequestAborted);
@@ -119,6 +140,14 @@ else
         [Required(ErrorMessage = "Give the item a name.")]
         [StringLength(120, MinimumLength = 1, ErrorMessage = "The name must be 1–120 characters.")]
         public string Name { get; set; } = string.Empty;
+
+        // No [Required]: §7 makes a description optional and a blank one is stored as "". The 2,000 is
+        // this form's own limit rather than the column's — `menu_item.description` is `text` and has none
+        // — and it is here rather than in DapperMenuAdministration for the reason that file records: a
+        // ceiling invented in the data-access layer would be that layer overruling the schema of record.
+        // A form is allowed an opinion about how much prose fits on a menu.
+        [StringLength(2000, ErrorMessage = "The description must be 2,000 characters or fewer.")]
+        public string Description { get; set; } = string.Empty;
 
         // The upper bound is numeric(10,2)'s: eight digits before the point. Bounded here so the form
         // says so, and again in DapperMenuAdministration so no other caller can get past it.

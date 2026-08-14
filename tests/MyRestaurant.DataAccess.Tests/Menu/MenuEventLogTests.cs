@@ -274,7 +274,7 @@ public sealed class MenuEventLogTests : IClassFixture<PostgreSqlFixture>, IAsync
     {
         Guid identifier = _identifiers.Create();
         await Administration().CreateMenuItemAsync(
-            identifier, name, price, _administratorIdentifier, cancellationToken);
+            identifier, name, description: null, price, _administratorIdentifier, cancellationToken);
 
         return identifier;
     }

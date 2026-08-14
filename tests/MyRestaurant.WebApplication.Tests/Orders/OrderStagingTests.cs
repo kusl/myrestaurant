@@ -349,8 +349,21 @@ public sealed class OrderStagingTests
         Assert.Empty(staging.Removals);
     }
 
+    /// <summary>
+    /// A menu item for the staging tests. The description is <c>""</c> and the position is 0 — the two
+    /// members <c>0004</c> added — because <see cref="OrderStaging"/> reads neither: it stages by
+    /// identifier, prices from <c>PriceAmount</c>, and refuses on <c>IsActive</c>. Passing a description
+    /// here would suggest this file has an opinion about one.
+    /// </summary>
     private static MenuItemSummary Item(Guid identifier, string name, decimal price, bool isActive)
-        => new(identifier, name, price, isActive, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        => new(
+            identifier,
+            name,
+            string.Empty,
+            price,
+            0,
+            isActive,
+            new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
 
     /// <summary>
     /// A deterministic stand-in for <see cref="IIdentifierFactory"/> (§16.1 — hand-written fakes, no
