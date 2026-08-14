@@ -10791,3 +10791,304 @@ it successfully.** Carried from Slice 37, still a judgement about whose fix it i
 **No authoring-environment database this slice.** Slice 37 had PostgreSQL 16 and measured its schema half;
 this one did not. That is a difference in evidence quality between two consecutive slices and it is recorded
 so the next one restores the practice rather than quietly dropping it.
+
+# M6 Slice 39 — the migration that could not run (F-78), and the dropdown that was the request
+
+## Read this first: Slice 38 was red, and not where it predicted
+
+```
+System.InvalidOperationException : Variable migrate_menu_item_event_checks has no value defined
+   at MyRestaurant.DataAccess.SchemaMigrationRunner.Run() … line 61
+   at MyRestaurant.DataAccess.Tests.Menu.MenuSectionAdministrationTests.InitializeAsync() … line 58
+MyRestaurant.DataAccess.SchemaMigrationException : Database migration failed on script
+   'MyRestaurant.DataAccess.Migrations.0004_menu_item_descriptions.sql'.
+```
+
+Repeated for every fact in the data-access suite. **The predicted count of 1124 was never reached, because
+the number of tests that ran is not the interesting number here** — a migration is the first thing every
+data-access fixture applies and the first thing the end-to-end harness applies, so one unparseable script
+took the integration suite and all sixteen §16.3 scenarios down together.
+
+**Slice 38's own "what was NOT verified" named this exact claim**, first in its list of three: *"Whether
+DbUp's splitter survives the `DO` block. The claim rests on `PostgresqlQueryParser`'s `DollarQuoted` state
+consuming a tagged block, which Slice 37 read from source but did not exercise."* That entry was right that
+the claim was unexercised and wrong about which component would decide it. The splitter was never reached.
+
+## F-78 — two dollar-quote syntaxes, and dbup-core goes first
+
+`0004` opens its constraint sweep with `DO $migrate_menu_item_event_checks$`. Read from source rather than
+inferred from the message:
+
+- **dbup-core**, `Support/ScriptExecutor.PreprocessScriptContents` → `VariableSubstitutionPreprocessor.Process`
+  → `VariableSubstitutionSqlParser.ReplaceVariables`. `IsCustomStatement` returns true when the current
+  character is `$` and `PeekChar()` is a letter, digit, `_` or `-`. `ReadCustomStatement` then reads to the
+  closing `$` and raises `InvalidOperationException("Variable {0} has no value defined")` for a name absent
+  from the dictionary.
+- **dbup-postgresql**, `PostgresqlQueryParser.ParseRawQuery`, has the `DollarQuotedStart` / `DollarQuoted`
+  states Slice 38 cited, including an explicit *empty tag* branch. It is correct, and it runs **after** the
+  preprocessor, on text the preprocessor never handed it.
+
+PostgreSQL spells a dollar-quoted body with the same four characters around the same kind of identifier that
+DbUp spells a variable reference with. **The two syntaxes are one syntax, and dbup-core wins.**
+
+**Why nothing here caught it.** The script is well-formed SQL; `check_tree.sh` reads it as text and it is
+correct as text. `0003` contains no dollar-quoting, so no test in this tree had ever applied one — the
+capability arrived and was exercised for the first time in the same slice. And Slice 38 had no database in
+its authoring environment, which it recorded.
+
+**The shape.** F-62 is a reason for doing something written without reading the tree it is about; this is the
+same error at a dependency boundary — a safety claim about a NuGet package's behaviour, written by reading
+one of the two components involved. The comment was not wrong. It was about the wrong file.
+
+## The fix, and why it is one line and not two
+
+`SchemaMigrationRunner.BuildUpgradeEngine` gains `.WithVariablesDisabled()`. Nothing in this tree has ever
+used a DbUp variable: there is no `WithVariable` call anywhere, and the only `$` in any of the four migration
+scripts is that tag.
+
+**`0004` keeps its TAGGED body rather than being reduced to `$$`, and that is the ruling of this slice.**
+`DO $$ … $$` would also survive substitution — an empty tag's next character is `$`, which is not a valid
+variable-name character, so `IsCustomStatement` never fires. Writing both fixes would mean that deleting the
+builder call leaves every gate in this repository green while the rule is gone, and that is precisely the
+mechanism of **F-64** (an undeclared property rendering its fallback), **F-69** (a `should` resting on a
+count nobody re-derived) and **F-75** (a local gate that existed nowhere while the claim said it did). A
+second belt that hides the first is how this project's worst findings have all been shaped.
+
+A tagged body makes the builder call load-bearing: remove it and every fact in `SchemaMigrationRunnerTests`
+fails on the next run with the message at the top of this entry. **So the row names something executable by
+adding nothing** (F-47) — the gate already exists, already blocks, and now says in its own summary that this
+is its job.
+
+**`0004` is edited in place, which F-34 forbids for an applied script.** Allowed here for the one reason that
+makes the rule inapplicable: **it had never applied anywhere.** DbUp journals only on success, so no journal
+row for it exists to be stale. Stated in the script itself, so that a future reader does not take the edit
+for a precedent.
+
+**If `WithVariablesDisabled()` does not resolve** against the pinned `dbup-postgresql` 7.0.1 — it was read in
+dbup-core's public API at tag `6.1.1` and has been there for years, so this is unlikely — the one-line
+alternative is to change both `$migrate_menu_item_event_checks$` to `$$` and drop the builder call. Recorded
+here rather than shipped, for the reason above.
+
+## F-79 — one paragraph of §7, written twice
+
+The paragraph beginning *"Two existing rules survive that change…"* — a deactivated item stays visible under
+its heading, and deactivating a section does not cascade to its items — appears **twice consecutively,
+byte-identical**, from Slice 38. Deleted.
+
+Worth a number for its position rather than its cost. Three gates read this document:
+`MarkdownTableContractTests` for table shape, `SpecificationVersionTests` for the header against the
+changelog, `TestingSectionContractTests` for §16.4's counts against the files they describe. **None of them
+reads a sentence**, and no gate is added, because the assertion available — no paragraph appears twice
+verbatim — would report findings on a tree that restates rulings across documents on purpose.
+
+## The picker: what the request actually asked for
+
+> the menu choice should no longer be a dropdown … a select or a dropdown does not give nearly enough
+> context … you should be able to select each menu item and see a lot more information about that item if
+> such information exists
+
+**Three things were wrong with the `<select>`, and only the third is cosmetic.** A closed dropdown shows
+exactly one option, so comparing two items means opening a modal list twice — at sixty items that is a
+lookup, not a menu. An `<option>` renders text and nothing else, so `menu_item.description` — the column
+`0004` exists to deliver — had nowhere to go, and every future fact about an item would have been
+concatenated into the same label. And the label already was a concatenation: name, an em dash, a formatted
+price, and sometimes the words "(currently unavailable)".
+
+**It is now a card per item**, each card a `<button>`, with a **detail panel** that opens on the chosen one.
+
+### Stage 3 ran before `0005`, and that is a decision to veto if you disagree
+
+The plan put the guest menu after sections, on the reasoning that a grouped menu needs headings. The two
+halves are separable: a card per item needs `menu_item.description` and nothing else, and grouping the cards
+under headings is an outer loop added later around markup that does not change. Leaving the picker until
+`0005` meant leaving the only part of the request its author could see behind two migrations, with the column
+that exists to be read already in the schema and read by nothing.
+
+**To revert:** the surface and its stylesheet block are self-contained. `TableOrderSurface.razor` and the
+`.order-menu*` rules in `app.css` go back, and `StageAsync` returns to `SelectOptionAsync("#order-picker-item", …)`.
+Nothing else in this slice depends on it — the F-78 fix is independent.
+
+### Three rulings inside it
+
+**The panel says when it has nothing to say.** *"If such information exists"* is answered with a sentence
+rather than an empty box, because a blank panel is indistinguishable from a surface that failed to load —
+the confusion §11.10's `data-loaded` bit exists to prevent one level up. The facts are a `<dl>` of terms
+(Price, Available, On the menu since) so Stages 4 and 5 add rows instead of rewriting markup.
+
+**A card is a `<button>` with `aria-pressed`, not a radio.** A radio group is the more precise ARIA for
+"choose exactly one" and it was refused for a concrete reason: Blazor reconciles the `checked` *attribute*
+while browsers track the checked *property*, so a radio whose state a component owns can drift out of step
+with the DOM in ways only a browser can observe — and this slice had no browser. Every other control on that
+island is an `@onclick`, and a button carries no DOM state to reconcile. A one-of-many toggle set is a slight
+stretch of `aria-pressed` and it is the better trade against emulating a radio group's keyboard semantics.
+
+**No breakpoint.** `.order-menu` and `.order-menu-facts` are `auto-fit` grids, so one column at 375px and as
+many as fit on a counter's laptop is the same rule. §11.12 asks for exactly this in preference to a width
+query, and a width written here would have been the tree's second breakpoint (F-63).
+
+### §7's availability rule reads better in a list than it did in a label
+
+A deactivated item keeps its card, keeps its description, gains a *currently unavailable* chip, and its
+button is `disabled`. "The guest sees that the salmon exists and is out" was true of the old `<option>` and
+was four words appended to a label; it is now a marked card a guest can still read about.
+
+## What the harness gained, and why it could not have existed before
+
+`TableOrderJourneys` adds `ChooseAsync`, `ReadMenuAsync`, `ReadChosenItemDetailAsync`, `WaitForMenuAsync`,
+the `MenuCard` and `ChosenItemDetail` records, a `Describe` overload and a private `WaitForAttributeAsync`.
+
+An `<option>` renders text only, so the sole thing a harness could read off the old picker was one
+concatenated label and the sole assertion available was containment — **which is why `0004`'s description
+column shipped with nothing behind it.** A card has an element per fact.
+
+Two membership rules are recorded because both could reasonably have gone the other way. **Availability is
+read from `disabled`, not from the chip:** §7 requires both, and `disabled` is the half that enforces it —
+the same reasoning `ReadBadgeAsync` applies in reverse, that whichever of the two is the contract is the one
+to read. **`Description` is `null` rather than `""` when absent:** the surface renders no element at all in
+that case, so absence is what the DOM says, and a scenario asserting a description arrived must not be
+satisfiable by an empty string that happened to render.
+
+**One line of the sixteen existing scenarios changed** — the item choice inside `StageAsync`. Everything else
+in `EndToEndScenarios.cs` is byte-identical, deliberately: the smallest edit that could carry the rewrite.
+
+## What is in this slice
+
+| Area | Change |
+|---|---|
+| Migration runner | `SchemaMigrationRunner.cs` — `.WithVariablesDisabled()`, with the collision documented at the call site |
+| Migration | `0004_menu_item_descriptions.sql` — the safety claim corrected to name both components; tagged body kept deliberately; the in-place edit justified against F-34 |
+| Surface | `TableOrderSurface.razor` — the `<select>` replaced by a card list and a detail panel; `ChooseItem`; `PickedMenuItem` re-resolving against the live menu |
+| Stylesheet | `app.css` — the `.order-menu*` vocabulary, two `auto-fit` grids, no new breakpoint, no colour literal, no `var()` fallback |
+| Harness | `TableOrderJourneys.cs` — four journeys, two records, two helpers; `AdministrationJourneys.cs` — an optional description on `CreateMenuItemAsync` |
+| Tests | `SchemaMigrationRunnerTests.cs` — summary records that it is the gate on the builder call. **No assertion added or removed anywhere** |
+| Documents | S v1.24 (§7, §11.1, §16.4, Appendix A, changelog), ledger F-78 + F-79, plan's Stage 3 partially struck |
+
+## What was verified
+
+**The DbUp behaviour was read from source at a pinned tag, not recalled.** `VariableSubstitutionSqlParser.cs`
+and `Support/SqlParser.cs` from `DbUp/DbUp`, `PostgresqlQueryParser.cs` from `DbUp/dbup-postgresql`, and
+`Builder/StandardExtensions.cs` at tag **`6.1.1`** to confirm `WithVariablesDisabled` is public API — line
+751 of that file. This is the finding's own lesson applied inside its own repair.
+
+**The working tree was reconstructed from `dump.txt` and checked against the SHA-256 recorded for every
+file: 338 of 340 byte-identical.** Of the two that were not, one is `export.sh` (which the dump documents
+rather than reproduces) and one is a trailing-summary artefact of the extractor, in a file this slice does
+not touch. Every edit below was made against a verified tree.
+
+**Byte hygiene on all seven edited files:** no CR, exactly one final newline, no whitespace-only line, no
+context-dump separator. F-76's third half was simulated specifically — none of the seven ends in a blank
+line.
+
+**Structural verification, string- and comment-aware:** brace, paren and bracket balance on all seven;
+CS4007 scan (no `await` in an interpolation hole) and CS1620 scan (no bare literal operand in a
+`string.Create` addition chain) clean. Both apply to the new harness code, which composes six failure
+messages that way.
+
+**The Razor file was walked as a tag tree**, `@*…*@` stripped and the `@code` block excluded. It reports
+four findings, **and all four are the standing false positives Slice 38 recorded** — `IReadOnlyList<OrderLineView>`
+inside a `@{ }` block reads as a tag. Proven by running the identical checker against the *pristine*
+extracted file and getting the same four at the same offsets. That control is the only reason the result is
+usable.
+
+**Every `HandheldLayoutContractTests` invariant was re-derived over the edited stylesheet**, not assumed:
+one width media query and it is `min-width` in `app.css`; **zero** colour literals in any declaration block
+outside `:root`; **zero** `var()` fallbacks; `overflow-wrap` declared once as `anywhere`; 19 `min-height`
+declarations of which 14 read `--touch-target` and none is a literal under 44px; and every custom property
+the tree reads is declared. The two new grids introduce no width.
+
+**Selector existence was checked in both directions.** Every class the harness names exists in the markup;
+every `order-*` class the markup uses has a rule in `app.css`, except the four that documented themselves as
+having none (`order-surface`, `order-settled-heading`, `order-prune-notice`, `order-line-adjustment`).
+
+**Every new harness method is defined exactly once and `SelectOptionAsync` appears nowhere**, verified by
+search after the rewrite rather than assumed from having written it.
+
+**`SpecificationVersionTests` simulated:** header 1.24 against a newest entry of 1.24, entries descending,
+two versioned documents against a floor of two.
+
+**`TestingSectionContractTests` reasoned about rather than simulated, and the reasoning is short: no
+assertion count moves.** No `[Fact]` or theory row is added or removed in this slice, so every count §16.4
+states is still the count in its file and the floor of sixteen is untouched. The new §16.4 material is folded
+into the *existing* migration-gate paragraph rather than written as a new one, precisely so it cannot become
+a seventeenth counted paragraph carrying a number nobody re-derives (F-73).
+
+**Every new Markdown table row was checked to carry exactly four cells**, and no cell contains an unescaped
+pipe (F-72).
+
+## What was NOT verified
+
+**Nothing compiled.** No .NET SDK in the authoring environment. The likeliest sites of a complaint are named
+rather than left to be found: **`.WithVariablesDisabled()`** resolving against the pinned `dbup-postgresql`
+(the fallback is in the F-78 section above); **`aria-pressed="@(isChosen ? "true" : "false")"`**, a ternary
+inside an attribute value, which this tree does elsewhere but not with nested quotes; and
+**`RestaurantClock.Date(chosenItem.CreatedAt)`**, whose signature was read but never called from a Razor
+attribute context before.
+
+**No database ran the migration.** The fix is argued from two sources read at a tag; the assertion that
+settles it is the whole of `SchemaMigrationRunnerTests`, and a green run there is the evidence this slice
+does not have. **A failure that still says `Variable … has no value defined` means the builder call did not
+take**; a failure naming a missing constraint means the splitter broke after all, which would be Slice 38's
+original claim being wrong as well.
+
+**No browser rendered the picker.** This is the largest visual change in the project since Slice 30 and
+nothing has laid it out. Named consequences a first run may show: whether a 16rem `minmax` is the right floor
+on a 375px screen (one column is guaranteed; whether the card is comfortable is a judgement); whether the
+detail panel opening below the list pushes the quantity box off-screen on a short viewport, which is a
+scroll rather than a defect but is the kind of thing that reads as one; and whether `aria-pressed` on a
+one-of-many set announces sensibly, which only a screen reader decides.
+
+**The description is still not exercised end to end.** The harness can now read a card and a panel, and no
+§16.3 scenario yet fills the textarea and reads the sentence back. Scenario 17 is where that lands, with
+`0005`.
+
+**A previous session's edits were lost to my own mistake and re-applied.** The extractor that reconstructs
+the tree writes to a hard-coded path, and re-running it from a different directory overwrote the edited
+tree. Every edit was re-applied and re-verified from scratch; the extractors were then deleted from the
+authoring environment. Recorded because the *verification* above was re-run against the rebuilt tree rather
+than inherited from the lost one, and a reader is entitled to know which.
+
+## Test count
+
+Last observed: **1107**, from Slice 37. Slice 38 predicted 1124 and **never reached a count** — the suite
+failed at fixture initialisation, so 1124 remains unobserved arithmetic rather than a number that was wrong.
+
+Predicted here: **1124**, unchanged, because this slice adds and removes no assertions. §16.3 stays at
+**16**.
+
+Per §18: if the run returns anything other than 1124, that difference is the next thing to chase — and it is
+the first honest opportunity to chase it, since Slice 38's own arithmetic has never been tested against a
+run.
+
+## Still open
+
+**`0005` and the last of Stage 2.** `menu_item.menu_section_identifier uuid NOT NULL REFERENCES
+menu_section`, the conditional one-section seed and the backfill, `section_changed` with its payload column
+and a vocabulary CHECK now droppable **by name**, and the three surfaces the `NOT NULL` forces: the section
+create page, the section picker on the item form, and a harness `CreateMenuSectionAsync` the five ordering
+scenarios call before their first `CreateMenuItemAsync`.
+
+**The section headings on the guest menu.** The cards exist; grouping them is an outer loop and needs
+`0005`.
+
+**The section writes are still not behind `IMenuWorkflow`.** Recorded a fourth time. It becomes a defect the
+moment the guest menu groups by section, which is the next slice.
+
+**§16.3 scenario 17.** Create a section, create an item in it with a description, read both back off the
+guest surface. Half of it is now expressible; the section half is not.
+
+**The kitchen's "86" panel still groups by nothing.** Stage 3's remaining surface.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Fourth slice carried. Still a decision rather than a
+repair.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a sixth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Fifteenth consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**No authoring-environment database for a second consecutive slice.** Slice 38 recorded this as a drop in
+evidence quality and asked the next slice to restore the practice. It did not. That is now a two-slice
+pattern rather than a one-off, and it is the reason F-78 was found by a test run on your machine instead of
+by a migration in mine.

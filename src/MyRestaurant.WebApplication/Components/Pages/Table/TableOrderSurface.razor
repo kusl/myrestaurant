@@ -144,21 +144,138 @@
             }
 
             @* ---- staging area (§11.1) ------------------------------------------------------------ *@
+            @* THE MENU IS A LIST OF ITEMS, NOT A <select>. Until M6 Slice 39 this was one dropdown with
+               every item flattened into it and the price glued onto the label — "Soup of the day — $4.50
+               (currently unavailable)" — which is what a menu looks like when the model cannot express
+               one. Three things were wrong with it and only the third is cosmetic. A closed <select>
+               shows exactly one option, so a guest deciding what to eat had to open a modal list, read a
+               line, close it, and open it again to compare; at sixty items that is not a menu, it is a
+               lookup. It had nowhere to put `menu_item.description`, which is the column this whole
+               enhancement exists for and which arrived in `0004`. And an <option> renders text only — no
+               element, no chip, no room for a rating, a review count or a thumbnail — so every future
+               fact about an item would have had to be concatenated into that same label.
+
+               So the item choice is a list of cards, each its own button, and choosing one opens a detail
+               panel below the list. The panel is the answer to "see a lot more information about that
+               item IF SUCH INFORMATION EXISTS": it names what is recorded, and where nothing is recorded
+               it says so in a sentence rather than rendering an empty box. Today that is a description, a
+               price, an availability line and when the item first appeared; ratings, reviews and images
+               are Stages 4 and 5 of docs/MENU_AND_HANDHELD_PLAN.md and each is a new row in the panel
+               rather than a rewrite of this markup, which is the point of building it this way now.
+
+               WHY BUTTONS AND aria-pressed RATHER THAN RADIOS. A radio group is the more precise ARIA
+               for "choose exactly one", and it was rejected for a concrete reason: Blazor reconciles the
+               `checked` ATTRIBUTE and browsers track the checked PROPERTY, so a radio whose state this
+               component owns can drift out of step with the DOM in ways that need a browser to observe.
+               Every other control on this island is an @@onclick, the pressed state here is rendered from
+               `_pickedMenuItemIdentifier` on every pass, and a button carries no DOM state to reconcile.
+               A one-of-many toggle set is a slight stretch of aria-pressed and it is the honest trade
+               against a radio group whose keyboard semantics this component would have to emulate.
+
+               `data-menu-item` carries the identifier because §16.3's scenarios choose an item by the
+               identifier `AdministrationJourneys.CreateMenuItemAsync` handed back, and matching on the
+               visible label would make those scenarios fail for a currency setting (the old <option>
+               carried the identifier as its value; this attribute is that value's replacement). *@
             <div class="order-picker">
-                <div class="form-field">
-                    <label for="order-picker-item">Item</label>
-                    <select id="order-picker-item" @bind="_pickedMenuItemId">
-                        <option value="">Choose something…</option>
+                <h3 class="order-picker-heading" id="order-picker-menu-heading">What would you like?</h3>
+
+                @if (_menu.Count == 0)
+                {
+                    @* This sentence used to stand BELOW the picker. A guest reading an empty menu should
+                       find the explanation where the list would have been, not underneath a quantity
+                       box. *@
+                    <p class="muted order-menu-empty">
+                        There is nothing on the menu yet. Please ask a member of staff.
+                    </p>
+                }
+                else
+                {
+                    <p class="order-picker-lede muted">
+                        Tap an item to see what is in it. Nothing reaches the kitchen until you press Send.
+                    </p>
+
+                    <ul class="order-menu" aria-labelledby="order-picker-menu-heading">
                         @foreach (MenuItemSummary item in _menu)
                         {
-                            @* §7: a deactivated item stays on the menu, marked, and cannot be picked —
-                               "the guest sees that the salmon exists and is out". *@
-                            <option value="@item.MenuItemIdentifier" disabled="@(!item.IsActive)">
-                                @item.Name — @Money(item.PriceAmount)@(item.IsActive ? string.Empty : " (currently unavailable)")
-                            </option>
+                            bool isChosen = _pickedMenuItemIdentifier == item.MenuItemIdentifier;
+
+                            @* §7: a deactivated item stays ON the menu, marked, and cannot be picked —
+                               "the guest sees that the salmon exists and is out, rather than watching it
+                               silently vanish". `disabled` is what enforces that half, and the card keeps
+                               its description, because an item a guest cannot have tonight is still an
+                               item they may want to read about. *@
+                            <li class="order-menu-item @(isChosen ? "is-chosen" : string.Empty) @(item.IsActive ? string.Empty : "is-unavailable")"
+                                @key="item.MenuItemIdentifier">
+                                <button type="button" class="order-menu-choice"
+                                        data-menu-item="@item.MenuItemIdentifier"
+                                        aria-pressed="@(isChosen ? "true" : "false")"
+                                        disabled="@(!item.IsActive)"
+                                        @onclick="() => ChooseItem(item)">
+                                    <span class="order-menu-line">
+                                        <span class="order-menu-name">@item.Name</span>
+                                        <span class="order-menu-price">@Money(item.PriceAmount)</span>
+                                    </span>
+
+                                    @if (item.Description.Length > 0)
+                                    {
+                                        @* Tested by Length rather than for null: the column is
+                                           NOT NULL DEFAULT '' and "" means "none" (§7). *@
+                                        <span class="order-menu-description">@item.Description</span>
+                                    }
+
+                                    @if (!item.IsActive)
+                                    {
+                                        <span class="chip chip-warn">Currently unavailable</span>
+                                    }
+                                    else if (isChosen)
+                                    {
+                                        <span class="chip chip-ok">Chosen</span>
+                                    }
+                                </button>
+                            </li>
                         }
-                    </select>
-                </div>
+                    </ul>
+                }
+
+                @if (PickedMenuItem is { } chosenItem)
+                {
+                    @* One region, announced politely, so a screen reader hears that choosing an item
+                       produced something rather than silently moving focus nowhere. *@
+                    <div class="order-menu-detail" id="order-picker-detail" aria-live="polite">
+                        <h4 class="order-menu-detail-name">@chosenItem.Name</h4>
+
+                        <dl class="order-menu-facts">
+                            <div>
+                                <dt>Price</dt>
+                                <dd>@Money(chosenItem.PriceAmount)</dd>
+                            </div>
+                            <div>
+                                <dt>Available</dt>
+                                <dd>@(chosenItem.IsActive ? "Yes — order away" : "Not right now")</dd>
+                            </div>
+                            <div>
+                                <dt>On the menu since</dt>
+                                <dd>@RestaurantClock.Date(chosenItem.CreatedAt)</dd>
+                            </div>
+                        </dl>
+
+                        @if (chosenItem.Description.Length > 0)
+                        {
+                            <p class="order-menu-detail-description">@chosenItem.Description</p>
+                        }
+                        else
+                        {
+                            @* Said plainly rather than left blank. "Nothing else is recorded" is a true
+                               and useful sentence; an empty panel reads as a surface that failed to
+                               load, which is the same mistake §11.10's data-loaded bit exists to stop
+                               one level up. *@
+                            <p class="muted order-menu-detail-none">
+                                Nothing else has been written down about this one yet. Ask a member of
+                                staff if you would like to know more.
+                            </p>
+                        }
+                    </div>
+                }
 
                 <div class="form-field order-picker-quantity">
                     <label for="order-picker-quantity">Quantity</label>
@@ -182,13 +299,6 @@
                     <p class="status-error" role="alert">@stagingNotice</p>
                 }
             </div>
-
-            @if (_menu.Count == 0)
-            {
-                <p class="muted">
-                    There is nothing on the menu yet. Please ask a member of staff.
-                </p>
-            }
 
             @if (_staging.IsEmpty)
             {
@@ -446,7 +556,13 @@
     private IReadOnlyList<SittingBillEntry> _bill = [];
     private Dictionary<Guid, IReadOnlyList<OrderLineView>> _partyLinesByOrder = new();
 
-    private string _pickedMenuItemId = string.Empty;
+    /// <summary>
+    /// The item the guest has chosen, or <c>null</c> when none is. A <see cref="Guid"/> rather than the
+    /// string a <c>&lt;select&gt;</c> bound to until M6 Slice 39: the card list reports an identifier and
+    /// there is no longer a round trip through text to parse back.
+    /// </summary>
+    private Guid? _pickedMenuItemIdentifier;
+
     private int _pickedQuantity = OrderStaging.MinimumQuantity;
     private string _pickedNote = string.Empty;
 
@@ -479,6 +595,21 @@
     /// a pattern variable's definite assignment surviving Razor's generated control flow.
     /// </summary>
     private Guid Person => _person ?? Guid.Empty;
+
+    /// <summary>
+    /// The chosen item as the menu holds it <em>now</em>, or <c>null</c> when nothing is chosen — or when
+    /// what was chosen has left the menu underneath the guest.
+    ///
+    /// <para>Re-resolved on every read rather than captured when the card was tapped, and that is the
+    /// whole reason it is a property. <c>MenuChanged</c> makes this surface re-read the menu (§9), so a
+    /// reprice or an "86" while the detail panel is open must change what the panel says — a captured
+    /// <see cref="MenuItemSummary"/> would keep showing the price the item had when it was tapped, which
+    /// is the one number §6.5.4 is explicit that this surface must not invent. The <c>null</c> case is
+    /// real rather than defensive: §7's list is what this component holds, and an item absent from it is
+    /// an item this surface cannot describe.</para>
+    /// </summary>
+    private MenuItemSummary? PickedMenuItem
+        => _pickedMenuItemIdentifier is { } identifier ? MenuItem(identifier) : null;
 
     private IReadOnlyList<SittingBillEntry> OtherPeople
         => _bill.Where(entry => entry.PersonIdentifier != _person).ToArray();
@@ -629,12 +760,35 @@
         _menuById = _menu.ToDictionary(item => item.MenuItemIdentifier);
     }
 
+    /// <summary>
+    /// Chooses one item off the menu — the tap the card list exists for. Choosing writes nothing
+    /// anywhere: it selects, and it opens the detail panel.
+    ///
+    /// <para>Tapping the chosen item again <b>un</b>chooses it, which is the behaviour a pressed toggle
+    /// button promises and is why the card is one rather than a link. It deliberately leaves the quantity
+    /// and the note alone: a guest who typed "no onions" and then compared two items has not withdrawn
+    /// the note, and clearing it would be this surface discarding something they typed. Those two are
+    /// reset by <see cref="StageItem"/>, once the line is in the basket and they have been used.</para>
+    ///
+    /// <para>An inactive item never reaches here — its card is <c>disabled</c> (§7) — so this method has
+    /// no availability check of its own. The guard that matters is in the send transaction, which
+    /// re-reads the menu under the lock (§6.5.4, §6.6); everything on this surface refuses early only so
+    /// the answer arrives at the moment of the tap.</para>
+    /// </summary>
+    private void ChooseItem(MenuItemSummary item)
+    {
+        _pickedMenuItemIdentifier =
+            _pickedMenuItemIdentifier == item.MenuItemIdentifier ? null : item.MenuItemIdentifier;
+
+        // A stale refusal beside a fresh choice reads as a refusal OF that choice.
+        _stagingNotice = null;
+    }
+
     private void StageItem()
     {
         _stagingNotice = null;
 
-        if (!Guid.TryParse(_pickedMenuItemId, out Guid menuItemIdentifier)
-            || MenuItem(menuItemIdentifier) is not { } menuItem)
+        if (PickedMenuItem is not { } menuItem)
         {
             _stagingNotice = "Choose something from the menu first.";
             return;
@@ -648,7 +802,7 @@
         }
 
         // A cleared picker is the signal that the tap landed; the basket below is the receipt.
-        _pickedMenuItemId = string.Empty;
+        _pickedMenuItemIdentifier = null;
         _pickedQuantity = OrderStaging.MinimumQuantity;
         _pickedNote = string.Empty;
         _sendStatus = null;

@@ -108,6 +108,59 @@ internal sealed record TableRosterMember(string Name, bool IsYou);
 internal sealed record PartyOrder(string BillName, string TotalText, IReadOnlyList<GuestOrderLine> Lines);
 
 /// <summary>
+/// One item on the guest menu as §11.1 renders its card (§7), which is the shape that replaced a
+/// <c>&lt;select&gt;</c>'s <c>&lt;option&gt;</c> in M6 Slice 39.
+///
+/// <para><b>This record could not have existed before that change, and that is the point of it.</b> An
+/// <c>&lt;option&gt;</c> renders text only — the old picker's label was the name, the formatted price and,
+/// for a deactivated item, the words "(currently unavailable)" concatenated into one string — so the only
+/// thing a harness could read off the menu was that string, and the only thing it could assert was
+/// containment. <c>0004</c> added <c>menu_item.description</c> and there was nowhere on the surface to put
+/// it. A card has an element per fact, so each fact is read as itself.</para>
+///
+/// <para><paramref name="PriceText"/> is text for the reason every money field in this harness is: it is
+/// rendered through <c>MoneyText.Format(amount, CurrencyCode)</c>, and parsing it back into a decimal
+/// would mean reimplementing a currency formatter inside a test to compare against a number the test
+/// already knew.</para>
+///
+/// <para><paramref name="Description"/> is <c>null</c> when the card carries none, rather than empty.
+/// §7 stores <c>''</c> for "none" and the surface renders no element at all in that case, so absence is
+/// what the DOM actually says — and a scenario asserting that a description arrived should not be
+/// satisfiable by an empty string that happened to render.</para>
+///
+/// <para><paramref name="IsAvailable"/> is read from the button's <c>disabled</c> state rather than from
+/// the chip beside it. §7 requires both — the item stays visible, marked, and cannot be ordered — and
+/// <c>disabled</c> is the half that enforces it; the chip is how the surface says so.</para>
+/// </summary>
+internal sealed record MenuCard(
+    string Name,
+    string PriceText,
+    string? Description,
+    bool IsAvailable,
+    bool IsChosen);
+
+/// <summary>
+/// §11.1's detail panel for the item the guest has chosen — the answer to "see more about this item if
+/// such information exists" (M6 Slice 39, Stage 3 of <c>docs/MENU_AND_HANDHELD_PLAN.md</c>).
+///
+/// <para><paramref name="Facts"/> is keyed by the <c>&lt;dt&gt;</c> term the panel prints rather than
+/// indexed by position, on the same reasoning <see cref="GuestTotals"/>'s two figures are found by their
+/// terms: a fact added between two others must not silently shift what a scenario reads. The terms today
+/// are <c>Price</c>, <c>Available</c> and <c>On the menu since</c>; Stages 4 and 5 add rows rather than
+/// change these.</para>
+///
+/// <para><paramref name="Description"/> is <c>null</c> when the panel is showing its "nothing else has
+/// been written down" sentence. That is a state worth distinguishing rather than collapsing to an empty
+/// string, because the sentence is the surface's whole job in that case — an empty panel reads as one
+/// that failed to load, which is the confusion §11.10's <c>data-loaded</c> bit exists to prevent one
+/// level up.</para>
+/// </summary>
+internal sealed record ChosenItemDetail(
+    string Name,
+    string? Description,
+    IReadOnlyDictionary<string, string> Facts);
+
+/// <summary>
 /// What the staging area is holding right now (§11.1): the adds waiting to go, the committed lines
 /// ticked to be taken off in the same batch, and how many of those adds are wearing §7's "this became
 /// unavailable while it was in your basket" mark.
@@ -188,6 +241,15 @@ internal sealed record SendOutcome(
 /// having been accepted before the button was even pressed. The island's wrapper is the boundary
 /// between what the circuit owns and what the HTTP response owns, so every selector below starts at
 /// it.</para>
+///
+/// <para><b>The picker is a list of cards rather than a <c>&lt;select&gt;</c>, as of M6 Slice 39.</b>
+/// <see cref="StageAsync"/> clicks the card carrying the item's identifier where it used to select an
+/// option by value — the same decision for the same reason, since a card's visible text is the name and
+/// the <em>formatted</em> price, and matching on it would break every ordering scenario for a currency
+/// setting. What is new is that the menu can now be <em>read</em>: <see cref="ReadMenuAsync"/> returns a
+/// fact per element rather than one concatenated label, and <see cref="ReadChosenItemDetailAsync"/> reads
+/// the panel that opens when an item is chosen. Neither was expressible against a dropdown, which is why
+/// <c>0004</c>'s description column had no assertion behind it until now.</para>
 ///
 /// <para><b>Why the liveness wait exists.</b> Prerendering draws the whole surface — picker, basket,
 /// totals — and every control on it is an <c>@onclick</c>. On an island that never became interactive
@@ -279,6 +341,16 @@ internal static class TableOrderJourneys
     private const string PickerSelector = "#table-order-surface div.order-picker";
     private const string SendRowSelector = "#table-order-surface .order-send";
 
+    /// <summary>
+    /// One item's card on the menu — the button, not the <c>&lt;li&gt;</c> around it, because the button
+    /// is what carries <c>data-menu-item</c>, <c>aria-pressed</c> and <c>disabled</c>, which is to say
+    /// every fact about the item that is a contract rather than a paint job (M6 Slice 39).
+    /// </summary>
+    private const string MenuCardSelector = "#table-order-surface ul.order-menu button.order-menu-choice";
+
+    /// <summary>§11.1's detail panel, present only while an item is chosen.</summary>
+    private const string MenuDetailSelector = "#table-order-surface div.order-menu-detail";
+
     /// <summary>§11.1's per-line "take this off my order" tick, offered only on an open sitting.</summary>
     private const string RemovalCheckboxSelector = "#table-order-surface label.order-line-remove";
 
@@ -346,10 +418,20 @@ internal static class TableOrderJourneys
     /// <summary>
     /// Stages one item into the basket (§11.1) and returns once the basket has grown by one.
     ///
-    /// <para>The item is chosen by <em>value</em> rather than by label. The picker's label is the name,
-    /// the formatted price, and — for a deactivated item — §7's "(currently unavailable)"; matching on
-    /// it would make this fail for a currency setting. The value is the bare identifier, which is what
-    /// <see cref="AdministrationJourneys.CreateMenuItemAsync"/> hands back.</para>
+    /// <para>The item is chosen by <em>identifier</em> rather than by label, and that survived M6 Slice
+    /// 39's rewrite of the picker unchanged in intent. §11.1 was one <c>&lt;select&gt;</c> whose
+    /// <c>&lt;option&gt;</c> carried the identifier as its value; it is now a list of cards, each a button
+    /// carrying the identifier in <c>data-menu-item</c>. Both are the same decision for the same reason: a
+    /// card's visible text is the name, the <em>formatted</em> price and — for a deactivated item — §7's
+    /// availability chip, so matching on it would make every ordering scenario fail for a currency
+    /// setting. The identifier is what <see cref="AdministrationJourneys.CreateMenuItemAsync"/> hands
+    /// back.</para>
+    ///
+    /// <para><b>Why the card is clicked before the quantity is filled.</b> Choosing re-renders the picker
+    /// — the chosen card gains a chip and a detail panel opens below the list — and a fill that landed
+    /// mid-render would be typing into an element the diff was about to touch. Choosing first means every
+    /// later fill happens on a settled picker. <c>ChooseItem</c> deliberately does not reset the quantity
+    /// or the note, so the order costs nothing.</para>
     ///
     /// <para>Nothing reaches the kitchen here. §11.1 is explicit that the basket is local until Send,
     /// and the surface says so in as many words; <see cref="SendAsync"/> is the part that writes.</para>
@@ -365,9 +447,7 @@ internal static class TableOrderJourneys
 
         int before = await page.Locator(BasketLineSelector).CountAsync();
 
-        await page.SelectOptionAsync(
-            "#order-picker-item",
-            new SelectOptionValue { Value = item.Identifier.ToString("D", CultureInfo.InvariantCulture) });
+        await ChooseAsync(page, item);
 
         await page.FillAsync(
             "#order-picker-quantity",
@@ -405,6 +485,214 @@ internal static class TableOrderJourneys
                 CultureInfo.InvariantCulture,
                 $"Staging {quantity} × '{item.Name}' did not put a line in the basket:"
                 + $" it holds {after} line(s) rather than {before + 1}. {refusal}"));
+    }
+
+    /// <summary>
+    /// Taps one item's card on §11.1's menu and returns once the surface reports it chosen.
+    ///
+    /// <para>Separate from <see cref="StageAsync"/> because choosing and staging became two acts in M6
+    /// Slice 39 and only one of them touches the basket: a guest may tap an item to read what is in it and
+    /// never add it, which is the behaviour the detail panel exists for and which
+    /// <see cref="ReadChosenItemDetailAsync"/> is how a scenario reads.</para>
+    ///
+    /// <para>Confirmation is <c>aria-pressed</c> going true rather than a class going on, for the reason
+    /// every badge in this file is read from its class instead: whichever of the two is the
+    /// <em>contract</em> is the one to assert. Here the attribute is — a card's pressed state is what
+    /// tells anything reading the document which item is chosen, and <c>.is-chosen</c> is how it is
+    /// painted.</para>
+    ///
+    /// <para><b>A disabled card is a diagnosis rather than a timeout.</b> §7 renders a deactivated item
+    /// <em>on</em> the menu and unorderable, so its button carries <c>disabled</c> — and Playwright waits
+    /// out its full actionability timeout on one before reporting that the element never became enabled,
+    /// which names the click and not the reason. Asked directly, it becomes one sentence at the moment the
+    /// scenario reached for it.</para>
+    /// </summary>
+    internal static async Task ChooseAsync(IPage page, MenuItemOnTheMenu item)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(item);
+
+        string identifier = item.Identifier.ToString("D", CultureInfo.InvariantCulture);
+        string card = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{SurfaceSelector} button.order-menu-choice[data-menu-item='{identifier}']");
+
+        ILocator choice = page.Locator(card).First;
+
+        if (await choice.CountAsync() == 0)
+        {
+            // Read before composing: an await inside an interpolation hole is CS4007.
+            string menu = Describe(await ReadMenuAsync(page));
+
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"'{item.Name}' is not on the menu this surface is showing. What is: {menu}."
+                    + $" §7 keeps a deactivated item ON the menu, so an absent card means the item was"
+                    + $" never created, or that this circuit has not re-read since it was (§9's"
+                    + $" MenuChanged)."));
+        }
+
+        if (await choice.IsDisabledAsync())
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"'{item.Name}' is on the menu and marked unavailable, so its card is disabled and"
+                    + $" cannot be chosen (§7). Something deactivated it — the kitchen's 86 panel"
+                    + $" (§11.2) is the surface that does — and a scenario that wants this item orderable"
+                    + $" has to put it back first."));
+        }
+
+        await choice.ClickAsync();
+
+        if (await WaitForAttributeAsync(page, card, "aria-pressed", "true", TimeSpan.FromSeconds(15)))
+        {
+            return;
+        }
+
+        string showing = Describe(await ReadMenuAsync(page));
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Tapping '{item.Name}' did not choose it: the card never reported"
+                + $" aria-pressed='true'. The menu shows: {showing}. A card that does not answer a tap is"
+                + $" the @onclick landing on no circuit, which WaitForLiveSurfaceAsync is supposed to have"
+                + $" ruled out before this."));
+    }
+
+    /// <summary>
+    /// The menu as §11.1 renders it — every card, in the order the surface lists them, which is
+    /// <c>(display_order, name, menu_item_identifier)</c> (§7).
+    ///
+    /// <para>This is the read the old <c>&lt;select&gt;</c> could not offer. A closed dropdown shows one
+    /// option and an <c>&lt;option&gt;</c> renders text only, so the description column <c>0004</c> added
+    /// had nowhere to go and nothing could assert that it had arrived; a card has an element per
+    /// fact.</para>
+    /// </summary>
+    internal static async Task<IReadOnlyList<MenuCard>> ReadMenuAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator cards = page.Locator(MenuCardSelector);
+        int count = await cards.CountAsync();
+
+        List<MenuCard> menu = new(count);
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator card = cards.Nth(index);
+
+            string name = (await card.Locator("span.order-menu-name").First.InnerTextAsync()).Trim();
+            string price = (await card.Locator("span.order-menu-price").First.InnerTextAsync()).Trim();
+
+            ILocator description = card.Locator("span.order-menu-description");
+            string? descriptionText = await description.CountAsync() == 0
+                ? null
+                : (await description.First.InnerTextAsync()).Trim();
+
+            // Availability is read from `disabled` rather than from the chip beside it, because
+            // `disabled` is what §7 requires — the chip is how the surface SAYS so, and the attribute is
+            // what stops the item being ordered. The same reasoning ReadBadgeAsync applies in reverse:
+            // whichever of the two is the contract is the one to read.
+            bool isAvailable = !await card.IsDisabledAsync();
+
+            bool isChosen = string.Equals(
+                await card.GetAttributeAsync("aria-pressed"),
+                "true",
+                StringComparison.Ordinal);
+
+            menu.Add(new MenuCard(name, price, descriptionText, isAvailable, isChosen));
+        }
+
+        return menu;
+    }
+
+    /// <summary>
+    /// What §11.1's detail panel says about the item currently chosen, or <c>null</c> when nothing is
+    /// chosen and the panel is therefore absent.
+    ///
+    /// <para><see cref="ChosenItemDetail.Description"/> is <c>null</c> when the panel is showing its
+    /// "nothing else has been written down" sentence, which is a state worth distinguishing from an empty
+    /// string: §7 stores <c>''</c> for "none", and the surface's whole job in that case is to say so
+    /// rather than render an empty box.</para>
+    /// </summary>
+    internal static async Task<ChosenItemDetail?> ReadChosenItemDetailAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator panel = page.Locator(MenuDetailSelector);
+
+        if (await panel.CountAsync() == 0)
+        {
+            return null;
+        }
+
+        ILocator first = panel.First;
+
+        string name = (await first.Locator("h4.order-menu-detail-name").First.InnerTextAsync()).Trim();
+
+        ILocator description = first.Locator("p.order-menu-detail-description");
+        string? descriptionText = await description.CountAsync() == 0
+            ? null
+            : (await description.First.InnerTextAsync()).Trim();
+
+        Dictionary<string, string> facts = new(StringComparer.Ordinal);
+        ILocator groups = first.Locator("dl.order-menu-facts > div");
+        int count = await groups.CountAsync();
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator group = groups.Nth(index);
+
+            string term = (await group.Locator("dt").First.InnerTextAsync()).Trim();
+            string value = (await group.Locator("dd").First.InnerTextAsync()).Trim();
+
+            facts[term] = value;
+        }
+
+        return new ChosenItemDetail(name, descriptionText, facts);
+    }
+
+    /// <summary>
+    /// Waits until the menu satisfies <paramref name="expectation"/>, and returns the reading that did.
+    ///
+    /// <para>The same shape as <see cref="WaitForRosterAsync"/> and for the same reason: the menu changes
+    /// because of a §9 broadcast started somewhere else — an administrator repricing an item, the kitchen
+    /// eighty-sixing one — so there is no click on this page to await, and a scenario that read it once
+    /// would be sampling a race it cannot see.</para>
+    /// </summary>
+    internal static async Task<IReadOnlyList<MenuCard>> WaitForMenuAsync(
+        IPage page,
+        Func<IReadOnlyList<MenuCard>, bool> expectation,
+        TimeSpan timeout,
+        string whatIsExpected,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(expectation);
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        IReadOnlyList<MenuCard> observed = [];
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            observed = await ReadMenuAsync(page);
+
+            if (expectation(observed))
+            {
+                return observed;
+            }
+
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The menu never showed {whatIsExpected} within {timeout.TotalSeconds:F0}s."
+                + $" What it shows: {Describe(observed)}."));
     }
 
     /// <summary>
@@ -1175,6 +1463,28 @@ internal static class TableOrderJourneys
                     $"'{line.Name}' [{line.Badge}]")));
     }
 
+    /// <summary>
+    /// A short, quotable rendering of the menu, for a failure message. Availability is named because a
+    /// disabled card is the single most likely reason a scenario could not stage what it asked for, and the
+    /// description is named as present-or-absent rather than quoted whole, because a menu of six items with
+    /// a sentence each is a paragraph nobody reads at the bottom of an assertion failure.
+    /// </summary>
+    internal static string Describe(IReadOnlyList<MenuCard> menu)
+    {
+        ArgumentNullException.ThrowIfNull(menu);
+
+        return menu.Count == 0
+            ? "nothing at all"
+            : string.Join(
+                "; ",
+                menu.Select(card => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"'{card.Name}' at {card.PriceText}"
+                    + $"{(card.IsAvailable ? string.Empty : " (unavailable)")}"
+                    + $"{(card.IsChosen ? " (chosen)" : string.Empty)}"
+                    + $"{(card.Description is null ? " with no description" : " described")}")));
+    }
+
     /// <summary>A short, quotable rendering of the roster, for a failure message.</summary>
     internal static string DescribeRoster(IReadOnlyList<TableRosterMember> roster)
     {
@@ -1404,6 +1714,42 @@ internal static class TableOrderJourneys
         while (DateTimeOffset.UtcNow < deadline)
         {
             if (await page.Locator(selector).CountAsync() == expected)
+            {
+                return true;
+            }
+
+            await Task.Delay(PollInterval);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Polls until the first element matching <paramref name="selector"/> carries
+    /// <paramref name="attribute"/> with exactly <paramref name="expected"/>, and reports whether it did.
+    ///
+    /// <para>The sibling of <see cref="WaitForCountAsync"/>, and it exists for the same reason: what the
+    /// caller waits for is a re-render this harness did not cause a navigation with, so the honest thing is
+    /// to re-read. It returns a <see cref="bool"/> rather than throwing, because every caller has something
+    /// more useful to say about the failure than this method could.</para>
+    /// </summary>
+    private static async Task<bool> WaitForAttributeAsync(
+        IPage page,
+        string selector,
+        string attribute,
+        string expected,
+        TimeSpan timeout)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        ILocator element = page.Locator(selector).First;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await element.CountAsync() > 0
+                && string.Equals(
+                    await element.GetAttributeAsync(attribute),
+                    expected,
+                    StringComparison.Ordinal))
             {
                 return true;
             }

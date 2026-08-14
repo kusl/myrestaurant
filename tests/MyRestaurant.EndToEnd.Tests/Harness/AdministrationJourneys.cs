@@ -17,8 +17,14 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 /// unreachable from every surface — which is the property under test rather than an obstacle to it.</para>
 /// </summary>
 /// <summary>
-/// Something an administrator put on the menu (§7): the identifier the picker's <c>&lt;option&gt;</c>
-/// carries, and the name every surface — the guest's basket, the kitchen ticket, the bill — reads.
+/// Something an administrator put on the menu (§7): the identifier the guest picker's card carries in
+/// <c>data-menu-item</c>, and the name every surface — the guest's basket, the kitchen ticket, the bill —
+/// reads.
+///
+/// <para>The description is deliberately <b>not</b> a member. What was typed into the form is the
+/// arrangement; what the guest surface shows is the assertion, and <c>MenuCard</c> is where a scenario
+/// reads it. Carrying it here would invite a scenario to compare the surface against this record instead
+/// of against the sentence it passed in, which is a test comparing a value to itself.</para>
 /// </summary>
 internal sealed record MenuItemOnTheMenu(Guid Identifier, string Name, decimal PriceAmount);
 
@@ -250,19 +256,38 @@ internal static class AdministrationJourneys
     /// <see cref="CreateTableAsync"/> recovers a table's, because the identifier is minted server-side
     /// and a scenario that recovered it any other way would be reimplementing the surface.
     ///
-    /// <para>The identifier is the part that matters downstream. The guest's picker renders one
-    /// <c>&lt;option&gt;</c> per item whose <em>label</em> is the name, the price and possibly the words
-    /// "currently unavailable" — so a scenario choosing by label would be matching on money formatting
-    /// and §7's availability copy. The <c>value</c> is the bare identifier, and that is what
-    /// <see cref="TableOrderJourneys"/> selects on.</para>
+    /// <para>The identifier is the part that matters downstream. The guest's picker renders one card per
+    /// item whose visible text is the name, the <em>formatted</em> price and, for a deactivated item, §7's
+    /// availability chip — so a scenario choosing by what it can read would be matching on money formatting
+    /// and on availability copy. The card carries the bare identifier in <c>data-menu-item</c>, and that is
+    /// what <see cref="TableOrderJourneys.ChooseAsync"/> clicks. Until M6 Slice 39 the picker was a
+    /// <c>&lt;select&gt;</c> and the identifier was an <c>&lt;option&gt;</c>'s <c>value</c>; the shape
+    /// changed and this reasoning did not.</para>
+    ///
+    /// <para><b>The description is optional here because it is optional in §7</b>, and passing it is how a
+    /// scenario arranges an item that has something for the guest surface to show. A blank one stores
+    /// <c>""</c> and writes no <c>description_changed</c> event at all, which is the no-op rule rather than
+    /// a special case — so "created without a description" is a real arrangement and not merely the absence
+    /// of one.</para>
     /// </summary>
-    internal static async Task<MenuItemOnTheMenu> CreateMenuItemAsync(IPage page, string name, decimal priceAmount)
+    internal static async Task<MenuItemOnTheMenu> CreateMenuItemAsync(
+        IPage page,
+        string name,
+        decimal priceAmount,
+        string? description = null)
     {
         ArgumentNullException.ThrowIfNull(page);
 
         await page.GotoAsync($"{MenuPath}/new");
 
         await page.FillAsync("#name", name);
+
+        // Filled unconditionally, including with the empty string, for the reason TableOrderJourneys fills
+        // the customization note that way: a form reached twice in one scenario keeps what was typed the
+        // first time, so skipping the fill would silently attach the previous item's description to this
+        // one.
+        await page.FillAsync("#description", description ?? string.Empty);
+
         await page.FillAsync("#price", priceAmount.ToString("0.00", CultureInfo.InvariantCulture));
         await page.ClickAsync("button:has-text('Create item')");
 

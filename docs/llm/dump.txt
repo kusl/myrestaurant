@@ -7,7 +7,7 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-14T06:22:42-04:00
+  Generated at   : 2026-08-14T07:17:41-04:00
   Generator      : export.sh
   Host           : fedora
   User           : kushal
@@ -17,10 +17,10 @@ REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : e193949da53ccc11b8df6ff133362919aca1fdea
-  Commit (short) : e193949
-  Commit date    : 2026-08-14 06:21:03 -0400
-  Commit message : run tests
+  Commit (full)  : 430e26f9d80e4e212ad1b411191a6f0f39d194f0
+  Commit (short) : 430e26f
+  Commit date    : 2026-08-14 07:16:58 -0400
+  Commit message : add claude changes
   Remote origin  : git@github.com:kusl/myrestaurant.git
   Files included : 341
   Excluded path  : docs/llm/
@@ -28,7 +28,20 @@ REPOSITORY METADATA
 
 GIT WORKING TREE STATUS (first 20 lines)
 ═════════════════════════════════════════════════════════════════════════════════
+ M _CHANGES.md
+ M docs/BUILD_PROGRESS.md
+ M docs/DOCUMENTATION_REVIEW.md
+ M docs/MENU_AND_HANDHELD_PLAN.md
+ M docs/TECHNICAL_SPECIFICATION.md
  M docs/llm/vendor/claude-output.txt
+ M src/MyRestaurant.DataAccess/Migrations/0004_menu_item_descriptions.sql
+ M src/MyRestaurant.DataAccess/SchemaMigrationRunner.cs
+ M src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
+ M src/MyRestaurant.WebApplication/wwwroot/app.css
+ M tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs
+ M tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs
+ M tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs
+?? docs/llm/vendor/m6-slice-39-migration-fix-and-guest-menu.tar.gz
 
 ################################################################################
 # FILE: export.sh  [THIS SCRIPT — included for full context]
@@ -4002,328 +4015,127 @@ This document describes how a report gets handled, not what anyone is entitled t
   File name:             _CHANGES.md
   Relative path:         _CHANGES.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/_CHANGES.md
-  Size:                  21.6 KiB (22104 bytes)
-  Last modified:         2026-08-13 22:13:59.000000000 -0400
+  Size:                  6.4 KiB (6590 bytes)
+  Last modified:         2026-08-14 07:09:16.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 39620676
+  Inode:                 40210155
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               6907d0f4850e27dbeeb2865cbdf723e082b3f5a66139b800fc459e9d977d5398
+  SHA-256:               e68fc2e1a026db27ad6feec7133257745d6d3739693aa689f7f6fa411ac63840
   Last git commit:       bd533c3 2026-08-14 05:08:35 -0400 add claude changes
 
 --- CONTENT ---
-# M6 Slice 38 — item descriptions and item positions (Stage 2, item half minus the heading), and a count written in three places (F-77)
+# M6 Slice 39 — the migration that could not run (F-78), and the dropdown that was the request
 
 Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-38-item-descriptions-and-positions.tar.gz
+tar -xzf m6-slice-39-migration-fix-and-guest-menu.tar.gz
 git status
 ```
 
 **Files to DELETE: none.**
 
-**One `git add` is required**, and the gates will not see the file without it — `scripts/check_tree.sh`
-walks `git ls-files`, so an untracked file is invisible to tree hygiene:
+**No `git add` is required.** Every file in this archive already exists and is tracked, so
+`scripts/check_tree.sh` — which walks `git ls-files` — sees all ten without any staging.
 
-```
-git add src/MyRestaurant.DataAccess/Migrations/0004_menu_item_descriptions.sql
-```
-
-**No new directory.** `Migrations/` exists, and `MyRestaurant.DataAccess.csproj` already globs
-`Migrations/*.sql` as an `EmbeddedResource`, so the migration needs no project edit. Every other file in this
-archive already exists and is tracked.
+**No new directory, no new package, no schema change.** `0004`'s text moves; its effect does not.
 
 ---
 
-## Read this first: Slice 37 was green, exactly as predicted
+## Read this first
+
+Slice 38 was **red**, and the count it predicted was never reached. A migration is the first thing every
+data-access fixture applies and the first thing the end-to-end harness applies, so one unparseable script
+took the integration suite and all sixteen §16.3 scenarios down together:
 
 ```
-Test summary: total: 1107, failed: 0, succeeded: 1107, skipped: 0
-§16.3 end to end: 16 of 16
-all local CI gates passed
+System.InvalidOperationException : Variable migrate_menu_item_event_checks has no value defined
+   at MyRestaurant.DataAccess.SchemaMigrationRunner.Run() … line 61
+MyRestaurant.DataAccess.SchemaMigrationException : Database migration failed on script
+   'MyRestaurant.DataAccess.Migrations.0004_menu_item_descriptions.sql'.
 ```
 
-**1107 predicted, 1107 observed**, so per §18 there was no difference to chase. All three of Slice 37's
-findings are settled by that run rather than by assertion:
+**F-78.** `0004`'s constraint sweep is a dollar-quoted `DO` block tagged
+`$migrate_menu_item_event_checks$`. dbup-**core** runs `VariableSubstitutionPreprocessor` *before* the
+PostgreSQL splitter, and it reads `$name$` as a variable reference — the same four characters around the
+same kind of identifier PostgreSQL spells a dollar-quoted body with. The comment Slice 38 wrote above that
+block, asserting it was safe because `dbup-postgresql`'s splitter consumes tagged blocks, is **true and
+about the wrong component**: the splitter was never reached. That is F-62's shape at a dependency boundary.
 
-- **F-74 is cleared.** Gate 7 prints `has no vulnerable packages` for all seven projects. The claim was that
-  a pin at `SSH.NET` 2026.0.0 clears NU1903, the evidence at authoring time was the advisory's own
-  `first_patched_version`, and the restore is what settled it.
-- **F-75 is cleared.** The audit exists locally and ran, as gate 7 of eight.
-- **F-76 is cleared.** Gate 3 prints `LF endings and exactly one final newline` — the strengthened wording —
-  and passes over 341 authored files.
+**The fix is one builder call:** `SchemaMigrationRunner` adds `.WithVariablesDisabled()`, read from
+dbup-core's public API at tag `6.1.1` rather than recalled. Nothing in this tree has ever used a DbUp
+variable.
 
-One thing that run printed is **not** repaired here and is carried deliberately: `run.sh --containers-only`
-emits two `Error: no container with name or ID "myrestaurant_caddy_1" found` lines from `podman-compose` and
-then starts the stack successfully. It is noise from the engine's own teardown-before-up, and the only local
-lever is suppressing stderr on `up`, which would hide real errors. Still a judgement rather than a slice.
+**`0004` keeps its TAGGED body rather than becoming `$$`, and that is the ruling.** An empty tag would also
+survive substitution, so writing both fixes would leave the tree green with the rule deleted — F-64, F-69
+and F-75's mechanism arriving as a second belt that hides the first. A tagged body makes the builder call
+load-bearing: remove it and `SchemaMigrationRunnerTests` fails immediately. **So the row names something
+executable by adding nothing** (F-47).
 
-## The ruling of this slice: the boundary moved a second time
+**`0004` is edited in place**, which F-34 forbids for an applied script — allowed here for the one reason
+that makes the rule inapplicable: it had never applied anywhere, DbUp journals only on success, so there is
+no journal row to be stale.
 
-Slice 37's *Still open* scoped `0004` as the whole item half — three columns `NOT NULL` from birth, the
-conditional seed, the backfill, three event types, **and** three surfaces pulled forward plus a harness
-`CreateMenuSectionAsync`. Counted against the real tree that is twenty-five-odd files, none of them compiled
-in the authoring environment, with `menu_item.menu_section_identifier NOT NULL` breaking the create-item form
-that six of the sixteen §16.3 scenarios drive.
+**If `.WithVariablesDisabled()` does not resolve** against the pinned `dbup-postgresql` 7.0.1 (unlikely — it
+has been public API for years), the one-line alternative is to change both `$migrate_menu_item_event_checks$`
+to `$$` and drop the builder call. Recorded rather than shipped, for the reason above.
 
-**This slice cuts between the item's own columns instead**, which is Slice 37's own test applied one register
-lower. `0004` adds `description` and `display_order` — both `NOT NULL` with a `DEFAULT` — plus the two event
-types that move them. It does not add the section reference. The properties that follow are the argument:
+---
 
-- **No backfill runs and no existing row is rewritten.** PostgreSQL 11 and later store a non-volatile
-  `ADD COLUMN … DEFAULT` in the catalogue rather than the heap.
-- **No form is required to supply anything**, so `AdministrationJourneys.CreateMenuItemAsync` fills `#name`
-  and `#price` and clicks, exactly as it did. The new textarea is left empty, stores `''`, and writes no
-  event.
-- **The new ordering is the old ordering.** `display_order` defaults to 0 and nothing assigns anything else,
-  so `ORDER BY (display_order, name, menu_item_identifier)` **is** the `ORDER BY (name, menu_item_identifier)`
-  this table has always been read in. The tie-break is doing all of the work. That is why
-  `MenuDirectoryTests.List_ReturnsDeactivatedItemsToo_OrderedByName` still asserts the alphabet and still
-  passes unedited.
+## The picker is no longer a dropdown
 
-So the suite stays green **by construction** rather than by inspection, and the expensive coupling — a
-`NOT NULL` reference against three surfaces and a harness — is paid on its own in `0005`. The cost is one
-more migration script. DbUp journals by name, so that is not a cost.
+> the menu choice should no longer be a dropdown … you should be able to select each menu item and see a lot
+> more information about that item if such information exists
 
-## Four decisions inside the migration that are rulings rather than implementation
+A closed `<select>` shows exactly one option, so comparing two items means opening a modal list twice; and an
+`<option>` renders text and nothing else, so `menu_item.description` — the column `0004` exists to deliver —
+had nowhere to go. It is now **a card per item** (name, price, description, an availability chip, a
+`disabled` control where §7 says so) and **choosing a card opens a detail panel** naming what is recorded.
 
-**An item is created at position 0, not appended.** `DapperMenuSectionAdministration` reads
-`COALESCE(MAX(display_order), -1) + 1` and appends, because a section's position is menu-wide and always was.
-An item's is not: §7 puts it *within its section*, and "the end of the menu" is not a defined place until
-`0005` gives the item a heading. Appending a menu-wide number now would hand out positions `0005` would have
-to undo — and it would break the invisibility property above, which is the whole reason this slice ships
-green. The two services therefore disagree, on purpose, and both say why in the file.
+**Where nothing is recorded the panel says so in a sentence**, because a blank panel is indistinguishable
+from a surface that failed to load. The facts are a `<dl>` of terms, so ratings and images add rows rather
+than rewriting markup.
 
-**`created` keeps carrying the name and the price only, so an item created with a description writes two
-events.** Widening it to carry a description is the obvious alternative. It is refused for a concrete reason:
-a description is optional, so the biconditional binding the payload to the type would have to be relaxed to
-an implication, and every `created` row already in a database was written without one. The log reads
-*"Created as “Soup” at 4.50 / Description set"* — two lines where one would do, and honest about it. A
-**blank** description at creation time writes no second event at all, on the no-op rule the other verbs
-already honour: an append-only log of "somebody left a field empty" is noise.
+**Stage 3 ran before `0005`, which is a decision to veto if you disagree.** The plan put the guest menu after
+sections; the two halves turned out to be separable — a card per item needs the description column and
+nothing else, and grouping cards under headings is an outer loop added later. **To revert:**
+`TableOrderSurface.razor` and the `.order-menu*` block in `app.css` go back, and `StageAsync` returns to
+`SelectOptionAsync`. The F-78 fix is independent of it.
 
-**The vocabulary is spelled `description_changed` and `reordered`, and `menu_section_event` spells the same
-two verbs `described` and `reordered`.** The asymmetry is a decision. Each table's vocabulary is internally
-consistent — this one has said `name_changed` and `price_changed` since `0001` — and harmonising them would
-mean rewriting a vocabulary already in applied history and in rows in somebody's database, to buy nothing a
-reader of either table needs.
+**F-79.** §7 carried one paragraph twice, consecutively, from Slice 38. Deleted. No gate is added: the three
+gates over that document read table shape, header-versus-changelog and §16.4's counts, and none reads a
+sentence — and a no-verbatim-repeats gate would fail on a tree that restates rulings across documents on
+purpose (F-41).
 
-**Every CHECK on `menu_item_event` is dropped by querying for it, not by name.** `0001` declared four inline,
-so PostgreSQL generated `menu_item_event_event_type_check`, `menu_item_event_new_price_amount_check`,
-`menu_item_event_check` and `menu_item_event_check1`. Those are deterministic and undocumented, and depending
-on them in a script that runs at startup on somebody else's box is depending on an implementation detail of a
-PostgreSQL version nobody here chose. `0004` loops `pg_constraint` in a dollar-quoted `DO` block and adds five
-**named** constraints back, so `0005` can widen the vocabulary by name on a tree that knows the name.
-`contype = 'c'` cannot catch a NOT NULL in either 17 (an attribute) or 18 (`contype = 'n'`).
+---
 
-## What descriptions actually do, today
+## The ten files
 
-This is not schema-only. A description is authored, stored, logged, read back and displayed **this slice**:
-
-- `/administration/menu/new` gains an optional textarea. `.form-field textarea` has been styled in `app.css`
-  since Slice 30 for exactly this field, so the block declares nothing — and `.muted` is the shared soft-ink
-  class rather than a new one. The success panel echoes the stored description when there was one, from the
-  result rather than a second read, because the write service returns what it actually stored (trimmed).
-- `/administration/menu/{id}` gains a **Description** form and a **Position** form, bringing that page to
-  four verbs. The description form uses a `.form-field` block rather than `.manage-inline-form`, deliberately:
-  that class styles `input` and `select` and has never styled a `textarea`, so a three-line box inside it
-  would be an unstyled control on the one page that has one. The facts grid gains Position, and the item's
-  description renders under it — or a `.muted` line saying guests see the name and the price only.
-- `/administration/menu` renders the description as a `.record-secondary` **under the item's name** rather
-  than in a column of its own, because a sentence in a table cell at 375px is the shape F-59 was about. The
-  *Created* column is replaced by *Position*; created-at moves to the item's own page, where the history it
-  belongs to already lives. The count line reports how many items are described.
-- Both `Describe` methods learn the two new types. The item page quotes the description; the index feed says
-  only that one changed, because the feed is a glance and the sentence belongs where the uncapped history is.
-  Both distinguish **cleared** from **set**, because `''` is a stored value and *"Description set to
-  nothing"* is not what a reader wants.
-
-**What guests do not get yet, and why that is correct.** The picker is a `<select>`. A description inside an
-`<option>` label is the problem Stage 3's card layout exists to solve, not a smaller version of the solution
-— so the guest-facing half waits, and Stage 3's scenario 17 is where it gets an end-to-end assertion.
-`MenuWorkflow` still publishes `MenuChanged` on a description that moved, and that is deliberate rather than
-premature: the notification means *re-read the menu* and nothing else, and a workflow that decided which
-columns were worth announcing would have to be edited again the moment a surface starts reading one.
-
-## F-77 — a count of the event vocabulary, written in three files, checkable in none
-
-`MenuEventLog`'s type summary, `AdministrationMenu.razor`'s `Describe` and `ManageMenuItem.razor`'s all said
-*"a friendly label for the five event types §8.2's CHECK admits"*. Five was right when `0001` shipped. This
-slice makes it seven; `0005` makes it eight.
-
-**And one of the three was already wrong about a document in the same repository.**
-`AdministrationMenu.razor` went on to name *"Stage 2's two new types (`description_changed`,
-`section_changed`)"*, where `MENU_AND_HANDHELD_PLAN.md` Stage 2 specifies **three** — omitting `reordered`,
-which is a type this very slice implements.
-
-The effect is nil: the `switch` fallback renders an unlabelled type as itself, which is the design and is what
-made the drift survivable. The kind is not nil. It is **F-47's habit** — where a rule can be executed, a list
-must not exist — applied to a census no test can read, and it is the **sixth** time this ledger has recorded
-one fact written in two places disagreeing with itself (F-48, F-50, F-56, F-65, F-73, this).
-
-**The counts are deleted rather than corrected, and that is the ruling.** A corrected count goes stale again
-in `0005`; three slices of evidence say the sentence cannot be maintained by hand. Each comment now states
-the *property* — a friendly label per admitted type, falling back to the stored string — which is true at
-every vocabulary size, leaving the `switch` arms as the only census.
-
-**No gate is added, deliberately.** A test counting `case` arms against a CHECK constraint in a `.sql` file
-would be a monument to a sentence, and the compiler already refuses a duplicate arm. **The apparent
-contradiction with F-73 is recorded rather than left to be noticed**: F-73's count was *kept* because it is
-the argument for a floor a test asserts and nothing derives it, so deleting it would have removed the
-argument. This one decorates a `switch` that is its own answer. §16.4 states the residual — nothing
-mechanically stops the next such sentence.
-
-## The migration gate needed a new shape of fact, and that is the interesting half
-
-`0004` is **the first migration in this tree that creates no relation.** It is entirely `ALTER`. So every
-assertion `SchemaMigrationRunnerTests` already held passes unchanged on a tree where `0004` never ran: the
-census of relations that catches `0003` is structurally blind to it.
-
-Two facts close that. Four theory rows name the columns that arrived by `ALTER` — and only those, because
-`0001`'s columns are proven by their relation existing and a census of all of them would be a second copy of
-the DDL (F-47). One fact names the five CHECK constraints, and asserts the two generated names **absent**.
-
-That second fact is load-bearing for a reason worth stating: a `dbup-postgresql` splitter that broke the
-dollar-quoted `DO` block would leave a `DO` with a **truncated body**, which is still valid SQL that simply
-does less. The failure would present as a green migration against a table with no constraints — a state no
-relation check and no column check can see. This is the first statement in this repository to depend on that
-splitter's `DollarQuoted` handling, which is why it gets an assertion rather than a comment.
-
-## What is in this slice
-
-| Area | Change |
+| File | Change |
 |---|---|
-| Migration | `0004_menu_item_descriptions.sql` — **new**, two columns, two payload columns, five named CHECKs replacing four generated ones |
-| Data access | `MenuDirectory.cs` (`Description`, `DisplayOrder`, position-first ordering), `MenuAdministration.cs` (create takes a description; `DescribeMenuItemAsync`, `ReorderMenuItemAsync`), `MenuEventLog.cs` (two payload columns) |
-| Web layer | `MenuWorkflow.cs` — two verbs, publishing only on a real change |
-| Surfaces | `CreateMenuItem.razor` (textarea), `ManageMenuItem.razor` (Description and Position forms, seven flash outcomes), `AdministrationMenu.razor` (description as subtitle, Position replaces Created) |
-| Tests | `MenuAdministrationTests` +8, `MenuDirectoryTests` +2, `MenuWiringTests` +2, `SchemaMigrationRunnerTests` +2 attributes (one a four-row theory); `OrderStagingTests` and `OrderTestWorld` updated for the new shape |
-| Gate arithmetic | `TestingSectionContractTests`' floor and summary move from ten to sixteen with §16.4's census — F-73's habit, second application |
-| Documents | S v1.23 (§7, §8.1, §8.2, §16.4, Appendix A, changelog), ledger F-77, ADR-0014 history, plan's Stage 2 boundary |
+| `src/MyRestaurant.DataAccess/SchemaMigrationRunner.cs` | `.WithVariablesDisabled()`, documented at the call site |
+| `src/MyRestaurant.DataAccess/Migrations/0004_menu_item_descriptions.sql` | safety claim corrected to name both components; tag kept; in-place edit justified |
+| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor` | card list, detail panel, `ChooseItem`, `PickedMenuItem` |
+| `src/MyRestaurant.WebApplication/wwwroot/app.css` | `.order-menu*`, two `auto-fit` grids, no new breakpoint |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | `ChooseAsync`, `ReadMenuAsync`, `ReadChosenItemDetailAsync`, `WaitForMenuAsync`, two records, two helpers |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs` | optional description on `CreateMenuItemAsync` |
+| `tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs` | summary records that it is the gate on the builder call |
+| `docs/TECHNICAL_SPECIFICATION.md` | v1.24 — §7, §11.1, §16.4, Appendix A, changelog |
+| `docs/DOCUMENTATION_REVIEW.md` | F-78, F-79 |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 3 partially struck |
+| `docs/BUILD_PROGRESS.md` | Slice 39 |
 
-## What was verified
+**No assertion is added or removed anywhere**, so the predicted count stays **1124** and §16.3 stays at
+**16**. That number has never been observed — Slice 38 failed before reaching a count — so this run is the
+first honest test of its arithmetic.
 
-**Every `CreateMenuItemAsync` call site was found and updated by type, not by search.** The description is
-positioned after `name` to mirror `CreateMenuSectionAsync`, so `string` lands where `decimal` was expected at
-every un-updated site — a compile error, never a silent mis-bind. Nine sites: the interface, the
-implementation, the workflow's interface and implementation, the Razor form, the wiring fake, and four in the
-data-access tests.
+## What was not verified
 
-**`MenuItemSummary` has exactly two construction sites in the whole tree**, verified by search:
-`DapperMenuDirectory.ToSummary` and one factory in `OrderStagingTests`. Members were therefore *inserted* to
-mirror `MenuSectionSummary`'s member order rather than appended, and the factory passes `""` and `0` with a
-comment saying `OrderStaging` reads neither.
-
-**Structural verification on all fifteen edited or new files, string- and comment-aware**, with untouched
-siblings as controls. The walker was **proven sensitive by three planted defects** in
-`MenuAdministration.cs` — a deleted closing brace, an unterminated raw string, and an extra parenthesis —
-each reported. It was also **proven to have been wrong first**: an earlier version mis-parsed `$"""` as an
-interpolated single-quote string and reported three false unbalanced files, which is why the controls are in
-the run at all.
-
-**The three Razor pages were walked as tag trees**, quote-aware, with the `@code` block excluded and `@*…*@`
-comments stripped. Both of those exclusions are corrections rather than conveniences: the first draft read
-`<ValidationMessage For="@(() => …)" />` as an unclosed element because `=>` contains `>`, and read
-`IReadOnlyList<MenuItemSummary>` in the `@code` block as markup — which is precisely the standing false
-report Slice 36 recorded. `AdministrationTables.razor` and `ManageTable.razor` are the controls; all five
-files clean.
-
-**Selector existence was checked against the stylesheet rather than assumed**, and it caught two real
-defects before packaging: the first draft of `CreateMenuItem.razor` invented `.field-optional` and
-`.field-hint`, neither of which exists in `app.css`. Both are now `.muted`, and every one of the thirteen
-classes that page uses is declared. `.record-secondary` was confirmed present before being used on the index.
-
-**The 375px barrier was reasoned about rather than hoped for.** `.form-field textarea` is `width: 100%` under
-a universal `box-sizing: border-box`, so neither new control can exceed the viewport; and every `<td>` in
-both tables on the index carries a `data-label`, with header and cell counts balanced at 5 and 5 —
-`HandheldLayoutContractTests` asserts both.
-
-**§16.4's contract test was simulated over the edited specification, and it caught a real failure.** The
-first draft described all four test classes in one paragraph with one count, which that gate reads as
-unattributable and reports — the same finding Slice 37 hit. Split into four paragraphs of one class and one
-count each. Final state: **sixteen counted paragraphs, every claim matching its file, zero ambiguity, zero
-uncited names.** The floor moved with it.
-
-**`SpecificationVersionTests` simulated:** header 1.23 against newest entry 1.23, twenty-four entries
-descending, both versioned documents found against a floor of two.
-
-**The Markdown table gate was simulated over all twenty-four documents**, fence-aware and escape-aware:
-fifty-seven table runs, zero shape problems. F-77's Appendix A row and ledger row were both checked to carry
-exactly four cells.
-
-**A CS1587 was introduced and caught.** Splitting a `<para>` in `IMenuAdministration`'s summary left a bare
-blank line inside a `///` block, which under warnings-as-errors is a build failure. Repaired before
-packaging. CS4007 and CS1620 scans clean across all fifteen files.
-
-## What was NOT verified
-
-**Nothing compiled.** There is no .NET SDK in the authoring environment. The likeliest sites of a complaint
-are named rather than left to be discovered: `ScalarAsync<int?>` and `ScalarAsync<decimal?>` on a nullable
-value type read through `OrderTestWorld.ScalarAsync<T>` (precedent at `MenuAdministrationTests` line 211,
-which is why it is used rather than avoided); `HashSet<string> found = [.. names];` building a collection
-expression from a Dapper `IEnumerable<string>`; and `InputTextArea` with a `rows` attribute, which is a
-standard component parameter passthrough but is not used anywhere else in this tree.
-
-**No database ran it.** Unlike Slice 37, no PostgreSQL was available in the authoring environment this time,
-so `0004` is **reasoned about and not executed**. The three things that would settle it are stated so a red
-run is read correctly rather than chased in the wrong place:
-
-1. **Whether DbUp's splitter survives the `DO` block.** The claim rests on `PostgresqlQueryParser`'s
-   `DollarQuoted` state consuming a tagged block, which Slice 37 read from source but did not exercise —
-   `0003` contains no dollar-quoting. `Run_NamesTheMenuItemEventCheckConstraints` is the assertion that
-   decides it, and a failure there means the block split, not that the names are wrong.
-2. **Whether `pg_constraint` returned all four generated names.** If the loop ran against a partial list, a
-   leftover `menu_item_event_check` survives — which the same fact asserts absent.
-3. **Whether `ADD CONSTRAINT` on an existing table with existing rows validates.** Every constraint added
-   here is satisfied by every row `0001`'s CHECKs already admitted, and the two new columns are NULL on every
-   existing row, which both new biconditionals require for the five old types. That is an argument, not a run.
-
-**No browser rendered anything.** Three Razor pages changed, and the reachability barrier at 375px is
-scenario 16's job on the real run. The two new forms on `ManageMenuItem.razor` are the surfaces that have
-never been laid out, and a red first run there is informational.
-
-**The description is not exercised end to end.** No §16.3 scenario fills the new textarea, and the harness is
-deliberately untouched so the sixteen scenarios stay byte-identical. Stage 3's scenario 17 is where that
-lands.
-
-## Test count
-
-Last observed: **1107**, from Slice 37, matching its prediction exactly.
-
-Predicted here: **1107 + 8 (`MenuAdministrationTests`) + 2 (`MenuDirectoryTests`) + 2 (`MenuWiringTests`)
-+ 4 (`SchemaMigrationRunnerTests` theory rows) + 1 (`SchemaMigrationRunnerTests` fact) = 1124.** Arithmetic on
-the last observed count, not an observation. §16.3 stays at **16**.
-
-Per §18: if the run returns anything other than 1124, that difference is the next thing to chase before this
-slice closes.
-
-## Still open
-
-**`0005` and the last of Stage 2.** `menu_item.menu_section_identifier uuid NOT NULL REFERENCES
-menu_section`, the conditional one-section seed and the backfill beside it, `section_changed` with its payload
-column and a vocabulary CHECK now droppable **by name**, and the three surfaces the `NOT NULL` forces: the
-section create page, the section picker on the item form, and a harness `CreateMenuSectionAsync` the five
-ordering scenarios call before their first `CreateMenuItemAsync`. That last file decides whether the ordering
-integration tests compile.
-
-**The section writes are still not behind `IMenuWorkflow`.** Deliberate, recorded three times now, and Stage
-3's obligation — it becomes a defect the moment a guest surface groups by section.
-
-**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Carried unchanged for a third slice: cited fifteen times in
-that file and present only in Appendix A. Still a decision rather than a repair.
-
-**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a fifth time.
-
-**A CI job that runs the canonical stack on the canonical engine.** Fourteenth consecutive slice.
-
-**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then starts
-it successfully.** Carried from Slice 37, still a judgement about whose fix it is.
-
-**No authoring-environment database this slice.** Slice 37 had PostgreSQL 16 and measured its schema half;
-this one did not. That is a difference in evidence quality between two consecutive slices and it is recorded
-so the next one restores the practice rather than quietly dropping it.
+**Nothing compiled**; likeliest complaints named in `BUILD_PROGRESS.md`. **No database ran the migration** —
+a failure still saying `Variable … has no value defined` means the builder call did not take. **No browser
+rendered the picker**, which is the largest visual change since Slice 30.
 
 ################################################################################
 # FILE: compose.yaml
@@ -4509,14 +4321,14 @@ volumes:
   File name:             BUILD_PROGRESS.md
   Relative path:         docs/BUILD_PROGRESS.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/BUILD_PROGRESS.md
-  Size:                  709.9 KiB (726985 bytes)
-  Last modified:         2026-08-13 22:13:59.000000000 -0400
+  Size:                  730.0 KiB (747559 bytes)
+  Last modified:         2026-08-14 07:08:43.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 39620678
+  Inode:                 40210157
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               b727266cd3b9c61b5204464b03eca6c3e2183df89d78734aeb4ef5c1ee81a2ef
+  SHA-256:               abdedf0d449d7401970ddcd72618501c982a83534f822403252695baf52b0040
   Last git commit:       bd533c3 2026-08-14 05:08:35 -0400 add claude changes
 
 --- CONTENT ---
@@ -15314,6 +15126,307 @@ it successfully.** Carried from Slice 37, still a judgement about whose fix it i
 this one did not. That is a difference in evidence quality between two consecutive slices and it is recorded
 so the next one restores the practice rather than quietly dropping it.
 
+# M6 Slice 39 — the migration that could not run (F-78), and the dropdown that was the request
+
+## Read this first: Slice 38 was red, and not where it predicted
+
+```
+System.InvalidOperationException : Variable migrate_menu_item_event_checks has no value defined
+   at MyRestaurant.DataAccess.SchemaMigrationRunner.Run() … line 61
+   at MyRestaurant.DataAccess.Tests.Menu.MenuSectionAdministrationTests.InitializeAsync() … line 58
+MyRestaurant.DataAccess.SchemaMigrationException : Database migration failed on script
+   'MyRestaurant.DataAccess.Migrations.0004_menu_item_descriptions.sql'.
+```
+
+Repeated for every fact in the data-access suite. **The predicted count of 1124 was never reached, because
+the number of tests that ran is not the interesting number here** — a migration is the first thing every
+data-access fixture applies and the first thing the end-to-end harness applies, so one unparseable script
+took the integration suite and all sixteen §16.3 scenarios down together.
+
+**Slice 38's own "what was NOT verified" named this exact claim**, first in its list of three: *"Whether
+DbUp's splitter survives the `DO` block. The claim rests on `PostgresqlQueryParser`'s `DollarQuoted` state
+consuming a tagged block, which Slice 37 read from source but did not exercise."* That entry was right that
+the claim was unexercised and wrong about which component would decide it. The splitter was never reached.
+
+## F-78 — two dollar-quote syntaxes, and dbup-core goes first
+
+`0004` opens its constraint sweep with `DO $migrate_menu_item_event_checks$`. Read from source rather than
+inferred from the message:
+
+- **dbup-core**, `Support/ScriptExecutor.PreprocessScriptContents` → `VariableSubstitutionPreprocessor.Process`
+  → `VariableSubstitutionSqlParser.ReplaceVariables`. `IsCustomStatement` returns true when the current
+  character is `$` and `PeekChar()` is a letter, digit, `_` or `-`. `ReadCustomStatement` then reads to the
+  closing `$` and raises `InvalidOperationException("Variable {0} has no value defined")` for a name absent
+  from the dictionary.
+- **dbup-postgresql**, `PostgresqlQueryParser.ParseRawQuery`, has the `DollarQuotedStart` / `DollarQuoted`
+  states Slice 38 cited, including an explicit *empty tag* branch. It is correct, and it runs **after** the
+  preprocessor, on text the preprocessor never handed it.
+
+PostgreSQL spells a dollar-quoted body with the same four characters around the same kind of identifier that
+DbUp spells a variable reference with. **The two syntaxes are one syntax, and dbup-core wins.**
+
+**Why nothing here caught it.** The script is well-formed SQL; `check_tree.sh` reads it as text and it is
+correct as text. `0003` contains no dollar-quoting, so no test in this tree had ever applied one — the
+capability arrived and was exercised for the first time in the same slice. And Slice 38 had no database in
+its authoring environment, which it recorded.
+
+**The shape.** F-62 is a reason for doing something written without reading the tree it is about; this is the
+same error at a dependency boundary — a safety claim about a NuGet package's behaviour, written by reading
+one of the two components involved. The comment was not wrong. It was about the wrong file.
+
+## The fix, and why it is one line and not two
+
+`SchemaMigrationRunner.BuildUpgradeEngine` gains `.WithVariablesDisabled()`. Nothing in this tree has ever
+used a DbUp variable: there is no `WithVariable` call anywhere, and the only `$` in any of the four migration
+scripts is that tag.
+
+**`0004` keeps its TAGGED body rather than being reduced to `$$`, and that is the ruling of this slice.**
+`DO $$ … $$` would also survive substitution — an empty tag's next character is `$`, which is not a valid
+variable-name character, so `IsCustomStatement` never fires. Writing both fixes would mean that deleting the
+builder call leaves every gate in this repository green while the rule is gone, and that is precisely the
+mechanism of **F-64** (an undeclared property rendering its fallback), **F-69** (a `should` resting on a
+count nobody re-derived) and **F-75** (a local gate that existed nowhere while the claim said it did). A
+second belt that hides the first is how this project's worst findings have all been shaped.
+
+A tagged body makes the builder call load-bearing: remove it and every fact in `SchemaMigrationRunnerTests`
+fails on the next run with the message at the top of this entry. **So the row names something executable by
+adding nothing** (F-47) — the gate already exists, already blocks, and now says in its own summary that this
+is its job.
+
+**`0004` is edited in place, which F-34 forbids for an applied script.** Allowed here for the one reason that
+makes the rule inapplicable: **it had never applied anywhere.** DbUp journals only on success, so no journal
+row for it exists to be stale. Stated in the script itself, so that a future reader does not take the edit
+for a precedent.
+
+**If `WithVariablesDisabled()` does not resolve** against the pinned `dbup-postgresql` 7.0.1 — it was read in
+dbup-core's public API at tag `6.1.1` and has been there for years, so this is unlikely — the one-line
+alternative is to change both `$migrate_menu_item_event_checks$` to `$$` and drop the builder call. Recorded
+here rather than shipped, for the reason above.
+
+## F-79 — one paragraph of §7, written twice
+
+The paragraph beginning *"Two existing rules survive that change…"* — a deactivated item stays visible under
+its heading, and deactivating a section does not cascade to its items — appears **twice consecutively,
+byte-identical**, from Slice 38. Deleted.
+
+Worth a number for its position rather than its cost. Three gates read this document:
+`MarkdownTableContractTests` for table shape, `SpecificationVersionTests` for the header against the
+changelog, `TestingSectionContractTests` for §16.4's counts against the files they describe. **None of them
+reads a sentence**, and no gate is added, because the assertion available — no paragraph appears twice
+verbatim — would report findings on a tree that restates rulings across documents on purpose.
+
+## The picker: what the request actually asked for
+
+> the menu choice should no longer be a dropdown … a select or a dropdown does not give nearly enough
+> context … you should be able to select each menu item and see a lot more information about that item if
+> such information exists
+
+**Three things were wrong with the `<select>`, and only the third is cosmetic.** A closed dropdown shows
+exactly one option, so comparing two items means opening a modal list twice — at sixty items that is a
+lookup, not a menu. An `<option>` renders text and nothing else, so `menu_item.description` — the column
+`0004` exists to deliver — had nowhere to go, and every future fact about an item would have been
+concatenated into the same label. And the label already was a concatenation: name, an em dash, a formatted
+price, and sometimes the words "(currently unavailable)".
+
+**It is now a card per item**, each card a `<button>`, with a **detail panel** that opens on the chosen one.
+
+### Stage 3 ran before `0005`, and that is a decision to veto if you disagree
+
+The plan put the guest menu after sections, on the reasoning that a grouped menu needs headings. The two
+halves are separable: a card per item needs `menu_item.description` and nothing else, and grouping the cards
+under headings is an outer loop added later around markup that does not change. Leaving the picker until
+`0005` meant leaving the only part of the request its author could see behind two migrations, with the column
+that exists to be read already in the schema and read by nothing.
+
+**To revert:** the surface and its stylesheet block are self-contained. `TableOrderSurface.razor` and the
+`.order-menu*` rules in `app.css` go back, and `StageAsync` returns to `SelectOptionAsync("#order-picker-item", …)`.
+Nothing else in this slice depends on it — the F-78 fix is independent.
+
+### Three rulings inside it
+
+**The panel says when it has nothing to say.** *"If such information exists"* is answered with a sentence
+rather than an empty box, because a blank panel is indistinguishable from a surface that failed to load —
+the confusion §11.10's `data-loaded` bit exists to prevent one level up. The facts are a `<dl>` of terms
+(Price, Available, On the menu since) so Stages 4 and 5 add rows instead of rewriting markup.
+
+**A card is a `<button>` with `aria-pressed`, not a radio.** A radio group is the more precise ARIA for
+"choose exactly one" and it was refused for a concrete reason: Blazor reconciles the `checked` *attribute*
+while browsers track the checked *property*, so a radio whose state a component owns can drift out of step
+with the DOM in ways only a browser can observe — and this slice had no browser. Every other control on that
+island is an `@onclick`, and a button carries no DOM state to reconcile. A one-of-many toggle set is a slight
+stretch of `aria-pressed` and it is the better trade against emulating a radio group's keyboard semantics.
+
+**No breakpoint.** `.order-menu` and `.order-menu-facts` are `auto-fit` grids, so one column at 375px and as
+many as fit on a counter's laptop is the same rule. §11.12 asks for exactly this in preference to a width
+query, and a width written here would have been the tree's second breakpoint (F-63).
+
+### §7's availability rule reads better in a list than it did in a label
+
+A deactivated item keeps its card, keeps its description, gains a *currently unavailable* chip, and its
+button is `disabled`. "The guest sees that the salmon exists and is out" was true of the old `<option>` and
+was four words appended to a label; it is now a marked card a guest can still read about.
+
+## What the harness gained, and why it could not have existed before
+
+`TableOrderJourneys` adds `ChooseAsync`, `ReadMenuAsync`, `ReadChosenItemDetailAsync`, `WaitForMenuAsync`,
+the `MenuCard` and `ChosenItemDetail` records, a `Describe` overload and a private `WaitForAttributeAsync`.
+
+An `<option>` renders text only, so the sole thing a harness could read off the old picker was one
+concatenated label and the sole assertion available was containment — **which is why `0004`'s description
+column shipped with nothing behind it.** A card has an element per fact.
+
+Two membership rules are recorded because both could reasonably have gone the other way. **Availability is
+read from `disabled`, not from the chip:** §7 requires both, and `disabled` is the half that enforces it —
+the same reasoning `ReadBadgeAsync` applies in reverse, that whichever of the two is the contract is the one
+to read. **`Description` is `null` rather than `""` when absent:** the surface renders no element at all in
+that case, so absence is what the DOM says, and a scenario asserting a description arrived must not be
+satisfiable by an empty string that happened to render.
+
+**One line of the sixteen existing scenarios changed** — the item choice inside `StageAsync`. Everything else
+in `EndToEndScenarios.cs` is byte-identical, deliberately: the smallest edit that could carry the rewrite.
+
+## What is in this slice
+
+| Area | Change |
+|---|---|
+| Migration runner | `SchemaMigrationRunner.cs` — `.WithVariablesDisabled()`, with the collision documented at the call site |
+| Migration | `0004_menu_item_descriptions.sql` — the safety claim corrected to name both components; tagged body kept deliberately; the in-place edit justified against F-34 |
+| Surface | `TableOrderSurface.razor` — the `<select>` replaced by a card list and a detail panel; `ChooseItem`; `PickedMenuItem` re-resolving against the live menu |
+| Stylesheet | `app.css` — the `.order-menu*` vocabulary, two `auto-fit` grids, no new breakpoint, no colour literal, no `var()` fallback |
+| Harness | `TableOrderJourneys.cs` — four journeys, two records, two helpers; `AdministrationJourneys.cs` — an optional description on `CreateMenuItemAsync` |
+| Tests | `SchemaMigrationRunnerTests.cs` — summary records that it is the gate on the builder call. **No assertion added or removed anywhere** |
+| Documents | S v1.24 (§7, §11.1, §16.4, Appendix A, changelog), ledger F-78 + F-79, plan's Stage 3 partially struck |
+
+## What was verified
+
+**The DbUp behaviour was read from source at a pinned tag, not recalled.** `VariableSubstitutionSqlParser.cs`
+and `Support/SqlParser.cs` from `DbUp/DbUp`, `PostgresqlQueryParser.cs` from `DbUp/dbup-postgresql`, and
+`Builder/StandardExtensions.cs` at tag **`6.1.1`** to confirm `WithVariablesDisabled` is public API — line
+751 of that file. This is the finding's own lesson applied inside its own repair.
+
+**The working tree was reconstructed from `dump.txt` and checked against the SHA-256 recorded for every
+file: 338 of 340 byte-identical.** Of the two that were not, one is `export.sh` (which the dump documents
+rather than reproduces) and one is a trailing-summary artefact of the extractor, in a file this slice does
+not touch. Every edit below was made against a verified tree.
+
+**Byte hygiene on all seven edited files:** no CR, exactly one final newline, no whitespace-only line, no
+context-dump separator. F-76's third half was simulated specifically — none of the seven ends in a blank
+line.
+
+**Structural verification, string- and comment-aware:** brace, paren and bracket balance on all seven;
+CS4007 scan (no `await` in an interpolation hole) and CS1620 scan (no bare literal operand in a
+`string.Create` addition chain) clean. Both apply to the new harness code, which composes six failure
+messages that way.
+
+**The Razor file was walked as a tag tree**, `@*…*@` stripped and the `@code` block excluded. It reports
+four findings, **and all four are the standing false positives Slice 38 recorded** — `IReadOnlyList<OrderLineView>`
+inside a `@{ }` block reads as a tag. Proven by running the identical checker against the *pristine*
+extracted file and getting the same four at the same offsets. That control is the only reason the result is
+usable.
+
+**Every `HandheldLayoutContractTests` invariant was re-derived over the edited stylesheet**, not assumed:
+one width media query and it is `min-width` in `app.css`; **zero** colour literals in any declaration block
+outside `:root`; **zero** `var()` fallbacks; `overflow-wrap` declared once as `anywhere`; 19 `min-height`
+declarations of which 14 read `--touch-target` and none is a literal under 44px; and every custom property
+the tree reads is declared. The two new grids introduce no width.
+
+**Selector existence was checked in both directions.** Every class the harness names exists in the markup;
+every `order-*` class the markup uses has a rule in `app.css`, except the four that documented themselves as
+having none (`order-surface`, `order-settled-heading`, `order-prune-notice`, `order-line-adjustment`).
+
+**Every new harness method is defined exactly once and `SelectOptionAsync` appears nowhere**, verified by
+search after the rewrite rather than assumed from having written it.
+
+**`SpecificationVersionTests` simulated:** header 1.24 against a newest entry of 1.24, entries descending,
+two versioned documents against a floor of two.
+
+**`TestingSectionContractTests` reasoned about rather than simulated, and the reasoning is short: no
+assertion count moves.** No `[Fact]` or theory row is added or removed in this slice, so every count §16.4
+states is still the count in its file and the floor of sixteen is untouched. The new §16.4 material is folded
+into the *existing* migration-gate paragraph rather than written as a new one, precisely so it cannot become
+a seventeenth counted paragraph carrying a number nobody re-derives (F-73).
+
+**Every new Markdown table row was checked to carry exactly four cells**, and no cell contains an unescaped
+pipe (F-72).
+
+## What was NOT verified
+
+**Nothing compiled.** No .NET SDK in the authoring environment. The likeliest sites of a complaint are named
+rather than left to be found: **`.WithVariablesDisabled()`** resolving against the pinned `dbup-postgresql`
+(the fallback is in the F-78 section above); **`aria-pressed="@(isChosen ? "true" : "false")"`**, a ternary
+inside an attribute value, which this tree does elsewhere but not with nested quotes; and
+**`RestaurantClock.Date(chosenItem.CreatedAt)`**, whose signature was read but never called from a Razor
+attribute context before.
+
+**No database ran the migration.** The fix is argued from two sources read at a tag; the assertion that
+settles it is the whole of `SchemaMigrationRunnerTests`, and a green run there is the evidence this slice
+does not have. **A failure that still says `Variable … has no value defined` means the builder call did not
+take**; a failure naming a missing constraint means the splitter broke after all, which would be Slice 38's
+original claim being wrong as well.
+
+**No browser rendered the picker.** This is the largest visual change in the project since Slice 30 and
+nothing has laid it out. Named consequences a first run may show: whether a 16rem `minmax` is the right floor
+on a 375px screen (one column is guaranteed; whether the card is comfortable is a judgement); whether the
+detail panel opening below the list pushes the quantity box off-screen on a short viewport, which is a
+scroll rather than a defect but is the kind of thing that reads as one; and whether `aria-pressed` on a
+one-of-many set announces sensibly, which only a screen reader decides.
+
+**The description is still not exercised end to end.** The harness can now read a card and a panel, and no
+§16.3 scenario yet fills the textarea and reads the sentence back. Scenario 17 is where that lands, with
+`0005`.
+
+**A previous session's edits were lost to my own mistake and re-applied.** The extractor that reconstructs
+the tree writes to a hard-coded path, and re-running it from a different directory overwrote the edited
+tree. Every edit was re-applied and re-verified from scratch; the extractors were then deleted from the
+authoring environment. Recorded because the *verification* above was re-run against the rebuilt tree rather
+than inherited from the lost one, and a reader is entitled to know which.
+
+## Test count
+
+Last observed: **1107**, from Slice 37. Slice 38 predicted 1124 and **never reached a count** — the suite
+failed at fixture initialisation, so 1124 remains unobserved arithmetic rather than a number that was wrong.
+
+Predicted here: **1124**, unchanged, because this slice adds and removes no assertions. §16.3 stays at
+**16**.
+
+Per §18: if the run returns anything other than 1124, that difference is the next thing to chase — and it is
+the first honest opportunity to chase it, since Slice 38's own arithmetic has never been tested against a
+run.
+
+## Still open
+
+**`0005` and the last of Stage 2.** `menu_item.menu_section_identifier uuid NOT NULL REFERENCES
+menu_section`, the conditional one-section seed and the backfill, `section_changed` with its payload column
+and a vocabulary CHECK now droppable **by name**, and the three surfaces the `NOT NULL` forces: the section
+create page, the section picker on the item form, and a harness `CreateMenuSectionAsync` the five ordering
+scenarios call before their first `CreateMenuItemAsync`.
+
+**The section headings on the guest menu.** The cards exist; grouping them is an outer loop and needs
+`0005`.
+
+**The section writes are still not behind `IMenuWorkflow`.** Recorded a fourth time. It becomes a defect the
+moment the guest menu groups by section, which is the next slice.
+
+**§16.3 scenario 17.** Create a section, create an item in it with a description, read both back off the
+guest surface. Half of it is now expressible; the section half is not.
+
+**The kitchen's "86" panel still groups by nothing.** Stage 3's remaining surface.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Fourth slice carried. Still a decision rather than a
+repair.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a sixth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Fifteenth consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**No authoring-environment database for a second consecutive slice.** Slice 38 recorded this as a drop in
+evidence quality and asked the next slice to restore the practice. It did not. That is now a two-slice
+pattern rather than a one-off, and it is the reason F-78 was found by a test run on your machine instead of
+by a migration in mine.
+
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
 ################################################################################
@@ -15322,20 +15435,20 @@ so the next one restores the practice rather than quietly dropping it.
   File name:             DOCUMENTATION_REVIEW.md
   Relative path:         docs/DOCUMENTATION_REVIEW.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/DOCUMENTATION_REVIEW.md
-  Size:                  177.4 KiB (181665 bytes)
-  Last modified:         2026-08-13 22:13:59.000000000 -0400
+  Size:                  183.0 KiB (187427 bytes)
+  Last modified:         2026-08-14 07:09:42.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 39620680
+  Inode:                 40210158
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               53a876e99a7ffe453c2b13fe1bd175591cedeb4b50448da4e573079a30b2c72c
+  SHA-256:               b92951ff3d10e28fb8166769263c3bd666a71b720396866644bba582cc39877e
   Last git commit:       bd533c3 2026-08-14 05:08:35 -0400 add claude changes
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
 
-**Status:** All findings resolved. **F-71 through F-73** closed in M6 Slice 36 — a compile error that stopped the web-layer suite from running, and the two registers on this page and in the specification having both stopped rendering as tables. **F-36** (timestamps ignored `RESTAURANT_TIME_ZONE`) closed in the M4 close-out slice, on the schedule its row recorded. **F-37** (no guest registration surface existed) closed in M6 Slice 5, with one part deliberately left open and named — see its row. **F-38** (the restore path had never been executed and could not have completed) closed in M6 Slice 16; it is now rehearsed by CI on every push rather than documented as a procedure. **F-39** (the program could not say what build it was, and offered nobody its source) closed in the M6 close-out slice, ahead of the first tag. **F-40** (twenty-one tracked files carried an appended context-dump separator, one of them `Directory.Build.props`, which failed every MSBuild verb in the repository) closed in M6 Slice 18; the tree is now gated on being machine-readable before anything tries to build it. **F-41** (that gate then failed 1321 times on a clean tree, blocking every gate behind it, because its scope was the whole checkout rather than the authored text it has opinions about) closed in M6 Slice 19. **F-53** (the documented bring-up command started the whole stack and then never returned, printing nothing) and **F-54** (a runbook step asserting behaviour no script has, cited from F-16's row in this very file) closed in M6 Slice 27. **F-57** (the canonical engine does not apply the default values in `compose.yaml`, so the stack was configured with placeholder text and both containers died of it) closed in M6 Slice 29. **F-58** (the gate built to stop a version header disagreeing with its own history named one file, and the sibling document had been disagreeing with itself for six slices) and **F-59** (the only affordance on an administration row sat off the right-hand edge of a phone screen, and no document in this tree had ever had an opinion about layout at any width) closed in M6 Slice 30 — F-59 being the first finding in this ledger reported by somebody outside the project. **F-55** (the same command, one slice later: it waited out a five-minute deadline against a container that had already exited, published a URL over a dead application, printed neither container's log, and returned 0) and **F-56** (three helpers dial one port and only `run.sh` named the address compose actually publishes) closed in M6 Slice 28. **F-60** (the fully-qualified-image rule was stated for the repository, applied to two files, and the four places it was missing include the two that decide whether any integration test runs at all) and **F-61** (a helper announced twice that it was closing the tunnel) closed in M6 Slice 31. **F-62** (a gap left open for a slice on the strength of a claim about the test harness that the harness contradicts, by then copied into three documents) closed in M6 Slice 32. **F-63** (the one-breakpoint rule was stated about the tree and asserted about one file) and **F-64** (five custom properties read fifty-five times across eight components and declared nowhere, so eight surfaces rendered a palette nobody chose) closed in M6 Slice 33. **F-65** (the touch-target number §11.12 states was written a second time as a literal in two rules, eight pixels short, one of them under a comment asserting that it complied), **F-66** (the four detail surfaces were the fifth inline copy of one vocabulary, and where the copies overlapped the stylesheet they contradicted it — a deprecated `clip`, two chip colours off the palette, and form controls with no touch-target height at all) and **F-67** (the gate enforcing "declared once" could not tell a declaration from a comment mentioning one, so its reach was bounded by which shared names appeared in prose) closed in M6 Slice 34. **F-68** (the palette was written back into the tree as ninety-five literals, twenty of them byte-identical to a property declared in `:root` and seven already drifted from one — including the guest's irreversible-hide warning, which is F-66's pair of values found in a fifth place one area over), **F-69** (the count that was the whole argument for the no-fallback rule being a *should* was stated in four documents and falsified by the slice that cited it last: fifty across seven, not over a hundred across sixteen) and **F-70** (an eighth blocking assertion was in `HandheldLayoutContractTests` with no ledger row, no §16.4 paragraph, no changelog entry and no `_CHANGES.md` line, and the arithmetic that announced it — 1077 predicted, 1078 observed — went unread for a slice) closed in M6 Slice 35.
+**Status:** All findings resolved. **F-78 and F-79** closed in M6 Slice 39 — a migration script that could not be parsed on any host, which took the integration suite and all sixteen end-to-end scenarios red together behind a message naming a variable nobody wrote; and one paragraph of the specification written twice in a row, in the one class of defect the three gates over that document all miss. **F-71 through F-73** closed in M6 Slice 36 — a compile error that stopped the web-layer suite from running, and the two registers on this page and in the specification having both stopped rendering as tables. **F-36** (timestamps ignored `RESTAURANT_TIME_ZONE`) closed in the M4 close-out slice, on the schedule its row recorded. **F-37** (no guest registration surface existed) closed in M6 Slice 5, with one part deliberately left open and named — see its row. **F-38** (the restore path had never been executed and could not have completed) closed in M6 Slice 16; it is now rehearsed by CI on every push rather than documented as a procedure. **F-39** (the program could not say what build it was, and offered nobody its source) closed in the M6 close-out slice, ahead of the first tag. **F-40** (twenty-one tracked files carried an appended context-dump separator, one of them `Directory.Build.props`, which failed every MSBuild verb in the repository) closed in M6 Slice 18; the tree is now gated on being machine-readable before anything tries to build it. **F-41** (that gate then failed 1321 times on a clean tree, blocking every gate behind it, because its scope was the whole checkout rather than the authored text it has opinions about) closed in M6 Slice 19. **F-53** (the documented bring-up command started the whole stack and then never returned, printing nothing) and **F-54** (a runbook step asserting behaviour no script has, cited from F-16's row in this very file) closed in M6 Slice 27. **F-57** (the canonical engine does not apply the default values in `compose.yaml`, so the stack was configured with placeholder text and both containers died of it) closed in M6 Slice 29. **F-58** (the gate built to stop a version header disagreeing with its own history named one file, and the sibling document had been disagreeing with itself for six slices) and **F-59** (the only affordance on an administration row sat off the right-hand edge of a phone screen, and no document in this tree had ever had an opinion about layout at any width) closed in M6 Slice 30 — F-59 being the first finding in this ledger reported by somebody outside the project. **F-55** (the same command, one slice later: it waited out a five-minute deadline against a container that had already exited, published a URL over a dead application, printed neither container's log, and returned 0) and **F-56** (three helpers dial one port and only `run.sh` named the address compose actually publishes) closed in M6 Slice 28. **F-60** (the fully-qualified-image rule was stated for the repository, applied to two files, and the four places it was missing include the two that decide whether any integration test runs at all) and **F-61** (a helper announced twice that it was closing the tunnel) closed in M6 Slice 31. **F-62** (a gap left open for a slice on the strength of a claim about the test harness that the harness contradicts, by then copied into three documents) closed in M6 Slice 32. **F-63** (the one-breakpoint rule was stated about the tree and asserted about one file) and **F-64** (five custom properties read fifty-five times across eight components and declared nowhere, so eight surfaces rendered a palette nobody chose) closed in M6 Slice 33. **F-65** (the touch-target number §11.12 states was written a second time as a literal in two rules, eight pixels short, one of them under a comment asserting that it complied), **F-66** (the four detail surfaces were the fifth inline copy of one vocabulary, and where the copies overlapped the stylesheet they contradicted it — a deprecated `clip`, two chip colours off the palette, and form controls with no touch-target height at all) and **F-67** (the gate enforcing "declared once" could not tell a declaration from a comment mentioning one, so its reach was bounded by which shared names appeared in prose) closed in M6 Slice 34. **F-68** (the palette was written back into the tree as ninety-five literals, twenty of them byte-identical to a property declared in `:root` and seven already drifted from one — including the guest's irreversible-hide warning, which is F-66's pair of values found in a fifth place one area over), **F-69** (the count that was the whole argument for the no-fallback rule being a *should* was stated in four documents and falsified by the slice that cited it last: fifty across seven, not over a hundred across sixteen) and **F-70** (an eighth blocking assertion was in `HandheldLayoutContractTests` with no ledger row, no §16.4 paragraph, no changelog entry and no `_CHANGES.md` line, and the arithmetic that announced it — 1077 predicted, 1078 observed — went unread for a slice) closed in M6 Slice 35.
 **Scope of the original review (2026-07-16):** `REQUIREMENTS.md` rev 1 (commit `af51017`) and the `dump.txt` produced by `export.sh`.
 **Rulings:** the owner ruled on every finding on 2026-07-17 — F-01–05, F-09–11, F-13–19, F-21–24 accepted as raised; F-06, F-07 (Q1), F-08 (Q2/Q3), and F-12 (Q4/Q5) resolved with the defaults proposed in the ruling exchange ("all of this is fine").
 
@@ -15448,6 +15561,8 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 | F-75 | **The local gate script stated its one blind spot and had two.** Its header says *"The one gate this cannot reproduce is CI's boot-smoke job"* — accurate about the container image, silent about CI's `vulnerable package audit (advisory)` step, which had no local counterpart for fourteen slices. `Directory.Build.props` meanwhile asserted in the indicative that *"CI reports them in a dedicated non-blocking step instead"*, true of the workflow and quietly untrue of the equivalent people actually run. **This is F-46's shape again** — a rule applied to one of its two homes — and it is the *mechanism* of F-74 rather than a defect beside it: eight gates reported `all local CI gates passed` while the tree carried a published advisory. | The audit becomes gate 7 of `scripts/ci_local.sh`, the same command on the same advisory terms (`continue-on-error: true` in the workflow, `\|\| true` on the line here, because `dotnet list package --vulnerable` has reported findings with a zero status). **The claim is repaired by becoming true again, not by being softened** — a claim weakened to match a check is a check nobody strengthens later. Named executable: `VulnerabilityAuditParityContractTests`, two facts, holding both files to one command character for character. It compares that command and nothing else; general parity would fail on the boot-smoke job and report a finding on a correct tree (F-41). | S§16.4 · `scripts/ci_local.sh`, `tests/MyRestaurant.WebApplication.Tests/Deployment/VulnerabilityAuditParityContractTests.cs` (new) · BUILD_PROGRESS M6 Slice 37 |
 | F-76 | **Tree hygiene's third gate printed `exactly one LF` and checked only that the last byte was one; eleven tracked files ended with two.** The word `exactly` had been unearned since the gate landed in Slice 18, and nothing else in the tree could see the difference: gate 2 forbids whitespace-only lines via `^[[:space:]]+$`, which needs at least one space or tab, and an empty line has neither — so gate 2 passed correctly while a trailing blank line sat at the end of `.env.example`, `ci.yml`, two scripts, two Razor components, three identity files, and two test files. Small, and positioned where it matters: a final-newline count is the property a text-manipulation script gets wrong most often, and this project delivers whole files precisely to avoid that class of damage. | A third half counting newlines in the last **two** bytes with the same `tail -c … \|` `wc -l` trick the second half uses, naming any file that ends in a blank line. The eleven are repaired in the same archive, because a gate strengthened without them is a gate delivered red. **The claim is earned rather than deleted** — dropping `exactly` would have made the message honest and left the property unchecked forever. Sensitivity shown both ways against the real tree: the strengthened gate named exactly those eleven before the repair and passed after, and every repaired file was checked byte-identical to its recorded SHA-256 but for the removed newline. | S§16.4 · `scripts/check_tree.sh`, eleven files whose last byte changed · BUILD_PROGRESS M6 Slice 37 |
 | F-77 | **Three files told the reader how many event types the menu vocabulary had; the number was stale, one of them also miscounted a plan in the same repository, and no gate here reads prose.** `MenuEventLog`'s type summary, `AdministrationMenu.razor`'s `Describe` and `ManageMenuItem.razor`'s all said *"a friendly label for the five event types §8.2's CHECK admits"* — correct when `0001` shipped, seven after `0004`, eight after `0005`. `AdministrationMenu.razor` additionally named *"Stage 2's two new types (`description_changed`, `section_changed`)"* where `MENU_AND_HANDHELD_PLAN.md` Stage 2 specifies **three**, omitting `reordered` — the one this slice implements. The effect is nil, because the `switch` fallback renders an unlabelled type as itself and that is the design. The kind is not nil: it is F-47's habit (where a rule can be executed, a list must not exist) applied to a census no test can read, and the sixth time this ledger has recorded one fact written twice disagreeing with itself — F-48, F-50, F-56, F-65, F-73, this | The counts are **deleted rather than corrected.** A corrected count goes stale again in `0005`, and three slices of evidence say this sentence cannot be maintained by hand. Each comment now states the property — a friendly label per admitted type, falling back to the stored string — which is true at every size, leaving the `switch` arms as the only census. **No gate is added, deliberately** (F-47): a test counting `case` arms against a CHECK in a `.sql` file would be a monument, and the compiler already refuses a duplicate arm. The apparent contradiction with F-73, where a count was *kept*, is recorded rather than left to be noticed: F-73's number is the argument for a floor a test asserts and nothing derives it, so deleting it would have removed the argument, whereas this one decorates a `switch` that is its own answer. §16.4 states the residual — nothing mechanically stops the next such sentence | `src/MyRestaurant.DataAccess/Menu/MenuEventLog.cs`, `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationMenu.razor`, `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuItem.razor` · S§7, S§8.2, S§16.4, S Appendix A · BUILD_PROGRESS M6 Slice 38 |
+| F-78 | **The migration this whole enhancement rests on could not apply on any host, and the paragraph inside it explaining why it was safe was about the wrong component.** `0004_menu_item_descriptions.sql` drops `menu_item_event`'s four PostgreSQL-generated CHECK names by querying `pg_constraint` inside a dollar-quoted `DO` block, tagged `$migrate_menu_item_event_checks$`. Slice 38 wrote a comment above it stating that the block was safe in an embedded DbUp script because `dbup-postgresql`'s `PostgresqlQueryParser` has a `DollarQuoted` state that consumes a whole tagged block, so an internal `;` cannot split the statement. **Every word of that is true, and the splitter never ran.** dbup-**core**'s `ScriptExecutor` calls `VariableSubstitutionPreprocessor` first, and `VariableSubstitutionSqlParser` reads `$name$` as a variable reference — `IsCustomStatement` fires when the current character is `$` and the next is a letter, digit, `_` or `-`, `ReadCustomStatement` reads to the closing `$`, and an unknown name raises `InvalidOperationException: Variable {name} has no value defined`. PostgreSQL spells a dollar-quoted body with the same four characters around the same kind of identifier, so the two syntaxes are the same syntax and dbup-core wins. **The blast radius is why this is a row rather than a line.** A migration is the first thing every data-access fixture applies and the first thing the end-to-end harness applies, so one script that cannot be parsed took the integration suite and all sixteen §16.3 scenarios red together — and the message names a variable that appears in no file anybody wrote, so the symptom points at configuration that does not exist. Nothing in this tree could have caught it: the script is well-formed SQL, `check_tree.sh` reads it as text and it is correct as text, `0003` contains no dollar-quoting so no test had ever applied one, and Slice 38 had no database in its authoring environment. **F-62's shape at a dependency boundary** — a reason for believing something, written without reading the component it is about — and Slice 38's own "what was NOT verified" named this exact claim as unexercised, which is the entry that turned out to matter | One builder call. `SchemaMigrationRunner.BuildUpgradeEngine` adds `.WithVariablesDisabled()`, whose presence in dbup-core's public API was **read at tag `6.1.1`** rather than recalled, and nothing in this tree has ever used a DbUp variable — there is no `WithVariable` call anywhere, and the only `$` in any of the four scripts is that tag. **The script keeps its TAGGED body rather than being reduced to `$$`, and that is the ruling.** An empty tag also survives substitution, so writing both would mean a tree that stays green with the fix deleted — F-64's undeclared property, F-69's `should` and F-75's missing local gate are each an instance of a second belt hiding the first. A tagged body makes the builder call load-bearing: remove it and `SchemaMigrationRunnerTests` fails on the next run, loudly, with the message above. **So the row names something executable by adding nothing** (F-47): the existing gate already blocks, its summary now says that is its job, and a test re-asserting what a thrown migration already refuses would be a monument. `0004` is edited in place, which F-34 forbids for an applied script — allowed here for the one reason that makes the rule inapplicable: **it had never applied anywhere**, DbUp journals only on success, so there is no journal row to be stale | S§7, S§16.4 · `src/MyRestaurant.DataAccess/SchemaMigrationRunner.cs`, `src/MyRestaurant.DataAccess/Migrations/0004_menu_item_descriptions.sql`, `tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs` · BUILD_PROGRESS M6 Slice 39 |
+| F-79 | **§7 carried one paragraph twice, consecutively, byte-identical, for a slice — and the three gates that read that document are each structurally unable to see it.** The paragraph beginning *"Two existing rules survive that change…"*, which keeps a deactivated item visible under its heading and refuses to cascade a section's `is_active` down to its items, was written twice in a row by Slice 38. The effect on a reader is a moment's confusion and nothing worse. The kind is worth a number: `MarkdownTableContractTests` reads this repository's Markdown for **table shape**, `SpecificationVersionTests` reads a **header against its own changelog**, and `TestingSectionContractTests` reads §16.4's **counts against the files they describe** — three gates over the same document, none of which reads a sentence. Found by opening §7 in order to edit it, which is how F-54 and F-58 arrived, and which is not a habit anything can rely on | The duplicate is deleted. **No gate is added, and the reason is F-41's rather than convenience:** the assertion available is *no paragraph in this repository's Markdown appears twice verbatim*, and this tree restates rulings across documents on purpose — `MENU_AND_HANDHELD_PLAN.md` quotes the specification, this ledger quotes both, §11.12 restates §16.4's reasoning where a reader of either needs it — so that gate would report findings on documents that are correct. What is recorded instead is the residual, stated rather than implied, in the same place the other residuals of this class are | S§7 · `docs/TECHNICAL_SPECIFICATION.md` · BUILD_PROGRESS M6 Slice 39 |
 
 ## Going forward
 
@@ -15847,20 +15962,20 @@ what remained; it was wrong about the work being tidying.
   File name:             MENU_AND_HANDHELD_PLAN.md
   Relative path:         docs/MENU_AND_HANDHELD_PLAN.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/MENU_AND_HANDHELD_PLAN.md
-  Size:                  45.3 KiB (46350 bytes)
-  Last modified:         2026-08-13 22:13:59.000000000 -0400
+  Size:                  49.0 KiB (50168 bytes)
+  Last modified:         2026-08-14 07:07:04.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 39620683
+  Inode:                 40210159
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               10555b794a572ab51947e7ce509ebe2a7edec697754fedd489a218dc951ba74b
+  SHA-256:               a455df2dccf195f52d250f62973c5899e973b59c8f8f2377cfb316d0fdd9b489
   Last git commit:       bd533c3 2026-08-14 05:08:35 -0400 add claude changes
 
 --- CONTENT ---
 # Menu modernization and the handheld contract — staged plan
 
-**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-12, at the close of Slice 34.** This
+**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-14, at the close of Slice 39.** This
 is the execution plan for the first enhancement request the project has received from a person who was
 shown the running application, together with the defect that request arrived beside. It is a working
 document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
@@ -16317,7 +16432,18 @@ specification changelog, and the ledger is for findings).
 
 ## Stage 3 — sections and descriptions: the surfaces
 
-**Not started.** The UI/UX half, on the Stage 1 foundation.
+**Started out of order, and the guest menu landed first (Slice 39).** The UI/UX half, on the Stage 1
+foundation.
+
+**Why the order changed, and it is a ruling rather than opportunism.** This stage was written to run after
+`0005`, on the reasoning that a guest menu grouped by section needs sections to exist. Slice 39 took the
+picker first, without sections, because the two halves turned out to be separable: **a card per item needs
+`menu_item.description`, which `0004` delivered, and nothing else.** Grouping those cards under headings is
+an outer loop added later around markup that does not change. Against that, leaving the picker as a
+`<select>` until `0005` meant leaving the *only* part of the request the person who made it could see —
+*"please rethink the UI/UX of the menu"* — behind two migrations, with the column that exists to be read
+already in the schema and read by nothing. The cost of the swap is that the guest surface will be edited
+twice; under this project's full-file delivery that costs nothing, and F-64's ruling is the precedent.
 
 **`/administration/menu`** becomes sections-first: a record list of sections, each expandable to its items,
 with the section's own order controls. The flat name-ordered list of every item goes away — it is what a
@@ -16332,19 +16458,53 @@ bottom (§11.4 — the complete stored record, never truncated for the administr
 (`app.css` already styles one — added in Slice 30 for this), and a position control. Reprice, rename and
 the 86 toggle are unchanged.
 
-**The guest menu is the part that was actually asked for.** Today it is one `<select>` with every item
-flattened into it and the price glued onto the label — which is unreadable at eleven items and absurd at
-sixty, and has nowhere to put a description. It becomes: a section heading, then a card per item with its
-name, price, description, and an "Add" control; a section's own description under its heading; and
-`disabled` items still present and marked *currently unavailable*, because §7 requires that and it is the
-one thing about the current picker that is right. The basket, the Send button, the all-or-nothing rejection
-panel and the party totals below it do not change — this is the picker, not the order surface.
+### ~~The guest menu — the part that was actually asked for~~ — **landed, M6 Slice 39, minus the section headings**
+
+It was one `<select>` with every item flattened into it and the price glued onto the label, which is
+unreadable at eleven items and absurd at sixty and had nowhere to put a description. It is now **a card per
+item** — name, price, description where the item has one, an availability chip, and a `disabled` control
+where §7 says so — and **choosing a card opens a detail panel** naming what is recorded about that item.
+The basket, the Send button, the all-or-nothing rejection panel and the party totals below it did not
+change: this was the picker, not the order surface, exactly as this paragraph predicted.
+
+**Three things about it are rulings rather than implementation.**
+
+- **The panel says when it has nothing to say.** "More information about that item *if such information
+  exists*" is how the request was worded, and the honest reading is a sentence rather than an empty box: a
+  blank panel is indistinguishable from a surface that failed to load, which is the confusion §11.10's
+  `data-loaded` bit exists to prevent one level up. Today the panel names a price, an availability line and
+  when the item first appeared; Stages 4 and 5 add rows to it rather than rewriting it, which is the whole
+  reason it is a `<dl>` of terms rather than three hard-coded lines.
+- **A card is a `<button>` with `aria-pressed`, not a radio.** A radio group is the more precise ARIA for
+  "choose exactly one" and it was refused for a concrete reason: Blazor reconciles the `checked`
+  *attribute* while browsers track the checked *property*, so a radio whose state a component owns can
+  drift out of step with the DOM in ways only a browser can observe — and this slice had no browser. Every
+  other control on that island is an `@onclick`. A one-of-many toggle set is a slight stretch of
+  `aria-pressed` and it is the better trade against emulating a radio group's keyboard semantics.
+- **No breakpoint.** `.order-menu` and `.order-menu-facts` are `auto-fit` grids, so one column on a 375px
+  handset and as many as fit on a counter's laptop is the same rule either way. §11.12 asks for exactly
+  this in preference to a width query, and a width written for the menu would have been the tree's second
+  breakpoint.
+
+**What the harness gained, and it is the half that could not have existed before.** `TableOrderJourneys`
+adds `ChooseAsync`, `ReadMenuAsync`, `ReadChosenItemDetailAsync` and `WaitForMenuAsync`. An `<option>`
+renders text and nothing else, so the only thing a harness could read off the old picker was one
+concatenated label and the only assertion available was containment — which is why `0004`'s description
+column shipped with nothing behind it. A card has an element per fact. `AdministrationJourneys.CreateMenuItemAsync`
+takes an optional description so a scenario can arrange an item that has one.
+
+**What is left of the guest menu:** the section headings, a section's own description under its heading, and
+the grouping — all three of which need `0005`, and all three of which are an outer loop around markup that
+now exists.
 
 **The kitchen 86 panel** groups by section, for the reason the guest menu does: a cook looking for the
 salmon looks under the heading it is on.
 
 **One new §16.3 scenario**: create a section, create an item in it with a description, and read both back
-from the guest surface. Numbered 17, appended rather than inserted, because the harness names scenarios by
+from the guest surface. **Still outstanding after Slice 39**, and deliberately: the harness can now read a
+card and a detail panel, but a scenario asserting a *section* heading needs `0005`, and the sixteen existing
+scenarios were kept byte-identical apart from the one line inside `StageAsync` that chooses an item — which
+is the smallest edit that could carry the picker's rewrite. Numbered 17, appended rather than inserted, because the harness names scenarios by
 number in a great many places. It was numbered 16 when this was written; Slice 32's handheld barrier took
 that number, which is what appending costs and is cheaper than renumbering sixteen of them.
 
@@ -17229,20 +17389,20 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
   File name:             TECHNICAL_SPECIFICATION.md
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/docs/TECHNICAL_SPECIFICATION.md
-  Size:                  331.4 KiB (339400 bytes)
-  Last modified:         2026-08-13 22:13:59.000000000 -0400
+  Size:                  341.5 KiB (349722 bytes)
+  Last modified:         2026-08-14 07:05:56.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 39620679
+  Inode:                 40210160
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               3c141e48da1ae9997044ab5b11e55dd40a96f9a5575c9b43cd9d7c444ff677dd
+  SHA-256:               8dc94199baefdb06505a810277ee1721aa79f82186b03f5784259b5318f49a56
   Last git commit:       bd533c3 2026-08-14 05:08:35 -0400 add claude changes
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
 
-**Version 1.23 — 2026-08-13 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
+**Version 1.24 — 2026-08-14 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
 This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md` (rev 5). It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. The decisions register in Appendix A maps every ruling to its embodiment.
 
@@ -17463,7 +17623,7 @@ Administrator-only appended events per §6.5(8), fully visible in history views 
 
 **Why the stage was cut between the two tables, and then between the item's own columns.** Making `menu_item.menu_section_identifier` `NOT NULL` breaks the create-item form the moment it applies, and that form is driven by six of the sixteen §16.3 scenarios, so the plan's own boundary correction had to pull three surfaces forward to ship green. Cutting at the table instead meant `0003` touched nothing that already existed. `0004` applies the same test one register lower: two columns with defaults and two event types touch nothing either, so the suite stays green **by construction** rather than by inspection, and the expensive coupling between a `NOT NULL` reference and three surfaces is paid on its own in `0005`. The rejected alternative is still rejected — the reference is never nullable, so no reading surface ever acquires a code path for an item under no heading — and the cost is one more migration script, which DbUp journals by name and therefore charges nothing.
 
-Two existing rules survive that change and are restated here because both are easy to lose while rewriting a menu surface. A deactivated item stays visible **under its section heading** — which reads better than it does in a flat list, not worse. And **deactivating a section does not deactivate its items:** an inactive section is not rendered to the guest, its items keep their own `is_active`, and reactivating it brings the menu back exactly as it was. Cascading the flag downward would silently rewrite every item's availability and lose which of them the kitchen had 86'd, which is F-10b's mistake in a new place.
+**The guest picker is a list of items, and as of `0004` it renders the description.** §11.1's staging area was one `<select>` with every item flattened into it and the price concatenated onto the label, which is what a menu looks like when the model cannot express a menu: a closed dropdown shows exactly one option, so comparing two items means opening a modal list twice, and an `<option>` renders text and nothing else — no element for a description, no chip for availability, no room for anything this menu grows later. It is now a card per item, each a button carrying the item's identifier, and choosing one opens a panel naming what is recorded about it. **Where nothing is recorded the panel says so in a sentence** rather than rendering an empty box, which is the honest reading of "more information if such information exists": a blank panel is indistinguishable from a surface that failed to load, and that confusion is what §11.10's `data-loaded` bit exists to prevent one level up. §7's availability rule is unchanged and is now more legible rather than less: the card stays in the list, keeps its description, carries a *currently unavailable* chip, and its button is `disabled`.
 
 Two existing rules survive that change and are restated here because both are easy to lose while rewriting a menu surface. A deactivated item stays visible **under its section heading** — which reads better than it does in a flat list, not worse. And **deactivating a section does not deactivate its items:** an inactive section is not rendered to the guest, its items keep their own `is_active`, and reactivating it brings the menu back exactly as it was. Cascading the flag downward would silently rewrite every item's availability and lose which of them the kitchen had 86'd, which is F-10b's mistake in a new place.
 
@@ -18021,7 +18181,7 @@ Browsers block autoplay: the kitchen surface shows a one-tap "enable sound" arm 
 
 ### 11.1 `/table`
 
-Anonymous with valid token → grant → sign-in/registration (passkey-first, password offered; the registration surface is §11.8) → join. Member view: the party roster; **my order** — staging area (add item pickers from the menu — deactivated items greyed out and unselectable (§7) — with quantity 1–100 and note; mark-my-pending-line-for-removal) with a Send button that is disabled while empty and shows an all-or-nothing error panel (per-operation reasons) on rejection; below it the committed living order, each line badged pending/fulfilled, removed lines struck-through with actor + reason, price adjustments shown old → new with reason; **party orders** — read-only equivalents for other members; running personal and table totals; history (the guest's **own** past orders at this restaurant — cross-member history is never shown); a per-order **Hide** control on closed orders, confirmed as irreversible from the guest's account (§6.8); and a link to the **profile page** (§11.6) — set the display name; manage passkeys, password, TOTP and recovery codes; optional phone number and email address (used for manual staff escalation only — nothing in the system sends to them automatically); postal addresses with **free-text labels** ("Home", "Work", "Grandparents' house") — deliberate scaffolding for a possible future delivery/takeout feature, consumed by nothing in version 1 and not to be removed as dead weight. On `SittingClosed`, the surface flips to a read-only settled-bill view.
+Anonymous with valid token → grant → sign-in/registration (passkey-first, password offered; the registration surface is §11.8) → join. Member view: the party roster; **my order** — staging area (**the menu is a list of items, one card each, not a `<select>`**: name, price, description where the item has one, and a *currently unavailable* chip with a disabled control where §7 says so; choosing one opens a detail panel naming what is recorded about that item and saying plainly when nothing more is, which is the surface that item descriptions, and later ratings and images, are read on; then quantity 1–100 and note; mark-my-pending-line-for-removal) with a Send button that is disabled while empty and shows an all-or-nothing error panel (per-operation reasons) on rejection; below it the committed living order, each line badged pending/fulfilled, removed lines struck-through with actor + reason, price adjustments shown old → new with reason; **party orders** — read-only equivalents for other members; running personal and table totals; history (the guest's **own** past orders at this restaurant — cross-member history is never shown); a per-order **Hide** control on closed orders, confirmed as irreversible from the guest's account (§6.8); and a link to the **profile page** (§11.6) — set the display name; manage passkeys, password, TOTP and recovery codes; optional phone number and email address (used for manual staff escalation only — nothing in the system sends to them automatically); postal addresses with **free-text labels** ("Home", "Work", "Grandparents' house") — deliberate scaffolding for a possible future delivery/takeout feature, consumed by nothing in version 1 and not to be removed as dead weight. On `SittingClosed`, the surface flips to a read-only settled-bill view.
 
 ### 11.2 `/kitchen`
 
@@ -18511,6 +18671,8 @@ Deliberately **not** folded into the tree gate. That script's five gates are all
 
 **The migration gate grew a second shape of fact, and the reason is that `0004` creates nothing.** `…/SchemaMigrationRunnerTests.cs` holds 5 assertions, two of them new. `0004` is the first migration in this tree that is entirely `ALTER`: it creates no relation, so the census of relations that catches `0003` is structurally blind to it and every previously existing fact in that file passes on a tree where `0004` never ran. Four theory rows therefore name the columns that arrived by `ALTER`, and one fact names the CHECK constraints `0004` added after dropping `menu_item_event`'s four generated ones. The second is doing more than it looks. `0004` drops by querying `pg_constraint` inside a dollar-quoted `DO` block, which is the first statement in this repository whose survival depends on `dbup-postgresql`'s splitter consuming a tagged block rather than breaking it at the first internal semicolon — and a splitter that broke it would leave a `DO` with a truncated body, which is still valid SQL that simply does less. The failure would present as a green migration and a table with no constraints. So the constraint **names** are asserted and the two generated names are asserted absent — names rather than a count, because `0005` adds a fifth (F-47).
 
+**That file is also the gate on one line of the migration runner's configuration, and it earned the job by failing (F-78).** `0004`'s `DO` block is dollar-quoted with a *tag*, and dbup-core runs `VariableSubstitutionPreprocessor` **before** the PostgreSQL splitter the paragraph above is about — a preprocessor that reads `$name$` as a variable reference, which is the same four characters around the same kind of identifier PostgreSQL spells a dollar-quoted body with. So the script threw `Variable migrate_menu_item_event_checks has no value defined` on every fresh database, the splitter never saw the text, and every test whose fixture applies the schema went red at `InitializeAsync`. `SchemaMigrationRunner` now builds its engine with `WithVariablesDisabled()`, which is where the fix belongs: the collision is a property of the runner's configuration and not of any one script. **No new assertion is added, deliberately**, and the reason is the shape of the alternative: `DO $$ … $$` would also survive substitution, so writing *both* would leave a tree that is green with the rule deleted — F-64, F-69 and F-75's mechanism, arriving as a second belt that hides the first. Keeping the **tagged** body is what makes that one builder call load-bearing, and this file is what proves it on every run.
+
 **Three files stated how many event types the menu vocabulary had, and nothing in this tree could check any of them.** `MenuEventLog`'s summary, `AdministrationMenu.razor`'s `Describe` and `ManageMenuItem.razor`'s all said *the five types §8.2's CHECK admits*, and one of them additionally named Stage 2's new types as **two** where the plan specified three. `0004` makes the answer seven and `0005` makes it eight. **No gate is added for this, and that is the ruling** (F-47): the only honest census is the `switch` arms themselves, so each count is **deleted** rather than corrected and each comment now states the property — a friendly label per admitted type, falling back to the stored string for anything else — which is true at every vocabulary size. It is F-47's habit applied to prose no gate reaches, and the residual is stated: nothing mechanically prevents the next such sentence (**F-77**).
 
 
@@ -18606,6 +18768,9 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`) — **except 
 | F-75 | **A script that names the one gate it cannot reproduce had two.** `scripts/ci_local.sh` exists to answer the question a plain `dotnet build` does not, and its header states the boundary honestly: *"The one gate this cannot reproduce is CI's boot-smoke job."* CI also runs a `vulnerable package audit (advisory)` step, and nothing local ran it — for fourteen slices, while `Directory.Build.props` said in the indicative that *"CI reports them in a dedicated non-blocking step instead"*, which was true of GitHub Actions and silently untrue of the local equivalent. This is F-46's shape once more, a rule applied to one of its two homes; and it is the mechanism of F-74 rather than a tidy-up beside it, because the audit is the only thing in this project whose job is to say an advisory out loud | The audit becomes gate 7 of `scripts/ci_local.sh`, running the identical command on identical terms — `continue-on-error: true` in the workflow, `\|\| true` on the command's own line here, because `dotnet list package --vulnerable` has reported findings with a zero status and this gate must not depend on which. **The header's claim is repaired by making it true again rather than by weakening it**, which is the direction that matters: a claim softened to match a check is a check nobody strengthens afterwards. **The row names something executable** (F-38's lesson, seventeenth application): `VulnerabilityAuditParityContractTests`, two facts, holding the command in both files character for character — including `--include-transitive`, which is the flag that matters most here, since the package F-74 was about is reachable no other way. It compares one command and nothing else, because a general parity assertion would fail on the boot-smoke job and report a finding on a correct tree (F-41) | §16.4 · `scripts/ci_local.sh`, `tests/MyRestaurant.WebApplication.Tests/Deployment/VulnerabilityAuditParityContractTests.cs` (new) · BUILD_PROGRESS M6 Slice 37 |
 | F-76 | **Gate 3 of tree hygiene printed a claim one word stronger than the check it had just run, and eleven files were on the wrong side of that word.** It said `all files end with exactly one LF` while testing only that the last byte *was* one. Eleven tracked files ended with two — a trailing blank line — and nothing could see them: gate 2 forbids whitespace-only lines with `^[[:space:]]+$`, which requires at least one space or tab, and an empty line has neither, so gate 2 was correct to pass. The word `exactly` had been unearned since the gate landed in Slice 18. It is a small defect with a large position: this project's byte-hygiene rule is one of the three properties it checks on every delivered file, and the property it was not checking is the one a text-manipulation script gets wrong most often | The check earns the word: a third half counts the newlines in the **last two bytes** with the same `tail -c … \| wc -l` trick the second half already uses, and reports a file ending in a blank line by name. The eleven files are repaired, in the same archive, because a gate strengthened without them is a gate delivered red. **Earning the claim rather than weakening it** is the ruling — deleting `exactly` would have made the gate honest and left the property unchecked forever. Sensitivity was demonstrated in both directions on the real tree: the strengthened gate named exactly the eleven before the repair and passed after it, and each repaired file was verified byte-identical to its recorded SHA-256 but for the one removed newline | §16.4 · `scripts/check_tree.sh`, and eleven files whose last byte changed · BUILD_PROGRESS M6 Slice 37 |
 | F-77 | **Three files stated how many event types the menu vocabulary had, one of them also miscounted the types a plan had specified, and no gate in this repository reaches prose.** `MenuEventLog`'s type summary, `AdministrationMenu.razor`'s `Describe` and `ManageMenuItem.razor`'s all said *"a friendly label for the five event types §8.2's CHECK admits"*. Five was right when `0001` shipped. `0004` makes it seven and `0005` makes it eight. Worse, `AdministrationMenu.razor` went on to name *"Stage 2's two new types (`description_changed`, `section_changed`)"* where `MENU_AND_HANDHELD_PLAN.md` Stage 2 specifies **three** — so the comment was already wrong about a document in the same repository, in the direction that matters least (`reordered`, the one it omitted, is a type this very slice implements). Trivial in effect: the `switch` fallback means an unlabelled type renders as itself, which is the design. Not trivial in kind — it is **F-47's habit** (where a rule can be executed, a list must not exist) applied to a census that no test can read, and it is the sixth time in this ledger that one fact written in more than one place turned out to disagree with itself (F-48, F-50, F-56, F-65, F-73, and now this) | The counts are **deleted rather than corrected**, and that is the ruling. A corrected count is a count that goes stale in `0005`, which is three slices' worth of evidence that this exact sentence cannot be maintained by hand. Each comment now states the *property* — a friendly label per admitted type, falling back to the stored string for anything else — which is true at every vocabulary size, and the `switch` arms are left as the only census. **No gate is added, deliberately** (F-47 again): a test that counted `case` arms against a CHECK constraint in a `.sql` file would be a monument to a sentence, and the compiler already refuses a duplicate arm. The distinction from F-73, where a count was *kept*, is recorded because the two rulings look contradictory: F-73's number is the argument for a floor a test asserts and nothing derives it, so deleting it removed the argument; this one is decoration on a `switch` that is its own answer. §16.4 states the residual rather than implying it is closed — nothing mechanically prevents the next such sentence | S§7, S§8.2, S§16.4 · `src/MyRestaurant.DataAccess/Menu/MenuEventLog.cs`, `…/Administration/AdministrationMenu.razor`, `…/Administration/ManageMenuItem.razor` · BUILD_PROGRESS M6 Slice 38 |
+| F-78 | **The menu enhancement's own migration could not apply, on any host, and the comment inside it explained why it was safe.** `0004`'s constraint sweep is a dollar-quoted `DO` block tagged `$migrate_menu_item_event_checks$`, and the script carried a paragraph asserting that this was safe because `dbup-postgresql`'s `PostgresqlQueryParser` has a `DollarQuoted` state that consumes a whole tagged block. That sentence is true and it is about the wrong component. dbup-**core** runs `VariableSubstitutionPreprocessor` first, and it reads `$name$` as a variable reference — the same four characters around the same kind of identifier — so the script threw `InvalidOperationException: Variable migrate_menu_item_event_checks has no value defined` before its first statement, the splitter never saw the text, and every test whose fixture applies the schema failed at `InitializeAsync`. **The blast radius is the part worth recording:** a migration is applied by every data-access fixture and by the end-to-end harness, so one script that cannot parse took the integration suite and all sixteen §16.3 scenarios down together, and the message names a variable that appears in no file anybody wrote. Not reachable by anything here — the script is well-formed SQL, `check_tree.sh` reads it as text and it is correct as text, and no test in this tree had ever applied a dollar-quoted statement, because `0003` contains none. **This is F-62's shape at the dependency boundary:** a reason for believing something was written without reading the component it is about, and Slice 38 recorded it as *reasoned about and not executed* in its own "what was NOT verified" — which is the entry that turned out to matter | One builder call: `SchemaMigrationRunner` adds `.WithVariablesDisabled()`, verified present in dbup-core's public API at tag `6.1.1` rather than recalled. Nothing in this tree has ever used a DbUp variable, so the feature was all cost. **The script keeps its TAGGED body rather than being reduced to `$$`, and that is the ruling.** An empty tag would also survive substitution — its next character is `$`, which is not a valid variable-name character, so `IsCustomStatement` never fires — so writing both would leave the suite green with the rule deleted, which is F-64, F-69 and F-75's mechanism arriving as a second belt that hides the first. A tagged body makes that one line load-bearing. **The row therefore names something executable without adding anything** (F-47): `SchemaMigrationRunnerTests` already blocks on this and now says so in its own summary, and a test re-asserting what a thrown migration already refuses would be a monument. `0004` is edited in place, which F-34 normally forbids — allowed here for the one reason that makes the rule not apply: the script had never applied anywhere, so there is no journal row to be stale | S§7, S§16.4 · `src/MyRestaurant.DataAccess/SchemaMigrationRunner.cs`, `…/Migrations/0004_menu_item_descriptions.sql`, `tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs` · BUILD_PROGRESS M6 Slice 39 |
+| F-79 | **§7 carried the same paragraph twice, consecutively, and the gate that reads this document for structure cannot see prose.** The paragraph beginning *"Two existing rules survive that change…"* — the one that keeps a deactivated item visible under its heading and refuses to cascade a section's flag down to its items — appears twice in a row, byte-identical, from Slice 38. Harmless to a reader beyond a moment's confusion, and it is a row because of what stood between it and being found: `MarkdownTableContractTests` reads table shape, `SpecificationVersionTests` reads the header against the changelog, `TestingSectionContractTests` reads §16.4's counts against files — three gates over this document, and the class of defect none of them reaches is the sentences. Found by reading §7 to edit it, which is how F-54 and F-58 were found | The duplicate is deleted. **No gate is added, and the reason is F-41's rather than laziness:** the assertion would have to be *no paragraph in this repository's Markdown repeats verbatim*, and this tree deliberately restates rulings across documents — the plan quotes the specification, the ledger quotes both, and §11.12 restates §16.4's reasoning on purpose — so the gate would report findings on correct documents. What is recorded instead is the residual, stated rather than implied: three gates read this file and none reads it for meaning | S§7 · `docs/TECHNICAL_SPECIFICATION.md` · BUILD_PROGRESS M6 Slice 39 |
+| Menu enhancement, Stage 3 first surface (enhancement, not a finding) | The guest picker was the half of the enhancement request that was actually asked for — *"please rethink the UI/UX of the menu"* — and it was still one `<select>` two slices after the column it exists to show had landed | The picker becomes a card per item: name, price, description, an availability chip, a `disabled` control where §7 says so, and a detail panel that names what is recorded and says plainly when nothing more is. `data-menu-item` carries the identifier the old `<option>` carried as its value, so §16.3's scenarios choose an item the same way they always did. Two `auto-fit` grids rather than a second breakpoint (§11.12). `TableOrderJourneys` gains `ChooseAsync`, `ReadMenuAsync`, `ReadChosenItemDetailAsync` and `WaitForMenuAsync` — reads the old dropdown could not express, which is why `0004`'s description column had no assertion behind it until now | §7, §11.1, §16.4 · ADR-0014 · `docs/MENU_AND_HANDHELD_PLAN.md` Stage 3 · BUILD_PROGRESS M6 Slice 39 |
 | Menu sections and descriptions (enhancement, not a finding) | The first request from a user rather than from a document: a menu needs headings and each item needs a sentence explaining it, and `menu_item`'s four columns express neither | ADR-0014 rules the schema — `menu_section` as a table, `menu_item.menu_section_identifier` NOT NULL, `citext UNIQUE` on a section name where an item name is deliberately neither, non-unique explicit `display_order` on both, `description text NOT NULL DEFAULT ''` because a paired CHECK cannot bind an optional payload, three new item event types beside a new `menu_section_event`, and `created` deliberately still carrying name and price only. Recorded in Appendix A without an F-number because it is not a defect: the ledger is for findings, and an enhancement's trail is the ADR, this register, §19's M7 line and BUILD_PROGRESS | §7, §8.2, §19 · ADR-0014 · `docs/MENU_AND_HANDHELD_PLAN.md` Stage 2 · BUILD_PROGRESS M6 Slice 30 |
 | F-21 – F-24 | — | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | — | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
@@ -18614,6 +18779,8 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`) — **except 
 ---
 
 ## Changelog
+
+**v1.24 — 2026-08-14.** The migration that could not run, and the dropdown that was the request. **Appendix A** gains **F-78**: `0004`'s dollar-quoted `DO` block is tagged, dbup-core substitutes `$name$` before the PostgreSQL splitter ever sees the text, and the script therefore threw `Variable migrate_menu_item_event_checks has no value defined` on every fresh database — taking the data-access suite and all sixteen §16.3 scenarios with it, because a migration is what every fixture applies first. The comment inside the script asserting that the block was safe was true about `dbup-postgresql`'s splitter and silent about dbup-core's preprocessor, which is F-62's shape at a dependency boundary. `SchemaMigrationRunner` adds `.WithVariablesDisabled()`; the script **keeps its tagged body** so that deleting that line cannot leave the tree green with the rule gone, and **§16.4** records why no new assertion is added beside it. **§7** gains the ruling the enhancement request was actually about: the guest picker is a list of item cards rather than a `<select>`, because a closed dropdown shows one option and an `<option>` renders text and nothing else — no element for the description `0004` added, no chip for availability, no room for anything a menu grows later — and choosing a card opens a panel that names what is recorded and **says so in a sentence when nothing more is**, since a blank panel is indistinguishable from a surface that failed to load. **§11.1** describes that surface. §7's availability rule is unchanged and reads better in a list than it did in a label. **Appendix A** also gains **F-79** — §7 carried one paragraph twice, consecutively, since v1.23; three gates read this document for structure, counts and version, and none of them reads it for meaning, which is recorded as the residual rather than closed with a gate that would report findings on a tree that restates rulings on purpose (F-41). No assertion count in §16.4 moves, so `TestingSectionContractTests`' floor of sixteen is untouched. No `REQUIREMENTS.md` edit, on the v1.2 reasoning: R§6.8 has required an append-only mirror of every menu change since rev 1 and rev 6 already asks for a program operable on the screen §1 says it is used from, so both halves of this version are mechanisms catching up with contracts this tree already states. No schema change — `0004`'s text moves and its effect does not. No `compose.yaml` edit, no `.slnx` edit, no new package.
 
 **v1.23 — 2026-08-13.** Item descriptions and item positions. **§7** records the item half of the menu enhancement now that two of its three columns exist: `menu_item.description text NOT NULL DEFAULT ''` and `display_order integer NOT NULL DEFAULT 0`, `description_changed` and `reordered` in the event vocabulary, and four rulings that are decisions rather than implementation — every verb is its own call under the no-op rule, descriptions compare **ordinally** so recasing is a real change, `created` still carries the name and the price alone so an item created with a description has two events, and an item is created at position **0** rather than appended, because "the end of the menu" is not a defined place until `0005` gives the item a heading. That last one is the property that makes this migration invisible: every item sits at 0, so ordering by `(display_order, name, identifier)` **is** the name ordering this table has always been read in. **§8.1** stops describing the DDL below as the text of `0001` — it is the schema of record after every applied migration, and later columns now carry their script number, because DbUp journals by name and an applied script is never edited (F-34). **§8.2** carries the two columns, the two payload columns, and `menu_item_event`'s five **named** CHECK constraints, which replace the four PostgreSQL generated for `0001`'s inline declarations — dropped by querying `pg_constraint` in a dollar-quoted `DO` block rather than by depending on names nobody chose. **§16.4** gains four paragraphs and, in the one that matters, the reason the migration gate needed a new *shape* of fact: `0004` is the first migration here that creates no relation, so the existing census of relations is structurally blind to it. **Appendix A** gains **F-77**. `TestingSectionContractTests`' floor moves from ten to sixteen with the census, which is F-73's habit on its second application. No `REQUIREMENTS.md` edit, on the v1.2 reasoning: R§6.8 has required an append-only mirror of every menu change since rev 1, and this is that contract reaching two more columns rather than new intent.
 
@@ -31429,14 +31596,14 @@ CREATE INDEX menu_section_event_section_index
   File name:             0004_menu_item_descriptions.sql
   Relative path:         src/MyRestaurant.DataAccess/Migrations/0004_menu_item_descriptions.sql
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/Migrations/0004_menu_item_descriptions.sql
-  Size:                  9.9 KiB (10129 bytes)
-  Last modified:         2026-08-13 22:13:59.000000000 -0400
+  Size:                  11.4 KiB (11657 bytes)
+  Last modified:         2026-08-14 06:56:56.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 39620659
+  Inode:                 40210164
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               41b43e62284de25c8a3014e454d79316d05d3615a4a1edd203353f7b50e767a0
+  SHA-256:               f9193de713ee3b7137678baa660b8fa5cc57c46289e4c29f3c7960eb133ebdc2
   Last git commit:       bd533c3 2026-08-14 05:08:35 -0400 add claude changes
 
 --- CONTENT ---
@@ -31526,11 +31693,35 @@ ALTER TABLE menu_item
 -- (pg_attribute.attnotnull) in PostgreSQL 17 and a contype = 'n' row in 18, so
 -- neither version's NOT NULL can be caught by this loop.
 --
--- The dollar-quoted block is safe in an embedded DbUp script: dbup-postgresql's
--- PostgresqlQueryParser has a DollarQuoted state that consumes a whole tagged
--- block, so the semicolons inside this body do not split the statement. This is
--- the first script in this tree to rely on that, which is stated so that a
--- failure here is read as what it is.
+-- THE DOLLAR-QUOTED BLOCK NEEDS TWO THINGS TO BE TRUE, AND THIS SCRIPT
+-- ORIGINALLY NAMED ONLY ONE OF THEM (F-78).
+--
+-- The half that was named is real: dbup-postgresql's PostgresqlQueryParser has a
+-- DollarQuoted state that consumes a whole tagged block, so the semicolons inside
+-- this body do not split the statement. Verified at
+-- DbUp/dbup-postgresql src/dbup-postgresql/PostgresqlQueryParser.cs.
+--
+-- The half that was missing is the one that actually failed. dbup-core runs
+-- VariableSubstitutionPreprocessor BEFORE that splitter, and it reads $name$ as a
+-- variable reference — the same four characters around the same kind of identifier
+-- that PostgreSQL spells a dollar-quoted body with. So this script threw
+-- "Variable migrate_menu_item_event_checks has no value defined" on every fresh
+-- database, the splitter never saw the text, and every migration test in the suite
+-- went red at InitializeAsync. SchemaMigrationRunner now builds its engine with
+-- WithVariablesDisabled(), which is where the fix belongs: the collision is a
+-- property of the runner's configuration and not of any one script.
+--
+-- The tag is DELIBERATELY KEPT rather than reduced to $$. An empty tag would also
+-- survive substitution, and writing it that way would mean that deleting
+-- WithVariablesDisabled() left the whole suite green with the rule gone. A tagged
+-- body makes that line load-bearing: remove it and this script fails on the next
+-- run, loudly, with the message above.
+--
+-- Editing an already-delivered script is normally forbidden (F-34: DbUp journals
+-- by name, so a change to an applied script is a change that never runs). It is
+-- allowed here for the one reason that makes the rule not apply: this script has
+-- never applied ANYWHERE. It threw before its first statement on every host and
+-- every container, so no journal row for it exists to be stale.
 DO $migrate_menu_item_event_checks$
 DECLARE
     doomed_constraint text;
@@ -34876,14 +35067,14 @@ public sealed class DapperOrderVisibility : IOrderVisibility
   File name:             SchemaMigrationRunner.cs
   Relative path:         src/MyRestaurant.DataAccess/SchemaMigrationRunner.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.DataAccess/SchemaMigrationRunner.cs
-  Size:                  4.8 KiB (4953 bytes)
-  Last modified:         2026-07-17 20:09:56.000000000 -0400
+  Size:                  7.5 KiB (7731 bytes)
+  Last modified:         2026-08-14 06:56:56.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 21258206
+  Inode:                 40210165
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               f319e2cbe925d4bb2f8249b28e5ec9cfa6b1e2c3e67e614c69631efa287bf7f0
+  SHA-256:               f0ee51489c5deefbd3ff1e994153af984d98baf0553ddc80b2d8881e51905aa1
   Last git commit:       21c2eac 2026-07-18 01:04:22 -0400 add M1
 
 --- CONTENT ---
@@ -34910,6 +35101,16 @@ namespace MyRestaurant.DataAccess;
 /// <c>IUpgradeLog</c> is avoided deliberately because its interface shape varies across DbUp
 /// versions (BUILD_PROGRESS: known caveats). If the DbUp API differs from what is pinned, this
 /// is the most likely place a build break appears — adjust the builder calls here.
+///
+/// <para><b>Variable substitution is switched off, and that is a correctness requirement rather than
+/// a preference (F-78).</b> DbUp's <c>VariableSubstitutionPreprocessor</c> reads <c>$name$</c> as a
+/// variable reference and throws when the name is not in its dictionary — and PostgreSQL spells a
+/// dollar-quoted string body <c>$tag$ … $tag$</c>, which is the same four characters around the same
+/// kind of identifier. So a <c>DO</c> block with a tagged body is a migration this runner refuses to
+/// apply, with a message naming a variable nobody wrote: <c>0004</c> failed on every fresh database
+/// with <c>Variable migrate_menu_item_event_checks has no value defined</c>. Nothing in this tree has
+/// ever used a DbUp variable, so the feature is pure cost here. See <c>BuildUpgradeEngine</c> for why
+/// this is the only fix applied.</para>
 /// </summary>
 public sealed class SchemaMigrationRunner
 {
@@ -34981,6 +35182,29 @@ public sealed class SchemaMigrationRunner
                 resourceName =>
                     resourceName.EndsWith(".sql", StringComparison.OrdinalIgnoreCase)
                     && resourceName.Contains(".Migrations.", StringComparison.Ordinal))
+            // A script is applied as written (F-78). DbUp substitutes $name$ before the PostgreSQL
+            // statement splitter ever sees the text, and PostgreSQL's dollar-quoting is spelled the
+            // same way — so `DO $migrate_menu_item_event_checks$ … $migrate_menu_item_event_checks$`
+            // is read as a reference to a variable called `migrate_menu_item_event_checks`, found
+            // absent, and thrown on. Verified against dbup-core's own source rather than inferred
+            // from the message: VariableSubstitutionSqlParser.IsCustomStatement fires when the
+            // current character is '$' and the next is a letter, digit, '_' or '-', and
+            // ReadCustomStatement then reads to the closing '$' and raises
+            // "Variable {name} has no value defined".
+            //
+            // Nothing in this tree substitutes anything: there is no WithVariable call anywhere, and
+            // the only '$' in any of the four migration scripts is that DO block's tag. So the
+            // feature is all cost and no use, and switching it off is the whole fix.
+            //
+            // DELIBERATELY THE ONLY FIX, and the reason is this project's own rule about belts that
+            // hide braces. `DO $$ … $$` would also survive substitution — an empty tag's next
+            // character is '$', which is not a valid variable-name character, so IsCustomStatement
+            // does not fire — and writing both would mean that deleting this line leaves every gate
+            // green while the rule is gone. Keeping the TAGGED form in 0004 is what makes this line
+            // load-bearing: remove it and every fact in SchemaMigrationRunnerTests fails on the next
+            // run, which is F-47's habit (where a rule can be executed, a list must not exist)
+            // applied to a builder call.
+            .WithVariablesDisabled()
             .WithTransactionPerScript()
             .LogToConsole()
             .Build();
@@ -54582,14 +54806,14 @@ else
   File name:             TableOrderSurface.razor
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
-  Size:                  41.0 KiB (41972 bytes)
-  Last modified:         2026-08-04 20:00:00.000000000 -0400
+  Size:                  51.0 KiB (52229 bytes)
+  Last modified:         2026-08-14 06:57:43.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 32965870
+  Inode:                 40210170
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               88983e1f861dfcc2516406c500547110c8404b11b7df2f0f6d93409d508ba74d
+  SHA-256:               b73aa578f56a9e0a8bccd07b3162a7fde92f0d900707496a30a02fb1145d0450
   Last git commit:       bf4812c 2026-08-05 22:29:55 -0400 add claude changes
 
 --- CONTENT ---
@@ -54739,21 +54963,138 @@ else
             }
 
             @* ---- staging area (§11.1) ------------------------------------------------------------ *@
+            @* THE MENU IS A LIST OF ITEMS, NOT A <select>. Until M6 Slice 39 this was one dropdown with
+               every item flattened into it and the price glued onto the label — "Soup of the day — $4.50
+               (currently unavailable)" — which is what a menu looks like when the model cannot express
+               one. Three things were wrong with it and only the third is cosmetic. A closed <select>
+               shows exactly one option, so a guest deciding what to eat had to open a modal list, read a
+               line, close it, and open it again to compare; at sixty items that is not a menu, it is a
+               lookup. It had nowhere to put `menu_item.description`, which is the column this whole
+               enhancement exists for and which arrived in `0004`. And an <option> renders text only — no
+               element, no chip, no room for a rating, a review count or a thumbnail — so every future
+               fact about an item would have had to be concatenated into that same label.
+
+               So the item choice is a list of cards, each its own button, and choosing one opens a detail
+               panel below the list. The panel is the answer to "see a lot more information about that
+               item IF SUCH INFORMATION EXISTS": it names what is recorded, and where nothing is recorded
+               it says so in a sentence rather than rendering an empty box. Today that is a description, a
+               price, an availability line and when the item first appeared; ratings, reviews and images
+               are Stages 4 and 5 of docs/MENU_AND_HANDHELD_PLAN.md and each is a new row in the panel
+               rather than a rewrite of this markup, which is the point of building it this way now.
+
+               WHY BUTTONS AND aria-pressed RATHER THAN RADIOS. A radio group is the more precise ARIA
+               for "choose exactly one", and it was rejected for a concrete reason: Blazor reconciles the
+               `checked` ATTRIBUTE and browsers track the checked PROPERTY, so a radio whose state this
+               component owns can drift out of step with the DOM in ways that need a browser to observe.
+               Every other control on this island is an @@onclick, the pressed state here is rendered from
+               `_pickedMenuItemIdentifier` on every pass, and a button carries no DOM state to reconcile.
+               A one-of-many toggle set is a slight stretch of aria-pressed and it is the honest trade
+               against a radio group whose keyboard semantics this component would have to emulate.
+
+               `data-menu-item` carries the identifier because §16.3's scenarios choose an item by the
+               identifier `AdministrationJourneys.CreateMenuItemAsync` handed back, and matching on the
+               visible label would make those scenarios fail for a currency setting (the old <option>
+               carried the identifier as its value; this attribute is that value's replacement). *@
             <div class="order-picker">
-                <div class="form-field">
-                    <label for="order-picker-item">Item</label>
-                    <select id="order-picker-item" @bind="_pickedMenuItemId">
-                        <option value="">Choose something…</option>
+                <h3 class="order-picker-heading" id="order-picker-menu-heading">What would you like?</h3>
+
+                @if (_menu.Count == 0)
+                {
+                    @* This sentence used to stand BELOW the picker. A guest reading an empty menu should
+                       find the explanation where the list would have been, not underneath a quantity
+                       box. *@
+                    <p class="muted order-menu-empty">
+                        There is nothing on the menu yet. Please ask a member of staff.
+                    </p>
+                }
+                else
+                {
+                    <p class="order-picker-lede muted">
+                        Tap an item to see what is in it. Nothing reaches the kitchen until you press Send.
+                    </p>
+
+                    <ul class="order-menu" aria-labelledby="order-picker-menu-heading">
                         @foreach (MenuItemSummary item in _menu)
                         {
-                            @* §7: a deactivated item stays on the menu, marked, and cannot be picked —
-                               "the guest sees that the salmon exists and is out". *@
-                            <option value="@item.MenuItemIdentifier" disabled="@(!item.IsActive)">
-                                @item.Name — @Money(item.PriceAmount)@(item.IsActive ? string.Empty : " (currently unavailable)")
-                            </option>
+                            bool isChosen = _pickedMenuItemIdentifier == item.MenuItemIdentifier;
+
+                            @* §7: a deactivated item stays ON the menu, marked, and cannot be picked —
+                               "the guest sees that the salmon exists and is out, rather than watching it
+                               silently vanish". `disabled` is what enforces that half, and the card keeps
+                               its description, because an item a guest cannot have tonight is still an
+                               item they may want to read about. *@
+                            <li class="order-menu-item @(isChosen ? "is-chosen" : string.Empty) @(item.IsActive ? string.Empty : "is-unavailable")"
+                                @key="item.MenuItemIdentifier">
+                                <button type="button" class="order-menu-choice"
+                                        data-menu-item="@item.MenuItemIdentifier"
+                                        aria-pressed="@(isChosen ? "true" : "false")"
+                                        disabled="@(!item.IsActive)"
+                                        @onclick="() => ChooseItem(item)">
+                                    <span class="order-menu-line">
+                                        <span class="order-menu-name">@item.Name</span>
+                                        <span class="order-menu-price">@Money(item.PriceAmount)</span>
+                                    </span>
+
+                                    @if (item.Description.Length > 0)
+                                    {
+                                        @* Tested by Length rather than for null: the column is
+                                           NOT NULL DEFAULT '' and "" means "none" (§7). *@
+                                        <span class="order-menu-description">@item.Description</span>
+                                    }
+
+                                    @if (!item.IsActive)
+                                    {
+                                        <span class="chip chip-warn">Currently unavailable</span>
+                                    }
+                                    else if (isChosen)
+                                    {
+                                        <span class="chip chip-ok">Chosen</span>
+                                    }
+                                </button>
+                            </li>
                         }
-                    </select>
-                </div>
+                    </ul>
+                }
+
+                @if (PickedMenuItem is { } chosenItem)
+                {
+                    @* One region, announced politely, so a screen reader hears that choosing an item
+                       produced something rather than silently moving focus nowhere. *@
+                    <div class="order-menu-detail" id="order-picker-detail" aria-live="polite">
+                        <h4 class="order-menu-detail-name">@chosenItem.Name</h4>
+
+                        <dl class="order-menu-facts">
+                            <div>
+                                <dt>Price</dt>
+                                <dd>@Money(chosenItem.PriceAmount)</dd>
+                            </div>
+                            <div>
+                                <dt>Available</dt>
+                                <dd>@(chosenItem.IsActive ? "Yes — order away" : "Not right now")</dd>
+                            </div>
+                            <div>
+                                <dt>On the menu since</dt>
+                                <dd>@RestaurantClock.Date(chosenItem.CreatedAt)</dd>
+                            </div>
+                        </dl>
+
+                        @if (chosenItem.Description.Length > 0)
+                        {
+                            <p class="order-menu-detail-description">@chosenItem.Description</p>
+                        }
+                        else
+                        {
+                            @* Said plainly rather than left blank. "Nothing else is recorded" is a true
+                               and useful sentence; an empty panel reads as a surface that failed to
+                               load, which is the same mistake §11.10's data-loaded bit exists to stop
+                               one level up. *@
+                            <p class="muted order-menu-detail-none">
+                                Nothing else has been written down about this one yet. Ask a member of
+                                staff if you would like to know more.
+                            </p>
+                        }
+                    </div>
+                }
 
                 <div class="form-field order-picker-quantity">
                     <label for="order-picker-quantity">Quantity</label>
@@ -54777,13 +55118,6 @@ else
                     <p class="status-error" role="alert">@stagingNotice</p>
                 }
             </div>
-
-            @if (_menu.Count == 0)
-            {
-                <p class="muted">
-                    There is nothing on the menu yet. Please ask a member of staff.
-                </p>
-            }
 
             @if (_staging.IsEmpty)
             {
@@ -55041,7 +55375,13 @@ else
     private IReadOnlyList<SittingBillEntry> _bill = [];
     private Dictionary<Guid, IReadOnlyList<OrderLineView>> _partyLinesByOrder = new();
 
-    private string _pickedMenuItemId = string.Empty;
+    /// <summary>
+    /// The item the guest has chosen, or <c>null</c> when none is. A <see cref="Guid"/> rather than the
+    /// string a <c>&lt;select&gt;</c> bound to until M6 Slice 39: the card list reports an identifier and
+    /// there is no longer a round trip through text to parse back.
+    /// </summary>
+    private Guid? _pickedMenuItemIdentifier;
+
     private int _pickedQuantity = OrderStaging.MinimumQuantity;
     private string _pickedNote = string.Empty;
 
@@ -55074,6 +55414,21 @@ else
     /// a pattern variable's definite assignment surviving Razor's generated control flow.
     /// </summary>
     private Guid Person => _person ?? Guid.Empty;
+
+    /// <summary>
+    /// The chosen item as the menu holds it <em>now</em>, or <c>null</c> when nothing is chosen — or when
+    /// what was chosen has left the menu underneath the guest.
+    ///
+    /// <para>Re-resolved on every read rather than captured when the card was tapped, and that is the
+    /// whole reason it is a property. <c>MenuChanged</c> makes this surface re-read the menu (§9), so a
+    /// reprice or an "86" while the detail panel is open must change what the panel says — a captured
+    /// <see cref="MenuItemSummary"/> would keep showing the price the item had when it was tapped, which
+    /// is the one number §6.5.4 is explicit that this surface must not invent. The <c>null</c> case is
+    /// real rather than defensive: §7's list is what this component holds, and an item absent from it is
+    /// an item this surface cannot describe.</para>
+    /// </summary>
+    private MenuItemSummary? PickedMenuItem
+        => _pickedMenuItemIdentifier is { } identifier ? MenuItem(identifier) : null;
 
     private IReadOnlyList<SittingBillEntry> OtherPeople
         => _bill.Where(entry => entry.PersonIdentifier != _person).ToArray();
@@ -55224,12 +55579,35 @@ else
         _menuById = _menu.ToDictionary(item => item.MenuItemIdentifier);
     }
 
+    /// <summary>
+    /// Chooses one item off the menu — the tap the card list exists for. Choosing writes nothing
+    /// anywhere: it selects, and it opens the detail panel.
+    ///
+    /// <para>Tapping the chosen item again <b>un</b>chooses it, which is the behaviour a pressed toggle
+    /// button promises and is why the card is one rather than a link. It deliberately leaves the quantity
+    /// and the note alone: a guest who typed "no onions" and then compared two items has not withdrawn
+    /// the note, and clearing it would be this surface discarding something they typed. Those two are
+    /// reset by <see cref="StageItem"/>, once the line is in the basket and they have been used.</para>
+    ///
+    /// <para>An inactive item never reaches here — its card is <c>disabled</c> (§7) — so this method has
+    /// no availability check of its own. The guard that matters is in the send transaction, which
+    /// re-reads the menu under the lock (§6.5.4, §6.6); everything on this surface refuses early only so
+    /// the answer arrives at the moment of the tap.</para>
+    /// </summary>
+    private void ChooseItem(MenuItemSummary item)
+    {
+        _pickedMenuItemIdentifier =
+            _pickedMenuItemIdentifier == item.MenuItemIdentifier ? null : item.MenuItemIdentifier;
+
+        // A stale refusal beside a fresh choice reads as a refusal OF that choice.
+        _stagingNotice = null;
+    }
+
     private void StageItem()
     {
         _stagingNotice = null;
 
-        if (!Guid.TryParse(_pickedMenuItemId, out Guid menuItemIdentifier)
-            || MenuItem(menuItemIdentifier) is not { } menuItem)
+        if (PickedMenuItem is not { } menuItem)
         {
             _stagingNotice = "Choose something from the menu first.";
             return;
@@ -55243,7 +55621,7 @@ else
         }
 
         // A cleared picker is the signal that the tap landed; the basket below is the receipt.
-        _pickedMenuItemId = string.Empty;
+        _pickedMenuItemIdentifier = null;
         _pickedQuantity = OrderStaging.MinimumQuantity;
         _pickedNote = string.Empty;
         _sendStatus = null;
@@ -63775,14 +64153,14 @@ public sealed record RestaurantClockSnapshot(
   File name:             app.css
   Relative path:         src/MyRestaurant.WebApplication/wwwroot/app.css
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/wwwroot/app.css
-  Size:                  58.5 KiB (59875 bytes)
-  Last modified:         2026-08-12 22:33:59.000000000 -0400
+  Size:                  62.5 KiB (63971 bytes)
+  Last modified:         2026-08-14 06:58:05.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 38169432
+  Inode:                 40210172
   Hard links:            1
   MIME type:             text/html
-  SHA-256:               807a86ef37a69615e999bf60fbb529bfa175970c849c6eb753d53798d144f91c
+  SHA-256:               c3746711acd8065194115a36e2db491587bb81d943e109b0046048fe9c59bd6c
   Last git commit:       aedb777 2026-08-12 22:36:57 -0400 add claude changes
 
 --- CONTENT ---
@@ -65556,6 +65934,166 @@ a:focus-visible,
 .order-picker-quantity input,
 .order-basket-quantity input {
     max-width: 8rem;
+}
+
+/* --- the guest menu: a list of items, not a dropdown (§7, §11.1) --------------------------------- */
+
+/*
+ * M6 Slice 39 replaced the item <select> with this. The reasoning is in TableOrderSurface.razor at
+ * the markup, and the two things worth knowing HERE are both about widths.
+ *
+ * NO MEDIA QUERY, and none is needed (§11.12). `.order-menu` and `.order-menu-facts` are `auto-fit`
+ * grids, so one column on a 375px handset and as many as fit on a counter's laptop is the same rule
+ * either way — which is what that section means by preferring an intrinsic grid to a breakpoint. A
+ * width written here would have been the tree's second one.
+ *
+ * The card is the BUTTON rather than the <li> around it, so the whole card is the target: an
+ * affordance that is the full width of the thing it acts on is F-59's rule read at the item level,
+ * one area over from the administration rows it was found on.
+ */
+
+.order-picker-heading {
+    margin: 0 0 0.15rem;
+    font-size: 1.05rem;
+}
+
+.order-picker-lede {
+    margin: 0 0 0.7rem;
+    font-size: 0.9rem;
+}
+
+.order-menu-empty {
+    margin: 0 0 0.5rem;
+}
+
+.order-menu {
+    list-style: none;
+    margin: 0 0 0.9rem;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.order-menu-item {
+    display: flex;
+}
+
+.order-menu-choice {
+    display: grid;
+    gap: 0.2rem;
+    align-content: start;
+    width: 100%;
+    min-height: var(--touch-target);
+    padding: 0.6rem 0.7rem;
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    background-color: var(--surface-raised);
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.order-menu-choice:hover {
+    border-color: var(--accent);
+}
+
+.order-menu-choice:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+/* A chip is inline-block, so inside a grid it would stretch to the column. */
+.order-menu-choice .chip {
+    justify-self: start;
+}
+
+.order-menu-item.is-chosen .order-menu-choice {
+    border-color: var(--accent);
+    background-color: var(--accent-surface-soft);
+}
+
+/*
+ * §7: a deactivated item stays on the menu, marked, and cannot be ordered. It is quietened rather
+ * than hidden, and it keeps its description — an item a guest cannot have tonight is still an item
+ * they may want to read about, which is the whole of "the guest sees that the salmon exists and is
+ * out". `cursor: default` because a disabled button is not a thing to press, and no `opacity`,
+ * because dimming text is how a description stops being legible.
+ */
+.order-menu-item.is-unavailable .order-menu-choice {
+    background-color: var(--surface);
+    color: var(--ink-soft);
+    cursor: default;
+}
+
+.order-menu-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.2rem 0.75rem;
+}
+
+.order-menu-name {
+    font-weight: 600;
+}
+
+.order-menu-price {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.order-menu-description {
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--ink-soft);
+}
+
+/* --- what is known about the chosen item ---------------------------------------------------------- */
+
+.order-menu-detail {
+    margin: 0 0 0.9rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--accent-hairline);
+    border-radius: 8px;
+    background-color: var(--accent-surface-soft);
+}
+
+.order-menu-detail-name {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+}
+
+.order-menu-facts {
+    display: grid;
+    gap: 0.5rem 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    margin: 0;
+}
+
+.order-menu-facts dt {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+
+.order-menu-facts dd {
+    margin: 0;
+    font-weight: 600;
+}
+
+.order-menu-detail-description {
+    margin: 0.7rem 0 0;
+    line-height: 1.5;
+}
+
+.order-menu-detail-none {
+    margin: 0.7rem 0 0;
+    font-size: 0.9rem;
 }
 
 .order-basket-empty {
@@ -77330,14 +77868,14 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
   File name:             SchemaMigrationRunnerTests.cs
   Relative path:         tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs
-  Size:                  9.2 KiB (9389 bytes)
-  Last modified:         2026-08-13 22:13:59.000000000 -0400
+  Size:                  10.1 KiB (10298 bytes)
+  Last modified:         2026-08-14 06:56:56.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 39620669
+  Inode:                 40210175
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               4264e721634221f981f2993bf86cb2994b7dc9d217dd6e96da9dc3bb41ab2095
+  SHA-256:               6d1f9c74598ff6f96c2d96d3f96f46d38dc6754c4887cc16b5a118b7a71c7a07
   Last git commit:       bd533c3 2026-08-14 05:08:35 -0400 add claude changes
 
 --- CONTENT ---
@@ -77360,6 +77898,16 @@ namespace MyRestaurant.DataAccess.Tests;
 /// to depend on <c>dbup-postgresql</c>'s dollar-quote handling — a splitter that broke the <c>DO</c> block
 /// would leave the table with no CHECK constraints and the columns absent, which is precisely a state no
 /// relation check can see.</para>
+///
+/// <para><b>This file is also the gate on <c>WithVariablesDisabled()</c>, and that is deliberate
+/// (F-78).</b> dbup-core substitutes <c>$name$</c> before the splitter runs, and PostgreSQL spells a
+/// dollar-quoted body the same way, so <c>0004</c>'s <c>DO $migrate_menu_item_event_checks$</c> was read
+/// as a reference to an undefined variable and threw before its first statement — which took every fact
+/// here, and every test whose fixture applies the schema, red at once. The repair is one builder call in
+/// <see cref="SchemaMigrationRunner"/>, and the script keeps its <em>tagged</em> body rather than being
+/// reduced to <c>$$</c> precisely so that no separate assertion is needed: delete that call and this
+/// class fails on the next run. No new test is added for it, on F-47's reasoning — a gate that already
+/// exists and already blocks does not need a monument beside it.</para>
 /// </summary>
 public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture>
 {
@@ -85905,14 +86453,14 @@ internal static class AccountJourneys
   File name:             AdministrationJourneys.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs
-  Size:                  30.2 KiB (30949 bytes)
-  Last modified:         2026-08-04 14:33:09.000000000 -0400
+  Size:                  31.8 KiB (32538 bytes)
+  Last modified:         2026-08-14 07:03:49.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 31322118
+  Inode:                 40210178
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               f2feb30de3dee609bcbc8183e18b76f0a35423961b22ea2fbb6d1fb94be80292
+  SHA-256:               a264f2d9bcca9d4e754af33e8153b980c7b21d9db060cf73f05edbeff450d811
   Last git commit:       7271ebb 2026-08-04 14:42:03 -0400 add claude changes
 
 --- CONTENT ---
@@ -85935,8 +86483,14 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 /// unreachable from every surface — which is the property under test rather than an obstacle to it.</para>
 /// </summary>
 /// <summary>
-/// Something an administrator put on the menu (§7): the identifier the picker's <c>&lt;option&gt;</c>
-/// carries, and the name every surface — the guest's basket, the kitchen ticket, the bill — reads.
+/// Something an administrator put on the menu (§7): the identifier the guest picker's card carries in
+/// <c>data-menu-item</c>, and the name every surface — the guest's basket, the kitchen ticket, the bill —
+/// reads.
+///
+/// <para>The description is deliberately <b>not</b> a member. What was typed into the form is the
+/// arrangement; what the guest surface shows is the assertion, and <c>MenuCard</c> is where a scenario
+/// reads it. Carrying it here would invite a scenario to compare the surface against this record instead
+/// of against the sentence it passed in, which is a test comparing a value to itself.</para>
 /// </summary>
 internal sealed record MenuItemOnTheMenu(Guid Identifier, string Name, decimal PriceAmount);
 
@@ -86168,19 +86722,38 @@ internal static class AdministrationJourneys
     /// <see cref="CreateTableAsync"/> recovers a table's, because the identifier is minted server-side
     /// and a scenario that recovered it any other way would be reimplementing the surface.
     ///
-    /// <para>The identifier is the part that matters downstream. The guest's picker renders one
-    /// <c>&lt;option&gt;</c> per item whose <em>label</em> is the name, the price and possibly the words
-    /// "currently unavailable" — so a scenario choosing by label would be matching on money formatting
-    /// and §7's availability copy. The <c>value</c> is the bare identifier, and that is what
-    /// <see cref="TableOrderJourneys"/> selects on.</para>
+    /// <para>The identifier is the part that matters downstream. The guest's picker renders one card per
+    /// item whose visible text is the name, the <em>formatted</em> price and, for a deactivated item, §7's
+    /// availability chip — so a scenario choosing by what it can read would be matching on money formatting
+    /// and on availability copy. The card carries the bare identifier in <c>data-menu-item</c>, and that is
+    /// what <see cref="TableOrderJourneys.ChooseAsync"/> clicks. Until M6 Slice 39 the picker was a
+    /// <c>&lt;select&gt;</c> and the identifier was an <c>&lt;option&gt;</c>'s <c>value</c>; the shape
+    /// changed and this reasoning did not.</para>
+    ///
+    /// <para><b>The description is optional here because it is optional in §7</b>, and passing it is how a
+    /// scenario arranges an item that has something for the guest surface to show. A blank one stores
+    /// <c>""</c> and writes no <c>description_changed</c> event at all, which is the no-op rule rather than
+    /// a special case — so "created without a description" is a real arrangement and not merely the absence
+    /// of one.</para>
     /// </summary>
-    internal static async Task<MenuItemOnTheMenu> CreateMenuItemAsync(IPage page, string name, decimal priceAmount)
+    internal static async Task<MenuItemOnTheMenu> CreateMenuItemAsync(
+        IPage page,
+        string name,
+        decimal priceAmount,
+        string? description = null)
     {
         ArgumentNullException.ThrowIfNull(page);
 
         await page.GotoAsync($"{MenuPath}/new");
 
         await page.FillAsync("#name", name);
+
+        // Filled unconditionally, including with the empty string, for the reason TableOrderJourneys fills
+        // the customization note that way: a form reached twice in one scenario keeps what was typed the
+        // first time, so skipping the fill would silently attach the previous item's description to this
+        // one.
+        await page.FillAsync("#description", description ?? string.Empty);
+
         await page.FillAsync("#price", priceAmount.ToString("0.00", CultureInfo.InvariantCulture));
         await page.ClickAsync("button:has-text('Create item')");
 
@@ -92197,14 +92770,14 @@ internal static class TableJourneys
   File name:             TableOrderJourneys.cs
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs
   Absolute path:         /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs
-  Size:                  68.9 KiB (70567 bytes)
-  Last modified:         2026-08-04 20:00:00.000000000 -0400
+  Size:                  85.8 KiB (87857 bytes)
+  Last modified:         2026-08-14 07:03:29.000000000 -0400
   Permissions:           -rw-r--r--
   Owner:                 kushal:kushal
-  Inode:                 32965882
+  Inode:                 40210179
   Hard links:            1
   MIME type:             text/plain
-  SHA-256:               4e166facc3621876e31a649e8aa6486631abb0fbdbfc2d05c013c6986bac000e
+  SHA-256:               a2b6861ee7a5318bb2609f4d2c3288b6797347b139f478ee0883add565b5cb67
   Last git commit:       bf4812c 2026-08-05 22:29:55 -0400 add claude changes
 
 --- CONTENT ---
@@ -92318,6 +92891,59 @@ internal sealed record TableRosterMember(string Name, bool IsYou);
 internal sealed record PartyOrder(string BillName, string TotalText, IReadOnlyList<GuestOrderLine> Lines);
 
 /// <summary>
+/// One item on the guest menu as §11.1 renders its card (§7), which is the shape that replaced a
+/// <c>&lt;select&gt;</c>'s <c>&lt;option&gt;</c> in M6 Slice 39.
+///
+/// <para><b>This record could not have existed before that change, and that is the point of it.</b> An
+/// <c>&lt;option&gt;</c> renders text only — the old picker's label was the name, the formatted price and,
+/// for a deactivated item, the words "(currently unavailable)" concatenated into one string — so the only
+/// thing a harness could read off the menu was that string, and the only thing it could assert was
+/// containment. <c>0004</c> added <c>menu_item.description</c> and there was nowhere on the surface to put
+/// it. A card has an element per fact, so each fact is read as itself.</para>
+///
+/// <para><paramref name="PriceText"/> is text for the reason every money field in this harness is: it is
+/// rendered through <c>MoneyText.Format(amount, CurrencyCode)</c>, and parsing it back into a decimal
+/// would mean reimplementing a currency formatter inside a test to compare against a number the test
+/// already knew.</para>
+///
+/// <para><paramref name="Description"/> is <c>null</c> when the card carries none, rather than empty.
+/// §7 stores <c>''</c> for "none" and the surface renders no element at all in that case, so absence is
+/// what the DOM actually says — and a scenario asserting that a description arrived should not be
+/// satisfiable by an empty string that happened to render.</para>
+///
+/// <para><paramref name="IsAvailable"/> is read from the button's <c>disabled</c> state rather than from
+/// the chip beside it. §7 requires both — the item stays visible, marked, and cannot be ordered — and
+/// <c>disabled</c> is the half that enforces it; the chip is how the surface says so.</para>
+/// </summary>
+internal sealed record MenuCard(
+    string Name,
+    string PriceText,
+    string? Description,
+    bool IsAvailable,
+    bool IsChosen);
+
+/// <summary>
+/// §11.1's detail panel for the item the guest has chosen — the answer to "see more about this item if
+/// such information exists" (M6 Slice 39, Stage 3 of <c>docs/MENU_AND_HANDHELD_PLAN.md</c>).
+///
+/// <para><paramref name="Facts"/> is keyed by the <c>&lt;dt&gt;</c> term the panel prints rather than
+/// indexed by position, on the same reasoning <see cref="GuestTotals"/>'s two figures are found by their
+/// terms: a fact added between two others must not silently shift what a scenario reads. The terms today
+/// are <c>Price</c>, <c>Available</c> and <c>On the menu since</c>; Stages 4 and 5 add rows rather than
+/// change these.</para>
+///
+/// <para><paramref name="Description"/> is <c>null</c> when the panel is showing its "nothing else has
+/// been written down" sentence. That is a state worth distinguishing rather than collapsing to an empty
+/// string, because the sentence is the surface's whole job in that case — an empty panel reads as one
+/// that failed to load, which is the confusion §11.10's <c>data-loaded</c> bit exists to prevent one
+/// level up.</para>
+/// </summary>
+internal sealed record ChosenItemDetail(
+    string Name,
+    string? Description,
+    IReadOnlyDictionary<string, string> Facts);
+
+/// <summary>
 /// What the staging area is holding right now (§11.1): the adds waiting to go, the committed lines
 /// ticked to be taken off in the same batch, and how many of those adds are wearing §7's "this became
 /// unavailable while it was in your basket" mark.
@@ -92398,6 +93024,15 @@ internal sealed record SendOutcome(
 /// having been accepted before the button was even pressed. The island's wrapper is the boundary
 /// between what the circuit owns and what the HTTP response owns, so every selector below starts at
 /// it.</para>
+///
+/// <para><b>The picker is a list of cards rather than a <c>&lt;select&gt;</c>, as of M6 Slice 39.</b>
+/// <see cref="StageAsync"/> clicks the card carrying the item's identifier where it used to select an
+/// option by value — the same decision for the same reason, since a card's visible text is the name and
+/// the <em>formatted</em> price, and matching on it would break every ordering scenario for a currency
+/// setting. What is new is that the menu can now be <em>read</em>: <see cref="ReadMenuAsync"/> returns a
+/// fact per element rather than one concatenated label, and <see cref="ReadChosenItemDetailAsync"/> reads
+/// the panel that opens when an item is chosen. Neither was expressible against a dropdown, which is why
+/// <c>0004</c>'s description column had no assertion behind it until now.</para>
 ///
 /// <para><b>Why the liveness wait exists.</b> Prerendering draws the whole surface — picker, basket,
 /// totals — and every control on it is an <c>@onclick</c>. On an island that never became interactive
@@ -92489,6 +93124,16 @@ internal static class TableOrderJourneys
     private const string PickerSelector = "#table-order-surface div.order-picker";
     private const string SendRowSelector = "#table-order-surface .order-send";
 
+    /// <summary>
+    /// One item's card on the menu — the button, not the <c>&lt;li&gt;</c> around it, because the button
+    /// is what carries <c>data-menu-item</c>, <c>aria-pressed</c> and <c>disabled</c>, which is to say
+    /// every fact about the item that is a contract rather than a paint job (M6 Slice 39).
+    /// </summary>
+    private const string MenuCardSelector = "#table-order-surface ul.order-menu button.order-menu-choice";
+
+    /// <summary>§11.1's detail panel, present only while an item is chosen.</summary>
+    private const string MenuDetailSelector = "#table-order-surface div.order-menu-detail";
+
     /// <summary>§11.1's per-line "take this off my order" tick, offered only on an open sitting.</summary>
     private const string RemovalCheckboxSelector = "#table-order-surface label.order-line-remove";
 
@@ -92556,10 +93201,20 @@ internal static class TableOrderJourneys
     /// <summary>
     /// Stages one item into the basket (§11.1) and returns once the basket has grown by one.
     ///
-    /// <para>The item is chosen by <em>value</em> rather than by label. The picker's label is the name,
-    /// the formatted price, and — for a deactivated item — §7's "(currently unavailable)"; matching on
-    /// it would make this fail for a currency setting. The value is the bare identifier, which is what
-    /// <see cref="AdministrationJourneys.CreateMenuItemAsync"/> hands back.</para>
+    /// <para>The item is chosen by <em>identifier</em> rather than by label, and that survived M6 Slice
+    /// 39's rewrite of the picker unchanged in intent. §11.1 was one <c>&lt;select&gt;</c> whose
+    /// <c>&lt;option&gt;</c> carried the identifier as its value; it is now a list of cards, each a button
+    /// carrying the identifier in <c>data-menu-item</c>. Both are the same decision for the same reason: a
+    /// card's visible text is the name, the <em>formatted</em> price and — for a deactivated item — §7's
+    /// availability chip, so matching on it would make every ordering scenario fail for a currency
+    /// setting. The identifier is what <see cref="AdministrationJourneys.CreateMenuItemAsync"/> hands
+    /// back.</para>
+    ///
+    /// <para><b>Why the card is clicked before the quantity is filled.</b> Choosing re-renders the picker
+    /// — the chosen card gains a chip and a detail panel opens below the list — and a fill that landed
+    /// mid-render would be typing into an element the diff was about to touch. Choosing first means every
+    /// later fill happens on a settled picker. <c>ChooseItem</c> deliberately does not reset the quantity
+    /// or the note, so the order costs nothing.</para>
     ///
     /// <para>Nothing reaches the kitchen here. §11.1 is explicit that the basket is local until Send,
     /// and the surface says so in as many words; <see cref="SendAsync"/> is the part that writes.</para>
@@ -92575,9 +93230,7 @@ internal static class TableOrderJourneys
 
         int before = await page.Locator(BasketLineSelector).CountAsync();
 
-        await page.SelectOptionAsync(
-            "#order-picker-item",
-            new SelectOptionValue { Value = item.Identifier.ToString("D", CultureInfo.InvariantCulture) });
+        await ChooseAsync(page, item);
 
         await page.FillAsync(
             "#order-picker-quantity",
@@ -92615,6 +93268,214 @@ internal static class TableOrderJourneys
                 CultureInfo.InvariantCulture,
                 $"Staging {quantity} × '{item.Name}' did not put a line in the basket:"
                 + $" it holds {after} line(s) rather than {before + 1}. {refusal}"));
+    }
+
+    /// <summary>
+    /// Taps one item's card on §11.1's menu and returns once the surface reports it chosen.
+    ///
+    /// <para>Separate from <see cref="StageAsync"/> because choosing and staging became two acts in M6
+    /// Slice 39 and only one of them touches the basket: a guest may tap an item to read what is in it and
+    /// never add it, which is the behaviour the detail panel exists for and which
+    /// <see cref="ReadChosenItemDetailAsync"/> is how a scenario reads.</para>
+    ///
+    /// <para>Confirmation is <c>aria-pressed</c> going true rather than a class going on, for the reason
+    /// every badge in this file is read from its class instead: whichever of the two is the
+    /// <em>contract</em> is the one to assert. Here the attribute is — a card's pressed state is what
+    /// tells anything reading the document which item is chosen, and <c>.is-chosen</c> is how it is
+    /// painted.</para>
+    ///
+    /// <para><b>A disabled card is a diagnosis rather than a timeout.</b> §7 renders a deactivated item
+    /// <em>on</em> the menu and unorderable, so its button carries <c>disabled</c> — and Playwright waits
+    /// out its full actionability timeout on one before reporting that the element never became enabled,
+    /// which names the click and not the reason. Asked directly, it becomes one sentence at the moment the
+    /// scenario reached for it.</para>
+    /// </summary>
+    internal static async Task ChooseAsync(IPage page, MenuItemOnTheMenu item)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(item);
+
+        string identifier = item.Identifier.ToString("D", CultureInfo.InvariantCulture);
+        string card = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{SurfaceSelector} button.order-menu-choice[data-menu-item='{identifier}']");
+
+        ILocator choice = page.Locator(card).First;
+
+        if (await choice.CountAsync() == 0)
+        {
+            // Read before composing: an await inside an interpolation hole is CS4007.
+            string menu = Describe(await ReadMenuAsync(page));
+
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"'{item.Name}' is not on the menu this surface is showing. What is: {menu}."
+                    + $" §7 keeps a deactivated item ON the menu, so an absent card means the item was"
+                    + $" never created, or that this circuit has not re-read since it was (§9's"
+                    + $" MenuChanged)."));
+        }
+
+        if (await choice.IsDisabledAsync())
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"'{item.Name}' is on the menu and marked unavailable, so its card is disabled and"
+                    + $" cannot be chosen (§7). Something deactivated it — the kitchen's 86 panel"
+                    + $" (§11.2) is the surface that does — and a scenario that wants this item orderable"
+                    + $" has to put it back first."));
+        }
+
+        await choice.ClickAsync();
+
+        if (await WaitForAttributeAsync(page, card, "aria-pressed", "true", TimeSpan.FromSeconds(15)))
+        {
+            return;
+        }
+
+        string showing = Describe(await ReadMenuAsync(page));
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Tapping '{item.Name}' did not choose it: the card never reported"
+                + $" aria-pressed='true'. The menu shows: {showing}. A card that does not answer a tap is"
+                + $" the @onclick landing on no circuit, which WaitForLiveSurfaceAsync is supposed to have"
+                + $" ruled out before this."));
+    }
+
+    /// <summary>
+    /// The menu as §11.1 renders it — every card, in the order the surface lists them, which is
+    /// <c>(display_order, name, menu_item_identifier)</c> (§7).
+    ///
+    /// <para>This is the read the old <c>&lt;select&gt;</c> could not offer. A closed dropdown shows one
+    /// option and an <c>&lt;option&gt;</c> renders text only, so the description column <c>0004</c> added
+    /// had nowhere to go and nothing could assert that it had arrived; a card has an element per
+    /// fact.</para>
+    /// </summary>
+    internal static async Task<IReadOnlyList<MenuCard>> ReadMenuAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator cards = page.Locator(MenuCardSelector);
+        int count = await cards.CountAsync();
+
+        List<MenuCard> menu = new(count);
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator card = cards.Nth(index);
+
+            string name = (await card.Locator("span.order-menu-name").First.InnerTextAsync()).Trim();
+            string price = (await card.Locator("span.order-menu-price").First.InnerTextAsync()).Trim();
+
+            ILocator description = card.Locator("span.order-menu-description");
+            string? descriptionText = await description.CountAsync() == 0
+                ? null
+                : (await description.First.InnerTextAsync()).Trim();
+
+            // Availability is read from `disabled` rather than from the chip beside it, because
+            // `disabled` is what §7 requires — the chip is how the surface SAYS so, and the attribute is
+            // what stops the item being ordered. The same reasoning ReadBadgeAsync applies in reverse:
+            // whichever of the two is the contract is the one to read.
+            bool isAvailable = !await card.IsDisabledAsync();
+
+            bool isChosen = string.Equals(
+                await card.GetAttributeAsync("aria-pressed"),
+                "true",
+                StringComparison.Ordinal);
+
+            menu.Add(new MenuCard(name, price, descriptionText, isAvailable, isChosen));
+        }
+
+        return menu;
+    }
+
+    /// <summary>
+    /// What §11.1's detail panel says about the item currently chosen, or <c>null</c> when nothing is
+    /// chosen and the panel is therefore absent.
+    ///
+    /// <para><see cref="ChosenItemDetail.Description"/> is <c>null</c> when the panel is showing its
+    /// "nothing else has been written down" sentence, which is a state worth distinguishing from an empty
+    /// string: §7 stores <c>''</c> for "none", and the surface's whole job in that case is to say so
+    /// rather than render an empty box.</para>
+    /// </summary>
+    internal static async Task<ChosenItemDetail?> ReadChosenItemDetailAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator panel = page.Locator(MenuDetailSelector);
+
+        if (await panel.CountAsync() == 0)
+        {
+            return null;
+        }
+
+        ILocator first = panel.First;
+
+        string name = (await first.Locator("h4.order-menu-detail-name").First.InnerTextAsync()).Trim();
+
+        ILocator description = first.Locator("p.order-menu-detail-description");
+        string? descriptionText = await description.CountAsync() == 0
+            ? null
+            : (await description.First.InnerTextAsync()).Trim();
+
+        Dictionary<string, string> facts = new(StringComparer.Ordinal);
+        ILocator groups = first.Locator("dl.order-menu-facts > div");
+        int count = await groups.CountAsync();
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator group = groups.Nth(index);
+
+            string term = (await group.Locator("dt").First.InnerTextAsync()).Trim();
+            string value = (await group.Locator("dd").First.InnerTextAsync()).Trim();
+
+            facts[term] = value;
+        }
+
+        return new ChosenItemDetail(name, descriptionText, facts);
+    }
+
+    /// <summary>
+    /// Waits until the menu satisfies <paramref name="expectation"/>, and returns the reading that did.
+    ///
+    /// <para>The same shape as <see cref="WaitForRosterAsync"/> and for the same reason: the menu changes
+    /// because of a §9 broadcast started somewhere else — an administrator repricing an item, the kitchen
+    /// eighty-sixing one — so there is no click on this page to await, and a scenario that read it once
+    /// would be sampling a race it cannot see.</para>
+    /// </summary>
+    internal static async Task<IReadOnlyList<MenuCard>> WaitForMenuAsync(
+        IPage page,
+        Func<IReadOnlyList<MenuCard>, bool> expectation,
+        TimeSpan timeout,
+        string whatIsExpected,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(expectation);
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        IReadOnlyList<MenuCard> observed = [];
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            observed = await ReadMenuAsync(page);
+
+            if (expectation(observed))
+            {
+                return observed;
+            }
+
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The menu never showed {whatIsExpected} within {timeout.TotalSeconds:F0}s."
+                + $" What it shows: {Describe(observed)}."));
     }
 
     /// <summary>
@@ -93385,6 +94246,28 @@ internal static class TableOrderJourneys
                     $"'{line.Name}' [{line.Badge}]")));
     }
 
+    /// <summary>
+    /// A short, quotable rendering of the menu, for a failure message. Availability is named because a
+    /// disabled card is the single most likely reason a scenario could not stage what it asked for, and the
+    /// description is named as present-or-absent rather than quoted whole, because a menu of six items with
+    /// a sentence each is a paragraph nobody reads at the bottom of an assertion failure.
+    /// </summary>
+    internal static string Describe(IReadOnlyList<MenuCard> menu)
+    {
+        ArgumentNullException.ThrowIfNull(menu);
+
+        return menu.Count == 0
+            ? "nothing at all"
+            : string.Join(
+                "; ",
+                menu.Select(card => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"'{card.Name}' at {card.PriceText}"
+                    + $"{(card.IsAvailable ? string.Empty : " (unavailable)")}"
+                    + $"{(card.IsChosen ? " (chosen)" : string.Empty)}"
+                    + $"{(card.Description is null ? " with no description" : " described")}")));
+    }
+
     /// <summary>A short, quotable rendering of the roster, for a failure message.</summary>
     internal static string DescribeRoster(IReadOnlyList<TableRosterMember> roster)
     {
@@ -93614,6 +94497,42 @@ internal static class TableOrderJourneys
         while (DateTimeOffset.UtcNow < deadline)
         {
             if (await page.Locator(selector).CountAsync() == expected)
+            {
+                return true;
+            }
+
+            await Task.Delay(PollInterval);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Polls until the first element matching <paramref name="selector"/> carries
+    /// <paramref name="attribute"/> with exactly <paramref name="expected"/>, and reports whether it did.
+    ///
+    /// <para>The sibling of <see cref="WaitForCountAsync"/>, and it exists for the same reason: what the
+    /// caller waits for is a re-render this harness did not cause a navigation with, so the honest thing is
+    /// to re-read. It returns a <see cref="bool"/> rather than throwing, because every caller has something
+    /// more useful to say about the failure than this method could.</para>
+    /// </summary>
+    private static async Task<bool> WaitForAttributeAsync(
+        IPage page,
+        string selector,
+        string attribute,
+        string expected,
+        TimeSpan timeout)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        ILocator element = page.Locator(selector).First;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await element.CountAsync() > 0
+                && string.Equals(
+                    await element.GetAttributeAsync(attribute),
+                    expected,
+                    StringComparison.Ordinal))
             {
                 return true;
             }
@@ -107674,9 +108593,9 @@ public sealed class RestaurantTimeTests
 # DUMP SUMMARY
 ################################################################################
   Files dumped   : 341
-  Total size     : 5.1 MiB (5372846 bytes)
+  Total size     : 5.2 MiB (5436255 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-14T06:22:56-04:00
+  Completed at   : 2026-08-14T07:17:54-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################

@@ -1,6 +1,6 @@
 # Menu modernization and the handheld contract — staged plan
 
-**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-12, at the close of Slice 34.** This
+**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-14, at the close of Slice 39.** This
 is the execution plan for the first enhancement request the project has received from a person who was
 shown the running application, together with the defect that request arrived beside. It is a working
 document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
@@ -457,7 +457,18 @@ specification changelog, and the ledger is for findings).
 
 ## Stage 3 — sections and descriptions: the surfaces
 
-**Not started.** The UI/UX half, on the Stage 1 foundation.
+**Started out of order, and the guest menu landed first (Slice 39).** The UI/UX half, on the Stage 1
+foundation.
+
+**Why the order changed, and it is a ruling rather than opportunism.** This stage was written to run after
+`0005`, on the reasoning that a guest menu grouped by section needs sections to exist. Slice 39 took the
+picker first, without sections, because the two halves turned out to be separable: **a card per item needs
+`menu_item.description`, which `0004` delivered, and nothing else.** Grouping those cards under headings is
+an outer loop added later around markup that does not change. Against that, leaving the picker as a
+`<select>` until `0005` meant leaving the *only* part of the request the person who made it could see —
+*"please rethink the UI/UX of the menu"* — behind two migrations, with the column that exists to be read
+already in the schema and read by nothing. The cost of the swap is that the guest surface will be edited
+twice; under this project's full-file delivery that costs nothing, and F-64's ruling is the precedent.
 
 **`/administration/menu`** becomes sections-first: a record list of sections, each expandable to its items,
 with the section's own order controls. The flat name-ordered list of every item goes away — it is what a
@@ -472,19 +483,53 @@ bottom (§11.4 — the complete stored record, never truncated for the administr
 (`app.css` already styles one — added in Slice 30 for this), and a position control. Reprice, rename and
 the 86 toggle are unchanged.
 
-**The guest menu is the part that was actually asked for.** Today it is one `<select>` with every item
-flattened into it and the price glued onto the label — which is unreadable at eleven items and absurd at
-sixty, and has nowhere to put a description. It becomes: a section heading, then a card per item with its
-name, price, description, and an "Add" control; a section's own description under its heading; and
-`disabled` items still present and marked *currently unavailable*, because §7 requires that and it is the
-one thing about the current picker that is right. The basket, the Send button, the all-or-nothing rejection
-panel and the party totals below it do not change — this is the picker, not the order surface.
+### ~~The guest menu — the part that was actually asked for~~ — **landed, M6 Slice 39, minus the section headings**
+
+It was one `<select>` with every item flattened into it and the price glued onto the label, which is
+unreadable at eleven items and absurd at sixty and had nowhere to put a description. It is now **a card per
+item** — name, price, description where the item has one, an availability chip, and a `disabled` control
+where §7 says so — and **choosing a card opens a detail panel** naming what is recorded about that item.
+The basket, the Send button, the all-or-nothing rejection panel and the party totals below it did not
+change: this was the picker, not the order surface, exactly as this paragraph predicted.
+
+**Three things about it are rulings rather than implementation.**
+
+- **The panel says when it has nothing to say.** "More information about that item *if such information
+  exists*" is how the request was worded, and the honest reading is a sentence rather than an empty box: a
+  blank panel is indistinguishable from a surface that failed to load, which is the confusion §11.10's
+  `data-loaded` bit exists to prevent one level up. Today the panel names a price, an availability line and
+  when the item first appeared; Stages 4 and 5 add rows to it rather than rewriting it, which is the whole
+  reason it is a `<dl>` of terms rather than three hard-coded lines.
+- **A card is a `<button>` with `aria-pressed`, not a radio.** A radio group is the more precise ARIA for
+  "choose exactly one" and it was refused for a concrete reason: Blazor reconciles the `checked`
+  *attribute* while browsers track the checked *property*, so a radio whose state a component owns can
+  drift out of step with the DOM in ways only a browser can observe — and this slice had no browser. Every
+  other control on that island is an `@onclick`. A one-of-many toggle set is a slight stretch of
+  `aria-pressed` and it is the better trade against emulating a radio group's keyboard semantics.
+- **No breakpoint.** `.order-menu` and `.order-menu-facts` are `auto-fit` grids, so one column on a 375px
+  handset and as many as fit on a counter's laptop is the same rule either way. §11.12 asks for exactly
+  this in preference to a width query, and a width written for the menu would have been the tree's second
+  breakpoint.
+
+**What the harness gained, and it is the half that could not have existed before.** `TableOrderJourneys`
+adds `ChooseAsync`, `ReadMenuAsync`, `ReadChosenItemDetailAsync` and `WaitForMenuAsync`. An `<option>`
+renders text and nothing else, so the only thing a harness could read off the old picker was one
+concatenated label and the only assertion available was containment — which is why `0004`'s description
+column shipped with nothing behind it. A card has an element per fact. `AdministrationJourneys.CreateMenuItemAsync`
+takes an optional description so a scenario can arrange an item that has one.
+
+**What is left of the guest menu:** the section headings, a section's own description under its heading, and
+the grouping — all three of which need `0005`, and all three of which are an outer loop around markup that
+now exists.
 
 **The kitchen 86 panel** groups by section, for the reason the guest menu does: a cook looking for the
 salmon looks under the heading it is on.
 
 **One new §16.3 scenario**: create a section, create an item in it with a description, and read both back
-from the guest surface. Numbered 17, appended rather than inserted, because the harness names scenarios by
+from the guest surface. **Still outstanding after Slice 39**, and deliberately: the harness can now read a
+card and a detail panel, but a scenario asserting a *section* heading needs `0005`, and the sixteen existing
+scenarios were kept byte-identical apart from the one line inside `StageAsync` that chooses an item — which
+is the smallest edit that could carry the picker's rewrite. Numbered 17, appended rather than inserted, because the harness names scenarios by
 number in a great many places. It was numbered 16 when this was written; Slice 32's handheld barrier took
 that number, which is what appending costs and is cheaper than renumbering sixteen of them.
 

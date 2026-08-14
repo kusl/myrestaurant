@@ -17,6 +17,16 @@ namespace MyRestaurant.DataAccess.Tests;
 /// to depend on <c>dbup-postgresql</c>'s dollar-quote handling — a splitter that broke the <c>DO</c> block
 /// would leave the table with no CHECK constraints and the columns absent, which is precisely a state no
 /// relation check can see.</para>
+///
+/// <para><b>This file is also the gate on <c>WithVariablesDisabled()</c>, and that is deliberate
+/// (F-78).</b> dbup-core substitutes <c>$name$</c> before the splitter runs, and PostgreSQL spells a
+/// dollar-quoted body the same way, so <c>0004</c>'s <c>DO $migrate_menu_item_event_checks$</c> was read
+/// as a reference to an undefined variable and threw before its first statement — which took every fact
+/// here, and every test whose fixture applies the schema, red at once. The repair is one builder call in
+/// <see cref="SchemaMigrationRunner"/>, and the script keeps its <em>tagged</em> body rather than being
+/// reduced to <c>$$</c> precisely so that no separate assertion is needed: delete that call and this
+/// class fails on the next run. No new test is added for it, on F-47's reasoning — a gate that already
+/// exists and already blocks does not need a monument beside it.</para>
 /// </summary>
 public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture>
 {

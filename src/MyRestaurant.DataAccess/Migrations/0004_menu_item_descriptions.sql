@@ -84,11 +84,35 @@ ALTER TABLE menu_item
 -- (pg_attribute.attnotnull) in PostgreSQL 17 and a contype = 'n' row in 18, so
 -- neither version's NOT NULL can be caught by this loop.
 --
--- The dollar-quoted block is safe in an embedded DbUp script: dbup-postgresql's
--- PostgresqlQueryParser has a DollarQuoted state that consumes a whole tagged
--- block, so the semicolons inside this body do not split the statement. This is
--- the first script in this tree to rely on that, which is stated so that a
--- failure here is read as what it is.
+-- THE DOLLAR-QUOTED BLOCK NEEDS TWO THINGS TO BE TRUE, AND THIS SCRIPT
+-- ORIGINALLY NAMED ONLY ONE OF THEM (F-78).
+--
+-- The half that was named is real: dbup-postgresql's PostgresqlQueryParser has a
+-- DollarQuoted state that consumes a whole tagged block, so the semicolons inside
+-- this body do not split the statement. Verified at
+-- DbUp/dbup-postgresql src/dbup-postgresql/PostgresqlQueryParser.cs.
+--
+-- The half that was missing is the one that actually failed. dbup-core runs
+-- VariableSubstitutionPreprocessor BEFORE that splitter, and it reads $name$ as a
+-- variable reference — the same four characters around the same kind of identifier
+-- that PostgreSQL spells a dollar-quoted body with. So this script threw
+-- "Variable migrate_menu_item_event_checks has no value defined" on every fresh
+-- database, the splitter never saw the text, and every migration test in the suite
+-- went red at InitializeAsync. SchemaMigrationRunner now builds its engine with
+-- WithVariablesDisabled(), which is where the fix belongs: the collision is a
+-- property of the runner's configuration and not of any one script.
+--
+-- The tag is DELIBERATELY KEPT rather than reduced to $$. An empty tag would also
+-- survive substitution, and writing it that way would mean that deleting
+-- WithVariablesDisabled() left the whole suite green with the rule gone. A tagged
+-- body makes that line load-bearing: remove it and this script fails on the next
+-- run, loudly, with the message above.
+--
+-- Editing an already-delivered script is normally forbidden (F-34: DbUp journals
+-- by name, so a change to an applied script is a change that never runs). It is
+-- allowed here for the one reason that makes the rule not apply: this script has
+-- never applied ANYWHERE. It threw before its first statement on every host and
+-- every container, so no journal row for it exists to be stale.
 DO $migrate_menu_item_event_checks$
 DECLARE
     doomed_constraint text;
