@@ -601,8 +601,16 @@ internal static class TableOrderJourneys
         {
             ILocator section = sections.Nth(sectionIndex);
 
+            // TextContent rather than InnerText, and it is the difference between a name and a
+            // rendering (F-88). `.order-menu-section-name` declares `text-transform: uppercase`, and
+            // InnerText returns what CSS produced — so a heading an administrator typed as "Starters"
+            // was read back as "STARTERS" and compared, correctly and uselessly, against "Starters".
+            // The stored name is the fact this scenario is about; the casing is presentation, and a
+            // harness that could not tell them apart would either fail on a correct tree or have to
+            // encode a stylesheet rule in an assertion. Only this one read is affected: it is the only
+            // place the suite compares a value against text a `text-transform` rule reaches.
             string sectionName = (await section
-                .Locator("h4.order-menu-section-name").First.InnerTextAsync()).Trim();
+                .Locator("h4.order-menu-section-name").First.TextContentAsync() ?? string.Empty).Trim();
 
             ILocator cards = section.Locator("button.order-menu-choice");
             int count = await cards.CountAsync();

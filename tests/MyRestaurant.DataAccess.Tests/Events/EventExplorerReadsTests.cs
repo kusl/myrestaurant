@@ -648,6 +648,13 @@ public sealed class EventExplorerReadsTests : IClassFixture<PostgreSqlFixture>, 
     /// from: <c>DapperMenuAdministration</c> and <c>DapperMenuAvailability</c> keep their words in private
     /// constants, so the catalogue spells them again, and only the database can say whether the two
     /// spellings still agree.
+    ///
+    /// <para><b>Each type is written with exactly the payload §8.2 binds to it, and getting that wrong is
+    /// how this test failed rather than how it passes.</b> The five biconditionals are equalities, not
+    /// permissions: <c>description_changed</c> without a description is refused by the same constraint
+    /// that refuses <c>activated</c> with one. So this loop is also the only place in the suite that
+    /// exercises all five payload shapes against the real CHECKs in one pass, which is why it is the
+    /// thing that noticed <c>OrderTestWorld</c> could not write three of the eight (F-86).</para>
     /// </summary>
     [Fact]
     public async Task Catalogue_EveryMenuEventType_IsAcceptedByTheSchemaAndSurfaced()
@@ -655,15 +662,34 @@ public sealed class EventExplorerReadsTests : IClassFixture<PostgreSqlFixture>, 
         SkipIfNoContainer();
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
 
+        // A real heading, because new_menu_section_identifier is a foreign key rather than a bare uuid
+        // (0005) — an event naming a section that does not exist renders as a blank where a heading
+        // should be, so the schema refuses it.
+        Guid puddings = await World().AddMenuSectionAsync("Puddings", cancellationToken, displayOrder: 1);
+
         foreach (string eventType in EventTypeCatalogue.MenuEventTypes)
         {
-            // §8.2's paired CHECKs: the name on created and name_changed, the price on created and
-            // price_changed, neither on the two availability types.
+            // §8.2's five paired CHECKs, each an equality between "this column is not null" and "the type
+            // is one of these": the name on created and name_changed, the price on created and
+            // price_changed, the description on description_changed alone, the position on reordered
+            // alone, the heading on section_changed alone, and nothing at all on the two availability
+            // types.
             string? newName = eventType is "created" or "name_changed" ? "Soup" : null;
             decimal? newPrice = eventType is "created" or "price_changed" ? 4.50m : null;
+            string? newDescription = eventType is "description_changed" ? "Lentil, vegan" : null;
+            int? newDisplayOrder = eventType is "reordered" ? 3 : null;
+            Guid? newSection = eventType is "section_changed" ? puddings : null;
 
             await World().AddMenuItemEventAsync(
-                _soupIdentifier, _miraIdentifier, eventType, newName, newPrice, cancellationToken);
+                _soupIdentifier,
+                _miraIdentifier,
+                eventType,
+                newName,
+                newPrice,
+                cancellationToken,
+                newDescription,
+                newDisplayOrder,
+                newSection);
 
             Advance(TimeSpan.FromMinutes(1));
         }

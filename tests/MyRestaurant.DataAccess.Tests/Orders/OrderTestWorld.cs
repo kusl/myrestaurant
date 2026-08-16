@@ -137,13 +137,22 @@ internal sealed class OrderTestWorld
     /// the fact worth asserting. The casts on the two columns that remain are load-bearing: Dapper sends
     /// an untyped parameter for a null, and §8.2's paired CHECKs are evaluated against the column's type.
     /// </summary>
+    /// <summary>
+    /// Every payload column <c>menu_item_event</c> has, which is five rather than the two this statement
+    /// listed until F-86. <c>0004</c> added <c>new_description</c> and <c>new_display_order</c> and
+    /// <c>0005</c> added <c>new_menu_section_identifier</c>, each bound to its own type by a named
+    /// biconditional CHECK — so a column absent from this INSERT is not an omission the database
+    /// tolerates, it is a row the database refuses.
+    /// </summary>
     private const string InsertMenuItemEventSql = """
         INSERT INTO menu_item_event (
             menu_item_event_identifier, menu_item_identifier, actor_person_identifier,
-            event_type, new_name, new_price_amount, occurred_at)
+            event_type, new_name, new_price_amount, new_description, new_display_order,
+            new_menu_section_identifier, occurred_at)
         VALUES (
             @MenuItemEventIdentifier, @MenuItemIdentifier, @ActorPersonIdentifier,
-            @EventType, @NewName::text, @NewPriceAmount::numeric(10,2), @OccurredAt);
+            @EventType, @NewName::text, @NewPriceAmount::numeric(10,2), @NewDescription::text,
+            @NewDisplayOrder::integer, @NewMenuSectionIdentifier::uuid, @OccurredAt);
         """;
 
     private const string UpdateMenuItemSql = """
@@ -447,11 +456,22 @@ internal sealed class OrderTestWorld
     /// <summary>
     /// Appends a <c>menu_item_event</c> row directly (§7, §8.2), on the same terms.
     ///
-    /// <para>The two payload columns are passed through rather than derived from the type, because §8.2's
-    /// paired CHECKs already enforce which types carry which — <c>created</c> both, <c>name_changed</c>
-    /// the name, <c>price_changed</c> the price, the two availability types neither — and a helper that
-    /// second-guessed them would make it impossible to write the row that proves the reader carries a
-    /// payload through untouched.</para>
+    /// <para>Every payload column is passed through rather than derived from the type, because §8.2's
+    /// five named paired CHECKs already enforce which types carry which — <c>created</c> the name and the
+    /// price, <c>name_changed</c> the name, <c>price_changed</c> the price,
+    /// <c>description_changed</c> the description, <c>reordered</c> the position,
+    /// <c>section_changed</c> the heading, and the two availability types nothing at all — and a helper
+    /// that second-guessed them would make it impossible to write the row that proves the reader carries
+    /// a payload through untouched.</para>
+    ///
+    /// <para><b>Three of the five arrived without this helper being told (F-86).</b> It listed
+    /// <c>new_name</c> and <c>new_price_amount</c> and stopped, which was the whole vocabulary in
+    /// <c>0001</c> and has not been since <c>0004</c>. A caller could therefore write five of the eight
+    /// admitted types and no more: the other three each require a column this INSERT did not name, so
+    /// their biconditional refused the row and the failure named a constraint rather than the helper.
+    /// The three new parameters are optional so that the five existing call sites keep their shape — a
+    /// caller that says nothing about a description is a caller writing a type that must not carry
+    /// one.</para>
     /// </summary>
     public async Task<Guid> AddMenuItemEventAsync(
         Guid menuItemIdentifier,
@@ -459,7 +479,10 @@ internal sealed class OrderTestWorld
         string eventType,
         string? newName,
         decimal? newPriceAmount,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? newDescription = null,
+        int? newDisplayOrder = null,
+        Guid? newMenuSectionIdentifier = null)
     {
         Guid menuItemEventIdentifier = _identifierFactory.Create();
         await ExecuteAsync(
@@ -472,6 +495,9 @@ internal sealed class OrderTestWorld
                 EventType = eventType,
                 NewName = newName,
                 NewPriceAmount = newPriceAmount,
+                NewDescription = newDescription,
+                NewDisplayOrder = newDisplayOrder,
+                NewMenuSectionIdentifier = newMenuSectionIdentifier,
                 OccurredAt = _clock.UtcNow,
             },
             cancellationToken);

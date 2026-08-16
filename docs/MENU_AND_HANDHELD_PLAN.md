@@ -505,6 +505,16 @@ picker on `ManageMenuItem` that would call it, which is the last verb in the who
 surface. A section's own **description under its heading** on the guest menu. And the kitchen's 86 panel,
 which still groups by nothing.
 
+**Slice 42 added nothing to this stage and unblocked all of it.** That slice is defects only: Slice 41
+shipped an archive that did not compile, and behind the five build errors sat fourteen failing integration
+and end-to-end facts that could not have run either. Six of the seven findings are one mechanism — **a
+schema widened by a migration reaches the test arrangement last** — which is worth carrying into the
+remaining work here, because every item left on the list above touches `menu_item.menu_section_identifier`
+and therefore touches the arrangement that kept getting missed. Concretely: `MoveMenuItemToSectionAsync`
+will write a second `section_changed`, so any fact that counts an item's events has to be written knowing
+that a create already contributes one (F-87), and `OrderTestWorld.AddMenuItemEventAsync` can now write that
+type at all, which it could not before (F-86).
+
 **What Slice 40 shipped here, ahead of the rest of this stage, because `0005` forced it.** A section
 **create** page at `/administration/menu/sections/new`; a **required picker** on the item form, which
 renders a first-use panel instead of a form when there are no headings, because a required control over an

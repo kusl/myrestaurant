@@ -6,7 +6,7 @@ namespace MyRestaurant.WebApplication.Tests.Events;
 
 /// <summary>
 /// The one fact behind F-80: <c>menu_item_event</c>'s vocabulary is declared by a CHECK constraint in a
-/// migration and copied into <see cref="EventTypeVocabulary.MenuEventTypes"/>, and the copy went stale
+/// migration and copied into <see cref="EventTypeCatalogue.MenuEventTypes"/>, and the copy went stale
 /// two migrations ago without anything noticing (TECHNICAL_SPECIFICATION §7, §8.2, §11.4).
 ///
 /// <para><b>Why nothing noticed, which is the part worth keeping.</b> §11.4's explorer deliberately never
@@ -27,6 +27,17 @@ namespace MyRestaurant.WebApplication.Tests.Events;
 /// different question from "the constraint and the C# list agree". Reading the SQL text keeps this fact
 /// in the fast suite, where a wrong answer is available in seconds rather than after a container
 /// starts.</para>
+///
+/// <para><b>This class did not compile when it shipped, and the name it could not resolve came from the
+/// ledger row that commissioned it (F-83).</b> Every reference below said <c>EventTypeVocabulary</c>.
+/// The type has been called <see cref="EventTypeCatalogue"/> since the explorer was written, and so did
+/// F-80's rows in <c>DOCUMENTATION_REVIEW.md</c> and Appendix A, and so did Slice 40's own delivery note
+/// — four documents naming a class that has never existed in this tree, and this file taking the name
+/// from them rather than from the file it is about. The repair is the rename; <b>no gate is added</b>,
+/// because the compiler is the gate and it blocked (F-71's ruling, second application). What the
+/// blocking cost is the interesting half and it is recorded in §16.4: this class is the repair for F-80,
+/// so for one slice the vocabulary was <em>simultaneously</em> correct in <c>EventExplorerReads.cs</c>
+/// and unguarded, and nothing said so.</para>
 /// </summary>
 public sealed class MenuEventVocabularyContractTests
 {
@@ -55,23 +66,23 @@ public sealed class MenuEventVocabularyContractTests
         // for a human reading a constraint, and neither ordering is a fact worth asserting. Membership is.
         Assert.Equal(
             declared.Order(StringComparer.Ordinal).ToArray(),
-            EventTypeVocabulary.MenuEventTypes.Order(StringComparer.Ordinal).ToArray());
+            EventTypeCatalogue.MenuEventTypes.Order(StringComparer.Ordinal).ToArray());
     }
 
     /// <summary>
     /// The catalogue the explorer offers is the concatenation of its three streams, so a menu type that
-    /// reached <see cref="EventTypeVocabulary.MenuEventTypes"/> but not
-    /// <see cref="EventTypeVocabulary.All"/> would be filterable by hand-edited query string and absent
+    /// reached <see cref="EventTypeCatalogue.MenuEventTypes"/> but not
+    /// <see cref="EventTypeCatalogue.All"/> would be filterable by hand-edited query string and absent
     /// from the dropdown — which is the same symptom F-80 had, one layer up.
     /// </summary>
     [Fact]
     public void EveryMenuType_IsOfferedByTheDropdown()
     {
-        foreach (string type in EventTypeVocabulary.MenuEventTypes)
+        foreach (string type in EventTypeCatalogue.MenuEventTypes)
         {
-            Assert.Contains(type, EventTypeVocabulary.All);
+            Assert.Contains(type, EventTypeCatalogue.All);
             Assert.True(
-                EventTypeVocabulary.IsKnown(type),
+                EventTypeCatalogue.IsKnown(type),
                 $"'{type}' is in the menu vocabulary and the explorer does not recognise it.");
         }
     }
@@ -94,7 +105,7 @@ public sealed class MenuEventVocabularyContractTests
         {
             string text = File.ReadAllText(script.FullName);
 
-            // ADD CONSTRAINT <name> CHECK (event_type IN ('a', 'b', …)) — matched across newlines, since
+            // ADD CONSTRAINT <n> CHECK (event_type IN ('a', 'b', …)) — matched across newlines, since
             // the list is written one line per few types.
             Match match = Regex.Match(
                 text,

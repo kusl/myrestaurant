@@ -1,153 +1,140 @@
-# M6 Slice 41 — the section editor, a reserved word (F-81), and the gate that never ran (F-82)
+# M6 Slice 42 — seven defects behind one build failure, and a ruling reversed
 
 Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-41-section-editor.tar.gz
+tar -xzf m6-slice-42-defects.tar.gz
 git status
 ```
 
 **Files to DELETE: none.**
 
-**`git add` IS required this time — four files are new and untracked.** `scripts/check_tree.sh` walks
-`git ls-files`, so an unstaged file is a file gate 1 does not see:
-
-```
-git add src/MyRestaurant.DataAccess/Menu/MenuSectionEventLog.cs
-git add src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuSection.razor
-git add tests/MyRestaurant.WebApplication.Tests/Components/RazorDirectiveContractTests.cs
-git add tests/MyRestaurant.DataAccess.Tests/Menu/MenuSectionEventLogTests.cs
-```
+**`git add` is NOT required.** Every file in this archive already exists in the tree and is tracked. No
+file is new, no directory is new, and `scripts/check_tree.sh` walks `git ls-files`, so there is nothing
+here it cannot already see.
 
 **No schema change.** No migration is added and `0005` is untouched. No new package, no `compose.yaml`
-edit, no `.slnx` edit.
+edit, no `.slnx` edit, no ADR edit, no `REQUIREMENTS.md` edit.
+
+**Nothing under `src/` changes behaviour.** The two files touched there are comments that asserted the
+opposite of the `switch` arms twenty lines beneath them.
 
 ---
 
 ## Read this first
 
-**Slice 40 did not build, so its predicted count never met a run.** The four `RZ` errors you reported are
-one defect — F-81 — and they are all the same defect: two loop variables named `section`, which is MVC's
-section directive and a reserved word in Razor's grammar.
+The five build errors you reported were **two** defects. Behind them sat fourteen failing integration and
+end-to-end facts that could not have run while the build was red — so this archive is red-to-green on seven
+findings, five of which nothing had reported yet.
 
-**Fixing that exposed a second one.** With the build broken, `MyRestaurant.WebApplication.Tests` never ran,
-and `TestingSectionContractTests` — the gate that compares §16.4's assertion counts to the files — was one
-of the things that never ran. It would have failed. Slice 40 added assertions to four classes §16.4 cites
-and moved none of the four numbers. That is **F-82**, and it is corrected here.
+Six of the seven are one mechanism, and it is worth more than any individual repair:
 
-So this archive is red-to-green on two gates, not one, and the second was invisible behind the first.
+> **A schema widened by a migration reaches the test arrangement last**, because arrangement is the code
+> nobody is looking at while implementing the thing being arranged for.
 
----
+`0004` and `0005` added three columns to `menu_item`, three payload columns to `menu_item_event`, three
+members to `MenuItemSummary`, and three event types. All of that landed correctly in `src/`. What did not
+land was the INSERT the test world writes events with, a positional stand-in in the unit suite, six
+assertions counting a create, and one harness read.
 
-## What this slice does
+**The seventh is the one to read.** `MenuEventVocabularyContractTests` — the gate that repairs F-80 — named
+`EventTypeVocabulary`. There is no such type; it is `EventTypeCatalogue`, and has been since the explorer
+was written. The wrong name came from **F-80's own ledger rows**, in `TECHNICAL_SPECIFICATION.md` and in
+`DOCUMENTATION_REVIEW.md`, plus Slice 40's delivery note — five occurrences, three documents, all written
+in the same slice, all agreeing with each other and none with the tree. The test was written from the
+ledger rather than from the file the ledger describes, which is how a name gets copied wrong five times:
+the right spelling and the wrong spelling were never in one view.
 
-**Ships the section editor**, which was the highest-value thing outstanding in Stage 3 and which four other
-deferred items were waiting on.
-
-- **`/administration/menu/sections/{id}`** — four forms (rename, describe, move, show/hide), the heading's
-  items, and its complete uncapped event history. Declares no CSS of its own.
-- **`IMenuSectionEventLog`** — the per-heading history read. Nothing in this tree could read
-  `menu_section_event` before this.
-- **The last four section verbs behind `IMenuWorkflow`**, each publishing `MenuChanged` on a committed row
-  and nothing on a write that committed nothing. The obligation counted down since `0003` is closed.
-- **Links into the editor** from the create panel, the menu index's Section column, and each item's page.
-- **§16.3 scenario 17** regains the two steps Slice 40 cut and recorded — and comes back larger.
-- **F-81** made executable: `RazorDirectiveContractTests` refuses `@section` and `@RenderSection` across the
-  component tree.
-- **F-82**: four counts corrected, floor moved sixteen → eighteen.
+So for one slice the menu vocabulary was **correct in the source and guarded by nothing** — the exact state
+F-80 exists to prevent, reached through the fix for it.
 
 ---
 
-## The four build errors, and why they read the way they did
+## The seven findings
 
-```
-CreateMenuItem.razor(125,40): RZ9979  code blocks delimited by '@{...}' … no longer supported
-CreateMenuItem.razor(125,41): RZ2005  the 'section' directive must appear at the start of the line
-CreateMenuItem.razor(125,48): RZ1011  the 'section' directives value(s) must be separated by whitespace
-TableOrderSurface.razor(223,41): RZ1011  same
-```
+| ID | What was wrong | Where |
+|---|---|---|
+| **F-83** | The F-80 gate named a class that has never existed, taking the name from F-80's own ledger rows | `MenuEventVocabularyContractTests.cs` + 3 documents |
+| **F-84** | `MenuItemSummary` grew seven members to ten; a positional stand-in stayed at seven | `OrderStagingTests.cs` |
+| **F-85** | A two-character username against a three-character CHECK took six facts down in `InitializeAsync` | `MenuSectionEventLogTests.cs` |
+| **F-86** | The test world's event INSERT named two payload columns of five, so three of eight types were unwritable | `OrderTestWorld.cs`, `EventExplorerReadsTests.cs` |
+| **F-87** | Six assertions described a create one row smaller than `0005` performs; two read the wrong row entirely | `MenuAdministrationTests.cs` |
+| **F-88** | A harness read a heading with `InnerText` where `app.css` uppercases it, comparing a rendering to a name | `TableOrderJourneys.cs` |
+| **F-89** | A census kept in prose "and moved by habit" was left behind by both moves that followed | `TestingSectionContractTests.cs`, spec §16.4 |
 
-Line 125 column 40 is the `@`. Columns 41–47 are the seven characters of `section`. **Column 48 is the
-`.`** — which is the only thing in four messages that points at the cause.
-
-The reason it is invisible in review is on the neighbouring lines:
-
-```razor
-<div class="order-menu-section" @key="section.MenuSectionIdentifier">   ← compiles
-    <h4 id="@SectionHeadingId(section)">                                ← compiles
-        @section.MenuSectionName                                        ← four errors
-```
-
-Neither of the first two puts the word directly after an `@`, so the errors read as complaints about the
-`<option>` and the `<h4>`.
-
-Both variables are now `menuSection`. `TableOrderSurface.razor`'s inner card loop is also re-indented — it
-had kept its pre-Slice-40 indentation when the grouping loop was wrapped around it, and whitespace is what a
-reader uses to see which loop a `@key` belongs to.
+**No gate is added for any of the seven**, and that is a ruling rather than economy. The compiler refused
+two of them and PostgreSQL's CHECK constraints refused two more, loudly, on the first run — a test
+re-asserting what CSC or a CHECK already rejects is a monument (F-47, F-71).
 
 ---
 
-## Three decisions flagged for veto
+## Two things worth your veto
 
-**1. The editor reads the whole menu and filters in memory.** `ManageMenuSection` calls
-`IMenuDirectory.ListAsync` and filters for its own items rather than adding a per-section query with one
-caller. The directory already orders by section first and makes each heading's items contiguous, so the
-filter preserves the order guests see without re-deciding it in a second file. It is a read that grows with
-the menu, on a database whose whole reason for existing is one restaurant. **To reverse:** add
-`ListForSectionAsync` to `IMenuDirectory` and change one call site in `OnInitializedAsync`.
+**F-89 reverses F-73's ruling.** F-73 found a census count in prose that was stale on arrival and ruled it
+should be *kept*, because it was the argument for `MinimumCountedClasses`, with the habit of moving it
+added beside it. Three slices later the floor had moved twice and neither prose copy had moved once —
+§16.4 said *ten* while the floor said *eighteen*, and the gate's own summary said *sixteen* in a sentence
+whose next clause said *eighteen*. I deleted both prose copies rather than correcting them, leaving the
+enforced floor as the only place the census is written. **To revert**: restore the two sentences with the
+number nineteen in them, and restore F-73's wording in the class summary.
 
-**2. No cross-section activity feed.** `IMenuSectionEventLog` has one method. The item log's
-`ListRecentAsync` exists to fill a panel on `/administration/menu`; sections have no such panel, and a read
-with no caller is the same defect as a workflow verb with no caller — which is the rule this slice spent
-four verbs discharging. **To reverse:** one method and one panel.
-
-**3. *Hide from guests* is a `link-button danger`.** Same weight as *Deactivate table*. It is fully
-reversible and does not touch the items, so it may be one notch too heavy. **To reverse:** change one class
-to `button-secondary`.
-
----
-
-## What was verified, and one thing that failed its own proof
-
-Full detail is in `docs/BUILD_PROGRESS.md` under the Slice 41 heading. The short version:
-
-- **344 of 344 files** in `dump.txt` matched their recorded SHA-256.
-- **`RazorDirectiveContractTests` run in substance**: 51 components, zero uses, five sensitivity cases
-  behaving as the second fact asserts.
-- **`TestingSectionContractTests` run in substance** before and after: 16 counted with **4 disagreements**
-  before — that is F-82 — and 18 counted with 0 disagreements after.
-- **`MarkdownTableContractTests`**: 60 table runs, zero findings.
-- **`SpecificationVersionTests`**: header 1.26, newest entry 1.26, 27 entries descending.
-- **Data-label parity** across all 8 record-list components.
-- **Brace balance** on all nine changed C# files.
-
-**The brace checker failed its own proof first, and that is worth one paragraph.** Its first run reported an
-imbalance in the new `MenuSectionEventLog.cs`. Running it against two *untouched* sibling files —
-`MenuEventLog.cs` and `MenuSectionDirectory.cs`, both byte-verified against your dump — produced the
-identical report, which is what identified the checker rather than the file: it read `$"""` as an empty
-interpolated string and parsed the SQL body as code. Fixed, re-run, all nine balanced. A verification tool
-that has not been run against a known-good input has no established false-positive rate.
+**`CreatedEventScalarAsync` is a new private helper in `MenuAdministrationTests`.** It reads a payload by
+`event_type = 'created'` instead of by recency, because after `0005` the newest event of a create is the
+section one and its payload columns are all null by CHECK. That query already existed inline in
+`CreateWritesTheItemAndItsCreatedEventTogether`; this hoists it so a third caller need not rediscover why.
+**To revert**: inline it at both call sites. It adds no `[Fact]`, so §16.4's count of 26 is unaffected
+either way.
 
 ---
 
-## What was NOT verified
+## What I verified, without an SDK
 
-**Nothing compiled** — no .NET SDK here. **No test ran.** **No browser rendered the editor.** The likeliest
-sites of a complaint are named in `BUILD_PROGRESS.md` rather than left to be found.
+- **Tree reconstruction**: 347 of 348 files byte-identical to their recorded SHA-256. The exception is
+  `export.sh`, which contains the dump's own `# FILE:` banner as literal text and cannot be round-tripped
+  by a parser using that banner as a delimiter. It is **not in this archive** and was not touched.
+- **`TestingSectionContractTests`**, ported and run before and after. Before: 18 counted classes, 0
+  disagreements — the tree as delivered was already correct here, which is F-82's repair holding. After:
+  **19 counted, 0 disagreements, 0 ambiguous, 0 uncited.**
+- **`MarkdownTableContractTests`**, ported, fence-aware and escaped-pipe-aware, over every `.md` in the
+  repository: **60 table runs, 0 findings**, including the fourteen new four-cell ledger rows.
+- **`SpecificationVersionTests`**, ported: header 1.27, newest entry 1.27, 28 entries descending.
+- **The vocabulary gate's extraction by hand** against `0005`: the regex matches across the newline, yields
+  eight quoted words, set-equal to `EventTypeCatalogue.MenuEventTypes`. The gate passes *once it compiles*,
+  which had never been established.
+- **Byte hygiene** on every changed file: no CR, exactly one final newline, no whitespace-only line.
 
-The one to watch in the harness: the new `SetMenuSectionVisibilityAsync` journey waits on
-`.manage-facts .chip`, which is the first harness read in this project keyed on a chip inside the facts grid
-rather than on a flash or a heading. If scenario 17 times out at step (g), that is the first thing to check.
+## What I did not verify
+
+**Nothing compiled and no test ran.** The likeliest site of a complaint, named rather than left to be
+found: the three new optional parameters on `AddMenuItemEventAsync` sit **after** a `CancellationToken`,
+which is legal and which no other method in `OrderTestWorld` does. Every existing call site passes the
+token positionally and stops, so they bind correctly.
+
+**No database confirmed the six repaired counts.** They are read off
+`DapperMenuAdministration.CreateMenuItemAsync`, and corroborated by two facts in the same file that Slice
+40 *did* update and that consequently passed — one asserts 2 events for a create, the other 5 for a create
+plus three verbs. Both are only consistent with a two-row create.
+
+**`TextContentAsync` returns `string?`** where `InnerTextAsync` returned `string`. The null-coalesce is
+present.
 
 ---
 
 ## Test count
 
-Last **observed**: **1124**, from Slice 39. Slice 40 predicted 1136 and never met a run, because the build
-failed — which is precisely where F-82 was sitting.
+Predicted: **1149** — unchanged from Slice 41, because this slice adds no `[Fact]` and removes none. Every
+repair changes what an existing assertion expects, or how it reads what it expects. §16.3 stays at 17.
 
-Predicted here: **1149**. From 1136: `RazorDirectiveContractTests` +2, `MenuSectionEventLogTests` +6,
-`MenuWiringTests` +5. §16.3 stays at 17 — scenario 17 gains assertions, not facts.
+**Slice 41's 1149 never met a run**, and neither did Slice 40's 1136. The last observed count is 1124, from
+Slice 39. Per §18, if this run returns anything other than 1149, that difference is the first thing to
+chase — and this is the first slice in three where the check is expected to be possible at all.
 
-Per §18: if the run returns anything other than 1149, chase the difference before anything else. **This is
-the first opportunity to perform that check since Slice 39**, and the last two slices are why it matters.
+---
+
+## On the menu
+
+This slice deliberately adds nothing to Stage 3. What it does is give the remaining work a green tree, and
+it is worth noting that everything left on that list touches the arrangement that kept getting missed:
+`MoveMenuItemToSectionAsync` will write a second `section_changed`, so any fact counting an item's events
+must know a create already contributes one (F-87) — and `OrderTestWorld` could not write that event type at
+all until this archive (F-86).

@@ -350,14 +350,32 @@ public sealed class OrderStagingTests
     }
 
     /// <summary>
-    /// A menu item for the staging tests. The description is <c>""</c> and the position is 0 — the two
-    /// members <c>0004</c> added — because <see cref="OrderStaging"/> reads neither: it stages by
-    /// identifier, prices from <c>PriceAmount</c>, and refuses on <c>IsActive</c>. Passing a description
-    /// here would suggest this file has an opinion about one.
+    /// The one heading these items are filed under. <c>0005</c> made
+    /// <see cref="MenuItemSummary.MenuSectionIdentifier"/> a mandatory member, so a stand-in has to name
+    /// one; every item here shares it, because nothing in <see cref="OrderStaging"/> groups.
+    /// </summary>
+    private static readonly Guid SectionIdentifier = Guid.Parse("0192f200-0000-7000-8000-0000000000c1");
+
+    /// <summary>
+    /// A menu item for the staging tests. Every member <see cref="OrderStaging"/> does not read is at its
+    /// least interesting value — the description is <c>""</c>, the position is 0, and the heading is one
+    /// shared <see cref="SectionIdentifier"/> that is active — because this class stages by identifier,
+    /// prices from <c>PriceAmount</c>, and refuses on <c>IsActive</c> alone. Giving any of them a
+    /// meaningful value would suggest this file has an opinion about it.
+    ///
+    /// <para><b>This factory did not compile after <c>0005</c> (F-84).</b> The record grew from seven
+    /// members to ten — an item's heading, that heading's name, and whether the heading is one a guest
+    /// can see — and a positional constructor call is the one construction that cannot absorb a widened
+    /// record silently. It is therefore the good failure: CS7036 named the missing parameter, where a
+    /// <c>with</c> expression or an object initialiser would have compiled and left this file describing
+    /// an item under no heading.</para>
     /// </summary>
     private static MenuItemSummary Item(Guid identifier, string name, decimal price, bool isActive)
         => new(
             identifier,
+            SectionIdentifier,
+            "Menu",
+            true,
             name,
             string.Empty,
             price,

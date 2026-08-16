@@ -11135,7 +11135,7 @@ statement in this slice was executed rather than reasoned about**. What that bou
 
 ## F-80 — a vocabulary copied out of its own constraint, wrong for two migrations, with no symptom
 
-`EventTypeVocabulary.MenuEventTypes` in `EventExplorerReads.cs` feeds §11.4's explorer dropdown. Its doc
+`EventTypeCatalogue.MenuEventTypes` in `EventExplorerReads.cs` feeds §11.4's explorer dropdown. Its doc
 comment said *"the five `menu_item_event.event_type` values"* and it listed five. `0004` added
 `description_changed` and `reordered`. Neither the list nor the sentence was touched.
 
@@ -11604,6 +11604,307 @@ resolved.
 **`.sitting-meta` is declared by two components and the two have drifted.** Deferred an eighth time.
 
 **A CI job that runs the canonical stack on the canonical engine.** Seventeenth consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+# M6 Slice 42 — seven defects behind one build failure, and a ruling reversed
+
+**Nothing new ships.** This slice adds no surface, no verb, no migration and no gate. It makes the tree
+build and the suite pass, and it writes down what was in the way — which turned out to be seven findings
+rather than the two the build errors named.
+
+## Read this first: the shape almost all of it shares
+
+Six of the seven are the same mechanism, and naming it is worth more than any individual repair:
+
+> **A schema widened by a migration reaches the test arrangement last**, because arrangement is the code
+> nobody is looking at while implementing the thing being arranged for.
+
+`0004` and `0005` between them added three columns to `menu_item`, three payload columns to
+`menu_item_event`, three members to `MenuItemSummary`, and three types to the event vocabulary. Every one
+of those landed correctly in `src/`. What did not land was: the INSERT the test world writes events with
+(F-86), a positional stand-in in the unit suite (F-84), six assertions counting a create (F-87), and a
+harness read that had never been about the schema at all (F-88). F-85 is the same slot — test arrangement
+— reached from a different direction.
+
+The seventh, F-83, is not that shape and is the one worth reading.
+
+## F-83 — the repair for F-80 named a class that has never existed
+
+`MenuEventVocabularyContractTests` referred to `EventTypeVocabulary` at four call sites and three `cref`s.
+**There is no such type.** It is `EventTypeCatalogue`, declared in `EventExplorerReads.cs`, called by
+`EventExplorerQuery.cs` and `EventExplorer.razor`, and spelled correctly in `BUILD_PROGRESS.md`'s own M5
+file census.
+
+Five occurrences spelled it wrongly, across three documents:
+
+```
+docs/TECHNICAL_SPECIFICATION.md   F-80's Appendix A row      x2
+docs/DOCUMENTATION_REVIEW.md      F-80's ledger row          x2
+docs/BUILD_PROGRESS.md            Slice 40's own narrative   x1
+```
+
+All five were written in the slice that wrote the test. **That is how an identifier gets copied wrong five
+times without a reader noticing: the correct spelling and the incorrect spelling were never in one view.**
+The test was written from the ledger rather than from the file the ledger describes.
+
+**The consequence is the part to sit with.** `MyRestaurant.WebApplication.Tests` did not compile, so
+F-80's repair did not run, so for a full slice the menu vocabulary was *correct in the source* and
+*guarded by nothing* — precisely the state F-80 exists to prevent, arrived at through the fix for it.
+
+**No gate is added**, on F-71's ruling in its second application: the compiler is the gate and it blocked.
+A gate asserting that documentation names types the tree declares would be a gate about typography, and it
+would not have found this any earlier than CSC did.
+
+What is recorded instead is a pattern now on its third consecutive instance. **F-71, F-82, F-83**: three
+build failures whose real cost was not the error everybody was reading but the gates downstream of it
+reporting nothing.
+
+## F-87 — six assertions, and the two that were reading the wrong row
+
+`0005` makes a heading mandatory and always logged, so a create writes `created` then `section_changed` in
+one transaction at one instant, and a create with a description writes a third row. Slice 40 moved five
+counts in `MenuAdministrationTests` and left six behind.
+
+Four were plain totals a row short:
+
+```
+DescribeWritesTheColumnAndItsEventTogether           2 -> 3
+ClearingADescriptionIsAChangeAndStoresTheEmptyString 3 -> 4
+ReorderWritesThePositionAndItsEvent...               2 -> 3   (both assertions)
+ANegativePositionIsRefusedBeforeAnythingIsWritten    1 -> 2
+```
+
+**The other two are the failure worth reading.** They took a payload through the file's newest-event
+helper, and after `0005` the newest event of a create is the section one — whose every payload column is
+null by CHECK. So:
+
+```
+CreateTrimsTheName                     expected "Soup"  actual null
+CreateRoundsToTheStoredScaleInBothRows expected 4.57    actual 0
+```
+
+Two value mismatches, in the one class whose entire subject is those two values, with nothing in either
+message naming the event that had displaced them. A reader chasing that failure starts by suspecting
+trimming and rounding — the two things the tests are named after — and neither is wrong.
+
+**The evidence that the shape was understood and simply not carried across:**
+`CreateWritesTheItemAndItsCreatedEventTogether`, in the same file, already reads its `created` payload by
+explicit `event_type = 'created'`, under a comment saying the newest event is now the section one and that
+this fact *"used to be reachable through EventTypeAsync and no longer is"*. The knowledge was in the file,
+twenty lines up, in prose.
+
+The repair hoists that query into `CreatedEventScalarAsync`. It carries no `ORDER BY`: a create writes
+exactly one `created` row, and an ordering there would imply there might be two.
+
+## F-86 — five of eight types were writable, and the constraint said so in constraint language
+
+`OrderTestWorld.AddMenuItemEventAsync` listed `new_name` and `new_price_amount`. `menu_item_event` has five
+payload columns, each tied to its type by a **named biconditional** — an equality, not a permission, so
+`description_changed` without a description is refused by the same constraint that would refuse
+`activated` *with* one.
+
+So three of the eight admitted types were unwritable through the only helper the suite arranges menu
+events with, and the failure surfaced as `menu_item_event_description_payload` two frames below the method
+that caused it.
+
+The three new payloads are **optional trailing parameters**, which keeps the five existing call sites
+unchanged and expresses the biconditional in C#: a caller that says nothing about a description is a caller
+writing a type that must not carry one.
+
+## F-88 — a harness comparing a stylesheet's output against a name
+
+`ReadMenuAsync` read each guest-menu heading with `InnerTextAsync`, which returns text **as rendered**, and
+`app.css` declares `text-transform: uppercase` on `.order-menu-section-name`. Scenario 17 created a heading
+called *Starters* through the real form and read back `STARTERS`.
+
+**Both alternative repairs are wrong, which is why this has a number.** Asserting the uppercase string puts
+a presentation rule inside a scenario about menu structure, so a designer removing the transform breaks a
+test that is not about them. Comparing case-insensitively silently accepts a surface that had started
+lower-casing headings. Only `TextContentAsync` distinguishes *the name* from *how the name is drawn*.
+
+The audit is recorded rather than the conclusion asserted: `app.css` carries twelve `text-transform`
+declarations, and this is the only one whose element the suite compares against a value. The four `dt`
+terms under `.order-menu-facts` are read into a dictionary nothing asserts on.
+
+## F-89 — a ruling reversed, and the evidence that reversed it
+
+F-73 found a census count in prose that was stale on arrival, and ruled that it should be **kept** —
+because it was the argument for `MinimumCountedClasses` — with the habit of moving it added beside it.
+
+The habit was then tried for three slices:
+
+```
+                              floor   summary   S16.4
+after F-73  (Slice 36)         ten      ten      ten
+after 0004  (Slice 39)      sixteen      ten      ten
+after editor (Slice 41)    eighteen  sixteen      ten
+```
+
+The floor moved both times. The summary moved once, late, and landed on a number its own next clause
+contradicted eleven words later. §16.4 never moved at all and was stale by eight.
+
+Neither prose copy is reachable by any gate: `TestingSectionContractTests` compares assertion counts *per
+class* against files, and the census is a count of *paragraphs*, which nothing reads. **This is F-73
+recurring inside the repair for F-73**, and the recurrence is the evidence — a habit tried for three slices
+that did not hold is not a habit.
+
+**So the ruling is reversed rather than restated.** F-77's habit wins: both prose copies are **deleted**,
+leaving the floor as the only place the census is written. That copy is safe in the way the others were not
+— it is asserted on every run, so it can go stale only *loudly*, which is the property F-73 was reaching
+for and located in the wrong copy.
+
+The floor moves eighteen -> **nineteen**, `MenuEventVocabularyContractTests` having become countable by
+gaining a §16.4 paragraph of its own in this slice.
+
+## F-84 and F-85, briefly, because they are what they look like
+
+**F-84.** `MenuItemSummary` went seven members -> ten in `0005`; `OrderStagingTests.Item()` stayed at
+seven. CS7036 named `DisplayOrder`, which is not the member that moved — a positional call binds left to
+right, so inserting members re-points every later argument and the compiler reports the last parameter it
+could not satisfy. **The defect is the good failure and the positional form is kept for that reason:** an
+object initialiser would have compiled and left the file describing an item filed under no heading, which
+is the one thing `0005` rules out.
+
+**F-85.** `MenuSectionEventLogTests` asked for the username `"mo"` against
+`CHECK (char_length(username) BETWEEN 3 AND 64)`. The insert is in `InitializeAsync`, so all six of that
+class's facts went red before any assertion ran. `EventExplorerReadsTests` states that minimum in a comment
+above its own four people; this is the sibling that did not. F-46's shape at the smallest scale this ledger
+has recorded it.
+
+## Two comments under `src/` that asserted the opposite of the code beneath them
+
+Not findings — no behaviour, no gate, caught while reading. `ManageMenuItem.razor` and
+`AdministrationMenu.razor` each carried a sentence saying `0005`'s `section_changed` *"will read as itself
+until this arm is written"*, and in both files the arm is written twenty lines below. Slice 40 added the
+arms and left the sentences. Corrected in the same pass, because a comment that describes the absence of
+the code beside it is worse than no comment.
+
+## What is in this slice
+
+- **`MenuEventVocabularyContractTests.cs`** — `EventTypeCatalogue` at all seven references (F-83).
+- **`OrderStagingTests.cs`** — ten-argument `MenuItemSummary` (F-84).
+- **`MenuSectionEventLogTests.cs`** — a three-character username, and the rule beside the field (F-85).
+- **`OrderTestWorld.cs`** — all five payload columns, three as optional parameters (F-86).
+- **`EventExplorerReadsTests.cs`** — each type's bound payload, and a real section row for the FK (F-86).
+- **`MenuAdministrationTests.cs`** — four counts, two payload reads, one new helper (F-87).
+- **`TableOrderJourneys.cs`** — `TextContentAsync` on the heading (F-88).
+- **`TestingSectionContractTests.cs`** — floor to nineteen, prose census deleted (F-89).
+- **`ManageMenuItem.razor`, `AdministrationMenu.razor`** — two stale comments.
+- **Documentation**: spec to v1.27, §16.4 gains three paragraphs and corrects one, Appendix A and
+  `DOCUMENTATION_REVIEW.md` gain F-83 through F-89, the plan records what this unblocks.
+
+## What was verified
+
+**The working tree was reconstructed from `dump.txt` and checked against the SHA-256 recorded for every
+file: 347 of 348 byte-identical.** The exception is `export.sh`, which contains the dump's own `# FILE:`
+banner as literal text and therefore cannot be round-tripped by any parser that uses that banner as a
+delimiter. It is excluded from this slice's work set rather than reconstructed and guessed at, and is not
+delivered.
+
+**`TestingSectionContractTests` was run in substance**, ported, before and after. Before: 18 counted
+classes, 0 disagreements — the tree as delivered was correct on this gate, which is F-82's repair holding.
+After: **19 counted classes, 0 disagreements, 0 ambiguous, 0 uncited**, floor met exactly. The nineteenth
+is `MenuEventVocabularyContractTests`, which gains a §16.4 paragraph in this slice and is therefore
+countable for the first time.
+
+**`MarkdownTableContractTests` was run in substance** over every Markdown file in the repository,
+fence-aware and escaped-pipe-aware: **60 table runs, zero findings**, including the fourteen new four-cell
+rows across the two registers.
+
+**`SpecificationVersionTests` was run in substance**: header 1.27, newest changelog entry 1.27, 28 entries
+descending; `REQUIREMENTS.md` header 6 against newest entry 6; two documents qualify, which is its floor.
+
+**Every `[Fact]` and `[Theory]` count §16.4 states was recomputed against its file.** `MenuAdministrationTests`
+stays at **26** — this slice changes what six assertions expect and adds no test method, which is why no
+count in §16.4 moves for it.
+
+**The vocabulary gate's own extraction was re-run by hand** against `0005`: the regex matches
+`ADD CONSTRAINT menu_item_event_type_vocabulary CHECK (event_type IN` across its newline, yields eight
+quoted words, and those eight are set-equal to `EventTypeCatalogue.MenuEventTypes`. So the gate passes
+*once it compiles*, which had never been established.
+
+**Brace, paren and bracket balance** on all eight changed C# files, string- and comment-aware — and the
+checker was proven against four **untouched, SHA-verified** siblings first, which is the habit Slice 41
+paid for. All twelve clean.
+
+**Razor tag-tree comparison** of the two changed components against their SHA-verified originals: markup
+identical, 189 and 128 tags. **The checker failed its own proof first, and the failure is instructive.**
+Its first run reported `ManageMenuItem.razor` losing four tags — and the four were `<c>` and `<para>`,
+which are XML *doc-comment* elements rather than markup, deleted along with the stale sentence. A tag
+scanner that does not strip `///` lines is comparing prose. Corrected, re-run, both identical. Independent
+corroboration that nothing under `src/` moved: of 3 changed lines in one file and 7 in the other, the
+number that are not `///` doc lines is **zero in both**.
+
+**Byte hygiene** on every changed file: no CR, exactly one final newline, no whitespace-only line, no
+context-dump separator.
+
+## What was NOT verified
+
+**Nothing compiled.** No .NET SDK in the authoring environment. Named rather than left to be found: the new
+optional parameters on `AddMenuItemEventAsync` sit **after** a `CancellationToken`, which is legal and
+which no other method in `OrderTestWorld` does — every existing call site passes the token positionally and
+stops, so they bind correctly, but a future caller using named arguments will find the ordering unusual.
+`CreatedEventScalarAsync` mirrors `ScalarAsync` exactly and uses the same `$"""` raw interpolated form,
+which is the construct the balance checker mis-parsed two slices ago.
+
+**No test ran.** Every count below is arithmetic.
+
+**No database confirmed the six repaired assertions.** Each is a claim about how many rows `0005`'s create
+writes, derived by reading `DapperMenuAdministration.CreateMenuItemAsync` — which writes `created`
+unconditionally, `section_changed` unconditionally, and `description_changed` when the normalized
+description is non-empty. The reading is corroborated by two facts in the same file that Slice 40 *did*
+update and that consequently passed: `CreateWritesTheItemAndItsCreatedEventTogether` asserts 2, and
+`TheHistoryKeepsEveryChangeFromBothWriteServices` asserts 5 for a create plus three later verbs. Both are
+only consistent with a two-row create.
+
+**No browser re-ran scenario 17.** `TextContentAsync` returns `string?` where `InnerTextAsync` returns
+`string`; the null-coalesce is present, and whether Playwright ever returns null for a matched element with
+text content is not something this environment can establish.
+
+**Nothing verified that the five wrong spellings of `EventTypeCatalogue` were the only ones.** A repository
+grep found five and they are repaired; a type name that appears in prose in a document nothing parses is
+reachable by no gate here, which is F-83's residual and is stated rather than closed.
+
+## Test count
+
+Last predicted: **1149**, from Slice 41 — and **not observed**, because the build failed again. The last
+observed count is **1124**, from Slice 39, which is now three slices back.
+
+**Two slices in a row have now predicted a count that never met a run**, which is the F-82 residual
+becoming a measurement rather than an argument.
+
+Predicted here: **1149**, unchanged. This slice adds no `[Fact]` and removes none — every repair changes
+what an existing assertion expects, or how it reads what it expects. §16.3 stays at **17**.
+
+Per §18: if the run returns anything other than 1149, that difference is the next thing to chase. This is
+the third consecutive slice in which that check has been scheduled and the first in which it is expected to
+be possible.
+
+## Still open
+
+**`MoveMenuItemToSectionAsync`.** The last verb in the whole enhancement with no surface. Unchanged from
+Slice 41, and now unblocked in a way it was not: the helper that would arrange its events could not write
+`section_changed` at all until this slice (F-86).
+
+**The sections-first index.** `/administration/menu` is still an item list with a Section column.
+
+**A section's own description under its heading on the guest menu.** Unchanged.
+
+**The kitchen's "86" panel still groups by nothing.** Stage 3's last surface.
+
+**The handheld barrier visits neither section surface.** Scenario 16 walks ten; `ManageMenuSection` is a
+detail surface with `.manage-inline-form` buttons and would move the control count. Carried from Slice 41.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, now with a third
+instance behind it (F-83).
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Seventh slice carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a ninth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Eighteenth consecutive slice.
 
 **`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
 starts it successfully.** Carried.

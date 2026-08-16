@@ -19,13 +19,18 @@ namespace MyRestaurant.WebApplication.Tests.Documentation;
 /// F-48 was a version header against its own changelog. F-50 was a variable four documents agreed about
 /// and the deployment transport dropped. F-56 was a port three helpers dialled and one named correctly.
 /// F-65 was a touch target stated as a property and re-written as a literal eight pixels short. Each is
-/// one fact recorded in two places, and in each the two places disagreed. A count of assertions in prose
-/// is exactly that shape, and §16.4 carries sixteen of them. <b>It said eight when this file arrived,
-/// and there were nine (F-73)</b> — a count in prose, stale on delivery, inside the class written
-/// because counts in prose go stale. The number is kept rather than removed because it is the
-/// argument for the floor below; what is added is the habit of moving it — and this is the third slice
-/// to move it, `0004`'s four new paragraphs having taken the census from twelve to sixteen and the
-/// section editor's two new gates taking it to eighteen.</para>
+/// one fact recorded in two places, and in each the two places disagreed. A count of counted classes in
+/// prose is exactly that shape, and <b>this class carried three copies of it and two went stale
+/// (F-89)</b>. F-73 found the first — the summary here said eight when §16.4 held nine, wrong on arrival,
+/// by one, inside the class whose subject is that kind of wrongness — and ruled that the number should be
+/// <em>kept</em> because it was the argument for the floor below, with the habit of moving it added
+/// beside it. <b>The habit did not hold.</b> Across the two census moves that followed, this summary and
+/// §16.4's own paragraph were each left where they were: the summary said sixteen in a sentence whose
+/// next clause said eighteen, and §16.4 said ten through both moves, stale by nine. Three slices of
+/// evidence now say a census cannot be maintained by hand in three places, so F-77's ruling wins over
+/// F-73's: both prose copies are <b>deleted</b>, and <see cref="MinimumCountedClasses"/> is the only one
+/// left. That copy is safe in the way the others were not — it is enforced on every run, so it cannot go
+/// stale silently, only loudly.</para>
 ///
 /// <para><b>It has now caught the thing it was written for, and the catch is worth reading (F-82).</b>
 /// Slice 40 added assertions to four classes §16.4 cites — 23 → 26, 5 → 7, 11 → 13, 5 → 7 — and moved
@@ -71,10 +76,15 @@ public sealed class TestingSectionContractTests
     private const string SectionOpening = "**16.4 CI:**";
 
     /// <summary>
-    /// How many test classes §16.4 must turn out to state a count for. Eighteen do. Without a floor, a
-    /// document that had stopped stating counts — or a section marker that had been reworded, so the
-    /// slice read is empty — would satisfy every comparison below by having none to make, which is the
-    /// failure mode of every gate that computes its own subject (F-41).
+    /// How many test classes §16.4 must turn out to state a count for. Without a floor, a document that
+    /// had stopped stating counts — or a section marker that had been reworded, so the slice read is
+    /// empty — would satisfy every comparison below by having none to make, which is the failure mode of
+    /// every gate that computes its own subject (F-41).
+    ///
+    /// <para>This is the <em>only</em> place the census is written down (F-89). It moves with §16.4 —
+    /// twelve, sixteen, eighteen, and now nineteen as the vocabulary gate joins the section — and it is
+    /// the one copy that cannot drift unnoticed, because a census that fell below it fails here rather
+    /// than sitting in a sentence nothing reads.</para>
     ///
     /// <para>A floor rather than an equality, on purpose. An equality would turn every paragraph that
     /// merely <em>describes</em> a class without enumerating it into a failure, and §16.4 is prose — the
@@ -82,7 +92,7 @@ public sealed class TestingSectionContractTests
     /// refuses is the collapse to zero, which is the one failure a computed subject cannot report on
     /// itself.</para>
     /// </summary>
-    private const int MinimumCountedClasses = 18;
+    private const int MinimumCountedClasses = 19;
 
     /// <summary>
     /// A test class named inside backticks, in either of the two forms §16.4 uses: the full

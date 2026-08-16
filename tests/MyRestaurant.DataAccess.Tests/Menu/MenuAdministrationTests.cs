@@ -285,7 +285,13 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         MenuItemSummary? stored = await Directory().GetAsync(identifier, cancellationToken);
         Assert.NotNull(stored);
         Assert.Equal(4.57m, stored.PriceAmount);
-        Assert.Equal(4.57m, await ScalarAsync<decimal>("new_price_amount", identifier, cancellationToken));
+
+        // Read by TYPE rather than by recency. 0005 made the newest event of a create the
+        // 'section_changed' one, whose price is null by CHECK — so the recency helper answers 0 here and
+        // the failure reads as a rounding bug in a class whose whole subject is rounding.
+        Assert.Equal(
+            4.57m,
+            await CreatedEventScalarAsync<decimal>("new_price_amount", identifier, cancellationToken));
     }
 
     [Fact]
@@ -300,7 +306,9 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
             identifier, _sectionIdentifier, "  Soup  ", description: null, 4.50m, _administratorIdentifier, cancellationToken);
 
         Assert.Equal("Soup", result.Name);
-        Assert.Equal("Soup", await ScalarAsync<string>("new_name", identifier, cancellationToken));
+        Assert.Equal(
+            "Soup",
+            await CreatedEventScalarAsync<string>("new_name", identifier, cancellationToken));
     }
 
     /// <summary>
@@ -679,7 +687,10 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         MenuItemSummary? stored = await Directory().GetAsync(identifier, cancellationToken);
         Assert.Equal("Lentil, vegan", stored!.Description);
 
-        Assert.Equal(2, await World().CountAsync(CountEventsSql, cancellationToken));
+        // Three: 'created' and 'section_changed' from the create (0005 makes the heading mandatory and
+        // always logged), then this description. The count moved with 0005 and the assertion did not,
+        // which is what F-87 is.
+        Assert.Equal(3, await World().CountAsync(CountEventsSql, cancellationToken));
         Assert.Equal("description_changed", await EventTypeAsync(identifier, cancellationToken));
         Assert.Equal(
             "Lentil, vegan",
@@ -718,8 +729,9 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         MenuItemSummary? stored = await Directory().GetAsync(identifier, cancellationToken);
         Assert.Equal(string.Empty, stored!.Description);
 
-        // created, description_changed (from the create), description_changed (this clear).
-        Assert.Equal(3, await World().CountAsync(CountEventsSql, cancellationToken));
+        // created, section_changed and description_changed from the create — 0005 makes the heading a
+        // third row on any create with a description — then description_changed for this clear.
+        Assert.Equal(4, await World().CountAsync(CountEventsSql, cancellationToken));
         Assert.Equal("description_changed", await EventTypeAsync(identifier, cancellationToken));
         Assert.Equal(
             string.Empty,
@@ -783,7 +795,8 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         MenuItemSummary? stored = await Directory().GetAsync(identifier, cancellationToken);
         Assert.Equal(7, stored!.DisplayOrder);
 
-        Assert.Equal(2, await World().CountAsync(CountEventsSql, cancellationToken));
+        // Three: 'created' and 'section_changed' from the create, then this move.
+        Assert.Equal(3, await World().CountAsync(CountEventsSql, cancellationToken));
         Assert.Equal("reordered", await EventTypeAsync(identifier, cancellationToken));
         Assert.Equal(7, await ScalarAsync<int>("new_display_order", identifier, cancellationToken));
         Assert.Null(await ScalarAsync<string>("new_description", identifier, cancellationToken));
@@ -795,7 +808,8 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
             await Administration().ReorderMenuItemAsync(
                 identifier, 7, _administratorIdentifier, cancellationToken));
 
-        Assert.Equal(2, await World().CountAsync(CountEventsSql, cancellationToken));
+        // Still three. A move to the position an item already occupies appends nothing.
+        Assert.Equal(3, await World().CountAsync(CountEventsSql, cancellationToken));
     }
 
     /// <summary>
@@ -843,7 +857,10 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
                 identifier, -1, _administratorIdentifier, cancellationToken));
 
         Assert.Equal(0, (await Directory().GetAsync(identifier, cancellationToken))!.DisplayOrder);
-        Assert.Equal(1, await World().CountAsync(CountEventsSql, cancellationToken));
+
+        // Two, both from the create, and neither from the refusal — which is the fact. The guard runs
+        // before a connection is opened, so the count here is exactly what CreateAsync left behind.
+        Assert.Equal(2, await World().CountAsync(CountEventsSql, cancellationToken));
     }
 
     /// <summary>Creates an item with no description, which is what most of these tests want.</summary>
@@ -874,6 +891,37 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
             WHERE menu_item_identifier = @MenuItemIdentifier
             ORDER BY occurred_at DESC, menu_item_event_identifier DESC
             LIMIT 1;
+            """,
+            new { MenuItemIdentifier = menuItemIdentifier },
+            cancellationToken);
+
+    /// <summary>
+    /// One column of an item's <c>created</c> event, named rather than reached by recency.
+    ///
+    /// <para><b>Why this exists (F-87).</b> Before <c>0005</c> a create wrote one row, so "the newest
+    /// event" and "the created event" were the same row and <see cref="ScalarAsync{T}"/> answered both
+    /// questions. <c>0005</c> made the heading mandatory and always logged, so a create now writes
+    /// <c>created</c> then <c>section_changed</c> at the same instant, ordered by the UUIDv7 tiebreak —
+    /// and every payload column on that second row is null by CHECK. Two facts about the create's own
+    /// payload therefore started reading the section event and asserting against nothing: a name came
+    /// back <c>null</c> and a price came back <c>0</c>, both reported as ordinary value mismatches in a
+    /// class whose subject is exactly those two values. <c>CreateWritesTheItemAndItsCreatedEventTogether</c>
+    /// had already written this query inline for the same reason; this is that shape hoisted, so the
+    /// third fact that needs it does not have to rediscover why.</para>
+    ///
+    /// <para>A create writes exactly one <c>created</c> row, so no ordering is needed and none is
+    /// written — an <c>ORDER BY</c> here would suggest there might be two.</para>
+    /// </summary>
+    private async Task<T?> CreatedEventScalarAsync<T>(
+        string column,
+        Guid menuItemIdentifier,
+        CancellationToken cancellationToken)
+        => await World().ScalarAsync<T>(
+            $"""
+            SELECT {column}
+            FROM menu_item_event
+            WHERE menu_item_identifier = @MenuItemIdentifier
+              AND event_type = 'created';
             """,
             new { MenuItemIdentifier = menuItemIdentifier },
             cancellationToken);

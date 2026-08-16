@@ -49,6 +49,13 @@ public sealed class MenuSectionEventLogTests : IClassFixture<PostgreSqlFixture>,
     /// A second actor with no display name, so the reader's fallback to the username is exercised rather
     /// than assumed. Every other reader in this layer carries the same <c>COALESCE(NULLIF(btrim(…)))</c>
     /// and a new one is exactly where it would be forgotten.
+    ///
+    /// <para><b>The username is three characters and that is not a style choice (F-85).</b>
+    /// <c>person.username</c> carries <c>CHECK (char_length(username) BETWEEN 3 AND 64)</c> from
+    /// <c>0001</c>, and this class arrived asking for <c>"mo"</c> — so every one of its six facts failed
+    /// in <c>InitializeAsync</c>, before a single assertion ran, with a constraint name rather than a
+    /// sentence. <c>EventExplorerReadsTests</c> carries a comment stating the minimum directly above its
+    /// own four people; this file is the copy that did not.</para>
     /// </summary>
     private Guid _managerIdentifier;
 
@@ -74,7 +81,7 @@ public sealed class MenuSectionEventLogTests : IClassFixture<PostgreSqlFixture>,
         await _world.TruncateAsync(cancellationToken);
 
         _administratorIdentifier = await _world.AddPersonAsync("adam", "Adam Osei", cancellationToken);
-        _managerIdentifier = await _world.AddPersonAsync("mo", null, cancellationToken);
+        _managerIdentifier = await _world.AddPersonAsync("moe", null, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()
@@ -248,7 +255,7 @@ public sealed class MenuSectionEventLogTests : IClassFixture<PostgreSqlFixture>,
 
         MenuSectionEventEntry hidden = history.Single(entry => entry.EventType == "deactivated");
         Assert.Equal(_managerIdentifier, hidden.ActorPersonIdentifier);
-        Assert.Equal("mo", hidden.ActorName);
+        Assert.Equal("moe", hidden.ActorName);
     }
 
     /// <summary>
