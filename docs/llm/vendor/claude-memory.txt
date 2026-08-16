@@ -3,58 +3,63 @@ Claude regenerates project memory every evening from your past chats in this pro
 
 Purpose & context
 
-Kushal (GitHub: kusl) is building MyRestaurant — a self-hosted, single-restaurant ordering and management system, AGPL-3.0-only, at github.com/kusl/myrestaurant. The stack is .NET 10 Blazor Server, PostgreSQL with Dapper only (EF Core explicitly forbidden), DbUp startup migrations, rootless Podman Compose, OpenTelemetry, and ASP.NET Core Identity over custom Dapper stores with Argon2id and WebAuthn passkeys. Dependency direction is strict: WebApplication → DataAccess → Domain (Domain is BCL-only). Tests use xUnit v3 with Testcontainers against real PostgreSQL; no Moq, no FluentAssertions — AwesomeAssertions is available but plain xUnit Assert is used in practice. Local repo lives at /home/kushal/src/dotnet/myrestaurant on Fedora 44; primary mobile test target is iPhone SE 2020 (375px).
+Kushal (GitHub: kusl) is building MyRestaurant — a self-hosted, single-restaurant ordering and management system licensed under AGPL-3.0. The stack is .NET 10 Blazor Server, PostgreSQL with Dapper only (EF Core explicitly forbidden), DbUp startup migrations, rootless Podman Compose, OpenTelemetry, ASP.NET Core Identity over custom Dapper stores, Argon2id, WebAuthn passkeys, and TOTP. The repo lives at github.com/kusl/myrestaurant. Dependency direction is WebApplication → DataAccess → Domain (Domain is BCL-only). Tests use xUnit v3 with Testcontainers against real PostgreSQL and AwesomeAssertions (no Moq, no FluentAssertions). Local development is on Fedora; primary mobile test target is iPhone SE 2020 (375px viewport).
 
-The project follows a rigorous spec-first, milestone-slice methodology with a structured defect ledger (F-numbers in DOCUMENTATION_REVIEW.md), ADR-numbered decision records, a TECHNICAL_SPECIFICATION.md with version-tested changelog entries, and BUILD_PROGRESS.md as the living slice log. The atomic-documentation rule is a hard constraint: behavior changes, spec edits, ADR edits, and ledger rows must land in the same archive. Milestones M1–M5 are complete; M6 (hardening) is in progress.
+The project follows a rigorous spec-first, slice-based delivery methodology: each "slice" is an atomic deliverable with code, tests, and documentation updated together. Milestones M1–M5 are complete; M6 (hardening) is active. Work is tracked in docs/TECHNICAL_SPECIFICATION.md (versioned), docs/DOCUMENTATION_REVIEW.md (F-numbered defect ledger), docs/BUILD_PROGRESS.md, docs/MENU_AND_HANDHELD_PLAN.md, and docs/adr/ (ADR-numbered decision records).
 
 Current state
 
-M6 is the active milestone. The most recent completed slice is Slice 34 (M6), which converted the remaining administration Razor pages to the shared handheld-first CSS vocabulary, resolved three blocking findings (F-65, F-66, F-67), and delivered TECHNICAL_SPECIFICATION.md at v1.19. The immediately prior session identified two test failures on top of Slice 34 and proposed a further archive addressing them:
+Kushal is mid-M6, working through a staged menu enhancement and handheld layout plan. As of the most recent slice (M6 Slice 40 / Stage 2 close-out):
 
-Failure 1 (ContentSecurityPolicyContractTests): stale census threshold — fix is lowering the non-vacuity guard to >= 1, deleting the size-claim.
-Failure 2 (Administration_IsOperableOnAHandheldViewport): two pages overflow 375px due to unbreakable tokens; root cause is overflow-wrap: anywhere scattered across eight selectors instead of declared once on body. Fix: single body { overflow-wrap: anywhere } declaration, removing the .source-link class entirely.
-Third finding: defect register tables in TECHNICAL_SPECIFICATION.md and DOCUMENTATION_REVIEW.md are structurally broken (mismatched columns, stray pipes, missing F-65 row); a new DefectRegisterContractTests.cs was proposed.
-The proposed archive is awaiting Kushal's go-ahead. Slice 33 has never been run; Slice 34 sits on top of it. The four new detail surfaces from Slice 34 scenario 16 have never been laid out at 375px.
+Migration 0005_menu_item_sections.sql has been delivered, making menu_item.menu_section_identifier a mandatory FK to menu_section.
+Section create page (CreateMenuSection.razor), section picker on item creation, and guest menu rendering grouped under section headings (§7 asymmetry: inactive sections hidden from guests entirely, inactive items visible but marked) are implemented.
+Event explorer vocabulary corrected (F-80); new contract test MenuEventVocabularyContractTests.cs added.
+Technical specification is at v1.25; predicted test count ~1136.
+Stage 1 (handheld layout conversion) is complete: all admin pages use shared §11.12 handheld-first CSS vocabulary with a single min-width: 48rem breakpoint; a 375px reachability barrier (scenario 16) is in place.
+Several scope rulings are active: MoveMenuItemToSectionAsync is deliberately deferred (Stage 3); only CreateMenuSectionAsync is behind IMenuWorkflow so far; one scenario 17 assertion (deactivate section → vanishes from guest menu) was cut as out-of-scope and explicitly recorded.
+Key active findings to track: F-78 (DbUp dollar-quote fix — .WithVariablesDisabled()), F-79 (duplicated spec paragraph), F-80 (event vocabulary correction).
 
 On the horizon
 
-Deliver the pending archive fixing the two test failures and the defect register structural issues (predicted test count rise to 1079).
-Verify Slices 33 and 34 on the actual workstation (red first run on the detail surfaces is expected to be informational).
-Menu enhancement (sections, descriptions, better UX) — a staged plan exists in docs/MENU_AND_HANDHELD_PLAN.md; Stage 1b (Razor surface conversions) and Stage 1c (reachability barrier) are complete; menu schema work remains.
-First tagged release: version stamping, AGPL §13 source offer, and release CI pipeline are already in place.
+Stage 3 of the menu enhancement plan: item editor (including MoveMenuItemToSectionAsync), section editor (including deactivate-section-hides-from-guests assertion), and remaining IMenuWorkflow verb migrations.
+Outstanding docs/_append/ sections may still need merging into BUILD_PROGRESS.md.
+Predicted test count arithmetic should be validated on first workstation run after each slice.
 Key learnings & principles
 
-F-47's habit: where a rule can be executed, a list must not exist — gates must be mechanically derived, not maintained by hand.
-F-41's discipline: gates that reach past what they can decide must report findings on correct trees and nothing beyond their scope.
-F-38's pattern: findings are named something executable.
-F-51's ruling: behavioral gates must not be reversed; the ContainerImageReferenceContractTests asserts tree-consistency, not stack behavior.
-Atomic documentation: every behavior change ships with its spec edits, ledger rows, and changelog bump in the same archive.
-Stage-order discipline: the reachability barrier (layout verification) was deliberately built before the remaining Razor conversions to avoid repeating conditions that produced F-59 (converting ~2,400 lines without a check).
-False premise propagation: a stated-but-incorrect reason (F-62 — the "shared browser context" claim) propagated into three separate documents before being caught; false premises in documentation must be corrected at the source, not just in code.
-Stale test thresholds: tests asserting specific counts become stale as the tree evolves; prefer structural or floor assertions over exact counts where the count is not itself the invariant.
-overflow-wrap: anywhere architectural lesson: properties intended to apply everywhere should be declared on body once, not on individual selectors, to avoid missing newly added surfaces.
-Dapper + Npgsql type mismatch: Npgsql materializes timestamptz as DateTime; Dapper's constructor binding (used for positional records) refuses the DateTimeOffset mismatch. Pattern: use an internal row type with DateTime fields and project to DateTimeOffset in a ToSummary() method.
-string.Create rule: every operand in a string.Create(CultureInfo.InvariantCulture, …) chain must be a $"…" interpolated string — plain string literal operands will not compile (CS1620).
-CS4007: await must never appear inside an interpolated string hole bound to DefaultInterpolatedStringHandler.
-Static-SSR intermediate render bug: ComponentBase fires StateHasChanged the moment an async method yields, before it finishes — fields still at default values can cause null-dereference in BuildRenderTree. Guard with if (field is not null) rather than !.
-WebAuthn origin binding: passkeys bind to a stable registrable-domain origin; rotating quick-tunnel hostnames silently invalidate credentials. Production requires a named tunnel on a stable domain.
-SupplyParameterFromForm initializer rule: use = default! with ??= new() in OnInitialized, not = new(), to avoid BL0008.
-Playwright enhanced navigation race: WaitForURLAsync resolves on history.pushState, before page content arrives. Use a destination-specific element as the arrival barrier.
+Atomic documentation rule: every behavior change ships with its spec edits, ADR, ledger row, and changelog entry in the same slice. Violated rules are tracked as F-numbered findings.
+Gates must be honest: a gate that reaches past what it can decide reports findings on correct trees (F-41 precedent). Gates assert tree-consistency, not stack behavior (F-51 ruling).
+Lists should not exist where a rule can execute (F-47 habit): migration tracking lists replaced by emptiness assertions.
+Named findings, not silent drops: if a scope item is cut mid-slice, it is recorded explicitly rather than quietly omitted.
+Predicted test counts are uncompiled arithmetic (§18 rule): always flagged as such; any deviation from predicted count is the first item to investigate.
+Stale counts in prose are a liability: counts in documentation that no gate can verify should be deleted, not corrected (F-77 ruling).
+CSS palette: all color values live in app.css :root; values declared outside it are defects (F-64/F-68 pattern). Eight surfaces with missing palette properties was a near-miss.
+Dapper + Npgsql: timestamptz materializes as DateTime (UTC), not DateTimeOffset; always read as DateTime and project to DateTimeOffset via new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc)).
+string.Create rule: every operand in a string.Create addition chain must be a $"…" interpolated string; plain literals cause CS1620.
+No await in interpolated string holes bound to DefaultInterpolatedStringHandler (CS4007); hoist to a local variable.
+DbUp dollar-quote hazard: VariableSubstitutionPreprocessor runs before the statement splitter and misreads $tag$ as variable references; fix with .WithVariablesDisabled() (F-78).
+Npgsql in CI: container image references must be fully qualified to avoid silent test skips on canonical hosts (F-60).
+Compose variable substitution: Debian trixie's podman-compose does not apply ${NAME:-default} defaults; use explicit env values (F-57).
+Blazor enhanced navigation race: WaitForURLAsync resolves when history.pushState fires, before page content arrives; use a destination-specific element as the arrival barrier.
+Static SSR intermediate render: StateHasChanged fires the moment OnInitializedAsync suspends; guard against null dereference with else if (_field is not null).
+WebAuthn RP-ID: quick tunnels work with per-request RP-ID derivation (ServerDomain = null); named tunnels are still the production path for stable passkey binding.
 Approach & patterns
 
-Session workflow: Kushal exports the full repository as dump.txt (via export.sh); Claude reconstructs the working tree using a Python splitter (split_dump.py) parsing # FILE: / --- CONTENT --- headers; SHA-256 verification is performed against dump metadata before any work begins.
-Delivery format (non-negotiable, standing preference): structured .tar.gz archive with repo-relative paths, extractable in one operation at the repo root. Full files only — never diffs, patches, or bespoke text-manipulation scripts. Explicit "Files to DELETE" section required even when empty. git add reminders for new untracked files/directories (gates use git ls-files). BUILD_PROGRESS.md always delivered as a complete file, never as a diff or append instruction.
-Verification before packaging: brace/paren/bracket balance walks (string-literal-aware), Razor tag-tree and @code block balance checks, CS4007 and CS1620 scans, selector existence checks against actual markup, byte hygiene (no CR, final newline, no whitespace-only lines), shellcheck at --severity=style for all shell scripts.
-Test count predictions: made arithmetically, explicitly flagged as uncompiled estimates — never stated as observed results.
-Decision transparency: ordering decisions are explained; veto points are named explicitly; honest limits (what was not compiled, not browser-rendered) are recorded in BUILD_PROGRESS.md.
-New directories: always require explicit git add reminder; called out separately from edited files.
-BUILD_PROGRESS.md: too large to regenerate frequently — delivered as a complete file each slice, with the slice section appended. The docs/_append/ delivery mechanism is retired.
-Documentation version convention: TECHNICAL_SPECIFICATION.md header version and the newest changelog entry must always move together (F-48 precedent); SpecificationVersionTests asserts this mechanically.
+Session workflow: Kushal provides dump.txt (full repo export with SHA-256 per file); Claude reconstructs the working tree, verifies checksums, performs all work, then delivers a .tar.gz archive with repo-relative paths extractable at the repo root. The word "continue" resumes across tool-call ceiling hits.
+Delivery format — non-negotiable:
+Full files only — never diffs, patches, or bespoke text-manipulation scripts.
+Single structured .tar.gz extractable at the repo root.
+Explicit "Files to DELETE" section (even when empty).
+git add reminders for any new untracked files/directories (gates use git ls-files).
+BUILD_PROGRESS.md delivered as a complete file, not an append block.
+Documentation updated in every slice.
+Veto protocol: consequential architectural decisions, scope rulings, and visible changes are flagged explicitly for Kushal's veto before or immediately after delivery; reversion instructions are provided.
+Verification without SDK: brace/bracket/paren balance walks (string-aware), Razor tag-tree comparison against SHA-256-verified originals, CSS selector existence checks, CS4007/CS1620 scans, SpecificationVersionTests ported to Python, shellcheck at --severity=style, YAML parse validation, byte hygiene (no CR, final newline, no whitespace-only lines).
+"What was NOT verified" is recorded explicitly in BUILD_PROGRESS.md each slice.
+Scope discipline: docs/_append/ delivery mechanism is retired; BUILD_PROGRESS.md ships whole. Unmerged appends still in tree should be cat-merged.
 Tools & resources
 
-Languages/frameworks: .NET 10, Blazor Server (interactive server mode), ASP.NET Core Identity, Dapper, Npgsql, DbUp, xUnit v3, Testcontainers, Playwright (E2E)
-Infrastructure: rootless Podman Compose, PostgreSQL 17, Cloudflare named tunnels (production), Caddy removed, GitHub Actions CI
-Key packages: Net.Codecrete.QrCodeGenerator, Konscious Argon2id, AwesomeAssertions; Directory.Packages.props for centralized version management
-Repository tooling: export.sh (dump generator), check_tree.sh (gate 1 — hygiene), check_repository.sh (gate 6 — tree + advisory platform checks), ci_local.sh (local CI equivalent), scripts/quick_tunnel.sh (demo tunnel, foreground)
-GitHub API: used with a read-only PAT (stored in user preferences, must never appear in any response or generated file) for framework source verification against dotnet/aspnetcore@release/10.0
-Virginia host: Debian trixie, rootless Podman, no .NET SDK — used for dev/testing instance; podman-compose 1.3.0 does not apply ${VAR:-default} substitutions (F-57 precedent); image references must be fully qualified (F-60 precedent)
+Repository: github.com/kusl/myrestaurant; dump format via export.sh producing dump.txt with # FILE: / --- CONTENT --- / Size: / SHA-256 headers.
+Stack: .NET 10, PostgreSQL 17, Dapper/Npgsql, DbUp, Testcontainers, xUnit v3, AwesomeAssertions, Playwright (E2E), rootless Podman / podman-compose, Caddy, Cloudflare tunnels, OpenTelemetry OTLP.
+Key packages: Net.Codecrete.QrCodeGenerator, Konscious Argon2id, CentralPackageTransitivePinningEnabled for transitive dependency management.
+CI: GitHub Actions (.github/workflows/ci.yml, release.yml); local equivalent via scripts/ci_local.sh; scripts/check_tree.sh as gate 1; scripts/check_repository.sh as gate 6.
+GitHub PAT: available for read-only API calls; must never appear in any response or generated file.
