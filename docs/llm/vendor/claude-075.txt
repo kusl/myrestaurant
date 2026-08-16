@@ -1302,3 +1302,478 @@ Claude is AI and can make mistakes. Please double-check responses.
 
 please continue 
 
+
+/
+Claude finished the response
+
+Ran a command
+Ran a command
+
+Confirm the working tree survived
+Done
+Tree intact. Finishing the harness, then tests, then documentation.
+
+
+Ran a command
+Ran a command
+
+Teach the harness to read section headings
+Done
+Now scenario 17 in the E2E suite:
+
+
+Ran 4 commands
+Ran 4 commands
+
+Find harness call sites and a scenario opening for shape
+
+Find the guest-arrival helper
+
+Find the shared service arrangement helper
+
+Read ArrangeServiceAsync
+Done
+Now scenario 17 — appended after 16, before the helpers:
+
+
+Weighed trade-offs between simplifying scenario or building minimal editor
+Weighed trade-offs between simplifying scenario or building minimal editor
+
+Add §16.3 scenario 17
+Weighing simplification against building minimal section editor.
+
+Weighed trade-offs between simplifying scenario or building minimal editor.
+
+Done
+Scenario 17 part (f) needs a section editor I deliberately didn't ship. Let me check the harness signature and correct that overreach:
+
+
+Ran 2 commands
+Ran 2 commands
+
+Check WaitForMenuAsync signature
+
+Replace the overreaching part (f) with an ordering assertion this slice can actually make
+Done
+Now the data-access tests. MenuDirectoryTests first:
+
+
+Ran 2 commands
+Ran 2 commands
+
+Read the rest of MenuDirectoryTests
+
+Add section ordering and inactive-section facts to MenuDirectoryTests
+Done
+Let me verify that contiguity assertion's logic actually holds before trusting it:
+
+
+Ran a command
+Ran a command
+
+Verify the contiguity assertion distinguishes grouped from scattered
+Done
+The assertion is sensitive. Now MenuAdministrationTests — I need to find and fix every CreateMenuItemAsync call:
+
+
+Architected fixture modifications and traced downstream impacts
+Architected fixture modifications and traced downstream impacts
+
+Find CreateMenuItemAsync call sites in tests
+
+Read the create-related facts in MenuAdministrationTests
+
+Read the fixture and event helpers
+
+Read the fixture setup and locate helper definitions
+Scrutinizing event counting SQL implications.
+
+Architected fixture modifications and traced downstream impacts.
+
+
+Read the rename and description facts to see event counting
+Done
+Now I have the full picture. Applying all the MenuAdministrationTests changes:
+
+
+Ran a command
+Ran a command
+
+Thread the section through every create call in MenuAdministrationTests
+Done
+All 12 threaded. Now the event-count assertions, which shift because a create now writes a section_changed:
+
+
+Investigated null-safety patterns in existing assertion code
+Investigated null-safety patterns in existing assertion code
+
+Correct event counts and add the three new create facts
+
+Verify the OrderTestWorld helper signatures the new assertions use
+
+Check whether warnings are errors
+
+See which configuration treats warnings as errors
+Investigated null-safety patterns in existing assertion code.
+
+Done
+Let me simplify those inline assertions to match the file's existing null-safe pattern:
+
+
+Ran a command
+Ran a command
+
+Make the new assertions null-safe and inspect the private helper
+Done
+Now MenuEventLogTests and MenuWiringTests:
+
+
+Ran 6 commands
+Ran 6 commands
+
+Find the create call in MenuEventLogTests
+
+Find event-count assertions in MenuEventLogTests
+
+Read the affected MenuEventLogTests facts
+
+Update MenuEventLogTests for the section event
+
+Find the exact fixture lines
+
+Update MenuEventLogTests for the section event
+Done
+Now MenuWiringTests — the fake must implement the new signatures:
+
+
+Ran 3 commands
+Ran 3 commands
+
+Update MenuWiringTests for the new workflow shape
+
+Verify the real interface signatures match the fake
+
+Confirm exact parameter names in the section interface
+Done
+Signatures match. Now SchemaMigrationRunnerTests for the 0005 columns and constraints:
+
+
+Ran a command
+Ran a command
+
+Add 0005 structural facts to the migration gate
+Done
+Let me verify those new SQL probes against the real database:
+
+
+Ran 2 commands
+Ran 2 commands
+
+Verify every new migration assertion against the live database
+
+Restart PostgreSQL and verify all new migration assertions
+Done
+All five new migration assertions verified against the live database. Now let me exercise the create path's SQL end-to-end:
+
+
+Ran a command
+Ran a command
+
+Exercise the three-event create and prove the paired CHECK refuses a bad combination
+Done
+The three-event create works and the paired CHECK correctly refuses a created event carrying a section. Now the documentation:
+
+
+Ran 2 commands
+Ran 2 commands
+
+Locate the DDL and changelog in the spec
+
+Read the menu DDL and changelog head
+Done
+Now the specification edits — §7, §8.1, §8.2 DDL, and the v1.25 changelog entry:
+
+
+Ran a command
+Ran a command
+
+Update spec §7, §8.1 and the §8.2 DDL
+Done
+Now §16.3/§16.4, Appendix A, and the changelog:
+
+
+Ran 6 commands
+Ran 6 commands
+
+Locate §16.3 and §16.4
+
+Find section 16 headings
+
+Find the §16 subsection headings
+
+Find §16 proper
+
+Read §16
+
+Add scenario 17 and update the CI count
+Done
+Now Appendix A's F-80 row and the v1.25 changelog entry:
+
+
+Ran a command
+Ran a command
+
+Add F-80 and the v1.25 changelog, then verify the version gate
+Done
+SpecificationVersionTests and MarkdownTableContractTests both satisfied. Now the defect ledger, plan, and BUILD_PROGRESS:
+
+
+Ran 4 commands
+Ran 4 commands
+
+Find the defect ledger structure
+
+Add the F-80 ledger row
+
+Check for the defect register contract test
+
+Simulate the markdown table gate across every document
+Done
+Slice 40 — the work is done in the tree; only the archive remains
+I hit the ceiling again, but this turn got substantially further: the slice is essentially complete. What's left is packaging.
+
+Everything is verified against a live database, not reasoned about
+PostgreSQL 16 survived from the previous turn, and I used it throughout rather than as a one-off check:
+
+0005 applies cleanly on an empty database (no seed section — the EXISTS (SELECT 1 FROM menu_item) guard holds) and on a populated one (seed written, items backfilled, NOT NULL and the foreign key applied).
+The five new SchemaMigrationRunnerTests probes all return the right answers: attnotnull=true, the named foreign key exists, menu_item_section_index exists, and menu_item_event carries all eight expected CHECK constraints.
+The three-event create was executed as a transaction — created, then section_changed, then description_changed — and accepted.
+The paired CHECK was proven to bite: inserting a created event carrying a section is refused with violates check constraint "menu_item_event_section_payload". That's the constraint doing its job, not me asserting it would.
+SELECT … FOR UPDATE with the correlated MAX+1 subquery returns the right next position.
+I also simulated the gates rather than trusting them: the markdown table contract across every document (0 mismatches), the specification version gate (header 1.25, newest entry 1.25, descending), and the new vocabulary contract test against the real migration files (derives 8 types from 0005, matches the C# list).
+
+F-80 — the defect this slice turned up
+EventTypeVocabulary.MenuEventTypes said "the five values" and listed five. 0004 made it seven. Nothing broke, and that's the finding: §11.4's explorer deliberately never refuses an unrecognised type, so a missing word has no run-time symptom — it's just two menu verbs that can't be chosen from the dropdown on the page whose entire purpose is choosing. Two slices, every gate green.
+
+F-77 removed a count of this same vocabulary. This is the vocabulary itself, copied and drifting. So the fix makes it derivable: MenuEventVocabularyContractTests parses the CHECK out of the last migration declaring it and compares sets — deliberately not a count, with a non-vacuity guard so an empty extraction can't pass.
+
+Two scope rulings, and one I corrected mid-flight
+MoveMenuItemToSectionAsync isn't here, and only CreateMenuSectionAsync moved behind IMenuWorkflow — the four-verb obligation narrows rather than closing, for the project's own reason about verbs without callers.
+
+I caught myself overreaching. Scenario 17's original part (f) deactivated a section to prove §7's asymmetry — but that needs a section editor I'd just ruled out of scope. I replaced it with an assertion this slice can actually make: a third item under an existing heading joins it and lands at the end, which proves MAX+1-within-section through a browser. §7's inactive-section rendering rule stays covered at the data layer (MenuDirectoryTests) and unverified end-to-end — recorded, not glossed.
+
+How a mandatory column avoided sixteen files
+An optional section on OrderTestWorld.AddMenuItemAsync (lazy house section, cleared on truncate) and a heading arranged inside AdministrationJourneys.CreateMenuItemAsync. The sixteen existing §16.3 scenarios need zero edits, and twelve integration test files compile unchanged.
+
+Test count moves
+Event counts shifted because a create now writes two events instead of one — I traced each affected assertion rather than bulk-editing. New facts: 2 in MenuDirectoryTests, 3 in MenuAdministrationTests, 2 in SchemaMigrationRunnerTests, 2 in MenuWiringTests, 2 in the new contract test, 1 E2E scenario. Predicted: 1136 (1124 + 12). Per §18, that's uncompiled arithmetic — if the run differs, chase it.
+
+Done
+Migration, all four DAL files, workflow, DI, three Razor surfaces plus one new page, guest menu grouping, app.css, EventExplorerReads, five test files updated, one new contract test, OrderTestWorld, both harness files, scenario 17, and the full documentation set — spec to v1.25 (§7, §8.1, §8.2 DDL, §16.3, §16.4, Appendix A, changelog), ledger F-80. Brace balance verified on every C# file.
+
+Remaining: MENU_AND_HANDHELD_PLAN.md, BUILD_PROGRESS.md, _CHANGES.md, and the .tar.gz.
+
+Say continue and I'll finish those three documents and package everything — full files, repo-relative paths, one extraction at the root, deletion list (expected: none), and git add flagged for the three new files (0005_menu_item_sections.sql, CreateMenuSection.razor, MenuEventVocabularyContractTests.cs), since the gates use git ls-files.
+
+please continue
+
+
+Ran a command
+Ran a command
+
+Confirm tree survived with this session's edits
+Done
+Tree intact. Finishing the three documents, then packaging.
+
+
+Ran 3 commands
+Ran 3 commands
+
+Update the plan's Stage 2 status and the deferred obligation
+
+Strike Stage 2 in the plan and record the seed-guard repair
+
+Update Stage 3 with what landed and what remains
+Done
+Now the BUILD_PROGRESS.md entry:
+
+
+Ran 4 commands, created a file
+Ran 4 commands, created a file
+
+Check the tail of BUILD_PROGRESS before appending
+
+Append the Slice 40 BUILD_PROGRESS entry
+
+Read the _CHANGES.md format
+
+Write the _CHANGES.md for this slice
+
+Overwrite _CHANGES.md for this slice
+Done
+Now the byte-hygiene gate simulation across every changed file, then packaging:
+
+
+Ran a command
+Ran a command
+
+Simulate the tree-hygiene gate over every changed file
+Done
+All 28 files clean. Now the structural scans on the C# and Razor:
+
+
+Ran 2 commands
+Ran 2 commands
+
+Structural scan of every changed C# file
+
+Inspect the CS4007 candidates
+Done
+My scanner's window was too crude — it spilled past the string. Let me check properly:
+
+
+Ran a command
+Ran a command
+
+Precise CS4007 scan of interpolation holes only
+Done
+Zero real CS4007. Now the Razor tag-tree walk with the known false-positive control:
+
+
+Investigated false positives and validated testing methodology
+Investigated false positives and validated testing methodology
+
+Razor tag-tree walk on the changed components
+Verifying walker accuracy against pristine control files.
+
+Investigated false positives and validated testing methodology.
+
+Done
+Findings on files I barely touched — that's the known false-positive class. Let me run the control:
+
+
+Analyzed code changes and traced newly added form validation components
+Analyzed code changes and traced newly added form validation components
+
+Run the identical walker against pristine dump copies as a control
+Tracing through added form field validation logic.
+
+Analyzed code changes and traced newly added form validation components.
+
+Done
+Control confirms ManageMenuItem (16=16) and TableOrderSurface (7=7) are unchanged. Let me fix the walker rather than count false positives:
+
+
+Ran 2 commands
+Ran 2 commands
+
+Quote-aware Razor tag-tree walk
+
+Quote-aware control against the pristine guest surface
+Done
+Pristine gives the identical seven — the standing <OrderLineView> false positive. My grouping edits introduced nothing. Let me verify the grouping balance directly:
+
+
+Ran 2 commands
+Ran 2 commands
+
+Read the grouping markup to check nesting by eye
+
+Trace the grouping block's open/close structure
+Done
+Structure is correct (div → h4 → ul → li → /ul → /div). The indentation is inconsistent from my splice — let me tidy it:
+
+
+Ran 2 commands
+Ran 2 commands
+
+Normalise the grouping block's indentation
+
+Fix the closing brace indent and re-check hygiene
+Done
+Structure and hygiene are clean. Final verification sweep, then the archive:
+
+
+Ran a command
+Ran a command
+
+Re-derive the handheld layout contract invariants
+Done
+All HandheldLayoutContractTests invariants hold. Now let me build the archive:
+
+
+Ran 3 commands, read a file
+Ran 3 commands, read a file
+
+Stage the changed files for the archive
+
+Build the archive and verify it round-trips
+
+Final check of the packaged archive
+
+Presented file
+Done
+M6 Slice 40 — 0005, and Stage 2 is closed
+tar -xzf m6-slice-40-menu-sections.tar.gz
+git status
+Files to DELETE: none.
+
+git add IS required — three files are new. check_tree.sh walks git ls-files, so an unstaged file is a file gate 1 never sees:
+
+git add src/MyRestaurant.DataAccess/Migrations/0005_menu_item_sections.sql
+git add src/MyRestaurant.WebApplication/Components/Pages/Administration/CreateMenuSection.razor
+git add tests/MyRestaurant.WebApplication.Tests/Events/MenuEventVocabularyContractTests.cs
+28 files, repo-relative, extract at the root. Round-trip verified — extracted contents diff clean against the working tree.
+
+The evidence gap from the last two slices is closed, and it earned its keep
+Slice 39's sharpest line was that two consecutive slices had no authoring database, and that this is why F-78 was found by a run on your machine rather than by a migration in mine. PostgreSQL 16 went in before a line of 0005 was written, and every statement was executed:
+
+Both branches of the conditional seed — empty database (no seed) and populated (seed written, items backfilled, NOT NULL and FK applied). A fresh container can only ever walk the first branch; the second is the one that runs on your database.
+SELECT … FOR UPDATE with a correlated MAX + 1 subquery, run before it was written into the file. PostgreSQL rejects FOR UPDATE alongside aggregation in the outer query — the shape that survives is the one shipped.
+The three-event create as a transaction, accepted.
+The new paired CHECK proven to bite: inserting a created event carrying a section is refused with violates check constraint "menu_item_event_section_payload".
+F-80 — a vocabulary copied out of its own constraint
+EventTypeVocabulary.MenuEventTypes said "the five values" and listed five. 0004 made it seven. Nothing broke, and that's the finding — §11.4's explorer deliberately never refuses an unrecognised type, so a missing word has no run-time symptom at all. It's two menu verbs that can't be chosen from the dropdown, on the page whose entire purpose is choosing. Two slices, every gate green.
+
+F-77 deleted a count of this same vocabulary. This is the vocabulary itself. So the fix derives it: the contract test parses the CHECK out of the last migration declaring it. Not a count — a count would have passed every version of this bug.
+
+Two rulings for your veto
+MoveMenuItemToSectionAsync is absent. The plan schedules it here; the item editor that would call it is Stage 3. To reverse: an UPDATE and a section_changed beside ReorderMenuItemAsync, plus a picker on ManageMenuItem.razor.
+
+Only CreateMenuSectionAsync moved behind IMenuWorkflow — the obligation narrows from five verbs to four rather than closing. MenuWiringTests' fake throws from the other four with a message naming the obligation.
+
+I also cut an assertion from scenario 17 mid-slice rather than quietly keeping it: it was drafted to deactivate a heading and watch it vanish from the guest menu, which needs the section editor I'd just ruled out. Replaced with MAX+1-within-section proven through a browser. §7's inactive-section rule is covered at the data layer and is unverified end to end — recorded, not glossed.
+
+What I verified, and one thing I caught
+Tree hygiene on all 28 files (0 findings). Brace/paren/bracket balance on all 16 C# files. A precise CS4007 scan — my first pass flagged two harness files, and a tighter scanner that walks only actual interpolation holes found zero; the first was a windowing artefact.
+
+The Razor walk is the interesting one. It reported findings on ManageMenuItem.razor, which I barely touched — so I ran the identical walker against the pristine dump copies as a control. ManageMenuItem 16 = 16 and TableOrderSurface 7 = 7, unchanged. I then fixed the walker to respect quoted attribute values (For="@(() => …)" contains a >), which cleared four of five files; the remaining seven on the guest surface are the standing <OrderLineView> positive, identical pristine. Along the way the trace showed my splice had left inconsistent indentation in the grouping block — corrected.
+
+Also re-derived every HandheldLayoutContractTests invariant: one width media query and it's min-width; zero colour literals outside :root; zero var() fallbacks; every property read is declared. And simulated MarkdownTableContractTests across every document (0 mismatches, including both new four-cell rows) and SpecificationVersionTests (header 1.25, newest entry 1.25, descending).
+
+Test count
+Predicted 1136, up from an observed 1124: contract test +2, directory +2, administration +3, migration gate +2, wiring +2, scenario 17 +1. §16.3 goes 16 → 17.
+
+The SQL ran; the C# did not. Per §18 this is arithmetic, and if the run returns anything else that difference is the next thing to chase. Likeliest complaint sites, named rather than left to be found: InputSelect bound to a Guid, the is { Created: true } created property patterns on two Razor pages, and Assert.Single with a predicate.
+
+The highest-value thing now outstanding is the section editor — a heading created with a typo can currently only be worked around by creating another, and it carries the four remaining workflow verbs, MoveMenuItemToSectionAsync, the sections-first index, and the assertion cut from scenario 17.
+
+
+M6 slice 40 menu sections.tar
+GZ 
+
+
+Now using credits • Your plan limit resets Aug 16 at 8:20 AM.
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+99
+10
+
