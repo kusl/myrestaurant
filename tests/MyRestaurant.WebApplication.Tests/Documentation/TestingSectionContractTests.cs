@@ -23,8 +23,19 @@ namespace MyRestaurant.WebApplication.Tests.Documentation;
 /// is exactly that shape, and §16.4 carries sixteen of them. <b>It said eight when this file arrived,
 /// and there were nine (F-73)</b> — a count in prose, stale on delivery, inside the class written
 /// because counts in prose go stale. The number is kept rather than removed because it is the
-/// argument for the floor below; what is added is the habit of moving it — and this is the second slice
-/// to move it, `0004`'s four new paragraphs having taken the census from twelve to sixteen.</para>
+/// argument for the floor below; what is added is the habit of moving it — and this is the third slice
+/// to move it, `0004`'s four new paragraphs having taken the census from twelve to sixteen and the
+/// section editor's two new gates taking it to eighteen.</para>
+///
+/// <para><b>It has now caught the thing it was written for, and the catch is worth reading (F-82).</b>
+/// Slice 40 added assertions to four classes §16.4 cites — 23 → 26, 5 → 7, 11 → 13, 5 → 7 — and moved
+/// none of the four numbers. This file would have said so on the next run. There was no next run: the
+/// same slice left two Razor components naming a loop variable after a reserved directive, so
+/// <c>MyRestaurant.WebApplication</c> did not compile, so the test project that depends on it did not
+/// execute (F-81). <b>A gate that cannot run is indistinguishable from a gate that passed</b>, which is
+/// F-71's lesson arriving from the other direction — that one was a test project that failed to compile
+/// behind a green-looking summary line, this one is a gate that never started behind a build error
+/// everybody was already looking at.</para>
 ///
 /// <para><b>And there was a second copy of the same fact that WAS read, and it was not chased.</b> This
 /// project predicts its own test count as arithmetic every slice — Slice 34 predicted 1077 — and the run
@@ -60,7 +71,7 @@ public sealed class TestingSectionContractTests
     private const string SectionOpening = "**16.4 CI:**";
 
     /// <summary>
-    /// How many test classes §16.4 must turn out to state a count for. Sixteen do. Without a floor, a
+    /// How many test classes §16.4 must turn out to state a count for. Eighteen do. Without a floor, a
     /// document that had stopped stating counts — or a section marker that had been reworded, so the
     /// slice read is empty — would satisfy every comparison below by having none to make, which is the
     /// failure mode of every gate that computes its own subject (F-41).
@@ -71,7 +82,7 @@ public sealed class TestingSectionContractTests
     /// refuses is the collapse to zero, which is the one failure a computed subject cannot report on
     /// itself.</para>
     /// </summary>
-    private const int MinimumCountedClasses = 16;
+    private const int MinimumCountedClasses = 18;
 
     /// <summary>
     /// A test class named inside backticks, in either of the two forms §16.4 uses: the full

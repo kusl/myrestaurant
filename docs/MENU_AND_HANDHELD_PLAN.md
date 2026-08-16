@@ -1,6 +1,6 @@
 # Menu modernization and the handheld contract — staged plan
 
-**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-16, at the close of Slice 40.** This
+**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-16, at the close of Slice 41.** This
 is the execution plan for the first enhancement request the project has received from a person who was
 shown the running application, together with the defect that request arrived beside. It is a working
 document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
@@ -31,19 +31,21 @@ one-migration problem rather than a recurring one because the previous slice pai
 `NOT NULL` inside one DbUp transaction — added nullable, backfilled, tightened — so no application ever
 observed the nullable window and no reading surface ever acquired an "Uncategorized" code path.
 
-**The deferred obligation narrowed from five verbs to four, and its status changed from latent to live.**
-`CreateMenuSectionAsync` is behind `IMenuWorkflow` as of Slice 40 and publishes `MenuChanged` on a
-committed row, because the section create page is a caller. Rename, describe, reorder and set-active still
-have no surface, so they stay on `IMenuSectionAdministration` and are called by nothing — the rule has not
-changed, and a workflow verb with no caller is still a code path no test can reach through the interface
-meant to protect it.
+**~~The deferred obligation narrowed from five verbs to four~~ — it is closed. Slice 41 brought the other
+four in.** `CreateMenuSectionAsync` came behind `IMenuWorkflow` in Slice 40 because the create page called
+it; rename, describe, reorder and set-active arrived together with the section editor, because they are
+four forms on one page and shipping a subset would have left the same hole under a smaller name. The rule
+that governed the whole sequence never changed and is the transferable part: **a workflow verb with no
+caller is a code path no test can reach through the interface meant to protect it**, so a verb arrives when
+its surface does — and the count of how many are outstanding is the honest statement of how much of the
+interface is untested, which is why it was written down every slice.
 
-**What changed is the cost of leaving them.** §11.1's guest menu groups by heading now, so a renamed
-section that announced nothing would leave a stale heading in every open picker until that page happened to
-reload. That is a real defect and not a hypothetical one; it is merely **unreachable**, because no surface
-can rename a heading yet. The section editor is the slice that must bring the four verbs in with it, and
-`MenuWiringTests`' fake throws from all four with a message saying so, so the next person to wire one is
-told rather than left to notice.
+**`MenuWiringTests`' fake threw from those four for four slices, and the throw was the mechanism rather
+than a note.** It was reachable from every test in the file through the default overloads, so a verb that
+quietly answered would have let a workflow start calling one with nothing noticing. It is gone because the
+obligation is discharged, not because it became inconvenient — and it is worth remembering that a fake that
+refuses is how a stated obligation is made to hold between the slice that states it and the slice that
+discharges it.
 
 **Where Stage 1 stands.** 1a landed in Slice 30 (the vocabulary and the four administration indexes). 1c
 landed in Slice 32 and ahead of 1b (the 375px end-to-end barrier), for the reason F-62 records. **1b closed
@@ -485,8 +487,23 @@ specification changelog, and the ledger is for findings).
 
 ## Stage 3 — sections and descriptions: the surfaces
 
-**Half landed. The guest menu's cards came first (Slice 39) and its headings second (Slice 40); the
-administration side has a create page and no editor.** The UI/UX half, on the Stage 1 foundation.
+**Most of it has landed. The guest menu's cards came first (Slice 39), its headings second (Slice 40), and
+the section editor third (Slice 41).** The UI/UX half, on the Stage 1 foundation.
+
+**What Slice 41 shipped, and what it closed by shipping it.** A section **editor** at
+`/administration/menu/sections/{id}` — four forms, post/redirect/get, the heading's items, and its complete
+uncapped event history, which needed `IMenuSectionEventLog` because nothing in this tree could read
+`menu_section_event` at all. With it: the last **four workflow verbs**, each publishing `MenuChanged` on a
+committed row; **links into it** from the create panel, the menu index's Section column and each item's own
+page, which is the thing the index was waiting for; the harness recovering a new section's identifier from
+its own *Manage this section* link like every other create journey; and **scenario 17's two cut steps**,
+restored.
+
+**What is still outstanding, and it is now a short list.** The section **index** — `/administration/menu`
+becoming sections-first rather than an item list with a Section column. `MoveMenuItemToSectionAsync` and the
+picker on `ManageMenuItem` that would call it, which is the last verb in the whole enhancement with no
+surface. A section's own **description under its heading** on the guest menu. And the kitchen's 86 panel,
+which still groups by nothing.
 
 **What Slice 40 shipped here, ahead of the rest of this stage, because `0005` forced it.** A section
 **create** page at `/administration/menu/sections/new`; a **required picker** on the item form, which
@@ -522,18 +539,27 @@ reason for stopping short is that a sections-first index needs an editor to open
 rows link nowhere is a list of dead ends. A column costs nothing to replace later and puts the fact on the
 screen today.
 
-**~~`/administration/menu/sections/new`~~ and `/administration/menu/sections/{id}`**, matching the shape
-`CreateTable`/`ManageTable` and `CreateMenuItem`/`ManageMenuItem` already have: static SSR, one form per
-verb, post/redirect/get with a one-word outcome, and the section's complete uncapped event history at the
-bottom (§11.4 — the complete stored record, never truncated for the administrator). **The create page
-landed in Slice 40**; the editor did not, and it is the single highest-value thing left in this stage.
+**~~`/administration/menu/sections/new` and `/administration/menu/sections/{id}`~~ — both landed**, matching
+the shape `CreateTable`/`ManageTable` and `CreateMenuItem`/`ManageMenuItem` already have: static SSR, one
+form per verb, post/redirect/get with a one-word outcome, and the section's complete uncapped event history
+at the bottom (§11.4 — the complete stored record, never truncated for the administrator). The create page
+landed in Slice 40 and the editor in Slice 41.
 
-One consequence of the create page shipping alone is worth recording, because it shows up in the harness
-rather than in the application: a section has **no management page to link to**, so its success panel links
-onward to the item form, and `AdministrationJourneys.CreateMenuSectionAsync` recovers the new identifier
-from that form's `<option value>` rather than from a "Manage this…" link the way every other create journey
-does. That is reading the surface rather than reaching past it, and it fails loudly on the day the picker
-stops carrying identifiers — but it is a shape that goes away when the editor exists.
+The consequence of the create page having shipped alone showed up in the harness rather than in the
+application, and it resolved exactly as predicted: for one slice a section had **no management page to link
+to**, so its success panel linked onward to the item form and
+`AdministrationJourneys.CreateMenuSectionAsync` recovered the new identifier from that form's
+`<option value>`. That was reading the surface rather than reaching past it, which is what §16.3 asks for,
+and it was recorded at the time as a shape that goes away when the editor exists. It does. The journey now
+reads a *Manage this section* link like `CreateTableAsync`, `CreateMenuItemAsync` and
+`CreateStaffAccountAsync` all do, and `FindMenuSectionAsync` is left doing the one job it was written for —
+answering "does a heading with this name already exist" for the idempotent wrapper.
+
+**The transferable part is the shape of the intermediate rather than the repair.** A surface shipped one
+slice ahead of its destination will grow a workaround somewhere, and the choice is whether that workaround
+is *in the product* or *in the harness*. Putting it in the harness kept the create page honest — it never
+grew a link to a page that did not exist, never invented a placeholder route — and cost one method that
+knew a fact about a neighbouring form for one slice.
 
 **~~`/administration/menu/new`~~ and `/{id}`** gain a required section picker, a description `textarea`
 (`app.css` already styles one — added in Slice 30 for this), and a position control. Reprice, rename and
@@ -608,13 +634,19 @@ Numbered 17, appended rather than inserted, because the harness names scenarios 
 places. It was numbered 16 when this was written; Slice 32's handheld barrier took that number, which is
 what appending costs and is cheaper than renumbering sixteen of them.
 
-**One assertion was cut from it during the slice and the cut is recorded rather than quietly made.** The
-scenario was drafted to deactivate a heading and watch it disappear from the guest's menu — §7's asymmetry,
-and the one thing about it no unit test can see. That needs `SetMenuSectionActiveAsync` to have a surface,
-which is the section editor this slice deliberately did not ship. Asserting it would have meant either a
-harness reaching past the UI, which §16.3 refuses, or a verb wired for a test, which is worse. The rule is
-covered at the data layer by `MenuDirectoryTests` and is **unverified end to end**; it lands with the
-editor.
+**~~One assertion was cut from it during the slice~~ — it landed in Slice 41, with the editor, as recorded.**
+The scenario was drafted to deactivate a heading and watch it disappear from the guest's menu — §7's
+asymmetry, and the one thing about it no unit test can see. That needed `SetMenuSectionActiveAsync` to have
+a surface, which Slice 40 deliberately did not ship, and asserting it anyway would have meant either a
+harness reaching past the UI, which §16.3 refuses, or a verb wired for a test, which is worse.
+
+**It came back larger than it was cut, and that is the argument for naming a cut rather than dropping it.**
+The restored steps do not only watch the heading vanish: they assert that the *other* heading's items stay
+present, in order, and orderable, and then switch the heading back on and check the menu returns exactly as
+it was — which is the only end-to-end proof that deactivating a section **does not cascade** to its items.
+A cascade would come back with the pie marked unavailable. That second half was not in the draft; it was
+obvious once the assertion was being written against a surface that existed, and it would not have been
+written at all if the cut had been made silently.
 
 ---
 

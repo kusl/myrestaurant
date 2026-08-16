@@ -116,14 +116,24 @@ else
                stocking next week's breakfast menu before switching it on. The suffix is text inside the
                option because an <option> renders text and nothing else — which is the same limitation
                that made the guest picker a card list, and the reason it is acceptable here is that this
-               is a choice among eight headings rather than a menu among sixty dishes. *@
+               is a choice among eight headings rather than a menu among sixty dishes.
+
+               THE LOOP VARIABLE IS NOT CALLED `section`, AND THAT IS F-81 RATHER THAN A PREFERENCE.
+               `@@section` is Razor's own MVC section directive, so `@@section.MenuSectionIdentifier` is
+               parsed as a directive with a malformed name and never reaches C# at all — RZ9979, RZ2005
+               and RZ1011 on one line, none of which mentions the identifier. The neighbouring
+               `@@key="section…"` and `@@SectionHeadingId(section)` compile, because neither puts the
+               word directly after an `@@`, which is what made this look like a defect in the markup
+               rather than in the name. `RazorDirectiveContractTests` now refuses the token outright. *@
             <div class="form-field">
                 <label for="menu-section">Section</label>
                 <InputSelect id="menu-section" @bind-Value="Input.MenuSectionIdentifier">
-                    @foreach (MenuSectionSummary section in _sections)
+                    @foreach (MenuSectionSummary menuSection in _sections)
                     {
-                        <option value="@section.MenuSectionIdentifier">
-                            @(section.IsActive ? section.Name : $"{section.Name} (hidden from guests)")
+                        <option value="@menuSection.MenuSectionIdentifier">
+                            @(menuSection.IsActive
+                                ? menuSection.Name
+                                : $"{menuSection.Name} (hidden from guests)")
                         </option>
                     }
                 </InputSelect>

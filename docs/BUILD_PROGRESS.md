@@ -11370,3 +11370,240 @@ starts it successfully.** Carried.
 and this slice added an eleventh administration page. It is a create form rather than a record list, so
 none of the barrier's three reach selectors matches it and the control count would not move — which is
 exactly why it would be easy to leave out permanently. Recorded so it is not.
+
+# M6 Slice 41 — the section editor, a reserved word two files were named after (F-81), and the gate that never ran (F-82)
+
+**Closes the deferred obligation this project has been counting down since `0003`.** All five of
+`IMenuSectionAdministration`'s verbs now have a surface and all five are behind `IMenuWorkflow`. A heading
+can be renamed, described, moved and switched off, and each of those announces `MenuChanged` on a committed
+row and nothing on a write that committed nothing.
+
+**And it unblocks the four things that were waiting on it**: `IMenuSectionEventLog`, without which §11.4's
+"complete stored record" had nothing to read for a section; the menu index's Section column, which was a
+column linking nowhere; the harness journey that had to recover a new section's identifier from a
+neighbouring form; and §16.3 scenario 17's two cut steps.
+
+## The two findings, and the order they were found in
+
+**F-81 — two loop variables named after a Razor directive.** Slice 40 wrote
+`@section.MenuSectionIdentifier` on the create-item form and `@section.MenuSectionName` on the guest
+ordering surface. `@section` is MVC's **section directive**, reserved in Razor's own grammar, so the parser
+read a directive with a malformed name and produced four errors across two files — `RZ9979`, `RZ2005`,
+`RZ1011` — none of which mentions an identifier and none of which is about the markup. `RZ1011`'s column
+lands on the `.` immediately after the seven characters of `section`, which is the only thing in the four
+messages that points at the actual cause.
+
+Two properties of it are worth keeping.
+
+**It is invisible in review.** `@key="section.MenuSectionIdentifier"` one line above and
+`@SectionHeadingId(section)` one line below compile perfectly, because neither puts the word directly after
+an `@`. So the errors read as complaints about the `<option>` and the `<h4>`, and the identifier — which is
+the whole cause — appears in none of them.
+
+**It is blocking everywhere.** `MyRestaurant.WebApplication` is the project every other one references. The
+unit suite, the integration suite and all seventeen §16.3 scenarios were unreachable together.
+
+**F-82 — the gate against stale counts had gone stale, and said nothing, because it never ran.**
+`TestingSectionContractTests` compares every assertion count §16.4 states against the file it names. It was
+written after F-70, where exactly that drift concealed an undocumented gate for four slices. Slice 40 added
+assertions to four classes §16.4 cites and moved none of the four numbers:
+
+```
+MenuAdministrationTests      §16.4 said 23   file holds 26
+MenuDirectoryTests           §16.4 said  5   file holds  7
+MenuWiringTests              §16.4 said 11   file holds 13
+SchemaMigrationRunnerTests   §16.4 said  5   file holds  7
+```
+
+Slice 40's own delivery note predicted every one of those increments **by name**. The arithmetic was done,
+written down, and never carried into the document.
+
+**This is F-71 read from the other side.** That finding was a test project failing to compile behind a
+summary line reading `total: 497, failed: 0`. This is a gate that never started, behind a build error
+everybody was already looking at. The shared lesson: **a gate that cannot run is indistinguishable from a
+gate that passed**, and nothing in this repository distinguishes them — `dotnet build` reports what failed
+to compile and no artefact reports what consequently failed to *execute*.
+
+No gate is added for F-82, deliberately. The gate that would have caught it is the gate that did not run,
+and the repair for *that* is F-81's. What is added is the pairing, stated in §16.4 and in the class's own
+summary: the first question about a red build is *what stopped being checked*, not only *what stopped
+compiling*.
+
+## What this slice does
+
+- **`ManageMenuSection.razor`** at `/administration/menu/sections/{id}` — static SSR, four forms,
+  post/redirect/get with a one-word outcome, a facts grid, the heading's items, and its complete uncapped
+  event history. Declares no CSS: every class it uses is app.css's §11.12 vocabulary, checked in both
+  directions.
+- **`IMenuSectionEventLog` / `DapperMenuSectionEventLog`** — the per-heading history read.
+- **Four verbs behind `IMenuWorkflow`**, each publishing `MenuChanged` only on a committed row.
+- **Links into the editor** from the create panel, the menu index's Section column, and each item's page.
+- **F-81's rule made executable** — `RazorDirectiveContractTests`, two facts.
+- **F-82's four counts corrected**, and `MinimumCountedClasses` moved from sixteen to eighteen.
+- **Scenario 17 regains its two cut steps**, and comes back larger than it was cut.
+
+## Three rulings
+
+**`IMenuSectionEventLog` is a second reader, not a widened `IMenuEventLog`.** Two tables, two vocabularies,
+and the two share three type words while meaning different things by all three — a `renamed` section is not
+a `name_changed` item, and neither log's payload columns exist on the other. A `UNION ALL` over both is a
+real read §11.4's explorer may want one day; it is not this, and building one here would make the
+per-section history pay for a merge it never uses.
+
+**No cross-section activity feed.** `IMenuEventLog.ListRecentAsync` exists to fill a panel on
+`/administration/menu`, which is an index over items. Sections have no such panel, and a read with no caller
+is the same defect as a workflow verb with no caller — which is the rule this slice spent four verbs
+discharging, so inventing a fifth instance of it in the same archive would be absurd.
+
+**The editor reads the whole menu and filters in memory** rather than adding a per-section query with one
+caller. `IMenuDirectory.ListAsync` already orders by section first and makes each heading's items
+contiguous, so the filter preserves the order guests see without re-deciding it in a second file (§7). It is
+a read that grows with the menu, on a database whose whole reason for existing is one restaurant. **Flagged
+for veto**: the reversal is one method on `IMenuDirectory` and one call site.
+
+## The four verbs' broadcasts, and why two of them are not optional
+
+**A rename** is the one that had stopped being latent. §11.1 renders a heading above every card under it, so
+a rename that committed and announced nothing leaves the old word on every open picker until that page
+happens to reload.
+
+**A visibility flip** is worse. §7 hides an inactive section from the guest *entirely* — the opposite of the
+rule one paragraph away for an inactive item — so switching a heading off without a broadcast leaves a whole
+part of the menu tappable on every phone already looking at it, until the send is refused server-side for a
+reason the guest never saw coming (§6.5.9).
+
+**A description** publishes and reaches no guest surface today, and that is the same ruling the item
+description already carries: `MenuChanged` means *re-read the menu* and nothing else, and a workflow that
+decided which columns were worth announcing must be edited again the moment a surface starts reading one.
+
+**A move** publishes because §11.1 orders headings by `(display_order, name, identifier)`, so the whole menu
+is in a different order even though no item moved.
+
+## Scenario 17 came back larger than it was cut
+
+Slice 40 drafted a deactivation assertion, cut it, and recorded the cut. The restored version does not only
+watch the heading vanish. It asserts that the *other* heading's items stay present, in order, and orderable;
+then switches the heading back on and checks the menu returns exactly as it was.
+
+That second half is the only end-to-end proof that deactivating a section **does not cascade** to its items.
+A cascade would come back with the pie marked unavailable. It was not in the draft — it became obvious once
+the assertion was being written against a surface that existed, and it would not have been written at all if
+the cut had been made silently.
+
+## What was verified
+
+**The working tree was reconstructed from `dump.txt` and checked against the SHA-256 recorded for every
+file: 344 of 344 byte-identical.** Two files needed repair in the *reader* rather than the tree —
+`export.sh` contains its own `# FILE:` banner as literal text, and the last file in the dump abuts the
+`DUMP SUMMARY` footer — and both were confirmed against their recorded hashes after repair.
+
+**`RazorDirectiveContractTests` was run in substance** over all 51 components: zero uses, and the
+non-vacuity guard's floor of twenty is met four times over. Its five sensitivity cases were run and all five
+behave as the second fact asserts.
+
+**`TestingSectionContractTests` was run in substance**, before and after. Before: 16 counted classes, **4
+disagreements** — which is F-82, found by simulation rather than by reading. After: 18 counted classes, 0
+disagreements, 0 ambiguous, 0 uncited.
+
+**`MarkdownTableContractTests`** over every Markdown file in the repository, fence-aware and
+escaped-pipe-aware: 60 table runs, zero findings, including the three new four-cell Appendix A rows and the
+two new ledger rows.
+
+**`SpecificationVersionTests`**: header 1.26, newest changelog entry 1.26, 27 entries descending.
+
+**`MenuEventVocabularyContractTests`**: eight types derived from `0005`, set-equal to the C# list. Unchanged
+by this slice and re-run because the slice touches the menu.
+
+**`HandheldLayoutContractTests`' data-label parity** across all 8 record-list components — up from 7,
+because `ManageMenuSection` adds two lists — every one with cells equal to labels. Its palette fact was run
+against the new page: zero `var()` references to undeclared properties, zero inline `<style>`, and every one
+of the classes it names exists as a selector in `app.css`.
+
+**Brace, paren and bracket balance** on all nine changed C# files, string- and comment-aware.
+
+**The balance checker was itself proven, and it failed the proof first.** Its first run reported an
+imbalance in the new `MenuSectionEventLog.cs`. Running it against two *untouched* sibling files —
+`MenuEventLog.cs` and `MenuSectionDirectory.cs`, both byte-verified against the dump — produced the
+identical report, which is what identified the checker rather than the file: it read `$"""` as an empty
+interpolated string and parsed the SQL body as code. Fixed, re-run, all nine balanced. **A verification tool
+that has not been run against a known-good input is a verification tool with no established false-positive
+rate**, and this is the second slice in which that mattered.
+
+**Byte hygiene** on every changed and new file: no CR, exactly one final newline, no whitespace-only line,
+no context-dump separator.
+
+## What was NOT verified
+
+**Nothing compiled.** No .NET SDK in the authoring environment. The likeliest sites of a complaint are named
+rather than left to be found: **`Assert.Single(restored, card => card.Name == pie.Name)`**, whose predicate
+overload returns the element in xUnit v3; **`Assert.Equal(string.Empty, described.NewDescription)`** on a
+`string?`, which is an equality rather than a null-flow narrowing precisely so it does not depend on how
+xUnit annotates `Assert.NotNull`; and **the `foreach` over a `bool[]` inside a `[Fact]`** in
+`ASectionVisibilityFlip_…`, which asserts twice in one loop and will report the first failure only.
+
+**No test ran.** Every count below is arithmetic.
+
+**No browser rendered the section editor.** Named consequences a first run may show: whether four forms plus
+two record lists on one page reads as an editor or as a wall at 375px; whether *Hide from guests* as a
+`link-button danger` is the right weight for an action that is fully reversible; and whether the two record
+lists on one page need distinguishing headings for a screen reader, which only a screen reader decides.
+
+**The `.manage-facts .chip` selector the new harness journey waits on is unexercised.** It is the first
+harness read in this project that keys on a chip inside the facts grid rather than on a flash or a heading.
+If scenario 17 times out at step (g), that selector is the first thing to check and the failure will name
+it.
+
+**§16.3 scenario 17 is longer than any scenario in the suite** and now spans two §9 broadcasts on an
+already-open circuit. If it becomes flaky, the deactivation wait is the more likely half — it waits for an
+*absence*, which `WaitForMenuAsync` expresses as a predicate over the whole menu.
+
+**Nothing verified that F-82's four counts were the only stale ones.** The simulation compares what §16.4
+states to what the files hold, which is exactly the gate's own reach; a class §16.4 never cites is invisible
+to both, and that residual is stated in §16.4 rather than closed.
+
+## Test count
+
+Last predicted: **1136**, from Slice 40 — and **not observed**, because the build failed. The last observed
+count is **1124**, from Slice 39.
+
+**That gap is itself the finding.** §18's habit is that a predicted count the run contradicts is chased
+before the slice closes; a predicted count that never meets a run cannot be chased at all, and F-82 is what
+was sitting in it.
+
+Predicted here: **1149**. The arithmetic, from 1136: `RazorDirectiveContractTests` +2,
+`MenuSectionEventLogTests` +6, `MenuWiringTests` +5. Scenario 17 gains assertions and no new `[Fact]`, so
+§16.3 stays at **17**. No fact is removed.
+
+Per §18: if the run returns anything other than 1149, that difference is the next thing to chase — and this
+slice is the first opportunity since Slice 39 to perform that check at all.
+
+## Still open
+
+**The sections-first index.** `/administration/menu` is still an item list with a Section column. The column
+links now, which was the blocker; what remains is the restructure.
+
+**`MoveMenuItemToSectionAsync`.** The last verb in the whole enhancement with no surface — `ManageMenuItem`
+shows the heading, links to it, and cannot change it. It is now the only instance left of the rule this
+slice spent four verbs discharging.
+
+**A section's own description under its heading on the guest menu.** Unchanged from Slice 40: the surface
+groups from `MenuItemSummary`, which carries the heading's name and not its description.
+
+**The kitchen's "86" panel still groups by nothing.** Stage 3's last surface.
+
+**The handheld barrier visits neither section surface.** Scenario 16 walks ten and this slice adds a twelfth
+administration page. `ManageMenuSection` is a detail surface with `.manage-inline-form` buttons, so unlike
+the create page it *would* move the control count — which makes leaving it out a real gap rather than a
+neutral one. Carried, and now larger than when Slice 40 recorded it.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, stated rather than
+resolved.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Sixth slice carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred an eighth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Seventeenth consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.

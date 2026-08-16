@@ -1,0 +1,585 @@
+@page "/administration/menu/sections/{MenuSectionId:guid}"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
+@using MyRestaurant.DataAccess.Menu
+@using MyRestaurant.WebApplication.Menu
+@inject IMenuSectionDirectory MenuSections
+@inject IMenuDirectory MenuItems
+@inject IMenuSectionEventLog MenuSectionEvents
+@inject IMenuWorkflow MenuChanges
+@inject NavigationManager Navigation
+@inject RestaurantTime RestaurantClock
+
+@* Manage one menu section (TECHNICAL_SPECIFICATION §7, §11.4). Administrator only (endpoint
+   authorization). Static SSR: rename, describe, reposition and the on/off switch are full-page form
+   posts. Successful changes redirect back here (post/redirect/get) carrying a one-word outcome so a
+   refresh does not re-post; the shape ManageTable established and ManageMenuItem repeated.
+
+   THIS PAGE IS WHAT FOUR WORKFLOW VERBS WERE WAITING FOR. Slice 37 put the section writes outside
+   IMenuWorkflow deliberately, on the rule that a workflow verb with no caller is a code path no test can
+   reach through the interface meant to protect it; Slice 40 brought CreateMenuSectionAsync in because the
+   create page called it. Rename, describe, reorder and set-active arrive together here, because they are
+   four forms on one page and shipping a subset would leave the same hole under a smaller name. Every one
+   of them publishes MenuChanged on a committed row (§9) — which matters most for the last two: §11.1
+   groups the guest menu by heading, and §7 hides an inactive heading from the guest entirely.
+
+   Four forms rather than one Save, for §8.2's reason: `renamed`, `described` and `reordered` are distinct
+   event types with mutually exclusive payload columns, so a combined save would write three events anyway
+   and would then have to decide what to do when two of the three changed nothing.
+
+   The history below is complete and uncapped, oldest first. §11.4: administration renders "the complete
+   stored record everywhere — full event streams … never projected or truncated for the administrator". *@
+
+<PageTitle>@(_section is null ? "Manage menu section" : $"Manage {_section.Name}")</PageTitle>
+
+@if (_section is null)
+{
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Menu section not found</h1>
+        <p class="lede">
+            No menu section exists with that identifier. It may have never existed, or the link is stale.
+        </p>
+        <p><a href="/administration/menu">Back to the menu</a></p>
+    </section>
+}
+else
+{
+    <section class="panel account-panel">
+        <div class="page-head">
+            <div>
+                <p class="eyebrow">Administration — menu section</p>
+                <h1>@_section.Name</h1>
+            </div>
+        </div>
+
+        @if (_flashMessage is not null)
+        {
+            <p class="status-success" role="status">@_flashMessage</p>
+        }
+        @if (_errorMessage is not null)
+        {
+            <p class="status-error" role="alert">@_errorMessage</p>
+        }
+
+        <div class="manage-facts">
+            <div>
+                <span class="manage-label">Guests</span>
+                @if (_section.IsActive)
+                {
+                    <span class="chip chip-ok">Can see this heading</span>
+                }
+                else
+                {
+                    @* §7's asymmetry, worded as the consequence rather than as the flag. "Inactive" is
+                       what the column says; "hidden from guests" is what it does, and it is the opposite
+                       of what the same word does one table away — an inactive ITEM stays on the guest's
+                       menu marked unavailable. Naming the effect is how somebody reading two pages an
+                       hour apart is stopped from assuming the two flags behave alike. *@
+                    <span class="chip chip-warn">Hidden from guests</span>
+                }
+            </div>
+            <div>
+                <span class="manage-label">Position</span>
+                <span class="record-numeric">@_section.DisplayOrder</span>
+            </div>
+            <div>
+                <span class="manage-label">Items under it</span>
+                <span class="record-numeric">@_itemCount</span>
+            </div>
+            <div>
+                <span class="manage-label">Created</span>
+                <span>@RestaurantClock.DateAndTime(_section.CreatedAt)</span>
+            </div>
+        </div>
+
+        @if (_section.Description.Length > 0)
+        {
+            <p class="lede">@_section.Description</p>
+        }
+        else
+        {
+            <p class="lede muted">No description. The heading stands on its own.</p>
+        }
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Name</h2>
+        <p class="lede">
+            The heading guests read above every item filed under it. Renaming shows through everywhere
+            immediately — the guest menu, the create-item picker, and every item's own page, because the
+            name is read at display time rather than captured. Section names must be unique and the check
+            ignores capitalisation, so "drinks" collides with "Drinks"; correcting the capitalisation of
+            <em>this</em> heading is still a real change, because it is what every guest reads.
+        </p>
+        <EditForm Model="RenameInput" method="post" OnValidSubmit="RenameAsync" FormName="menu-section-rename" class="manage-inline-form">
+            <DataAnnotationsValidator />
+            <label class="visually-hidden" for="rename-name">New name</label>
+            <InputText id="rename-name" @bind-Value="RenameInput.Name" autocomplete="off" />
+            <button type="submit" class="button-primary">Rename</button>
+            <ValidationMessage For="@(() => RenameInput.Name)" />
+        </EditForm>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Description</h2>
+        <p class="lede">
+            A line about the whole heading — "served until 11am" is the kind of thing it is for. Optional;
+            clearing the box is an ordinary change with an ordinary entry in the history below, not a
+            deletion. Saving the same text again records nothing. Guests do not read this yet: §11.1 renders
+            the heading's name and not its description, which is named here rather than left to be
+            discovered.
+        </p>
+        @* A `.form-field` block rather than `.manage-inline-form`, for the reason ManageMenuItem gives:
+           that class styles `input` and `select` and has never styled a `textarea`, so a two-line box
+           inside it would be an unstyled control. `.form-field textarea` is app.css's own declaration and
+           this page declares nothing. *@
+        <EditForm Model="DescribeInput" method="post" OnValidSubmit="DescribeAsync" FormName="menu-section-describe">
+            <DataAnnotationsValidator />
+            <div class="form-field">
+                <label class="visually-hidden" for="describe-description">Description</label>
+                <InputTextArea id="describe-description" @bind-Value="DescribeInput.Description" rows="2" autocomplete="off" />
+                <ValidationMessage For="@(() => DescribeInput.Description)" />
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="button-primary">Save description</button>
+            </div>
+        </EditForm>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Position</h2>
+        <p class="lede">
+            Where this heading sits on the menu. Lower comes first; headings sharing a position are ordered
+            by name, which is why the first few sections read alphabetically until somebody decides
+            otherwise. Positions do not have to be unique or contiguous — a heading appended today lands
+            after every existing one, and moving it is this form's job.
+        </p>
+        <EditForm Model="ReorderInput" method="post" OnValidSubmit="ReorderAsync" FormName="menu-section-reorder" class="manage-inline-form">
+            <DataAnnotationsValidator />
+            <label class="visually-hidden" for="reorder-position">New position</label>
+            <InputNumber id="reorder-position" @bind-Value="ReorderInput.DisplayOrder" step="1" min="0" inputmode="numeric" />
+            <button type="submit" class="button-primary">Move</button>
+            <ValidationMessage For="@(() => ReorderInput.DisplayOrder)" />
+        </EditForm>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Visibility</h2>
+        @if (_section.IsActive)
+        {
+            <p class="lede">
+                Switching this heading off removes it, <strong>and everything under it</strong>, from the
+                guest's menu entirely — that is §7's rule for a section, and it is the opposite of the rule
+                for an item, which stays visible and marked. It is what "no breakfast this evening" looks
+                like. The items themselves are untouched: none of them is marked unavailable, the kitchen's
+                own 86s are preserved, and switching the heading back on brings the menu back exactly as it
+                was. Nothing is deleted and past orders keep the items they were placed against.
+            </p>
+            <form method="post" @formname="menu-section-set-active" @onsubmit="ToggleVisibilityAsync">
+                <AntiforgeryToken />
+                <div class="form-actions">
+                    <button type="submit" class="link-button danger">Hide from guests</button>
+                </div>
+            </form>
+        }
+        else
+        {
+            <p class="lede">
+                This heading and every item under it are hidden from guests. Administration still sees them
+                — including on the create-item form, where this section is offered and marked — so a menu
+                can be stocked before it is switched on. Show it again when it is on.
+            </p>
+            <form method="post" @formname="menu-section-set-active" @onsubmit="ToggleVisibilityAsync">
+                <AntiforgeryToken />
+                <div class="form-actions">
+                    <button type="submit" class="button-primary">Show to guests</button>
+                </div>
+            </form>
+        }
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Items</h2>
+        @if (_itemCount == 0)
+        {
+            <p class="lede">
+                Nothing is filed under this heading yet. §11.1 renders no empty headings to guests, so this
+                one is invisible to them whatever its visibility says above.
+            </p>
+        }
+        else
+        {
+            <p class="lede">
+                @_itemCount @(_itemCount == 1 ? "item is" : "items are") filed under this heading, in the
+                order guests read them. Open one to rename, reprice, describe, reposition or 86 it.
+            </p>
+            <div class="record-list">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Item</th>
+                            <th scope="col">Availability</th>
+                            <th scope="col">Position</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (MenuItemSummary item in _items)
+                        {
+                            <tr @key="item.MenuItemIdentifier">
+                                <td class="record-primary" data-label="">
+                                    <a class="record-link" href="@($"/administration/menu/{item.MenuItemIdentifier}")">@item.Name</a>
+                                </td>
+                                <td data-label="">
+                                    @if (item.IsActive)
+                                    {
+                                        <span class="chip chip-ok">Available</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="chip chip-warn">Currently unavailable</span>
+                                    }
+                                </td>
+                                <td class="record-numeric" data-label="Position">@item.DisplayOrder</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <div class="form-actions">
+            <a class="button-secondary" href="/administration/menu/new">Add an item to this heading</a>
+        </div>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">History</h2>
+        @if (_history is null || _history.Count == 0)
+        {
+            <p class="lede">
+                No recorded changes. That is only possible for a section created before this log existed.
+            </p>
+        }
+        else
+        {
+            <p class="lede">
+                Everything that has ever happened to this heading, oldest first — @_history.Count
+                @(_history.Count == 1 ? "entry" : "entries"), complete and untruncated.
+            </p>
+            <div class="record-list">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">When</th>
+                            <th scope="col">Change</th>
+                            <th scope="col">By</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (MenuSectionEventEntry entry in _history)
+                        {
+                            @* @key on the event identifier rather than the loop index: two events on the
+                               same section in the same second are ordered by their UUIDv7 keys (§8.2), and
+                               an index would make the second look like an edit of the first. *@
+                            <tr @key="entry.MenuSectionEventIdentifier">
+                                <td data-label="When">@RestaurantClock.DateAndTime(entry.OccurredAt)</td>
+                                <td class="record-primary" data-label="Change">@Describe(entry)</td>
+                                <td data-label="By">@entry.ActorName</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <p class="manage-back"><a href="/administration/menu">Back to the menu</a></p>
+    </section>
+}
+
+@* This page declares nothing. Its facts grid, its chips, its headings, its rules, its three small forms
+   and its two record lists are all app.css's §11.12 vocabulary. A new page is exactly where a fifth
+   inline copy of that vocabulary would appear (F-66), which is why this note is here rather than in a
+   commit message. *@
+
+@code {
+    private MenuSectionSummary? _section;
+    private IReadOnlyList<MenuItemSummary> _items = [];
+    private IReadOnlyList<MenuSectionEventEntry>? _history;
+    private int _itemCount;
+    private string? _flashMessage;
+    private string? _errorMessage;
+
+    [Parameter]
+    public Guid MenuSectionId { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "menu-section-rename")]
+    private RenameInputModel RenameInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "menu-section-describe")]
+    private DescribeInputModel DescribeInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "menu-section-reorder")]
+    private ReorderInputModel ReorderInput { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? Done { get; set; }
+
+    private string ManagePath => $"/administration/menu/sections/{MenuSectionId}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // BL0008: a form POST binds these itself and may assign null, so the defaults live here.
+        RenameInput ??= new();
+        DescribeInput ??= new();
+        ReorderInput ??= new();
+
+        _section = await MenuSections.GetAsync(MenuSectionId, HttpContext.RequestAborted);
+        if (_section is null)
+        {
+            return;
+        }
+
+        // Filtered here rather than asked for by section, because IMenuDirectory has no per-section read
+        // and inventing one would be a query with a single caller. The menu is single-digit-to-sixty rows
+        // on the machine this runs on, and its ordering already puts one heading's items contiguously —
+        // so the filter preserves the order guests see without re-deciding it (§7).
+        IReadOnlyList<MenuItemSummary> everything = await MenuItems.ListAsync(HttpContext.RequestAborted);
+        _items = everything.Where(item => item.MenuSectionIdentifier == MenuSectionId).ToArray();
+        _itemCount = _items.Count;
+
+        _history = await MenuSectionEvents.ListForSectionAsync(MenuSectionId, HttpContext.RequestAborted);
+
+        // On GET, pre-fill each editor with what is stored and render any post/redirect flash. On POST the
+        // submitted values are already bound, so they must not be overwritten.
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            if (string.IsNullOrEmpty(RenameInput.Name))
+            {
+                RenameInput.Name = _section.Name;
+            }
+
+            // Unlike the name, an empty description is a legitimate stored value, so `IsNullOrEmpty`
+            // cannot tell "nothing bound yet" from "this heading has none" — and it does not need to: on
+            // a GET nothing has bound, so assigning unconditionally is both correct and simpler.
+            DescribeInput.Description = _section.Description;
+            ReorderInput.DisplayOrder = _section.DisplayOrder;
+
+            _flashMessage = FlashFor(Done);
+        }
+    }
+
+    private async Task RenameAsync()
+    {
+        if (!TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        RenameMenuSectionOutcome outcome = await MenuChanges.RenameMenuSectionAsync(
+            MenuSectionId, RenameInput.Name.Trim(), administrator, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case RenameMenuSectionOutcome.Renamed:
+                RedirectWithOutcome("renamed");
+                break;
+            case RenameMenuSectionOutcome.NoChange:
+                RedirectWithOutcome("rename-no-change");
+                break;
+            case RenameMenuSectionOutcome.NameTaken:
+                // Reported in place rather than redirected, because the person needs to see what they
+                // typed beside the message. The check is citext, so the collision may be with a heading
+                // spelled differently — which is exactly the case a bare "taken" would leave baffling.
+                _errorMessage =
+                    "Another section already uses that name. Section names ignore capitalisation, so"
+                    + " check the menu for one spelled differently.";
+                break;
+            case RenameMenuSectionOutcome.MenuSectionNotFound:
+                Navigation.NavigateTo("/administration/menu");
+                break;
+        }
+    }
+
+    private async Task DescribeAsync()
+    {
+        if (!TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        DescribeMenuSectionOutcome outcome = await MenuChanges.DescribeMenuSectionAsync(
+            MenuSectionId, DescribeInput.Description, administrator, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case DescribeMenuSectionOutcome.Described:
+                RedirectWithOutcome(
+                    DescribeInput.Description.Trim().Length == 0 ? "description-cleared" : "described");
+                break;
+            case DescribeMenuSectionOutcome.NoChange:
+                RedirectWithOutcome("describe-no-change");
+                break;
+            case DescribeMenuSectionOutcome.MenuSectionNotFound:
+                Navigation.NavigateTo("/administration/menu");
+                break;
+        }
+    }
+
+    private async Task ReorderAsync()
+    {
+        if (!TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        ReorderMenuSectionOutcome outcome = await MenuChanges.ReorderMenuSectionAsync(
+            MenuSectionId, ReorderInput.DisplayOrder, administrator, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case ReorderMenuSectionOutcome.Reordered:
+                RedirectWithOutcome("moved");
+                break;
+            case ReorderMenuSectionOutcome.NoChange:
+                RedirectWithOutcome("move-no-change");
+                break;
+            case ReorderMenuSectionOutcome.MenuSectionNotFound:
+                Navigation.NavigateTo("/administration/menu");
+                break;
+        }
+    }
+
+    private async Task ToggleVisibilityAsync()
+    {
+        if (_section is null || !TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        bool target = !_section.IsActive;
+        MenuSectionActivationOutcome outcome = await MenuChanges.SetMenuSectionActiveAsync(
+            MenuSectionId, target, administrator, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case MenuSectionActivationOutcome.Changed:
+                RedirectWithOutcome(target ? "shown" : "hidden");
+                break;
+            case MenuSectionActivationOutcome.NoChange:
+                // Somebody else got there first between this page rendering and the button being pressed.
+                // Nothing changed and nothing is wrong; re-render on the truth.
+                Navigation.NavigateTo(ManagePath);
+                break;
+            case MenuSectionActivationOutcome.MenuSectionNotFound:
+                Navigation.NavigateTo("/administration/menu");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The two things every write on this page needs first: the section must still exist, and the acting
+    /// administrator must be identifiable — <c>menu_section_event.actor_person_identifier</c> is NOT NULL
+    /// and §7 requires every change to name somebody. Endpoint authorization already guarantees the
+    /// second; this is the belt to that brace. The same helper <c>ManageMenuItem</c> carries, one table
+    /// over.
+    /// </summary>
+    private bool TryBegin(out Guid administrator)
+    {
+        administrator = Guid.Empty;
+
+        if (_section is null)
+        {
+            Navigation.NavigateTo("/administration/menu");
+            return false;
+        }
+
+        if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } identifier)
+        {
+            _errorMessage = "Your session could not be identified. Sign in again and retry.";
+            return false;
+        }
+
+        administrator = identifier;
+        return true;
+    }
+
+    private void RedirectWithOutcome(string outcome)
+        => Navigation.NavigateTo($"{ManagePath}?done={outcome}");
+
+    private static string? FlashFor(string? outcome) => outcome switch
+    {
+        "renamed" => "Renamed. Every open menu has already picked up the new heading.",
+        "rename-no-change" => "That was already the name — nothing changed.",
+        "described" => "Description saved.",
+        "description-cleared" => "Description cleared. The heading stands on its own.",
+        "describe-no-change" => "That was already the description — nothing changed.",
+        "moved" => "Moved. The menu is ordered by position, then by name.",
+        "move-no-change" => "It was already in that position — nothing changed.",
+        "hidden" => "Hidden from guests. This heading and everything under it have left every open menu;"
+            + " the items themselves are untouched.",
+        "shown" => "Showing to guests again, with every item exactly as it was.",
+        _ => null,
+    };
+
+    /// <summary>
+    /// A friendly label for each event type §8.2's <c>menu_section_event</c> CHECK admits, falling back to
+    /// the stored string for anything else — §11.4 renders the record, so an unrecognised type must show
+    /// as itself rather than be swallowed.
+    ///
+    /// <para><b>No count of the vocabulary is stated</b>, on F-77's ruling: the arms below are the only
+    /// census that cannot go stale, and a number in this sentence is one fact recorded where nothing in
+    /// the tree can check it.</para>
+    ///
+    /// <para><c>activated</c> and <c>deactivated</c> are worded as what a guest sees rather than as what
+    /// the column says, matching the chip at the top of the page. §7's two <c>is_active</c> flags do
+    /// opposite things one table apart, and a history that said "Deactivated" would read identically to an
+    /// item's — which is precisely the confusion this page exists to prevent.</para>
+    ///
+    /// <para><c>described</c> reads differently when the description was cleared, because <c>""</c> is a
+    /// stored value rather than an absence. The arm tests the payload's length rather than for null: the
+    /// paired CHECK guarantees this type carries one, and the <c>?? string.Empty</c> is there so a row
+    /// written by something that got past the constraint still renders.</para>
+    /// </summary>
+    private static string Describe(MenuSectionEventEntry entry) => entry.EventType switch
+    {
+        "created" => $"Created as “{entry.NewName}” at position {entry.NewDisplayOrder}",
+        "renamed" => $"Renamed to “{entry.NewName}”",
+        "described" => (entry.NewDescription ?? string.Empty).Length == 0
+            ? "Description cleared"
+            : $"Description set to “{entry.NewDescription}”",
+        "reordered" => $"Moved to position {entry.NewDisplayOrder}",
+        "activated" => "Shown to guests",
+        "deactivated" => "Hidden from guests",
+        _ => entry.EventType,
+    };
+
+    private sealed class RenameInputModel
+    {
+        // The 80 is the column's own ceiling: menu_section.name is CHECK (char_length BETWEEN 1 AND 80),
+        // so a longer name would be PostgreSQL error 23514 well after the form that caused it. The same
+        // limit CreateMenuSection states, for the same reason.
+        [Required(ErrorMessage = "Give the section a name.")]
+        [StringLength(80, MinimumLength = 1, ErrorMessage = "The name must be 1–80 characters.")]
+        public string Name { get; set; } = string.Empty;
+    }
+
+    private sealed class DescribeInputModel
+    {
+        // No [Required]: clearing the description is a supported change. The 2,000 is this form's own
+        // limit rather than the column's — menu_section.description is `text` and has none — and it
+        // matches CreateMenuSection's.
+        [StringLength(2000, ErrorMessage = "The description must be 2,000 characters or fewer.")]
+        public string Description { get; set; } = string.Empty;
+    }
+
+    private sealed class ReorderInputModel
+    {
+        // The upper bound is `integer`'s, stated so the form refuses what the column would.
+        [Range(0, 2147483647, ErrorMessage = "The position must be 0 or greater.")]
+        public int DisplayOrder { get; set; }
+    }
+}

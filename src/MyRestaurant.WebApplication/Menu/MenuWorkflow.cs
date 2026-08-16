@@ -18,15 +18,18 @@ namespace MyRestaurant.WebApplication.Menu;
 /// which verb caused it, and every subscriber responds the same way: re-read the menu. Splitting this in
 /// two would make it possible to wire an application that announces 86s and not repricings.</para>
 ///
-/// <para><b>Only one of <see cref="IMenuSectionAdministration"/>'s five verbs is here, and the count is
-/// the point.</b> The obligation to bring the section writes behind this interface has been carried since
-/// Slice 37 on the stated ground that a workflow verb with no caller is a code path no test can reach
-/// through the interface meant to protect it. <c>0005</c> gives exactly one of them a caller — the
-/// section create page — so exactly one arrives. Rename, describe, reorder and set-active stay on
-/// <see cref="IMenuSectionAdministration"/> until the section editor exists, and the obligation narrows
-/// from five verbs to four rather than closing. It becomes a real defect rather than a latent one the
-/// moment a surface can rename a heading, because §11.1's guest menu now groups by section and a renamed
-/// heading would otherwise stay stale in every open picker until that page happened to reload.</para>
+/// <para><b>All five of <see cref="IMenuSectionAdministration"/>'s verbs are here now, and the obligation
+/// carried since Slice 37 is closed.</b> The rule never changed: a workflow verb with no caller is a code
+/// path no test can reach through the interface meant to protect it, so a verb arrives when its surface
+/// does. <c>0005</c> gave exactly one of them a caller — the section create page — and the section editor
+/// gives the other four theirs in one slice, because rename, describe, reorder and set-active are four
+/// forms on one page and shipping any subset would leave the same hole under a smaller name.</para>
+///
+/// <para><b>The rename is the one that had stopped being latent.</b> §11.1's guest menu groups items under
+/// their headings, so a rename that announced nothing would leave a stale heading in every open picker
+/// until that page happened to reload — and set-active is worse, because §7 hides an inactive section from
+/// the guest entirely, so a heading switched off without a broadcast leaves a whole part of the menu
+/// orderable on every phone already looking at it. Both are now ordinary conditional publishes.</para>
 ///
 /// <para><b>Not every call publishes.</b> A rename to the name it already has, a reprice to the price it
 /// already has, a description equal to the stored one, a move to the position it is already at, and a
@@ -54,6 +57,73 @@ public interface IMenuWorkflow
         Guid menuSectionIdentifier,
         string name,
         string? description,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Renames one section (§7) and, if the name actually moved, announces it.
+    ///
+    /// <para><b>The publish matters more here than for an item rename, and the reason is §11.1.</b> The
+    /// guest menu groups items under their headings, so the heading's name is rendered on every open
+    /// picker in the building — and unlike an item's name it is rendered even when nothing under it
+    /// changed. A rename that committed and announced nothing would leave the old word on every phone
+    /// until that page happened to reload.</para>
+    ///
+    /// <para>Conditional on <c>Renamed</c> alone: <c>NoChange</c>, <c>NameTaken</c> and
+    /// <c>MenuSectionNotFound</c> each commit nothing, and the second is an ordinary mis-tap — the column
+    /// is <c>citext</c>, so a second "Drinks" spelled any way at all is refused.</para>
+    /// </summary>
+    Task<RenameMenuSectionOutcome> RenameMenuSectionAsync(
+        Guid menuSectionIdentifier,
+        string name,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets or clears one section's description (§7) and, if it actually moved, announces it.
+    ///
+    /// <para><b>This publish reaches no guest surface today, and it is still the right call</b> — the
+    /// same argument <see cref="DescribeMenuItemAsync"/> makes and for the same reason. §11.1 renders a
+    /// heading's name and not its description, because the guest menu groups from
+    /// <c>MenuItemSummary</c>, which carries the one and not the other. <c>MenuChanged</c> means "re-read
+    /// the menu" and nothing else; a workflow that decided which columns were worth announcing would be a
+    /// workflow that has to be edited again the moment a surface starts reading one.</para>
+    /// </summary>
+    Task<DescribeMenuSectionOutcome> DescribeMenuSectionAsync(
+        Guid menuSectionIdentifier,
+        string? description,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Moves one section to an absolute position (§7) and, if it actually moved, announces it. §11.1
+    /// renders the headings in <c>(display_order, name, identifier)</c>, so a move that committed changes
+    /// the order of the whole guest menu even though no item moved at all.
+    /// </summary>
+    Task<ReorderMenuSectionOutcome> ReorderMenuSectionAsync(
+        Guid menuSectionIdentifier,
+        int displayOrder,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Switches a whole heading on or off (§7) and, if the flag actually moved, announces it.
+    ///
+    /// <para><b>This is the loudest of the five and the one whose broadcast is not optional.</b> §7 hides
+    /// an inactive section from the guest <em>entirely</em> — the opposite of the rule one paragraph away
+    /// for an inactive item, which stays visible and marked. So switching a heading off removes a whole
+    /// part of the menu from every open picker, and a flip that announced nothing would leave those items
+    /// tappable on every phone already looking at them until the send was refused server-side for a reason
+    /// the guest never saw coming (§6.5.9).</para>
+    ///
+    /// <para>Deactivating a section does <b>not</b> deactivate its items (§7): their <c>is_active</c> is
+    /// untouched, so reactivating the heading brings the menu back exactly as it was, 86s and all. That is
+    /// the write service's business rather than this file's, and it is restated here because a workflow is
+    /// where somebody would reach to add the cascade.</para>
+    /// </summary>
+    Task<MenuSectionActivationOutcome> SetMenuSectionActiveAsync(
+        Guid menuSectionIdentifier,
+        bool isActive,
         Guid actorPersonIdentifier,
         CancellationToken cancellationToken = default);
 
@@ -185,6 +255,86 @@ public sealed class MenuWorkflow : IMenuWorkflow
         }
 
         return result;
+    }
+
+    public async Task<RenameMenuSectionOutcome> RenameMenuSectionAsync(
+        Guid menuSectionIdentifier,
+        string name,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        RenameMenuSectionOutcome outcome = await _sections
+            .RenameMenuSectionAsync(menuSectionIdentifier, name, actorPersonIdentifier, cancellationToken)
+            .ConfigureAwait(false);
+
+        // §11.1 renders the heading above every card under it, so a committed rename changes what every
+        // open picker in the building shows even though no item moved.
+        if (outcome is RenameMenuSectionOutcome.Renamed)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
+
+        return outcome;
+    }
+
+    public async Task<DescribeMenuSectionOutcome> DescribeMenuSectionAsync(
+        Guid menuSectionIdentifier,
+        string? description,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        DescribeMenuSectionOutcome outcome = await _sections
+            .DescribeMenuSectionAsync(
+                menuSectionIdentifier, description, actorPersonIdentifier, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (outcome is DescribeMenuSectionOutcome.Described)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
+
+        return outcome;
+    }
+
+    public async Task<ReorderMenuSectionOutcome> ReorderMenuSectionAsync(
+        Guid menuSectionIdentifier,
+        int displayOrder,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        ReorderMenuSectionOutcome outcome = await _sections
+            .ReorderMenuSectionAsync(
+                menuSectionIdentifier, displayOrder, actorPersonIdentifier, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (outcome is ReorderMenuSectionOutcome.Reordered)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
+
+        return outcome;
+    }
+
+    public async Task<MenuSectionActivationOutcome> SetMenuSectionActiveAsync(
+        Guid menuSectionIdentifier,
+        bool isActive,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        MenuSectionActivationOutcome outcome = await _sections
+            .SetMenuSectionActiveAsync(
+                menuSectionIdentifier, isActive, actorPersonIdentifier, cancellationToken)
+            .ConfigureAwait(false);
+
+        // §7: an inactive section is not rendered to the guest at all, so this flip adds or removes a
+        // whole part of every open menu. A no-op flip — two administrators pressing the same button
+        // seconds apart — committed nothing and must announce nothing, on this file's standing rule.
+        if (outcome is MenuSectionActivationOutcome.Changed)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
+
+        return outcome;
     }
 
     public async Task<CreateMenuItemResult> CreateMenuItemAsync(

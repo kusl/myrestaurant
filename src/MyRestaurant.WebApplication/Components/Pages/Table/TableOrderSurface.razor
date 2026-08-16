@@ -215,53 +215,66 @@
                        and marked. Switching off a heading is a decision about a whole part of the menu
                        ("no breakfast this evening"); 86ing a dish is a decision about one thing a guest is
                        still entitled to know exists. The filtering is here rather than in the directory
-                       because §11.4's administrator must see every heading. *@
-                    @foreach (MenuSectionOnTheMenu section in GroupedMenu)
+                       because §11.4's administrator must see every heading.
+
+                       THE LOOP VARIABLE IS NOT CALLED `section`, AND THAT IS F-81. `@@section` is Razor's
+                       own MVC section directive, so `@@section.MenuSectionName` below was parsed as a
+                       directive with a malformed name and never reached C# — the build failed on this
+                       line with RZ1011 and said nothing about identifiers. `@@key="section…"` one line up
+                       compiled fine, because it does not put the word directly after an `@@`, which is
+                       what made the error look like it was about the markup.
+
+                       The body of the inner loop was also four levels shallow, having kept the
+                       indentation it had before Slice 40 wrapped it in this outer loop. Corrected in the
+                       same pass rather than left, because whitespace is the one thing a reader uses to
+                       see which loop a `@@key` belongs to. *@
+                    @foreach (MenuSectionOnTheMenu menuSection in GroupedMenu)
                     {
-                        <div class="order-menu-section" @key="section.MenuSectionIdentifier">
-                            <h4 class="order-menu-section-name" id="@SectionHeadingId(section)">
-                                @section.MenuSectionName
+                        <div class="order-menu-section" @key="menuSection.MenuSectionIdentifier">
+                            <h4 class="order-menu-section-name" id="@SectionHeadingId(menuSection)">
+                                @menuSection.MenuSectionName
                             </h4>
 
-                            <ul class="order-menu" aria-labelledby="@SectionHeadingId(section)">
-                                @foreach (MenuItemSummary item in section.Items)
+                            <ul class="order-menu" aria-labelledby="@SectionHeadingId(menuSection)">
+                                @foreach (MenuItemSummary item in menuSection.Items)
                                 {
-                            bool isChosen = _pickedMenuItemIdentifier == item.MenuItemIdentifier;
+                                    bool isChosen = _pickedMenuItemIdentifier == item.MenuItemIdentifier;
 
-                            @* §7: a deactivated item stays ON the menu, marked, and cannot be picked —
-                               "the guest sees that the salmon exists and is out, rather than watching it
-                               silently vanish". `disabled` is what enforces that half, and the card keeps
-                               its description, because an item a guest cannot have tonight is still an
-                               item they may want to read about. *@
-                                <li class="order-menu-item @(isChosen ? "is-chosen" : string.Empty) @(item.IsActive ? string.Empty : "is-unavailable")"
-                                    @key="item.MenuItemIdentifier">
-                                    <button type="button" class="order-menu-choice"
-                                            data-menu-item="@item.MenuItemIdentifier"
-                                            aria-pressed="@(isChosen ? "true" : "false")"
-                                            disabled="@(!item.IsActive)"
-                                            @onclick="() => ChooseItem(item)">
-                                        <span class="order-menu-line">
-                                            <span class="order-menu-name">@item.Name</span>
-                                            <span class="order-menu-price">@Money(item.PriceAmount)</span>
-                                        </span>
+                                    @* §7: a deactivated item stays ON the menu, marked, and cannot be
+                                       picked — "the guest sees that the salmon exists and is out, rather
+                                       than watching it silently vanish". `disabled` is what enforces that
+                                       half, and the card keeps its description, because an item a guest
+                                       cannot have tonight is still an item they may want to read
+                                       about. *@
+                                    <li class="order-menu-item @(isChosen ? "is-chosen" : string.Empty) @(item.IsActive ? string.Empty : "is-unavailable")"
+                                        @key="item.MenuItemIdentifier">
+                                        <button type="button" class="order-menu-choice"
+                                                data-menu-item="@item.MenuItemIdentifier"
+                                                aria-pressed="@(isChosen ? "true" : "false")"
+                                                disabled="@(!item.IsActive)"
+                                                @onclick="() => ChooseItem(item)">
+                                            <span class="order-menu-line">
+                                                <span class="order-menu-name">@item.Name</span>
+                                                <span class="order-menu-price">@Money(item.PriceAmount)</span>
+                                            </span>
 
-                                        @if (item.Description.Length > 0)
-                                        {
-                                            @* Tested by Length rather than for null: the column is
-                                               NOT NULL DEFAULT '' and "" means "none" (§7). *@
-                                            <span class="order-menu-description">@item.Description</span>
-                                        }
+                                            @if (item.Description.Length > 0)
+                                            {
+                                                @* Tested by Length rather than for null: the column is
+                                                   NOT NULL DEFAULT '' and "" means "none" (§7). *@
+                                                <span class="order-menu-description">@item.Description</span>
+                                            }
 
-                                        @if (!item.IsActive)
-                                        {
-                                            <span class="chip chip-warn">Currently unavailable</span>
-                                        }
-                                        else if (isChosen)
-                                        {
-                                            <span class="chip chip-ok">Chosen</span>
-                                        }
-                                    </button>
-                                </li>
+                                            @if (!item.IsActive)
+                                            {
+                                                <span class="chip chip-warn">Currently unavailable</span>
+                                            }
+                                            else if (isChosen)
+                                            {
+                                                <span class="chip chip-ok">Chosen</span>
+                                            }
+                                        </button>
+                                    </li>
                                 }
                             </ul>
                         </div>

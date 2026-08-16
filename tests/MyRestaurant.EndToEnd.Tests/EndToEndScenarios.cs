@@ -2522,6 +2522,62 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
             .ToArray();
 
         Assert.Equal(new[] { soup.Name, second.Name }, startersInOrder);
+
+        // (g) §7's ASYMMETRY, end to end at last. An inactive SECTION is not rendered to the guest at
+        // all — the opposite of the rule for an inactive item, which stays visible and marked one line
+        // above. This assertion was drafted for Slice 40 and cut from it, and the cut was recorded rather
+        // than made quietly: it needs SetMenuSectionActiveAsync to have a surface, and the section editor
+        // was deliberately not in that slice. Asserting it then would have meant either a harness reaching
+        // past the UI, which §16.3 refuses, or a verb wired for a test, which is worse.
+        //
+        // It arrives through the editor's own form, so it also exercises the §9 broadcast the fourth
+        // section verb now publishes: nothing is clicked on the guest's page, and the heading has to
+        // disappear from a circuit that was already open.
+        await AdministrationJourneys.SetMenuSectionVisibilityAsync(
+            administrator, puddingsIdentifier, visibleToGuests: false);
+
+        IReadOnlyList<MenuCard> withoutPuddings = await TableOrderJourneys.WaitForMenuAsync(
+            guest,
+            observed => observed.All(card => card.SectionName != puddings),
+            InteractivityPatience,
+            $"the '{puddings}' heading to leave the menu",
+            cancellationToken);
+
+        // The whole heading is gone, not merely its label: the pie went with it.
+        Assert.Equal(new[] { starters }, withoutPuddings.Select(card => card.SectionName).Distinct().ToArray());
+        Assert.DoesNotContain(withoutPuddings, card => card.Name == pie.Name);
+
+        // And the items under it were NOT deactivated, which is the half of §7 that a passing assertion
+        // above would not have distinguished. Starters is untouched — same two cards, same order, both
+        // still orderable — so nothing cascaded downward. The administrator's own view still lists the pie
+        // under its heading, because §11.4 sees every heading including the ones no guest can reach.
+        Assert.Equal(
+            new[] { soup.Name, second.Name },
+            withoutPuddings.Where(card => card.SectionName == starters).Select(card => card.Name).ToArray());
+        Assert.All(withoutPuddings, card => Assert.True(card.IsAvailable));
+
+        // (h) And back. Reactivating restores the menu exactly as it was — same headings, same order,
+        // same three cards — which is the property §7 states as "reactivating the heading brings the menu
+        // back exactly as it was". A flip that had cascaded to the items would come back with the pie
+        // marked unavailable, and this is the assertion that would say so.
+        await AdministrationJourneys.SetMenuSectionVisibilityAsync(
+            administrator, puddingsIdentifier, visibleToGuests: true);
+
+        IReadOnlyList<MenuCard> restored = await TableOrderJourneys.WaitForMenuAsync(
+            guest,
+            observed => observed.Count == 3,
+            InteractivityPatience,
+            $"the '{puddings}' heading to return to the menu",
+            cancellationToken);
+
+        Assert.Equal(
+            new[] { starters, puddings },
+            (await TableOrderJourneys.ReadMenuSectionNamesAsync(guest)).ToArray());
+
+        MenuCard restoredPie = Assert.Single(restored, card => card.Name == pie.Name);
+        Assert.Equal(puddings, restoredPie.SectionName);
+        Assert.Equal(pieDescription, restoredPie.Description);
+        Assert.True(restoredPie.IsAvailable);
     }
 
     // --- helpers ---------------------------------------------------------------------------------

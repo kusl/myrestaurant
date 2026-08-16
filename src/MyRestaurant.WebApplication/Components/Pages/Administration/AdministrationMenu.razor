@@ -21,11 +21,11 @@
 
    Two record lists (§11.12) and no inline <style>. **Sections arrived in `0005`, and this page shows
    them as a COLUMN rather than as grouped sub-lists.** The plan's Stage 3 describes a sections-first
-   index — a record list of headings, each expandable to its items — and that is still the destination;
-   what it needs is the section editor to open into, which this slice does not ship. A column is the
-   honest intermediate: the fact is visible and sortable-by-eye today, and nothing here has to be undone
-   to group it later. §11.4's administrator, unlike §11.1's guest, sees items under inactive headings
-   too — a heading switched off is hidden from guests and from nobody else. *@
+   index — a record list of headings, each expandable to its items — and that is still the destination.
+   A column is the honest intermediate: the fact is visible and sortable-by-eye today, and nothing here
+   has to be undone to group it later. **The column links now**, which is the half that was missing while
+   there was no section editor to open into. §11.4's administrator, unlike §11.1's guest, sees items under
+   inactive headings too — a heading switched off is hidden from guests and from nobody else. *@
 
 <PageTitle>Administration — menu</PageTitle>
 
@@ -91,7 +91,12 @@
                                 }
                             </td>
                             <td data-label="Section">
-                                @item.MenuSectionName
+                                @* A link as of the section editor, which is what this column was waiting
+                                   for. Slice 40 rendered the name as text and said so: a record list
+                                   whose rows link nowhere is a list of dead ends, and the honest
+                                   intermediate was to put the fact on the screen and leave the
+                                   destination for the slice that built it. *@
+                                <a class="record-link" href="@SectionPath(item.MenuSectionIdentifier)">@item.MenuSectionName</a>
                                 @if (!item.MenuSectionIsActive)
                                 {
                                     @* §7's asymmetry, said out loud on the one page that can see both
@@ -216,6 +221,9 @@
 
     private static string ManagePath(Guid menuItemIdentifier)
         => $"/administration/menu/{menuItemIdentifier}";
+
+    private static string SectionPath(Guid menuSectionIdentifier)
+        => $"/administration/menu/sections/{menuSectionIdentifier}";
 
     private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
 

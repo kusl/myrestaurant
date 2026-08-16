@@ -29,10 +29,19 @@ namespace MyRestaurant.WebApplication.Tests;
 /// display in the building to re-query the menu because somebody pressed a button and nothing
 /// happened.</para>
 ///
-/// <para>No database and no container: the two write services are hand-written fakes (§16.1 — hand-written
-/// fakes, no Moq) returning whatever outcome the test wants to react to. Arranging a genuine no-op against
-/// a real PostgreSQL would test the lock and the comparison, which
-/// <c>MenuAdministrationTests</c> and <c>MenuAvailabilityTests</c> already do.</para>
+/// <para>No database and no container: the three write services are hand-written fakes (§16.1 —
+/// hand-written fakes, no Moq) returning whatever outcome the test wants to react to. Arranging a genuine
+/// no-op against a real PostgreSQL would test the lock and the comparison, which
+/// <c>MenuAdministrationTests</c>, <c>MenuAvailabilityTests</c> and
+/// <c>MenuSectionAdministrationTests</c> already do.</para>
+///
+/// <para><b>Every one of <see cref="IMenuSectionAdministration"/>'s five verbs is asserted here as of the
+/// section editor</b>, where four of them used to make <c>FakeMenuSectionAdministration</c> throw. That
+/// throw was the guard on a stated obligation — a workflow verb with no caller is a code path no test can
+/// reach through the interface meant to protect it — and it is gone because the obligation is discharged
+/// rather than because it became inconvenient. The two that matter most are the ones §11.1 made expensive:
+/// a heading's name is rendered above every card under it, and §7 removes an inactive heading from the
+/// guest's menu <em>entirely</em>.</para>
 /// </summary>
 public sealed class MenuWiringTests
 {
@@ -60,13 +69,21 @@ public sealed class MenuWiringTests
     }
 
     /// <summary>
-    /// The two section services resolve from the same registration call as the item services (§7, §11.4).
+    /// The three section services resolve from the same registration call as the item services (§7,
+    /// §11.4).
     ///
-    /// <para><b>One of them now has a surface and the other four verbs still do not.</b>
-    /// <c>CreateMenuSection.razor</c> takes <see cref="IMenuWorkflow"/> and reaches
-    /// <see cref="IMenuSectionAdministration.CreateMenuSectionAsync"/> through it; rename, describe,
-    /// reorder and set-active are still called by nothing at all, which is why the raw interface is still
-    /// asserted here rather than left to the first surface that needs it.</para>
+    /// <para><b>All five section verbs have a surface now, and the obligation carried since Slice 37 is
+    /// closed.</b> <c>CreateMenuSection.razor</c> reached <c>CreateMenuSectionAsync</c> through
+    /// <see cref="IMenuWorkflow"/> with <c>0005</c>; <c>ManageMenuSection.razor</c> brings rename,
+    /// describe, reorder and set-active in together, because they are four forms on one page.
+    /// <see cref="IMenuSectionAdministration"/> is still asserted here because
+    /// <see cref="MenuWorkflow"/> takes it as a dependency — what changed is that no surface resolves it,
+    /// exactly as none resolves <see cref="IMenuAdministration"/> or
+    /// <see cref="IMenuAvailability"/>.</para>
+    ///
+    /// <para><see cref="IMenuSectionEventLog"/> is the read the editor could not have shipped without:
+    /// §11.4 renders a heading's complete uncapped history on its own page, and until this slice nothing
+    /// in the tree could read <c>menu_section_event</c> at all.</para>
     /// </summary>
     [Fact]
     public void MenuSectionServices_AreResolvableInAScope()
@@ -78,6 +95,8 @@ public sealed class MenuWiringTests
             scope.ServiceProvider.GetRequiredService<IMenuSectionDirectory>());
         Assert.IsType<DapperMenuSectionAdministration>(
             scope.ServiceProvider.GetRequiredService<IMenuSectionAdministration>());
+        Assert.IsType<DapperMenuSectionEventLog>(
+            scope.ServiceProvider.GetRequiredService<IMenuSectionEventLog>());
     }
 
     /// <summary>
@@ -210,6 +229,214 @@ public sealed class MenuWiringTests
 
         Assert.False(refused.Created);
         Assert.Empty(takenBroadcaster.Published);
+    }
+
+    /// <summary>
+    /// A section rename that committed is announced; one that changed nothing, one refused for a name
+    /// collision, and one against a section that is not there are not.
+    ///
+    /// <para><b>This publish matters more than an item rename's, and §11.1 is why.</b> The guest menu
+    /// groups items under their headings, so the heading's name is rendered on every open picker in the
+    /// building — and unlike an item's name it is rendered even when nothing under it changed. A rename
+    /// that committed and announced nothing would leave the old word on every phone until that page
+    /// happened to reload, which was a latent defect from Slice 40 until this slice gave the verb a
+    /// surface.</para>
+    ///
+    /// <para>The <c>NameTaken</c> arm is asserted rather than folded into the no-op one because it is a
+    /// different reason for the same silence: the column is <c>citext</c>, so a second "Drinks" spelled
+    /// any way at all is refused by the database and the transaction rolls back. A workflow that keyed on
+    /// "not NoChange" would announce it.</para>
+    /// </summary>
+    [Fact]
+    public async Task ASectionRename_IsAnnouncedOnlyWhenTheNameActuallyMoved()
+    {
+        FakeMenuSectionAdministration renamed = new()
+        {
+            RenameOutcome = RenameMenuSectionOutcome.Renamed,
+        };
+        RecordingBroadcaster renamedBroadcaster = new();
+
+        Assert.Equal(
+            RenameMenuSectionOutcome.Renamed,
+            await WorkflowOver(renamed, renamedBroadcaster).RenameMenuSectionAsync(
+                MenuSectionIdentifier, "Puddings", ActorIdentifier, TestContext.Current.CancellationToken));
+
+        Assert.Equal(MenuSectionIdentifier, renamed.LastMenuSectionIdentifier);
+        Assert.Equal("Puddings", renamed.LastName);
+        Assert.Equal(ActorIdentifier, renamed.LastActor);
+        Assert.IsType<MenuChanged>(Assert.Single(renamedBroadcaster.Published));
+
+        foreach (RenameMenuSectionOutcome silent in new[]
+        {
+            RenameMenuSectionOutcome.NoChange,
+            RenameMenuSectionOutcome.NameTaken,
+            RenameMenuSectionOutcome.MenuSectionNotFound,
+        })
+        {
+            FakeMenuSectionAdministration sections = new() { RenameOutcome = silent };
+            RecordingBroadcaster broadcaster = new();
+
+            await WorkflowOver(sections, broadcaster).RenameMenuSectionAsync(
+                MenuSectionIdentifier, "Puddings", ActorIdentifier, TestContext.Current.CancellationToken);
+
+            Assert.Empty(broadcaster.Published);
+        }
+    }
+
+    /// <summary>
+    /// A section description that moved is announced; one that did not is not.
+    ///
+    /// <para><b>Today this publish reaches no guest surface, and it is still the right call</b> — the same
+    /// argument the item description makes, and it was right then. §11.1 renders a heading's name and not
+    /// its description, because the guest menu groups from <c>MenuItemSummary</c>, which carries the one
+    /// and not the other. <c>MenuChanged</c> means "re-read the menu" and nothing else, and a workflow
+    /// that decided which columns were worth announcing would be a workflow that has to be edited again
+    /// the moment a surface starts reading one.</para>
+    /// </summary>
+    [Fact]
+    public async Task ASectionDescription_IsAnnouncedOnlyWhenItActuallyMoved()
+    {
+        FakeMenuSectionAdministration described = new()
+        {
+            DescribeOutcome = DescribeMenuSectionOutcome.Described,
+        };
+        RecordingBroadcaster describedBroadcaster = new();
+
+        Assert.Equal(
+            DescribeMenuSectionOutcome.Described,
+            await WorkflowOver(described, describedBroadcaster).DescribeMenuSectionAsync(
+                MenuSectionIdentifier,
+                "Served until 11am",
+                ActorIdentifier,
+                TestContext.Current.CancellationToken));
+
+        // Handed on unaltered. The real write service normalizes a null to "" and this fake deliberately
+        // does not, for the reason FakeMenuAdministration gives: what is under test is whether the
+        // workflow passes the argument through, and a fake that trimmed would hide the one failure this
+        // file can see.
+        Assert.Equal("Served until 11am", described.LastDescription);
+        Assert.IsType<MenuChanged>(Assert.Single(describedBroadcaster.Published));
+
+        FakeMenuSectionAdministration unchanged = new()
+        {
+            DescribeOutcome = DescribeMenuSectionOutcome.NoChange,
+        };
+        RecordingBroadcaster unchangedBroadcaster = new();
+
+        await WorkflowOver(unchanged, unchangedBroadcaster).DescribeMenuSectionAsync(
+            MenuSectionIdentifier, "Served until 11am", ActorIdentifier, TestContext.Current.CancellationToken);
+
+        Assert.Empty(unchangedBroadcaster.Published);
+    }
+
+    /// <summary>
+    /// A section move that committed is announced, because §11.1 renders the headings in
+    /// <c>(display_order, name, identifier)</c> — so the whole guest menu is in a different order even
+    /// though no item moved at all.
+    /// </summary>
+    [Fact]
+    public async Task ASectionMove_IsAnnouncedOnlyWhenThePositionActuallyMoved()
+    {
+        FakeMenuSectionAdministration moved = new()
+        {
+            ReorderOutcome = ReorderMenuSectionOutcome.Reordered,
+        };
+        RecordingBroadcaster movedBroadcaster = new();
+
+        Assert.Equal(
+            ReorderMenuSectionOutcome.Reordered,
+            await WorkflowOver(moved, movedBroadcaster).ReorderMenuSectionAsync(
+                MenuSectionIdentifier, 2, ActorIdentifier, TestContext.Current.CancellationToken));
+
+        Assert.Equal(2, moved.LastDisplayOrder);
+        Assert.IsType<MenuChanged>(Assert.Single(movedBroadcaster.Published));
+
+        FakeMenuSectionAdministration unchanged = new()
+        {
+            ReorderOutcome = ReorderMenuSectionOutcome.NoChange,
+        };
+        RecordingBroadcaster unchangedBroadcaster = new();
+
+        await WorkflowOver(unchanged, unchangedBroadcaster).ReorderMenuSectionAsync(
+            MenuSectionIdentifier, 2, ActorIdentifier, TestContext.Current.CancellationToken);
+
+        Assert.Empty(unchangedBroadcaster.Published);
+    }
+
+    /// <summary>
+    /// The loudest of the five, and the one whose broadcast is not optional.
+    ///
+    /// <para>§7 hides an inactive section from the guest <b>entirely</b> — the opposite of the rule one
+    /// paragraph away for an inactive item, which stays visible and marked. So this flip adds or removes a
+    /// whole part of the menu from every open picker, and a switch-off that announced nothing would leave
+    /// those items tappable on every phone already looking at them until the send was refused server-side
+    /// for a reason the guest never saw coming (§6.5.9). Both directions are asserted, because "announce
+    /// the removal and not the restoration" is a plausible half-implementation that leaves a menu missing
+    /// a heading it should have.</para>
+    /// </summary>
+    [Fact]
+    public async Task ASectionVisibilityFlip_IsAnnouncedOnlyWhenTheFlagActuallyMoved()
+    {
+        foreach (bool target in new[] { false, true })
+        {
+            FakeMenuSectionAdministration changed = new()
+            {
+                ActivationOutcome = MenuSectionActivationOutcome.Changed,
+            };
+            RecordingBroadcaster changedBroadcaster = new();
+
+            Assert.Equal(
+                MenuSectionActivationOutcome.Changed,
+                await WorkflowOver(changed, changedBroadcaster).SetMenuSectionActiveAsync(
+                    MenuSectionIdentifier,
+                    target,
+                    ActorIdentifier,
+                    TestContext.Current.CancellationToken));
+
+            Assert.Equal(target, changed.LastIsActive);
+            Assert.IsType<MenuChanged>(Assert.Single(changedBroadcaster.Published));
+        }
+
+        FakeMenuSectionAdministration unchanged = new()
+        {
+            ActivationOutcome = MenuSectionActivationOutcome.NoChange,
+        };
+        RecordingBroadcaster unchangedBroadcaster = new();
+
+        await WorkflowOver(unchanged, unchangedBroadcaster).SetMenuSectionActiveAsync(
+            MenuSectionIdentifier, isActive: false, ActorIdentifier, TestContext.Current.CancellationToken);
+
+        Assert.Empty(unchangedBroadcaster.Published);
+    }
+
+    /// <summary>
+    /// A stale editor, or a link somebody kept. Nothing was written by any of the four verbs, so nothing
+    /// may be announced by any of them — and the surface above turns each into a redirect back to the menu
+    /// rather than a silent success.
+    /// </summary>
+    [Fact]
+    public async Task AnUnknownSection_AnnouncesNothing()
+    {
+        FakeMenuSectionAdministration sections = new()
+        {
+            RenameOutcome = RenameMenuSectionOutcome.MenuSectionNotFound,
+            DescribeOutcome = DescribeMenuSectionOutcome.MenuSectionNotFound,
+            ReorderOutcome = ReorderMenuSectionOutcome.MenuSectionNotFound,
+            ActivationOutcome = MenuSectionActivationOutcome.MenuSectionNotFound,
+        };
+        RecordingBroadcaster broadcaster = new();
+        IMenuWorkflow workflow = WorkflowOver(sections, broadcaster);
+
+        await workflow.RenameMenuSectionAsync(
+            MenuSectionIdentifier, "Puddings", ActorIdentifier, TestContext.Current.CancellationToken);
+        await workflow.DescribeMenuSectionAsync(
+            MenuSectionIdentifier, "Sweet things", ActorIdentifier, TestContext.Current.CancellationToken);
+        await workflow.ReorderMenuSectionAsync(
+            MenuSectionIdentifier, 2, ActorIdentifier, TestContext.Current.CancellationToken);
+        await workflow.SetMenuSectionActiveAsync(
+            MenuSectionIdentifier, isActive: false, ActorIdentifier, TestContext.Current.CancellationToken);
+
+        Assert.Empty(broadcaster.Published);
     }
 
     [Fact]
@@ -553,10 +780,18 @@ public sealed class MenuWiringTests
     }
 
     /// <summary>
-    /// The section write service, of which the workflow uses exactly one verb. The other four throw
-    /// rather than return a plausible value: this fake is reachable from every test in this file through
-    /// the default overloads, and a verb that quietly answered would let a workflow start calling it
-    /// without anything here noticing.
+    /// The section write service, of which the workflow now uses all five verbs.
+    ///
+    /// <para><b>Four of these threw until this slice, and the throw was load-bearing rather than
+    /// laziness.</b> This fake is reachable from every test in the file through the default overloads, so
+    /// a verb that quietly answered would have let a workflow start calling it with nothing here
+    /// noticing — which is precisely the state a workflow verb with no caller is in. The throws are gone
+    /// because the state they guarded is gone: <c>ManageMenuSection.razor</c> calls all four, each one
+    /// publishes on a committed row, and each has a fact above.</para>
+    ///
+    /// <para>Each verb records its arguments and returns a configurable outcome, because both halves of
+    /// this file's rule need saying: that the workflow hands the argument through unaltered, and that it
+    /// announces exactly the outcomes that wrote something.</para>
     /// </summary>
     private sealed class FakeMenuSectionAdministration : IMenuSectionAdministration
     {
@@ -566,10 +801,24 @@ public sealed class MenuWiringTests
 
         public string? LastDescription { get; private set; }
 
+        public int? LastDisplayOrder { get; private set; }
+
+        public bool? LastIsActive { get; private set; }
+
         public Guid? LastActor { get; private set; }
 
         public CreateMenuSectionResult CreateResult { get; init; } = new(
             CreateMenuSectionOutcome.Created, MenuSectionIdentifier, "Drinks", "Cold things", 0);
+
+        public RenameMenuSectionOutcome RenameOutcome { get; init; } = RenameMenuSectionOutcome.Renamed;
+
+        public DescribeMenuSectionOutcome DescribeOutcome { get; init; }
+            = DescribeMenuSectionOutcome.Described;
+
+        public ReorderMenuSectionOutcome ReorderOutcome { get; init; } = ReorderMenuSectionOutcome.Reordered;
+
+        public MenuSectionActivationOutcome ActivationOutcome { get; init; }
+            = MenuSectionActivationOutcome.Changed;
 
         public Task<CreateMenuSectionResult> CreateMenuSectionAsync(
             Guid menuSectionIdentifier,
@@ -591,33 +840,52 @@ public sealed class MenuWiringTests
             string name,
             Guid actorPersonIdentifier,
             CancellationToken cancellationToken = default)
-            => throw new InvalidOperationException(Unreachable(nameof(RenameMenuSectionAsync)));
+        {
+            LastMenuSectionIdentifier = menuSectionIdentifier;
+            LastName = name;
+            LastActor = actorPersonIdentifier;
+
+            return Task.FromResult(RenameOutcome);
+        }
 
         public Task<DescribeMenuSectionOutcome> DescribeMenuSectionAsync(
             Guid menuSectionIdentifier,
             string? description,
             Guid actorPersonIdentifier,
             CancellationToken cancellationToken = default)
-            => throw new InvalidOperationException(Unreachable(nameof(DescribeMenuSectionAsync)));
+        {
+            LastMenuSectionIdentifier = menuSectionIdentifier;
+            LastDescription = description;
+            LastActor = actorPersonIdentifier;
+
+            return Task.FromResult(DescribeOutcome);
+        }
 
         public Task<ReorderMenuSectionOutcome> ReorderMenuSectionAsync(
             Guid menuSectionIdentifier,
             int displayOrder,
             Guid actorPersonIdentifier,
             CancellationToken cancellationToken = default)
-            => throw new InvalidOperationException(Unreachable(nameof(ReorderMenuSectionAsync)));
+        {
+            LastMenuSectionIdentifier = menuSectionIdentifier;
+            LastDisplayOrder = displayOrder;
+            LastActor = actorPersonIdentifier;
+
+            return Task.FromResult(ReorderOutcome);
+        }
 
         public Task<MenuSectionActivationOutcome> SetMenuSectionActiveAsync(
             Guid menuSectionIdentifier,
             bool isActive,
             Guid actorPersonIdentifier,
             CancellationToken cancellationToken = default)
-            => throw new InvalidOperationException(Unreachable(nameof(SetMenuSectionActiveAsync)));
+        {
+            LastMenuSectionIdentifier = menuSectionIdentifier;
+            LastIsActive = isActive;
+            LastActor = actorPersonIdentifier;
 
-        private static string Unreachable(string verb)
-            => $"MenuWorkflow reached IMenuSectionAdministration.{verb}, which no surface calls yet."
-                + " If a surface now does, that verb belongs behind IMenuWorkflow with a §9 broadcast"
-                + " and a fact in this file — see docs/MENU_AND_HANDHELD_PLAN.md Stage 3.";
+            return Task.FromResult(ActivationOutcome);
+        }
     }
 
     private sealed class FakeMenuAvailability : IMenuAvailability

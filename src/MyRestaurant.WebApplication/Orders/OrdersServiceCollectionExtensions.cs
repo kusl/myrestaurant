@@ -82,22 +82,24 @@ public static class OrdersServiceCollectionExtensions
         // AddRestaurantMenuSections() would be a fifth call the composition root has to remember (see the
         // note above about why this method is not split).
         //
-        // ONE of the five section writes is behind IMenuWorkflow as of 0005, and the count is the whole
-        // content of this note. The rule has not changed: a workflow verb with no caller is a code path
-        // no test can reach through the interface it is supposed to protect, so a verb arrives when its
-        // surface does. The section create page is that surface, so CreateMenuSectionAsync arrives with
-        // it and announces MenuChanged (§9) on a committed row. Rename, describe, reorder and set-active
-        // have no surface until the section editor exists and are still called directly on this
-        // interface by nothing at all.
+        // ALL FIVE section writes are behind IMenuWorkflow now, and the obligation carried since Slice 37
+        // is closed. The rule never changed: a workflow verb with no caller is a code path no test can
+        // reach through the interface it is supposed to protect, so a verb arrives when its surface does.
+        // The create page brought CreateMenuSectionAsync in with 0005; the section editor brings rename,
+        // describe, reorder and set-active in together, because they are four forms on one page.
         //
-        // What HAS changed is the cost of leaving them. §11.1's guest menu groups by heading as of this
-        // slice, so a renamed section that announced nothing would leave a stale heading in every open
-        // picker. That is a latent defect rather than a live one only because no surface can rename a
-        // section yet — and it is exactly the shape of finding this project keeps writing down after the
-        // fact. docs/MENU_AND_HANDHELD_PLAN.md carries the remaining four as an obligation rather than
-        // a hope.
+        // IMenuSectionAdministration is still registered by name because MenuWorkflow takes it as a
+        // dependency — what changed is that no SURFACE resolves it any more, exactly as no surface
+        // resolves IMenuAdministration or IMenuAvailability. Anything under Components/ that reaches for
+        // one of the three raw write services is a page that can change the menu without telling anybody,
+        // and §9 is the whole reason that is a defect rather than a style.
+        //
+        // The section event log is a read and joins the read side: §11.4 renders a heading's complete
+        // uncapped history on its own page, which is the one thing the editor could not have been shipped
+        // without.
         services.AddScoped<IMenuSectionDirectory, DapperMenuSectionDirectory>();
         services.AddScoped<IMenuSectionAdministration, DapperMenuSectionAdministration>();
+        services.AddScoped<IMenuSectionEventLog, DapperMenuSectionEventLog>();
 
         // Orders (§6.6, §8.3, §8.5, §11.2).
         services.AddScoped<IOrderMutations, DapperOrderMutations>();

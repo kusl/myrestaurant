@@ -269,16 +269,19 @@ internal static class AdministrationJourneys
 
     /// <summary>
     /// Puts a heading on the menu through <c>/administration/menu/sections/new</c> (§7, §11.4) and
-    /// returns its identifier, read back off the section picker the item form renders.
+    /// returns its identifier, taken from the "Manage this section" link on the success panel.
     ///
-    /// <para><b>The identifier is recovered differently from every other create journey here, and the
-    /// difference is a fact about the surface rather than a shortcut.</b>
-    /// <see cref="CreateTableAsync"/> and <see cref="CreateMenuItemAsync"/> read theirs out of a
-    /// "Manage this…" link, because both have a management page to link to. A section does not yet — the
-    /// section editor is Stage 3 — so its success panel links onward to the item form instead, and the
-    /// only place the identifier is exposed is that form's <c>&lt;option value&gt;</c>. Reading it there
-    /// is reading the surface rather than reaching past it, which is what §16.3 asks for; it also means
-    /// this journey fails loudly on the day the picker stops carrying identifiers.</para>
+    /// <para><b>This journey read the identifier off the item form's <c>&lt;option value&gt;</c> for one
+    /// slice, and the shape it has now is the one it was always going to have.</b> Slice 40 shipped the
+    /// create page without an editor, so a section's success panel had no management page to link to and
+    /// the only place its identifier appeared anywhere was the picker on a different form. That was
+    /// reading the surface rather than reaching past it — which is what §16.3 asks for — and it was
+    /// recorded at the time as a shape that goes away when the editor exists. It does, here.</para>
+    ///
+    /// <para>Recovering it from a "Manage this…" link is what <see cref="CreateTableAsync"/>,
+    /// <see cref="CreateMenuItemAsync"/> and <see cref="CreateStaffAccountAsync"/> all do, and the reason
+    /// is the same for all four: the identifier is minted server-side, so a scenario that recovered it any
+    /// other way would be reimplementing the surface.</para>
     ///
     /// <para>Throws when the name is already taken. <see cref="EnsureMenuSectionAsync"/> is the idempotent
     /// one — a scenario that means "create this" wants to hear that it did not.</para>
@@ -301,11 +304,11 @@ internal static class AdministrationJourneys
 
         await page.ClickAsync("button:has-text('Create section')");
 
-        ILocator confirmation = page.Locator("p.status-success").First;
+        ILocator manageLink = page.Locator("a:has-text('Manage this section')").First;
 
         try
         {
-            await confirmation.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+            await manageLink.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
         }
         catch (PlaywrightException exception)
         {
@@ -315,11 +318,71 @@ internal static class AdministrationJourneys
                 exception);
         }
 
-        Guid? identifier = await FindMenuSectionAsync(page, name);
+        string? href = await manageLink.GetAttributeAsync("href");
+        string prefix = MenuSectionsPath + "/";
 
-        return identifier
-            ?? throw new InvalidOperationException(
-                $"The section '{name}' reported success and is not offered by the item form's picker.");
+        if (href is null
+            || !href.StartsWith(prefix, StringComparison.Ordinal)
+            || !Guid.TryParse(href[prefix.Length..], out Guid menuSectionIdentifier))
+        {
+            throw new InvalidOperationException(
+                $"The section-created panel linked to '{href}', which is not a menu section management URL.");
+        }
+
+        return menuSectionIdentifier;
+    }
+
+    /// <summary>
+    /// Switches a heading on or off from <c>/administration/menu/sections/{id}</c> (§7) and returns once
+    /// the surface agrees it moved.
+    ///
+    /// <para><b>Through the editor, because the rule under test is not a database rule.</b> §7's asymmetry
+    /// — an inactive <em>section</em> is hidden from the guest entirely, where an inactive <em>item</em>
+    /// stays visible and marked — is asserted at the data layer by <c>MenuDirectoryTests</c>, and what no
+    /// unit test can see is whether the guest's menu actually loses the heading. That needs a real flip
+    /// through a real form, which is what this is; the assertion cut from scenario 17 in Slice 40 was cut
+    /// precisely because this journey could not exist yet.</para>
+    ///
+    /// <para>The wait is on the chip rather than on the flash, because the flash is copy and the chip is
+    /// the fact — and because a no-op flip redirects without one, which is a state this method should
+    /// report as success rather than time out on.</para>
+    /// </summary>
+    internal static async Task SetMenuSectionVisibilityAsync(
+        IPage page,
+        Guid menuSectionIdentifier,
+        bool visibleToGuests)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync($"{MenuSectionsPath}/{menuSectionIdentifier:D}");
+
+        string button = visibleToGuests ? "Show to guests" : "Hide from guests";
+        string expectedChip = visibleToGuests ? "Can see this heading" : "Hidden from guests";
+
+        ILocator control = page.Locator($"button:has-text('{button}')").First;
+
+        if (await control.CountAsync() == 0)
+        {
+            // Already in the requested state: the page renders one of the two forms, never both. Nothing
+            // to press and nothing wrong, which is the same reading the surface itself takes.
+            return;
+        }
+
+        await control.ClickAsync();
+
+        ILocator chip = page.Locator($".manage-facts .chip:has-text('{expectedChip}')").First;
+
+        try
+        {
+            await chip.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                $"Setting section {menuSectionIdentifier} to '{expectedChip}' did not take effect. "
+                + await DescribeFailureAsync(page),
+                exception);
+        }
     }
 
     /// <summary>
@@ -343,6 +406,12 @@ internal static class AdministrationJourneys
     /// The identifier of the section with this name, or <c>null</c> when the item form offers none —
     /// which is also the answer on a fresh instance, where that form renders its "give the menu a
     /// heading first" panel and has no picker at all.
+    ///
+    /// <para>This is a <em>lookup</em> and stays one. <see cref="CreateMenuSectionAsync"/> used to borrow
+    /// it to recover the identifier of a section it had just made, because a section had no management
+    /// page to link to; it now reads its own success panel like every other create journey here, which
+    /// leaves this method doing the one thing it was written for — answering "does a heading with this
+    /// name already exist" for <see cref="EnsureMenuSectionAsync"/>.</para>
     ///
     /// <para>Matched on the option's text with the surface's own inactive suffix allowed for, and
     /// compared case-insensitively because <c>menu_section.name</c> is <c>citext</c>: "drinks" and
