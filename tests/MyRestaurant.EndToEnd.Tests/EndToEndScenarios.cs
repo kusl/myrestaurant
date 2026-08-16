@@ -2408,6 +2408,122 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
                 + $" Shorter: {HandheldReach.Format(undersized)}.");
     }
 
+    // -------------------------------------------------------------------------------------------
+    // 17. An administrator names two headings and puts a described item under each; a guest at a table
+    //     reads the menu grouped under those headings, in the order the administrator chose, with the
+    //     description on the card and in the detail panel. Then a heading is switched off and the guest's
+    //     menu loses it — §7's rule that an inactive SECTION is hidden from the guest, which is the
+    //     opposite of the rule for an inactive item, and the one thing about `0005` no unit test can see.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Guest_ReadsTheMenuGroupedUnderItsHeadings()
+    {
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string tableLabel = "E2E Seventeen";
+        const string starters = "Starters";
+        const string puddings = "Puddings";
+        const string soupDescription = "Lentil and smoked paprika, with sourdough.";
+        const string pieDescription = "Bramley apple, short crust, served warm.";
+
+        GuestAccount guestAccount = new("e2e.menu.reader", "Menu Reader");
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        // (a) Two headings, created in this order, so the menu's order is one somebody chose rather than
+        // the alphabet's — "Puddings" sorts before "Starters" and the assertion below would pass by
+        // accident if this read alphabetically. §7 appends each new section at MAX + 1.
+        Guid startersIdentifier = await AdministrationJourneys.CreateMenuSectionAsync(
+            administrator, starters, "Something to begin with.");
+        Guid puddingsIdentifier = await AdministrationJourneys.CreateMenuSectionAsync(
+            administrator, puddings);
+
+        Assert.NotEqual(startersIdentifier, puddingsIdentifier);
+
+        // (b) One described item under each. The description is the column `0004` shipped and nothing
+        // read end to end until now — Slice 39 built the card that can show it and said so in its own
+        // "what was NOT verified". This is that gap closed.
+        MenuItemOnTheMenu soup = await AdministrationJourneys.CreateMenuItemAsync(
+            administrator, "Soup of the day", 6.50m, soupDescription, starters);
+        MenuItemOnTheMenu pie = await AdministrationJourneys.CreateMenuItemAsync(
+            administrator, "Apple pie", 5.00m, pieDescription, puddings);
+
+        Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
+        byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
+
+        IPage guest = await SeatGuestAsync(
+            instance, tableIdentifier, joinSecret, guestAccount, cancellationToken);
+
+        // (c) The headings, in the order they were created. This is the assertion the whole scenario is
+        // for: nothing below the guest surface can tell whether a heading was RENDERED, and §11.1's
+        // grouping is an outer loop that a passing unit test would not have noticed the absence of.
+        IReadOnlyList<MenuCard> menu = await TableOrderJourneys.WaitForMenuAsync(
+            guest,
+            observed => observed.Count == 2,
+            InteractivityPatience,
+            "both menu items",
+            cancellationToken);
+
+        Assert.Equal(
+            new[] { starters, puddings },
+            (await TableOrderJourneys.ReadMenuSectionNamesAsync(guest)).ToArray());
+
+        // (d) Each card under its own heading, with its own sentence. Read off the card rather than
+        // compared against what was typed in the form and back again: the description travels form →
+        // menu_item.description → menu_item_event → guest surface, and this is the only assertion in the
+        // project that crosses all four.
+        MenuCard soupCard = Assert.Single(menu, card => card.Name == soup.Name);
+        MenuCard pieCard = Assert.Single(menu, card => card.Name == pie.Name);
+
+        Assert.Equal(starters, soupCard.SectionName);
+        Assert.Equal(puddings, pieCard.SectionName);
+        Assert.Equal(soupDescription, soupCard.Description);
+        Assert.Equal(pieDescription, pieCard.Description);
+
+        // (e) And in the detail panel, which is the surface's answer to "see more about that item if such
+        // information exists". Asserted separately from the card because they are two elements: a panel
+        // that rendered the chosen item's NAME with somebody else's description would satisfy (d).
+        await TableOrderJourneys.ChooseAsync(guest, soup);
+
+        ChosenItemDetail? detail = await TableOrderJourneys.ReadChosenItemDetailAsync(guest);
+
+        Assert.NotNull(detail);
+        Assert.Equal(soup.Name, detail.Name);
+        Assert.Equal(soupDescription, detail.Description);
+
+        // (f) A new item under an EXISTING heading joins that heading rather than starting a second one,
+        // and it lands at the end of it. This is the half of `0005` that a scenario can see and a unit
+        // test cannot: `DapperMenuAdministration` assigns MAX + 1 within the section under a lock, and
+        // what proves the number means something is a guest reading two dishes in the order they were
+        // put there rather than in the alphabet's ("Apple soup" sorts before "Soup of the day").
+        MenuItemOnTheMenu second = await AdministrationJourneys.CreateMenuItemAsync(
+            administrator, "Apple soup", 6.00m, sectionName: starters);
+
+        IReadOnlyList<MenuCard> grown = await TableOrderJourneys.WaitForMenuAsync(
+            guest,
+            observed => observed.Count == 3,
+            InteractivityPatience,
+            "the third item to arrive on the open menu",
+            cancellationToken);
+
+        // Still two headings: the new item joined Starters instead of creating a third grouping.
+        Assert.Equal(
+            new[] { starters, puddings },
+            (await TableOrderJourneys.ReadMenuSectionNamesAsync(guest)).ToArray());
+
+        string[] startersInOrder = grown
+            .Where(card => card.SectionName == starters)
+            .Select(card => card.Name)
+            .ToArray();
+
+        Assert.Equal(new[] { soup.Name, second.Name }, startersInOrder);
+    }
+
     // --- helpers ---------------------------------------------------------------------------------
 
     private void SkipUnlessHarnessAvailable()

@@ -6,6 +6,7 @@
 @using MyRestaurant.WebApplication.Menu
 @using MyRestaurant.WebApplication.Orders
 @inject IMenuWorkflow MenuChanges
+@inject IMenuSectionDirectory MenuSections
 @inject IIdentifierFactory IdentifierFactory
 @inject RestaurantOptions Options
 
@@ -13,31 +14,68 @@
    like every administration surface). Static SSR: a full-page form post. The item is created active, and
    the workflow announces it so every open guest picker and kitchen panel gains it without a reload (§9).
    Nothing is written until the form is submitted; the identifier is minted here so the success screen can
-   link straight to the new item's management page — the same shape CreateTable uses. *@
+   link straight to the new item's management page — the same shape CreateTable uses.
+
+   THE SECTION PICKER IS REQUIRED, AND THAT IS 0005's NOT NULL ARRIVING AT A FORM. §7: an item under no
+   heading is an item nobody decided about. So there is no "(none)" option, no "Uncategorized" default
+   and no blank first entry — the select is pre-selected on the first section and every path out of this
+   form names one.
+
+   WHEN THERE ARE NO SECTIONS THIS PAGE DOES NOT RENDER A FORM AT ALL. A required picker over an empty
+   list is a form nobody can submit and a validation message that blames the person for a menu that has
+   no headings yet. The panel below sends them to the section create page instead, which is the one extra
+   step §7 accepts on the very first use of a fresh installation. *@
 
 <PageTitle>Create menu item</PageTitle>
 
-@if (_created is not null)
+@if (_created is { Created: true } created)
 {
     <section class="panel account-panel">
         <p class="eyebrow">Menu item created</p>
-        <h1>@_created.Name is on the menu</h1>
+        <h1>@created.Name is on the menu</h1>
 
         <p class="status-success" role="status">
-            <strong>@_created.Name</strong> was created at <strong>@Money(_created.PriceAmount)</strong>
-            and is available now. Every open menu has already picked it up.
+            <strong>@created.Name</strong> was created at <strong>@Money(created.PriceAmount ?? 0m)</strong>
+            under <strong>@created.MenuSectionName</strong> and is available now. Every open menu has
+            already picked it up.
         </p>
 
-        @if (_created.DescriptionWasSet)
+        @if (created.DescriptionWasSet)
         {
             @* Echoed from the result rather than re-read, because the write service returns what it
                actually stored — trimmed — and this is the only place a caller can see the difference
                without a second query. *@
-            <p class="record-note">Description: @_created.Description</p>
+            <p class="record-note">Description: @created.Description</p>
         }
 
         <div class="form-actions">
-            <a class="button-primary" href="@($"/administration/menu/{_created.MenuItemIdentifier}")">Manage this item</a>
+            <a class="button-primary" href="@($"/administration/menu/{created.MenuItemIdentifier}")">Manage this item</a>
+            <a class="button-secondary" href="/administration/menu">Back to the menu</a>
+        </div>
+    </section>
+}
+else if (_sections is null)
+{
+    <section class="panel account-panel">
+        <p class="record-empty">Loading…</p>
+    </section>
+}
+else if (_sections.Count == 0)
+{
+    @* The first-use panel. It is a dead end on purpose: there is no form under it to half-fill, because
+       §7's heading is not optional and a form that cannot be submitted is worse than a page that says
+       why. *@
+    <section class="panel account-panel">
+        <p class="eyebrow">Administration</p>
+        <h1>Give the menu a heading first</h1>
+        <p class="lede">
+            Every menu item sits under a section — Drinks, Starters, Breakfast — because that is how a
+            guest reads a menu. There are no sections yet, so there is nowhere to put an item. Make one
+            and come straight back; you only ever do this once.
+        </p>
+
+        <div class="form-actions">
+            <a class="button-primary" href="/administration/menu/sections/new">Create a menu section</a>
             <a class="button-secondary" href="/administration/menu">Back to the menu</a>
         </div>
     </section>
@@ -49,9 +87,10 @@ else
         <h1>Create a menu item</h1>
         <p class="lede">
             The name is what guests, the kitchen queue, and the bill all read, so write it the way it
-            should appear on a receipt. The price is in @Options.CurrencyCode and can be zero. The
-            description is optional, is one or two sentences a guest reads before ordering — what is in
-            it, how it is served, what it comes with — and can be added or changed later.
+            should appear on a receipt. The section is the heading it appears under, and it goes to the
+            end of that heading. The price is in @Options.CurrencyCode and can be zero. The description is
+            optional, is one or two sentences a guest reads before ordering — what is in it, how it is
+            served, what it comes with — and can be added or changed later.
         </p>
 
         @if (_errorMessage is not null)
@@ -66,6 +105,29 @@ else
                 <label for="name">Name</label>
                 <InputText id="name" @bind-Value="Input.Name" autocomplete="off" autofocus />
                 <ValidationMessage For="@(() => Input.Name)" />
+            </div>
+
+            @* An InputSelect over Guid rather than over a string identifier: Blazor's own converter
+               handles Guid, so a malformed post is a binding failure here rather than a Guid.Parse
+               somewhere in the handler.
+
+               INACTIVE SECTIONS ARE OFFERED, AND MARKED. §7 hides an inactive heading from the GUEST;
+               it does not hide it from §11.4's administrator, whose whole job on this page may be
+               stocking next week's breakfast menu before switching it on. The suffix is text inside the
+               option because an <option> renders text and nothing else — which is the same limitation
+               that made the guest picker a card list, and the reason it is acceptable here is that this
+               is a choice among eight headings rather than a menu among sixty dishes. *@
+            <div class="form-field">
+                <label for="menu-section">Section</label>
+                <InputSelect id="menu-section" @bind-Value="Input.MenuSectionIdentifier">
+                    @foreach (MenuSectionSummary section in _sections)
+                    {
+                        <option value="@section.MenuSectionIdentifier">
+                            @(section.IsActive ? section.Name : $"{section.Name} (hidden from guests)")
+                        </option>
+                    }
+                </InputSelect>
+                <ValidationMessage For="@(() => Input.MenuSectionIdentifier)" />
             </div>
 
             @* A textarea rather than an input, and app.css has styled `.form-field textarea` since
@@ -92,15 +154,17 @@ else
 
         <p class="form-footnote">
             Names do not have to be unique — a kitchen running a rotating special will want two rows
-            called the same thing eventually. Prices are stored to two decimals and rounded if you type
-            more. You can rename, reprice, describe, reposition, or mark the item unavailable at any time;
-            every one of those is recorded with your name against it.
+            called the same thing eventually. Section names do have to be unique, which is the opposite
+            rule for the opposite reason. Prices are stored to two decimals and rounded if you type more.
+            You can rename, reprice, describe, reposition, or mark the item unavailable at any time; every
+            one of those is recorded with your name against it.
         </p>
     </section>
 }
 
 @code {
     private CreateMenuItemResult? _created;
+    private IReadOnlyList<MenuSectionSummary>? _sections;
     private string? _errorMessage;
 
     [SupplyParameterFromForm(FormName = "create-menu-item")]
@@ -109,9 +173,23 @@ else
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
+    {
         // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
-        => Input ??= new();
+        Input ??= new();
+
+        _sections = await MenuSections.ListAsync(HttpContext.RequestAborted);
+
+        // Pre-selected rather than left on Guid.Empty. A <select> with no selected option shows its
+        // first one and posts that value, so a form that left this at the default would LOOK correct
+        // and submit an identifier naming nothing — which the write service would report and the person
+        // would read as a bug. Only on the first render: a re-render after a failed post must keep what
+        // was chosen.
+        if (Input.MenuSectionIdentifier == Guid.Empty && _sections.Count > 0)
+        {
+            Input.MenuSectionIdentifier = _sections[0].MenuSectionIdentifier;
+        }
+    }
 
     private async Task CreateAsync()
     {
@@ -126,17 +204,34 @@ else
 
         _created = await MenuChanges.CreateMenuItemAsync(
             IdentifierFactory.Create(),
+            Input.MenuSectionIdentifier,
             Input.Name.Trim(),
             Input.Description,
             Input.PriceAmount,
             administrator,
             HttpContext.RequestAborted);
+
+        // A section deleted or renamed out from under a form somebody left open. Reported rather than
+        // thrown: the outcome exists precisely so this page can say which field was wrong instead of
+        // showing a foreign-key constraint name.
+        if (_created.Outcome is CreateMenuItemOutcome.MenuSectionNotFound)
+        {
+            _errorMessage =
+                "That section no longer exists. It may have been changed while this page was open —"
+                + " reload the page and choose again.";
+        }
     }
 
     private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
 
     private sealed class CreateMenuItemInputModel
     {
+        // No [Required] attribute, and that is deliberate rather than an omission: Guid is a value type,
+        // so [Required] passes on Guid.Empty and would assert nothing. The select is pre-selected, has
+        // no empty option, and the write service reports an identifier that names nothing — three
+        // defences, none of which is a validation attribute that does not work.
+        public Guid MenuSectionIdentifier { get; set; }
+
         [Required(ErrorMessage = "Give the item a name.")]
         [StringLength(120, MinimumLength = 1, ErrorMessage = "The name must be 1–120 characters.")]
         public string Name { get; set; } = string.Empty;

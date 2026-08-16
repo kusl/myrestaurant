@@ -16,16 +16,20 @@ namespace MyRestaurant.DataAccess.Menu;
 /// is why no count of the vocabulary is written here: <c>0004</c> added two types and <c>0005</c> adds a
 /// third, and a number in this comment would be one fact recorded where nothing can check it (F-77).</para>
 ///
-/// <para>The four typed nullable payload columns are each non-null for exactly the event types §8.2's
-/// named paired CHECKs allow them on: the name for <c>created</c> and <c>name_changed</c>, the price for
+/// <para>The typed nullable payload columns are each non-null for exactly the event types §8.2's named
+/// paired CHECKs allow them on: the name for <c>created</c> and <c>name_changed</c>, the price for
 /// <c>created</c> and <c>price_changed</c>, the description for <c>description_changed</c> alone, the
-/// position for <c>reordered</c> alone, and nothing at all for <c>activated</c> and
-/// <c>deactivated</c>.</para>
+/// position for <c>reordered</c> alone, the section for <c>section_changed</c> alone, and nothing at all
+/// for <c>activated</c> and <c>deactivated</c>. No count of them is written here, on the same reasoning
+/// as the vocabulary above: <c>0005</c> has just made one true and left the sentence saying four.</para>
 ///
-/// <para><b><c>created</c> does not carry a description although the item may have been created with
-/// one.</b> §8.2 keeps that event at the name and the price, so an item created with a description has a
-/// <c>description_changed</c> beside its <c>created</c>, at the same instant, ordered after it by the
-/// UUIDv7 tiebreak both reads below apply.</para>
+/// <para><b><c>created</c> carries neither a description nor a section although the item was created with
+/// both.</b> §8.2 keeps that event at the name and the price, so an item created under a heading has a
+/// <c>section_changed</c> beside its <c>created</c> — and a <c>description_changed</c> beside that when it
+/// has a description — at the same instant, ordered after it by the UUIDv7 tiebreak both reads below
+/// apply. That ordering is not decoration: it is what makes the history read
+/// <em>"Created as “Soup” at 4.50 / Filed under Starters / Description set"</em> rather than in whatever
+/// sequence the scan returned.</para>
 /// </summary>
 /// <param name="MenuItemEventIdentifier">The event's UUIDv7 primary key (ADR-0011).</param>
 /// <param name="MenuItemIdentifier">The item the event is about.</param>
@@ -35,6 +39,8 @@ namespace MyRestaurant.DataAccess.Menu;
 /// <param name="NewPriceAmount">The price this event set, or <c>null</c> when the type does not carry one.</param>
 /// <param name="NewDescription">The description this event set, or <c>null</c> when the type does not carry one. <c>""</c> is a value: it is what clearing a description stores.</param>
 /// <param name="NewDisplayOrder">The position this event set, or <c>null</c> when the type does not carry one.</param>
+/// <param name="NewMenuSectionIdentifier">The heading this event filed the item under, or <c>null</c> when the type does not carry one (<c>0005</c>).</param>
+/// <param name="NewMenuSectionName">That heading's name <em>now</em>, joined at read time — <c>null</c> when the event carries no section. A renamed section reads under its current name, exactly as <see cref="MenuItemName"/> does for the item.</param>
 /// <param name="ActorPersonIdentifier">Who did it.</param>
 /// <param name="ActorName">Their display name, falling back to their username — the same rendering rule the counter board uses.</param>
 /// <param name="OccurredAt">When, in UTC (rendered in the restaurant's zone by the surface, §8.1).</param>
@@ -47,6 +53,8 @@ public sealed record MenuItemEventEntry(
     decimal? NewPriceAmount,
     string? NewDescription,
     int? NewDisplayOrder,
+    Guid? NewMenuSectionIdentifier,
+    string? NewMenuSectionName,
     Guid ActorPersonIdentifier,
     string ActorName,
     DateTimeOffset OccurredAt);
@@ -109,6 +117,8 @@ public sealed class DapperMenuEventLog : IMenuEventLog
         menu_item_event.new_price_amount           AS NewPriceAmount,
         menu_item_event.new_description             AS NewDescription,
         menu_item_event.new_display_order           AS NewDisplayOrder,
+        menu_item_event.new_menu_section_identifier AS NewMenuSectionIdentifier,
+        new_section.name                           AS NewMenuSectionName,
         menu_item_event.actor_person_identifier    AS ActorPersonIdentifier,
         COALESCE(NULLIF(btrim(actor.display_name), ''), actor.username)
                                                    AS ActorName,
@@ -116,8 +126,17 @@ public sealed class DapperMenuEventLog : IMenuEventLog
         """;
 
     /// <summary>
-    /// Both joins are INNER: <c>menu_item_identifier</c> and <c>actor_person_identifier</c> are NOT NULL
-    /// foreign keys, so a LEFT JOIN would only invite a nullable member for a row that cannot exist.
+    /// The first two joins are INNER: <c>menu_item_identifier</c> and <c>actor_person_identifier</c> are
+    /// NOT NULL foreign keys, so a LEFT JOIN would only invite a nullable member for a row that cannot
+    /// exist. The third is LEFT for the mirror-image reason —
+    /// <c>menu_item_event.new_menu_section_identifier</c> is a <em>payload</em> column and is NULL on
+    /// every event type but <c>section_changed</c>, so an INNER join there would silently drop every
+    /// other event in the log.
+    ///
+    /// <para>The alias is <c>new_section</c> rather than <c>menu_section</c>, and it is load-bearing:
+    /// <c>menu_item</c> gained its own <c>menu_section_identifier</c> in <c>0005</c>, so an unaliased
+    /// join would read as a join to the item's <em>current</em> heading — which is a different fact from
+    /// the one this event recorded, and the difference is invisible until somebody moves an item.</para>
     /// </summary>
     private const string EventFrom = """
         FROM menu_item_event
@@ -125,6 +144,8 @@ public sealed class DapperMenuEventLog : IMenuEventLog
                 ON menu_item.menu_item_identifier = menu_item_event.menu_item_identifier
         INNER JOIN person AS actor
                 ON actor.person_identifier = menu_item_event.actor_person_identifier
+        LEFT JOIN menu_section AS new_section
+               ON new_section.menu_section_identifier = menu_item_event.new_menu_section_identifier
         """;
 
     // Built at type-init (static readonly, not const) so the shared fragments interpolate once.
@@ -202,6 +223,8 @@ public sealed class DapperMenuEventLog : IMenuEventLog
         row.NewPriceAmount,
         row.NewDescription,
         row.NewDisplayOrder,
+        row.NewMenuSectionIdentifier,
+        row.NewMenuSectionName,
         row.ActorPersonIdentifier,
         row.ActorName,
         new DateTimeOffset(DateTime.SpecifyKind(row.OccurredAt, DateTimeKind.Utc)));
@@ -215,6 +238,8 @@ public sealed class DapperMenuEventLog : IMenuEventLog
         decimal? NewPriceAmount,
         string? NewDescription,
         int? NewDisplayOrder,
+        Guid? NewMenuSectionIdentifier,
+        string? NewMenuSectionName,
         Guid ActorPersonIdentifier,
         string ActorName,
         DateTime OccurredAt);

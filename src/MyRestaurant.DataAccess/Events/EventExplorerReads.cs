@@ -98,12 +98,27 @@ public static class EventTypeCatalogue
         OrderEventVocabulary.FulfillmentReversal,
     ];
 
-    /// <summary>The five <c>menu_item_event.event_type</c> values (§7, §8.2).</summary>
+    /// <summary>
+    /// Every <c>menu_item_event.event_type</c> §8.2's vocabulary CHECK admits (§7).
+    ///
+    /// <para><b>This list was wrong for two slices and nothing could tell (F-80).</b> It said "the five
+    /// values" and named five; <c>0004</c> made the true number seven by adding
+    /// <c>description_changed</c> and <c>reordered</c>, and <c>0005</c> makes it eight with
+    /// <c>section_changed</c>. Nothing broke, which is the whole problem: §11.4's explorer never
+    /// <em>refuses</em> an unknown type, it only offers the catalogued ones in a dropdown — so the
+    /// symptom was two verbs an administrator could not filter on, on a page whose purpose is filtering,
+    /// and no gate in the tree had an opinion. The count is gone from this comment for the reason F-77
+    /// removed the last one, and <c>MenuEventVocabularyContractTests</c> now derives the truth from the
+    /// migration that declares it.</para>
+    /// </summary>
     public static IReadOnlyList<string> MenuEventTypes { get; } =
     [
         "created",
         "name_changed",
         "price_changed",
+        "description_changed",
+        "section_changed",
+        "reordered",
         "activated",
         "deactivated",
     ];

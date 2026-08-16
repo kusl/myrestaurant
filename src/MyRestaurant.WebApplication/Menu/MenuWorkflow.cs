@@ -13,10 +13,20 @@ namespace MyRestaurant.WebApplication.Menu;
 /// have a whole send refused for an 86'd item (§6.5.9) or be quoted a price nobody charges any
 /// more.</para>
 ///
-/// <para>One workflow over two write services, because there is one notification. §9 fires
+/// <para>One workflow over three write services, because there is one notification. §9 fires
 /// <see cref="MenuChanged"/> on "a menu item or <c>menu_item_event</c> commit" without distinguishing
 /// which verb caused it, and every subscriber responds the same way: re-read the menu. Splitting this in
 /// two would make it possible to wire an application that announces 86s and not repricings.</para>
+///
+/// <para><b>Only one of <see cref="IMenuSectionAdministration"/>'s five verbs is here, and the count is
+/// the point.</b> The obligation to bring the section writes behind this interface has been carried since
+/// Slice 37 on the stated ground that a workflow verb with no caller is a code path no test can reach
+/// through the interface meant to protect it. <c>0005</c> gives exactly one of them a caller — the
+/// section create page — so exactly one arrives. Rename, describe, reorder and set-active stay on
+/// <see cref="IMenuSectionAdministration"/> until the section editor exists, and the obligation narrows
+/// from five verbs to four rather than closing. It becomes a real defect rather than a latent one the
+/// moment a surface can rename a heading, because §11.1's guest menu now groups by section and a renamed
+/// heading would otherwise stay stale in every open picker until that page happened to reload.</para>
 ///
 /// <para><b>Not every call publishes.</b> A rename to the name it already has, a reprice to the price it
 /// already has, a description equal to the stored one, a move to the position it is already at, and a
@@ -27,15 +37,44 @@ namespace MyRestaurant.WebApplication.Menu;
 public interface IMenuWorkflow
 {
     /// <summary>
-    /// Creates a menu item (§11.4) and announces it. A create always commits, so this always publishes.
+    /// Creates a menu section (§7, §11.4) and announces it when a row was written.
     ///
-    /// <para>The description travels with it and is stored on the row; when it is non-blank the write
-    /// service also appends a <c>description_changed</c> event in the same transaction, because §8.2's
-    /// <c>created</c> carries the name and the price only. That is the write service's business, not this
-    /// file's — one commit, one announcement, whether it wrote one event or two.</para>
+    /// <para><b>Conditional, where <see cref="CreateMenuItemAsync"/> used to be unconditional and no
+    /// longer is.</b> A section create can fail on the <c>citext</c> UNIQUE — a second "Drinks" spelled
+    /// any way at all — and a name collision commits nothing, so announcing it would tell every phone in
+    /// the building to re-query for a heading that does not exist.</para>
+    ///
+    /// <para><b>Why announce at all, when a brand-new section holds no items and §11.1 renders no empty
+    /// headings?</b> Because <c>MenuChanged</c> means "re-read the menu" and nothing else. A workflow that
+    /// decided which writes were worth announcing would be a workflow that has to be edited again the
+    /// moment a surface starts rendering one — which is the argument this file already makes about a
+    /// description, and it was right then.</para>
+    /// </summary>
+    Task<CreateMenuSectionResult> CreateMenuSectionAsync(
+        Guid menuSectionIdentifier,
+        string name,
+        string? description,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates a menu item under a section (§11.4) and announces it when a row was written.
+    ///
+    /// <para><b>This publish became conditional in <c>0005</c>, and that is a behaviour change worth
+    /// naming.</b> A create used either to commit or to throw, so there was no "nothing happened" case;
+    /// since §7 requires every item to be under a heading, naming one that does not exist is now an
+    /// ordinary reported outcome rather than an exception — and an outcome that wrote nothing must
+    /// announce nothing, on the rule this whole file exists to honour.</para>
+    ///
+    /// <para>The section and the description travel with it and are stored on the row; the write service
+    /// appends <c>section_changed</c> always and <c>description_changed</c> when there is one, in the same
+    /// transaction, because §8.2's <c>created</c> carries the name and the price only. That is the write
+    /// service's business, not this file's — one commit, one announcement, whether it wrote two events or
+    /// three.</para>
     /// </summary>
     Task<CreateMenuItemResult> CreateMenuItemAsync(
         Guid menuItemIdentifier,
+        Guid menuSectionIdentifier,
         string name,
         string? description,
         decimal priceAmount,
@@ -96,7 +135,8 @@ public interface IMenuWorkflow
 
 /// <summary>
 /// The only implementation of <see cref="IMenuWorkflow"/>: a thin post-commit shell over
-/// <see cref="IMenuAvailability"/> and <see cref="IMenuAdministration"/>.
+/// <see cref="IMenuAvailability"/>, <see cref="IMenuAdministration"/> and — for its one verb with a
+/// caller — <see cref="IMenuSectionAdministration"/>.
 ///
 /// <para>No metrics. §12's meter list has no menu counter, correctly — the menu changes a handful of
 /// times a service, and the <c>menu_item_event</c> table is a better record of it than a counter would
@@ -107,24 +147,49 @@ public sealed class MenuWorkflow : IMenuWorkflow
 {
     private readonly IMenuAvailability _availability;
     private readonly IMenuAdministration _administration;
+    private readonly IMenuSectionAdministration _sections;
     private readonly IDomainEventBroadcaster _broadcaster;
 
     public MenuWorkflow(
         IMenuAvailability availability,
         IMenuAdministration administration,
+        IMenuSectionAdministration sections,
         IDomainEventBroadcaster broadcaster)
     {
         ArgumentNullException.ThrowIfNull(availability);
         ArgumentNullException.ThrowIfNull(administration);
+        ArgumentNullException.ThrowIfNull(sections);
         ArgumentNullException.ThrowIfNull(broadcaster);
 
         _availability = availability;
         _administration = administration;
+        _sections = sections;
         _broadcaster = broadcaster;
+    }
+
+    public async Task<CreateMenuSectionResult> CreateMenuSectionAsync(
+        Guid menuSectionIdentifier,
+        string name,
+        string? description,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        CreateMenuSectionResult result = await _sections
+            .CreateMenuSectionAsync(
+                menuSectionIdentifier, name, description, actorPersonIdentifier, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (result.Created)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
+
+        return result;
     }
 
     public async Task<CreateMenuItemResult> CreateMenuItemAsync(
         Guid menuItemIdentifier,
+        Guid menuSectionIdentifier,
         string name,
         string? description,
         decimal priceAmount,
@@ -133,13 +198,23 @@ public sealed class MenuWorkflow : IMenuWorkflow
     {
         CreateMenuItemResult result = await _administration
             .CreateMenuItemAsync(
-                menuItemIdentifier, name, description, priceAmount, actorPersonIdentifier, cancellationToken)
+                menuItemIdentifier,
+                menuSectionIdentifier,
+                name,
+                description,
+                priceAmount,
+                actorPersonIdentifier,
+                cancellationToken)
             .ConfigureAwait(false);
 
-        // An unconditional publish, and the only one here: a create either commits or throws, so there
-        // is no "nothing happened" case to guard against. A new item has to reach the open pickers or
-        // nobody can order it until they reload.
-        _broadcaster.Publish(new MenuChanged());
+        // Guarded as of 0005, where this was the one unconditional publish in the file. A create used to
+        // commit or throw; §7's NOT NULL heading makes "that section does not exist" an ordinary outcome
+        // that writes nothing, and announcing it would send every open picker back to the database for a
+        // change that did not happen.
+        if (result.Created)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
 
         return result;
     }

@@ -1,32 +1,49 @@
 # Menu modernization and the handheld contract — staged plan
 
-**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-14, at the close of Slice 39.** This
+**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-16, at the close of Slice 40.** This
 is the execution plan for the first enhancement request the project has received from a person who was
 shown the running application, together with the defect that request arrived beside. It is a working
 document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
 afterwards.
 
-**Where Stage 2 stands, and the boundary correction below has itself been corrected.** Slice 37 landed
-`menu_section`, `menu_section_event`, `MenuSectionDirectory`, `MenuSectionAdministration`, their DI
-registration and twenty integration facts against a real database — and it landed **no surface and no
-change to `menu_item`**. The stage is cut between the two tables rather than between the schema and the
-surfaces, which is not what the correction further down this file proposed. That correction was right about
-the problem and picked the more expensive answer: `menu_item.menu_section_identifier NOT NULL` breaks
-`CreateMenuItem.razor` the moment migration `0003` applies, and `AdministrationJourneys.CreateMenuItemAsync`
-drives that real form in six of the sixteen §16.3 scenarios, so a slice landing both tables has to pull
-three surfaces forward to ship green. Cutting between the tables costs one extra migration script — DbUp
-journals by name, so nothing — and buys a slice that touches nothing existing at all. **The rejected
-nullable-then-tighten alternative is still rejected** and for its original reason: `menu_section_identifier`
-goes straight from non-existent to `NOT NULL` in `0004`, so no reading surface ever sees an item under no
-heading, and no "Uncategorized" state exists for even one slice. What Stage 2 has left is exactly `0004`
-and the three pulled-forward surfaces.
+**~~Where Stage 2 stands~~ — Stage 2 is closed. `0005` landed in Slice 40 with the three surfaces it
+forces.** The boundary moved twice and then the expensive cut arrived exactly as expensive as every
+paragraph in this file predicted: `menu_item.menu_section_identifier uuid NOT NULL REFERENCES
+menu_section`, `section_changed` with its payload column and a fifth named biconditional, a section create
+page, a required picker on the item form, a harness journey, and §16.3's seventeenth scenario — in one
+slice, because there is no version of that migration that is green on its own.
 
-**One obligation is deliberately deferred and is recorded here so it cannot be lost.** The five section
-writes are **not** behind `IMenuWorkflow`, so nothing publishes `MenuChanged` when a section moves. That is
-correct today — no surface reads a section, and a workflow verb with no caller is a code path no test can
-reach through the interface meant to protect it — and it becomes a defect the moment Stage 3's guest menu
-groups by section, because a renamed heading would then stay stale in every open picker until the page
-happened to reload. **Stage 3 brings the workflow verbs in with the surfaces that call them.**
+**Two decisions kept a mandatory column from reaching sixteen files, and they are the transferable part.**
+`OrderTestWorld.AddMenuItemAsync` takes an *optional* section and lazily creates a house heading when none
+is named, so the dozen integration test files that put something on the menu — about ordering, settlement,
+the kitchen, none about headings — compile unchanged and mean what they meant. And
+`AdministrationJourneys.CreateMenuItemAsync` arranges its own heading before opening the form, so the
+**sixteen existing §16.3 scenarios needed no edit at all**. The general rule: when a mandatory argument
+arrives late, give the arrangement helper a default rather than threading the argument through every caller
+that does not care about it.
+
+**`0005` needed no dollar-quoted block, and that is what `0004` bought.** The one CHECK that had to widen
+was `menu_item_event_type_vocabulary`, which `0004` had named, so it was dropped **by name** — two ordinary
+statements, nothing to query, nothing for dbup-core's variable substitution to collide with. F-78 was a
+one-migration problem rather than a recurring one because the previous slice paid for the names.
+
+**The rejected nullable-then-tighten alternative stayed rejected.** The column went from non-existent to
+`NOT NULL` inside one DbUp transaction — added nullable, backfilled, tightened — so no application ever
+observed the nullable window and no reading surface ever acquired an "Uncategorized" code path.
+
+**The deferred obligation narrowed from five verbs to four, and its status changed from latent to live.**
+`CreateMenuSectionAsync` is behind `IMenuWorkflow` as of Slice 40 and publishes `MenuChanged` on a
+committed row, because the section create page is a caller. Rename, describe, reorder and set-active still
+have no surface, so they stay on `IMenuSectionAdministration` and are called by nothing — the rule has not
+changed, and a workflow verb with no caller is still a code path no test can reach through the interface
+meant to protect it.
+
+**What changed is the cost of leaving them.** §11.1's guest menu groups by heading now, so a renamed
+section that announced nothing would leave a stale heading in every open picker until that page happened to
+reload. That is a real defect and not a hypothetical one; it is merely **unreachable**, because no surface
+can rename a heading yet. The section editor is the slice that must bring the four verbs in with it, and
+`MenuWiringTests`' fake throws from all four with a message saying so, so the next person to wire one is
+told rather than left to notice.
 
 **Where Stage 1 stands.** 1a landed in Slice 30 (the vocabulary and the four administration indexes). 1c
 landed in Slice 32 and ahead of 1b (the 375px end-to-end barrier), for the reason F-62 records. **1b closed
@@ -266,10 +283,10 @@ time as a typo for "the first open item". The sentence is gone with the gap it d
 
 ---
 
-## Stage 2 — sections and descriptions: schema and data access
+## ~~Stage 2 — sections and descriptions: schema and data access~~ — **closed, M6 Slice 40**
 
-**The section half landed in M6 Slice 37 (`0003`). Two of the item's three columns landed in M6 Slice 38
-(`0004`). What remains is `menu_item.menu_section_identifier` and the three surfaces it forces (`0005`).**
+**`0003` (Slice 37) the section tables; `0004` (Slice 38) the item's description and position; `0005`
+(Slice 40) the section reference and the three surfaces it forces. Nothing of this stage is outstanding.**
 This is the schema half of the enhancement request. It was written as one stage on its own because every
 decision below is a `CREATE TABLE` or an `ALTER TABLE`, none of it is visible to anybody, and it is the half
 that a surface cannot be written against until it exists.
@@ -406,11 +423,22 @@ no heading is an item nobody decided about — is worth more than the neatness o
 
 ### The migration, in order
 
-**As authored this was one script. It shipped as three.** `0003_menu_sections.sql` (Slice 37) is steps 1
-below; `0004_menu_item_descriptions.sql` (Slice 38) is steps 3 and 6 for the two columns that carry
-defaults; `0005` is steps 2, 4 and 5 plus the section half of step 6. `0001` and `0002` are **not** touched,
-and neither are `0003` and `0004` now that they are applied: DbUp journals by script name, so editing an
-applied script is a change that never runs (F-34's precedent, stated in its own row).
+**As authored this was one script. It shipped as three, and all three have applied.**
+`0003_menu_sections.sql` (Slice 37) is step 1 below; `0004_menu_item_descriptions.sql` (Slice 38) is steps 3
+and 6 for the two columns that carry defaults; `0005_menu_item_sections.sql` (Slice 40) is steps 2, 4 and 5
+plus the section half of step 6. `0001` and `0002` are **not** touched, and neither are `0003`, `0004` or
+`0005` now that they are applied: DbUp journals by script name, so editing an applied script is a change
+that never runs (F-34's precedent, stated in its own row).
+
+**One thing about `0005`'s step 2 is not what this plan specified, and it is a repair rather than a
+deviation.** The seed carries **two** guards, not one. `EXISTS (SELECT 1 FROM menu_item)` is the rule below.
+`NOT EXISTS (SELECT 1 FROM menu_section)` is the one this plan missed: "no surface calls
+`IMenuSectionAdministration`" is not the same claim as "no row exists", and without that guard the INSERT
+would trip `menu_section.name`'s UNIQUE on any database that happened to hold a section called "Menu" — and
+a migration that fails at startup takes the whole application down. The backfill correspondingly targets the
+**first section in display order** rather than the seed's literal identifier, so both paths converge: if the
+seed ran it *is* the first section, and if it did not the orphans go under the earliest heading that
+exists.
 
 1. `CREATE TABLE menu_section`, `CREATE TABLE menu_section_event`, indexes.
 2. Seed **one** section — and only if `menu_item` has rows. A fresh database gets no sections and the
@@ -437,10 +465,10 @@ it is the surprising half: the schema of record grows four columns and two table
 |---|---|
 | ~~`Menu/MenuSectionDirectory.cs`~~ | **new** — `MenuSectionSummary`, `IMenuSectionDirectory`, `DapperMenuSectionDirectory` — **landed, Slice 37** |
 | ~~`Menu/MenuSectionAdministration.cs`~~ | **new** — create / rename / describe / reorder / set-active, one transaction each, `FOR UPDATE` before every comparison — **landed, Slice 37**; `display_order` is assigned by appending rather than supplied, and a rename is compared ordinally though the column is `citext` |
-| `Menu/MenuDirectory.cs` | `MenuItemSummary` gained `Description` and `DisplayOrder` and the reads order by position then name — **landed, Slice 38**. `MenuSectionIdentifier`, `MenuSectionName` and `ListBySectionAsync` wait for `0005` |
-| `Menu/MenuAdministration.cs` | `CreateMenuItemAsync` takes a description; `DescribeMenuItemAsync` and `ReorderMenuItemAsync` added — **landed, Slice 38**. `MoveMenuItemToSectionAsync` and the section argument wait for `0005` |
-| `Menu/MenuEventLog.cs` | `new_description` and `new_display_order` — **landed, Slice 38**. `ListForSectionAsync` and the `UNION ALL` over both logs with a subject discriminator wait for Stage 3, which is the first surface that reads a section's history |
-| `WebApplication/Menu/MenuWorkflow.cs` | a verb per write, `MenuChanged` published only when something actually moved — **the item verbs landed, Slice 38**. The five *section* writes are still not behind `IMenuWorkflow`, which is deliberate and is Stage 3's obligation |
+| ~~`Menu/MenuDirectory.cs`~~ | `MenuItemSummary` gained `Description` and `DisplayOrder` (Slice 38), then `MenuSectionIdentifier`, `MenuSectionName` and `MenuSectionIsActive` with a six-key ordering and an INNER join — **landed, Slice 40**. `ListBySectionAsync` was **not** written: the ordering makes each heading's items contiguous, so a surface groups by walking one list, and a second read would be a verb with no caller |
+| ~~`Menu/MenuAdministration.cs`~~ | `CreateMenuItemAsync` takes a description (Slice 38), then a section, with `MAX + 1` positioning under a lock on the section row and a `MenuSectionNotFound` outcome — **landed, Slice 40**. `MoveMenuItemToSectionAsync` is **deferred to Stage 3** with the item editor that would call it, on the same rule that governs the section verbs |
+| ~~`Menu/MenuEventLog.cs`~~ | `new_description` and `new_display_order` (Slice 38), then `new_menu_section_identifier` with a LEFT join aliased `new_section` — **landed, Slice 40**. The alias is load-bearing: `menu_item` now has its own `menu_section_identifier`, so an unaliased join would read the item's *current* heading rather than the one the event recorded. `ListForSectionAsync` and the `UNION ALL` over both logs wait for Stage 3 |
+| ~~`WebApplication/Menu/MenuWorkflow.cs`~~ | a verb per write, `MenuChanged` published only when something actually moved — the item verbs landed in Slice 38; Slice 40 added the section to the create, **made that publish conditional** (a create can now report a missing heading rather than throw), and brought `CreateMenuSectionAsync` in. Four section verbs remain outside, narrowed from five |
 | `WebApplication/Orders/OrdersServiceCollectionExtensions.cs` | registers the two new services, in the menu group, for the reason recorded there |
 
 Tests that move with it: `MenuDirectoryTests`, `MenuAdministrationTests`, `MenuAvailabilityTests`,
@@ -457,8 +485,22 @@ specification changelog, and the ledger is for findings).
 
 ## Stage 3 — sections and descriptions: the surfaces
 
-**Started out of order, and the guest menu landed first (Slice 39).** The UI/UX half, on the Stage 1
-foundation.
+**Half landed. The guest menu's cards came first (Slice 39) and its headings second (Slice 40); the
+administration side has a create page and no editor.** The UI/UX half, on the Stage 1 foundation.
+
+**What Slice 40 shipped here, ahead of the rest of this stage, because `0005` forced it.** A section
+**create** page at `/administration/menu/sections/new`; a **required picker** on the item form, which
+renders a first-use panel instead of a form when there are no headings, because a required control over an
+empty list is one nobody can satisfy and a validation message that blames a person for a menu that has no
+headings yet; a **Section column** on `/administration/menu` with a *Section hidden* chip; the same fact on
+`ManageMenuItem`; and **§11.1's grouping**, which was always going to be an outer loop around markup that
+did not change, and was.
+
+**What is still outstanding, and it is most of the administration side.** The section **index** and the
+section **editor** with its uncapped event history — which is what four of the five section verbs are
+waiting for, and what `MoveMenuItemToSectionAsync` is waiting for. Until that lands, a heading created with
+a typo can be worked around only by creating another; that is a real rough edge and it is named here rather
+than discovered.
 
 **Why the order changed, and it is a ruling rather than opportunism.** This stage was written to run after
 `0005`, on the reasoning that a guest menu grouped by section needs sections to exist. Slice 39 took the
@@ -474,14 +516,34 @@ twice; under this project's full-file delivery that costs nothing, and F-64's ru
 with the section's own order controls. The flat name-ordered list of every item goes away — it is what a
 menu looks like when the model cannot express a menu.
 
-**`/administration/menu/sections/new` and `/administration/menu/sections/{id}`**, matching the shape
+**Slice 40 took the honest intermediate rather than half of this.** The index gained a *Section* column and
+a *Create section* button; it did not become a list of headings. The destination is unchanged, and the
+reason for stopping short is that a sections-first index needs an editor to open into — a record list whose
+rows link nowhere is a list of dead ends. A column costs nothing to replace later and puts the fact on the
+screen today.
+
+**~~`/administration/menu/sections/new`~~ and `/administration/menu/sections/{id}`**, matching the shape
 `CreateTable`/`ManageTable` and `CreateMenuItem`/`ManageMenuItem` already have: static SSR, one form per
 verb, post/redirect/get with a one-word outcome, and the section's complete uncapped event history at the
-bottom (§11.4 — the complete stored record, never truncated for the administrator).
+bottom (§11.4 — the complete stored record, never truncated for the administrator). **The create page
+landed in Slice 40**; the editor did not, and it is the single highest-value thing left in this stage.
 
-**`/administration/menu/new` and `/{id}`** gain a required section picker, a description `textarea`
+One consequence of the create page shipping alone is worth recording, because it shows up in the harness
+rather than in the application: a section has **no management page to link to**, so its success panel links
+onward to the item form, and `AdministrationJourneys.CreateMenuSectionAsync` recovers the new identifier
+from that form's `<option value>` rather than from a "Manage this…" link the way every other create journey
+does. That is reading the surface rather than reaching past it, and it fails loudly on the day the picker
+stops carrying identifiers — but it is a shape that goes away when the editor exists.
+
+**~~`/administration/menu/new`~~ and `/{id}`** gain a required section picker, a description `textarea`
 (`app.css` already styles one — added in Slice 30 for this), and a position control. Reprice, rename and
-the 86 toggle are unchanged.
+the 86 toggle are unchanged. **The create form landed in Slice 40** with the picker and the first-use panel;
+`ManageMenuItem` shows the heading and cannot yet change it, which is `MoveMenuItemToSectionAsync`'s missing
+caller.
+
+**Inactive sections are offered by the picker and marked** *(hidden from guests)*. §7 hides an inactive
+heading from the **guest**, not from §11.4's administrator, whose job on that page may be stocking next
+week's breakfast menu before switching it on.
 
 ### ~~The guest menu — the part that was actually asked for~~ — **landed, M6 Slice 39, minus the section headings**
 
@@ -518,20 +580,41 @@ concatenated label and the only assertion available was containment — which is
 column shipped with nothing behind it. A card has an element per fact. `AdministrationJourneys.CreateMenuItemAsync`
 takes an optional description so a scenario can arrange an item that has one.
 
-**What is left of the guest menu:** the section headings, a section's own description under its heading, and
-the grouping — all three of which need `0005`, and all three of which are an outer loop around markup that
-now exists.
+**~~What is left of the guest menu:~~ the headings and the grouping landed in Slice 40.** `.order-menu` is
+wrapped in a `.order-menu-section` per heading, the `<ul>` points at its own `<h4>` with
+`aria-labelledby`, and the grouping walks the directory's ordering once rather than re-deciding it with a
+`GroupBy`. No new breakpoint — a heading is a block above a grid that was already intrinsic.
+
+**A section's own description under its heading is still outstanding**, and it is the one piece of this
+paragraph that did not land: the surface groups from `MenuItemSummary`, which carries the heading's name and
+not its description, so showing it needs either a second read or a widened record. Deferred rather than
+guessed at.
+
+**§7's asymmetry is now implemented and is the thing to be careful about here.** An inactive *section* is
+not rendered to the guest at all; an inactive *item* is rendered and marked. The filter is on the surface
+rather than in the directory, because §11.4's administrator must see every heading.
 
 **The kitchen 86 panel** groups by section, for the reason the guest menu does: a cook looking for the
 salmon looks under the heading it is on.
 
-**One new §16.3 scenario**: create a section, create an item in it with a description, and read both back
-from the guest surface. **Still outstanding after Slice 39**, and deliberately: the harness can now read a
-card and a detail panel, but a scenario asserting a *section* heading needs `0005`, and the sixteen existing
-scenarios were kept byte-identical apart from the one line inside `StageAsync` that chooses an item — which
-is the smallest edit that could carry the picker's rewrite. Numbered 17, appended rather than inserted, because the harness names scenarios by
-number in a great many places. It was numbered 16 when this was written; Slice 32's handheld barrier took
-that number, which is what appending costs and is cheaper than renumbering sixteen of them.
+**~~One new §16.3 scenario~~ — scenario 17 landed in Slice 40**: two headings created in an order that is
+not alphabetical, a described item under each, and a guest reading them back grouped, in order, with each
+description on its card and in its detail panel. A third item under an existing heading then joins it rather
+than starting a new grouping, and lands at the end of it, which is `MAX + 1`-within-section proven through a
+browser. **It is the first scenario to read `menu_item.description` end to end** — `0004` shipped the column
+and Slice 39 built the card that shows it, and nothing had ever asserted that the sentence arrives.
+
+Numbered 17, appended rather than inserted, because the harness names scenarios by number in a great many
+places. It was numbered 16 when this was written; Slice 32's handheld barrier took that number, which is
+what appending costs and is cheaper than renumbering sixteen of them.
+
+**One assertion was cut from it during the slice and the cut is recorded rather than quietly made.** The
+scenario was drafted to deactivate a heading and watch it disappear from the guest's menu — §7's asymmetry,
+and the one thing about it no unit test can see. That needs `SetMenuSectionActiveAsync` to have a surface,
+which is the section editor this slice deliberately did not ship. Asserting it would have meant either a
+harness reaching past the UI, which §16.3 refuses, or a verb wired for a test, which is worse. The rule is
+covered at the data layer by `MenuDirectoryTests` and is **unverified end to end**; it lands with the
+editor.
 
 ---
 

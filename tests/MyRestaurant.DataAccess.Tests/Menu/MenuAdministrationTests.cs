@@ -41,6 +41,14 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
 
     private Guid _administratorIdentifier;
 
+    /// <summary>
+    /// The heading every create in this class files its item under (§7, <c>0005</c>). Made once per test
+    /// in <see cref="InitializeAsync"/> rather than per fact, because an item's section is a mandatory
+    /// argument and almost nothing here is <em>about</em> sections — the three facts that are make their
+    /// own.
+    /// </summary>
+    private Guid _sectionIdentifier;
+
     public MenuAdministrationTests(PostgreSqlFixture fixture) => _fixture = fixture;
 
     public async ValueTask InitializeAsync()
@@ -63,6 +71,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         await _world.TruncateAsync(cancellationToken);
 
         _administratorIdentifier = await _world.AddPersonAsync("adam", "Adam", cancellationToken);
+        _sectionIdentifier = await _world.AddMenuSectionAsync("Mains", cancellationToken);
     }
 
     public async ValueTask DisposeAsync()
@@ -82,7 +91,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         Guid identifier = _identifiers.Create();
 
         CreateMenuItemResult result = await Administration().CreateMenuItemAsync(
-            identifier, "Salmon", description: null, 18.00m, _administratorIdentifier, cancellationToken);
+            identifier, _sectionIdentifier, "Salmon", description: null, 18.00m, _administratorIdentifier, cancellationToken);
 
         Assert.Equal(identifier, result.MenuItemIdentifier);
         Assert.Equal("Salmon", result.Name);
@@ -97,11 +106,143 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         Assert.True(stored.IsActive);
         Assert.Equal(_clock.UtcNow, stored.CreatedAt);
 
-        // §8.2's CHECK requires BOTH payload columns for 'created'.
-        Assert.Equal(1, await World().CountAsync(CountEventsSql, cancellationToken));
-        Assert.Equal("created", await EventTypeAsync(identifier, cancellationToken));
-        Assert.Equal("Salmon", await ScalarAsync<string>("new_name", identifier, cancellationToken));
-        Assert.Equal(18.00m, await ScalarAsync<decimal>("new_price_amount", identifier, cancellationToken));
+        // 0005's join, read back: the item is under the heading it was created in.
+        Assert.Equal(_sectionIdentifier, stored.MenuSectionIdentifier);
+        Assert.Equal("Mains", stored.MenuSectionName);
+        Assert.Equal("Mains", result.MenuSectionName);
+
+        // TWO events, and this is the count 0005 changed. §8.2 keeps 'created' at the name and the price,
+        // so the heading is recorded by a 'section_changed' beside it — one transaction, two rows. The
+        // read below is newest-first with the UUIDv7 tiebreak, so it is the section event.
+        Assert.Equal(2, await World().CountAsync(CountEventsSql, cancellationToken));
+        Assert.Equal("section_changed", await EventTypeAsync(identifier, cancellationToken));
+
+        Guid? loggedSection = await ScalarAsync<Guid?>(
+            "new_menu_section_identifier", identifier, cancellationToken);
+        Assert.Equal(_sectionIdentifier, loggedSection);
+
+        // And the 'created' event still carries exactly what §8.2's CHECK requires of it. Read by type
+        // rather than by recency, because the newest event is now the section one — a fact that used to
+        // be reachable through EventTypeAsync and no longer is.
+        string? createdName = await World().ScalarAsync<string>(
+            """
+            SELECT new_name
+            FROM menu_item_event
+            WHERE menu_item_identifier = @MenuItemIdentifier AND event_type = 'created';
+            """,
+            new { MenuItemIdentifier = identifier },
+            cancellationToken);
+
+        decimal? createdPrice = await World().ScalarAsync<decimal?>(
+            """
+            SELECT new_price_amount
+            FROM menu_item_event
+            WHERE menu_item_identifier = @MenuItemIdentifier AND event_type = 'created';
+            """,
+            new { MenuItemIdentifier = identifier },
+            cancellationToken);
+
+        Assert.Equal("Salmon", createdName);
+        Assert.Equal(18.00m, createdPrice);
+    }
+
+    /// <summary>
+    /// §7's heading is mandatory, and a section that does not exist is <em>reported</em> rather than
+    /// raised. Without this the caller would meet PostgreSQL error 23503 — a foreign-key violation naming
+    /// a constraint — which a surface cannot turn into a sentence about which field was wrong.
+    ///
+    /// <para>The other half is that nothing is written. The create takes the section row <c>FOR
+    /// UPDATE</c> before it inserts anything, so a missing heading costs one failed lookup rather than a
+    /// half-built item rolled back.</para>
+    /// </summary>
+    [Fact]
+    public async Task CreatingUnderASectionThatDoesNotExistWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid identifier = _identifiers.Create();
+
+        CreateMenuItemResult result = await Administration().CreateMenuItemAsync(
+            identifier,
+            _identifiers.Create(),
+            "Salmon",
+            description: null,
+            18.00m,
+            _administratorIdentifier,
+            cancellationToken);
+
+        Assert.Equal(CreateMenuItemOutcome.MenuSectionNotFound, result.Outcome);
+        Assert.False(result.Created);
+        Assert.Null(result.Name);
+        Assert.Null(result.MenuSectionName);
+        Assert.Null(result.DisplayOrder);
+
+        Assert.Equal(0, await World().CountAsync(CountItemsSql, cancellationToken));
+        Assert.Equal(0, await World().CountAsync(CountEventsSql, cancellationToken));
+        Assert.Null(await Directory().GetAsync(identifier, cancellationToken));
+    }
+
+    /// <summary>
+    /// An item is appended to the end of its own section, which is <c>0005</c> reversing <c>0004</c>'s
+    /// rule — and the reason the rule could change is that "the end of the menu" became a defined place
+    /// the moment an item had a heading.
+    ///
+    /// <para><b>The second section is what makes this an assertion rather than a counter.</b> Positions
+    /// are <em>within</em> a section, so a first item under a second heading must be at 0 again. An
+    /// implementation that appended a menu-wide <c>MAX + 1</c> — the obvious wrong answer, and the one
+    /// <c>0004</c> explicitly declined — would put it at 2 and pass every other fact in this file.</para>
+    /// </summary>
+    [Fact]
+    public async Task ItemsAreAppendedToTheEndOfTheirOwnSection()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid puddings = await World().AddMenuSectionAsync("Puddings", cancellationToken, displayOrder: 1);
+
+        CreateMenuItemResult first = await Administration().CreateMenuItemAsync(
+            _identifiers.Create(), _sectionIdentifier, "Soup", null, 4.50m,
+            _administratorIdentifier, cancellationToken);
+        CreateMenuItemResult second = await Administration().CreateMenuItemAsync(
+            _identifiers.Create(), _sectionIdentifier, "Pie", null, 9.00m,
+            _administratorIdentifier, cancellationToken);
+        CreateMenuItemResult elsewhere = await Administration().CreateMenuItemAsync(
+            _identifiers.Create(), puddings, "Trifle", null, 5.00m,
+            _administratorIdentifier, cancellationToken);
+
+        Assert.Equal(0, first.DisplayOrder);
+        Assert.Equal(1, second.DisplayOrder);
+        Assert.Equal(0, elsewhere.DisplayOrder);
+
+        // Echoed from the result and read back from the row, because the two could disagree: the
+        // position is assigned inside the transaction and returned without a second query.
+        MenuItemSummary? storedSecond = await Directory().GetAsync(second.MenuItemIdentifier, cancellationToken);
+        Assert.NotNull(storedSecond);
+        Assert.Equal(1, storedSecond.DisplayOrder);
+    }
+
+    /// <summary>
+    /// <c>MAX + 1</c> rather than <c>COUNT(*)</c>, which is the same number until something moves and then
+    /// never is again. An item at position 5 in a section of one makes a count-based implementation hand
+    /// out 1 — colliding with nothing here, but colliding with a real position on any menu somebody has
+    /// reordered. The rule is stated in <c>DapperMenuSectionAdministration</c> and this is the item-side
+    /// assertion of it.
+    /// </summary>
+    [Fact]
+    public async Task AppendingUsesTheHighestPositionRatherThanTheCount()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        await World().AddMenuItemAsync(
+            "Soup", 4.50m, cancellationToken, displayOrder: 5, menuSectionIdentifier: _sectionIdentifier);
+
+        CreateMenuItemResult appended = await Administration().CreateMenuItemAsync(
+            _identifiers.Create(), _sectionIdentifier, "Pie", null, 9.00m,
+            _administratorIdentifier, cancellationToken);
+
+        Assert.Equal(6, appended.DisplayOrder);
     }
 
     [Fact]
@@ -112,7 +253,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
 
         Guid identifier = _identifiers.Create();
         await Administration().CreateMenuItemAsync(
-            identifier, "Salmon", description: null, 18.00m, _administratorIdentifier, cancellationToken);
+            identifier, _sectionIdentifier, "Salmon", description: null, 18.00m, _administratorIdentifier, cancellationToken);
 
         Assert.Equal(
             _administratorIdentifier,
@@ -137,7 +278,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         Guid identifier = _identifiers.Create();
 
         CreateMenuItemResult result = await Administration().CreateMenuItemAsync(
-            identifier, "Soup", description: null, 4.567m, _administratorIdentifier, cancellationToken);
+            identifier, _sectionIdentifier, "Soup", description: null, 4.567m, _administratorIdentifier, cancellationToken);
 
         Assert.Equal(4.57m, result.PriceAmount);
 
@@ -156,7 +297,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         Guid identifier = _identifiers.Create();
 
         CreateMenuItemResult result = await Administration().CreateMenuItemAsync(
-            identifier, "  Soup  ", description: null, 4.50m, _administratorIdentifier, cancellationToken);
+            identifier, _sectionIdentifier, "  Soup  ", description: null, 4.50m, _administratorIdentifier, cancellationToken);
 
         Assert.Equal("Soup", result.Name);
         Assert.Equal("Soup", await ScalarAsync<string>("new_name", identifier, cancellationToken));
@@ -174,9 +315,9 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
 
         await Administration().CreateMenuItemAsync(
-            _identifiers.Create(), "Soup", description: null, 4.50m, _administratorIdentifier, cancellationToken);
+            _identifiers.Create(), _sectionIdentifier, "Soup", description: null, 4.50m, _administratorIdentifier, cancellationToken);
         await Administration().CreateMenuItemAsync(
-            _identifiers.Create(), "Soup", description: null, 5.50m, _administratorIdentifier, cancellationToken);
+            _identifiers.Create(), _sectionIdentifier, "Soup", description: null, 5.50m, _administratorIdentifier, cancellationToken);
 
         Assert.Equal(2, await World().CountAsync(CountItemsSql, cancellationToken));
         Assert.Equal(2, (await Directory().ListAsync(cancellationToken)).Count);
@@ -397,7 +538,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
 
         Guid identifier = _identifiers.Create();
         await Administration().CreateMenuItemAsync(
-            identifier, "Soup", description: null, 4.50m, _administratorIdentifier, cancellationToken);
+            identifier, _sectionIdentifier, "Soup", description: null, 4.50m, _administratorIdentifier, cancellationToken);
 
         _clock.UtcNow = _clock.UtcNow.AddMinutes(5);
         await Administration().RenameMenuItemAsync(
@@ -411,7 +552,10 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         await Availability().SetActiveAsync(
             identifier, isActive: false, _administratorIdentifier, cancellationToken);
 
-        Assert.Equal(4, await World().CountAsync(CountEventsSql, cancellationToken));
+        // Five, not four: the create contributes 'created' AND 'section_changed' as of 0005, and then a
+        // rename, a reprice and a deactivation follow. The number is asserted rather than the shape
+        // because the point of this fact is that BOTH write services append to one log.
+        Assert.Equal(5, await World().CountAsync(CountEventsSql, cancellationToken));
 
         string? latest = await World().ScalarAsync<string>(
             """
@@ -433,7 +577,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
     /// backwards by widening <c>created</c> instead, which the migration refuses for a stated reason.
     /// </summary>
     [Fact]
-    public async Task CreatingWithADescriptionWritesTwoEventsInOneTransaction()
+    public async Task CreatingWithADescriptionWritesThreeEventsInOneTransaction()
     {
         SkipIfNoContainer();
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -441,7 +585,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         Guid identifier = _identifiers.Create();
 
         CreateMenuItemResult result = await Administration().CreateMenuItemAsync(
-            identifier,
+            identifier, _sectionIdentifier,
             "Salmon",
             "  Pan seared, with greens  ",
             18.00m,
@@ -456,10 +600,15 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         Assert.NotNull(stored);
         Assert.Equal("Pan seared, with greens", stored.Description);
 
-        // 0004's ruling: an item is created at position 0, not appended to a menu-wide MAX + 1.
+        // The first item under this heading, so position 0 — which is 0005's append rule agreeing with
+        // 0004's flat rule on the one case where they cannot disagree.
         Assert.Equal(0, stored.DisplayOrder);
 
-        Assert.Equal(2, await World().CountAsync(CountEventsSql, cancellationToken));
+        // THREE events now: 'created', then 'section_changed', then 'description_changed'. §8.2 keeps
+        // 'created' at the name and the price, so both of the other two facts are recorded beside it —
+        // one transaction, three rows, and the log reads "Created as “Salmon” at 18.00 / Filed under
+        // Mains / Description set".
+        Assert.Equal(3, await World().CountAsync(CountEventsSql, cancellationToken));
 
         // Newest-first with the UUIDv7 tiebreak, so the description event is the one this reads.
         Assert.Equal("description_changed", await EventTypeAsync(identifier, cancellationToken));
@@ -474,7 +623,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
     /// append-only log of "somebody left a field empty" is noise, and §11.4's history is meant to be read.
     /// </summary>
     [Fact]
-    public async Task CreatingWithABlankDescriptionWritesOneEventAndStoresTheEmptyString()
+    public async Task CreatingWithABlankDescriptionWritesNoDescriptionEventAndStoresTheEmptyString()
     {
         SkipIfNoContainer();
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -482,7 +631,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         Guid identifier = _identifiers.Create();
 
         CreateMenuItemResult result = await Administration().CreateMenuItemAsync(
-            identifier, "Tea", "   ", 2.00m, _administratorIdentifier, cancellationToken);
+            identifier, _sectionIdentifier, "Tea", "   ", 2.00m, _administratorIdentifier, cancellationToken);
 
         Assert.Equal(string.Empty, result.Description);
         Assert.False(result.DescriptionWasSet);
@@ -491,8 +640,20 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
         Assert.NotNull(stored);
         Assert.Equal(string.Empty, stored.Description);
 
-        Assert.Equal(1, await World().CountAsync(CountEventsSql, cancellationToken));
-        Assert.Equal("created", await EventTypeAsync(identifier, cancellationToken));
+        // Two rather than three: the heading is mandatory and always logged, the description is optional
+        // and a blank one is not an event at all. That difference is the whole content of this fact.
+        Assert.Equal(2, await World().CountAsync(CountEventsSql, cancellationToken));
+        Assert.Equal("section_changed", await EventTypeAsync(identifier, cancellationToken));
+
+        Assert.Equal(
+            0,
+            await World().CountAsync(
+                """
+                SELECT count(*)::int
+                FROM menu_item_event
+                WHERE event_type = 'description_changed';
+                """,
+                cancellationToken));
     }
 
     /// <summary>
@@ -545,7 +706,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
 
         Guid identifier = _identifiers.Create();
         await Administration().CreateMenuItemAsync(
-            identifier, "Soup", "Lentil", 4.50m, _administratorIdentifier, cancellationToken);
+            identifier, _sectionIdentifier, "Soup", "Lentil", 4.50m, _administratorIdentifier, cancellationToken);
 
         _clock.UtcNow = _clock.UtcNow.AddMinutes(5);
 
@@ -578,7 +739,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
 
         Guid identifier = _identifiers.Create();
         await Administration().CreateMenuItemAsync(
-            identifier, "Soup", "Lentil", 4.50m, _administratorIdentifier, cancellationToken);
+            identifier, _sectionIdentifier, "Soup", "Lentil", 4.50m, _administratorIdentifier, cancellationToken);
 
         int eventsAfterCreate = await World().CountAsync(CountEventsSql, cancellationToken);
 
@@ -690,7 +851,7 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
     {
         Guid identifier = _identifiers.Create();
         await Administration().CreateMenuItemAsync(
-            identifier, name, description: null, price, _administratorIdentifier, cancellationToken);
+            identifier, _sectionIdentifier, name, description: null, price, _administratorIdentifier, cancellationToken);
 
         return identifier;
     }

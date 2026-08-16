@@ -122,6 +122,23 @@ internal static class AdministrationJourneys
     private const string MenuPath = "/administration/menu";
     private const string PeoplePath = "/administration/people";
 
+    private const string MenuSectionsPath = MenuPath + "/sections";
+
+    /// <summary>
+    /// The heading <see cref="CreateMenuItemAsync"/> files an item under when a scenario does not say.
+    ///
+    /// <para><b>A default exists so that <c>0005</c> reached one file instead of sixteen.</b> §7 makes an
+    /// item's section mandatory, and six of the §16.3 scenarios put something on the menu without caring
+    /// what it is filed under — they are about ordering, settlement and reachability. Threading a section
+    /// through every one of them would be sixteen edits to say a thing none of them means. So the journey
+    /// arranges a heading on their behalf, exactly as it has always arranged the form's antiforgery token
+    /// and its redirect.</para>
+    ///
+    /// <para>Named for what it is rather than something plausible like "Mains": a scenario reading this
+    /// word off a surface should not be able to mistake it for a decision the scenario made.</para>
+    /// </summary>
+    internal const string DefaultMenuSectionName = "E2E Section";
+
     /// <summary>
     /// The element that carries the one-time temporary password on the create-staff success panel. A
     /// class of its own as of M6 Slice 12: the element also carries <c>.totp-secret</c>, which it
@@ -251,6 +268,132 @@ internal static class AdministrationJourneys
     }
 
     /// <summary>
+    /// Puts a heading on the menu through <c>/administration/menu/sections/new</c> (§7, §11.4) and
+    /// returns its identifier, read back off the section picker the item form renders.
+    ///
+    /// <para><b>The identifier is recovered differently from every other create journey here, and the
+    /// difference is a fact about the surface rather than a shortcut.</b>
+    /// <see cref="CreateTableAsync"/> and <see cref="CreateMenuItemAsync"/> read theirs out of a
+    /// "Manage this…" link, because both have a management page to link to. A section does not yet — the
+    /// section editor is Stage 3 — so its success panel links onward to the item form instead, and the
+    /// only place the identifier is exposed is that form's <c>&lt;option value&gt;</c>. Reading it there
+    /// is reading the surface rather than reaching past it, which is what §16.3 asks for; it also means
+    /// this journey fails loudly on the day the picker stops carrying identifiers.</para>
+    ///
+    /// <para>Throws when the name is already taken. <see cref="EnsureMenuSectionAsync"/> is the idempotent
+    /// one — a scenario that means "create this" wants to hear that it did not.</para>
+    /// </summary>
+    internal static async Task<Guid> CreateMenuSectionAsync(
+        IPage page,
+        string name,
+        string? description = null)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync($"{MenuSectionsPath}/new");
+
+        await page.FillAsync("#name", name);
+
+        // Filled unconditionally, including with the empty string, for the reason CreateMenuItemAsync
+        // fills the description that way: a form reached twice in one scenario keeps what was typed the
+        // first time, so skipping the fill would silently attach the previous section's description.
+        await page.FillAsync("#description", description ?? string.Empty);
+
+        await page.ClickAsync("button:has-text('Create section')");
+
+        ILocator confirmation = page.Locator("p.status-success").First;
+
+        try
+        {
+            await confirmation.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                $"Creating the menu section '{name}' did not reach the success panel. "
+                + await DescribeFailureAsync(page),
+                exception);
+        }
+
+        Guid? identifier = await FindMenuSectionAsync(page, name);
+
+        return identifier
+            ?? throw new InvalidOperationException(
+                $"The section '{name}' reported success and is not offered by the item form's picker.");
+    }
+
+    /// <summary>
+    /// Makes sure a heading with this name exists, and returns its identifier — creating it when it does
+    /// not and finding it when it does.
+    ///
+    /// <para><b>Idempotent by looking first rather than by swallowing a failure.</b> The alternative —
+    /// submit, and treat "that name is taken" as success — would also pass on a form that reported the
+    /// wrong error, and §7's names are <c>citext</c>-unique, so "taken" is a real outcome this project
+    /// asserts elsewhere rather than something to catch and discard.</para>
+    /// </summary>
+    internal static async Task<Guid> EnsureMenuSectionAsync(IPage page, string name)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        return await FindMenuSectionAsync(page, name)
+            ?? await CreateMenuSectionAsync(page, name);
+    }
+
+    /// <summary>
+    /// The identifier of the section with this name, or <c>null</c> when the item form offers none —
+    /// which is also the answer on a fresh instance, where that form renders its "give the menu a
+    /// heading first" panel and has no picker at all.
+    ///
+    /// <para>Matched on the option's text with the surface's own inactive suffix allowed for, and
+    /// compared case-insensitively because <c>menu_section.name</c> is <c>citext</c>: "drinks" and
+    /// "Drinks" are one heading, so a harness that treated them as two would arrange a duplicate the
+    /// database is about to refuse.</para>
+    /// </summary>
+    private static async Task<Guid?> FindMenuSectionAsync(IPage page, string name)
+    {
+        await page.GotoAsync($"{MenuPath}/new");
+
+        ILocator options = page.Locator("#menu-section option");
+        int count = await options.CountAsync();
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator option = options.Nth(index);
+            string label = (await option.InnerTextAsync()).Trim();
+
+            if (label.EndsWith(InactiveSectionSuffix, StringComparison.Ordinal))
+            {
+                label = label[..^InactiveSectionSuffix.Length].TrimEnd();
+            }
+
+            if (!string.Equals(label, name, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string? value = await option.GetAttributeAsync("value");
+
+            if (!Guid.TryParse(value, out Guid identifier))
+            {
+                throw new InvalidOperationException(
+                    $"The section option for '{name}' carries the value '{value}', which is not an"
+                    + " identifier. §16.3 chooses a section by identifier because a label is copy.");
+            }
+
+            return identifier;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// What <c>CreateMenuItem.razor</c> appends to an inactive section's option label (§7 — an inactive
+    /// heading is hidden from the guest and offered to the administrator). Declared once here because two
+    /// methods above strip it, and a second spelling of it would make one of them silently stop matching.
+    /// </summary>
+    private const string InactiveSectionSuffix = "(hidden from guests)";
+
+    /// <summary>
     /// Puts an item on the menu through <c>/administration/menu/new</c> (§7) and returns it, identifier
     /// included — read back out of the "Manage this item" link the same way
     /// <see cref="CreateTableAsync"/> recovers a table's, because the identifier is minted server-side
@@ -269,16 +412,32 @@ internal static class AdministrationJourneys
     /// <c>""</c> and writes no <c>description_changed</c> event at all, which is the no-op rule rather than
     /// a special case — so "created without a description" is a real arrangement and not merely the absence
     /// of one.</para>
+    ///
+    /// <para><b>The section is arranged before the form is opened, and that is what <c>0005</c> costs a
+    /// caller.</b> §7 requires every item to be under a heading, and the create form renders a first-use
+    /// panel instead of a form when there are none — so a journey that went straight to
+    /// <c>/administration/menu/new</c> on a fresh instance would find no <c>#name</c> field and fail with
+    /// a timeout naming the wrong thing. <see cref="EnsureMenuSectionAsync"/> runs first, tolerating a
+    /// name already taken, so this stays callable any number of times in one scenario.</para>
     /// </summary>
     internal static async Task<MenuItemOnTheMenu> CreateMenuItemAsync(
         IPage page,
         string name,
         decimal priceAmount,
-        string? description = null)
+        string? description = null,
+        string sectionName = DefaultMenuSectionName)
     {
         ArgumentNullException.ThrowIfNull(page);
 
+        Guid sectionIdentifier = await EnsureMenuSectionAsync(page, sectionName);
+
         await page.GotoAsync($"{MenuPath}/new");
+
+        // Selected by VALUE rather than by label, because the label an inactive section renders carries
+        // §7's "(hidden from guests)" suffix — so matching on the visible text would make this journey
+        // depend on a surface's copy, which is the same mistake choosing a guest menu item by its
+        // formatted price would be.
+        await page.SelectOptionAsync("#menu-section", sectionIdentifier.ToString("D"));
 
         await page.FillAsync("#name", name);
 

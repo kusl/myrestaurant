@@ -79,17 +79,36 @@ internal sealed class OrderTestWorld
         """;
 
     /// <summary>
-    /// <c>description</c> and <c>display_order</c> are named rather than left to their <c>0004</c>
-    /// defaults, so that a caller who wants either can have it and every row this class writes is
-    /// explicit about both. <c>menu_section_identifier</c> is absent because the column is: it lands in
-    /// <c>0005</c>, and that is the migration that makes this INSERT the file deciding whether every
-    /// ordering integration test compiles.
+    /// Every column is named, including <c>menu_section_identifier</c> as of <c>0005</c> — which is the
+    /// migration this file was flagged for two slices ago, on the ground that it is the INSERT deciding
+    /// whether every ordering integration test compiles.
+    ///
+    /// <para><b>It did not, and the reason is the whole design of <see cref="AddMenuItemAsync"/>.</b> The
+    /// reference is <c>NOT NULL</c>, so a naive change here would have meant editing every one of the
+    /// dozen test files that put something on the menu — none of which is about sections, and several of
+    /// which are about ordering, settlement or the kitchen. Instead the section is an <em>optional</em>
+    /// argument that defaults to a lazily created house section, so an existing caller compiles and means
+    /// exactly what it meant before: "an item exists". A test that cares which heading passes one.</para>
     /// </summary>
     private const string InsertMenuItemSql = """
         INSERT INTO menu_item (
-            menu_item_identifier, name, description, price_amount, display_order, is_active, created_at)
+            menu_item_identifier, menu_section_identifier, name, description,
+            price_amount, display_order, is_active, created_at)
         VALUES (
-            @MenuItemIdentifier, @Name, @Description, @PriceAmount, @DisplayOrder, @IsActive, @CreatedAt);
+            @MenuItemIdentifier, @MenuSectionIdentifier, @Name, @Description,
+            @PriceAmount, @DisplayOrder, @IsActive, @CreatedAt);
+        """;
+
+    /// <summary>
+    /// A section, written directly, on the same terms as every other INSERT in this class: what is being
+    /// arranged is a row, and driving <see cref="DataAccess.Menu.DapperMenuSectionAdministration"/> to get
+    /// one would put the thing under test into the arrangement of tests that are not about it.
+    /// </summary>
+    private const string InsertMenuSectionSql = """
+        INSERT INTO menu_section (
+            menu_section_identifier, name, description, display_order, is_active, created_at)
+        VALUES (
+            @MenuSectionIdentifier, @Name, @Description, @DisplayOrder, @IsActive, @CreatedAt);
         """;
 
     private const string InsertVisibilityEventSql = """
@@ -111,12 +130,12 @@ internal sealed class OrderTestWorld
         """;
 
     /// <summary>
-    /// The two <c>0004</c> payload columns are omitted rather than passed as NULL, which is the same
-    /// thing to PostgreSQL and a smaller surface here: no test in this project writes a
-    /// <c>description_changed</c> or a <c>reordered</c> event by hand — the ones that care about those
-    /// verbs drive <c>DapperMenuAdministration</c>, because the pair of rows is the fact worth asserting.
-    /// The casts on the two columns that remain are load-bearing: Dapper sends an untyped parameter for a
-    /// null, and §8.2's paired CHECKs are evaluated against the column's type.
+    /// The payload columns <c>0004</c> and <c>0005</c> added are omitted rather than passed as NULL,
+    /// which is the same thing to PostgreSQL and a smaller surface here: no test in this project writes a
+    /// <c>description_changed</c>, a <c>reordered</c> or a <c>section_changed</c> event by hand — the
+    /// ones that care about those verbs drive <c>DapperMenuAdministration</c>, because the pair of rows is
+    /// the fact worth asserting. The casts on the two columns that remain are load-bearing: Dapper sends
+    /// an untyped parameter for a null, and §8.2's paired CHECKs are evaluated against the column's type.
     /// </summary>
     private const string InsertMenuItemEventSql = """
         INSERT INTO menu_item_event (
@@ -138,6 +157,13 @@ internal sealed class OrderTestWorld
     private readonly FixedClock _clock;
     private readonly IIdentifierFactory _identifierFactory;
 
+    /// <summary>
+    /// The house section, minted on first use and forgotten by <see cref="TruncateAsync"/>. Held per
+    /// instance rather than statically because every fixture builds its own world against a database it
+    /// has just truncated, and a static identifier would name a row that no longer exists.
+    /// </summary>
+    private Guid? _defaultMenuSectionIdentifier;
+
     public OrderTestWorld(
         IDatabaseConnectionFactory connectionFactory,
         FixedClock clock,
@@ -149,7 +175,44 @@ internal sealed class OrderTestWorld
     }
 
     public async Task TruncateAsync(CancellationToken cancellationToken)
-        => await ExecuteAsync(TruncateSql, null, cancellationToken);
+    {
+        await ExecuteAsync(TruncateSql, null, cancellationToken);
+
+        // The house section is gone with the table, so the memory of it has to go too. Forgetting this
+        // is the failure where a second test in the same class inserts an item referencing a section
+        // that was truncated away, and PostgreSQL answers with a foreign-key violation two layers from
+        // the arrangement that caused it.
+        _defaultMenuSectionIdentifier = null;
+    }
+
+    /// <summary>
+    /// Puts a heading on the menu (§7) and returns its identifier. Callers that care which section an
+    /// item is under create one and pass it; callers that do not get the house section
+    /// <see cref="AddMenuItemAsync"/> makes for them.
+    /// </summary>
+    public async Task<Guid> AddMenuSectionAsync(
+        string name,
+        CancellationToken cancellationToken,
+        string description = "",
+        int displayOrder = 0,
+        bool isActive = true)
+    {
+        Guid menuSectionIdentifier = _identifierFactory.Create();
+        await ExecuteAsync(
+            InsertMenuSectionSql,
+            new
+            {
+                MenuSectionIdentifier = menuSectionIdentifier,
+                Name = name,
+                Description = description,
+                DisplayOrder = displayOrder,
+                IsActive = isActive,
+                CreatedAt = _clock.UtcNow,
+            },
+            cancellationToken);
+
+        return menuSectionIdentifier;
+    }
 
     public async Task<Guid> AddPersonAsync(
         string username,
@@ -249,20 +312,35 @@ internal sealed class OrderTestWorld
     /// four test classes arrange a menu they have no opinion about, and making them all restate <c>""</c>
     /// and <c>0</c> would be eleven edits that assert nothing.</para>
     /// </summary>
+    /// <summary>
+    /// Puts an item on the menu (§7). <paramref name="menuSectionIdentifier"/> is optional, and that
+    /// optionality is what kept <c>0005</c> from reaching a dozen test files that have nothing to do with
+    /// menu sections: omitting it files the item under a house section this world creates once and
+    /// reuses, so "an item exists" stays the single-line arrangement it has always been.
+    ///
+    /// <para>The house section is created lazily rather than in <see cref="TruncateAsync"/>, because a
+    /// fixture that never touches the menu should not carry a row it did not ask for — several classes
+    /// here count what is in the database.</para>
+    /// </summary>
     public async Task<Guid> AddMenuItemAsync(
         string name,
         decimal priceAmount,
         CancellationToken cancellationToken,
         bool isActive = true,
         string description = "",
-        int displayOrder = 0)
+        int displayOrder = 0,
+        Guid? menuSectionIdentifier = null)
     {
+        Guid section = menuSectionIdentifier
+            ?? await EnsureDefaultMenuSectionAsync(cancellationToken);
+
         Guid menuItemIdentifier = _identifierFactory.Create();
         await ExecuteAsync(
             InsertMenuItemSql,
             new
             {
                 MenuItemIdentifier = menuItemIdentifier,
+                MenuSectionIdentifier = section,
                 Name = name,
                 Description = description,
                 PriceAmount = priceAmount,
@@ -273,6 +351,24 @@ internal sealed class OrderTestWorld
             cancellationToken);
 
         return menuItemIdentifier;
+    }
+
+    /// <summary>
+    /// The house section, made once per truncation. Named "Menu" to match what <c>0005</c>'s own backfill
+    /// calls the section it seeds for an existing installation — so a test reading a section name off a
+    /// surface sees the same word a real upgraded database would show.
+    /// </summary>
+    private async Task<Guid> EnsureDefaultMenuSectionAsync(CancellationToken cancellationToken)
+    {
+        if (_defaultMenuSectionIdentifier is { } existing)
+        {
+            return existing;
+        }
+
+        Guid created = await AddMenuSectionAsync("Menu", cancellationToken);
+        _defaultMenuSectionIdentifier = created;
+
+        return created;
     }
 
     public async Task SetMenuItemAsync(

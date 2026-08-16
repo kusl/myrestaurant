@@ -131,8 +131,17 @@ internal sealed record PartyOrder(string BillName, string TotalText, IReadOnlyLi
 /// <para><paramref name="IsAvailable"/> is read from the button's <c>disabled</c> state rather than from
 /// the chip beside it. §7 requires both — the item stays visible, marked, and cannot be ordered — and
 /// <c>disabled</c> is the half that enforces it; the chip is how the surface says so.</para>
+///
+/// <para><paramref name="SectionName"/> is the heading the card was found under (M6 Slice 40,
+/// <c>0005</c>). It is a member of the CARD rather than a separate list of headings, and that is the
+/// assertion this shape exists to make possible: §11.1 groups items under their sections, so "the soup is
+/// under Starters" is a fact about where an element sits in the DOM, and a scenario that read the headings
+/// and the cards as two lists could assert that both exist while proving nothing about which contains
+/// which. Every card carries one, because §7 makes an item's heading mandatory — an inactive section is
+/// not rendered at all, so a card without a heading above it is a defect rather than a state.</para>
 /// </summary>
 internal sealed record MenuCard(
+    string SectionName,
     string Name,
     string PriceText,
     string? Description,
@@ -346,7 +355,15 @@ internal static class TableOrderJourneys
     /// is what carries <c>data-menu-item</c>, <c>aria-pressed</c> and <c>disabled</c>, which is to say
     /// every fact about the item that is a contract rather than a paint job (M6 Slice 39).
     /// </summary>
-    private const string MenuCardSelector = "#table-order-surface ul.order-menu button.order-menu-choice";
+    private const string MenuCardSelector =
+        "#table-order-surface div.order-menu-section ul.order-menu button.order-menu-choice";
+
+    /// <summary>
+    /// One heading and everything under it. Read as a container rather than as a flat list of
+    /// <c>h4</c>s, because <see cref="ReadMenuAsync"/> needs each card's own heading and the only honest
+    /// way to get it is to walk the section that contains the card.
+    /// </summary>
+    private const string MenuSectionSelector = "#table-order-surface div.order-menu-section";
 
     /// <summary>§11.1's detail panel, present only while an item is chosen.</summary>
     private const string MenuDetailSelector = "#table-order-surface div.order-menu-detail";
@@ -575,38 +592,68 @@ internal static class TableOrderJourneys
     {
         ArgumentNullException.ThrowIfNull(page);
 
-        ILocator cards = page.Locator(MenuCardSelector);
-        int count = await cards.CountAsync();
+        ILocator sections = page.Locator(MenuSectionSelector);
+        int sectionCount = await sections.CountAsync();
 
-        List<MenuCard> menu = new(count);
+        List<MenuCard> menu = [];
 
-        for (int index = 0; index < count; index++)
+        for (int sectionIndex = 0; sectionIndex < sectionCount; sectionIndex++)
         {
-            ILocator card = cards.Nth(index);
+            ILocator section = sections.Nth(sectionIndex);
 
-            string name = (await card.Locator("span.order-menu-name").First.InnerTextAsync()).Trim();
-            string price = (await card.Locator("span.order-menu-price").First.InnerTextAsync()).Trim();
+            string sectionName = (await section
+                .Locator("h4.order-menu-section-name").First.InnerTextAsync()).Trim();
 
-            ILocator description = card.Locator("span.order-menu-description");
-            string? descriptionText = await description.CountAsync() == 0
-                ? null
-                : (await description.First.InnerTextAsync()).Trim();
+            ILocator cards = section.Locator("button.order-menu-choice");
+            int count = await cards.CountAsync();
 
-            // Availability is read from `disabled` rather than from the chip beside it, because
-            // `disabled` is what §7 requires — the chip is how the surface SAYS so, and the attribute is
-            // what stops the item being ordered. The same reasoning ReadBadgeAsync applies in reverse:
-            // whichever of the two is the contract is the one to read.
-            bool isAvailable = !await card.IsDisabledAsync();
+            for (int index = 0; index < count; index++)
+            {
+                ILocator card = cards.Nth(index);
 
-            bool isChosen = string.Equals(
-                await card.GetAttributeAsync("aria-pressed"),
-                "true",
-                StringComparison.Ordinal);
+                string name = (await card.Locator("span.order-menu-name").First.InnerTextAsync()).Trim();
+                string price = (await card.Locator("span.order-menu-price").First.InnerTextAsync()).Trim();
 
-            menu.Add(new MenuCard(name, price, descriptionText, isAvailable, isChosen));
+                ILocator description = card.Locator("span.order-menu-description");
+                string? descriptionText = await description.CountAsync() == 0
+                    ? null
+                    : (await description.First.InnerTextAsync()).Trim();
+
+                // Availability is read from `disabled` rather than from the chip beside it, because
+                // `disabled` is what §7 requires — the chip is how the surface SAYS so, and the attribute
+                // is what stops the item being ordered. The same reasoning ReadBadgeAsync applies in
+                // reverse: whichever of the two is the contract is the one to read.
+                bool isAvailable = !await card.IsDisabledAsync();
+
+                bool isChosen = string.Equals(
+                    await card.GetAttributeAsync("aria-pressed"),
+                    "true",
+                    StringComparison.Ordinal);
+
+                menu.Add(new MenuCard(sectionName, name, price, descriptionText, isAvailable, isChosen));
+            }
         }
 
         return menu;
+    }
+
+    /// <summary>
+    /// The headings the guest can see, in the order §11.1 renders them (M6 Slice 40).
+    ///
+    /// <para>Derived from <see cref="ReadMenuAsync"/> rather than read as its own list of <c>h4</c>s, and
+    /// the redundancy is deliberate: two independent readers of the same markup can disagree, and the one
+    /// that matters is the one that knows which cards sit under which heading. <c>Distinct</c> preserves
+    /// first-seen order in .NET, which is the render order, so this answers "Starters then Mains" rather
+    /// than a set.</para>
+    /// </summary>
+    internal static async Task<IReadOnlyList<string>> ReadMenuSectionNamesAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        return (await ReadMenuAsync(page))
+            .Select(card => card.SectionName)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
     }
 
     /// <summary>
@@ -1479,7 +1526,7 @@ internal static class TableOrderJourneys
                 "; ",
                 menu.Select(card => string.Create(
                     CultureInfo.InvariantCulture,
-                    $"'{card.Name}' at {card.PriceText}"
+                    $"'{card.Name}' under '{card.SectionName}' at {card.PriceText}"
                     + $"{(card.IsAvailable ? string.Empty : " (unavailable)")}"
                     + $"{(card.IsChosen ? " (chosen)" : string.Empty)}"
                     + $"{(card.Description is null ? " with no description" : " described")}")));

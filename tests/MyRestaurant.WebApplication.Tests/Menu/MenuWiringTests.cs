@@ -38,6 +38,7 @@ public sealed class MenuWiringTests
 {
     private static readonly Guid MenuItemIdentifier = Guid.Parse("0192f000-0000-7000-8000-00000000d001");
     private static readonly Guid ActorIdentifier = Guid.Parse("0192f000-0000-7000-8000-00000000d002");
+    private static readonly Guid MenuSectionIdentifier = Guid.Parse("0192f000-0000-7000-8000-00000000d003");
 
     [Fact]
     public void MenuAdministration_IsResolvableInAScope()
@@ -60,10 +61,12 @@ public sealed class MenuWiringTests
 
     /// <summary>
     /// The two section services resolve from the same registration call as the item services (§7, §11.4).
-    /// They are asserted here rather than left to the first surface that needs them, because they are the
-    /// one pair in this group that <em>no</em> surface takes yet: Stage 2 landed the schema and the data
-    /// access, and Stage 3 writes the pages. An unwired service with no caller fails at the moment
-    /// somebody writes the caller, which is the worst time to find out.
+    ///
+    /// <para><b>One of them now has a surface and the other four verbs still do not.</b>
+    /// <c>CreateMenuSection.razor</c> takes <see cref="IMenuWorkflow"/> and reaches
+    /// <see cref="IMenuSectionAdministration.CreateMenuSectionAsync"/> through it; rename, describe,
+    /// reorder and set-active are still called by nothing at all, which is why the raw interface is still
+    /// asserted here rather than left to the first surface that needs it.</para>
     /// </summary>
     [Fact]
     public void MenuSectionServices_AreResolvableInAScope()
@@ -78,12 +81,12 @@ public sealed class MenuWiringTests
     }
 
     /// <summary>
-    /// One workflow over both write services. §9 does not distinguish which verb changed the menu, and
-    /// every subscriber responds to <see cref="MenuChanged"/> the same way, so a second workflow would only
-    /// make it possible to wire an application that announces 86s and not repricings.
+    /// One workflow over all three write services. §9 does not distinguish which verb changed the menu,
+    /// and every subscriber responds to <see cref="MenuChanged"/> the same way, so a second workflow would
+    /// only make it possible to wire an application that announces 86s and not repricings.
     /// </summary>
     [Fact]
-    public void MenuWorkflow_IsResolvableInAScope_AndCoversBothWriteServices()
+    public void MenuWorkflow_IsResolvableInAScope_AndCoversEveryWriteService()
     {
         using ServiceProvider provider = BuildProvider();
         using IServiceScope scope = provider.CreateScope();
@@ -92,16 +95,19 @@ public sealed class MenuWiringTests
         Assert.IsType<DapperMenuAvailability>(scope.ServiceProvider.GetRequiredService<IMenuAvailability>());
         Assert.IsType<DapperMenuAdministration>(
             scope.ServiceProvider.GetRequiredService<IMenuAdministration>());
+        Assert.IsType<DapperMenuSectionAdministration>(
+            scope.ServiceProvider.GetRequiredService<IMenuSectionAdministration>());
     }
 
     [Fact]
-    public async Task ACreatedItem_IsAlwaysAnnounced_AndItsArgumentsArePassedThrough()
+    public async Task ACreatedItem_IsAnnounced_AndItsArgumentsArePassedThrough()
     {
         FakeMenuAdministration administration = new();
         RecordingBroadcaster broadcaster = new();
 
         CreateMenuItemResult result = await WorkflowOver(administration, broadcaster).CreateMenuItemAsync(
             MenuItemIdentifier,
+            MenuSectionIdentifier,
             "Soup",
             "Lentil, vegan",
             4.50m,
@@ -109,19 +115,101 @@ public sealed class MenuWiringTests
             TestContext.Current.CancellationToken);
 
         Assert.Equal(MenuItemIdentifier, administration.LastMenuItemIdentifier);
+        Assert.Equal(MenuSectionIdentifier, administration.LastMenuSectionIdentifier);
         Assert.Equal("Soup", administration.LastName);
         Assert.Equal("Lentil, vegan", administration.LastDescription);
         Assert.Equal(4.50m, administration.LastPriceAmount);
         Assert.Equal(ActorIdentifier, administration.LastActor);
 
         // The result is passed through untouched — the surface echoes the stored name, description and
-        // price back. The description matters here rather than being decoration: this workflow is the one
-        // place that could silently drop an argument between a form and a transaction.
+        // price back. The description and the section matter here rather than being decoration: this
+        // workflow is the one place that could silently drop an argument between a form and a
+        // transaction, and §7 makes the section the one argument a create cannot do without.
         Assert.Equal("Soup", result.Name);
         Assert.Equal("Lentil, vegan", result.Description);
         Assert.Equal(4.50m, result.PriceAmount);
+        Assert.Equal(MenuSectionIdentifier, result.MenuSectionIdentifier);
 
         Assert.IsType<MenuChanged>(Assert.Single(broadcaster.Published));
+    }
+
+    /// <summary>
+    /// The publish that stopped being unconditional (<c>0005</c>). A create used to commit or throw, so
+    /// this file's rule — announce only what committed — had nothing to catch here. §7's mandatory
+    /// heading makes "that section does not exist" an ordinary reported outcome, and announcing it would
+    /// send every phone, kitchen board and display in the building back to the database for an item that
+    /// was never written.
+    /// </summary>
+    [Fact]
+    public async Task AnItemUnderAMissingSection_AnnouncesNothing()
+    {
+        FakeMenuAdministration administration = new()
+        {
+            CreateOutcome = CreateMenuItemOutcome.MenuSectionNotFound,
+        };
+        RecordingBroadcaster broadcaster = new();
+
+        CreateMenuItemResult result = await WorkflowOver(administration, broadcaster).CreateMenuItemAsync(
+            MenuItemIdentifier,
+            MenuSectionIdentifier,
+            "Soup",
+            description: null,
+            4.50m,
+            ActorIdentifier,
+            TestContext.Current.CancellationToken);
+
+        Assert.False(result.Created);
+        Assert.Empty(broadcaster.Published);
+    }
+
+    /// <summary>
+    /// The first of <see cref="IMenuSectionAdministration"/>'s five verbs to come behind the workflow,
+    /// and the one that has a surface: <c>CreateMenuSection.razor</c>. The obligation to bring the other
+    /// four in is narrowed rather than closed, and it is a real one as of this slice — §11.1's guest menu
+    /// groups by heading now, so a rename that announced nothing would leave a stale heading in every
+    /// open picker.
+    ///
+    /// <para>Announced conditionally, because a section create can fail on the <c>citext</c> UNIQUE. A
+    /// second "Drinks" spelled any way at all commits nothing.</para>
+    /// </summary>
+    [Fact]
+    public async Task ACreatedSection_IsAnnouncedOnlyWhenARowWasWritten()
+    {
+        FakeMenuSectionAdministration created = new();
+        RecordingBroadcaster createdBroadcaster = new();
+
+        CreateMenuSectionResult result = await WorkflowOver(created, createdBroadcaster)
+            .CreateMenuSectionAsync(
+                MenuSectionIdentifier,
+                "Drinks",
+                "Cold things",
+                ActorIdentifier,
+                TestContext.Current.CancellationToken);
+
+        Assert.True(result.Created);
+        Assert.Equal(MenuSectionIdentifier, created.LastMenuSectionIdentifier);
+        Assert.Equal("Drinks", created.LastName);
+        Assert.Equal("Cold things", created.LastDescription);
+        Assert.Equal(ActorIdentifier, created.LastActor);
+        Assert.IsType<MenuChanged>(Assert.Single(createdBroadcaster.Published));
+
+        FakeMenuSectionAdministration taken = new()
+        {
+            CreateResult = new CreateMenuSectionResult(
+                CreateMenuSectionOutcome.NameTaken, MenuSectionIdentifier, null, null, null),
+        };
+        RecordingBroadcaster takenBroadcaster = new();
+
+        CreateMenuSectionResult refused = await WorkflowOver(taken, takenBroadcaster)
+            .CreateMenuSectionAsync(
+                MenuSectionIdentifier,
+                "drinks",
+                description: null,
+                ActorIdentifier,
+                TestContext.Current.CancellationToken);
+
+        Assert.False(refused.Created);
+        Assert.Empty(takenBroadcaster.Published);
     }
 
     [Fact]
@@ -298,17 +386,22 @@ public sealed class MenuWiringTests
         Assert.Empty(unchangedBroadcaster.Published);
     }
 
-    // Two overloads, distinguished by their first parameter: whichever write service the test is about
-    // is the one it passes, and the other is a default fake nothing under test ever calls.
+    // Three overloads, distinguished by their first parameter: whichever write service the test is about
+    // is the one it passes, and the others are default fakes nothing under test ever calls.
     private static MenuWorkflow WorkflowOver(
         IMenuAdministration administration,
         IDomainEventBroadcaster broadcaster)
-        => new(new FakeMenuAvailability(), administration, broadcaster);
+        => new(new FakeMenuAvailability(), administration, new FakeMenuSectionAdministration(), broadcaster);
 
     private static MenuWorkflow WorkflowOver(
         IMenuAvailability availability,
         IDomainEventBroadcaster broadcaster)
-        => new(availability, new FakeMenuAdministration(), broadcaster);
+        => new(availability, new FakeMenuAdministration(), new FakeMenuSectionAdministration(), broadcaster);
+
+    private static MenuWorkflow WorkflowOver(
+        IMenuSectionAdministration sections,
+        IDomainEventBroadcaster broadcaster)
+        => new(new FakeMenuAvailability(), new FakeMenuAdministration(), sections, broadcaster);
 
     private static ServiceProvider BuildProvider()
     {
@@ -346,6 +439,8 @@ public sealed class MenuWiringTests
 
         public string? LastDescription { get; private set; }
 
+        public Guid? LastMenuSectionIdentifier { get; private set; }
+
         public decimal? LastPriceAmount { get; private set; }
 
         public int? LastDisplayOrder { get; private set; }
@@ -362,8 +457,11 @@ public sealed class MenuWiringTests
 
         public ReorderMenuItemOutcome ReorderOutcome { get; init; } = ReorderMenuItemOutcome.Reordered;
 
+        public CreateMenuItemOutcome CreateOutcome { get; init; } = CreateMenuItemOutcome.Created;
+
         public Task<CreateMenuItemResult> CreateMenuItemAsync(
             Guid menuItemIdentifier,
+            Guid menuSectionIdentifier,
             string name,
             string? description,
             decimal priceAmount,
@@ -371,6 +469,7 @@ public sealed class MenuWiringTests
             CancellationToken cancellationToken = default)
         {
             LastMenuItemIdentifier = menuItemIdentifier;
+            LastMenuSectionIdentifier = menuSectionIdentifier;
             LastName = name;
             LastDescription = description;
             LastPriceAmount = priceAmount;
@@ -379,8 +478,25 @@ public sealed class MenuWiringTests
             // The real service normalizes null and blank to "". This fake deliberately does not: what is
             // under test here is whether the workflow hands the argument on unchanged, and a fake that
             // trimmed would hide the one failure this file can see.
-            return Task.FromResult(new CreateMenuItemResult(
-                menuItemIdentifier, name, description ?? string.Empty, priceAmount));
+            return Task.FromResult(CreateOutcome is CreateMenuItemOutcome.Created
+                ? new CreateMenuItemResult(
+                    CreateMenuItemOutcome.Created,
+                    menuItemIdentifier,
+                    menuSectionIdentifier,
+                    "Mains",
+                    name,
+                    description ?? string.Empty,
+                    priceAmount,
+                    DisplayOrder: 0)
+                : new CreateMenuItemResult(
+                    CreateOutcome,
+                    menuItemIdentifier,
+                    menuSectionIdentifier,
+                    MenuSectionName: null,
+                    Name: null,
+                    Description: null,
+                    PriceAmount: null,
+                    DisplayOrder: null));
         }
 
         public Task<RenameMenuItemResult> RenameMenuItemAsync(
@@ -434,6 +550,74 @@ public sealed class MenuWiringTests
 
             return Task.FromResult(ReorderOutcome);
         }
+    }
+
+    /// <summary>
+    /// The section write service, of which the workflow uses exactly one verb. The other four throw
+    /// rather than return a plausible value: this fake is reachable from every test in this file through
+    /// the default overloads, and a verb that quietly answered would let a workflow start calling it
+    /// without anything here noticing.
+    /// </summary>
+    private sealed class FakeMenuSectionAdministration : IMenuSectionAdministration
+    {
+        public Guid? LastMenuSectionIdentifier { get; private set; }
+
+        public string? LastName { get; private set; }
+
+        public string? LastDescription { get; private set; }
+
+        public Guid? LastActor { get; private set; }
+
+        public CreateMenuSectionResult CreateResult { get; init; } = new(
+            CreateMenuSectionOutcome.Created, MenuSectionIdentifier, "Drinks", "Cold things", 0);
+
+        public Task<CreateMenuSectionResult> CreateMenuSectionAsync(
+            Guid menuSectionIdentifier,
+            string name,
+            string? description,
+            Guid actorPersonIdentifier,
+            CancellationToken cancellationToken = default)
+        {
+            LastMenuSectionIdentifier = menuSectionIdentifier;
+            LastName = name;
+            LastDescription = description;
+            LastActor = actorPersonIdentifier;
+
+            return Task.FromResult(CreateResult);
+        }
+
+        public Task<RenameMenuSectionOutcome> RenameMenuSectionAsync(
+            Guid menuSectionIdentifier,
+            string name,
+            Guid actorPersonIdentifier,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException(Unreachable(nameof(RenameMenuSectionAsync)));
+
+        public Task<DescribeMenuSectionOutcome> DescribeMenuSectionAsync(
+            Guid menuSectionIdentifier,
+            string? description,
+            Guid actorPersonIdentifier,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException(Unreachable(nameof(DescribeMenuSectionAsync)));
+
+        public Task<ReorderMenuSectionOutcome> ReorderMenuSectionAsync(
+            Guid menuSectionIdentifier,
+            int displayOrder,
+            Guid actorPersonIdentifier,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException(Unreachable(nameof(ReorderMenuSectionAsync)));
+
+        public Task<MenuSectionActivationOutcome> SetMenuSectionActiveAsync(
+            Guid menuSectionIdentifier,
+            bool isActive,
+            Guid actorPersonIdentifier,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException(Unreachable(nameof(SetMenuSectionActiveAsync)));
+
+        private static string Unreachable(string verb)
+            => $"MenuWorkflow reached IMenuSectionAdministration.{verb}, which no surface calls yet."
+                + " If a surface now does, that verb belongs behind IMenuWorkflow with a §9 broadcast"
+                + " and a fact in this file — see docs/MENU_AND_HANDHELD_PLAN.md Stage 3.";
     }
 
     private sealed class FakeMenuAvailability : IMenuAvailability

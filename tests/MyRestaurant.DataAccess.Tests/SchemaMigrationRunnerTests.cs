@@ -18,6 +18,13 @@ namespace MyRestaurant.DataAccess.Tests;
 /// would leave the table with no CHECK constraints and the columns absent, which is precisely a state no
 /// relation check can see.</para>
 ///
+/// <para><b><c>0005</c> is the first migration whose interesting output is a CONSTRAINT rather than a
+/// relation or a column.</b> It adds <c>menu_item.menu_section_identifier</c> in three statements — add
+/// nullable, backfill, tighten — so a script that stopped after the first leaves a column every other
+/// fact here finds and every integration test writes NULL into.
+/// <see cref="Run_MakesTheMenuItemSectionReferenceMandatory"/> is the assertion that the <c>NOT NULL</c>
+/// and the foreign key actually landed.</para>
+///
 /// <para><b>This file is also the gate on <c>WithVariablesDisabled()</c>, and that is deliberate
 /// (F-78).</b> dbup-core substitutes <c>$name$</c> before the splitter runs, and PostgreSQL spells a
 /// dollar-quoted body the same way, so <c>0004</c>'s <c>DO $migrate_menu_item_event_checks$</c> was read
@@ -64,10 +71,12 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
     /// </summary>
     public static TheoryData<string> KeyColumnsAddedByAlter =>
     [
-        "menu_item.description",              // 0004
-        "menu_item.display_order",            // 0004
-        "menu_item_event.new_description",    // 0004
-        "menu_item_event.new_display_order",  // 0004
+        "menu_item.description",                        // 0004
+        "menu_item.display_order",                      // 0004
+        "menu_item_event.new_description",              // 0004
+        "menu_item_event.new_display_order",            // 0004
+        "menu_item.menu_section_identifier",            // 0005
+        "menu_item_event.new_menu_section_identifier",  // 0005
     ];
 
     [Fact]
@@ -201,6 +210,7 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
             "menu_item_event_display_order_payload",
             "menu_item_event_name_payload",
             "menu_item_event_price_payload",
+            "menu_item_event_section_payload",
             "menu_item_event_type_vocabulary",
         })
         {
@@ -208,9 +218,101 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
         }
 
         // And nothing generated survives. A leftover menu_item_event_check would mean the DO block ran
-        // against a partial list, which is the failure mode 0005 would inherit.
+        // against a partial list, which is the failure mode 0005 inherited and did not meet.
         Assert.DoesNotContain("menu_item_event_check", found);
         Assert.DoesNotContain("menu_item_event_check1", found);
+    }
+
+    /// <summary>
+    /// <c>0005</c>'s three structural facts, which no other test in this tree can see.
+    ///
+    /// <para><b>Why a column check is not enough here.</b> <c>menu_item.menu_section_identifier</c> is
+    /// added <c>NULL</c>, backfilled, and then tightened — three statements — and a script that stopped
+    /// after the first leaves a column that <see cref="Run_AddsKeyColumn"/> finds and every integration
+    /// test happily writes NULL into. The <c>NOT NULL</c> and the foreign key are the whole point of the
+    /// migration, and they are the two things its own header calls the expensive part.</para>
+    ///
+    /// <para>The index is asserted for a different reason: PostgreSQL does not index the referencing side
+    /// of a foreign key on its own, so an absent index is a silent scan of <c>menu_item</c> on every
+    /// statement touching a section, and nothing else here would ever say so.</para>
+    /// </summary>
+    [Fact]
+    public async Task Run_MakesTheMenuItemSectionReferenceMandatory()
+    {
+        Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+        string connectionString = _fixture.ConnectionString!;
+
+        BuildRunner(connectionString).Run();
+
+        await using NpgsqlConnection connection = new(connectionString);
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+
+        bool notNull = await connection.ExecuteScalarAsync<bool>(
+            new CommandDefinition(
+                """
+                SELECT attnotnull
+                FROM pg_attribute
+                WHERE attrelid = 'menu_item'::regclass
+                  AND attname = 'menu_section_identifier'
+                """,
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.True(notNull, "0005 must leave menu_item.menu_section_identifier NOT NULL (§7).");
+
+        bool foreignKey = await connection.ExecuteScalarAsync<bool>(
+            new CommandDefinition(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conrelid = 'menu_item'::regclass
+                      AND contype = 'f'
+                      AND conname = 'menu_item_menu_section_reference')
+                """,
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.True(foreignKey, "0005 must name the foreign key so a later migration can drop it by name.");
+
+        bool index = await connection.ExecuteScalarAsync<bool>(
+            new CommandDefinition(
+                "SELECT to_regclass('public.menu_item_section_index') IS NOT NULL",
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.True(index, "0005 must index the referencing side of the foreign key.");
+    }
+
+    /// <summary>
+    /// The seed is conditional, and this is the branch every test in this project takes: a fresh database
+    /// has no menu items, so it gets <b>no</b> section and the administrator names their own (§7).
+    ///
+    /// <para>The other branch — an existing installation whose items are backfilled under one seeded
+    /// heading — cannot be reached from here, because this fixture's database is created empty and DbUp
+    /// applies every script in one pass. It is exercised by hand against a populated database and
+    /// recorded in <c>BUILD_PROGRESS.md</c> as such rather than claimed here.</para>
+    /// </summary>
+    [Fact]
+    public async Task Run_SeedsNoSectionOnAFreshDatabase()
+    {
+        Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+        string connectionString = _fixture.ConnectionString!;
+
+        BuildRunner(connectionString).Run();
+
+        await using NpgsqlConnection connection = new(connectionString);
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+
+        int sections = await connection.ExecuteScalarAsync<int>(
+            new CommandDefinition(
+                "SELECT count(*)::int FROM menu_section",
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        // Not Assert.Equal(0, …): this fixture's container is shared with nothing, but a migration that
+        // seeded unconditionally would put exactly one row here and the message should say which rule
+        // was broken rather than which number was wrong.
+        Assert.True(
+            sections == 0,
+            $"§7: a fresh database gets no sections and the administrator names their own. Found"
+                + $" {sections}, which means 0005's EXISTS (SELECT 1 FROM menu_item) guard did not hold.");
     }
 
     private static SchemaMigrationRunner BuildRunner(string connectionString)

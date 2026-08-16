@@ -82,12 +82,20 @@ public static class OrdersServiceCollectionExtensions
         // AddRestaurantMenuSections() would be a fifth call the composition root has to remember (see the
         // note above about why this method is not split).
         //
-        // Deliberately NOT behind IMenuWorkflow yet, and the reason is worth stating rather than
-        // discovering. A section rename changes what every open guest picker renders, so it will have to
-        // announce MenuChanged (§9) exactly as a repricing does — but nothing reads sections on any
-        // surface until Stage 3, and a workflow verb with no caller is a code path no test can reach
-        // through the interface it is supposed to protect. Stage 3 brings the verbs in with the surfaces
-        // that call them; docs/MENU_AND_HANDHELD_PLAN.md carries that as an obligation rather than a hope.
+        // ONE of the five section writes is behind IMenuWorkflow as of 0005, and the count is the whole
+        // content of this note. The rule has not changed: a workflow verb with no caller is a code path
+        // no test can reach through the interface it is supposed to protect, so a verb arrives when its
+        // surface does. The section create page is that surface, so CreateMenuSectionAsync arrives with
+        // it and announces MenuChanged (§9) on a committed row. Rename, describe, reorder and set-active
+        // have no surface until the section editor exists and are still called directly on this
+        // interface by nothing at all.
+        //
+        // What HAS changed is the cost of leaving them. §11.1's guest menu groups by heading as of this
+        // slice, so a renamed section that announced nothing would leave a stale heading in every open
+        // picker. That is a latent defect rather than a live one only because no surface can rename a
+        // section yet — and it is exactly the shape of finding this project keeps writing down after the
+        // fact. docs/MENU_AND_HANDHELD_PLAN.md carries the remaining four as an obligation rather than
+        // a hope.
         services.AddScoped<IMenuSectionDirectory, DapperMenuSectionDirectory>();
         services.AddScoped<IMenuSectionAdministration, DapperMenuSectionAdministration>();
 

@@ -13,26 +13,39 @@ namespace MyRestaurant.DataAccess.Menu;
 /// wrong; the one place the flag is enforced is the order-mutating transaction, which re-reads it
 /// under the lock (§6.5.4).</para>
 ///
+/// <para><b><see cref="MenuSectionIsActive"/> is the one exception, and §7 states it as such.</b> An
+/// inactive <em>section</em> is not rendered to the guest at all — the opposite rule to an inactive item,
+/// one paragraph away from it. The two are not a contradiction: switching off a heading is a decision
+/// about a whole part of the menu ("no breakfast this evening"), where 86ing an item is a decision about
+/// one dish that guests are still entitled to see exists. Both flags are carried here and neither is
+/// filtered, because §11.4's administrator has to see everything and it is the guest surface that owes
+/// §7 the distinction.</para>
+///
 /// <para><see cref="Description"/> is never <c>null</c>. The column is <c>NOT NULL DEFAULT ''</c> and
 /// <c>''</c> means "none", so a surface tests <see cref="string.Length"/> rather than for null — the
 /// reason is the paired CHECK on <c>menu_item_event</c>, which could not tie an optional payload to its
 /// event type if clearing a description wrote NULL. The same rule and the same reason as
 /// <see cref="MenuSectionSummary.Description"/>.</para>
 ///
-/// <para><see cref="DisplayOrder"/> is where somebody put the item, not where the alphabet puts it.
-/// Every item created before <c>0005</c> sits at 0, so the ordering reads as the name ordering this
-/// table has always had — see <see cref="IMenuDirectory.ListAsync"/> for why that is deliberate rather
-/// than a placeholder.</para>
+/// <para><see cref="DisplayOrder"/> is where somebody put the item <em>within its section</em>, not where
+/// the alphabet puts it. Before <c>0005</c> it was a menu-wide number that nothing ever set; since
+/// <c>0005</c> an item is created at the end of its own heading and the number means something.</para>
 /// </summary>
 /// <param name="MenuItemIdentifier">The item's UUIDv7 primary key (ADR-0011).</param>
+/// <param name="MenuSectionIdentifier">The heading this item is filed under. NOT NULL since <c>0005</c> — §7: an item under no heading is an item nobody decided about.</param>
+/// <param name="MenuSectionName">That heading's current name, joined at read time — so a renamed section reads under its new name everywhere at once.</param>
+/// <param name="MenuSectionIsActive">False when the whole heading is switched off. §7: such a section is <b>not</b> rendered to the guest, unlike an inactive item.</param>
 /// <param name="Name">The item's current name (§7 — renames are logged in <c>menu_item_event</c>).</param>
 /// <param name="Description">The item's current description; <c>""</c> when it has none.</param>
 /// <param name="PriceAmount">The item's current price. Lines already added keep the price captured at add time (§6.5.4).</param>
-/// <param name="DisplayOrder">Where the item sits; ties are broken by name, then identifier.</param>
+/// <param name="DisplayOrder">Where the item sits within its section; ties are broken by name, then identifier.</param>
 /// <param name="IsActive">False when the item is "86'd" — visible, unorderable (§7, §11.2).</param>
 /// <param name="CreatedAt">When the item was first created.</param>
 public sealed record MenuItemSummary(
     Guid MenuItemIdentifier,
+    Guid MenuSectionIdentifier,
+    string MenuSectionName,
+    bool MenuSectionIsActive,
     string Name,
     string Description,
     decimal PriceAmount,
@@ -53,21 +66,25 @@ public sealed record MenuItemSummary(
 public interface IMenuDirectory
 {
     /// <summary>
-    /// Every menu item, active and inactive, in display order — the order the guest staging area and the
-    /// kitchen "86" panel both render (§7, §11.1, §11.2).
+    /// Every menu item, active and inactive, under every section, active and inactive, in the order the
+    /// guest staging area and the kitchen "86" panel both render (§7, §11.1, §11.2).
     ///
-    /// <para><b>Ordered by <c>(display_order, name, menu_item_identifier)</c> as of <c>0004</c>, and the
-    /// change is deliberately invisible.</b> <c>display_order</c> defaults to 0 and nothing assigns
-    /// anything else until <c>0005</c> gives an item a section to be positioned within, so on every tree
-    /// that exists today this is the <c>(name, identifier)</c> ordering the method has always had. It is
-    /// written in the final shape now rather than later because the alternative is a second edit to the
-    /// same two queries in the slice that can least afford one — and because it is the shape §7 asks
-    /// for: alphabetical is wrong on a real menu, since "Fries" before "Truffle Fries" is an ordering
-    /// somebody chose and <c>ORDER BY name</c> cannot express it.</para>
+    /// <para><b>Ordered by section first as of <c>0005</c>: <c>(section.display_order, section.name,
+    /// section.menu_section_identifier, item.display_order, item.name, item.menu_item_identifier)</c>.</b>
+    /// That is six keys and every one of them earns its place — the first three put the headings in the
+    /// order somebody chose, and the last three do the same for the items under each. The two identifier
+    /// tiebreaks are there because the schema permits equal positions deliberately (§8.2), and without
+    /// them two items at position 0 would render in whatever sequence the scan happened to return.</para>
     ///
-    /// <para>The two tiebreakers are there so that equal positions, which the schema permits
-    /// deliberately, still render the same way on every request rather than in whatever sequence the
-    /// scan returned. Today every position is equal, so the tiebreak is doing all of the work.</para>
+    /// <para><b>One list rather than a list of sections each holding a list, and that is a ruling.</b>
+    /// The ordering above means every item under one heading is <em>contiguous</em>, so a surface groups
+    /// by walking the list once and starting a new heading when
+    /// <see cref="MenuItemSummary.MenuSectionIdentifier"/> changes. A nested shape would need either a
+    /// second query per section or a join materialised into objects here, and it would put a section with
+    /// no items into the result — which no reading surface wants: §11.1 renders headings that have
+    /// something under them, and an empty heading on a guest's phone is a promise the kitchen did not
+    /// make. An administrator who needs to see the empty ones reads
+    /// <see cref="IMenuSectionDirectory.ListAsync"/>, which is the list of headings themselves.</para>
     /// </summary>
     Task<IReadOnlyList<MenuItemSummary>> ListAsync(CancellationToken cancellationToken = default);
 
@@ -82,28 +99,49 @@ public interface IMenuDirectory
 /// before being projected — Npgsql materialises <c>timestamptz</c> as <see cref="DateTime"/> and Dapper's
 /// constructor binding will not feed one into a <see cref="DateTimeOffset"/> parameter (the same fix
 /// <c>TableDirectory</c>, <c>PersonDirectory</c>, and <c>SittingDirectory</c> carry).
+///
+/// <para>The join to <c>menu_section</c> is INNER, and that is <c>0005</c>'s <c>NOT NULL</c> being
+/// collected on: the reference cannot be absent, so a LEFT JOIN would only invite two nullable members
+/// for a row the schema forbids. It is also why every column below is table-qualified — <c>menu_item</c>
+/// and <c>menu_section</c> both carry a <c>name</c>, a <c>description</c>, a <c>display_order</c>, an
+/// <c>is_active</c> and a <c>created_at</c>, and an unqualified reference to any of the five is
+/// PostgreSQL error 42702 waiting to happen.</para>
 /// </summary>
 public sealed class DapperMenuDirectory : IMenuDirectory
 {
     private const string MenuItemColumns = """
-        menu_item.menu_item_identifier AS MenuItemIdentifier,
-        menu_item.name                 AS Name,
-        menu_item.description          AS Description,
-        menu_item.price_amount         AS PriceAmount,
-        menu_item.display_order        AS DisplayOrder,
-        menu_item.is_active            AS IsActive,
-        menu_item.created_at           AS CreatedAt
+        menu_item.menu_item_identifier     AS MenuItemIdentifier,
+        menu_item.menu_section_identifier  AS MenuSectionIdentifier,
+        menu_section.name                  AS MenuSectionName,
+        menu_section.is_active             AS MenuSectionIsActive,
+        menu_item.name                     AS Name,
+        menu_item.description              AS Description,
+        menu_item.price_amount             AS PriceAmount,
+        menu_item.display_order            AS DisplayOrder,
+        menu_item.is_active                AS IsActive,
+        menu_item.created_at               AS CreatedAt
+        """;
+
+    private const string MenuItemFrom = """
+        FROM menu_item
+        INNER JOIN menu_section
+                ON menu_section.menu_section_identifier = menu_item.menu_section_identifier
         """;
 
     private static readonly string ListSql = $"""
         SELECT {MenuItemColumns}
-        FROM menu_item
-        ORDER BY menu_item.display_order, menu_item.name, menu_item.menu_item_identifier;
+        {MenuItemFrom}
+        ORDER BY menu_section.display_order,
+                 menu_section.name,
+                 menu_section.menu_section_identifier,
+                 menu_item.display_order,
+                 menu_item.name,
+                 menu_item.menu_item_identifier;
         """;
 
     private static readonly string GetSql = $"""
         SELECT {MenuItemColumns}
-        FROM menu_item
+        {MenuItemFrom}
         WHERE menu_item.menu_item_identifier = @MenuItemIdentifier;
         """;
 
@@ -144,6 +182,9 @@ public sealed class DapperMenuDirectory : IMenuDirectory
 
     private static MenuItemSummary ToSummary(MenuItemRow row) => new(
         row.MenuItemIdentifier,
+        row.MenuSectionIdentifier,
+        row.MenuSectionName,
+        row.MenuSectionIsActive,
         row.Name,
         row.Description,
         row.PriceAmount,
@@ -153,6 +194,9 @@ public sealed class DapperMenuDirectory : IMenuDirectory
 
     private sealed record MenuItemRow(
         Guid MenuItemIdentifier,
+        Guid MenuSectionIdentifier,
+        string MenuSectionName,
+        bool MenuSectionIsActive,
         string Name,
         string Description,
         decimal PriceAmount,

@@ -11092,3 +11092,281 @@ starts it successfully.** Carried.
 evidence quality and asked the next slice to restore the practice. It did not. That is now a two-slice
 pattern rather than a one-off, and it is the reason F-78 was found by a test run on your machine instead of
 by a migration in mine.
+
+# M6 Slice 40 — the heading every item has, and a vocabulary nobody could check
+
+## Read this first: Slice 39 was green, and the number it predicted was finally tested
+
+```
+Test summary: total: 1124, failed: 0, succeeded: 1124, skipped: 0, duration: 147.5s
+```
+
+That number matters more than a green line usually does. **Slice 38 predicted 1124 and never reached a
+count** — its migration threw at fixture initialisation, so the arithmetic went untested. Slice 39 re-predicted
+1124 unchanged and shipped the F-78 repair. This run is the first time in three slices that a prediction
+was compared against a run, and it matched exactly. The full local CI ran green as well: sixteen §16.3
+scenarios in 147.6s, the boot smoke check, the restore drill, and a quick tunnel that served the
+application over a public origin.
+
+## The authoring environment has a database again, and it earned its keep in the first hour
+
+Slice 39's "still open" ended on this, and it was the sharpest line in the file: *"No authoring-environment
+database for a second consecutive slice… That is now a two-slice pattern rather than a one-off, and it is
+the reason F-78 was found by a test run on your machine instead of by a migration in mine."*
+
+PostgreSQL 16 was installed in the authoring environment before a line of `0005` was written, and **every
+statement in this slice was executed rather than reasoned about**. What that bought, concretely:
+
+- `0005` applied on an **empty** database (no seed section) and on a **populated** one (seed written, two
+  items backfilled under it, `SET NOT NULL` and the foreign key applied, positions preserved). Both
+  branches of the conditional seed were walked, which is the only way to walk them — a fresh container
+  takes the first branch and can never take the second.
+- `SELECT … FOR UPDATE` with a correlated `MAX + 1` subquery was run before it was written into
+  `DapperMenuAdministration`. PostgreSQL rejects `FOR UPDATE` alongside aggregation in the *outer* query,
+  and the shape that works is the one now in the file.
+- The **three-event create** was executed as a transaction — `created`, `section_changed`,
+  `description_changed` — and accepted.
+- The new paired CHECK was **proven to bite**: an INSERT of a `created` event carrying a section is refused
+  with `violates check constraint "menu_item_event_section_payload"`. That is the constraint doing its job
+  under observation rather than a claim that it would.
+- All five new `SchemaMigrationRunnerTests` probes were run against the live schema: `attnotnull` true, the
+  named foreign key present, `menu_item_section_index` present, eight CHECK constraints on
+  `menu_item_event`, and zero sections on a fresh database.
+
+## F-80 — a vocabulary copied out of its own constraint, wrong for two migrations, with no symptom
+
+`EventTypeVocabulary.MenuEventTypes` in `EventExplorerReads.cs` feeds §11.4's explorer dropdown. Its doc
+comment said *"the five `menu_item_event.event_type` values"* and it listed five. `0004` added
+`description_changed` and `reordered`. Neither the list nor the sentence was touched.
+
+**Nothing broke, and that is the finding.** §11.4's explorer deliberately never *refuses* an unrecognised
+type — `IsKnown` exists only to warn an administrator that a hand-edited `?type=` is not a word this build
+catalogues, and the filter runs regardless, because a schema this build has not caught up with is exactly
+the case where somebody most needs to see the rows. So a missing word has **no run-time symptom at all**.
+It is two of the menu's verbs that cannot be chosen from the dropdown, on the page whose entire purpose is
+choosing. Two slices, every gate green throughout.
+
+**This is F-77 one register worse.** That row deleted a *count* of this same vocabulary, written in three
+files and checkable in none. This is the vocabulary **itself**, copied into a second file, silently
+drifting — in a file neither slice that widened the vocabulary had any reason to open.
+
+**The repair is F-47's habit, and the three choices inside it are each deliberate.**
+`MenuEventVocabularyContractTests` walks `Migrations/*.sql` in name order (which is DbUp's apply order),
+takes the `event_type IN (…)` list from the last script declaring `menu_item_event_type_vocabulary`, and
+compares the set against the C# list.
+
+- **Not a count.** A count would have passed every version of this bug — which is precisely what F-77
+  established about this exact vocabulary.
+- **Non-vacuity is asserted.** A regex that matched the constraint and extracted no quoted words would
+  otherwise pass against an empty list, which is F-41's failure mode.
+- **SQL text, not a database.** `SchemaMigrationRunnerTests` owns "this constraint exists on a real
+  PostgreSQL"; "the constraint and the C# list agree" is a different question and belongs in the fast suite,
+  where a wrong answer is available in seconds.
+
+Simulated against the real files before shipping: it identifies `0005` as the last declaration and derives
+the same eight types the C# list now holds.
+
+## `0005` needed no dollar-quoted block, and that is what `0004` bought
+
+`0004` needed a `DO` block only because it had to query `pg_constraint` for names PostgreSQL had generated.
+Since it replaced every one with a chosen name, the single CHECK that had to widen here was dropped **by
+name** — two ordinary statements, nothing to query, nothing for dbup-core's variable substitution to
+collide with. **F-78 was a one-migration problem rather than a recurring one because the previous slice paid
+for the names.** The script says so in its header, so that a future migration does not reintroduce a block
+it does not need.
+
+## The seed carries two guards, and the plan specified one
+
+`docs/MENU_AND_HANDHELD_PLAN.md` specified the seed as *one* section, *only if `menu_item` has rows*. That
+is necessary and not sufficient. **"No surface calls `IMenuSectionAdministration`" is not the same claim as
+"no row exists"** — Slice 37 shipped that write service and registered it, and a database where somebody
+exercised it holds sections. Without a second guard the INSERT would trip `menu_section.name`'s `citext`
+UNIQUE on any database holding a section called "Menu", and a migration that fails at startup takes the
+whole application down.
+
+So the seed is guarded by `EXISTS (SELECT 1 FROM menu_item) AND NOT EXISTS (SELECT 1 FROM menu_section)`,
+and the backfill correspondingly targets the **first section in display order** rather than the seed's
+literal identifier. Both paths converge: if the seed ran it *is* the first section; if it did not, the
+orphans go under the earliest heading that already exists.
+
+## Two decisions kept a mandatory column from reaching sixteen files
+
+This is the transferable part of the slice, and it is worth stating as a rule rather than as two
+implementation notes. **When a mandatory argument arrives late, give the arrangement helper a default rather
+than threading the argument through every caller that does not care about it.**
+
+- **`OrderTestWorld.AddMenuItemAsync` takes an optional section** and lazily creates a house heading named
+  "Menu" when none is given, cleared by `TruncateAsync`. The dozen integration test files that put something
+  on the menu — about ordering, settlement, the kitchen, visibility, none about headings — compile unchanged
+  and mean exactly what they meant. The house section is created lazily rather than in `TruncateAsync`
+  because several classes here count rows and should not carry one they did not ask for.
+- **`AdministrationJourneys.CreateMenuItemAsync` arranges its own heading** through
+  `EnsureMenuSectionAsync` before opening the form. **The sixteen existing §16.3 scenarios needed no edit at
+  all.** `EnsureMenuSectionAsync` is idempotent by *looking first* rather than by submitting and swallowing
+  a "name taken" failure — the latter would also pass on a form that reported the wrong error, and "taken"
+  is a real outcome this project asserts elsewhere.
+
+## Rulings inside `0005`, each of which could have gone the other way
+
+**An item is appended at `MAX(display_order) + 1` within its section, reversing `0004`'s "created at
+position 0".** The reason the rule could change is the reason it existed: "the end of the menu" was not a
+defined place while an item had no heading, and it is defined now. `MAX + 1` rather than `COUNT(*)`, on the
+rule `menu_section` has followed since `0003` — a count collides with an existing position as soon as
+anything has been moved, and `AppendingUsesTheHighestPositionRatherThanTheCount` is the assertion.
+
+**The lock is on the section row, not the item.** Locking the section is what serialises two administrators
+creating an item under the same heading at the same moment: without it both read the same `MAX`, both write
+the same position, and the menu has two dishes claiming one place — which the schema *permits*, positions
+being deliberately non-unique, and which is therefore a defect nothing would ever report. It doubles as the
+existence check, which is why a missing heading is a reported `MenuSectionNotFound` rather than PostgreSQL
+error 23503 naming a constraint.
+
+**`created` still carries the name and the price alone**, so an item created under a heading writes two
+events and one with a description writes three. Widening it would relax an equality to an implication and
+break every `created` row already written. **The position writes no event ever**, because
+`new_display_order` is bound to `reordered` and a `created` row carrying a position would be false of every
+row written before `0005`.
+
+**One index, and it is not the one `0004` declined.** PostgreSQL does not index the referencing side of a
+foreign key, so without `menu_item_section_index` every statement touching a `menu_section` row scans
+`menu_item`. Its trailing columns are the tail of §11.1's `ORDER BY`, so one index answers both.
+
+## §7's asymmetry, implemented, and it points two ways one sentence apart
+
+An inactive **item** stays on the guest's menu, marked, unorderable. An inactive **section** is not rendered
+to the guest at all. That is not a contradiction: switching off a heading is a decision about a whole part
+of the menu ("no breakfast this evening"), where 86ing a dish is a decision about one thing a guest is still
+entitled to know exists. Neither flag cascades to the other.
+
+**Both are carried unfiltered by `IMenuDirectory` and the filtering is on the surface.** §11.4's
+administrator must see every heading including the ones no guest can reach — that is precisely the row
+somebody is looking for when they wonder why an available dish is not on the menu — so
+`/administration/menu` and `ManageMenuItem` both carry a *Section hidden* chip.
+
+## Two scope rulings, flagged for veto
+
+**`MoveMenuItemToSectionAsync` is not in this slice.** The plan schedules it with Stage 2's data access. The
+item editor that would call it is Stage 3, and this project's own rule — a verb with no caller is a code path
+no test can reach through the interface meant to protect it — applies to it exactly as it applied to the
+section verbs for three slices. **To reverse:** the verb is a `section_changed` event and an `UPDATE`
+alongside `ReorderMenuItemAsync`, plus a picker on `ManageMenuItem.razor`; nothing in this slice blocks it.
+
+**Only `CreateMenuSectionAsync` moved behind `IMenuWorkflow`.** The obligation carried four times **narrows
+to four verbs rather than closing**. The create page is a caller, so that verb arrives and publishes
+`MenuChanged` on a committed row; rename, describe, reorder and set-active have no surface. What changed is
+the *cost* of leaving them: §11.1's guest menu groups by heading now, so a renamed section that announced
+nothing would leave a stale heading in every open picker. That defect is real and merely **unreachable**.
+`MenuWiringTests`' fake throws from all four with a message naming the obligation, so the next person to
+wire one is told rather than left to notice.
+
+## One assertion was cut from scenario 17, and the cut is recorded rather than quietly made
+
+The scenario was drafted to deactivate a heading and watch it vanish from the guest's menu — §7's asymmetry,
+and the one thing about it no unit test can see. That needs `SetMenuSectionActiveAsync` to have a surface,
+which is the section editor this slice deliberately did not ship. Asserting it would have meant either a
+harness reaching past the UI, which §16.3 refuses, or a verb wired for a test, which is worse.
+
+It was replaced with an assertion this slice can actually make: a third item created under an existing
+heading joins it rather than starting a new grouping, and lands at the end of it — `MAX + 1`-within-section
+proven through a browser. The inactive-section rule is covered at the data layer by
+`MenuDirectoryTests.AnInactiveSection_IsCarriedRatherThanFiltered` and is **unverified end to end**.
+
+## What is in this slice
+
+| Area | Change |
+|---|---|
+| Migration | `0005_menu_item_sections.sql` — **new**. Conditional two-guard seed, nullable column, backfill, `SET NOT NULL`, named foreign key, vocabulary widened by name, `new_menu_section_identifier` with its paired CHECK, one index |
+| Data access | `MenuDirectory.cs` — three section members, INNER join, six-key ordering; `MenuAdministration.cs` — section on create, `MAX + 1` under a section lock, `CreateMenuItemOutcome`, widened result; `MenuEventLog.cs` — section payload and an aliased LEFT join |
+| Web | `MenuWorkflow.cs` — `CreateMenuSectionAsync`, section on the item create, that publish made conditional; `OrdersServiceCollectionExtensions.cs` — the registration note rewritten |
+| Surfaces | `CreateMenuSection.razor` — **new**; `CreateMenuItem.razor` — picker and first-use panel; `AdministrationMenu.razor` — Section column, Create section, `section_changed` arm; `ManageMenuItem.razor` — the heading and its arm; `TableOrderSurface.razor` — §11.1 grouped under headings |
+| Stylesheet | `app.css` — `.order-menu-section` and its heading. No new breakpoint, no colour literal, no `var()` fallback |
+| Explorer | `EventExplorerReads.cs` — the menu vocabulary corrected from five to eight (F-80) |
+| Harness | `AdministrationJourneys.cs` — `CreateMenuSectionAsync`, `EnsureMenuSectionAsync`, `FindMenuSectionAsync`, a section on item creation; `TableOrderJourneys.cs` — `MenuCard.SectionName`, section-walking read, `ReadMenuSectionNamesAsync` |
+| Tests | `MenuEventVocabularyContractTests.cs` — **new**, two facts; `MenuDirectoryTests` +2; `MenuAdministrationTests` +3; `SchemaMigrationRunnerTests` +2; `MenuWiringTests` +2; `MenuEventLogTests` counts corrected; `EndToEndScenarios.cs` — scenario 17; `OrderTestWorld.cs` — `AddMenuSectionAsync` and the optional section |
+| Documents | S v1.25 (§7, §8.1, §8.2, §16.3, §16.4, Appendix A, changelog), ledger F-80, plan Stage 2 closed and Stage 3 partly struck, `_CHANGES.md` |
+
+## What was verified
+
+**Everything SQL, against a live PostgreSQL 16.** Listed in full at the top of this entry rather than
+summarised here, because it is the difference between this slice and the two before it.
+
+**The working tree was reconstructed from `dump.txt` and checked against the SHA-256 recorded for every
+file: 341 of 341 byte-identical.** The only file the dump does not reproduce is `export.sh`, which
+documents itself inside its own output. Every edit below was made against a verified tree.
+
+**Three gates were simulated rather than assumed.** `MarkdownTableContractTests` was run in substance over
+every Markdown file in the repository — fence-aware, escaped-pipe-aware — and reports **zero** mismatches,
+including the two new four-cell rows. `SpecificationVersionTests`: header 1.25, newest entry 1.25, entries
+descending. `MenuEventVocabularyContractTests`: derives eight types from `0005` and matches the C# list.
+
+**Brace, paren and bracket balance** on every C# file touched, checked after each edit rather than at the
+end. **Every `InsertEventAsync` call site** was enumerated after the signature change and each of the seven
+confirmed to carry the new argument — by search, not by having written them.
+
+**The contiguity assertion in `MenuDirectoryTests` was proven sensitive.** A grouped list of four returns 2
+runs; a scattered list with the same set of names returns 4. An assertion that could not tell those apart
+would be the whole fact rendered vacuous.
+
+**Selector existence in both directions** for the new markup: `.order-menu-section` and
+`.order-menu-section-name` exist in `app.css` and are read by both the surface and the harness;
+`--hairline` and `--ink-soft` are declared in `:root`.
+
+## What was NOT verified
+
+**Nothing compiled.** No .NET SDK in the authoring environment. The likeliest sites of a complaint are named
+rather than left to be found: **`InputSelect` bound to a `Guid`** on the item form, which this tree does
+elsewhere for enums but not for `Guid`; **`_created is { Created: true } created`**, a property pattern with
+a designation, on two Razor pages; and **`Assert.Single(menu, card => card.Name == …)`**, whose predicate
+overload returns the element in xUnit v3 and returned `void` in some v2 lines.
+
+**No test ran.** The SQL is executed and the C# is not. Every count below is arithmetic.
+
+**No browser rendered the grouped menu.** Named consequences a first run may show: whether an uppercase
+letter-spaced heading at 0.78rem is legible enough on a 375px handset; whether two headings with one item
+each read as grouping or as clutter; and whether `aria-labelledby` on a per-section `<ul>` announces
+sensibly when the same page has several, which only a screen reader decides.
+
+**The `0005` backfill branch was walked by hand and cannot be walked by a test here.** A fresh container
+takes the no-seed branch, which `Run_SeedsNoSectionOnAFreshDatabase` asserts. The populated branch is
+recorded in this entry as manually exercised, and it is the branch that runs on your actual database.
+
+**§7's inactive-section rendering rule is unverified end to end**, for the reason above.
+
+## Test count
+
+Last observed: **1124**, from Slice 39 — and, for the first time in three slices, a prediction that matched
+its run.
+
+Predicted here: **1136**. The arithmetic: `MenuEventVocabularyContractTests` +2, `MenuDirectoryTests` +2,
+`MenuAdministrationTests` +3, `SchemaMigrationRunnerTests` +2, `MenuWiringTests` +2, §16.3 scenario 17 +1.
+No fact was removed; several had their assertions corrected in place. §16.3 goes from **16** to **17**.
+
+Per §18: if the run returns anything other than 1136, that difference is the next thing to chase.
+
+## Still open
+
+**The section editor, and it is now the highest-value thing outstanding.** A heading created with a typo can
+only be worked around by creating another. It carries four workflow verbs, `MoveMenuItemToSectionAsync`, the
+sections-first index, and the end-to-end assertion cut from scenario 17.
+
+**A section's own description under its heading on the guest menu.** The surface groups from
+`MenuItemSummary`, which carries the heading's name and not its description; showing it needs either a
+second read or a widened record, and guessing between those was not this slice's business.
+
+**The kitchen's "86" panel still groups by nothing.** Stage 3's remaining surface, and the last one.
+
+**§16.3 scenario 17 does not deactivate a section.** Named above; lands with the editor.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Fifth slice carried. Still a decision rather than a repair.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a seventh time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Sixteenth consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**The handheld barrier does not visit `/administration/menu/sections/new`.** Scenario 16 walks ten surfaces
+and this slice added an eleventh administration page. It is a create form rather than a record list, so
+none of the barrier's three reach selectors matches it and the control count would not move — which is
+exactly why it would be easy to leave out permanently. Recorded so it is not.

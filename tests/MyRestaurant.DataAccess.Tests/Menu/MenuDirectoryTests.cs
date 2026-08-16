@@ -15,7 +15,14 @@ namespace MyRestaurant.DataAccess.Tests.Menu;
 ///
 /// <para><c>0004</c> adds two facts about the ordering, and they are here rather than in
 /// <c>MenuAdministrationTests</c> because ordering is a property of the <em>read</em>: the write side
-/// stores a number and has no opinion about what it means.</para>
+/// stores a number and has no opinion about what it means. <c>0005</c> adds two more, and the reason is
+/// the same one register up: the reader now sorts by section before it sorts by position, and that key
+/// exists nowhere else.</para>
+///
+/// <para><b>Most facts here still say nothing about sections, and that is by construction.</b>
+/// <c>OrderTestWorld.AddMenuItemAsync</c> files an item under a lazily created house section when the
+/// caller does not name one, so "an item exists" stayed a one-line arrangement through a migration that
+/// made its heading mandatory. A test that is about headings passes one.</para>
 /// </summary>
 public sealed class MenuDirectoryTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
@@ -97,6 +104,14 @@ public sealed class MenuDirectoryTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(string.Empty, found.Description);
         Assert.Equal(0, found.DisplayOrder);
 
+        // 0005's join, seen from the reader. The name comes from menu_section rather than from anything
+        // stored on the item, which is what makes a rename take effect everywhere at once — and the
+        // INNER join is what a missing section would turn into a missing row, so a null here would be a
+        // reader that had gone back to reading menu_item alone.
+        Assert.Equal("Menu", found.MenuSectionName);
+        Assert.True(found.MenuSectionIsActive);
+        Assert.NotEqual(Guid.Empty, found.MenuSectionIdentifier);
+
         Assert.Null(await Directory().GetAsync(_identifiers.Create(), cancellationToken));
     }
 
@@ -161,6 +176,90 @@ public sealed class MenuDirectoryTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(
             new[] { apple, zebra },
             menu.Select(item => item.MenuItemIdentifier).ToArray());
+    }
+
+    /// <summary>
+    /// <c>0005</c>'s ordering, and the one assertion that separates a reader which sorts by section from
+    /// one that merely selects the column.
+    ///
+    /// <para>Every trap is set on purpose. The <em>second</em> section is created first and given the
+    /// higher position, so section creation order and section display order disagree. Its name sorts
+    /// <em>before</em> the other's, so a reader that ordered by section name would also fail. And the
+    /// item positions are the reverse of alphabetical within each heading, so a reader that grouped
+    /// correctly and then sorted items by name would fail too. A reader with <c>ORDER BY (display_order,
+    /// name, identifier)</c> — exactly what <c>0004</c> left behind — returns these four in a different
+    /// order than any of the above.</para>
+    /// </summary>
+    [Fact]
+    public async Task List_OrdersBySectionBeforeItem_AndCarriesTheSectionName()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid puddings = await _world!.AddMenuSectionAsync("Puddings", cancellationToken, displayOrder: 1);
+        Guid starters = await _world.AddMenuSectionAsync("Starters", cancellationToken, displayOrder: 0);
+
+        Guid soup = await _world.AddMenuItemAsync(
+            "Soup", 4.50m, cancellationToken, displayOrder: 0, menuSectionIdentifier: starters);
+        Guid bread = await _world.AddMenuItemAsync(
+            "Bread", 2.00m, cancellationToken, displayOrder: 1, menuSectionIdentifier: starters);
+        Guid trifle = await _world.AddMenuItemAsync(
+            "Trifle", 5.00m, cancellationToken, displayOrder: 0, menuSectionIdentifier: puddings);
+        Guid apple = await _world.AddMenuItemAsync(
+            "Apple pie", 3.25m, cancellationToken, displayOrder: 1, menuSectionIdentifier: puddings);
+
+        IReadOnlyList<MenuItemSummary> menu = await Directory().ListAsync(cancellationToken);
+
+        Assert.Equal(
+            new[] { soup, bread, trifle, apple },
+            menu.Select(item => item.MenuItemIdentifier).ToArray());
+
+        Assert.Equal(
+            new[] { "Starters", "Starters", "Puddings", "Puddings" },
+            menu.Select(item => item.MenuSectionName).ToArray());
+
+        // Contiguity is the property §11.1's surface actually depends on: it groups by walking the list
+        // once and starting a heading when the identifier changes, so a correct set of names in a
+        // scattered order would render the same heading twice.
+        Assert.Equal(
+            2,
+            menu.Select(item => item.MenuSectionIdentifier)
+                .Where((identifier, index) => index == 0 || identifier != menu[index - 1].MenuSectionIdentifier)
+                .Count());
+    }
+
+    /// <summary>
+    /// An inactive section is <em>carried</em>, not filtered — the same rule
+    /// <see cref="List_ReturnsDeactivatedItemsToo_OrderedByName"/> asserts for an item, and for the
+    /// opposite downstream reason.
+    ///
+    /// <para>§7 hides an inactive heading from the <b>guest</b> and shows it to §11.4's administrator, so
+    /// the filtering belongs to the surface and this reader must hand both of them everything. A
+    /// directory that filtered here would leave the administration index unable to show an item whose
+    /// heading is switched off — which is precisely the row somebody is looking for when they wonder why
+    /// an available dish is not on the menu.</para>
+    /// </summary>
+    [Fact]
+    public async Task AnInactiveSection_IsCarriedRatherThanFiltered()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid breakfast = await _world!.AddMenuSectionAsync(
+            "Breakfast", cancellationToken, isActive: false);
+
+        Guid eggs = await _world.AddMenuItemAsync(
+            "Eggs", 5.00m, cancellationToken, menuSectionIdentifier: breakfast);
+
+        MenuItemSummary listed = Assert.Single(await Directory().ListAsync(cancellationToken));
+
+        Assert.Equal(eggs, listed.MenuItemIdentifier);
+        Assert.False(listed.MenuSectionIsActive);
+
+        // And the item's own flag is untouched. §7 forbids the cascade: switching off a heading must not
+        // rewrite which dishes the kitchen had 86'd, because reactivating it has to bring the menu back
+        // exactly as it was.
+        Assert.True(listed.IsActive);
     }
 
     [Fact]

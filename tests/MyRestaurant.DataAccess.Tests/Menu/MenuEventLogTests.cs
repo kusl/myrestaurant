@@ -33,6 +33,13 @@ public sealed class MenuEventLogTests : IClassFixture<PostgreSqlFixture>, IAsync
     private Guid _administratorIdentifier;
     private Guid _kitchenIdentifier;
 
+    /// <summary>
+    /// The heading <see cref="CreateAsync"/> files everything under (§7, <c>0005</c>). One per test, made
+    /// beside the two people, because an item's section is mandatory and nothing in this file is about
+    /// which heading — it is about what the log says.
+    /// </summary>
+    private Guid _sectionIdentifier;
+
     public MenuEventLogTests(PostgreSqlFixture fixture) => _fixture = fixture;
 
     public async ValueTask InitializeAsync()
@@ -58,6 +65,7 @@ public sealed class MenuEventLogTests : IClassFixture<PostgreSqlFixture>, IAsync
 
         // No display name: the reader must fall back to the username rather than render blank.
         _kitchenIdentifier = await _world.AddPersonAsync("kim", null, cancellationToken);
+        _sectionIdentifier = await _world.AddMenuSectionAsync("Mains", cancellationToken);
     }
 
     public async ValueTask DisposeAsync()
@@ -91,8 +99,11 @@ public sealed class MenuEventLogTests : IClassFixture<PostgreSqlFixture>, IAsync
 
         IReadOnlyList<MenuItemEventEntry> history = await Log().ListForItemAsync(soup, cancellationToken);
 
+        // 'section_changed' sits second because it is written in the create's own transaction, at the
+        // same instant as 'created', and both reads break that tie on the UUIDv7 key (§8.2) — so the
+        // order below is the order the two rows were minted in, not an accident of the scan.
         Assert.Equal(
-            new[] { "created", "name_changed", "price_changed", "deactivated", "activated" },
+            new[] { "created", "section_changed", "name_changed", "price_changed", "deactivated", "activated" },
             history.Select(entry => entry.EventType).ToArray());
 
         // Oldest first, and every entry is about this item under its current name.
@@ -127,6 +138,18 @@ public sealed class MenuEventLogTests : IClassFixture<PostgreSqlFixture>, IAsync
         MenuItemEventEntry created = Entry("created");
         Assert.Equal("Soup", created.NewName);
         Assert.Equal(4.50m, created.NewPriceAmount);
+
+        // §8.2's fifth paired CHECK: the section is on 'section_changed' and on nothing else. The name is
+        // a read-time LEFT JOIN, so a renamed heading reads under its new name while the identifier still
+        // says which row it was — the same distinction MenuItemName draws for the item.
+        MenuItemEventEntry filed = Entry("section_changed");
+        Assert.Equal(_sectionIdentifier, filed.NewMenuSectionIdentifier);
+        Assert.Equal("Mains", filed.NewMenuSectionName);
+        Assert.Null(filed.NewName);
+        Assert.Null(filed.NewPriceAmount);
+
+        Assert.Null(created.NewMenuSectionIdentifier);
+        Assert.Null(created.NewMenuSectionName);
 
         MenuItemEventEntry renamed = Entry("name_changed");
         Assert.Equal("Broth", renamed.NewName);
@@ -179,10 +202,13 @@ public sealed class MenuEventLogTests : IClassFixture<PostgreSqlFixture>, IAsync
         DateTimeOffset createdAt = _clock.UtcNow;
         Guid soup = await CreateAsync("Soup", 4.50m, cancellationToken);
 
-        MenuItemEventEntry created = Assert.Single(await Log().ListForItemAsync(soup, cancellationToken));
+        // Two events, one instant: the create's own transaction writes both at the same IClock.UtcNow,
+        // which is the property this fact is really about.
+        IReadOnlyList<MenuItemEventEntry> history = await Log().ListForItemAsync(soup, cancellationToken);
 
-        Assert.Equal(createdAt, created.OccurredAt);
-        Assert.Equal(TimeSpan.Zero, created.OccurredAt.Offset);
+        Assert.Equal(2, history.Count);
+        Assert.All(history, entry => Assert.Equal(createdAt, entry.OccurredAt));
+        Assert.All(history, entry => Assert.Equal(TimeSpan.Zero, entry.OccurredAt.Offset));
     }
 
     [Fact]
@@ -194,10 +220,12 @@ public sealed class MenuEventLogTests : IClassFixture<PostgreSqlFixture>, IAsync
         Guid soup = await CreateAsync("Soup", 4.50m, cancellationToken);
         Guid steak = await CreateAsync("Steak", 21.00m, cancellationToken);
 
-        MenuItemEventEntry only = Assert.Single(await Log().ListForItemAsync(soup, cancellationToken));
+        IReadOnlyList<MenuItemEventEntry> soupHistory =
+            await Log().ListForItemAsync(soup, cancellationToken);
 
-        Assert.Equal(soup, only.MenuItemIdentifier);
-        Assert.NotEqual(steak, only.MenuItemIdentifier);
+        Assert.Equal(2, soupHistory.Count);
+        Assert.All(soupHistory, entry => Assert.Equal(soup, entry.MenuItemIdentifier));
+        Assert.DoesNotContain(soupHistory, entry => entry.MenuItemIdentifier == steak);
     }
 
     [Fact]
@@ -228,11 +256,14 @@ public sealed class MenuEventLogTests : IClassFixture<PostgreSqlFixture>, IAsync
         Assert.Equal(2, recent.Count);
         Assert.Equal("deactivated", recent[0].EventType);
         Assert.Equal(soup, recent[0].MenuItemIdentifier);
-        Assert.Equal("created", recent[1].EventType);
+
+        // The steak's own two events share an instant, so the newest-first read with its UUIDv7 tiebreak
+        // puts 'section_changed' ahead of 'created' — the mirror of the oldest-first history.
+        Assert.Equal("section_changed", recent[1].EventType);
         Assert.Equal(steak, recent[1].MenuItemIdentifier);
 
-        // Uncapped, the whole feed is there — three events over two items.
-        Assert.Equal(3, (await Log().ListRecentAsync(50, cancellationToken)).Count);
+        // Uncapped, the whole feed is there — five events over two items, since each create wrote two.
+        Assert.Equal(5, (await Log().ListRecentAsync(50, cancellationToken)).Count);
     }
 
     [Fact]
@@ -266,15 +297,31 @@ public sealed class MenuEventLogTests : IClassFixture<PostgreSqlFixture>, IAsync
         IReadOnlyList<MenuItemEventEntry> recent = await Log().ListRecentAsync(10, cancellationToken);
 
         Assert.All(recent, entry => Assert.Equal("Broth", entry.MenuItemName));
+
+        // Newest first, so the rename is index 0. The create's name is found BY TYPE rather than at index
+        // 1, because 'section_changed' now sits between them and an index would be asserting the shape of
+        // the log rather than the distinction this fact is about.
         Assert.Equal("Broth", recent[0].NewName);
-        Assert.Equal("Soup", recent[1].NewName);
+        Assert.Equal("Soup", recent.Single(entry => entry.EventType == "created").NewName);
     }
 
+    /// <summary>
+    /// One item under this class's house heading. <b>Every call writes TWO events</b> as of <c>0005</c> —
+    /// <c>created</c> and <c>section_changed</c> — because §8.2 keeps <c>created</c> at the name and the
+    /// price, so the heading has to be recorded somewhere and this is where. Nearly every count in this
+    /// file moved by one per created item because of it.
+    /// </summary>
     private async Task<Guid> CreateAsync(string name, decimal price, CancellationToken cancellationToken)
     {
         Guid identifier = _identifiers.Create();
         await Administration().CreateMenuItemAsync(
-            identifier, name, description: null, price, _administratorIdentifier, cancellationToken);
+            identifier,
+            _sectionIdentifier,
+            name,
+            description: null,
+            price,
+            _administratorIdentifier,
+            cancellationToken);
 
         return identifier;
     }
