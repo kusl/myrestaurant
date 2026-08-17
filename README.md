@@ -28,7 +28,8 @@ description — and one defect: on a phone, the Manage button on the administrat
 right-hand edge of the screen. The defect is fixed and its rule is written down (`§11.12`, F-59); the
 enhancement is decided (ADR-0014) and staged. `docs/MENU_AND_HANDHELD_PLAN.md` is the plan.
 
-See *Roadmap*, `docs/MENU_AND_HANDHELD_PLAN.md` and `docs/BUILD_PROGRESS.md`.
+See *Roadmap*, `docs/MENU_AND_HANDHELD_PLAN.md` and `docs/BUILD_PROGRESS.md` — which holds M6 Slice 40
+onward; everything earlier is in `docs/progress/BUILD_PROGRESS_THROUGH_M6_SLICE_39.md`.
 
 ## Layout
 

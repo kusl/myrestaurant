@@ -97,9 +97,22 @@ esac
 # Scope.
 #
 # GENERATED_DIRECTORIES holds path prefixes whose contents are produced by a tool rather than
-# written by a person. Kept in step with export.sh's EXCLUDED_DIRECTORY by hand, and that is
-# acceptable precisely because it is one entry: a shell script cannot read another script's
-# variable without sourcing it, and sourcing export.sh would run it.
+# written by a person. It is the same list as export.sh's GENERATED_DIRECTORIES and it is NOT the
+# same list as what export.sh keeps out of the dump — that distinction arrived in Slice 46 and it
+# is the whole reason this comment was rewritten (F-96).
+#
+# The exporter now withholds two directories: docs/llm, which it writes, and docs/progress, which
+# is the archived half of the build log. Only the first is generated. Archived history is authored,
+# hand-edited text and MUST be checked here: exempting it because it happens to be absent from a
+# context dump would stop checking 749 KiB of tracked prose for the appended-separator defect that
+# reached twenty-one files before anyone noticed (F-40). Excluded-from-the-dump and
+# exempt-from-hygiene are different properties and only one of them belongs to the file.
+#
+# A shell script still cannot read another script's variable without sourcing it, and sourcing
+# export.sh would run it — so the two lists are compared by
+# tests/…/Documentation/ContextDumpExclusionContractTests.cs rather than kept in step by hand. That
+# gate asserts set equality on the generated lists and non-membership for the archived ones, which
+# is the asymmetry above made executable instead of remembered (F-50's shape, eighth instance).
 #
 # EXEMPT_FILES holds individual authored files that are allowed to contain a separator because
 # writing one is their job. The comparison is a literal path equality rather than a pattern, so

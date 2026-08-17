@@ -10,11 +10,30 @@
 # Behaviour:
 #   • Resolves its own location; works regardless of the caller's directory.
 #   • Silently exits if no Git repository is found at that location.
-#   • Dumps only Git-tracked files to docs/llm/dump.txt, excluding docs/llm/**
-#     and this script itself — its source appears exactly once, in the
-#     self-documentation section.                                       (F-25)
-#   • Emits rich per-file metadata (name, path, size, permissions,
-#     modification time, owner, inode, MIME type, SHA-256, last commit).
+#   • Dumps only Git-tracked files to docs/llm/dump.txt, excluding this script
+#     itself — its source appears exactly once, in the self-documentation
+#     section.                                                          (F-25)
+#   • Three kinds of path are held out of the dump, and the kinds are distinct
+#     because other gates care about the difference:                    (F-96)
+#       GENERATED_DIRECTORIES  produced by a tool, never authored. docs/llm/ is
+#                              where this script writes, and a dump's own
+#                              structure is the separator scripts/check_tree.sh
+#                              forbids — so that script skips these too.
+#       ARCHIVED_DIRECTORIES   authored history, deliberately withheld to keep
+#                              the dump small. STILL hygiene-checked, still
+#                              tracked, still edited by hand. A session cannot
+#                              see these, so nothing in a session may
+#                              reconstruct one — which is why every archived
+#                              document must be linked by path from a document
+#                              the dump does contain.
+#       ELIDED_FILES           listed with their metadata and SHA-256, body
+#                              replaced by one line. For unmodified boilerplate
+#                              a reader gains nothing from: LICENSE is verbatim
+#                              AGPL-3.0-only and the hash still pins it.
+#   • Emits per-file metadata: relative path, size, SHA-256. Deliberately no
+#     absolute path, mtime, permissions, owner, inode, link count, MIME type or
+#     last commit — nine lines per file that no session has ever used, 164 KiB
+#     across this tree, and four of them name the authoring machine.    (F-96)
 #   • Includes a file-tree view of all included files.
 #   • Builds the dump in a temporary file using plain redirection, renames it
 #     into place atomically, and only then echoes the finished dump to the
@@ -52,18 +71,45 @@ REPOSITORY_ROOT="$(git -C "$SCRIPT_DIRECTORY" rev-parse --show-toplevel 2>/dev/n
 # ---------------------------------------------------------------------------
 # 2. Constants & derived paths
 # ---------------------------------------------------------------------------
-EXCLUDED_DIRECTORY="docs/llm"
+# Tool-produced trees. The first entry is also where this script writes, which
+# is why it is the one OUTPUT_DIRECTORY is derived from rather than a second
+# spelling of the same path. scripts/check_tree.sh skips exactly this list,
+# because a dump's own structure is the separator that script forbids — and the
+# two lists are compared by ContextDumpExclusionContractTests rather than kept
+# in step by hand, which is what F-50 was about.
+GENERATED_DIRECTORIES=("docs/llm")
 
-# Files excluded in addition to EXCLUDED_DIRECTORY. A bare name (no slash) is
-# excluded wherever it appears; a name containing a slash is an exact
-# repository-relative path. The script always excludes itself — by whatever
-# name it currently has — so a rename can never reintroduce the double
-# emission of F-25. The JavaScript-era 'yarn.lock' entry is gone.  (F-25, F-32)
+# Authored history withheld to keep the dump small (F-96). NOT generated: these
+# are hand-written, hygiene-checked, and the platform-state rule exempts them as
+# record files the way it exempts docs/BUILD_PROGRESS.md. A session working from
+# dump.txt cannot see them, so every document here must be linked by path from a
+# document that IS in the dump — asserted, not trusted.
+ARCHIVED_DIRECTORIES=("docs/progress")
+
+# Files whose metadata and SHA-256 are worth dumping and whose bytes are not:
+# unmodified boilerplate that a session reading it would learn nothing from.
+# The hash still pins the exact text, so a modified licence is still detectable
+# from the dump alone — which is the property that makes the elision safe rather
+# than merely cheap. Exact repository-relative paths only; no globs, so the list
+# cannot widen by accident.
+ELIDED_FILES=("LICENSE")
+
+# Files excluded outright. A bare name (no slash) is excluded wherever it
+# appears; a name containing a slash is an exact repository-relative path. The
+# script always excludes itself — by whatever name it currently has — so a
+# rename can never reintroduce the double emission of F-25. The JavaScript-era
+# 'yarn.lock' entry is gone.                                      (F-25, F-32)
 EXCLUDED_FILES=("$SCRIPT_NAME")
 EXCLUDED_FILES_DISPLAY="$(printf '%s, ' "${EXCLUDED_FILES[@]}")"
 EXCLUDED_FILES_DISPLAY="${EXCLUDED_FILES_DISPLAY%, }"
 
-OUTPUT_DIRECTORY="${REPOSITORY_ROOT}/${EXCLUDED_DIRECTORY}"
+EXCLUDED_PATHS_DISPLAY="$(printf '%s/, ' "${GENERATED_DIRECTORIES[@]}" "${ARCHIVED_DIRECTORIES[@]}")"
+EXCLUDED_PATHS_DISPLAY="${EXCLUDED_PATHS_DISPLAY%, }"
+
+ELIDED_FILES_DISPLAY="$(printf '%s, ' "${ELIDED_FILES[@]}")"
+ELIDED_FILES_DISPLAY="${ELIDED_FILES_DISPLAY%, }"
+
+OUTPUT_DIRECTORY="${REPOSITORY_ROOT}/${GENERATED_DIRECTORIES[0]}"
 OUTPUT_FILE="${OUTPUT_DIRECTORY}/dump.txt"
 
 # GNU date first, BSD-style fallback second — keeps the portability posture
@@ -81,9 +127,11 @@ GIT_COMMIT_DATE="$(git -C "$REPOSITORY_ROOT" log -1 --pretty=format:'%ci' 2>/dev
 GIT_REMOTE="$(git -C "$REPOSITORY_ROOT" remote get-url origin 2>/dev/null || echo 'none')"
 GIT_STATUS_SUMMARY="$(git -C "$REPOSITORY_ROOT" status --short 2>/dev/null | head -20 || echo '')"
 
-HOSTNAME_VALUE="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo 'unknown')"
-USER_VALUE="$(id -un 2>/dev/null || echo 'unknown')"
-OPERATING_SYSTEM_VALUE="$(uname -srm 2>/dev/null || echo 'unknown')"
+# The host name, the login name and the kernel string used to be dumped here.
+# They are gone with the per-file metadata that named the same machine nine
+# lines at a time (F-96): a dump is read to learn what the repository says, and
+# the authoring computer is not part of that. The commit is the provenance that
+# matters and it is still below.
 
 # ---------------------------------------------------------------------------
 # 3. Collect tracked files (staged/committed only), minus exclusions.
@@ -95,11 +143,25 @@ mapfile -t RAW_TRACKED_FILES < <(
     | sort -u
 )
 
+is_elided_file() {
+    local candidate="$1" entry
+    for entry in "${ELIDED_FILES[@]}"; do
+        [[ "$candidate" == "$entry" ]] && return 0
+    done
+    return 1
+}
+
 INCLUDED_FILES=()
 for candidate_file in "${RAW_TRACKED_FILES[@]}"; do
     [[ -z "$candidate_file" ]] && continue
-    # Skip the entire excluded directory tree.
-    [[ "$candidate_file" == "${EXCLUDED_DIRECTORY}/"* ]] && continue
+    # Skip every held-out directory tree, generated and archived alike. Both are
+    # absent from the dump; the distinction between them matters to other gates,
+    # not to this loop.
+    candidate_in_excluded_tree=0
+    for excluded_prefix in "${GENERATED_DIRECTORIES[@]}" "${ARCHIVED_DIRECTORIES[@]}"; do
+        [[ "$candidate_file" == "${excluded_prefix}/"* ]] && { candidate_in_excluded_tree=1; break; }
+    done
+    (( candidate_in_excluded_tree )) && continue
     # Skip any individually-excluded file.
     candidate_excluded=0
     for excluded_entry in "${EXCLUDED_FILES[@]}"; do
@@ -158,19 +220,7 @@ file_sha256() {
 }
 
 # ---------------------------------------------------------------------------
-# 6. Helper: MIME type (best effort, no error on missing tool)
-# ---------------------------------------------------------------------------
-file_mime() {
-    local path="$1"
-    if command -v file &>/dev/null; then
-        file --brief --mime-type "$path" 2>/dev/null || echo 'unknown'
-    else
-        echo 'unknown'
-    fi
-}
-
-# ---------------------------------------------------------------------------
-# 7. Helper: binary detection. The previous version keyed everything on
+# 6. Helper: binary detection. The previous version keyed everything on
 #    file(1); on a machine without it, EVERY file was misclassified as
 #    binary and the dump contained no content at all. Now the MIME type is
 #    the primary signal and a NUL-byte sniff of the first 8 KiB decides
@@ -281,49 +331,35 @@ render_tree_level() {
 # 9. Per-file metadata and content blocks — shared by the self-documentation
 #    section and the main loop, so the two can never drift apart.
 # ---------------------------------------------------------------------------
+# Three fields, and the nine that were here are gone (F-96).
+#
+# WHAT A SESSION ACTUALLY USES. The relative path says where the file goes back
+# to — which is the whole point of a dump an LLM writes changes against, and the
+# reason it is the one field nothing may drop. The size and the SHA-256 are what
+# make a reconstruction checkable: a splitter can slice content by declared byte
+# count and verify it against the hash, which is how a session proves it read the
+# tree rather than approximately read it.
+#
+# WHAT WAS DROPPED, AND WHY IT IS NOT A LOSS. Absolute path, last modified,
+# permissions, owner, inode, hard links, MIME type, last git commit, and the file
+# name — the last being the tail of the relative path one line above it, which is
+# the same fact written twice in adjacent lines. Nine lines per file, 164 KiB
+# across this tree, 2.6% of the dump. None of them has been read in a session;
+# four of them (absolute path, owner, inode, host-local mtime) describe the
+# authoring machine rather than the repository, so dropping them makes the dump
+# both smaller and less about a computer nobody is asking about.
+#
+# 'file' and 'git log' are no longer called per file, so a dump of this tree
+# makes about 700 fewer subprocess calls. That is a side effect, not the reason.
 print_file_metadata() {
-    local absolute_path="$1"
-    local relative_path="$2"
-    local file_size="$3"
-    local sha256_value="$4"
-
-    local modified_time permissions owner inode hard_links mime_type last_commit
-    modified_time="$(stat --format='%y' "$absolute_path" 2>/dev/null \
-                     || stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S %z' "$absolute_path" 2>/dev/null \
-                     || echo 'unavailable')"
-    permissions="$(stat --format='%A' "$absolute_path" 2>/dev/null \
-                   || stat -f '%Sp' "$absolute_path" 2>/dev/null \
-                   || echo 'unavailable')"
-    owner="$(stat --format='%U:%G' "$absolute_path" 2>/dev/null \
-             || stat -f '%Su:%Sg' "$absolute_path" 2>/dev/null \
-             || echo 'unavailable')"
-    inode="$(stat --format='%i' "$absolute_path" 2>/dev/null \
-             || stat -f '%i' "$absolute_path" 2>/dev/null \
-             || echo 'unavailable')"
-    hard_links="$(stat --format='%h' "$absolute_path" 2>/dev/null \
-                  || stat -f '%l' "$absolute_path" 2>/dev/null \
-                  || echo 'unavailable')"
-    mime_type="$(file_mime "$absolute_path")"
-    last_commit="$(git -C "$REPOSITORY_ROOT" log -1 --pretty=format:'%h %ai %s' -- "$relative_path" 2>/dev/null || echo 'unavailable')"
-    # A file that is staged but has never been committed produces empty git
-    # output rather than an error; say so instead of printing a blank field.
-    if [[ -z "$last_commit" ]]; then
-        last_commit='(not yet committed)'
-    fi
+    local relative_path="$1"
+    local file_size="$2"
+    local sha256_value="$3"
 
     printf '\n--- METADATA ---\n'
-    printf '  %-22s %s\n' "File name:"       "$(basename "$relative_path")"
-    printf '  %-22s %s\n' "Relative path:"   "$relative_path"
-    printf '  %-22s %s\n' "Absolute path:"   "$absolute_path"
-    printf '  %-22s %s\n' "Size:"            "$(human_size "$file_size") (${file_size} bytes)"
-    printf '  %-22s %s\n' "Last modified:"   "$modified_time"
-    printf '  %-22s %s\n' "Permissions:"     "$permissions"
-    printf '  %-22s %s\n' "Owner:"           "$owner"
-    printf '  %-22s %s\n' "Inode:"           "$inode"
-    printf '  %-22s %s\n' "Hard links:"      "$hard_links"
-    printf '  %-22s %s\n' "MIME type:"       "$mime_type"
-    printf '  %-22s %s\n' "SHA-256:"         "$sha256_value"
-    printf '  %-22s %s\n' "Last git commit:" "$last_commit"
+    printf '  %-22s %s\n' "Relative path:" "$relative_path"
+    printf '  %-22s %s\n' "Size:"          "$(human_size "$file_size") (${file_size} bytes)"
+    printf '  %-22s %s\n' "SHA-256:"       "$sha256_value"
     printf '\n--- CONTENT ---\n'
 }
 
@@ -331,6 +367,13 @@ print_file_content() {
     local absolute_path="$1"
     local file_size="$2"
     local sha256_value="$3"
+    local relative_path="${4:-}"
+
+    if [[ -n "$relative_path" ]] && is_elided_file "$relative_path"; then
+        printf '[Elided — unmodified boilerplate, %s, SHA-256 above. The bytes are in the tree.]\n' \
+            "$(human_size "$file_size")"
+        return 0
+    fi
 
     if is_binary_file "$absolute_path"; then
         printf '[Binary file — content omitted. Size: %s, SHA-256: %s]\n' \
@@ -365,9 +408,6 @@ DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Generated at   : ${TIMESTAMP}
   Generator      : ${SCRIPT_NAME}
-  Host           : ${HOSTNAME_VALUE}
-  User           : ${USER_VALUE}
-  OS             : ${OPERATING_SYSTEM_VALUE}
 
 REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
@@ -379,8 +419,17 @@ REPOSITORY METADATA
   Commit message : ${GIT_COMMIT_MESSAGE}
   Remote origin  : ${GIT_REMOTE}
   Files included : ${FILE_COUNT}
-  Excluded path  : ${EXCLUDED_DIRECTORY}/
+  Withheld paths : ${EXCLUDED_PATHS_DISPLAY}
   Excluded files : ${EXCLUDED_FILES_DISPLAY}
+  Elided files   : ${ELIDED_FILES_DISPLAY} (metadata and SHA-256 only)
+
+NOT EVERYTHING TRACKED IS BELOW
+═════════════════════════════════════════════════════════════════════════════════
+  The withheld paths above hold tracked, authored files that are NOT in this
+  dump. docs/progress/ is the earlier half of the build log; it is real, it is
+  in git, and it is linked by path from docs/BUILD_PROGRESS.md. Do not
+  reconstruct a withheld file from this dump and do not deliver a withheld
+  file's sibling as though it were the whole document.
 
 GIT WORKING TREE STATUS (first 20 lines)
 ═════════════════════════════════════════════════════════════════════════════════
@@ -404,8 +453,8 @@ SELF_HEADER
     script_relative_path="$(realpath --relative-to="$REPOSITORY_ROOT" "$SCRIPT_PATH" 2>/dev/null || echo "$SCRIPT_PATH")"
     script_size="$(wc -c < "$SCRIPT_PATH")"
     script_sha256="$(file_sha256 "$SCRIPT_PATH")"
-    print_file_metadata "$SCRIPT_PATH" "$script_relative_path" "$script_size" "$script_sha256"
-    print_file_content  "$SCRIPT_PATH" "$script_size" "$script_sha256"
+    print_file_metadata "$script_relative_path" "$script_size" "$script_sha256"
+    print_file_content  "$SCRIPT_PATH" "$script_size" "$script_sha256" "$script_relative_path"
 
     # ── File tree ───────────────────────────────────────────────────────────
     # (F-28) The header no longer prints its own '.' root — tree(1) and the
@@ -437,8 +486,8 @@ TREE_HEADER
         printf '################################################################################\n'
         printf '# FILE: %s\n' "$relative_path"
         printf '################################################################################\n'
-        print_file_metadata "$absolute_path" "$relative_path" "$file_size" "$sha256_value"
-        print_file_content  "$absolute_path" "$file_size" "$sha256_value"
+        print_file_metadata "$relative_path" "$file_size" "$sha256_value"
+        print_file_content  "$absolute_path" "$file_size" "$sha256_value" "$relative_path"
     done
 
     cat <<FOOTER

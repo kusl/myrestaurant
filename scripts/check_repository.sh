@@ -89,11 +89,19 @@ esac
 #
 # This script is in the list for the obvious reason: the pattern list is below.
 # ---------------------------------------------------------------------------------------------------
+# docs/progress/* joined the list in Slice 46, with the build log's split, and it is not a widening of
+# the rule — it is the same exemption following the same text into a second file (F-96). The archived half
+# of the log quotes F-42's own sentence, "Issues are disabled…", because quoting the claim is how a
+# ledger records that it was made. Had this entry been left out, the first run after the split would have
+# been red for a reason that has nothing to do with anything anybody changed. The glob form is used
+# because the archive is a directory that will gain files; ContextDumpExclusionContractTests asserts that
+# every directory export.sh archives is exempt here, so the next tranche cannot arrive without it.
 RECORD_FILES=(
     "docs/DOCUMENTATION_REVIEW.md"
     "docs/BUILD_PROGRESS.md"
     "scripts/check_repository.sh"
     "docs/llm/*"
+    "docs/progress/*"
 )
 
 # Assertions about GitHub repository and package settings, which a file in the tree cannot verify.
