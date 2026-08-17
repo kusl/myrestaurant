@@ -42,6 +42,11 @@ namespace MyRestaurant.WebApplication.Tests;
 /// rather than because it became inconvenient. The two that matter most are the ones §11.1 made expensive:
 /// a heading's name is rendered above every card under it, and §7 removes an inactive heading from the
 /// guest's menu <em>entirely</em>.</para>
+///
+/// <para><b>And with the refile there is no verb on <see cref="IMenuWorkflow"/> left without a surface.</b>
+/// <c>MoveMenuItemToSectionAsync</c> was named as outstanding in three consecutive slices rather than
+/// quietly omitted, which is the whole reason its arrival can be stated as a fact instead of noticed
+/// later. Every method this file exercises is reachable from a form an administrator can open.</para>
 /// </summary>
 public sealed class MenuWiringTests
 {
@@ -613,6 +618,59 @@ public sealed class MenuWiringTests
         Assert.Empty(unchangedBroadcaster.Published);
     }
 
+    /// <summary>
+    /// The last verb of the menu enhancement to acquire a caller, and the loudest of the item verbs.
+    ///
+    /// <para>§11.1 groups the guest menu by heading, so a committed refile moves a card out of one
+    /// grouping and into another on every open picker in the building — and if the destination is an
+    /// inactive heading the card leaves the guest's menu <b>entirely</b>, because §7 renders no such
+    /// heading at all. That is the same reach a section visibility flip has, from the other direction.</para>
+    ///
+    /// <para>All three silences are asserted rather than one. <c>NoChange</c> is the ordinary case — the
+    /// picker on <c>ManageMenuItem</c> opens pre-selected on the item's own heading, so submitting it
+    /// untouched is the single most likely call this verb ever receives — and <c>MenuSectionNotFound</c>
+    /// is the arm a workflow keying on "not NoChange" would announce, for a write the database rolled
+    /// back.</para>
+    /// </summary>
+    [Fact]
+    public async Task ARefileBetweenSections_IsAnnouncedOnlyWhenItCommitted()
+    {
+        FakeMenuAdministration moved = new() { MoveOutcome = MoveMenuItemToSectionOutcome.Moved };
+        RecordingBroadcaster movedBroadcaster = new();
+
+        Assert.Equal(
+            MoveMenuItemToSectionOutcome.Moved,
+            await WorkflowOver(moved, movedBroadcaster).MoveMenuItemToSectionAsync(
+                MenuItemIdentifier,
+                MenuSectionIdentifier,
+                ActorIdentifier,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(MenuItemIdentifier, moved.LastMenuItemIdentifier);
+        Assert.Equal(MenuSectionIdentifier, moved.LastMenuSectionIdentifier);
+        Assert.Equal(ActorIdentifier, moved.LastActor);
+        Assert.IsType<MenuChanged>(Assert.Single(movedBroadcaster.Published));
+
+        foreach (MoveMenuItemToSectionOutcome silent in new[]
+        {
+            MoveMenuItemToSectionOutcome.NoChange,
+            MoveMenuItemToSectionOutcome.MenuItemNotFound,
+            MoveMenuItemToSectionOutcome.MenuSectionNotFound,
+        })
+        {
+            FakeMenuAdministration administration = new() { MoveOutcome = silent };
+            RecordingBroadcaster broadcaster = new();
+
+            await WorkflowOver(administration, broadcaster).MoveMenuItemToSectionAsync(
+                MenuItemIdentifier,
+                MenuSectionIdentifier,
+                ActorIdentifier,
+                TestContext.Current.CancellationToken);
+
+            Assert.Empty(broadcaster.Published);
+        }
+    }
+
     // Three overloads, distinguished by their first parameter: whichever write service the test is about
     // is the one it passes, and the others are default fakes nothing under test ever calls.
     private static MenuWorkflow WorkflowOver(
@@ -683,6 +741,9 @@ public sealed class MenuWiringTests
         public DescribeMenuItemOutcome DescribeOutcome { get; init; } = DescribeMenuItemOutcome.Described;
 
         public ReorderMenuItemOutcome ReorderOutcome { get; init; } = ReorderMenuItemOutcome.Reordered;
+
+        public MoveMenuItemToSectionOutcome MoveOutcome { get; init; }
+            = MoveMenuItemToSectionOutcome.Moved;
 
         public CreateMenuItemOutcome CreateOutcome { get; init; } = CreateMenuItemOutcome.Created;
 
@@ -776,6 +837,19 @@ public sealed class MenuWiringTests
             LastActor = actorPersonIdentifier;
 
             return Task.FromResult(ReorderOutcome);
+        }
+
+        public Task<MoveMenuItemToSectionOutcome> MoveMenuItemToSectionAsync(
+            Guid menuItemIdentifier,
+            Guid menuSectionIdentifier,
+            Guid actorPersonIdentifier,
+            CancellationToken cancellationToken = default)
+        {
+            LastMenuItemIdentifier = menuItemIdentifier;
+            LastMenuSectionIdentifier = menuSectionIdentifier;
+            LastActor = actorPersonIdentifier;
+
+            return Task.FromResult(MoveOutcome);
         }
     }
 

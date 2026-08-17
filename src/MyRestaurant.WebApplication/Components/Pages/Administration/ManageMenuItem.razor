@@ -5,6 +5,7 @@
 @using MyRestaurant.WebApplication.Menu
 @using MyRestaurant.WebApplication.Orders
 @inject IMenuDirectory MenuItems
+@inject IMenuSectionDirectory MenuSections
 @inject IMenuEventLog MenuEvents
 @inject IMenuWorkflow MenuChanges
 @inject RestaurantOptions Options
@@ -16,10 +17,10 @@
    Successful changes redirect back here (post/redirect/get) carrying a one-word outcome so a refresh does
    not re-post; the shape ManageTable established.
 
-   Rename, reprice, describe and reposition are four forms rather than one "save", because §7's event
-   vocabulary has `name_changed`, `price_changed`, `description_changed` and `reordered` as separate types
-   with mutually exclusive payload columns — a combined save would write four events anyway and would then
-   have to decide what to do when three of them changed nothing.
+   Rename, reprice, describe, refile and reposition are five forms rather than one "save", because §7's
+   event vocabulary has `name_changed`, `price_changed`, `description_changed`, `section_changed` and
+   `reordered` as separate types with mutually exclusive payload columns — a combined save would write
+   five events anyway and would then have to decide what to do when four of them changed nothing.
 
    The history below is complete and uncapped, oldest first. §11.4: administration renders "the complete
    stored record everywhere — full event streams … never projected or truncated for the administrator". A
@@ -73,11 +74,10 @@ else
             </div>
             <div>
                 <span class="manage-label">Section</span>
-                @* A link as of the section editor. This page still cannot MOVE the item — that needs
-                   `MoveMenuItemToSectionAsync`, which has no caller and therefore does not exist behind
-                   the workflow, on the rule this project has applied to five section verbs already. What
-                   it can do is take somebody to the heading, which is where the chip below sends them
-                   anyway. *@
+                @* A link to the heading, and — since `MoveMenuItemToSectionAsync` acquired a caller — the
+                   fact the form further down changes. It stays a link rather than becoming part of that
+                   form: this grid is what the item IS, and every editor on this page sits below the rule
+                   under it. *@
                 <a class="record-link" href="@($"/administration/menu/sections/{_item.MenuSectionIdentifier}")">@_item.MenuSectionName</a>
                 @if (!_item.MenuSectionIsActive)
                 {
@@ -166,11 +166,56 @@ else
 
         <hr class="manage-rule" />
 
+        <h2 class="manage-heading">Section</h2>
+        <p class="lede">
+            The heading this item is filed under. Moving it puts it at the <strong>end</strong> of the
+            heading you choose, on the same rule a newly created item follows — a position belongs to the
+            heading it is a position within, so carrying the old number across would drop this item into
+            the middle of somebody else's ordering. Set the position below afterwards if the end is not
+            where it belongs. Nothing else about the item changes: an item marked unavailable stays
+            unavailable under its new heading.
+        </p>
+        @if (_sections.Count > 0)
+        {
+            @* Guarded rather than dereferenced, though the list cannot be empty here: the item exists, so
+               the heading it is under exists, so at least one section does. The guard is against the
+               intermediate render instead — `StateHasChanged` fires the moment `OnInitializedAsync`
+               suspends, and this field is filled after `_item` is. An empty list renders no form rather
+               than a picker over nothing, which is the same call CreateMenuItem makes for a case that
+               genuinely happens. *@
+            <EditForm Model="MoveInput" method="post" OnValidSubmit="MoveAsync" FormName="menu-item-move-section" class="manage-inline-form">
+                <DataAnnotationsValidator />
+                <label class="visually-hidden" for="move-section">New section</label>
+                @* Inactive headings are offered and marked, on §7's asymmetry: an inactive section is
+                   hidden from the GUEST, not from §11.4's administrator, whose job here may be moving
+                   next week's breakfast dishes under a heading that is not switched on yet. The suffix is
+                   text inside the option because an <option> renders text and nothing else — the same
+                   limitation, and the same acceptable trade, as the create form's picker.
+
+                   The loop variable is not called `section`: `@@section` is Razor's MVC section directive
+                   and the parser never reaches C# with it (F-81). *@
+                <InputSelect id="move-section" @bind-Value="MoveInput.MenuSectionIdentifier">
+                    @foreach (MenuSectionSummary heading in _sections)
+                    {
+                        <option value="@heading.MenuSectionIdentifier">
+                            @(heading.IsActive
+                                ? heading.Name
+                                : $"{heading.Name} (hidden from guests)")
+                        </option>
+                    }
+                </InputSelect>
+                <button type="submit" class="button-primary">File here</button>
+            </EditForm>
+        }
+
+        <hr class="manage-rule" />
+
         <h2 class="manage-heading">Position</h2>
         <p class="lede">
-            Where this item sits on the menu. Lower comes first; items sharing a position are ordered by
-            name, which is why every item starts at 0 and the menu reads alphabetically until somebody
-            decides otherwise. Positions do not have to be unique or contiguous.
+            Where this item sits <strong>within its section</strong>. Lower comes first; items sharing a
+            position are ordered by name, which is why a heading reads alphabetically until somebody
+            decides otherwise. Positions do not have to be unique or contiguous, and they are counted per
+            heading — so two items in two sections may both sit at 0.
         </p>
         <EditForm Model="ReorderInput" method="post" OnValidSubmit="ReorderAsync" FormName="menu-item-reorder" class="manage-inline-form">
             <DataAnnotationsValidator />
@@ -256,14 +301,19 @@ else
     </section>
 }
 
-@* This page declares nothing. Its facts grid, its chips, its headings, its rules, its two small
-   forms, its currency unit and — as of M6 Slice 34 — its history list are all app.css's §11.12
-   vocabulary. This was one of four pages carrying an inline copy of that vocabulary, and the copies had
-   drifted (F-66); the history table was also the page's own eighty-line table rules under a different
-   name. *@
+@* This page declares nothing. Its facts grid, its chips, its headings, its rules, its inline forms, its
+   currency unit and — as of M6 Slice 34 — its history list are all app.css's §11.12 vocabulary. This was
+   one of four pages carrying an inline copy of that vocabulary, and the copies had drifted (F-66); the
+   history table was also the page's own eighty-line table rules under a different name.
+
+   The section picker needed no new rule either: `.manage-inline-form` has styled `select` since Slice 34,
+   which is why the comment beside the description form says that class has never styled a `textarea` —
+   the two statements are the same sentence read from opposite ends. No count of the forms on this page is
+   written here, on F-77's ruling; the previous version of this note said TWO and there were four. *@
 
 @code {
     private MenuItemSummary? _item;
+    private IReadOnlyList<MenuSectionSummary> _sections = [];
     private IReadOnlyList<MenuItemEventEntry>? _history;
     private string? _flashMessage;
     private string? _errorMessage;
@@ -283,6 +333,9 @@ else
     [SupplyParameterFromForm(FormName = "menu-item-describe")]
     private DescribeInputModel DescribeInput { get; set; } = default!;
 
+    [SupplyParameterFromForm(FormName = "menu-item-move-section")]
+    private MoveInputModel MoveInput { get; set; } = default!;
+
     [SupplyParameterFromForm(FormName = "menu-item-reorder")]
     private ReorderInputModel ReorderInput { get; set; } = default!;
 
@@ -297,6 +350,7 @@ else
         RenameInput ??= new();
         RepriceInput ??= new();
         DescribeInput ??= new();
+        MoveInput ??= new();
         ReorderInput ??= new();
 
         _item = await MenuItems.GetAsync(MenuItemId, HttpContext.RequestAborted);
@@ -304,6 +358,10 @@ else
         {
             return;
         }
+
+        // Every heading, active and inactive, in display order — §11.4's administrator sees the ones no
+        // guest can reach, which is precisely where next week's menu gets stocked.
+        _sections = await MenuSections.ListAsync(HttpContext.RequestAborted);
 
         _history = await MenuEvents.ListForItemAsync(MenuItemId, HttpContext.RequestAborted);
 
@@ -323,6 +381,12 @@ else
             // GET nothing has bound, so assigning unconditionally is both correct and simpler.
             DescribeInput.Description = _item.Description;
             ReorderInput.DisplayOrder = _item.DisplayOrder;
+
+            // Pre-selected on the heading the item is already under, so the form opens showing the truth
+            // and submitting it unchanged is the no-op the write service reports rather than a move to
+            // whichever heading happened to sort first. CreateMenuItem pre-selects for the mirror-image
+            // reason: a <select> with nothing selected shows and posts its first option either way.
+            MoveInput.MenuSectionIdentifier = _item.MenuSectionIdentifier;
 
             _flashMessage = FlashFor(Done);
         }
@@ -396,6 +460,38 @@ else
                 RedirectWithOutcome("describe-no-change");
                 break;
             case DescribeMenuItemOutcome.MenuItemNotFound:
+                Navigation.NavigateTo("/administration/menu");
+                break;
+        }
+    }
+
+    private async Task MoveAsync()
+    {
+        if (!TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        MoveMenuItemToSectionOutcome outcome = await MenuChanges.MoveMenuItemToSectionAsync(
+            MenuItemId, MoveInput.MenuSectionIdentifier, administrator, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case MoveMenuItemToSectionOutcome.Moved:
+                RedirectWithOutcome("refiled");
+                break;
+            case MoveMenuItemToSectionOutcome.NoChange:
+                RedirectWithOutcome("refile-no-change");
+                break;
+            case MoveMenuItemToSectionOutcome.MenuSectionNotFound:
+                // A heading deleted or a page left open. Reported in place rather than redirected, for
+                // the reason CreateMenuItem reports the same outcome in place: the person needs to see
+                // the picker beside the message, not a fresh page with no account of what happened.
+                _errorMessage =
+                    "That section no longer exists. It may have been changed while this page was open —"
+                    + " reload the page and choose again.";
+                break;
+            case MoveMenuItemToSectionOutcome.MenuItemNotFound:
                 Navigation.NavigateTo("/administration/menu");
                 break;
         }
@@ -490,6 +586,9 @@ else
         "described" => "Description saved. Guests reading the menu see it from now on.",
         "description-cleared" => "Description cleared. Guests see the name and the price only.",
         "describe-no-change" => "That was already the description — nothing changed.",
+        "refiled" => "Filed under its new heading, at the end of it. Every open menu has already"
+            + " regrouped; set the position below if the end is not where it belongs.",
+        "refile-no-change" => "It was already under that heading — nothing changed.",
         "moved" => "Moved. The menu is ordered by position, then by name.",
         "move-no-change" => "It was already in that position — nothing changed.",
         "made-unavailable" => "Marked unavailable. It stays on the guest's menu, labelled unavailable, and cannot be ordered.",
@@ -548,6 +647,15 @@ else
         // CreateMenuItem's, and is this form's opinion rather than the column's — `text` has no ceiling.
         [StringLength(2000, ErrorMessage = "The description must be 2,000 characters or fewer.")]
         public string Description { get; set; } = string.Empty;
+    }
+
+    private sealed class MoveInputModel
+    {
+        // No [Required], for CreateMenuItem's reason rather than as an omission: Guid is a value type, so
+        // [Required] passes on Guid.Empty and would assert nothing. The select is pre-selected on the
+        // item's own heading, has no empty option, and the write service reports an identifier that names
+        // nothing — three defences, none of which is a validation attribute that does not work.
+        public Guid MenuSectionIdentifier { get; set; }
     }
 
     private sealed class ReorderInputModel

@@ -8,10 +8,17 @@ namespace MyRestaurant.DataAccess.Tests.Menu;
 
 /// <summary>
 /// Integration tests for <see cref="DapperMenuAdministration"/> against a real PostgreSQL 17 container —
-/// §7's create, rename, reprice, describe and reorder, behind §11.4's menu section.
+/// §7's create, rename, reprice, describe, reorder and move-to-section, behind §11.4's menu section.
+///
+/// <para><b>The move is the last verb of the menu enhancement to be written, and it is the only one here
+/// that takes two locks.</b> Its facts are about where the item lands rather than that it landed: a
+/// heading is appended to, so an item moved into a heading that already holds something must sit behind
+/// it, and a move that changes the position must say so in a second event because §8.2 binds
+/// <c>new_display_order</c> to <c>reordered</c> alone. An implementation that carried the old position
+/// across would pass every other assertion in this file.</para>
 ///
 /// <para>The facts worth pinning are about the <em>pair</em> of rows, not the column. Every one of these
-/// five verbs writes a <c>menu_item</c> change and a mirroring <c>menu_item_event</c> in one
+/// verbs writes a <c>menu_item</c> change and a mirroring <c>menu_item_event</c> in one
 /// transaction, and §8.2's named paired CHECKs make each event type carry exactly one shape of payload —
 /// <c>created</c> both the name and the price, <c>name_changed</c> the name alone,
 /// <c>price_changed</c> the price alone, <c>description_changed</c> the description alone,
@@ -810,6 +817,168 @@ public sealed class MenuAdministrationTests : IClassFixture<PostgreSqlFixture>, 
 
         // Still three. A move to the position an item already occupies appends nothing.
         Assert.Equal(3, await World().CountAsync(CountEventsSql, cancellationToken));
+    }
+
+    /// <summary>
+    /// The move, and the fact that decides whether it is a move or a rewrite of somebody else's ordering.
+    ///
+    /// <para>The target heading already holds an item at position 0, so an implementation that carried
+    /// the moved item's old number across would land it at 0 as well and tie with the pie — which the
+    /// schema permits, which the reads would break by name, and which no other assertion in this file
+    /// would notice. §7 appends, so the answer is 1.</para>
+    ///
+    /// <para>Both events are asserted, because §8.2 binds <c>new_display_order</c> to <c>reordered</c>
+    /// alone: a move that changed the position without saying so would leave the column and the log
+    /// disagreeing, which is the worse of the two failures in an append-only system (ADR-0002).</para>
+    /// </summary>
+    [Fact]
+    public async Task MovingAnItemToAnotherSectionAppendsItThereAndLogsBothEvents()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid puddings = await World().AddMenuSectionAsync("Puddings", cancellationToken, displayOrder: 1);
+
+        Guid soup = await CreateAsync("Soup", 4.50m, cancellationToken);
+        await Administration().CreateMenuItemAsync(
+            _identifiers.Create(), puddings, "Pie", description: null, 5.00m,
+            _administratorIdentifier, cancellationToken);
+
+        // Four so far: two per create.
+        Assert.Equal(4, await World().CountAsync(CountEventsSql, cancellationToken));
+
+        _clock.UtcNow = _clock.UtcNow.AddMinutes(5);
+
+        Assert.Equal(
+            MoveMenuItemToSectionOutcome.Moved,
+            await Administration().MoveMenuItemToSectionAsync(
+                soup, puddings, _administratorIdentifier, cancellationToken));
+
+        MenuItemSummary? stored = await Directory().GetAsync(soup, cancellationToken);
+        Assert.NotNull(stored);
+        Assert.Equal(puddings, stored.MenuSectionIdentifier);
+        Assert.Equal("Puddings", stored.MenuSectionName);
+
+        // Appended behind the pie rather than keeping the 0 it held in Mains.
+        Assert.Equal(1, stored.DisplayOrder);
+
+        // Untouched by a move, all three of them — §7 refiles a dish, it does not re-describe or 86 it.
+        Assert.Equal("Soup", stored.Name);
+        Assert.Equal(4.50m, stored.PriceAmount);
+        Assert.True(stored.IsActive);
+
+        // Six: the four from the two creates, plus this move's section_changed and reordered.
+        Assert.Equal(6, await World().CountAsync(CountEventsSql, cancellationToken));
+
+        // Newest first with the UUIDv7 tiebreak, so the newest is the position event and it carries the
+        // number the row now holds.
+        Assert.Equal("reordered", await EventTypeAsync(soup, cancellationToken));
+        Assert.Equal(1, await ScalarAsync<int>("new_display_order", soup, cancellationToken));
+    }
+
+    /// <summary>
+    /// A move that lands on the position the item already occupied writes <b>one</b> event, not two. The
+    /// target heading is empty, so appending returns 0 and the item was at 0 already — the no-op rule
+    /// applied to half of one verb, which is the arm most easily left out.
+    /// </summary>
+    [Fact]
+    public async Task AMoveThatLandsOnTheSamePositionWritesNoReorderedEvent()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid puddings = await World().AddMenuSectionAsync("Puddings", cancellationToken, displayOrder: 1);
+        Guid soup = await CreateAsync("Soup", 4.50m, cancellationToken);
+
+        Assert.Equal(0, (await Directory().GetAsync(soup, cancellationToken))!.DisplayOrder);
+
+        _clock.UtcNow = _clock.UtcNow.AddMinutes(5);
+
+        Assert.Equal(
+            MoveMenuItemToSectionOutcome.Moved,
+            await Administration().MoveMenuItemToSectionAsync(
+                soup, puddings, _administratorIdentifier, cancellationToken));
+
+        MenuItemSummary? stored = await Directory().GetAsync(soup, cancellationToken);
+        Assert.Equal(puddings, stored!.MenuSectionIdentifier);
+        Assert.Equal(0, stored.DisplayOrder);
+
+        // Three: the create's two, plus one section_changed. No 'reordered' for a number that did not
+        // move — and the newest event being the section one is how that is observed.
+        Assert.Equal(3, await World().CountAsync(CountEventsSql, cancellationToken));
+        Assert.Equal("section_changed", await EventTypeAsync(soup, cancellationToken));
+        Assert.Equal(puddings, await ScalarAsync<Guid>("new_menu_section_identifier", soup, cancellationToken));
+    }
+
+    /// <summary>
+    /// Refiling an item under the heading it is already beneath writes nothing. Same rule as renaming to
+    /// the current name, and it is worth its own fact because the picker on <c>ManageMenuItem</c> opens
+    /// pre-selected on exactly this value, so this is what pressing the button without touching the
+    /// dropdown does — the single most likely way this verb is ever called.
+    /// </summary>
+    [Fact]
+    public async Task MovingToTheSectionItIsAlreadyUnderWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid soup = await CreateAsync("Soup", 4.50m, cancellationToken);
+
+        _clock.UtcNow = _clock.UtcNow.AddMinutes(5);
+
+        Assert.Equal(
+            MoveMenuItemToSectionOutcome.NoChange,
+            await Administration().MoveMenuItemToSectionAsync(
+                soup, _sectionIdentifier, _administratorIdentifier, cancellationToken));
+
+        // Still the create's two.
+        Assert.Equal(2, await World().CountAsync(CountEventsSql, cancellationToken));
+        Assert.Equal(_sectionIdentifier, (await Directory().GetAsync(soup, cancellationToken))!.MenuSectionIdentifier);
+    }
+
+    /// <summary>
+    /// A heading that does not exist is reported rather than raised, and the item does not move. Without
+    /// this outcome the caller meets PostgreSQL error 23503 from the foreign key, which names a constraint
+    /// instead of naming the thing a person did wrong — the same reasoning
+    /// <see cref="CreateMenuItemOutcome.MenuSectionNotFound"/> exists for.
+    /// </summary>
+    [Fact]
+    public async Task MovingToASectionThatDoesNotExistWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid soup = await CreateAsync("Soup", 4.50m, cancellationToken);
+
+        Assert.Equal(
+            MoveMenuItemToSectionOutcome.MenuSectionNotFound,
+            await Administration().MoveMenuItemToSectionAsync(
+                soup, _identifiers.Create(), _administratorIdentifier, cancellationToken));
+
+        Assert.Equal(2, await World().CountAsync(CountEventsSql, cancellationToken));
+
+        MenuItemSummary? stored = await Directory().GetAsync(soup, cancellationToken);
+        Assert.Equal(_sectionIdentifier, stored!.MenuSectionIdentifier);
+        Assert.Equal(0, stored.DisplayOrder);
+    }
+
+    /// <summary>
+    /// An unknown item is reported before the target heading is read at all, so a stale link naming a real
+    /// section is still <c>MenuItemNotFound</c> rather than a rollback that looked like a section problem.
+    /// </summary>
+    [Fact]
+    public async Task MovingAnUnknownItemReportsNotFoundAndWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Assert.Equal(
+            MoveMenuItemToSectionOutcome.MenuItemNotFound,
+            await Administration().MoveMenuItemToSectionAsync(
+                _identifiers.Create(), _sectionIdentifier, _administratorIdentifier, cancellationToken));
+
+        Assert.Equal(0, await World().CountAsync(CountEventsSql, cancellationToken));
+        Assert.Equal(0, await World().CountAsync(CountItemsSql, cancellationToken));
     }
 
     /// <summary>

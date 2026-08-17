@@ -548,6 +548,55 @@ internal static class AdministrationJourneys
     }
 
     /// <summary>
+    /// Files an existing item under another heading from <c>/administration/menu/{id}</c> (§7) and returns
+    /// once the surface agrees it moved.
+    ///
+    /// <para><b>Through the item's own form, because the rule under test is not a database rule.</b> That
+    /// a move appends to the end of its new heading is asserted against a real PostgreSQL by
+    /// <c>MenuAdministrationTests</c>. What no unit test can see is whether a guest already looking at the
+    /// menu watches the card change groupings — which needs a real form, a real commit and the §9
+    /// broadcast that follows it.</para>
+    ///
+    /// <para>Selected by <b>value</b> rather than by label, for the reason
+    /// <see cref="CreateMenuItemAsync"/> gives: an inactive heading renders §7's <em>(hidden from guests)</em>
+    /// suffix, so matching on the visible text would make this journey depend on a surface's copy.</para>
+    ///
+    /// <para>The wait is on the <b>Section link in the facts grid</b> rather than on the flash. The link's
+    /// <c>href</c> is the heading the item is now under, read back off the row this page just re-queried,
+    /// where the flash is copy — and a no-op refile redirects with a different word, which this method
+    /// should report as success rather than time out on.</para>
+    /// </summary>
+    internal static async Task MoveMenuItemToSectionAsync(
+        IPage page,
+        Guid menuItemIdentifier,
+        Guid menuSectionIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync($"{MenuPath}/{menuItemIdentifier:D}");
+
+        await page.SelectOptionAsync("#move-section", menuSectionIdentifier.ToString("D"));
+        await page.ClickAsync("button:has-text('File here')");
+
+        ILocator sectionLink = page
+            .Locator($".manage-facts a[href='{MenuSectionsPath}/{menuSectionIdentifier:D}']")
+            .First;
+
+        try
+        {
+            await sectionLink.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                $"Filing menu item {menuItemIdentifier} under section {menuSectionIdentifier} did not"
+                + " take effect. "
+                + await DescribeFailureAsync(page),
+                exception);
+        }
+    }
+
+    /// <summary>
     /// Creates a staff account through <c>/administration/people/new</c> (§3.7) and returns it, including
     /// the temporary password the success panel showed — the only moment that plaintext exists anywhere.
     ///

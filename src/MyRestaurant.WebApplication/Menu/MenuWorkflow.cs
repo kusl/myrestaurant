@@ -25,6 +25,12 @@ namespace MyRestaurant.WebApplication.Menu;
 /// gives the other four theirs in one slice, because rename, describe, reorder and set-active are four
 /// forms on one page and shipping any subset would leave the same hole under a smaller name.</para>
 ///
+/// <para><b>And with <see cref="MoveMenuItemToSectionAsync"/> the rule has no outstanding case at all.</b>
+/// That verb was the last one in the whole menu enhancement written without a surface — deferred by name
+/// in three consecutive slices rather than quietly omitted, which is what made it possible to say when it
+/// arrived. Every method on this interface is now reachable from a form an administrator can open, so a
+/// reader looking for the untested part of this file will not find one here.</para>
+///
 /// <para><b>The rename is the one that had stopped being latent.</b> §11.1's guest menu groups items under
 /// their headings, so a rename that announced nothing would leave a stale heading in every open picker
 /// until that page happened to reload — and set-active is worse, because §7 hides an inactive section from
@@ -189,6 +195,32 @@ public interface IMenuWorkflow
     Task<ReorderMenuItemOutcome> ReorderMenuItemAsync(
         Guid menuItemIdentifier,
         int displayOrder,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Files one item under a different heading (§7) and, if it actually moved, announces it.
+    ///
+    /// <para><b>This is the last verb of the menu enhancement to arrive, and the obligation it discharges
+    /// is the one every paragraph above is about.</b> A workflow verb with no caller is a code path no
+    /// test can reach through the interface meant to protect it, so a verb arrives when its surface does —
+    /// five section verbs arrived that way and this is the sixth and last. Nothing behind
+    /// <see cref="IMenuWorkflow"/> is now unreachable from a form.</para>
+    ///
+    /// <para><b>The publish is as loud as a section visibility flip and for the same reason.</b> §11.1
+    /// groups the guest menu by heading, so a refile moves a card out of one grouping and into another on
+    /// every open picker in the building — and if the destination is an inactive heading the card leaves
+    /// the guest's menu <em>entirely</em>, because §7 does not render such a heading at all. A move that
+    /// committed and announced nothing would leave a dish tappable under a heading it is no longer in,
+    /// until the send was refused server-side for a reason the guest never saw coming (§6.5.9).</para>
+    ///
+    /// <para>Conditional on <c>Moved</c> alone. <c>NoChange</c>, <c>MenuItemNotFound</c> and
+    /// <c>MenuSectionNotFound</c> each commit nothing, and the third is an ordinary stale form rather than
+    /// a fault: a heading can be renamed or a page left open.</para>
+    /// </summary>
+    Task<MoveMenuItemToSectionOutcome> MoveMenuItemToSectionAsync(
+        Guid menuItemIdentifier,
+        Guid menuSectionIdentifier,
         Guid actorPersonIdentifier,
         CancellationToken cancellationToken = default);
 
@@ -436,6 +468,28 @@ public sealed class MenuWorkflow : IMenuWorkflow
         // §11.1 and §11.2 both render the menu in display order, so a move that committed changes what
         // every open picker shows even though no item's name, price or availability moved.
         if (outcome is ReorderMenuItemOutcome.Reordered)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
+
+        return outcome;
+    }
+
+    public async Task<MoveMenuItemToSectionOutcome> MoveMenuItemToSectionAsync(
+        Guid menuItemIdentifier,
+        Guid menuSectionIdentifier,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        MoveMenuItemToSectionOutcome outcome = await _administration
+            .MoveMenuItemToSectionAsync(
+                menuItemIdentifier, menuSectionIdentifier, actorPersonIdentifier, cancellationToken)
+            .ConfigureAwait(false);
+
+        // §11.1 groups the guest menu by heading, so a committed refile moves a card between groupings on
+        // every open picker — and into an inactive heading it removes the card from the guest's menu
+        // outright, because §7 renders no such heading at all.
+        if (outcome is MoveMenuItemToSectionOutcome.Moved)
         {
             _broadcaster.Publish(new MenuChanged());
         }

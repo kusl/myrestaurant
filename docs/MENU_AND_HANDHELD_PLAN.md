@@ -1,6 +1,6 @@
 # Menu modernization and the handheld contract — staged plan
 
-**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-16, at the close of Slice 41.** This
+**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-16, at the close of Slice 43.** This
 is the execution plan for the first enhancement request the project has received from a person who was
 shown the running application, together with the defect that request arrived beside. It is a working
 document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
@@ -468,7 +468,7 @@ it is the surprising half: the schema of record grows four columns and two table
 | ~~`Menu/MenuSectionDirectory.cs`~~ | **new** — `MenuSectionSummary`, `IMenuSectionDirectory`, `DapperMenuSectionDirectory` — **landed, Slice 37** |
 | ~~`Menu/MenuSectionAdministration.cs`~~ | **new** — create / rename / describe / reorder / set-active, one transaction each, `FOR UPDATE` before every comparison — **landed, Slice 37**; `display_order` is assigned by appending rather than supplied, and a rename is compared ordinally though the column is `citext` |
 | ~~`Menu/MenuDirectory.cs`~~ | `MenuItemSummary` gained `Description` and `DisplayOrder` (Slice 38), then `MenuSectionIdentifier`, `MenuSectionName` and `MenuSectionIsActive` with a six-key ordering and an INNER join — **landed, Slice 40**. `ListBySectionAsync` was **not** written: the ordering makes each heading's items contiguous, so a surface groups by walking one list, and a second read would be a verb with no caller |
-| ~~`Menu/MenuAdministration.cs`~~ | `CreateMenuItemAsync` takes a description (Slice 38), then a section, with `MAX + 1` positioning under a lock on the section row and a `MenuSectionNotFound` outcome — **landed, Slice 40**. `MoveMenuItemToSectionAsync` is **deferred to Stage 3** with the item editor that would call it, on the same rule that governs the section verbs |
+| ~~`Menu/MenuAdministration.cs`~~ | `CreateMenuItemAsync` takes a description (Slice 38), then a section, with `MAX + 1` positioning under a lock on the section row and a `MenuSectionNotFound` outcome — **landed, Slice 40**. `MoveMenuItemToSectionAsync` — **landed, Slice 43**, with the picker on `ManageMenuItem` that calls it. It appends rather than carrying the old position across, takes the item lock before the section lock so the file has one nesting direction, and writes `reordered` beside `section_changed` only when the number actually moved |
 | ~~`Menu/MenuEventLog.cs`~~ | `new_description` and `new_display_order` (Slice 38), then `new_menu_section_identifier` with a LEFT join aliased `new_section` — **landed, Slice 40**. The alias is load-bearing: `menu_item` now has its own `menu_section_identifier`, so an unaliased join would read the item's *current* heading rather than the one the event recorded. `ListForSectionAsync` and the `UNION ALL` over both logs wait for Stage 3 |
 | ~~`WebApplication/Menu/MenuWorkflow.cs`~~ | a verb per write, `MenuChanged` published only when something actually moved — the item verbs landed in Slice 38; Slice 40 added the section to the create, **made that publish conditional** (a create can now report a missing heading rather than throw), and brought `CreateMenuSectionAsync` in. Four section verbs remain outside, narrowed from five |
 | `WebApplication/Orders/OrdersServiceCollectionExtensions.cs` | registers the two new services, in the menu group, for the reason recorded there |
@@ -499,11 +499,24 @@ page, which is the thing the index was waiting for; the harness recovering a new
 its own *Manage this section* link like every other create journey; and **scenario 17's two cut steps**,
 restored.
 
-**What is still outstanding, and it is now a short list.** The section **index** — `/administration/menu`
-becoming sections-first rather than an item list with a Section column. `MoveMenuItemToSectionAsync` and the
-picker on `ManageMenuItem` that would call it, which is the last verb in the whole enhancement with no
-surface. A section's own **description under its heading** on the guest menu. And the kitchen's 86 panel,
-which still groups by nothing.
+**~~What is still outstanding~~ — shorter again. `MoveMenuItemToSectionAsync` landed in Slice 43 with the
+picker on `ManageMenuItem`, and it was the last verb in the whole enhancement with no surface.** It appends
+the item to the end of its new heading, on the same rule a create follows and for the same reason: a position
+is a position *within* a heading. Because §8.2 binds `new_display_order` to `reordered` alone, a move that
+changes the position writes a second event, conditional on the number actually differing — the no-op rule
+applied to half of one verb, which is the arm most easily left out and therefore the one with its own fact.
+
+**The rule that governed six verbs across seven slices is now discharged rather than narrowed, and the way it
+was carried is the transferable part.** A workflow verb with no caller is a code path no test can reach
+through the interface meant to protect it. Five section verbs and this one arrived when their surfaces did;
+the count of how many were outstanding was written down every single slice, which is the only reason its
+reaching zero is a fact somebody can state rather than something noticed later. A deferral that is named
+every slice is a deferral; one that is named once is an omission with a date on it.
+
+**What is left of this stage.** The section **index** — `/administration/menu` becoming sections-first rather
+than an item list with a Section column. A section's own **description under its heading** on the guest menu.
+And the kitchen's 86 panel, which still groups by nothing. None of the three is a verb; all three are
+surfaces reading things that already exist.
 
 **Slice 42 added nothing to this stage and unblocked all of it.** That slice is defects only: Slice 41
 shipped an archive that did not compile, and behind the five build errors sat fourteen failing integration

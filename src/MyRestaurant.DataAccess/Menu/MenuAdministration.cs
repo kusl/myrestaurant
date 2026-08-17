@@ -59,6 +59,33 @@ public enum DescribeMenuItemOutcome
     MenuItemNotFound,
 }
 
+/// <summary>The outcome of <see cref="IMenuAdministration.MoveMenuItemToSectionAsync"/> (§7).</summary>
+///
+/// <remarks>
+/// Four members where <see cref="ReorderMenuItemOutcome"/> has three, and the fourth is the whole
+/// difference between the two verbs: a position is a number and always exists, where a heading is a row
+/// that may not. <see cref="MenuSectionNotFound"/> is the same outcome
+/// <see cref="CreateMenuItemOutcome.MenuSectionNotFound"/> reports and it exists for the same reason —
+/// without it the caller meets PostgreSQL error 23503 from the foreign key, which names a constraint
+/// instead of naming the thing a person did wrong.
+/// </remarks>
+public enum MoveMenuItemToSectionOutcome
+{
+    /// <summary>
+    /// The item is under a different heading now, appended to the end of it, and the events say so.
+    /// </summary>
+    Moved,
+
+    /// <summary>The item was already filed under that heading; nothing was written.</summary>
+    NoChange,
+
+    /// <summary>No item has that identifier; nothing was written.</summary>
+    MenuItemNotFound,
+
+    /// <summary>No section has that identifier; nothing was written.</summary>
+    MenuSectionNotFound,
+}
+
 /// <summary>The outcome of <see cref="IMenuAdministration.ReorderMenuItemAsync"/> (§7).</summary>
 public enum ReorderMenuItemOutcome
 {
@@ -154,8 +181,9 @@ public sealed record RepriceMenuItemResult(
 
 /// <summary>
 /// Menu administration (TECHNICAL_SPECIFICATION §7, §11.4: "Menu (CRUD + activity, event history per
-/// item)") — creating an item, renaming it, repricing it, describing it, and moving it, each writing the
-/// <c>menu_item</c> row and its mirroring <c>menu_item_event</c> in one transaction.
+/// item)") — creating an item, renaming it, repricing it, describing it, repositioning it and refiling it
+/// under another heading, each writing the <c>menu_item</c> row and its mirroring
+/// <c>menu_item_event</c> in one transaction.
 ///
 /// <para><b>Why availability is not here.</b> <see cref="IMenuAvailability"/> already owns the
 /// activate/deactivate write, and it stays there: §7 gives that one verb to kitchen and counter as well
@@ -170,10 +198,11 @@ public sealed record RepriceMenuItemResult(
 /// to do when one of them is a no-op. Separate calls make the log read the way somebody investigating a
 /// price dispute needs it to.</para>
 ///
-/// <para><b>The no-op rule, and it now governs four verbs.</b> A rename to the name it already has, a
-/// reprice to the price it already has, a description equal to the stored one, and a move to the position
-/// it is already at all write nothing. §11.4's per-item history is meant to be read by a person, and an
-/// append-only log of "somebody pressed Save" is noise.</para>
+/// <para><b>The no-op rule, and it now governs five verbs.</b> A rename to the name it already has, a
+/// reprice to the price it already has, a description equal to the stored one, a move to the position it
+/// is already at, and a refile into the heading it is already under all write nothing. §11.4's per-item
+/// history is meant to be read by a person, and an append-only log of "somebody pressed Save" is
+/// noise.</para>
 ///
 /// <para><b>Prices on existing order lines never move.</b> §6.5.4 captures <c>unit_price_amount</c> into
 /// the adding operation, so repricing changes what the <em>next</em> line costs and nothing that is
@@ -288,6 +317,46 @@ public interface IMenuAdministration
         int displayOrder,
         Guid actorPersonIdentifier,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Files one item under a different heading and appends a <c>section_changed</c> event carrying the
+    /// new one — the last verb of the menu enhancement to acquire a caller, and the one
+    /// <see cref="CreateMenuItemAsync"/> has been writing half of since <c>0005</c>.
+    ///
+    /// <para><b>The item is appended to the end of its new section, and that is a ruling rather than a
+    /// convenience.</b> A position is <em>within</em> a section (§7), so carrying the old number across
+    /// would drop the dish into the middle of the target heading at whatever place that number happens to
+    /// name — a position somebody chose for a different list. Appending at <c>MAX(display_order) + 1</c>
+    /// under a lock on the target section row is exactly what <see cref="CreateMenuItemAsync"/> does, and
+    /// after this verb the two are the same rule: an item arriving in a heading, however it arrives,
+    /// arrives at the end of it.</para>
+    ///
+    /// <para><b>Two events, or one.</b> §8.2 binds <c>new_display_order</c> to <c>reordered</c> alone, so
+    /// a move that also changes the position must say so in a second event rather than move a number the
+    /// log does not mention. It is conditional on the position actually differing, on the no-op rule this
+    /// interface applies everywhere else — a move into an empty heading from position 0 lands at 0 again,
+    /// and an event reading <em>moved to position 0</em> beside an unchanged column is the somebody-pressed-Save
+    /// noise §11.4's history exists to avoid. The order is <c>section_changed</c> then
+    /// <c>reordered</c>, which is the order a person reads them in.</para>
+    ///
+    /// <para><b>Nothing else about the item moves.</b> Its name, price, description and <c>is_active</c>
+    /// are untouched: an 86'd dish moved between headings is still 86'd, on the same reasoning §7 gives
+    /// for a deactivated section not cascading to its items.</para>
+    ///
+    /// <para>A move to the heading the item is already under writes nothing and reports
+    /// <see cref="MoveMenuItemToSectionOutcome.NoChange"/>. That case is decided before the target
+    /// section is read, which is sound rather than an ordering accident: an item cannot already be under
+    /// a heading that does not exist.</para>
+    /// </summary>
+    /// <param name="menuItemIdentifier">The item to refile.</param>
+    /// <param name="menuSectionIdentifier">The heading to file it under; an unknown identifier is reported rather than raised.</param>
+    /// <param name="actorPersonIdentifier">The administrator the events record.</param>
+    /// <param name="cancellationToken">Cancels the write.</param>
+    Task<MoveMenuItemToSectionOutcome> MoveMenuItemToSectionAsync(
+        Guid menuItemIdentifier,
+        Guid menuSectionIdentifier,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -322,6 +391,13 @@ public sealed class DapperMenuAdministration : IMenuAdministration
     /// <c>section_changed</c>, added by <c>0005</c>. It is written on every create as well as on every
     /// move, because §7 requires an item to be under a heading and §8.2 keeps <c>created</c> at the name
     /// and the price — so this type is the only place the log can record which heading.
+    ///
+    /// <para><b>It had exactly one writer for three slices, and that was the state
+    /// <see cref="MoveMenuItemToSectionAsync"/> ends.</b> Until this verb existed, every row of this type
+    /// in every database came from a create, so an item's heading was decided once and never again —
+    /// which is why a heading created with a typo could only be worked around by making another. Anything
+    /// counting an item's events should note that a create still contributes one of these before a move
+    /// contributes a second.</para>
     /// </summary>
     private const string SectionChangedEventType = "section_changed";
 
@@ -376,11 +452,19 @@ public sealed class DapperMenuAdministration : IMenuAdministration
         FOR UPDATE;
         """;
 
+    /// <summary>
+    /// <c>menu_section_identifier</c> is selected as of <see cref="MoveMenuItemToSectionAsync"/>, and it
+    /// is the one column here no other verb in this file reads. It is on the shared lock read rather than
+    /// on a second query of its own because the comparison a move makes — <em>is it already under that
+    /// heading</em> — has to be made against the row this transaction is holding, and a second read would
+    /// be a second chance for the answer to be stale.
+    /// </summary>
     private const string LockMenuItemSql = """
-        SELECT menu_item.name          AS Name,
-               menu_item.description   AS Description,
-               menu_item.price_amount  AS PriceAmount,
-               menu_item.display_order AS DisplayOrder
+        SELECT menu_item.name                   AS Name,
+               menu_item.description            AS Description,
+               menu_item.price_amount           AS PriceAmount,
+               menu_item.display_order          AS DisplayOrder,
+               menu_item.menu_section_identifier AS MenuSectionIdentifier
         FROM menu_item
         WHERE menu_item.menu_item_identifier = @MenuItemIdentifier
         FOR UPDATE;
@@ -411,7 +495,21 @@ public sealed class DapperMenuAdministration : IMenuAdministration
         """;
 
     /// <summary>
-    /// One INSERT for all five event types this file writes. §8.2's four named paired CHECKs tie each
+    /// The one UPDATE in this file that moves two columns, and they move together because a position is
+    /// meaningless without the heading it is a position within (§7). Splitting this into two statements
+    /// would leave a moment inside the transaction where the item is under its new heading at a position
+    /// belonging to its old one — invisible to every other session, and exactly the sort of intermediate
+    /// state that becomes visible the first time somebody adds a statement between the two.
+    /// </summary>
+    private const string UpdateMenuSectionAndPositionSql = """
+        UPDATE menu_item
+        SET menu_section_identifier = @MenuSectionIdentifier,
+            display_order = @DisplayOrder
+        WHERE menu_item_identifier = @MenuItemIdentifier;
+        """;
+
+    /// <summary>
+    /// One INSERT for every event type this file writes. §8.2's named paired CHECKs tie each
     /// nullable payload column to exactly the types that carry it — <c>created</c> the name and the price,
     /// <c>name_changed</c> the name alone, <c>price_changed</c> the price alone,
     /// <c>description_changed</c> the description alone, <c>reordered</c> the position alone — so the
@@ -819,6 +917,109 @@ public sealed class DapperMenuAdministration : IMenuAdministration
         return ReorderMenuItemOutcome.Reordered;
     }
 
+    /// <summary>
+    /// The only verb here that takes two locks, and the order they are taken in is the ruling.
+    ///
+    /// <para>The <em>item</em> row is locked first and the <em>section</em> row second, which is the same
+    /// direction every other write in this file already runs in — the item verbs lock an item and nothing
+    /// else, and <see cref="CreateMenuItemAsync"/> locks a section and nothing else, so item-then-section
+    /// is the only nesting that exists and it is consistent. Two administrators moving two different
+    /// dishes into each other's headings therefore cannot deadlock: both take their item lock first, and
+    /// neither is holding a section lock while waiting for one.</para>
+    /// </summary>
+    public async Task<MoveMenuItemToSectionOutcome> MoveMenuItemToSectionAsync(
+        Guid menuItemIdentifier,
+        Guid menuSectionIdentifier,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        MenuItemLockRow? item = await ReadLockedAsync(
+            connection, transaction, menuItemIdentifier, cancellationToken).ConfigureAwait(false);
+
+        if (item is null)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return MoveMenuItemToSectionOutcome.MenuItemNotFound;
+        }
+
+        // Decided before the target is read, and that is sound rather than lucky: an item cannot already
+        // be filed under a heading that does not exist, so this arm can never hide a MenuSectionNotFound.
+        if (item.MenuSectionIdentifier == menuSectionIdentifier)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return MoveMenuItemToSectionOutcome.NoChange;
+        }
+
+        MenuSectionPositionRow? section = await connection
+            .QuerySingleOrDefaultAsync<MenuSectionPositionRow>(new CommandDefinition(
+                LockMenuSectionAndReadNextPositionSql,
+                new { MenuSectionIdentifier = menuSectionIdentifier },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        if (section is null)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return MoveMenuItemToSectionOutcome.MenuSectionNotFound;
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            UpdateMenuSectionAndPositionSql,
+            new
+            {
+                MenuItemIdentifier = menuItemIdentifier,
+                MenuSectionIdentifier = menuSectionIdentifier,
+                DisplayOrder = section.NextDisplayOrder,
+            },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        await InsertEventAsync(
+            connection,
+            transaction,
+            menuItemIdentifier,
+            actorPersonIdentifier,
+            SectionChangedEventType,
+            newName: null,
+            newPriceAmount: null,
+            newDescription: null,
+            newDisplayOrder: null,
+            menuSectionIdentifier,
+            now,
+            cancellationToken).ConfigureAwait(false);
+
+        // A second event only when the number actually moved. §8.2 binds new_display_order to 'reordered'
+        // alone, so the position cannot ride along on the event above — and a heading that happens to
+        // append at the position the item already held is a move that changed one thing, not two.
+        if (section.NextDisplayOrder != item.DisplayOrder)
+        {
+            await InsertEventAsync(
+                connection,
+                transaction,
+                menuItemIdentifier,
+                actorPersonIdentifier,
+                ReorderedEventType,
+                newName: null,
+                newPriceAmount: null,
+                newDescription: null,
+                section.NextDisplayOrder,
+                newMenuSectionIdentifier: null,
+                now,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        return MoveMenuItemToSectionOutcome.Moved;
+    }
+
     private async Task InsertEventAsync(
         DbConnection connection,
         DbTransaction transaction,
@@ -897,5 +1098,6 @@ public sealed class DapperMenuAdministration : IMenuAdministration
         string Name,
         string Description,
         decimal PriceAmount,
-        int DisplayOrder);
+        int DisplayOrder,
+        Guid MenuSectionIdentifier);
 }

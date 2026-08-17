@@ -11908,3 +11908,246 @@ instance behind it (F-83).
 
 **`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
 starts it successfully.** Carried.
+
+# M6 Slice 43 — the last verb gets its surface, and three numbers nothing could check
+
+**`MoveMenuItemToSectionAsync` lands with the picker on `ManageMenuItem` that calls it.** It was the last
+verb in the whole menu enhancement written without a caller, and with it **no method behind
+`IMenuWorkflow` is unreachable from a form**. Three findings ship beside it — F-90, F-91 and F-92 — and
+they are one defect three times.
+
+## The first thing to read: 1149 was predicted and 1151 ran
+
+Slice 42 predicted **1149**. The run returned **1151**, green, twice. Per §18 that difference is the first
+thing chased, and it resolves to the unit.
+
+The tree holds **1132** `[Fact]` plus `[InlineData]` cases. `SchemaMigrationRunnerTests` adds its 5 facts,
+`KeyRelations`' **13** theory rows, and `KeyColumnsAddedByAlter`'s **6** — four columns added by `0004`,
+two more by `0005`. That is 1151. Substitute the **four** §16.4 states and you get 1149.
+
+**§16.4 says *"Four theory rows therefore name the columns that arrived by `ALTER`"*.** `0005` added
+`menu_item.menu_section_identifier` and `menu_item_event.new_menu_section_identifier` to that
+`TheoryData` and the sentence did not move. That is **F-90**, and the part worth carrying is why the gate
+built for exactly this could not see it: `TestingSectionContractTests` compares an **assertion count per
+class**, which for that file is 7 methods and is still correct. A theory-row count is a different quantity
+living in the same paragraph. So a number went stale inside the one section written to stop numbers going
+stale, in the one form its gate is structurally blind to.
+
+**The instrument that reported it was §18's habit and nothing else.** This is the first finding in the
+ledger produced by chasing a predicted count rather than by somebody reading a file — which is what F-70
+established the habit for, three slices after the last opportunity to use it.
+
+## F-91 and F-92, which are the same defect one register out
+
+**F-91.** §16.3 scenario 16 says *fifteen controls are expected* and itemises them, including *a rename and
+a reprice on the item*. `ManageMenuItem.razor` gained a third `.manage-inline-form` in Slice 38 and a
+fourth in Slice 40; this slice makes five. Nothing reported it because the assertion above the census is a
+**floor of fourteen**, and a floor that passes at fifteen passes at seventeen — so the itemisation was a
+number only a person re-deriving it by hand could ever check.
+
+**The floor is deliberately not raised, and that is a ruling.** Its value is a claim about controls
+rendered on ten surfaces against rows one scenario arranges, which this authoring environment cannot
+observe. An unobservable raise is precisely the edit that turns a green suite red for no gain. It is now
+justified by the **smallest selector group** — `.filter-actions`, two controls, one per read-only
+explorer — which is a property of the selector set rather than of a render. The residual is written into
+the file: a floor notices a group that vanished and never one that grew, and making it a census honestly
+would mean attributing each measured control to the selector that matched it, which
+`HandheldReachReport` does not carry.
+
+**F-92.** The specification's opening sentence has cited `REQUIREMENTS.md` (rev 5) since v1.15 moved that
+document to rev 6. `SpecificationVersionTests` compares each document's header against its **own**
+changelog, which is what F-58 asked for and is a different question — so both documents were internally
+consistent and disagreed with each other. **The sibling document had already learned this and said so in
+its own header:** `REQUIREMENTS.md` records that it deliberately does not restate the specification's
+version, *because a version of another document is a restatement joined to its subject only by somebody
+remembering to edit it*. F-58's lesson was written into one of the two documents and not the other, so the
+citation that survived is the one pointing the other way.
+
+All three are repaired identically — **the number is deleted, not corrected** (F-77) — and in all three
+**no gate is added** and the residual is stated. A gate for one sentence leaves every other instance of
+the class untouched (F-47).
+
+## The move, and the three rulings inside it
+
+**An item is appended to the end of its new heading.** Carrying the old position across would drop the dish
+into the middle of an ordering somebody chose for a different list, because a position is a position
+*within* a heading. `MAX(display_order) + 1` under a lock on the target section row is exactly what
+`CreateMenuItemAsync` does, so after this verb the two are one rule: an item arriving in a heading,
+however it arrives, arrives at the end of it.
+
+**Two events, or one.** §8.2 binds `new_display_order` to `reordered` alone, so a move that also changes
+the position must say so in a second event rather than move a number the log does not mention. It is
+conditional on the number actually differing — a move into an empty heading from position 0 lands at 0
+again, and an event reading *moved to position 0* beside an unchanged column is the "somebody pressed
+Save" noise §11.4's history exists to refuse. Order: `section_changed` then `reordered`.
+
+**The item lock is taken before the section lock.** It is the only nested acquisition in that file and it
+runs in the direction every existing write already runs in — the item verbs lock an item and nothing else,
+`CreateMenuItemAsync` locks a section and nothing else. Two administrators moving two dishes into each
+other's headings therefore cannot deadlock: both take their item lock first, and neither holds a section
+lock while waiting for one.
+
+**Nothing else about the item moves.** Name, price, description and `is_active` are untouched, so an 86'd
+dish refiled between headings is still 86'd — the item-side counterpart of §7's rule that deactivating a
+heading does not cascade to its items.
+
+## The publish is as loud as a section visibility flip
+
+§11.1 groups the guest menu by heading, so a committed refile moves a card between groupings on every open
+picker in the building. A refile **into an inactive heading** removes the card from the guest's menu
+entirely, because §7 renders no such heading at all — which is the same reach `SetMenuSectionActiveAsync`
+has, arriving from the other direction. Conditional on `Moved` alone: `NoChange`, `MenuItemNotFound` and
+`MenuSectionNotFound` each commit nothing.
+
+## The obligation is discharged rather than narrowed, and how it was carried is the transferable part
+
+A workflow verb with no caller is a code path no test can reach through the interface meant to protect it.
+Six verbs were held outside `IMenuWorkflow` under that rule across seven slices — five section verbs and
+this one — and **the count of how many were outstanding was written down every single slice.** That is the
+only reason its reaching zero is a fact somebody can state rather than something noticed later. A deferral
+named every slice is a deferral; one named once is an omission with a date on it.
+
+## What is in this slice
+
+- **`Menu/MenuAdministration.cs`** — `MoveMenuItemToSectionOutcome` (four members, where the reorder
+  outcome has three), `MoveMenuItemToSectionAsync`, `menu_section_identifier` added to the shared lock read
+  and to `MenuItemLockRow`, and `UpdateMenuSectionAndPositionSql`.
+- **`Menu/MenuWorkflow.cs`** — the verb, publishing on `Moved`.
+- **`Administration/ManageMenuItem.razor`** — a `.manage-inline-form` section picker between Description
+  and Position, pre-selected on the item's own heading, offering inactive headings marked.
+- **`MenuAdministrationTests.cs`** — 26 → **31**.
+- **`MenuWiringTests.cs`** — 18 → **19**, plus the fake's new verb.
+- **`AdministrationJourneys.cs`** — `MoveMenuItemToSectionAsync`.
+- **`EndToEndScenarios.cs`** — scenario 17 gains step (i); scenario 16's census replaced by its rule
+  (F-91).
+- **Documentation** — specification to **v1.28** (§0, §7, §11.4, §16.4, Appendix A, changelog),
+  `DOCUMENTATION_REVIEW.md` gains F-90 through F-92, the plan strikes the last deferred verb.
+
+## Two things about the surface that are decisions rather than markup
+
+**The button reads "File here", not "Move".** The Position form's button already says *Move*, and
+Playwright's `has-text` is substring matching — so a second button containing that word would make every
+locator in the harness ambiguous the day somebody wrote one. The name is chosen against a test-harness
+constraint rather than for its own sake, which is worth saying because it looks arbitrary otherwise.
+
+**No CSS moves.** `.manage-inline-form` has styled `select` since Slice 34 — which is the same fact the
+comment beside the description form states from the other end when it says that class has never styled a
+`textarea`. The page's closing note used to say it carried *two small forms*; it carried four. That count
+is deleted rather than corrected, on the same ruling as the three findings above.
+
+## What was verified
+
+**The working tree was reconstructed from `dump.txt` and checked against the SHA-256 recorded for every
+file: 348 of 349 byte-identical.** The exception is `export.sh`, which contains the dump's own `# FILE:`
+banner as literal text and therefore cannot be round-tripped by any parser using that banner as a
+delimiter. It is excluded from the work set rather than reconstructed and guessed at, and is not delivered.
+
+**`TestingSectionContractTests` was run in substance**, ported: **19 counted classes, 0 disagreements, 0
+ambiguous, 0 uncited**, floor met exactly. The two counts this slice moves — `MenuAdministrationTests` to
+31 and `MenuWiringTests` to 19 — were compared against the files by that port and agree.
+
+**The new §16.4 paragraph names two test classes and states no count**, which the gate reads and correctly
+declines to attribute. That is deliberate: a second paragraph claiming a count for a file another paragraph
+already counts would be the same fact written twice in the section whose whole subject is that mistake.
+
+**`SpecificationVersionTests` was run in substance**: header 1.28, newest changelog entry 1.28, **29
+entries descending**.
+
+**`MarkdownTableContractTests` was run in substance** over every Markdown file outside `docs/llm/`,
+fence-aware and escaped-pipe-aware: **61 table runs, zero ragged**, including the six new four-cell rows
+across the two registers.
+
+**Brace, paren and bracket balance** on all six changed C# and Razor files, string- and comment-aware —
+and the checker was proven against **four untouched, SHA-verified siblings** first, which is the habit
+Slice 41 paid for. All ten clean.
+
+**Razor tag-tree comparison** of `ManageMenuItem.razor` against its SHA-verified original: 188 tags before,
+**208 after**, and the diff is **one contiguous insertion** and nothing else — the twenty tags of the new
+form and the heading above it. The markup walk closes every element it opens, with nothing unbalanced and
+nothing left on the stack.
+
+**Byte hygiene** on every changed file: no CR, exactly one final newline, no whitespace-only line, no
+context-dump separator.
+
+**The CS4007 scan caught one, which is the reason it is run.** The new harness journey's failure message
+was first written as `$" effect. {await DescribeFailureAsync(page)}"` — an `await` inside an interpolated
+string hole bound to `DefaultInterpolatedStringHandler`, which does not compile. Repaired to the shape its
+four neighbours in that file already use: the `await` is a separate operand of the concatenation rather
+than a hole. Worth recording because it is a defect a reading finds only if it is looking for it, and
+because §18's list of mechanical traps exists precisely so that this class is scanned rather than reviewed.
+
+**The Razor directive gate was run in substance** over the changed component: no bare `@section` or
+`@RenderSection`, and the one occurrence of the word after a transition is `@@section` inside a comment,
+which is Razor's escape and which `RazorDirectiveContractTests` explicitly admits (F-81).
+
+**The F-90 arithmetic was recomputed from the tree** rather than taken from the prediction it explains:
+1132 counted directly, 13 and 6 counted out of the two `TheoryData` initialisers, and 5 facts in the file
+itself.
+
+## What was NOT verified
+
+**Nothing compiled.** No .NET SDK in the authoring environment. Named rather than left to be found:
+`MoveMenuItemToSectionAsync` is the third method on `IMenuAdministration` whose parameter list is two
+`Guid`s in a row, and the two are `menuItemIdentifier` then `menuSectionIdentifier` — the same order
+`CreateMenuItemAsync` uses, deliberately, but positionally interchangeable to the compiler. Every call site
+in this slice passes them in that order; a transposition would compile and fail at run time as
+`MenuItemNotFound`.
+
+**No test ran.** Every count below is arithmetic.
+
+**No database saw the move.** The append is derived from reading
+`LockMenuSectionAndReadNextPositionSql`, which `CreateMenuItemAsync` already uses and which
+`ItemsAreAppendedToTheEndOfTheirOwnSection` already proves against a real PostgreSQL — so what is new here
+is the caller, not the query. That two events are permitted in one transaction rests on §8.2's paired
+CHECKs, which `MenuAdministrationTests` exercises for each type separately and which no fact yet exercises
+in this combination.
+
+**No browser ran scenario 17's new step.** The arrival barrier is a CSS attribute selector on the facts
+grid's Section link, `a[href='/administration/menu/sections/{guid}']`, which requires the rendered `href`
+to match exactly — Razor renders a `Guid` with its default `D` format and `ToString("D")` produces the
+same, but this environment cannot observe that agreement.
+
+**Nothing verified that F-91's census was the only stale count of its kind in the harness.** A repository
+reading found this one; a number in a comment nothing parses is reachable by no gate here, which is F-90's
+residual restated in a second file.
+
+## Test count
+
+Last predicted **1149**; **observed 1151** — the first prediction to meet a run in three slices, and the
+difference is F-90 above.
+
+Predicted here: **1157**. Arithmetic on the observed number, per §18: 1151 + 5
+(`MenuAdministrationTests` 26 → 31) + 1 (`MenuWiringTests` 18 → 19). Scenario 17 is **extended, not
+added**, so §16.3 stays at **17** and the end-to-end project stays at 17 facts.
+
+Per §18: if the run returns anything other than 1157, that difference is the next thing to chase.
+
+## Still open
+
+**The sections-first index.** `/administration/menu` is still an item list with a Section column. It is now
+the largest remaining piece of Stage 3, and nothing blocks it — the editor it needs to open into has
+existed since Slice 41.
+
+**A section's own description under its heading on the guest menu.** Unchanged. It needs either a second
+read or a widened `MenuItemSummary`, and F-84 is the reason widening that record is not free.
+
+**The kitchen's "86" panel still groups by nothing.** Stage 3's last surface.
+
+**The handheld barrier visits neither section surface, and now it also misses a form.** Scenario 16 walks
+ten surfaces; `ManageMenuSection` is a detail surface with `.manage-inline-form` buttons and would move the
+control count. As of this slice the item detail page it *does* visit has five inline forms where the
+barrier's own account said two — corrected as F-91, but the gap it points at is unchanged.
+
+**No gate can see a count written in a comment.** F-90's and F-91's shared residual, stated once here
+rather than twice above.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Eighth slice carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a tenth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Nineteenth consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.

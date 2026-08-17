@@ -259,9 +259,17 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
     /// <summary>
     /// The floor on how many controls §16.3 scenario 16 must have measured before its verdicts mean
-    /// anything. Fifteen are expected since Slice 34; see the comment at the assertion for the arithmetic,
-    /// for which renamed selector sets the floor, and for why it is one under the expectation rather than
-    /// equal to it.
+    /// anything.
+    ///
+    /// <para><b>No expected total is stated beside it, and that is F-91.</b> The sentence that used to
+    /// stand here said <em>fifteen are expected since Slice 34</em>, and the comment it pointed at
+    /// itemised a census that had been wrong since Slice 38 added a third form to <c>ManageMenuItem</c> —
+    /// a count of rendered controls is a fact about ten surfaces that nothing in this tree can check, and
+    /// it went stale in silence because a floor that passes at fifteen also passes at seventeen (F-77).
+    /// The floor is set under the smallest selector group rather than under a total: <c>.filter-actions</c>
+    /// contributes two controls, one per read-only explorer, so that is the smallest disappearance this
+    /// number has to survive and still catch. The comment at the assertion carries the rule and the
+    /// residual.</para>
     /// </summary>
     private const int MinimumControlsMeasured = 14;
 
@@ -2355,25 +2363,32 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
                     + " assertion below passes on a page nobody claims is reachable.");
         }
 
-        // (e) Enough was measured to be measuring something. Fifteen controls are expected, and the
-        // arithmetic is worth writing down because the floor under it is chosen from it. On the indexes:
-        // two rows plus a create button on people, one plus one on tables, one plus one on menu, nothing
-        // at all on sittings, and one filter submit on each of hidden-records and events — which is every
-        // control §11.4 leaves on those two, both being read-only surfaces with no action of their own.
-        // On the detail surfaces: a grant form and a revoke form on the account, a rename form on the
-        // table, a rename and a reprice on the item, and the pairing button on the display roster.
+        // (e) Enough was measured to be measuring something. What is counted is stated as a RULE rather
+        // than as a census, and that is F-91: the census that used to stand here said fifteen and
+        // itemised "a rename and a reprice on the item", while `ManageMenuItem` had carried four
+        // `.manage-inline-form` blocks since Slice 38 and carries five since the section picker. A count
+        // of rendered controls is a fact about ten surfaces and the rows this scenario happened to
+        // arrange, written where nothing can check it — F-77's category exactly, and it went stale in the
+        // slice that added a form without anyone noticing, because a floor that passes at fifteen also
+        // passes at seventeen.
         //
-        // The floor is fourteen rather than fifteen so that one surprise is not a red suite, and it is
-        // still under every way this can go quietly wrong: a renamed `.record-actions` leaves eleven, a
-        // renamed `.page-head-action` leaves eleven, a renamed `.manage-inline-form` leaves nine, and a
-        // renamed `.filter-actions` — the smallest loss, and therefore the one that sets the floor —
-        // leaves thirteen.
+        // The rule: every `.record-actions` and `.page-head-action` control on the six indexes, every
+        // `.filter-actions` submit on the two read-only explorers, and every `.manage-inline-form` button
+        // on the four detail surfaces. The floor is what makes the verdicts below mean anything, and it
+        // is set under the smallest selector group rather than under the total — `.filter-actions`
+        // contributes exactly two controls, one per explorer, so a rename of that class is the smallest
+        // loss this floor has to survive and still catch.
+        //
+        // THE RESIDUAL IS NAMED. A floor cannot notice a group that grew, only one that vanished, so this
+        // stays a non-vacuity guard rather than a census. Making it a census honestly would mean
+        // attributing each measured control to the selector that matched it, which `HandheldReachReport`
+        // does not carry — a real gate, deliberately not built in the slice that found the defect.
         int measured = reports.Sum(report => report.MeasuredCount);
 
         Assert.True(
             measured >= MinimumControlsMeasured,
-            $"Only {measured} control(s) were measured across {reports.Count} surfaces, and fifteen were"
-                + " expected. A selector this barrier reads has been renamed, or a page lost its list —"
+            $"Only {measured} control(s) were measured across {reports.Count} surfaces, which is under the"
+                + " floor. A selector this barrier reads has been renamed, or a page lost its list —"
                 + " either way the assertions below are true of nothing.");
 
         // (f) F-59, as the number it always was. A page wider than its own viewport is a page an
@@ -2414,6 +2429,9 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     //     description on the card and in the detail panel. Then a heading is switched off and the guest's
     //     menu loses it — §7's rule that an inactive SECTION is hidden from the guest, which is the
     //     opposite of the rule for an inactive item, and the one thing about `0005` no unit test can see.
+    //     Finally an item is refiled from one heading to the other and the guest watches it change
+    //     groupings, landing at the END of its new heading — the last verb of the enhancement, and the
+    //     only place §7's append-on-move rule is observed through a browser.
     // -------------------------------------------------------------------------------------------
     [Fact]
     public async Task Guest_ReadsTheMenuGroupedUnderItsHeadings()
@@ -2578,6 +2596,49 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         Assert.Equal(puddings, restoredPie.SectionName);
         Assert.Equal(pieDescription, restoredPie.Description);
         Assert.True(restoredPie.IsAvailable);
+
+        // (i) And the last verb of the whole enhancement, end to end. An item is refiled from one heading
+        // to another through `ManageMenuItem`'s own picker, and the guest — who has not touched anything —
+        // watches the card change groupings, because §11.1 groups by heading and §9's MenuChanged is what
+        // reaches an already-open circuit.
+        //
+        // WHERE IT LANDS IS THE ASSERTION. §7 appends a moved item to the END of its new heading, on the
+        // same rule a created one follows, because a position belongs to the heading it is a position
+        // within. Puddings already holds the pie at 0, so the soup must arrive behind it at 1 — and an
+        // implementation that carried the item's old position across would put it at 1 as well here by
+        // coincidence, which is why the ORDER is asserted rather than the number: `second` was at
+        // position 1 in Starters and must still read second in Puddings, behind a pie it has never
+        // shared a heading with.
+        await AdministrationJourneys.MoveMenuItemToSectionAsync(
+            administrator, second.Identifier, puddingsIdentifier);
+
+        IReadOnlyList<MenuCard> refiled = await TableOrderJourneys.WaitForMenuAsync(
+            guest,
+            observed => observed.Any(card => card.Name == second.Name && card.SectionName == puddings),
+            InteractivityPatience,
+            $"'{second.Name}' to move under the '{puddings}' heading",
+            cancellationToken);
+
+        // Still two headings in the same order: a refile moves a card, it does not invent a grouping.
+        Assert.Equal(
+            new[] { starters, puddings },
+            (await TableOrderJourneys.ReadMenuSectionNamesAsync(guest)).ToArray());
+
+        // Starters keeps what it kept, and only that.
+        Assert.Equal(
+            new[] { soup.Name },
+            refiled.Where(card => card.SectionName == starters).Select(card => card.Name).ToArray());
+
+        // Appended: behind the pie, not beside it and not in front of it.
+        Assert.Equal(
+            new[] { pie.Name, second.Name },
+            refiled.Where(card => card.SectionName == puddings).Select(card => card.Name).ToArray());
+
+        // Nothing else about the item moved. §7 refiles a dish; it does not re-describe it, reprice it or
+        // 86 it — and a move that had cascaded into any of those would show here rather than in a unit
+        // test, because this is the only place the guest's own reading of the card is compared.
+        MenuCard refiledCard = Assert.Single(refiled, card => card.Name == second.Name);
+        Assert.True(refiledCard.IsAvailable);
     }
 
     // --- helpers ---------------------------------------------------------------------------------
