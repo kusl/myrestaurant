@@ -3,29 +3,57 @@
 @attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
 @using MyRestaurant.DataAccess.Menu
 @using MyRestaurant.WebApplication.Orders
+@inject IMenuSectionDirectory MenuSections
 @inject IMenuDirectory MenuItems
 @inject IMenuEventLog MenuEvents
 @inject RestaurantOptions Options
 @inject RestaurantTime RestaurantClock
 
-@* The administration menu list (TECHNICAL_SPECIFICATION §7, §11.4, §11.12 — `area.administration`:
-   "Menu (CRUD + activity, event history per item)"). It lists every item with its price and
-   availability, links each to its management page, offers creation, and shows the recent activity feed
-   that answers "what changed today" without opening an item.
+@* The administration menu index (TECHNICAL_SPECIFICATION §7, §11.4, §11.12 — `area.administration`:
+   "Menu (CRUD + activity, event history per item)"). It lists every HEADING with the items filed
+   under it, links each of both to its own management page, offers creation of either, and shows the
+   recent activity feed that answers "what changed today" without opening an item.
 
    Static SSR, like every administration surface. Deactivated items are listed, not filtered: §7 is
-   explicit that an 86'd item stays on the menu marked "currently unavailable", and a page that hid them
-   from the administrator would hide exactly the rows somebody is looking for. Ordered by section, then by
-   position within it, then by name — which is also why duplicate names, permitted since `menu_item.name`
-   carries no UNIQUE constraint, end up adjacent and visible.
+   explicit that an 86'd item stays on the menu marked "currently unavailable", and a page that hid
+   them from the administrator would hide exactly the rows somebody is looking for. The same holds one
+   register up, and more strongly: an inactive SECTION is hidden from the guest entirely and from
+   §11.4's administrator not at all — whose job on this page may be stocking next week's breakfast
+   menu before switching it on.
 
-   Two record lists (§11.12) and no inline <style>. **Sections arrived in `0005`, and this page shows
-   them as a COLUMN rather than as grouped sub-lists.** The plan's Stage 3 describes a sections-first
-   index — a record list of headings, each expandable to its items — and that is still the destination.
-   A column is the honest intermediate: the fact is visible and sortable-by-eye today, and nothing here
-   has to be undone to group it later. **The column links now**, which is the half that was missing while
-   there was no section editor to open into. §11.4's administrator, unlike §11.1's guest, sees items under
-   inactive headings too — a heading switched off is hidden from guests and from nobody else. *@
+   **THIS IS SECTIONS-FIRST AS OF M6 SLICE 44, AND THAT IS THE POINT OF THE SURFACE.** Until now it
+   was a flat list of every item with the heading as a COLUMN, which is what a menu index looks like
+   when the model has just learned to express a menu and the surface has not caught up. Slice 40 shipped
+   the column as the honest intermediate and said so: a record list whose rows link nowhere is a list of
+   dead ends, so the fact went on the screen and the destination waited for the editor it had to open
+   into. The editor landed in Slice 41 and the refile verb in Slice 43. This is the destination.
+
+   **A heading is a `<details>` rendered open, and the item list inside it is §11.12's record list.**
+   The disclosure is native: no script on a page that hosts no island, a real disclosure in the
+   accessibility tree rather than a div somebody wired up, and no state on the server. It is rendered
+   open on every request because a heading collapsed by the server is a heading whose items nobody
+   looking for an item can find — and because §16.3 scenario 16 measures what the layout engine laid
+   out, so a closed group would quietly remove its own controls from the barrier that exists to find
+   exactly that. Collapsing is the operator's decision, not this page's.
+
+   **AN EMPTY HEADING IS VISIBLE HERE FOR THE FIRST TIME.** The list this page used to render was built
+   from ITEMS, so a heading with nothing under it appeared nowhere on it — the old code said so in a
+   comment beside a count that meant "sections that have something in them". A heading created with a
+   typo, or one stocked for next week and not yet filled, was a row this surface could not show. It now
+   reads both lists and renders the headings, so emptiness is a state with a sentence rather than an
+   absence.
+
+   **WHAT THIS PAGE STILL CANNOT DO IS REORDER A HEADING**, and that is a recorded cut rather than an
+   omission — see MENU_AND_HANDHELD_PLAN.md Stage 3. `ReorderMenuSectionAsync` sets an ABSOLUTE
+   `display_order`, and positions are deliberately non-unique with a name tiebreak (§7), so "move this
+   heading up" is not expressible as one absolute write: two headings sharing a position have an order
+   nobody assigned and no single number distinguishes them. An honest Up/Down needs a resequencing verb
+   writing several rows and therefore several `reordered` events in one transaction, which is a new
+   write with new event semantics rather than a surface change. What this page does instead is make the
+   ordering legible — headings in stored order, each one's position on its own summary — and send the
+   write to the editor, which is where the absolute number belongs.
+
+   Two record lists (§11.12) and no inline <style>. The group vocabulary is `.menu-group*` in app.css. *@
 
 <PageTitle>Administration — menu</PageTitle>
 
@@ -44,97 +72,145 @@
     </div>
 
     <p class="lede">
-        Every menu item, in the order guests see them: by section, then by position within it, then by
-        name. Prices here are what the <em>next</em> order line costs — anything already on a bill keeps
-        the price it was added at. Open an item to rename it, reprice it, describe it, move it, mark it
-        unavailable, or read everything that has ever happened to it.
+        Every heading, in the order guests read them, with the items filed under each in the order they
+        appear beneath it. Prices here are what the <em>next</em> order line costs — anything already on
+        a bill keeps the price it was added at. Open a heading to rename it, describe it, move it or
+        switch it off; open an item to rename it, reprice it, describe it, refile it, move it within its
+        heading, or mark it unavailable.
     </p>
 
-    @if (_items is null)
+    @if (_sections is null)
     {
         <p class="record-empty">Loading…</p>
     }
-    else if (_items.Count == 0)
+    else if (_sections.Count == 0)
     {
         <p class="record-empty">
-            No menu items yet. Every item needs a section to sit under, so make a heading first if there
-            is not one — guests cannot order until there is something to order.
+            No headings yet, so there is nowhere for an item to go. Every menu item sits under a
+            heading — drinks, entrees, breakfast — so name the first one and the menu starts there.
         </p>
+        <div class="form-actions">
+            <a class="button-primary" href="/administration/menu/sections/new">Create the first section</a>
+        </div>
     }
     else
     {
-        <div class="record-list">
-            <table>
-                <thead>
-                    <tr>
-                        <th scope="col">Item</th>
-                        <th scope="col">Section</th>
-                        <th scope="col">Price</th>
-                        <th scope="col">Availability</th>
-                        <th scope="col">Position</th>
-                        <th scope="col"><span class="visually-hidden">Actions</span></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (MenuItemSummary item in _items)
-                    {
-                        <tr>
-                            <td class="record-primary" data-label="">
-                                <a class="record-link" href="@ManagePath(item.MenuItemIdentifier)">@item.Name</a>
-                                @if (item.Description.Length > 0)
-                                {
-                                    @* Under the name rather than in a column of its own. A description is
-                                       a sentence, and a sentence in a table cell at 375px is the shape
-                                       F-59 was about; this way the handheld card reads name-then-sentence
-                                       and the wide table reads as a subtitle. *@
-                                    <span class="record-secondary">@item.Description</span>
-                                }
-                            </td>
-                            <td data-label="Section">
-                                @* A link as of the section editor, which is what this column was waiting
-                                   for. Slice 40 rendered the name as text and said so: a record list
-                                   whose rows link nowhere is a list of dead ends, and the honest
-                                   intermediate was to put the fact on the screen and leave the
-                                   destination for the slice that built it. *@
-                                <a class="record-link" href="@SectionPath(item.MenuSectionIdentifier)">@item.MenuSectionName</a>
-                                @if (!item.MenuSectionIsActive)
-                                {
-                                    @* §7's asymmetry, said out loud on the one page that can see both
-                                       sides of it: an inactive ITEM is shown to the guest and marked,
-                                       an inactive SECTION is not shown at all. An administrator looking
-                                       at an available item that no guest can find deserves to be told
-                                       which of the two flags is doing it. *@
-                                    <span class="chip chip-warn">Section hidden</span>
-                                }
-                            </td>
-                            <td class="record-numeric" data-label="Price">@Money(item.PriceAmount)</td>
-                            <td data-label="">
-                                @if (item.IsActive)
-                                {
-                                    <span class="chip chip-ok">Available</span>
-                                }
-                                else
-                                {
-                                    <span class="chip chip-warn">Currently unavailable</span>
-                                }
-                            </td>
-                            <td class="record-numeric" data-label="Position">@item.DisplayOrder</td>
-                            <td class="record-actions" data-label="">
-                                <a class="button-secondary" href="@ManagePath(item.MenuItemIdentifier)"
-                                   aria-label="@($"Manage {item.Name}")">Manage</a>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+        <div class="menu-groups">
+            @foreach (MenuSectionSummary section in _sections)
+            {
+                @* @key on the section identifier rather than the loop index: a heading that moves
+                   position between renders would otherwise be reconciled as an edit of whichever
+                   heading now sits where it used to. *@
+                <details class="menu-group" open @key="section.MenuSectionIdentifier">
+                    <summary class="menu-group-summary">
+                        <span class="menu-group-name">@section.Name</span>
+                        <span class="menu-group-meta">
+                            @if (section.IsActive)
+                            {
+                                <span class="chip chip-ok">Visible to guests</span>
+                            }
+                            else
+                            {
+                                @* §7's asymmetry, worded as the consequence rather than as the flag —
+                                   the same wording the editor uses. "Inactive" is what the column says;
+                                   "hidden from guests" is what it does, and it is the opposite of what
+                                   the same word does one table away, where an inactive ITEM stays on the
+                                   guest's menu and is marked. *@
+                                <span class="chip chip-warn">Hidden from guests</span>
+                            }
+                            <span class="menu-group-count">
+                                @ItemCountLabel(section) · position @section.DisplayOrder
+                            </span>
+                        </span>
+                    </summary>
+
+                    <div class="menu-group-body">
+                        @if (section.Description.Length > 0)
+                        {
+                            <p class="menu-group-description">@section.Description</p>
+                        }
+
+                        @{
+                            IReadOnlyList<MenuItemSummary> items = ItemsUnder(section);
+                        }
+
+                        @if (items.Count == 0)
+                        {
+                            <p class="record-empty">
+                                Nothing is filed under this heading yet. §11.1 renders no empty heading
+                                to a guest, so this one reaches nobody whatever its visibility says
+                                above — which is why it is worth seeing here.
+                            </p>
+                        }
+                        else
+                        {
+                            <div class="record-list">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Item</th>
+                                            <th scope="col">Price</th>
+                                            <th scope="col">Availability</th>
+                                            <th scope="col">Position</th>
+                                            <th scope="col"><span class="visually-hidden">Actions</span></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (MenuItemSummary item in items)
+                                        {
+                                            <tr @key="item.MenuItemIdentifier">
+                                                <td class="record-primary" data-label="">
+                                                    <a class="record-link" href="@ManagePath(item.MenuItemIdentifier)">@item.Name</a>
+                                                    @if (item.Description.Length > 0)
+                                                    {
+                                                        @* Under the name rather than in a column of its
+                                                           own. A description is a sentence, and a
+                                                           sentence in a table cell at 375px is the shape
+                                                           F-59 was about; this way the handheld card
+                                                           reads name-then-sentence and the wide table
+                                                           reads it as a subtitle. *@
+                                                        <span class="record-secondary">@item.Description</span>
+                                                    }
+                                                </td>
+                                                <td class="record-numeric" data-label="Price">@Money(item.PriceAmount)</td>
+                                                <td data-label="">
+                                                    @if (item.IsActive)
+                                                    {
+                                                        <span class="chip chip-ok">Available</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="chip chip-warn">Currently unavailable</span>
+                                                    }
+                                                </td>
+                                                <td class="record-numeric" data-label="Position">@item.DisplayOrder</td>
+                                                <td class="record-actions" data-label="">
+                                                    <a class="button-secondary" href="@ManagePath(item.MenuItemIdentifier)"
+                                                       aria-label="@($"Manage {item.Name}")">Manage</a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+
+                        <div class="menu-group-actions">
+                            <a class="button-secondary" href="@SectionPath(section.MenuSectionIdentifier)"
+                               aria-label="@($"Manage {section.Name}")">Manage this heading</a>
+                        </div>
+                    </div>
+                </details>
+            }
         </div>
 
         <p class="record-note">
-            @_activeCount of @_items.Count available, @_describedCount described, across @_sectionCount
-            @(_sectionCount == 1 ? "section" : "sections"). An unavailable item stays
-            on the guest's menu marked unavailable and cannot be added to a send — it is never hidden and
-            never deleted, so past orders keep the item they were placed against. The <em>Created</em>
-            column has moved to each item's own page, where the whole history it belongs to lives.
+            @_itemCount @(_itemCount == 1 ? "item" : "items") across @_sections.Count
+            @(_sections.Count == 1 ? "heading" : "headings"), @_activeItemCount available and
+            @_describedItemCount described. An unavailable item stays on the guest's menu marked
+            unavailable and cannot be added to a send — it is never hidden and never deleted, so past
+            orders keep the item they were placed against. A heading switched off takes everything under
+            it off the guest's menu and changes none of those items.
         </p>
     }
 
@@ -143,7 +219,7 @@
     <h2 class="record-heading">Recent activity</h2>
     <p class="lede">
         The last @RecentActivityCount changes across the whole menu, newest first. Each item's complete
-        history is on its own page.
+        history is on its own page, and each heading's is on its own.
     </p>
 
     @if (_recent is null)
@@ -184,6 +260,13 @@
                 </tbody>
             </table>
         </div>
+
+        <p class="record-note">
+            This feed is the ITEM log only. A heading's own changes — renamed, described, moved, shown,
+            hidden — are on that heading's page, because `menu_section_event` has no cross-section feed:
+            no surface wanted one, and a read with no caller is the same defect as a workflow verb with
+            no caller (§7).
+        </p>
     }
 
     <p><a href="/administration">Back to administration</a></p>
@@ -197,26 +280,63 @@
     /// </summary>
     private const int RecentActivityCount = 20;
 
-    private IReadOnlyList<MenuItemSummary>? _items;
+    private IReadOnlyList<MenuSectionSummary>? _sections;
+    private IReadOnlyList<MenuItemSummary> _items = [];
     private IReadOnlyList<MenuItemEventEntry>? _recent;
-    private int _activeCount;
-    private int _describedCount;
-    private int _sectionCount;
+    private int _itemCount;
+    private int _activeItemCount;
+    private int _describedItemCount;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
+        // Two reads rather than one, and the second is the one this surface gained. IMenuDirectory
+        // builds its list from menu_item, so a heading with nothing under it is not in it at all —
+        // which is precisely the row an administrator wondering where their new heading went is looking
+        // for. IMenuSectionDirectory is the list of headings themselves, empty ones included, and its
+        // own doc comment says that is what it is for.
+        _sections = await MenuSections.ListAsync(HttpContext.RequestAborted);
         _items = await MenuItems.ListAsync(HttpContext.RequestAborted);
-        _activeCount = _items.Count(item => item.IsActive);
-        _describedCount = _items.Count(item => item.Description.Length > 0);
 
-        // Sections that have something under them, which is not the same number as the section count —
-        // an empty heading exists and is not visible here, because this list is built from items. The
-        // sentence below says "across N sections" and means exactly that.
-        _sectionCount = _items.Select(item => item.MenuSectionIdentifier).Distinct().Count();
+        _itemCount = _items.Count;
+        _activeItemCount = _items.Count(item => item.IsActive);
+        _describedItemCount = _items.Count(item => item.Description.Length > 0);
+
         _recent = await MenuEvents.ListRecentAsync(RecentActivityCount, HttpContext.RequestAborted);
+    }
+
+    /// <summary>
+    /// The items filed under one heading, in the order guests read them.
+    ///
+    /// <para><b>Filtered rather than grouped, and rather than asked for per section.</b> §7's read
+    /// orders by <c>(section.display_order, section.name, section.menu_section_identifier,
+    /// item.display_order, item.name, item.menu_item_identifier)</c>, so this filter preserves the order
+    /// somebody chose without re-deciding it — where a <c>GroupBy</c> would re-order the headings into
+    /// hash order and make the ordering decision a second time in a second file. A per-section read
+    /// would be a query with one caller, which is the defect <see cref="IMenuDirectory"/> declines to
+    /// invent for exactly this reason. The menu is single-digit-to-sixty rows on the machine this runs
+    /// on, and the same filter is what <c>ManageMenuSection</c> already does.</para>
+    /// </summary>
+    private IReadOnlyList<MenuItemSummary> ItemsUnder(MenuSectionSummary section)
+        => _items.Where(item => item.MenuSectionIdentifier == section.MenuSectionIdentifier).ToArray();
+
+    /// <summary>
+    /// How many items are under a heading, as a phrase rather than a bare number, because it sits in a
+    /// summary line beside a position and two adjacent integers with no words between them are
+    /// unreadable.
+    /// </summary>
+    private string ItemCountLabel(MenuSectionSummary section)
+    {
+        int count = ItemsUnder(section).Count;
+
+        return count switch
+        {
+            0 => "no items",
+            1 => "1 item",
+            _ => $"{count} items",
+        };
     }
 
     private static string ManagePath(Guid menuItemIdentifier)
@@ -228,13 +348,13 @@
     private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
 
     /// <summary>
-    /// A friendly label for each event type §8.2's vocabulary CHECK admits, falling back to the stored
-    /// string for anything else — §11.4 renders the record, so an unrecognised type must show as itself
-    /// rather than be swallowed. The arms below are deliberately not counted in prose: this comment said
-    /// <em>five</em> and named <em>two</em> new types where the plan specified three, in a sentence
-    /// nothing in the tree could check (F-77).
+    /// A friendly label for each event type §8.2's <c>menu_item_event</c> vocabulary CHECK admits,
+    /// falling back to the stored string for anything else — §11.4 renders the record, so an
+    /// unrecognised type must show as itself rather than be swallowed. The arms below are deliberately
+    /// not counted in prose: this comment said <em>five</em> and named <em>two</em> new types where the
+    /// plan specified three, in a sentence nothing in the tree could check (F-77).
     ///
-    /// <para>This feed is a glance rather than an audit, so a `description_changed` says that a
+    /// <para>This feed is a glance rather than an audit, so a <c>description_changed</c> says that a
     /// description moved without quoting it — the sentence belongs on the item's own page, where the
     /// uncapped history renders it in full.</para>
     /// </summary>

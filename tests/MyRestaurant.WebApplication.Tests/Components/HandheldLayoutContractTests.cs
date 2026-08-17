@@ -72,9 +72,25 @@ public sealed class HandheldLayoutContractTests
     /// which names they lean on from app.css, and three of those names are on this list — so under a scan
     /// that read a block as text, adding <c>.chip</c> here reported a finding on three correct
     /// pages.</para>
+    ///
+    /// <para><c>.menu-group</c> joined in Slice 44 with the sections-first menu index, and it is on this
+    /// list from its first day rather than after a second copy appeared. Every other name here arrived
+    /// <em>after</em> the duplication it exists to prevent — five copies of the chip set, four of the
+    /// detail vocabulary, two of the filter form — and the cheaper moment is the one where the
+    /// vocabulary has exactly one declaration and the list is the reason it keeps having one. The prefix
+    /// covers <c>.menu-groups</c> as well, which is the wrapper, so a page reaching for either fails.</para>
     /// </summary>
     private static readonly string[] SharedSelectorPrefixes =
-        [".record-", ".page-head", ".filter-", ".manage-", ".chip", ".muted", ".visually-hidden"];
+    [
+        ".record-",
+        ".page-head",
+        ".filter-",
+        ".manage-",
+        ".menu-group",
+        ".chip",
+        ".muted",
+        ".visually-hidden",
+    ];
 
     /// <summary>
     /// The per-page table vocabularies §11.12's record list replaces. Retired from four pages in M6 Slice

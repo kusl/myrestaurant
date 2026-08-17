@@ -1,6 +1,6 @@
 # Menu modernization and the handheld contract — staged plan
 
-**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-16, at the close of Slice 43.** This
+**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-17, at the close of Slice 44.** This
 is the execution plan for the first enhancement request the project has received from a person who was
 shown the running application, together with the defect that request arrived beside. It is a working
 document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
@@ -513,10 +513,40 @@ the count of how many were outstanding was written down every single slice, whic
 reaching zero is a fact somebody can state rather than something noticed later. A deferral that is named
 every slice is a deferral; one that is named once is an omission with a date on it.
 
-**What is left of this stage.** The section **index** — `/administration/menu` becoming sections-first rather
-than an item list with a Section column. A section's own **description under its heading** on the guest menu.
-And the kitchen's 86 panel, which still groups by nothing. None of the three is a verb; all three are
-surfaces reading things that already exist.
+**~~What is left of this stage~~ — shorter again. The section index landed in Slice 44, and it was the
+largest of the three.** `/administration/menu` is a group per heading, each a `<details>` rendered open,
+holding that heading's items as a record list. What is left: a section's own **description under its
+heading** on the guest menu, and the kitchen's 86 panel, which still groups by nothing. Neither is a verb;
+both are surfaces reading things that already exist.
+
+**Two rulings came out of the index and both are transferable.** The group is rendered **open on every
+request**, because a heading a server collapsed is a heading whose items nobody looking for an item can
+find — and because §16.3 scenario 16 measures what a layout engine laid out, so a control inside a closed
+`<details>` has no box and a collapsed group would withdraw its own controls from the barrier that exists
+to catch exactly that. And **an empty heading is visible on that surface and nowhere else in the
+application**: the old index was built from `menu_item`, so a heading with nothing under it appeared on no
+page at all, which made a heading created with a typo a row no surface could show. The page now reads both
+directories, which is what `IMenuSectionDirectory.ListAsync` was written for.
+
+**The order controls this plan promised are cut, and the cut is the paragraph worth keeping.** This file
+said the index would arrive *“with the section's own order controls”*. It does not, for a reason
+that only becomes visible once somebody tries to write them: `ReorderMenuSectionAsync` sets an **absolute**
+`display_order`, and §7 makes positions deliberately non-unique with a name tie-break — so *move this
+heading above that one* is not expressible as one absolute write. Two headings sharing a position have an
+order nobody assigned, and no single number distinguishes them. An honest up/down control needs a
+**resequencing verb** writing several rows, and therefore several `reordered` events, in one transaction:
+a new write with new event semantics, not a surface change. So the index makes the ordering **legible** —
+headings in stored order, each one's position on its own summary — and the editor keeps the write. **The
+general rule, which is the part to carry:** when a surface would need a verb the model cannot express, the
+surface ships without it and says so, rather than shipping a control that is right in the common case and
+silently wrong wherever the data is allowed to be ambiguous.
+
+**And the index cost a gate rather than a migration, which is the third slice in a row where that was the
+expensive part.** The 375px barrier chooses what it measures from a list of class names, so replacing
+`.record-actions` rows with `.menu-group` groups would have left this surface visited and unmeasured while
+the floor above the check went *up* — the item rows inside the groups still carry `.record-actions`. That
+is F-93, it is F-91's stated residual arriving as a live defect, and the repair is a rule in §16.4 rather
+than two selectors in a harness.
 
 **Slice 42 added nothing to this stage and unblocked all of it.** That slice is defects only: Slice 41
 shipped an archive that did not compile, and behind the five build errors sat fourteen failing integration
@@ -552,15 +582,22 @@ an outer loop added later around markup that does not change. Against that, leav
 already in the schema and read by nothing. The cost of the swap is that the guest surface will be edited
 twice; under this project's full-file delivery that costs nothing, and F-64's ruling is the precedent.
 
-**`/administration/menu`** becomes sections-first: a record list of sections, each expandable to its items,
-with the section's own order controls. The flat name-ordered list of every item goes away — it is what a
-menu looks like when the model cannot express a menu.
+**~~`/administration/menu`~~ becomes sections-first** — **landed, Slice 44.** A group per heading, each a
+`<details>` rendered open, holding that heading's items. The flat name-ordered list of every item is gone —
+it was what a menu looks like when the model cannot express a menu. **Without the section's own order
+controls**, which this sentence promised and which are cut with a recorded reason above: an absolute
+`display_order` cannot express *move this above that* while positions are non-unique with a name tie-break,
+so an up/down control needs a resequencing verb rather than a surface.
 
-**Slice 40 took the honest intermediate rather than half of this.** The index gained a *Section* column and
-a *Create section* button; it did not become a list of headings. The destination is unchanged, and the
-reason for stopping short is that a sections-first index needs an editor to open into — a record list whose
-rows link nowhere is a list of dead ends. A column costs nothing to replace later and puts the fact on the
-screen today.
+**~~Slice 40 took the honest intermediate rather than half of this~~ — and Slice 44 replaced it, exactly as
+that intermediate predicted it would.** The index gained a *Section* column and a *Create section* button
+in Slice 40 and did not become a list of headings, because a sections-first index needs an editor to open
+into and a record list whose rows link nowhere is a list of dead ends. The editor landed in Slice 41, the
+refile verb in Slice 43, and the column was replaced by the grouping in Slice 44 — three slices in which
+nothing had to be undone, which is what the intermediate was chosen for. **The transferable claim is
+narrower than “ship something”:** an intermediate is honest when replacing it costs no more than
+building the destination would have, and a column inside a record list is that, where a half-built grouping
+with dead links would not have been.
 
 **~~`/administration/menu/sections/new` and `/administration/menu/sections/{id}`~~ — both landed**, matching
 the shape `CreateTable`/`ManageTable` and `CreateMenuItem`/`ManageMenuItem` already have: static SSR, one

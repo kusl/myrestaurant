@@ -1,9 +1,9 @@
-# M6 Slice 43 — the last verb gets its surface, and three numbers nothing could check
+# M6 Slice 44 — the index becomes the menu, and a barrier that measures by list
 
 Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-43-move-menu-item.tar.gz
+tar -xzf m6-slice-44-sections-first-index.tar.gz
 git status
 ```
 
@@ -13,118 +13,82 @@ git status
 file is new, no directory is new, and `scripts/check_tree.sh` walks `git ls-files`, so there is nothing
 here it cannot already see.
 
-**No schema change.** No migration is added and `0005` is untouched — the move writes `section_changed` and
-`reordered`, two types `0005` already declared. No new package, no `compose.yaml` edit, no `.slnx` edit, no
-ADR edit, no `REQUIREMENTS.md` edit, **and no CSS**: `.manage-inline-form` has styled `select` since
-Slice 34, so the picker needed no rule of its own.
+**No schema change and no new read.** No migration is added and `0005` is untouched. Both directory verbs
+the rewritten index calls — `IMenuSectionDirectory.ListAsync` and `IMenuDirectory.ListAsync` — have existed
+since Slice 40, and one of them says in its own doc comment that listing the headings themselves, empty ones
+included, is what it is for. No new package, no `compose.yaml` edit, no `.slnx` edit, no ADR edit, no
+`REQUIREMENTS.md` edit.
 
----
+## What changed
 
-## Read this first: 1149 was predicted and 1151 ran
+**`/administration/menu` is sections-first.** A group per heading — a `<details>` rendered open, its
+summary carrying the name, §7's visibility chip, the item count and the position, its body carrying that
+heading's items as §11.12's record list and the link into its editor. The flat list of every item with the
+heading as a *column* is gone. That column was shipped deliberately in Slice 40 as an honest intermediate
+and named as one at the time, because a sections-first index needs an editor to open into and a record list
+whose rows link nowhere is a list of dead ends. The editor landed in Slice 41 and the refile verb in Slice
+43. This is the destination, and nothing had to be undone to reach it.
 
-Your run came back green — `total: 1151, failed: 0, succeeded: 1151, skipped: 0` — against a prediction of
-**1149**. Per §18 that difference is chased before anything else, and it resolves exactly.
+**An empty heading is visible on this surface and nowhere else in the application.** The old list was built
+from `menu_item`, so a heading with nothing under it appeared on no page at all — not on the guest's menu,
+which §11.1 renders no empty heading to, and not on the index. A heading created with a typo, or one stocked
+for next week and not yet filled, was a row no surface could show. That is **F-94** from the other side: the
+page's closing sentence said *across N sections* and counted the headings that had items, under a comment
+that described the discrepancy accurately rather than fixing it.
 
-The tree holds **1132** `[Fact]` plus `[InlineData]` cases. `SchemaMigrationRunnerTests` adds its 5 facts,
-`KeyRelations`' **13** theory rows, and `KeyColumnsAddedByAlter`'s **6**. That is 1151. Substitute the
-**four** §16.4 states and you get 1149 to the unit.
+**The group is rendered open on every request, and that is a decision.** A heading a server collapsed is a
+heading whose items nobody looking for an item can find; and §16.3 scenario 16 measures what a layout engine
+laid out, so a control inside a closed `<details>` has no box and a collapsed group would silently withdraw
+its own controls from the barrier that exists to catch exactly that.
 
-§16.4 says *"Four theory rows therefore name the columns that arrived by `ALTER`"*. `0005` added two more
-columns to that `TheoryData` and the sentence did not move. That is **F-90**, and the part worth reading is
-why the gate written for exactly this could not catch it: `TestingSectionContractTests` compares an
-**assertion count per class**, which for that file is 7 methods and is still right. A theory-row count is a
-different quantity in the same paragraph. A number went stale inside the one section written to stop
-numbers going stale, in the one form its gate is structurally blind to.
+**F-93 is the finding, and it is a gate rather than a page.** The 375px reachability barrier chooses what to
+measure from a list of class names. Replacing this surface's `.record-actions` rows with `.menu-group` groups
+would have left it *visited* and *unmeasured* — and the floor above the check would have gone **up**, because
+the item rows inside the groups still carry `.record-actions`. A floor notices a selector group that
+vanished and never one that was never counted, which is F-91's stated residual arriving as a live defect.
+`.menu-group-summary` and `.menu-group-actions a` join the reach set, and the repair recorded in §16.4 is a
+**rule**: a surface that acquires a new kind of control acquires a selector in the same slice, or it is a
+surface the barrier has stopped asserting anything about.
 
-**This is the first finding in the ledger that §18's habit produced rather than a reading.** That is what
-F-70 established it for, and this is the first run in three slices where it could report anything.
+## The cut, flagged for veto
 
----
+**The index does not reorder a heading.** This plan promised it *"with the section's own order controls"* and
+they are not here. `ReorderMenuSectionAsync` sets an **absolute** `display_order`, and §7 makes positions
+deliberately non-unique with a name tie-break — so *move this heading above that one* is not expressible as
+one absolute write: two headings sharing a position have an order nobody assigned, and no single number
+distinguishes them. An honest up/down control needs a **resequencing verb** writing several rows and
+therefore several `reordered` events in one transaction, which is a new write with new event semantics rather
+than a surface change. The index makes the ordering legible instead and the editor keeps the write.
 
-## What ships
-
-**`MoveMenuItemToSectionAsync`, and the picker on `ManageMenuItem` that calls it.** It was the last verb in
-the whole menu enhancement written without a caller. With it, **no method behind `IMenuWorkflow` is
-unreachable from a form** — the obligation that governed six verbs across seven slices is discharged rather
-than narrowed.
-
-**Three findings beside it**, and they are one defect three times: a number written in prose where no gate
-reaches it. **F-90** above. **F-91**, scenario 16's expected-control census — itemised in a comment, wrong
-since Slice 38, unreportable because the assertion above it is a floor and a floor that passes at fifteen
-passes at seventeen. **F-92**, the specification's own opening sentence, citing `REQUIREMENTS.md` rev 5
-since v1.15 moved it to rev 6.
-
-All three are repaired the same way: **the number is deleted, not corrected** (F-77). In all three **no gate
-is added** and the residual is stated, because a gate for one sentence leaves every other instance of the
-class untouched (F-47).
-
----
-
-## Four rulings, flagged for veto
-
-**1. A move appends to the end of its new heading.** Carrying the item's old position across would drop the
-dish into the middle of an ordering somebody chose for a different list, because a position is a position
-*within* a heading. `MAX + 1` under a lock on the target section row is exactly what a create does, so the
-two are now one rule. **To reverse:** keep `item.DisplayOrder` in `UpdateMenuSectionAndPositionSql` and
-delete the conditional `reordered` write; `MovingAnItemToAnotherSectionAppendsItThereAndLogsBothEvents` and
-scenario 17's step (i) are the two facts that would then need to change.
-
-**2. A move writes two events when the position changed and one when it did not.** §8.2 binds
-`new_display_order` to `reordered` alone, so the position cannot ride on `section_changed`. The condition
-is the no-op rule applied to half of one verb.
-
-**3. The floor in scenario 16 is not raised.** F-91's census was wrong and is deleted, but
-`MinimumControlsMeasured` stays at **14**. Its value is a claim about controls rendered on ten surfaces
-against rows one scenario arranges, which I cannot observe from here — and an unobservable raise is exactly
-the edit that turns a green suite red for no gain. If you want it raised, the honest way is to read the
-number off a real run first.
-
-**4. The button reads "File here", not "Move".** The Position form's button already says *Move* and
-Playwright's `has-text` is substring matching, so a second button containing that word would make every
-harness locator ambiguous. The wording is chosen against a test constraint rather than for its own sake,
-which looks arbitrary unless said out loud. **To reverse:** change the label in `ManageMenuItem.razor` and
-the click in `AdministrationJourneys.MoveMenuItemToSectionAsync` together.
-
----
+**To reverse this ruling**, the next slice adds `ResequenceMenuSectionsAsync` to `IMenuSectionAdministration`
+and `IMenuWorkflow` — one transaction, a lock per affected row in identifier order, one `reordered` event per
+row whose number actually moved — and the index grows a two-button form per group with a `@formname` derived
+from the section identifier, which is the shape `ManageMenuSection`'s visibility toggle already uses and the
+only shape that works for N forms without N `[SupplyParameterFromForm]` properties.
 
 ## Files in this archive
 
-| Path | What changed |
-|---|---|
-| `src/MyRestaurant.DataAccess/Menu/MenuAdministration.cs` | `MoveMenuItemToSectionOutcome`, `MoveMenuItemToSectionAsync`, the section on the lock read, and the two-column UPDATE |
-| `src/MyRestaurant.WebApplication/Menu/MenuWorkflow.cs` | the verb, publishing on `Moved` alone |
-| `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuItem.razor` | the section picker, its handler, two flash messages, and three stale comments |
-| `tests/MyRestaurant.DataAccess.Tests/Menu/MenuAdministrationTests.cs` | 26 → **31** facts |
-| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs` | 18 → **19** facts, plus the fake's new verb |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs` | `MoveMenuItemToSectionAsync` |
-| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | scenario 17 step (i); scenario 16's census replaced by its rule (F-91) |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.28** — §0, §7, §11.4, §16.4, Appendix A, changelog |
-| `docs/DOCUMENTATION_REVIEW.md` | F-90, F-91, F-92 |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | the last deferred verb struck |
-| `docs/BUILD_PROGRESS.md` | Slice 43, delivered whole |
-| `_CHANGES.md` | this file |
-
----
+```
+src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationMenu.razor
+src/MyRestaurant.WebApplication/wwwroot/app.css
+tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
+tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs
+tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs
+tests/MyRestaurant.WebApplication.Tests/Components/HandheldLayoutContractTests.cs
+docs/TECHNICAL_SPECIFICATION.md
+docs/DOCUMENTATION_REVIEW.md
+docs/MENU_AND_HANDHELD_PLAN.md
+docs/BUILD_PROGRESS.md
+_CHANGES.md
+```
 
 ## Test count
 
-Predicted **1157** = 1151 observed + 5 + 1. Scenario 17 is **extended, not added**, so §16.3 stays at
-**17**. Per §18, anything other than 1157 is the next thing to chase.
+Last predicted **1157**, by Slice 43, and not known to have run here. **This slice predicts 1157 as well,
+and the number is unchanged for a reason rather than by coincidence:** no test class is added, no `[Fact]` or
+`[Theory]` row is added, `HandheldLayoutContractTests` gains a list *entry* rather than an assertion, and
+§16.3 scenario 17 is **extended** rather than added — so §16.3 stays at seventeen and the end-to-end project
+stays at seventeen facts.
 
----
-
-## What was NOT verified
-
-**Nothing compiled and no test ran.** Named rather than left to be found: `MoveMenuItemToSectionAsync`
-takes two `Guid`s in a row — item then section, the same order `CreateMenuItemAsync` uses — and they are
-positionally interchangeable to the compiler. A transposition would compile and fail at run time as
-`MenuItemNotFound`.
-
-**No database saw the move.** The append reuses the query a create already uses and a fact already proves.
-What no fact yet exercises is two events of different types in one transaction.
-
-**No browser ran step (i).** Its arrival barrier is a CSS attribute selector requiring the rendered `href`
-to match `ToString("D")` exactly. Razor renders a `Guid` in that format, but this environment cannot
-observe the agreement.
-
-The full account is in `docs/BUILD_PROGRESS.md`.
+Per §18: if the run returns anything other than 1157, the difference belongs to Slice 43's arithmetic rather
+than to this slice's, and that is where to look first.

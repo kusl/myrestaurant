@@ -135,6 +135,18 @@ internal static class HandheldReach
     /// (F-66). The `.manage-back` link is deliberately outside the set: leaving is not the thing anybody
     /// came for.</para>
     ///
+    /// <para><c>.menu-group-summary</c> and <c>.menu-group-actions a</c> joined in Slice 44, with the
+    /// sections-first menu index, and they joined <b>because the surface would otherwise have gone
+    /// quiet</b>. That page used to be a flat list of items, so every row's way in was a
+    /// <c>.record-actions</c> link this selector already read; it is now a list of headings, and a
+    /// heading's two controls — the disclosure that opens it and the link into its editor — are in
+    /// neither of the three groups above. Replacing measured controls with unmeasured ones is a barrier
+    /// losing coverage on a surface it still visits, which is the shape of F-70 rather than of a new
+    /// feature, and the floor below cannot see it: a floor notices a group that vanished, never one that
+    /// was never counted. A <c>&lt;summary&gt;</c> is admitted on the membership rule rather than as an
+    /// exception to it — it occupies the position <c>.record-primary</c> holds on every other index, and
+    /// it is the only control this surface introduced.</para>
+    ///
     /// <para>The stream checkboxes inside the filter are deliberately <em>not</em> here. A checkbox is
     /// 1.35rem by declaration — <c>.form-field input[type="checkbox"]</c> sets <c>min-height: 0</c> on
     /// purpose — so the thing a thumb finds is the <c>.filter-choice</c> row around it, and asserting a
@@ -144,7 +156,8 @@ internal static class HandheldReach
     /// </summary>
     private const string ReachSelector =
         ".record-actions a, .record-actions button, .page-head-action a, .page-head-action button,"
-            + " .filter-actions a, .filter-actions button, .manage-inline-form button";
+            + " .filter-actions a, .filter-actions button, .manage-inline-form button,"
+            + " .menu-group-summary, .menu-group-actions a";
 
     /// <summary>
     /// Measured for height only. The area links are a horizontally scrolled strip by design (§11.12,

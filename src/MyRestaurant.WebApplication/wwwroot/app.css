@@ -1696,6 +1696,107 @@ a:focus-visible,
 }
 
 /* -----------------------------------------------------------------------------
+ * THE SECTIONS-FIRST MENU INDEX (§7, §11.4, §11.12)
+ *
+ * `/administration/menu` is a list of HEADINGS, each holding the items filed
+ * under it. Before this it was a flat list of every item with the heading as a
+ * column, which is what a menu index looks like when the model has just learned
+ * to express a menu and the surface has not caught up.
+ *
+ * THE GROUP IS A `<details>` AND THE HEADING IS ITS `<summary>`. A native
+ * disclosure widget, which is the whole reason for the choice: it collapses with
+ * no script on a page that is static SSR and carries no island, it is in the
+ * accessibility tree as a disclosure rather than as a div somebody wired up, and
+ * it needs no state on the server. `.menu-group-summary` keeps `summary`'s own
+ * `display: list-item` — the marker is the affordance, and setting `display:
+ * flex` here removes it in every engine that draws one.
+ *
+ * IT IS RENDERED OPEN ON EVERY REQUEST, and that is a decision rather than a
+ * default. A heading collapsed by the server is a heading whose items nobody
+ * looking for an item can find, and §16.3 scenario 16 measures what the layout
+ * engine laid out — a control inside a closed `<details>` has no box, so a
+ * collapsed group would quietly remove itself from the barrier that exists to
+ * find exactly that. Collapsing is the operator's, not the server's.
+ *
+ * NO NEW BREAKPOINT (§11.12, F-63). The group is a block, the item list inside
+ * it is `.record-list` and already knows how to be a table above the one query,
+ * and the only thing this vocabulary contributes there is a button that stops
+ * being full-width. That one rule is in the query at the bottom of this file
+ * beside every other page's.
+ *
+ * THE SUMMARY CARRIES `--touch-target`, because it is a control a thumb presses
+ * (§11.12). NO COLOUR LITERAL and NO `var()` FALLBACK below: every value is a
+ * property `:root` declares (F-64, F-68, F-69).
+ * ---------------------------------------------------------------------------*/
+
+.menu-groups {
+    margin: 0.5rem 0 0;
+}
+
+.menu-group {
+    margin: 0 0 0.6rem;
+    background-color: var(--surface-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+}
+
+.menu-group-summary {
+    padding: 0.6rem 0.85rem;
+    min-height: var(--touch-target);
+    cursor: pointer;
+}
+
+.menu-group-summary:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+.menu-group-name {
+    display: block;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.menu-group-meta {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+.menu-group-count {
+    font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The rule under the heading is a border rather than an `<hr>`, for the reason the guest menu's
+ * headings give one block down: a separator between a heading and what it holds is presentation, and
+ * a reader should hear "Starters, disclosure, expanded" rather than a horizontal rule per heading.
+ */
+.menu-group-body {
+    padding: 0 0.85rem 0.85rem;
+    border-top: 1px solid var(--hairline);
+}
+
+.menu-group-description {
+    margin: 0.6rem 0 0;
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+}
+
+/*
+ * The heading's own way in. Full width at the foot of the group on a handset, which is F-59's rule
+ * one register up from the row it was found on: the group is the card here, so its affordance is the
+ * bottom of it and not a right-hand corner.
+ */
+.menu-group-actions {
+    margin-top: 0.7rem;
+}
+
+.menu-group-actions .button-secondary {
+    width: 100%;
+}
+
+/* -----------------------------------------------------------------------------
  * The table surface: roster, staging area, living order, party orders (§11.1).
  *
  * These live here rather than inline in the component for one concrete reason:
@@ -2337,6 +2438,16 @@ a:focus-visible,
     .record-actions .button-primary:hover {
         background: none;
         color: var(--accent);
+    }
+
+    /*
+     * A heading's own action stops needing the whole width once there is room for a row. It stays a
+     * real button rather than becoming a bare link the way `.record-actions` does above — that
+     * conversion exists because a full-width button inside a 6rem table column is not a button, and
+     * this control is not in a table cell.
+     */
+    .menu-group-actions .button-secondary {
+        width: auto;
     }
 
     .record-tick {

@@ -29,6 +29,28 @@ namespace MyRestaurant.EndToEnd.Tests.Harness;
 internal sealed record MenuItemOnTheMenu(Guid Identifier, string Name, decimal PriceAmount);
 
 /// <summary>
+/// One heading as <c>/administration/menu</c> renders it since M6 Slice 44 (§7, §11.4): its name, whether
+/// guests can see it, and the items filed under it in the order they appear beneath it.
+///
+/// <para><b><see cref="ItemNames"/> may be empty, and that is the member this record exists for.</b> The
+/// index used to be built from items, so a heading with nothing under it appeared on no surface at all;
+/// it is now a group with a sentence saying it is empty. An empty list here therefore means *the surface
+/// rendered this heading and said it holds nothing*, which is a different fact from a heading the page
+/// never rendered — and a caller distinguishes the two by whether the name is in the list at all.</para>
+///
+/// <para><see cref="IsVisibleToGuests"/> is read off the chip rather than inferred from anything, because
+/// the chip is where §7's asymmetry is stated to the administrator: an inactive heading is hidden from the
+/// guest entirely, which is the opposite of what the same flag does to an item one table away.</para>
+/// </summary>
+/// <param name="Name">The heading, as the summary line declares it.</param>
+/// <param name="IsVisibleToGuests">True when the group carries the <c>Visible to guests</c> chip.</param>
+/// <param name="ItemNames">The items under it, in rendered order; empty where the group says it is empty.</param>
+internal sealed record MenuHeadingOnTheIndex(
+    string Name,
+    bool IsVisibleToGuests,
+    IReadOnlyList<string> ItemNames);
+
+/// <summary>
 /// The roles §3.7's create-staff form offers, as the flags an administrator ticks. A flags enum rather
 /// than three booleans at every call site, because "counter only" and "counter and kitchen" are the two
 /// interesting shapes and a scenario should be able to say which it means.
@@ -594,6 +616,86 @@ internal static class AdministrationJourneys
                 + await DescribeFailureAsync(page),
                 exception);
         }
+    }
+
+    /// <summary>
+    /// Reads <c>/administration/menu</c> as the administrator sees it since M6 Slice 44: a list of
+    /// headings in stored order, each holding the items filed under it (§7, §11.4).
+    ///
+    /// <para><b>This is the administration counterpart of
+    /// <c>TableOrderJourneys.ReadMenuCardsAsync</c>, and the pair is the assertion.</b> §7 states an
+    /// asymmetry that no single surface can demonstrate: the guest is rendered no empty heading and no
+    /// inactive one, and §11.4's administrator is rendered both. A scenario that read only the guest's
+    /// menu would see a heading missing and could not say which of three reasons put it there; a scenario
+    /// that read only this page would see every heading and learn nothing about the rule. Reading both
+    /// and comparing them is what makes the difference between the two lists the thing under test.</para>
+    ///
+    /// <para><b>The groups are read in document order and nothing is sorted here.</b> Stored order is the
+    /// property under assertion — §7 orders headings by <c>(display_order, name,
+    /// menu_section_identifier)</c> and a helper that sorted its own output would make every ordering
+    /// assertion above it a tautology.</para>
+    ///
+    /// <para><b>The name comes off <c>.menu-group-name</c> as declared text.</b> The summary line also
+    /// carries a chip and a count, so reading the <c>&lt;summary&gt;</c> whole would return
+    /// <c>"Starters Visible to guests 2 items · position 0"</c> — and <see cref="ScreenText"/> is used for
+    /// the same reason it exists: a heading is content, but the count beside it lives under a rule that
+    /// could acquire a transform, and the narrow read cannot pick that up at all.</para>
+    ///
+    /// <para>Waiting on <c>.menu-groups</c> rather than on a group: a menu with no headings at all renders
+    /// the first-use panel and no wrapper, so a caller arriving too early fails here naming the page
+    /// rather than thirty seconds later inside a group that was never going to exist.</para>
+    /// </summary>
+    internal static async Task<IReadOnlyList<MenuHeadingOnTheIndex>> ReadMenuIndexAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(MenuPath);
+
+        ILocator wrapper = page.Locator("div.menu-groups").First;
+
+        try
+        {
+            await wrapper.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                "The menu index rendered no headings at all, so it is either still loading or showing the"
+                + " first-use panel for a menu with no sections. "
+                + await DescribeFailureAsync(page),
+                exception);
+        }
+
+        ILocator groups = page.Locator("div.menu-groups > details.menu-group");
+        int count = await groups.CountAsync();
+
+        List<MenuHeadingOnTheIndex> headings = new(count);
+
+        for (int index = 0; index < count; index++)
+        {
+            ILocator group = groups.Nth(index);
+
+            string name = await ScreenText.DeclaredAsync(
+                group.Locator("summary.menu-group-summary span.menu-group-name").First);
+
+            // Counted rather than read: the chip's absence is the fact, and `CountAsync` answers it
+            // without a locator that has to succeed. The negative chip is a different string, so
+            // matching on the positive one is the whole test.
+            bool visible = await group
+                .Locator("summary.menu-group-summary span.chip-ok")
+                .CountAsync() > 0;
+
+            IReadOnlyList<string> raw = await group
+                .Locator("div.menu-group-body td.record-primary a.record-link")
+                .AllTextContentsAsync();
+
+            headings.Add(new MenuHeadingOnTheIndex(
+                name,
+                visible,
+                [.. raw.Select(ScreenText.Collapse)]));
+        }
+
+        return headings;
     }
 
     /// <summary>

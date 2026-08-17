@@ -12151,3 +12151,275 @@ rather than twice above.
 
 **`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
 starts it successfully.** Carried.
+
+---
+
+# M6 Slice 44 — the index becomes the menu, and a barrier that measures by list
+
+**Stage 3's largest remaining piece.** `/administration/menu` was a flat list of every item with the heading
+as a *column*; it is now a group per heading, each holding the items filed under it. That column was shipped
+deliberately in Slice 40 as an honest intermediate and named as one in the same breath, on the reasoning that
+a sections-first index needs an editor to open into and a record list whose rows link nowhere is a list of
+dead ends. The editor landed in Slice 41, the refile verb in Slice 43, and **nothing had to be undone to get
+here** — which is the claim that intermediate was chosen against, now testable and true.
+
+## The surface
+
+**A heading is a `<details>` and its summary is the heading.** A native disclosure, chosen for four
+properties rather than for looking modern: it collapses with no script on a page that is static SSR and hosts
+no island, it is a disclosure in the accessibility tree rather than a `div` somebody wired up, it needs no
+state on the server, and `summary` keeps its own `display: list-item` so the marker is the affordance. The
+last of those is why `.menu-group-summary` does not set `display: flex` — that removes the marker in every
+engine that draws one, and then the control's own affordance has to be reinvented.
+
+**It is rendered open on every request, and there are two independent reasons.** A heading a server
+collapsed is a heading whose items nobody looking for an item can find. And §16.3 scenario 16 measures what a
+layout engine laid out: a control inside a closed `<details>` has no box, so a collapsed group would remove
+its own controls from the barrier that exists to catch controls going missing. Collapsing is the operator's
+decision; the server does not make it for them.
+
+**An empty heading is on this surface and on no other page in the application.** The old list was built from
+`menu_item`, so a heading with nothing under it was invisible everywhere — §11.1 renders no empty heading to
+a guest, and the index could not see one at all. A heading created with a typo could only be worked around
+by making another, and the *reason* it could only be worked around was that nothing showed it existed. The
+page now reads both directories: `IMenuSectionDirectory.ListAsync` for the headings, which is what that read
+was written for and which says so in its own doc comment, and `IMenuDirectory.ListAsync` for the items.
+
+**Filtered per heading rather than grouped, and that is §7's ordering being collected on.** The six-key
+`ORDER BY` already makes each heading's items contiguous, so `Where(...)` preserves the order somebody chose,
+where a `GroupBy` would re-order the headings into hash order and make the ordering decision a second time in
+a second file. A per-section read would be a query with one caller, which `IMenuDirectory` declines to invent
+for exactly this reason. `ManageMenuSection` has done the same filter since Slice 41, so the two surfaces now
+group by one rule.
+
+## The cut, and why it is a ruling rather than a shortfall
+
+**The plan promised this index "with the section's own order controls" and they are not in it.** The reason
+only becomes visible once somebody tries to write them. `ReorderMenuSectionAsync` sets an **absolute**
+`display_order`, and §7 makes positions deliberately non-unique with a name tie-break — so *move this heading
+above that one* is not expressible as one absolute write. Two headings sharing a position have an order
+nobody assigned, and there is no single number that distinguishes them: writing the predecessor's position
+onto the mover leaves both at the same number, ordered by name, which is where they already were.
+
+An honest up/down control therefore needs a **resequencing verb** — one transaction, a lock per affected row,
+and one `reordered` event per row whose number actually moved. That is a new write with new event semantics,
+not a surface change, and it is a slice of its own. So the index makes the ordering **legible** — headings in
+stored order, each one's position on its own summary — and the editor keeps the write.
+
+**The transferable rule is narrower than "defer the hard part".** When a surface would need a verb the model
+cannot express, the surface ships without it and says so, rather than shipping a control that is right in the
+common case and silently wrong wherever the data is *permitted* to be ambiguous. The permission is the point:
+non-unique positions are a decision this project made on purpose, so an up/down control would not be a rare
+edge case — it would be wrong exactly where somebody had never bothered to assign distinct numbers, which is
+the default state of every menu this application creates.
+
+**Recorded for veto**, with the reversal spelled out in `_CHANGES.md`: `ResequenceMenuSectionsAsync` behind
+`IMenuWorkflow`, and a two-button form per group whose `@formname` is derived from the section identifier —
+the shape `ManageMenuSection`'s visibility toggle already uses, and the only shape that works for N forms
+without N `[SupplyParameterFromForm]` properties, because that attribute's `FormName` must be a compile-time
+constant.
+
+## F-93 — the barrier measures by list, and a surface can go quiet inside it
+
+**The finding is a property of the gate, not of this page.** §16.3 scenario 16's reach selector names
+`.record-actions`, `.page-head-action`, `.filter-actions` and `.manage-inline-form button`. The membership
+*rule* is good — *the thing an operator opened the page in order to press* — and it is enforced as a list of
+class names, which means a surface can keep being **visited** and stop being **measured** with nothing
+reporting it.
+
+This slice is where that became concrete rather than hypothetical. The sections-first index replaces every
+`.record-actions` row on its primary list with a `.menu-group` group, whose two controls — the disclosure and
+the link into the editor — are in none of the four groups above. **The floor would have gone up while
+coverage of the heading went to zero**, because the item rows *inside* the groups still carry
+`.record-actions`. A floor notices a selector group that vanished and never one that was never counted, which
+is F-91's stated residual arriving as a live defect one slice after it was written down as a note.
+
+`.menu-group-summary` and `.menu-group-actions a` join the reach set, and **the repair recorded in §16.4 is a
+rule rather than two selectors**: a surface that acquires a new kind of control acquires a selector in the
+same slice, or it is a surface this barrier has stopped asserting anything about. A `<summary>` is admitted on
+the existing membership rule rather than as an exception to it — it occupies the position `.record-primary`
+holds on every other index, and it is the only control the new surface introduced.
+
+**No gate is added and the residual is restated.** Making the floor a census honestly means attributing each
+measured control to the selector that matched it, which `HandheldReachReport` does not carry. That was
+declined in Slice 43 and is declined again here, for the same reason and now with a second instance behind it.
+
+## F-94 — a count that named one set and computed another, under a comment that knew
+
+`AdministrationMenu.razor` closed with *"N of M available, K described, across S sections"*, and `S` was
+`_items.Select(item => item.MenuSectionIdentifier).Distinct().Count()` — the number of headings **with
+something under them**. A menu with five headings and two stocked read *across 2 sections* to the one person
+in the building entitled to see all five.
+
+**The page knew, and said so.** The line above it carried a comment reading *"not the same number as the
+section count — an empty heading exists and is not visible here"*. That is **F-65's mechanism** — a comment
+asserting what the code beneath it does not do, in the position a reader checking the number would stop —
+with one difference worth naming: F-65's comment was *false* about its declaration, and this one was
+*accurate* about its computation and still left the screen wrong. An honest comment about a defect is not a
+fix, and it is more durable than the defect, because the next reader stops at the explanation.
+
+**No gate is added.** A number computed from a list two lines above it is not a restatement of anything, so
+there is no second copy for a gate to compare against; what was wrong was the English. Prose describing a
+computation inside a component is reachable by no gate this repository has, which is stated as the residual
+(F-47).
+
+## What is in this slice
+
+- **`Administration/AdministrationMenu.razor`** — rewritten sections-first: two directory reads, a group per
+  heading, the item list inside each, the counts corrected per F-94.
+- **`wwwroot/app.css`** — the `.menu-group*` vocabulary, declared once, plus one rule inside the existing
+  `min-width: 48rem` query.
+- **`Harness/HandheldReach.cs`** — two selectors join the reach set, with the membership reasoning (F-93).
+- **`Components/HandheldLayoutContractTests.cs`** — `.menu-group` joins `SharedSelectorPrefixes`, and the
+  list becomes a multi-line initialiser so the next addition is a one-line diff.
+- **`Harness/AdministrationJourneys.cs`** — `MenuHeadingOnTheIndex` and `ReadMenuIndexAsync`.
+- **`EndToEndScenarios.cs`** — scenario 17 gains step (j).
+- **Documentation** — specification to **v1.29** (§7, §11.4, §16.3, §16.4, Appendix A, changelog),
+  `DOCUMENTATION_REVIEW.md` gains F-93 and F-94, the plan strikes the index and records the cut.
+
+## Scenario 17's new step, and why the assertion is a disagreement
+
+**A third heading is created and left empty.** §11.1 renders no empty heading to a guest; §11.4 renders the
+complete record to the administrator. So the same instant must produce **three groups on the index and two
+groupings on the guest's menu**, and the difference must be exactly the empty one.
+
+**Neither surface alone says anything.** A heading missing from the guest's menu has three possible reasons —
+it is inactive, it is empty, or the page is broken — and a heading present on the index has none. It is the
+comparison that is the test, which is why the step reads both and why it is in scenario 17 rather than in a
+scenario of its own.
+
+The step also asserts the index's **ordering** (stored, not alphabetical — a page sorting its own headings
+would put *Puddings* first and pass every other assertion here) and that the refile from step (i) is visible
+from the administration side, so an index grouping by anything other than `menu_item.menu_section_identifier`
+fails here even where the guest's menu is right.
+
+**One direction is weaker and it is named in the file.** The closing assertion is that the guest never sees
+the empty heading, and an assertion of absence cannot prove §9's broadcast landed. What carries it is the
+disagreement with the index above, which was read from a page that had to be fetched.
+
+## What was verified
+
+**The working tree was reconstructed from `dump.txt` and checked against the SHA-256 recorded for every file:
+348 of 349 byte-identical.** The exception is `export.sh`, which contains the dump's own `# FILE:` banner as
+literal text and therefore cannot be round-tripped by any parser using that banner as a delimiter. It is
+excluded from the work set rather than reconstructed and guessed at, and is not delivered.
+
+**The balance checker reported findings on a correct file three times before it was trusted, and that is the
+habit paying for itself rather than an anecdote.** It was run against four untouched, SHA-verified siblings
+first (F-41's rule, and Slice 41's lesson). It failed on `ManageMenuSection.razor` three times in
+succession, each time for a different reason, and each reason is a real property of this tree: an apostrophe
+in Razor *prose* read as the start of a C# character literal, so the scan swallowed text to the next
+apostrophe and lost a brace; `<ValidationMessage For="…" />` counted as an unclosed element, because the
+self-close was being read out of a lazily-matched attribute group; and `For="@(() => Input.Name)"` truncating
+the tag match at the `>` of the lambda arrow. **A checker that had been pointed at the changed files first
+would have reported all three as defects in this slice's work.**
+
+**Razor tag-tree walk** of the rewritten page: **75 tags**, every element closed, nothing left on the stack —
+and the same walk run over two untouched SHA-verified siblings, `ManageMenuSection.razor` (112 tags) and
+`AdministrationTables.razor` (39 tags), both clean, which is what makes the first number mean anything.
+
+**Every class the new page names is declared in `app.css`:** 32 class tokens, none undeclared. Run over the
+two control files as well — 28 and 20 tokens, none undeclared.
+
+**The cell-label gate was run in substance** on the rewritten page: **9 `<td>` and 9 `data-label=`**, exact,
+which is the arithmetic `EveryRecordListCellCarriesTheLabelThatReplacesItsColumnHeader` performs. The page
+still contains two record lists, so the gate's floor of seven pages is unaffected.
+
+**The stylesheet's own facts were checked in substance:** **two media queries in the file and exactly one
+carrying a width**, `min-width`, no `max-width` anywhere; **no undeclared custom property read**; **zero
+`var()` fallbacks**; **no colour literal outside `:root`**; and every `min-height` in the file is
+`var(--touch-target)`, exactly `0`, `5.5rem` or `100dvh` — the floor holds with nothing new added to it.
+
+**No component declares a `.menu-*` selector inline**, checked before `.menu-group` was added to
+`SharedSelectorPrefixes`, so the new prefix reports nothing on a correct tree (F-67's rule, and the reason
+that ruling had to exist before any prefix could be added).
+
+**`SpecificationVersionTests` was run in substance:** header **1.29**, newest changelog entry **1.29**, **30
+entries descending**.
+
+**`MarkdownTableContractTests` was run in substance** over every Markdown file outside `docs/llm/`,
+fence-aware and escaped-pipe-aware: **61 table runs, zero ragged**, including the three new four-cell rows
+across the two registers.
+
+**`TestingSectionContractTests` was run in substance**, ported: **19 counted classes, 0 disagreements, 1
+ambiguous paragraph** (one that names two classes and is correctly skipped), floor of nineteen met exactly.
+The two new §16.4 paragraphs name no test class and state no count, so the gate reads them and correctly
+declines to attribute anything — which is deliberate, F-89's ruling being that the floor is the only census.
+
+**Byte hygiene** on every changed file: no CR, exactly one final newline, no whitespace-only line, no
+context-dump separator.
+
+**The CS4007 scan found nothing this time**, which is worth one line rather than none: the new harness method
+composes its failure message by concatenating an `await` as a separate operand rather than putting it in an
+interpolation hole, which is the shape its four neighbours in that file already use and the shape Slice 43
+had to repair.
+
+## What was NOT verified
+
+**Nothing compiled.** No .NET SDK in the authoring environment. Named rather than left to be found: the new
+page's `@code` block declares `_items` as `IReadOnlyList<MenuItemSummary>` initialised to `[]` and `_sections`
+as nullable, and the markup branches on `_sections is null` while `ItemsUnder` dereferences `_items` — which
+is safe only because both are assigned in the same `OnInitializedAsync` before any branch reads either. A
+static SSR intermediate render fires `StateHasChanged` the moment `OnInitializedAsync` suspends, so the
+branch order matters: `_sections is null` is tested first and is the only branch that reaches `ItemsUnder`.
+
+**No browser rendered a `<details>`.** The disclosure is the one piece of this surface whose behaviour is a
+browser's rather than this project's, and three claims about it are unobserved here: that `min-height` on a
+`display: list-item` box produces a 44px target, that the marker survives the padding, and that a group
+rendered with the `open` attribute is laid out with its body measurable. All three are ordinary HTML and all
+three are what scenario 16 would fail on.
+
+**No test ran.** Every count below is arithmetic.
+
+**Nothing measured the new controls.** F-93's repair is two selectors in a reach set, and whether the
+disclosure and the editor link actually lie inside a 375px viewport is precisely the question this
+environment cannot answer — which is the same reason F-91's floor was not raised.
+
+**Nothing verified that F-93 is the only surface the barrier has gone quiet on.** The mechanism is general: any
+surface that changes vocabulary does this, and the gate has no way to report a class it was never told about.
+The rule is now in §16.4, which makes the next instance a rule violation rather than an accident, and does
+nothing about a past one.
+
+**Nothing verified that F-94 is the only count of its kind in a component.** A repository reading found this
+one; a number computed inside a `@code` block and described in prose beside it is reachable by no gate here.
+
+## Test count
+
+Last predicted **1157**, by Slice 43, and **not known to have run** — this session has no observation of it.
+Predicted here: **1157**, unchanged, and unchanged for a reason rather than by coincidence. No test class is
+added. No `[Fact]` or `[Theory]` row is added. `HandheldLayoutContractTests` gains a list *entry* rather than
+an assertion, so its count of nine is untouched and §16.4's census does not move. Scenario 17 is **extended,
+not added**, so §16.3 stays at **17** and the end-to-end project stays at 17 facts.
+
+Per §18: if the run returns anything other than 1157, the difference belongs to **Slice 43's** arithmetic
+rather than to this slice's, and that is the first place to look.
+
+## Still open
+
+**A section's own description under its heading on the guest menu.** Unchanged, and now the largest remaining
+piece of Stage 3. It needs either a second read or a widened `MenuItemSummary`, and F-84 is the reason
+widening that record is not free.
+
+**The kitchen's "86" panel still groups by nothing.** Stage 3's last surface.
+
+**Reordering a heading from the index.** New, and named rather than discovered: it needs
+`ResequenceMenuSectionsAsync`, which is a write rather than a surface, for the reason recorded above.
+
+**The handheld barrier visits neither section surface.** Scenario 16 walks ten surfaces; `ManageMenuSection`
+is a detail surface with `.manage-inline-form` buttons and would move the control count. Carried, and now
+larger than it was: the menu index it *does* visit has changed shape entirely since the barrier last had
+anything to say about which controls it holds.
+
+**No gate can see a count written in a comment, or a sentence describing a computation beside it.** F-90's,
+F-91's and now F-94's shared residual, stated once.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Ninth slice carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred an eleventh time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Twentieth consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then starts
+it successfully.** Carried.

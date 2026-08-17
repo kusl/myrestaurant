@@ -2429,9 +2429,12 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     //     description on the card and in the detail panel. Then a heading is switched off and the guest's
     //     menu loses it — §7's rule that an inactive SECTION is hidden from the guest, which is the
     //     opposite of the rule for an inactive item, and the one thing about `0005` no unit test can see.
-    //     Finally an item is refiled from one heading to the other and the guest watches it change
+    //     Then an item is refiled from one heading to the other and the guest watches it change
     //     groupings, landing at the END of its new heading — the last verb of the enhancement, and the
-    //     only place §7's append-on-move rule is observed through a browser.
+    //     only place §7's append-on-move rule is observed through a browser. Finally the administrator's
+    //     own sections-first index is read against the guest's menu, and the assertion is where the two
+    //     DISAGREE: a third heading, created and left empty, is a group on the index and absent from the
+    //     guest's menu, which is the half of §7's asymmetry no single surface can show.
     // -------------------------------------------------------------------------------------------
     [Fact]
     public async Task Guest_ReadsTheMenuGroupedUnderItsHeadings()
@@ -2639,6 +2642,65 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         // test, because this is the only place the guest's own reading of the card is compared.
         MenuCard refiledCard = Assert.Single(refiled, card => card.Name == second.Name);
         Assert.True(refiledCard.IsAvailable);
+
+        // (j) And the other side of §7's asymmetry, which no single surface can demonstrate. The
+        // administrator's own index is sections-first as of Slice 44 — a heading per group, its items
+        // under it — and what makes it worth asserting is where it DISAGREES with the guest's menu.
+        //
+        // A third heading is created and left empty. §11.1 renders no empty heading to a guest, so it
+        // must not appear on the guest's menu; §11.4 renders the complete record to the administrator, so
+        // it must appear on the index — as a group that says it holds nothing. That difference is the
+        // assertion. Before this surface existed the fact was unobservable from anywhere: the index was
+        // built from ITEMS, so a heading with nothing under it appeared on no page in the application.
+        const string wines = "Wine list";
+
+        Guid winesIdentifier = await AdministrationJourneys.CreateMenuSectionAsync(
+            administrator, wines, "Chosen by the room, not by us.");
+
+        Assert.NotEqual(Guid.Empty, winesIdentifier);
+
+        IReadOnlyList<MenuHeadingOnTheIndex> index =
+            await AdministrationJourneys.ReadMenuIndexAsync(administrator);
+
+        // Three headings, in the order they were appended: §7 puts a new one at MAX + 1, so the empty one
+        // is last and the two that hold items are still in the order the earlier steps asserted the guest
+        // reads them in. A page that sorted its own headings alphabetically would put Puddings first and
+        // Wine list last and pass every other assertion here.
+        Assert.Equal(
+            new[] { starters, puddings, wines },
+            index.Select(heading => heading.Name).ToArray());
+
+        // Every heading is visible to guests: nothing was switched off after step (h) restored it. The
+        // chip is read rather than assumed because it is where §7's asymmetry is stated to the
+        // administrator, and a page that had started rendering the item rule instead — visible and marked
+        // — would look almost right.
+        Assert.All(index, heading => Assert.True(heading.IsVisibleToGuests));
+
+        // The items are under the headings the refile left them under, in rendered order. This is the
+        // same fact step (i) asserted from the guest's side, read from the other surface — so an index
+        // that grouped by anything other than `menu_item.menu_section_identifier` fails here even though
+        // the guest's menu is correct.
+        Assert.Equal(
+            new[] { soup.Name },
+            Assert.Single(index, heading => heading.Name == starters).ItemNames.ToArray());
+
+        Assert.Equal(
+            new[] { pie.Name, second.Name },
+            Assert.Single(index, heading => heading.Name == puddings).ItemNames.ToArray());
+
+        // The empty one is rendered and holds nothing. An empty list here means the group was on the page
+        // and said so, which is a different fact from a heading the page never rendered — the assertion
+        // above, that the name is in the list at all, is what separates the two.
+        Assert.Empty(Assert.Single(index, heading => heading.Name == wines).ItemNames);
+
+        // And the guest never sees it. Read last, after four round trips to the administration area have
+        // given §9's MenuChanged every opportunity to arrive — a creation does broadcast, so this is a
+        // re-read rather than a stale one. THE RESIDUAL IS NAMED: an assertion of absence cannot prove
+        // the broadcast landed, so this half is the weaker of the two directions on its own. What carries
+        // it is the disagreement with the index above, which was read from a page that had to be fetched.
+        Assert.Equal(
+            new[] { starters, puddings },
+            (await TableOrderJourneys.ReadMenuSectionNamesAsync(guest)).ToArray());
     }
 
     // --- helpers ---------------------------------------------------------------------------------
