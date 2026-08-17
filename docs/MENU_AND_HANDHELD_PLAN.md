@@ -1,6 +1,6 @@
 # Menu modernization and the handheld contract — staged plan
 
-**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-17, at the close of Slice 44.** This
+**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-17, at the close of Slice 45.** This
 is the execution plan for the first enhancement request the project has received from a person who was
 shown the running application, together with the defect that request arrived beside. It is a working
 document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
@@ -707,6 +707,52 @@ it was — which is the only end-to-end proof that deactivating a section **does
 A cascade would come back with the pie marked unavailable. That second half was not in the draft; it was
 obvious once the assertion was being written against a surface that existed, and it would not have been
 written at all if the cut had been made silently.
+
+---
+
+## Stage 3a — the resequencing verb, and why it is the next slice rather than this one
+
+**Not started. Fully specified below, and unblocked as of Slice 45.** §7 records the cut in the index's own
+words: `ReorderMenuSectionAsync` sets an **absolute** `display_order`, positions are deliberately non-unique
+with a name tie-break, so *"move this heading up"* is not expressible as one absolute write — two headings
+sharing a position have an order nobody assigned and no single number distinguishes them.
+
+**Why it waited for Slice 45, which is the part worth keeping.** A resequencing verb writes several rows and
+therefore **several `reordered` events in one transaction**, and one transaction stamps every row it writes
+with one `IClock.UtcNow`. So the events of one resequence share an instant, and their order in
+`menu_section_event` is decided entirely by the identifier tie-break — which is exactly the property F-95
+found nothing was keeping. Shipping the verb before the fix would have produced a log that recorded the right
+rows in an order chosen at random, on the surface whose whole job is to be readable. Shipping it *with* the
+fix would have been worse in a specific way: the verb's ordering test would simultaneously be the first test
+of the fix, so a red run could not say which of the two changes caused it, and §18's habit of chasing a
+count deviation before the slice closes gets expensive when there are two candidates. **One change, one green
+run, then the feature.**
+
+The shape, so the next slice is arrangement rather than design:
+
+- `ResequenceMenuSectionsAsync(IReadOnlyList<Guid> orderedIdentifiers, Guid actorPersonIdentifier, …)`.
+  Absolute positions `0…n-1` assigned in the order given, which is what makes "up" expressible: the surface
+  swaps two entries in a list it already has and sends the whole list.
+- **It must be the whole list, not a pair.** A pairwise swap has to decide what happens when the two
+  positions are equal, and equal positions are permitted. Taking the full ordering means the verb has one
+  precondition — the list is exactly the set of sections — and no ambiguity to resolve.
+- Refuse a list that is not a permutation of the stored set, rather than reconciling it. A list missing a
+  section is a stale page, and a page that stale should be reloaded, not partially obeyed.
+- `SELECT … FOR UPDATE` over all rows **ordered by identifier** before comparing, on the existing lock rule,
+  and ordered so two concurrent resequences cannot deadlock against each other.
+- One `reordered` event per section whose position **actually moved**, on the existing no-op rule: a
+  resequence that leaves six of eight headings where they were writes two events, not eight. The events
+  share an instant and now read in the order the rows were written.
+- Outcome enum in the established shape: `Resequenced` / `NoChange` / `MenuSectionSetChanged`.
+
+Two obligations the slice carries, both already written down:
+
+1. **F-93.** The index acquires a new *kind* of control, so the 375px barrier acquires a selector in the same
+   slice, or it is a surface the barrier has stopped asserting anything about.
+2. **The item-level mirror is deliberately out of scope**, and saying so is what keeps the slice honest:
+   `menu_item.display_order` has the same absolute-write shape and the same non-unique positions, so items
+   within a heading need the same verb. It is the same design applied to a second table, and it is a second
+   slice, because the two write to different event tables with different paired CHECKs.
 
 ---
 

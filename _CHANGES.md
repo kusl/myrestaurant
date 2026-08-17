@@ -1,94 +1,121 @@
-# M6 Slice 44 — the index becomes the menu, and a barrier that measures by list
+# M6 Slice 45 — the tie-break that was a coin flip
 
 Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-44-sections-first-index.tar.gz
+tar -xzf m6-slice-45-monotonic-identifiers.tar.gz
 git status
 ```
 
 **Files to DELETE: none.**
 
 **`git add` is NOT required.** Every file in this archive already exists in the tree and is tracked. No
-file is new, no directory is new, and `scripts/check_tree.sh` walks `git ls-files`, so there is nothing
-here it cannot already see.
+file is new, no directory is new, and `scripts/check_tree.sh` walks `git ls-files`, so there is nothing here
+it cannot already see.
 
-**No schema change and no new read.** No migration is added and `0005` is untouched. Both directory verbs
-the rewritten index calls — `IMenuSectionDirectory.ListAsync` and `IMenuDirectory.ListAsync` — have existed
-since Slice 40, and one of them says in its own doc comment that listing the headings themselves, empty ones
-included, is what it is for. No new package, no `compose.yaml` edit, no `.slnx` edit, no ADR edit, no
+**No schema change, no migration, no read changed, no surface changed.** `0005` is untouched and no
+migration is added. No SQL text is edited — the two changes to `MenuEventLog.cs` are comments. No Razor
+component is in this archive at all. No new package, no `compose.yaml` edit, no `.slnx` edit, no
 `REQUIREMENTS.md` edit.
 
-## What changed
+---
 
-**`/administration/menu` is sections-first.** A group per heading — a `<details>` rendered open, its
-summary carrying the name, §7's visibility chip, the item count and the position, its body carrying that
-heading's items as §11.12's record list and the link into its editor. The flat list of every item with the
-heading as a *column* is gone. That column was shipped deliberately in Slice 40 as an honest intermediate
-and named as one at the time, because a sections-first index needs an editor to open into and a record list
-whose rows link nowhere is a list of dead ends. The editor landed in Slice 41 and the refile verb in Slice
-43. This is the destination, and nothing had to be undone to reach it.
+## What this is
 
-**An empty heading is visible on this surface and nowhere else in the application.** The old list was built
-from `menu_item`, so a heading with nothing under it appeared on no page at all — not on the guest's menu,
-which §11.1 renders no empty heading to, and not on the index. A heading created with a typo, or one stocked
-for next week and not yet filled, was a row no surface could show. That is **F-94** from the other side: the
-page's closing sentence said *across N sections* and counted the headings that had items, under a comment
-that described the discrepancy accurately rather than fixing it.
+Your first `dotnet test` reported one failure that the `ci_local.sh` run then passed:
 
-**The group is rendered open on every request, and that is a decision.** A heading a server collapsed is a
-heading whose items nobody looking for an item can find; and §16.3 scenario 16 measures what a layout engine
-laid out, so a control inside a closed `<details>` has no box and a collapsed group would silently withdraw
-its own controls from the barrier that exists to catch exactly that.
+```
+MenuEventLogTests.ListRecent_IsNewestFirstAcrossItemsAndRespectsTheCap
+Expected: "section_changed"   Actual: "created"
+```
 
-**F-93 is the finding, and it is a gate rather than a page.** The 375px reachability barrier chooses what to
-measure from a list of class names. Replacing this surface's `.record-actions` rows with `.menu-group` groups
-would have left it *visited* and *unmeasured* — and the floor above the check would have gone **up**, because
-the item rows inside the groups still carry `.record-actions`. A floor notices a selector group that
-vanished and never one that was never counted, which is F-91's stated residual arriving as a live defect.
-`.menu-group-summary` and `.menu-group-actions a` join the reach set, and the repair recorded in §16.4 is a
-**rule**: a surface that acquires a new kind of control acquires a selector in the same slice, or it is a
-surface the barrier has stopped asserting anything about.
+Not a flake. `Guid.CreateVersion7()` is `Guid.NewGuid()` with the 48-bit millisecond timestamp written over
+the top and the version and variant nibbles set — verified against `dotnet/runtime` `release/10.0`. The other
+74 bits stay random, so it is ordered *between* milliseconds and **unordered within one**: 49.8% of
+same-millisecond pairs invert under PostgreSQL's `uuid` comparison.
 
-## The cut, flagged for veto
+Every mutation in §8 stamps all the rows of its transaction with one `IClock.UtcNow`, so nine reads plus
+`OrderProjection` order by an instant and break the tie on an identifier — arbitrarily, until now.
 
-**The index does not reorder a heading.** This plan promised it *"with the section's own order controls"* and
-they are not here. `ReorderMenuSectionAsync` sets an **absolute** `display_order`, and §7 makes positions
-deliberately non-unique with a name tie-break — so *move this heading above that one* is not expressible as
-one absolute write: two headings sharing a position have an order nobody assigned, and no single number
-distinguishes them. An honest up/down control needs a **resequencing verb** writing several rows and
-therefore several `reordered` events in one transaction, which is a new write with new event semantics rather
-than a surface change. The index makes the ordering legible instead and the editor keeps the write.
+- §11.4's per-item history read a three-event create in the minted order **one time in six**.
+- The section history did the same one register up.
+- The activity feed you shipped last slice reordered itself between page loads on unchanged data.
+- **A guest's basket order did not survive being sent.** `OrderStaging.Build` mints line identifiers in a
+  tight loop *in basket order*; `OrderProjection` breaks its line tie on `order_line_identifier`; every line
+  of one send shares its instant. Guest surface, kitchen ticket, and bill.
 
-**To reverse this ruling**, the next slice adds `ResequenceMenuSectionsAsync` to `IMenuSectionAdministration`
-and `IMenuWorkflow` — one transaction, a lock per affected row in identifier order, one `reordered` event per
-row whose number actually moved — and the index grows a two-button form per group with a `@formname` derived
-from the section identifier, which is the shape `ManageMenuSection`'s visibility toggle already uses and the
-only shape that works for N forms without N `[SupplyParameterFromForm]` properties.
+Fixed in one file: monotonicity becomes a contract of `IIdentifierFactory`, kept by a 12-bit counter in
+`rand_a` (RFC 9562 §6.2 method 1) advanced by compare-and-swap over one process-wide `long`.
+
+---
 
 ## Files in this archive
 
-```
-src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationMenu.razor
-src/MyRestaurant.WebApplication/wwwroot/app.css
-tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs
-tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs
-tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs
-tests/MyRestaurant.WebApplication.Tests/Components/HandheldLayoutContractTests.cs
-docs/TECHNICAL_SPECIFICATION.md
-docs/DOCUMENTATION_REVIEW.md
-docs/MENU_AND_HANDHELD_PLAN.md
-docs/BUILD_PROGRESS.md
-_CHANGES.md
-```
+| Path | What changed |
+|---|---|
+| `src/MyRestaurant.Domain/Identifiers/IIdentifierFactory.cs` | `Create()` gains the ordering contract, and the note that the relation is PostgreSQL's rather than `Guid.CompareTo`'s |
+| `src/MyRestaurant.Domain/Identifiers/UuidV7IdentifierFactory.cs` | The counter, the compare-and-swap, and both edge cases |
+| `src/MyRestaurant.DataAccess/Menu/MenuEventLog.cs` | **Comments only.** Two ordering claims repointed from the format to the contract |
+| `tests/MyRestaurant.Domain.Tests/UuidV7IdentifierFactoryTests.cs` | 2 assertions → **7** |
+| `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs` | `MinimumCountedClasses` 19 → **20**, and the doc paragraph beside it |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.30.** §8.1 requirement, §16.4 paragraph, Appendix A F-95, changelog |
+| `docs/adr/0011-uuidv7-application-generated.md` | Amended: the counter, both edges, and why `Guid.NewGuid()` is still right for stamps and tokens |
+| `docs/DOCUMENTATION_REVIEW.md` | F-95 row, status line, and the narrative on probabilistic evidence |
+| `docs/BUILD_PROGRESS.md` | Slice 45 |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | **Stage 3a** — the resequencing verb, fully specified, recorded as unblocked |
+| `_CHANGES.md` | This file |
+
+---
 
 ## Test count
 
-Last predicted **1157**, by Slice 43, and not known to have run here. **This slice predicts 1157 as well,
-and the number is unchanged for a reason rather than by coincidence:** no test class is added, no `[Fact]` or
-`[Theory]` row is added, `HandheldLayoutContractTests` gains a list *entry* rather than an assertion, and
-§16.3 scenario 17 is **extended** rather than added — so §16.3 stays at seventeen and the end-to-end project
-stays at seventeen facts.
+**1157 → 1162.** One term: `UuidV7IdentifierFactoryTests` goes from 2 `[Fact]` methods to 7. Nothing else
+gains or loses a test method; §16.3 stays at 17 scenarios.
 
-Per §18: if the run returns anything other than 1157, the difference belongs to Slice 43's arithmetic rather
-than to this slice's, and that is where to look first.
+If the run returns anything other than 1162, check that file's `[Fact]` count first — it is the only term in
+the sum *and* the number §16.4 now claims, so a miscount there fails twice.
+
+---
+
+## What was NOT verified — read this before running it
+
+**Nothing was compiled and nothing was run.** No .NET SDK in that environment and no reachable package feed.
+The ordering proof is a byte-accurate model plus a transliteration of the shipped arithmetic, not
+`MyRestaurant.Domain.dll`. Per §18 an uncompiled archive is a prediction.
+
+**The original failure was 50%, so one green run is not evidence.** Please run the DataAccess suite a few
+times:
+
+```
+for i in 1 2 3 4 5; do dotnet test tests/MyRestaurant.DataAccess.Tests --filter MenuEventLogTests; done
+```
+
+**`Create_MintsDistinctSortKeysUnderConcurrency` uses `Parallel.For`,** and a compare-and-swap loop's first
+real test is its first real run.
+
+**The guest-basket consequence has no test in this slice.** `OrderProjection` is now correct and nothing
+asserts a multi-line send reads back in basket order. Named in *Still open* rather than quietly closed.
+
+---
+
+## Veto points
+
+**The reordering verb is deliberately not here**, though it is the named open menu cut and you asked for menu
+progress. A resequence writes several `reordered` events in one transaction at one instant — which *is* this
+slice's property — so its ordering test would have been the first test of this fix, and a red run could not
+have said which change caused it. Stage 3a carries the full design so the next slice is arrangement, not
+design. **If you would rather have had both in one archive, say so and I will fold them together.**
+
+**`UuidV7IdentifierFactory`'s state is `static`.** Deliberate: the guarantee is about the process's stream,
+and two instances each ascending independently would satisfy an instance field while interleaving wrongly.
+To make it per-instance instead, drop `static` from `_lastSortKey` and `NextSortKey`, and delete
+`Create_AscendsAcrossTwoInstances` — the singleton registration in `Program.cs` would still be correct.
+
+**Four comments were repointed rather than deleted**, which is a departure from F-77's delete-the-number
+ruling. The reasoning: F-77 is about a *count* nothing can check, and this was a *claim* that was right about
+the mechanism and wrong about who provided it — so it now names the contract, which a test can fail. If you
+prefer them simply deleted, they are the two `///` and `//` blocks in `MenuEventLog.cs`.
+
+**`AdministrationMenu.razor` is not in this archive.** Its `@key` comment claims that two same-instant events
+are ordered by their identifiers, which this slice makes true, so it needed no edit — and your
+`menuSectionSummary` rename stays exactly as you made it.

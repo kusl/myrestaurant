@@ -12423,3 +12423,238 @@ F-91's and now F-94's shared residual, stated once.
 
 **`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then starts
 it successfully.** Carried.
+
+---
+
+# M6 Slice 45 — the tie-break that was a coin flip
+
+**A test failed, then passed, on an unchanged tree, and the failure message was the whole finding.** The
+first `dotnet test` of the session reported one inverted pair in `MenuEventLogTests`: `section_changed`
+expected where `created` arrived. Those are two events of one create transaction, written at one instant, and
+their order in the log is decided by the identifier tie-break. So the tie-break was not breaking the tie.
+`bash scripts/ci_local.sh --with-all --with-e2e` then ran the same suite green, and the count came back at
+1157 exactly as Slice 43 predicted — which is what a 50% property looks like from inside a green run.
+
+**`Guid.CreateVersion7()` is ordered between milliseconds and random inside one.** Verified against
+`dotnet/runtime` `release/10.0`: the method is `Guid.NewGuid()` with the 48-bit Unix-millisecond timestamp
+written over the top and the version and variant nibbles set. The other 74 bits are left exactly as the
+cryptographic source produced them. Two values minted in the same millisecond therefore share their entire
+ordered prefix and are separated only by random bits — 49.8% of such pairs invert under PostgreSQL's `uuid`
+comparison, measured over 20,000 pairs.
+
+## Why the schema was leaning on the missing half
+
+Every mutation in §8 reads `IClock.UtcNow` **once** and stamps every row of its transaction with it. That is
+deliberate and it is right: a row and its event describe one change and should agree about when it happened.
+The consequence is that same-instant rows are the normal case rather than the edge case, so nine reads in
+`MyRestaurant.DataAccess` order by an instant and then break the tie on an identifier, and `OrderProjection`
+does the same for lines. Every one of those was resolving the tie at random.
+
+**Three menu surfaces and one guest surface were affected, and the guest one is the worst.**
+
+- **§11.4's per-item history.** A menu item created under a heading with a description writes `created`,
+  `section_changed` and `description_changed` at one instant. Six orderings, one of them right: the history
+  read *"Created as “Soup” at 4.50 / Filed under Starters / Description set"* **one time in six**, and read
+  the effect before the cause the rest of the time.
+- **The section history**, same shape, one register up.
+- **The index's activity feed**, added last slice, reordered itself between page loads on unchanged data.
+- **A guest's basket order did not survive being sent.** `OrderStaging.Build` mints one line identifier per
+  basket row in a tight loop **in basket order** — the loop that builds the human-readable descriptions
+  alongside them depends on that order and shows it correctly. `OrderProjection` then orders lines by their
+  added-at instant and breaks the tie on `order_line_identifier`, and every line of one send shares that
+  instant. So the basket was ordered, the descriptions were ordered, and the order itself was shuffled: on
+  the guest's own surface, on the kitchen ticket, and on the bill.
+
+## F-95 — and what the comments were doing
+
+Four comments asserted the property. Two in `MenuEventLog`, one in `AdministrationMenu.razor`'s `@key`
+explaining why an index key would be wrong, one in `MenuEventLogTests` explaining why `section_changed` sits
+second. Every one of them reasoned **correctly from a false premise**: the values are UUIDv7, UUIDv7 is
+time-ordered, therefore these two are ordered. The first two clauses are true and the conclusion does not
+follow for two values inside one millisecond.
+
+That is a different failure from F-65's and F-77's, which were two copies of one number disagreeing. Here
+there was one claim, load-bearing in four places, and **half right in a way that reads as fully right** —
+which is why four separate readings of those files never caught it. So the repair is not deletion, and this
+is the rare case where F-77's delete-the-number ruling does not apply: the prose was right about the
+mechanism and wrong about who provided it. The comments now name the factory's **contract** as what makes the
+tie-break hold, which is a sentence a test can fail.
+
+## What is in this slice
+
+- **`IIdentifierFactory.Create`** gains the contract: successive calls ascend under PostgreSQL's `uuid`
+  ordering, including inside one millisecond. Stated on the interface because nine reads depend on it and
+  none of them can do anything about it individually — the F-47 habit, applied to a guarantee rather than to
+  a list.
+- **`UuidV7IdentifierFactory`** keeps it with a 12-bit counter in `rand_a`, which is RFC 9562 §6.2's first
+  named method for exactly this. `Guid.CreateVersion7()` is still called, for its 62 random `rand_b` bits
+  from the same cryptographic source and for the version and variant nibbles it has already placed; only
+  bytes 0–7 are replaced. No new dependency, no new randomness source.
+- **The concurrency argument is one `long`.** It packs the millisecond count above the counter, which is the
+  first 60 bits of the value *in the order PostgreSQL compares them* — so "the next identifier ascends" and
+  "the next packed value is larger" are the same statement, and the whole proof is that one `long` only ever
+  increases. Advanced by `Interlocked.CompareExchange`; a failed exchange returns the value that beat it, so
+  a thread only ever loses to a thread that made progress. 48 + 12 = 60 bits cannot overflow a `long`.
+- **The two edges both resolve the same way.** Counter exhaustion carries into the timestamp rather than
+  wrapping, because a wrap hands out a value sorting *before* its predecessor — the defect back under a
+  smaller name. A clock stepping backwards is that case seen from the other side: the candidate is behind
+  what was issued, so issued-plus-one is used and the stream never doubles back.
+- **The state is static**, and that is tested rather than asserted. The application registers a singleton so
+  an instance field would suffice in production, but the guarantee is about the *process's* stream: two
+  factories each ascending independently would satisfy an instance field while handing two callers values
+  that interleave wrongly.
+- **`UuidV7IdentifierFactoryTests`** goes from 2 assertions to 7. The five new ones are the burst, the
+  two-instance interleave, the counter-exhaustion carry, the concurrent sort-key distinctness, and the
+  variant bits surviving the overwrite.
+- **§16.4** gains a paragraph and its enforced census floor moves 19 → 20. **§8.1** carries the requirement.
+  **ADR-0011** is amended with the counter and both edges. **Appendix A** gains F-95;
+  `DOCUMENTATION_REVIEW.md` gains its row and the narrative about probabilistic evidence.
+- **`MENU_AND_HANDHELD_PLAN.md` gains Stage 3a**, the resequencing verb, fully specified and recorded as
+  unblocked — see the ruling below.
+
+## Every comparison is the database's, and that is the load-bearing choice
+
+`Guid.CompareTo` is **not** PostgreSQL's `uuid` order. The BCL compares a `Guid` field by field and the
+second field is a *signed* 16-bit integer holding the low sixteen bits of the millisecond, so it reads as
+negative for half of every 65.536-second window; the two orders disagree wherever a pair straddles a boundary
+at which those bits cross 0x7FFF. A concrete disagreeing pair was constructed and checked.
+
+So every assertion in the new tests compares `ToByteArray(bigEndian: true)` byte by byte, and a private
+`SortKeyOf` exists so that no assertion can quietly acquire the wrong comparison later. A version of that
+file written with `CompareTo`, `Comparer<Guid>.Default`, or `OrderBy(identifier => identifier)` would pass
+while pinning a relation no read uses — F-41's shape arriving through a comparison operator rather than
+through a scope.
+
+## The reordering verb is deliberately not in this slice
+
+§7 records `/administration/menu`'s inability to reorder a heading as a cut, and Slice 44 named
+`ResequenceMenuSectionsAsync` as what it needs. **It is not here, and the reason is this slice's own
+subject.** A resequencing verb writes several `reordered` events in one transaction, therefore at one
+instant, therefore in an order decided entirely by the property F-95 is about. Shipping it before the fix
+would have written a correct set of rows in a random order onto the surface whose whole job is legibility.
+Shipping it *with* the fix would have made the verb's ordering test simultaneously the first test of the fix,
+so a red run could not have said which change caused it — and §18's habit of chasing a count deviation
+before the slice closes is cheap with one candidate and expensive with two.
+
+Stage 3a in `MENU_AND_HANDHELD_PLAN.md` carries the full design so the next slice is arrangement rather than
+design, including the two obligations it inherits: F-93's selector, and the explicit statement that the
+item-level mirror is a third slice rather than an oversight.
+
+## What was verified
+
+- **The root cause, against the framework source.** `Guid.cs` on `dotnet/runtime` `release/10.0` was read
+  through the GitHub API. `CreateVersion7(DateTimeOffset)` calls `NewGuid()`, overwrites `_a` and `_b` from
+  `unix_ts_ms`, sets the version nibble in `_c` and the variant in `_d`, and returns. There is no counter and
+  no monotonic state, so the finding is a property of the method rather than an inference from a failure.
+- **The ordering claim, by measurement.** A byte-accurate model of both the old and the new value layout:
+  same-millisecond pairs invert 49.8% of the time before, 0 times in 20,000 after; a three-event create reads
+  in the minted order 16.7% of the time before; 50,000 values across a moving clock give 0 inversions; 10,000
+  inside one millisecond give 0 inversions with the timestamp borrowing 2 ms.
+- **The exact byte arithmetic of the shipped `Create`, transliterated and run.** 5,000 values inside one
+  millisecond: 0 inversions, every value version 7, every variant nibble `0x80`, timestamp carried forward by
+  1 ms, all sort keys distinct.
+- **The `CompareTo` trap, by construction.** A pair for which PostgreSQL's order and the BCL's disagree was
+  built and both answers printed.
+- **`TestingSectionContractTests` simulated in full** against the edited specification: every cited
+  `*Tests.cs` resolves, 20 paragraphs state a count, and every count equals the `[Fact]`/`[Theory]` total in
+  the file it names. 94 uniquely named test classes found, against the walk's floor of 20.
+- **`SpecificationVersionTests` simulated.** Header `1.30` matches the newest changelog entry `v1.30`; the
+  history descends; both versioned documents still parse.
+- **`MarkdownTableContractTests` simulated.** 20 documents, 56 tables, 583 rows, every row the width of its
+  header. This caught a real defect before packaging: the F-95 row contained a literal `|` inside backticks,
+  which the gate reads as a cell boundary, so the row had five cells in a four-column table. The phrase was
+  rewritten in words.
+- **Byte hygiene** on every changed file: LF only, exactly one final newline, no trailing whitespace, no
+  whitespace-only lines.
+- **Brace and paren balance** on both changed C# files, and the new test file's `[Fact]` count read back as 7
+  by the same regex the census gate uses.
+- **The reconstructed tree itself.** All 349 files from `dump.txt` SHA-256 verified against the manifest the
+  exporter wrote.
+
+## What was NOT verified
+
+- **Nothing was compiled, and nothing was run.** There is no .NET SDK in this environment and the package
+  feeds it would need are not reachable from it. Every claim above about ordering is a claim about a model
+  and about arithmetic, not about `MyRestaurant.Domain.dll`. Per §18 an uncompiled archive is a prediction.
+- **The five new assertions have never executed.** In particular `Create_MintsDistinctSortKeysUnderConcurrency`
+  uses `Parallel.For`, and a compare-and-swap loop is exactly the kind of code whose first real test is the
+  first real run.
+- **No integration test was run**, so it is not observed that `MenuEventLogTests.ListRecent_…` now passes
+  deterministically. It should — that is the whole point — but the evidence for it is the model, and the
+  original failure was 50% so a single green run would not be evidence either. **The honest check is to run
+  the DataAccess suite several times.**
+- **Whether any test elsewhere depended on the old randomness** is reasoned about rather than observed. The
+  reasoning: the fix makes an order deterministic that was previously arbitrary, and an assertion that passed
+  reliably against an arbitrary order cannot have been asserting that order. Assertions about version,
+  uniqueness and distinctness are unaffected by construction. But it is reasoning.
+- **The guest-basket consequence is not covered by a test in this slice.** `OrderProjection`'s line ordering
+  is now correct and nothing asserts that a multi-line send reads back in basket order. That is a real gap
+  and it is named in *Still open* rather than quietly closed.
+- **No end-to-end scenario was added or changed**, so no browser has observed any of this.
+
+## Test count
+
+Last predicted **1157**, by Slice 44, and **observed at 1157** — twice in one session, once with a failure
+and once without.
+
+Predicted here: **1162**. The arithmetic is one term. `UuidV7IdentifierFactoryTests` goes from 2 `[Fact]`
+methods to 7, so `MyRestaurant.Domain.Tests` gains **5**. No other test file gains or loses a method:
+`TestingSectionContractTests` changes one `const` and one doc paragraph, `MenuEventLog` changes comments only,
+and §16.3 is untouched at **17** scenarios.
+
+Per §18: if the run returns anything other than 1162, the first thing to check is the `[Fact]` count in
+`UuidV7IdentifierFactoryTests`, because it is the only term in the sum and it is also the number §16.4 now
+claims — so a miscount there fails twice, once as a total and once as
+`TestingSectionContractTests`.
+
+## Still open
+
+**A multi-line send is not asserted to read back in basket order.** New, and the largest residual of this
+slice. `OrderProjection` orders lines by their added-at instant and then by identifier, and the identifier is
+now monotonic, so the property holds — but it holds because of a guarantee two projects away and nothing
+states it where it is consumed. The right shape is a `MyRestaurant.Domain.Tests` fact over
+`OrderProjection.Project` with several lines added in one event, asserting they come back in the order the
+operations were listed in.
+
+**Nothing prevents a stored-row identifier being minted outside the factory.** `Guid.NewGuid()` is correct
+for security stamps, broadcast tokens and staging keys and appears in production code for all three, so the
+rule is not "never call it" — it is "never call it for a value a row will be ordered by", which is a
+distinction a tree gate could draw from the call site's context and this tree does not draw at all. F-95
+reached the guest's basket through code that used the factory correctly; a future one could reach it through
+code that does not.
+
+**A section's own description under its heading on the guest menu.** Unchanged, and still the largest
+remaining piece of Stage 3. It needs either a second read or a widened `MenuItemSummary`, and F-84 is the
+reason widening that record is not free.
+
+**The kitchen's "86" panel still groups by nothing.** Stage 3's last surface.
+
+**Reordering a heading from the index.** Now specified rather than merely named — Stage 3a in
+`MENU_AND_HANDHELD_PLAN.md` — and unblocked as of this slice.
+
+**Reordering items within a heading.** The same design against `menu_item`, recorded now so the section verb
+does not arrive looking complete.
+
+**The handheld barrier visits neither section surface.** Scenario 16 walks ten surfaces; `ManageMenuSection`
+is a detail surface with `.manage-inline-form` buttons and would move the control count. Carried.
+
+**No gate can see a count written in a comment, or a sentence describing a computation beside it.** F-90's,
+F-91's and F-94's shared residual, and F-95 is a sharper version of it: no gate can see a *claim* written in
+a comment either, and this one was wrong for eight months in four files.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried.
+
+**Nothing treats a test that fails and then passes as evidence.** New, and deliberately not made executable.
+A retry that goes green is indistinguishable from a fixed flake by any artefact this repository produces, and
+F-95 arrived exactly that way. §18 already says a predicted count the run contradicts is chased; the sibling
+habit — a run that contradicts *itself* is chased — is now written in `DOCUMENTATION_REVIEW.md` rather than
+left as folklore.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Tenth slice carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a twelfth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Twenty-first consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then starts
+it successfully.** Carried.

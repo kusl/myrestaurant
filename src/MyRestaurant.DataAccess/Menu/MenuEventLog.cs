@@ -26,8 +26,12 @@ namespace MyRestaurant.DataAccess.Menu;
 /// <para><b><c>created</c> carries neither a description nor a section although the item was created with
 /// both.</b> §8.2 keeps that event at the name and the price, so an item created under a heading has a
 /// <c>section_changed</c> beside its <c>created</c> — and a <c>description_changed</c> beside that when it
-/// has a description — at the same instant, ordered after it by the UUIDv7 tiebreak both reads below
-/// apply. That ordering is not decoration: it is what makes the history read
+/// has a description — at the same instant, ordered after it by the identifier tiebreak both reads below
+/// apply. That tiebreak holds because
+/// <see cref="MyRestaurant.Domain.Identifiers.IIdentifierFactory"/> guarantees its output ascends, and
+/// <em>not</em> because the values are UUIDv7: the format is ordered between milliseconds and random
+/// inside one, so until F-95 this sentence was describing an outcome that occurred one time in six. That
+/// ordering is not decoration: it is what makes the history read
 /// <em>"Created as “Soup” at 4.50 / Filed under Starters / Description set"</em> rather than in whatever
 /// sequence the scan returned.</para>
 /// </summary>
@@ -149,8 +153,14 @@ public sealed class DapperMenuEventLog : IMenuEventLog
         """;
 
     // Built at type-init (static readonly, not const) so the shared fragments interpolate once.
-    // UUIDv7 keys are time-ordered, so the identifier is a stable tiebreak for two events that share an
-    // instant — which they do whenever one transaction writes the row and its event together.
+    //
+    // The identifier is the tiebreak for two events that share an instant — which they do whenever one
+    // transaction writes the row and its events together. That works because IIdentifierFactory
+    // guarantees successive identifiers ascend under this exact ORDER BY, and it is worth naming the
+    // guarantee rather than the format: what stood here said "UUIDv7 keys are time-ordered", which is
+    // true between milliseconds and false inside one, and Guid.CreateVersion7()
+    // leaves the sub-millisecond bits random. Every history in §11.4 read its same-instant events in
+    // whatever order the random bits fell (F-95). Nothing changed here; the factory changed.
     private static readonly string ForItemSql = $"""
         SELECT {EventColumns}
         {EventFrom}
