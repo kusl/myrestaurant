@@ -961,6 +961,13 @@ public sealed class MenuWiringTests
 
         public Guid? LastActor { get; private set; }
 
+        /// <summary>
+        /// The ordering the workflow handed through, recorded as its own list rather than folded into
+        /// <see cref="LastMenuSectionIdentifier"/>: the whole claim about this verb is that the sequence
+        /// arrives unaltered, and a fake that kept only the last element could not say so.
+        /// </summary>
+        public IReadOnlyList<Guid>? LastOrdering { get; private set; }
+
         public CreateMenuSectionResult CreateResult { get; init; } = new(
             CreateMenuSectionOutcome.Created, MenuSectionIdentifier, "Drinks", "Cold things", 0);
 
