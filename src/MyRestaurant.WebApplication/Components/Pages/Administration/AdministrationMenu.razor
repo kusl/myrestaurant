@@ -2,10 +2,13 @@
 @attribute [ExcludeFromInteractiveRouting]
 @attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
 @using MyRestaurant.DataAccess.Menu
+@using MyRestaurant.WebApplication.Menu
 @using MyRestaurant.WebApplication.Orders
 @inject IMenuSectionDirectory MenuSections
 @inject IMenuDirectory MenuItems
 @inject IMenuEventLog MenuEvents
+@inject IMenuWorkflow MenuChanges
+@inject NavigationManager Navigation
 @inject RestaurantOptions Options
 @inject RestaurantTime RestaurantClock
 
@@ -43,15 +46,25 @@
    reads both lists and renders the headings, so emptiness is a state with a sentence rather than an
    absence.
 
-   **WHAT THIS PAGE STILL CANNOT DO IS REORDER A HEADING**, and that is a recorded cut rather than an
-   omission — see MENU_AND_HANDHELD_PLAN.md Stage 3. `ReorderMenuSectionAsync` sets an ABSOLUTE
-   `display_order`, and positions are deliberately non-unique with a name tiebreak (§7), so "move this
-   heading up" is not expressible as one absolute write: two headings sharing a position have an order
-   nobody assigned and no single number distinguishes them. An honest Up/Down needs a resequencing verb
-   writing several rows and therefore several `reordered` events in one transaction, which is a new
-   write with new event semantics rather than a surface change. What this page does instead is make the
-   ordering legible — headings in stored order, each one's position on its own summary — and send the
-   write to the editor, which is where the absolute number belongs.
+   **THIS PAGE CAN NOW REORDER A HEADING, AND THAT IS WHAT SLICE 47 IS.** For three slices the cut was
+   recorded here rather than papered over: `ReorderMenuSectionAsync` sets an ABSOLUTE `display_order`,
+   and positions are deliberately non-unique with a name tiebreak (§7), so "move this heading up" is not
+   expressible as one absolute write — two headings sharing a position have an order nobody assigned and
+   no single number distinguishes them. The verb that expresses it is `ResequenceMenuSectionsAsync`,
+   which takes the WHOLE ordering and assigns 0…n-1 from it, and this page is its only caller: the list
+   below is already rendered in stored order, so Up and Down exchange two entries in that list and post
+   all of it. Nothing is computed from a position, which is the point — a number that means "one less
+   than the heading above" cannot be written when two headings share a number.
+
+   Each button is its own form with its own `@@formname`, because Blazor's static SSR dispatches a POST
+   to the form that names it and there is one pair per heading. The first heading's Up and the last
+   heading's Down are rendered DISABLED rather than omitted: a control that vanishes at the edge of a
+   list moves every other control up a row on the render after a move, and §16.3 scenario 16 measures
+   where controls are.
+
+   An absolute position is still writable, on the heading's own page, and that is not a duplicate:
+   somebody who wants breakfast at 0 and does not care what else moves is stating an absolute, and the
+   editor's number field is where that belongs.
 
    Two record lists (§11.12) and no inline <style>. The group vocabulary is `.menu-group*` in app.css. *@
 
@@ -71,12 +84,23 @@
         <a class="button-secondary" href="/administration/menu/sections/new">Create section</a>
     </div>
 
+    @if (_flashMessage is not null)
+    {
+        <p class="status-success" role="status">@_flashMessage</p>
+    }
+    @if (_errorMessage is not null)
+    {
+        <p class="status-error" role="alert">@_errorMessage</p>
+    }
+
     <p class="lede">
         Every heading, in the order guests read them, with the items filed under each in the order they
-        appear beneath it. Prices here are what the <em>next</em> order line costs — anything already on
-        a bill keeps the price it was added at. Open a heading to rename it, describe it, move it or
-        switch it off; open an item to rename it, reprice it, describe it, refile it, move it within its
-        heading, or mark it unavailable.
+        appear beneath it. Move a heading with the buttons at the foot of its group — the whole order is
+        rewritten from the list you can see, so a move needs no positions typed anywhere. Prices here are
+        what the <em>next</em> order line costs — anything already on a bill keeps the price it was added
+        at. Open a heading to rename it, describe it, set an absolute position or switch it off; open an
+        item to rename it, reprice it, describe it, refile it, move it within its heading, or mark it
+        unavailable.
     </p>
 
     @if (_sections is null)
@@ -196,6 +220,23 @@
                         }
 
                         <div class="menu-group-actions">
+                            @* Two posts and a link. The forms carry `@@formname` values built from the
+                               heading's identifier because there is one pair per group and Blazor's
+                               static SSR routes a POST by that name; the handler receives the identifier
+                               rather than a position, and computes the exchange against the very list
+                               this loop is rendering. *@
+                            <form method="post" @formname="@MoveFormName(menuSectionSummary, up: true)"
+                                  @onsubmit="@(() => MoveAsync(menuSectionSummary.MenuSectionIdentifier, -1))">
+                                <AntiforgeryToken />
+                                <button type="submit" class="button-secondary" disabled="@IsFirst(menuSectionSummary)"
+                                        aria-label="@($"Move {menuSectionSummary.Name} up")">Move up</button>
+                            </form>
+                            <form method="post" @formname="@MoveFormName(menuSectionSummary, up: false)"
+                                  @onsubmit="@(() => MoveAsync(menuSectionSummary.MenuSectionIdentifier, 1))">
+                                <AntiforgeryToken />
+                                <button type="submit" class="button-secondary" disabled="@IsLast(menuSectionSummary)"
+                                        aria-label="@($"Move {menuSectionSummary.Name} down")">Move down</button>
+                            </form>
                             <a class="button-secondary" href="@SectionPath(menuSectionSummary.MenuSectionIdentifier)"
                                aria-label="@($"Manage {menuSectionSummary.Name}")">Manage this heading</a>
                         </div>
@@ -286,9 +327,14 @@
     private int _itemCount;
     private int _activeItemCount;
     private int _describedItemCount;
+    private string? _flashMessage;
+    private string? _errorMessage;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? Done { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -305,6 +351,77 @@
         _describedItemCount = _items.Count(item => item.Description.Length > 0);
 
         _recent = await MenuEvents.ListRecentAsync(RecentActivityCount, HttpContext.RequestAborted);
+
+        // Post/redirect/get, the shape every administration write on this tree uses: a committed move
+        // redirects back here with one word, so a refresh cannot re-post it. On a POST the handler below
+        // is about to run and there is nothing to say yet.
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            _flashMessage = FlashFor(Done);
+        }
+    }
+
+    /// <summary>
+    /// Exchanges one heading with its neighbour and posts the <b>whole</b> ordering (§7).
+    ///
+    /// <para><b>The list is the source of the move, which is why this takes an offset rather than a
+    /// position.</b> <c>_sections</c> is what the page rendered, in the order §7's read produced; the
+    /// exchange happens in a copy of it and the result is sent as the complete ordering. So the write is
+    /// expressible even when two headings share a <c>display_order</c> — which the schema permits on
+    /// purpose, and which is the whole reason an absolute write could not express it.</para>
+    ///
+    /// <para><b>Every failure here is a stale page rather than a fault, and each reloads.</b> An identifier
+    /// this render does not hold, or a neighbour past either end, means somebody else changed the menu
+    /// between this page being drawn and the button being pressed. The same is true of
+    /// <c>MenuSectionSetChanged</c>, which the write service returns when the ordering is no longer a
+    /// permutation of the stored set — it refuses rather than reconciling, and the honest answer on this
+    /// side is to render the truth again.</para>
+    /// </summary>
+    private async Task MoveAsync(Guid menuSectionIdentifier, int offset)
+    {
+        if (_sections is null)
+        {
+            Navigation.NavigateTo(IndexPath);
+            return;
+        }
+
+        if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } administrator)
+        {
+            // Endpoint authorization already guarantees this; menu_section_event.actor_person_identifier
+            // is NOT NULL and §7 requires every change to name somebody, so this is the belt to that brace
+            // — the same helper ManageMenuSection carries, in the one form this page needs.
+            _errorMessage = "Your session could not be identified. Sign in again and retry.";
+            return;
+        }
+
+        List<Guid> ordering = _sections.Select(summary => summary.MenuSectionIdentifier).ToList();
+
+        int from = ordering.IndexOf(menuSectionIdentifier);
+        int to = from + offset;
+
+        if (from < 0 || to < 0 || to >= ordering.Count)
+        {
+            Navigation.NavigateTo(IndexPath);
+            return;
+        }
+
+        (ordering[from], ordering[to]) = (ordering[to], ordering[from]);
+
+        ResequenceMenuSectionsOutcome outcome = await MenuChanges.ResequenceMenuSectionsAsync(
+            ordering, administrator, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case ResequenceMenuSectionsOutcome.Resequenced:
+                RedirectWithOutcome("moved");
+                break;
+            case ResequenceMenuSectionsOutcome.NoChange:
+                RedirectWithOutcome("move-no-change");
+                break;
+            case ResequenceMenuSectionsOutcome.MenuSectionSetChanged:
+                RedirectWithOutcome("menu-changed");
+                break;
+        }
     }
 
     /// <summary>
@@ -338,6 +455,50 @@
             _ => $"{count} items",
         };
     }
+
+    /// <summary>
+    /// Whether a heading is at an end of the list, which is what disables one of its two buttons. Compared
+    /// by identifier rather than by <c>display_order</c>, and that is the same distinction the whole verb
+    /// rests on: two headings may share a position, so "has the lowest number" is not "is first" — but
+    /// "is the first entry of the list this page is rendering" is exactly what Up would exchange with
+    /// nothing.
+    /// </summary>
+    private bool IsFirst(MenuSectionSummary menuSectionSummary)
+        => _sections is null
+            || _sections.Count == 0
+            || _sections[0].MenuSectionIdentifier == menuSectionSummary.MenuSectionIdentifier;
+
+    private bool IsLast(MenuSectionSummary menuSectionSummary)
+        => _sections is null
+            || _sections.Count == 0
+            || _sections[^1].MenuSectionIdentifier == menuSectionSummary.MenuSectionIdentifier;
+
+    /// <summary>
+    /// One form name per heading per direction. Unique within the page because the identifier is, which is
+    /// what Blazor's static SSR needs to route a POST to the right handler; a shared name would dispatch
+    /// every group's button to whichever form rendered first.
+    /// </summary>
+    private static string MoveFormName(MenuSectionSummary menuSectionSummary, bool up)
+        => $"menu-section-move-{(up ? "up" : "down")}-{menuSectionSummary.MenuSectionIdentifier}";
+
+    private static string IndexPath => "/administration/menu";
+
+    private void RedirectWithOutcome(string outcome)
+        => Navigation.NavigateTo($"{IndexPath}?done={outcome}");
+
+    /// <summary>
+    /// The word the redirect carried, as a sentence. Three outcomes and three sentences, because the two
+    /// that wrote nothing are ordinary events on a shared menu rather than errors: somebody else moved the
+    /// heading first, or somebody else changed which headings there are.
+    /// </summary>
+    private static string? FlashFor(string? outcome) => outcome switch
+    {
+        "moved" => "Moved. Every open menu has already picked up the new order.",
+        "move-no-change" => "It was already in that position — nothing changed.",
+        "menu-changed" => "The headings changed while this page was open, so nothing was moved. This is"
+            + " the current order; try again.",
+        _ => null,
+    };
 
     private static string ManagePath(Guid menuItemIdentifier)
         => $"/administration/menu/{menuItemIdentifier}";

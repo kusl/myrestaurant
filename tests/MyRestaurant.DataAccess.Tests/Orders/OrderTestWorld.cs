@@ -521,6 +521,25 @@ internal sealed class OrderTestWorld
             sql, parameters, cancellationToken: cancellationToken));
     }
 
+    /// <summary>
+    /// A raw column, every row of it, in the order the query asked for. The sibling of
+    /// <see cref="ScalarAsync{T}"/> for the assertions a scalar cannot make: a write that touches several
+    /// rows in one transaction has an <em>order</em>, and a test that read one row at a time would be
+    /// asserting the query's ordering one comparison at a time.
+    /// </summary>
+    public async Task<IReadOnlyList<T>> QueryAsync<T>(
+        string sql,
+        object? parameters,
+        CancellationToken cancellationToken)
+    {
+        await using DbConnection connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
+
+        IEnumerable<T> rows = await connection.QueryAsync<T>(new CommandDefinition(
+            sql, parameters, cancellationToken: cancellationToken));
+
+        return rows.ToArray();
+    }
+
     private async Task ExecuteAsync(string sql, object? parameters, CancellationToken cancellationToken)
     {
         await using DbConnection connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);

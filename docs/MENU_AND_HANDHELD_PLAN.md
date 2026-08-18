@@ -1,6 +1,6 @@
 # Menu modernization and the handheld contract — staged plan
 
-**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-17, at the close of Slice 45.** This
+**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-17, at the close of Slice 47.** This
 is the execution plan for the first enhancement request the project has received from a person who was
 shown the running application, together with the defect that request arrived beside. It is a working
 document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
@@ -710,9 +710,11 @@ written at all if the cut had been made silently.
 
 ---
 
-## Stage 3a — the resequencing verb, and why it is the next slice rather than this one
+## ~~Stage 3a — the resequencing verb~~ — **landed, M6 Slice 47**
 
-**Not started. Fully specified below, and unblocked as of Slice 45.** §7 records the cut in the index's own
+**Landed exactly as specified below, which is recorded because it is the point of specifying it: the slice was arrangement rather than design.** The paragraphs that follow are the design as written before the code, left unedited apart from this header and the closing note, so the two can be compared.
+
+**Unblocked as of Slice 45 and shipped in Slice 47.** §7 records the cut in the index's own
 words: `ReorderMenuSectionAsync` sets an **absolute** `display_order`, positions are deliberately non-unique
 with a name tie-break, so *"move this heading up"* is not expressible as one absolute write — two headings
 sharing a position have an order nobody assigned and no single number distinguishes them.
@@ -753,6 +755,31 @@ Two obligations the slice carries, both already written down:
    `menu_item.display_order` has the same absolute-write shape and the same non-unique positions, so items
    within a heading need the same verb. It is the same design applied to a second table, and it is a second
    slice, because the two write to different event tables with different paired CHECKs.
+
+### What landed, and the three places it differs from the text above
+
+**Nothing in the design changed.** The verb takes the whole list, refuses a non-permutation, locks ordered by
+identifier, writes one event per moved row, and returns `Resequenced` / `NoChange` / `MenuSectionSetChanged`.
+Three things the specification above did not settle were settled in the writing, and they are here rather
+than only in the code:
+
+- **The refusal is one outcome for three shapes.** A short list, a repeated identifier and an unknown heading
+  all return `MenuSectionSetChanged`. The alternative — three outcomes — would put a distinction on the
+  surface that the surface cannot act on differently: all three mean *this page is stale, reload it*.
+- **The permutation test de-duplicates before it resolves.** A list of the right length whose members all
+  exist can still name one of them twice, and that is the one shape a length check and a resolution check
+  both admit. There is an integration fact for exactly it.
+- **Both obligations are discharged.** F-93: the barrier gains `.menu-group-actions button` in this slice,
+  which is the first time that rule has been obeyed on the way in rather than after the fact. And the
+  item-level mirror is **still out of scope and still named** — `menu_item.display_order` has the same
+  shape, needs the same verb, and writes to a different event table with different paired CHECKs, so it is
+  the next ordering slice rather than a widening of this one.
+
+**One thing was deliberately not done: no CSS.** The two buttons reuse `.menu-group-actions .button-secondary`,
+which has been styling that row since Slice 44, so they are full width and `--touch-target` tall on a handset
+with no new declaration. On the wide layout the three controls stack, because a `<form>` is a block element.
+That is recorded as an open item rather than fixed, because fixing it means opening `app.css` and this slice
+had no other reason to.
 
 ---
 

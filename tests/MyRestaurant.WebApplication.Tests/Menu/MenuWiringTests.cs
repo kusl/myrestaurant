@@ -35,8 +35,8 @@ namespace MyRestaurant.WebApplication.Tests;
 /// <c>MenuAdministrationTests</c>, <c>MenuAvailabilityTests</c> and
 /// <c>MenuSectionAdministrationTests</c> already do.</para>
 ///
-/// <para><b>Every one of <see cref="IMenuSectionAdministration"/>'s five verbs is asserted here as of the
-/// section editor</b>, where four of them used to make <c>FakeMenuSectionAdministration</c> throw. That
+/// <para><b>Every one of <see cref="IMenuSectionAdministration"/>'s six verbs is asserted here</b>, and
+/// four of them used to make <c>FakeMenuSectionAdministration</c> throw. That
 /// throw was the guard on a stated obligation — a workflow verb with no caller is a code path no test can
 /// reach through the interface meant to protect it — and it is gone because the obligation is discharged
 /// rather than because it became inconvenient. The two that matter most are the ones §11.1 made expensive:
@@ -47,6 +47,14 @@ namespace MyRestaurant.WebApplication.Tests;
 /// <c>MoveMenuItemToSectionAsync</c> was named as outstanding in three consecutive slices rather than
 /// quietly omitted, which is the whole reason its arrival can be stated as a fact instead of noticed
 /// later. Every method this file exercises is reachable from a form an administrator can open.</para>
+///
+/// <para><b><c>ResequenceMenuSectionsAsync</c> arrives the same way and is the sixth.</b> It was specified
+/// in the plan and deferred by name for two slices — once for F-95, whose fix it depends on, and once for
+/// the dump reduction — and it arrives with its caller: the Up and Down controls on the menu index. Its two
+/// facts below are the pair every verb here gets, and the second is worth reading because
+/// <c>MenuSectionSetChanged</c> is a <em>third</em> way to write nothing: not "the value did not move" but
+/// "the list did not describe this menu", which is a stale page rather than a no-op and announces nothing
+/// for the same reason.</para>
 /// </summary>
 public sealed class MenuWiringTests
 {
@@ -415,6 +423,71 @@ public sealed class MenuWiringTests
     }
 
     /// <summary>
+    /// The sixth section verb, and the pair every one of them gets: the ordering reaches the write service
+    /// exactly as the surface built it, and a committed resequence announces once.
+    ///
+    /// <para><b>Once, not once per row.</b> Moving one heading in eight writes two rows and two events, and
+    /// <c>MenuChanged</c> means "re-read the menu" and nothing else (§9) — so a workflow that published per
+    /// written row would tell every open phone in the building to re-query twice for one decision.</para>
+    ///
+    /// <para>The list is asserted by identity as well as by contents. Nothing in this verb's contract
+    /// permits the workflow to sort, de-duplicate or re-order what it was given: the whole ordering <em>is</em>
+    /// the argument, and a shell that improved it would be deciding the menu's order in the one layer that
+    /// has no business having an opinion about it.</para>
+    /// </summary>
+    [Fact]
+    public async Task AResequence_HandsTheWholeOrderingThroughAndAnnouncesOnce()
+    {
+        Guid[] ordering =
+        [
+            MenuSectionIdentifier,
+            Guid.Parse("0192f000-0000-7000-8000-00000000d004"),
+            Guid.Parse("0192f000-0000-7000-8000-00000000d005"),
+        ];
+
+        FakeMenuSectionAdministration sections = new();
+        RecordingBroadcaster broadcaster = new();
+
+        ResequenceMenuSectionsOutcome outcome = await WorkflowOver(sections, broadcaster)
+            .ResequenceMenuSectionsAsync(ordering, ActorIdentifier, TestContext.Current.CancellationToken);
+
+        Assert.Equal(ResequenceMenuSectionsOutcome.Resequenced, outcome);
+        Assert.Same(ordering, sections.LastOrdering);
+        Assert.Equal(ActorIdentifier, sections.LastActor);
+        Assert.IsType<MenuChanged>(Assert.Single(broadcaster.Published));
+    }
+
+    /// <summary>
+    /// Two ways for a resequence to write nothing, and neither is announced.
+    ///
+    /// <para><c>NoChange</c> is the order it already had — an administrator pressing Up on a heading
+    /// somebody else moved up a second earlier. <c>MenuSectionSetChanged</c> is a page rendered before the
+    /// menu's set of headings changed, which the write service refuses whole rather than partially obeying.
+    /// The distinction matters to the surface, which reports them differently; it does not matter here,
+    /// because the rule this file exists to hold is about commits and both of these committed nothing.</para>
+    /// </summary>
+    [Fact]
+    public async Task AResequenceThatWroteNothing_AnnouncesNothing()
+    {
+        foreach (ResequenceMenuSectionsOutcome quiet in new[]
+        {
+            ResequenceMenuSectionsOutcome.NoChange,
+            ResequenceMenuSectionsOutcome.MenuSectionSetChanged,
+        })
+        {
+            FakeMenuSectionAdministration sections = new() { ResequenceOutcome = quiet };
+            RecordingBroadcaster broadcaster = new();
+
+            Assert.Equal(
+                quiet,
+                await WorkflowOver(sections, broadcaster).ResequenceMenuSectionsAsync(
+                    [MenuSectionIdentifier], ActorIdentifier, TestContext.Current.CancellationToken));
+
+            Assert.Empty(broadcaster.Published);
+        }
+    }
+
+    /// <summary>
     /// A stale editor, or a link somebody kept. Nothing was written by any of the four verbs, so nothing
     /// may be announced by any of them — and the surface above turns each into a redirect back to the menu
     /// rather than a silent success.
@@ -726,6 +799,13 @@ public sealed class MenuWiringTests
 
         public Guid? LastMenuSectionIdentifier { get; private set; }
 
+        /// <summary>
+        /// The ordering the workflow handed through, recorded as its own list rather than folded into
+        /// <see cref="LastMenuSectionIdentifier"/>: the whole claim about this verb is that the sequence
+        /// arrives unaltered, and a fake that kept only the last element could not say so.
+        /// </summary>
+        public IReadOnlyList<Guid>? LastOrdering { get; private set; }
+
         public decimal? LastPriceAmount { get; private set; }
 
         public int? LastDisplayOrder { get; private set; }
@@ -891,6 +971,9 @@ public sealed class MenuWiringTests
 
         public ReorderMenuSectionOutcome ReorderOutcome { get; init; } = ReorderMenuSectionOutcome.Reordered;
 
+        public ResequenceMenuSectionsOutcome ResequenceOutcome { get; init; }
+            = ResequenceMenuSectionsOutcome.Resequenced;
+
         public MenuSectionActivationOutcome ActivationOutcome { get; init; }
             = MenuSectionActivationOutcome.Changed;
 
@@ -946,6 +1029,17 @@ public sealed class MenuWiringTests
             LastActor = actorPersonIdentifier;
 
             return Task.FromResult(ReorderOutcome);
+        }
+
+        public Task<ResequenceMenuSectionsOutcome> ResequenceMenuSectionsAsync(
+            IReadOnlyList<Guid> orderedMenuSectionIdentifiers,
+            Guid actorPersonIdentifier,
+            CancellationToken cancellationToken = default)
+        {
+            LastOrdering = orderedMenuSectionIdentifiers;
+            LastActor = actorPersonIdentifier;
+
+            return Task.FromResult(ResequenceOutcome);
         }
 
         public Task<MenuSectionActivationOutcome> SetMenuSectionActiveAsync(

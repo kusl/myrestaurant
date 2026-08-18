@@ -147,6 +147,16 @@ internal static class HandheldReach
     /// exception to it — it occupies the position <c>.record-primary</c> holds on every other index, and
     /// it is the only control this surface introduced.</para>
     ///
+    /// <para><c>.menu-group-actions button</c> joined in Slice 47, with the resequencing verb, and it is
+    /// <b>F-93's rule being obeyed rather than rediscovered</b>: the group's action row acquired a new
+    /// <em>kind</em> of control — two submit buttons where there had been one link — and a selector reading
+    /// only <c>a</c> would have gone on passing while measuring one of the three things an operator now
+    /// presses. The rule is that a
+    /// surface acquiring a new kind of control acquires a selector in the same slice, and this is the first
+    /// time it has been applied on the way in rather than after the fact. The buttons are ordinary
+    /// <c>.button-secondary</c> controls, so nothing about their height is new; what is new is that the
+    /// barrier is the only thing in the tree that would notice if that stopped being true.</para>
+    ///
     /// <para>The stream checkboxes inside the filter are deliberately <em>not</em> here. A checkbox is
     /// 1.35rem by declaration — <c>.form-field input[type="checkbox"]</c> sets <c>min-height: 0</c> on
     /// purpose — so the thing a thumb finds is the <c>.filter-choice</c> row around it, and asserting a
@@ -157,7 +167,7 @@ internal static class HandheldReach
     private const string ReachSelector =
         ".record-actions a, .record-actions button, .page-head-action a, .page-head-action button,"
             + " .filter-actions a, .filter-actions button, .manage-inline-form button,"
-            + " .menu-group-summary, .menu-group-actions a";
+            + " .menu-group-summary, .menu-group-actions a, .menu-group-actions button";
 
     /// <summary>
     /// Measured for height only. The area links are a horizontally scrolled strip by design (§11.12,

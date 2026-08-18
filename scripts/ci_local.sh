@@ -164,7 +164,12 @@ dotnet build MyRestaurant.slnx \
 announce "test"
 # The data-access tests need a reachable container engine and skip without one. On rootless Podman
 # that means the user API socket must be active: systemctl --user enable --now podman.socket
-dotnet test MyRestaurant.slnx \
+#
+# MICROSOFT.TESTING.PLATFORM MODE, and the command line says so (F-97). `global.json` selects the
+# runner for the whole repository; in that mode a solution is passed with `--solution` rather than as
+# a bare argument, and `dotnet test MyRestaurant.slnx` would be read as a directory name. This is the
+# same string CI runs, minus the report it uploads.
+dotnet test --solution MyRestaurant.slnx \
     --configuration Release \
     --no-build \
     -p:ContinuousIntegrationBuild=true
@@ -195,7 +200,7 @@ if (( WITH_E2E )); then
     announce "end to end (§16.3 Playwright scenarios)"
     echo "MYRESTAURANT_E2E=1 — each scenario creates its own database and boots the built app."
     echo "The first run downloads Chromium into ~/.cache/ms-playwright."
-    MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj \
+    MYRESTAURANT_E2E=1 dotnet test --project tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj \
         --configuration Release \
         --no-build \
         -p:ContinuousIntegrationBuild=true

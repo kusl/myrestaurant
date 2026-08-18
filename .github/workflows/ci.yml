@@ -224,22 +224,28 @@ jobs:
       # Testcontainers finds /var/run/docker.sock on the runner, so the ~190 data-access integration
       # facts execute here. MYRESTAURANT_E2E is deliberately NOT set: the §16.3 scenarios have their
       # own job below, and running them twice would double the browser time for one answer.
+      #
+      # MICROSOFT.TESTING.PLATFORM MODE, not VSTest (F-97). `global.json` carries the opt-in, so the
+      # command line is the MTP one: the solution arrives through `--solution` rather than as a bare
+      # argument, `--logger` does not exist here, and the TRX report is xUnit.net's own reporter asked
+      # for after the `--` that marks where test-application arguments begin. `--output Detailed` is
+      # what `console;verbosity=normal` used to buy.
       - name: test
         run: |
-          dotnet test MyRestaurant.slnx \
+          dotnet test --solution MyRestaurant.slnx \
               --configuration Release \
               --no-build \
               -p:ContinuousIntegrationBuild=true \
-              --logger "trx" \
-              --logger "console;verbosity=normal" \
-              --results-directory "${{ github.workspace }}/TestResults"
+              --output Detailed \
+              --results-directory "${{ github.workspace }}/TestResults" \
+              -- --report-xunit-trx
 
       - name: upload test results
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: test-results
-          path: TestResults/**/*.trx
+          path: "**/TestResults/**/*.trx"
           if-no-files-found: warn
           retention-days: 14
 
@@ -474,19 +480,19 @@ jobs:
         env:
           MYRESTAURANT_E2E: "1"
         run: |
-          dotnet test tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj \
+          dotnet test --project tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj \
               --configuration Release \
               --no-build \
               -p:ContinuousIntegrationBuild=true \
-              --logger "trx" \
-              --logger "console;verbosity=normal" \
-              --results-directory "${{ github.workspace }}/TestResults"
+              --output Detailed \
+              --results-directory "${{ github.workspace }}/TestResults" \
+              -- --report-xunit-trx
 
       - name: upload end-to-end results
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: end-to-end-results
-          path: TestResults/**/*.trx
+          path: "**/TestResults/**/*.trx"
           if-no-files-found: warn
           retention-days: 14

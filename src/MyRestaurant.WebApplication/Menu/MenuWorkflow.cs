@@ -18,7 +18,7 @@ namespace MyRestaurant.WebApplication.Menu;
 /// which verb caused it, and every subscriber responds the same way: re-read the menu. Splitting this in
 /// two would make it possible to wire an application that announces 86s and not repricings.</para>
 ///
-/// <para><b>All five of <see cref="IMenuSectionAdministration"/>'s verbs are here now, and the obligation
+/// <para><b>All six of <see cref="IMenuSectionAdministration"/>'s verbs are here now, and the obligation
 /// carried since Slice 37 is closed.</b> The rule never changed: a workflow verb with no caller is a code
 /// path no test can reach through the interface meant to protect it, so a verb arrives when its surface
 /// does. <c>0005</c> gave exactly one of them a caller — the section create page — and the section editor
@@ -38,10 +38,11 @@ namespace MyRestaurant.WebApplication.Menu;
 /// orderable on every phone already looking at it. Both are now ordinary conditional publishes.</para>
 ///
 /// <para><b>Not every call publishes.</b> A rename to the name it already has, a reprice to the price it
-/// already has, a description equal to the stored one, a move to the position it is already at, and a
-/// toggle to the state it is already in all commit nothing, and announcing them would tell every open
-/// surface in the building to re-query for a change that did not happen. The write services report that
-/// distinction; this file's whole job is to honour it.</para>
+/// already has, a description equal to the stored one, a move to the position it is already at, a
+/// resequence into the order already stored, and a toggle to the state it is already in all commit
+/// nothing, and announcing them would tell every open surface in the building to re-query for a change
+/// that did not happen. The write services report that distinction; this file's whole job is to honour
+/// it.</para>
 /// </summary>
 public interface IMenuWorkflow
 {
@@ -109,6 +110,28 @@ public interface IMenuWorkflow
     Task<ReorderMenuSectionOutcome> ReorderMenuSectionAsync(
         Guid menuSectionIdentifier,
         int displayOrder,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reorders the whole set of headings at once (§7) and, if anything actually moved, announces it.
+    ///
+    /// <para><b>This is what an up/down control on the menu index posts</b>, and it is here rather than
+    /// left to <see cref="ReorderMenuSectionAsync"/> because "up" is not an absolute position: §7 permits
+    /// two headings to share one, so the number that would express the move depends on what else is
+    /// sharing. The surface sends the ordering it is already rendering with two entries exchanged.</para>
+    ///
+    /// <para>Conditional on <c>Resequenced</c> alone. <c>NoChange</c> is an administrator pressing "up" on
+    /// a heading somebody else has already moved up, and <c>MenuSectionSetChanged</c> is a page rendered
+    /// before a heading was created — both commit nothing, so both announce nothing, and the surface
+    /// reloads rather than reporting a success that did not happen.</para>
+    ///
+    /// <para>The publish is one <c>MenuChanged</c> for the whole call, whatever number of rows it wrote,
+    /// which is what §9's "re-read the menu" already means. §11.1 renders the headings in stored order, so
+    /// a resequence changes the shape of every open guest menu without a single item having moved.</para>
+    /// </summary>
+    Task<ResequenceMenuSectionsOutcome> ResequenceMenuSectionsAsync(
+        IReadOnlyList<Guid> orderedMenuSectionIdentifiers,
         Guid actorPersonIdentifier,
         CancellationToken cancellationToken = default);
 
@@ -340,6 +363,24 @@ public sealed class MenuWorkflow : IMenuWorkflow
             .ConfigureAwait(false);
 
         if (outcome is ReorderMenuSectionOutcome.Reordered)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
+
+        return outcome;
+    }
+
+    public async Task<ResequenceMenuSectionsOutcome> ResequenceMenuSectionsAsync(
+        IReadOnlyList<Guid> orderedMenuSectionIdentifiers,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        ResequenceMenuSectionsOutcome outcome = await _sections
+            .ResequenceMenuSectionsAsync(
+                orderedMenuSectionIdentifiers, actorPersonIdentifier, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (outcome is ResequenceMenuSectionsOutcome.Resequenced)
         {
             _broadcaster.Publish(new MenuChanged());
         }

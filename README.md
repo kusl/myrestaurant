@@ -114,11 +114,20 @@ a missing connection string, and so on).
 ## Testing
 
 ```bash
-dotnet test                                             # everything
-dotnet test tests/MyRestaurant.Domain.Tests             # pure, fast, no services
-dotnet test tests/MyRestaurant.WebApplication.Tests     # config binding + identity wiring/enforcement
-dotnet test tests/MyRestaurant.DataAccess.Tests         # needs a reachable container engine
+dotnet test                                                       # everything
+dotnet test --project tests/MyRestaurant.Domain.Tests             # pure, fast, no services
+dotnet test --project tests/MyRestaurant.WebApplication.Tests     # config binding + identity wiring/enforcement
+dotnet test --project tests/MyRestaurant.DataAccess.Tests         # needs a reachable container engine
 ```
+
+**`--project`, not a bare path, and that is the runner rather than a style preference.** `global.json`
+opts this repository into the **Microsoft.Testing.Platform** mode of `dotnet test`, which is the .NET 10
+SDK's own mode and the only one xUnit.net v3 4.x supports there. In that mode a path is passed with
+`--project` (or `--solution`), `--logger` no longer exists, and arguments for the test application itself
+go after a `--` — so `dotnet test --report-xunit-trx` becomes `dotnet test -- --report-xunit-trx` when it
+is mixed with build options. `dotnet test -?` inside a test project folder lists everything that project
+accepts, xUnit.net's own filters included: `--filter-class`, `--filter-method`, `--filter-trait`. There is
+no VSTest adapter package in any test project, deliberately.
 
 The domain and web-layer tests need no services. The data-access tests spin up a real PostgreSQL 17
 container via Testcontainers; if no container engine is reachable they skip rather than fail.
@@ -142,7 +151,7 @@ The §16.3 matrix lives in `tests/MyRestaurant.EndToEnd.Tests`. It is **opt-in**
 with either of:
 
 ```bash
-MYRESTAURANT_E2E=1 dotnet test tests/MyRestaurant.EndToEnd.Tests
+MYRESTAURANT_E2E=1 dotnet test --project tests/MyRestaurant.EndToEnd.Tests
 scripts/ci_local.sh --with-e2e
 ```
 

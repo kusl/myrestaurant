@@ -1,11 +1,11 @@
-# M6 Slice 46 — the dump that had become mostly history
+# M6 Slice 47 — the runner that was a default, and the verb that could finally be written
 
 Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-46-context-dump-reduction.tar.gz
-git add docs/progress/BUILD_PROGRESS_THROUGH_M6_SLICE_39.md
-git add tests/MyRestaurant.WebApplication.Tests/Documentation/ContextDumpExclusionContractTests.cs
+tar -xzf m6-slice-47-test-runner-and-resequence.tar.gz
+git add tests/MyRestaurant.WebApplication.Tests/Deployment/TestRunnerContractTests.cs
+git add tests/MyRestaurant.DataAccess.Tests/Menu/MenuSectionResequenceTests.cs
 git status
 ```
 
@@ -13,174 +13,211 @@ git status
 
 **`git add` IS required, for two new files, and it is not optional.** Every gate and CI job in this
 repository enumerates with `git ls-files`. An untracked file is invisible to `scripts/check_tree.sh`, to
-`scripts/check_repository.sh`, to the shell-scripts job — and, in this slice specifically, to `export.sh`
-itself, which means an untracked archive would be missing from `dump.txt` for a reason that has nothing to
-do with the exclusion this slice adds.
+`scripts/check_repository.sh`, to the shell-scripts job and to `export.sh` — and one of the two new files is
+itself a gate that walks the tree, so an untracked copy of it would be a gate that never runs.
 
-**No behaviour change. Nothing under `src/` is in this archive at all.** No schema change, no migration,
-no read changed, no surface changed, no Razor component, no CSS, no new package, no `compose.yaml` edit,
-no `.slnx` edit, no `REQUIREMENTS.md` edit, no ADR edit.
+**No schema change, no migration, no ADR edit, no `compose.yaml` edit, no `.slnx` edit, no
+`REQUIREMENTS.md` edit, and no CSS.**
 
 ---
 
-## What this is
+## Two changes, and why they ride together
 
-Your dump had reached **6.08 MiB and 87% of the project capacity it loads into**. That is a dump which
-will refuse a session partway through the next feature, and the cost of hitting that ceiling mid-slice is
-a slice delivered from a partial tree. So this slice fixes the container before more goes into it.
+You asked for both, so here is the reasoning rather than an apology. Slices 45 and 46 each deferred the menu
+verb on one rule — **one change, one green run, then the feature** — because a red run beside two changes has
+two candidate causes. That rule is about *indistinguishable* symptoms, and these two cannot be confused:
 
-**Measured on the produced file, not predicted.** I ran the rewritten `export.sh` against a `git init`ed
-copy of your tree and read the output back:
+- A **runner** defect fails before this project's own code runs: an MSBuild error out of a `.targets` file,
+  exit code 5 for an unrecognised argument, or a summary reporting no tests at all.
+- A **verb** defect fails as a named assertion in one of two files.
 
-**6,377,323 bytes before, 5,483,728 after — roughly 894 KiB smaller, about 14%, taking 87% of capacity
-to about 75%.**
+So the first question a red run raises answers itself: *did the suite run?* If it did not, nothing under
+`src/` is implicated. If it did, nothing about the runner is.
 
-Round numbers on purpose. The dump contains `docs/BUILD_PROGRESS.md`, which contains this slice's own
-entry, which contains this measurement — so the artefact measures itself and a figure to the byte would
-be false precision. The exact before-and-after above is what the two runs reported; the saving is stated
-loosely because your tree has commits mine does not.
+---
 
-Three changes get there, and they are worth different amounts:
+## 1. The runner (F-97) — this is the fix for the error you pasted
 
-| Change | Saves | Why it is safe |
+`xunit.v3` 4.0.0 (published 2026-08-14) installs `xunit.v3.mtp-v2`, which pins Microsoft.Testing Platform 2,
+and **MTP 2 has removed the VSTest target for the .NET 10 SDK**. That is exactly the message you got, four
+times, from a `.targets` file in your NuGet cache. It cannot be fixed by staying on 3.2.2 forever, and it is
+not fixed by `TestingPlatformDotnetTestSupport` either — that property is the .NET 8/9 mechanism and is the
+legacy path the migration guidance points away from.
+
+**The .NET 10 mechanism is one stanza in `global.json`:**
+
+```json
+{ "test": { "runner": "Microsoft.Testing.Platform" } }
+```
+
+With it, `dotnet test` runs the test applications directly. Three consequences you will notice:
+
+| Before (VSTest) | Now (MTP) |
+| --- | --- |
+| `dotnet test MyRestaurant.slnx` | `dotnet test --solution MyRestaurant.slnx` |
+| `dotnet test tests/X/X.csproj` | `dotnet test --project tests/X/X.csproj` |
+| `--logger "trx"` and `--logger "console;verbosity=normal"` | `-- --report-xunit-trx` and `--output Detailed` |
+
+**Both adapter packages are deleted rather than pinned back** — `Microsoft.NET.Test.Sdk` and
+`xunit.runner.visualstudio`, from all four test projects and from `Directory.Packages.props`. `xunit.v3`
+carries MTP support natively; the adapters are the VSTest half, and a version standing ready for a package
+that cannot be used is an invitation with a comment on it.
+
+**The finding is not the build failure.** It is that this tree carried *both* runners for eight milestones,
+so which one ran was the SDK's default rather than anybody's decision — and that the choice is spelled in
+**four independent places** that each move on their own: the stanza in `global.json`, a package reference per
+project, a version pin, and the command line in every script and workflow. Half-migrated means `dotnet test`
+does different things depending on which file was edited last, and the two mechanisms disagree about the most
+ordinary argument there is: VSTest reads a bare path as the thing to run, MTP reads it as a directory to
+search.
+
+So the row names something executable: **`TestRunnerContractTests`, four assertions**, subject computed over
+every project file, every `*.Tests.csproj`, every tracked script and every workflow — not over the two files
+that hold an invocation today. **All four were proven to fail on the pre-fix state** (stanza removed, adapters
+restored, `OutputType` dropped, old command lines back).
+
+**One detail worth your time: the gate caught itself before it shipped.** Its package scan first matched the
+bare package name and reported two findings on a correct tree — the comments this slice added to the four
+projects name both banned packages in order to explain their deletion. It now requires the `Include`
+attribute, on the standard F-67 arrived at (*declared, not merely mentioned*), and those comments are now the
+proof it does not fire on prose.
+
+## 2. The menu (Stage 3a) — `ResequenceMenuSectionsAsync`
+
+The cut §7 has recorded for three slices is closed. The verb takes the **whole ordering** and assigns
+`0…n-1` from it, which is what makes "move this heading up" expressible at all: `display_order` positions are
+permitted to be equal, so no single absolute write distinguishes two headings sharing one, and a pairwise
+swap would have to decide what happens when they do.
+
+- Locks every row `FOR UPDATE` **ordered by identifier**, so two concurrent resequences cannot deadlock
+  against each other.
+- Writes **one `reordered` event per heading that actually moved** — three headings reversed leaves the
+  middle one alone and writes two events, not three.
+- **Refuses** a list that is not a permutation of the stored set, whole, with nothing written: short,
+  repeating, and naming an unknown heading are one outcome, because from the write's side they are one fact.
+- All of one call's events share an instant, so they read in the order the rows were written **only because**
+  Slice 45 made the identifier factory ascend inside a millisecond. That is why this verb waited for F-95
+  rather than shipping beside it — its own ordering test would otherwise have been the first test of the fix.
+
+**The surface is `/administration/menu`.** Up and Down at the foot of each heading's group, each its own
+static-SSR form named from the heading's identifier, posting the list the page already rendered with two
+entries exchanged. The ends are **disabled rather than omitted**, because a control that vanishes at the edge
+of a list moves every other control up a row on the next render and scenario 16 measures where controls are.
+The section editor keeps its absolute-position field: that is a different question, not a duplicate.
+
+**F-93 is obeyed on the way in for the first time.** The barrier gains `.menu-group-actions button` in the
+same slice as the buttons, rather than in the slice after somebody notices.
+
+## 3. The dump — measured, and deferred by name
+
+**Your numbers are behind the tree.** Slice 46's cut has landed: `dump.txt` is **5.48 MB / 102,253 lines**,
+not 116,400. I reconstructed all 351 files from it and **SHA-256 matched 350 of 350 non-elided files**, so
+this archive was built on a byte-exact tree.
+
+Where the remaining bytes are:
+
+| Path | Size | What it is |
 | --- | --- | --- |
-| `docs/BUILD_PROGRESS.md` splits at Slice 40 | 730 KiB | the archive is a real tracked file, byte-exact, linked by path from the retained half |
-| metadata block: twelve fields to three | 164 KiB | the three kept are the three that make a reconstruction checkable |
-| `LICENSE` body elided | 34 KiB | the SHA-256 is still dumped, so a modified licence is still detectable |
+| `docs/TECHNICAL_SPECIFICATION.md` | 445 KiB | of which Appendix A 139 KiB, changelog 64 KiB |
+| `docs/DOCUMENTATION_REVIEW.md` | 227 KiB | the long-form twin of Appendix A |
+| `docs/BUILD_PROGRESS.md` | 124 KiB | Slice 40 onward |
+| everything else | about 4.6 MB | authored source, tests, scripts, CSS |
 
-## The menu is next, and why it is not here
+**`export.sh` is not in this archive, because nothing in it needed to change.** Every cut still available is
+a *split of a history register*, and a split needs no exporter edit at all — `docs/progress/` is already
+withheld by path. What a split does need is care, because each of those documents is read by four gates
+(`SpecificationVersionTests`, `MarkdownTableContractTests`, `TestingSectionContractTests`,
+`ContextDumpExclusionContractTests`), and Slice 46's own entry records that its first split attempt failed
+tree hygiene on a trailing blank line.
 
-**Slice 45 was green twice** — `total: 1162, failed: 0` on both `dotnet test` and
-`ci_local.sh --with-all --with-e2e`, plus the five-times-repeated `MenuEventLogTests` you ran, 9 of 9 each
-time. That is the evidence F-95 needed, since a 50% property cannot be cleared by one green run.
+So, specified for the next slice rather than done here, on exactly the reasoning Slice 46 used to defer this
+verb:
 
-**So Stage 3a — `ResequenceMenuSectionsAsync` — is unblocked, and it is the next slice.** It is deferred
-here by name rather than dropped, which is the discipline that let six earlier verbs be reported as
-discharged rather than noticed later. The reason it is not in this archive is the ruling Slice 45 itself
-made and this is the second application of: **one change, one green run, then the feature.** This slice
-moves 730 KiB of documentation that four gates read and changes what a fifth script enumerates. If a new
-write rode along and the run came back red, there would be two candidate causes, and §18's habit of
-chasing a count deviation before the slice closes gets expensive with two.
+1. **`docs/DOCUMENTATION_REVIEW.md` splits at a finding boundary**, the older tranche to
+   `docs/progress/`, the recent tranche staying so a slice can still append its row. **About 200 KiB**, and
+   it is the same operation Slice 46 performed on the build log, so the pattern and its hazards are already
+   written down.
+2. **The specification's Appendix A moves whole** to `docs/progress/`, with the section becoming a pointer
+   paragraph so the roughly one hundred *Appendix A* citations stay valid. **139 KiB.**
 
-## Two defects this caught before packaging
-
-**`scripts/check_repository.sh` gate 3 would have failed on the archive.** That gate forbids a document
-from asserting platform state (F-42) and exempts the files whose job is to *quote* such a claim. The
-archived log quotes F-42's own sentence — *"Issues are disabled. There is no bug…"* — at what is now line
-6252 of `docs/progress/`. Moving history out of an exempt file into a new file carries the exemption with
-it, or the first run after the split is red for a reason unrelated to anything anybody changed.
-`docs/progress/*` joins `RECORD_FILES`, and the new gate's fourth assertion asserts it is there so the
-next tranche cannot arrive without it.
-
-**The first split attempt failed tree hygiene.** Taking the archive through line 11095 captured the blank
-line between the two slices, leaving the file ending in two newlines — which gate 3 of
-`scripts/check_tree.sh` refuses. The split now consumes that line and asserts its own boundary line
-numbers rather than trusting them.
-
-## One claim went false rather than stale
-
-`scripts/check_tree.sh` said its `GENERATED_DIRECTORIES` was *"kept in step with export.sh's
-EXCLUDED_DIRECTORY by hand."* After this slice the exporter withholds **two** directories and only one of
-them is generated — so that sentence is not merely out of date, it points at the wrong conclusion.
-Hygiene-exempting the archive because it happens to be absent from a dump would stop checking 749 KiB of
-authored prose for exactly the appended-separator defect that reached twenty-one files before anybody
-noticed (F-40).
-
-**Withheld from the dump and exempt from hygiene are different properties, and only one of them belongs to
-the file.** So `export.sh` now names three kinds of held-out path instead of one:
-
-- `GENERATED_DIRECTORIES` — tool output. `docs/llm`. Skipped by tree hygiene, because a dump's own
-  structure is the separator that gate forbids.
-- `ARCHIVED_DIRECTORIES` — authored history, withheld only for size. `docs/progress`. **Still**
-  hygiene-checked, **still** a record file for the platform-state rule.
-- `ELIDED_FILES` — metadata and hash, no body. `LICENSE`.
-
-## The hazard, stated plainly
-
-**A withheld file is invisible to the session that would notice it was missing.** It is tracked, it is
-authored, it is edited by hand, and `dump.txt` does not contain it. A document in that state is one
-careless slice from being regenerated without it.
-
-So: **`docs/BUILD_PROGRESS.md` must never be delivered as though it were the whole log.** That is written
-in both files' headers, in the dump's own banner, and in §18. The checkable half of it is
-`ContextDumpExclusionContractTests` fact 2 — every withheld document is linked by path from a document the
-dump does contain. History that leaves the dump leaves a pointer behind, or it is gone in the only sense
-that matters.
-
-**About a hundred *BUILD_PROGRESS M6 Slice N* citations are deliberately left unchanged**, across
-`DOCUMENTATION_REVIEW.md` and Appendix A. They cite the log, the log still contains every slice, and the
-rule for which file holds slice N is stated once in both headers. Rewriting a hundred rows to record a
-filing decision would be a hundred chances to introduce an error in service of nothing (F-47).
-
-## The LICENSE elision, and how to undo it
-
-Flagged as a veto candidate and cleared in the session. It is worth 34 KiB of the 940 KiB, and it is the
-one item here with any downside — an AGPL project whose `/source` page is a compliance surface.
-
-It is safe rather than merely cheap **because the hash is still dumped**: a modified licence remains
-detectable from the dump alone, which is the property that matters.
-
-**To revert:** delete `"LICENSE"` from `ELIDED_FILES` in `export.sh`. Nothing else depends on it — no
-gate, no document, no test.
+**Together about 6% of the dump.** Worth saying plainly: at roughly 30–60 KiB of new prose per slice, that
+buys several slices and no more. The register split is the next slice; after it, the honest answer is that
+this tree is 4.6 MB of source and prose a session actually reads, and the way to shrink that is to write less
+of it.
 
 ## Files in this archive
 
 | Path | What changed |
 | --- | --- |
-| `export.sh` | three named kinds of held-out path; metadata twelve fields to three; `LICENSE` elision; `file_mime` and the three host probes removed as dead |
-| `docs/BUILD_PROGRESS.md` | now Slice 40 onward, plus an orientation header and the Slice 46 entry |
-| `docs/progress/BUILD_PROGRESS_THROUGH_M6_SLICE_39.md` | **new** — M1 through Slice 39, byte-exact, `git add` required |
-| `tests/MyRestaurant.WebApplication.Tests/Documentation/ContextDumpExclusionContractTests.cs` | **new** — four assertions, `git add` required |
-| `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs` | census floor twenty to twenty-one, and the doc sentence recording the moves |
-| `scripts/check_tree.sh` | the comment that had become false, corrected and explained |
-| `scripts/check_repository.sh` | `docs/progress/*` joins `RECORD_FILES` |
-| `docs/TECHNICAL_SPECIFICATION.md` | v1.31; §2 layout; §16.4 paragraph; §18 two paragraphs; Appendix A F-96; changelog |
-| `docs/DOCUMENTATION_REVIEW.md` | F-96 row; the whole-file-delivery paragraph now covers both halves |
-| `README.md` | points at both halves of the log |
+| `global.json` | the `test` stanza — the MTP opt-in |
+| `Directory.Packages.props` | xunit.v3 to 4.0.0; both adapter packages deleted, with the reason where the versions were |
+| the four test `csproj` files | both adapter references deleted; the Domain project explains why |
+| `.github/workflows/ci.yml` | both test steps respelled; artifact paths widened |
+| `scripts/ci_local.sh` | both test invocations respelled |
+| `README.md` | `--project`, and why; the filter switches `dotnet test -?` now offers |
+| `tests/MyRestaurant.WebApplication.Tests/Deployment/TestRunnerContractTests.cs` | **new** — four assertions, `git add` required |
+| `src/MyRestaurant.DataAccess/Menu/MenuSectionAdministration.cs` | the outcome enum, the verb, the whole-table locking read, the permutation test |
+| `src/MyRestaurant.WebApplication/Menu/MenuWorkflow.cs` | the verb, one conditional publish |
+| `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationMenu.razor` | Up and Down per heading, the handler, the flash |
+| `tests/MyRestaurant.DataAccess.Tests/Menu/MenuSectionResequenceTests.cs` | **new** — eight assertions, `git add` required |
+| `tests/MyRestaurant.DataAccess.Tests/Orders/OrderTestWorld.cs` | a `QueryAsync` sibling to `ScalarAsync` |
+| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs` | the fake learns the verb; two facts |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs` | `.menu-group-actions button` joins the barrier (F-93) |
+| `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs` | census floor 21 to 23 |
+| `docs/TECHNICAL_SPECIFICATION.md` | v1.32; §7; §16.4 opening plus two paragraphs; two counts moved and one prose census deleted; Appendix A F-97 and the Stage 3a row; changelog |
+| `docs/DOCUMENTATION_REVIEW.md` | F-97 row; status line |
+| `docs/BUILD_PROGRESS.md` | the Slice 47 entry |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 3a struck through, with what landed and the three things the design did not settle |
 | `_CHANGES.md` | this file |
 
-## What to run
+## What to run, in this order
 
 ```
 bash scripts/check_tree.sh
 bash scripts/check_repository.sh
+dotnet restore
 dotnet test
-bash export.sh > /dev/null && wc -c docs/llm/dump.txt
 ```
 
-**Expect `dotnet test` to report 1166.** That is 1162 plus four, and the arithmetic has one term: the new
-`ContextDumpExclusionContractTests`. If it reports anything else, check that file's `[Fact]` count first,
-because it is the only thing that moved. If it reports 1166 and a *documentation* gate is red, the cause is
-§16.4's census — the floor moves twenty to twenty-one in the same slice as the paragraph that raises it, so
-a mistake there fails twice, once as the floor and once as a count.
+**`dotnet restore` on its own first, and read it.** It is the one step that can tell you the runner migration
+is wrong before anything else is at stake. If it succeeds and `dotnet test` then fails with a `.targets`
+error, an unrecognised option, or "no tests ran", the cause is in section 1 and nothing under `src/` is
+implicated.
 
-**Expect `wc -c` to report somewhere near 5.5 million.** That came from running this exporter on a
-reconstruction of your tree, so it will differ by whatever you have committed since — and the dump
-includes the document stating the number, so it cannot be exact in principle.
+**Expect `dotnet test` to report 1180.** That is 1166 plus fourteen: four in `TestRunnerContractTests`, eight
+in `MenuSectionResequenceTests`, two in `MenuWiringTests`. Any other number is the first thing to investigate
+(§18). If it reads 1180 and a *documentation* gate is red, look at §16.4's census first — the floor moves
+21 to 23 in the same slice as the two paragraphs that raise it, so a mistake there fails twice.
+
+Then, when you have a green run:
+
+```
+scripts/ci_local.sh --with-all
+```
 
 ## What was NOT verified
 
-**Nothing was compiled and no test was run.** There is no .NET SDK in the authoring environment and the
-package feeds are unreachable from it. Per §18 an uncompiled archive is a prediction, so **build it before
-believing anything above.**
+**Nothing was compiled and no test was run.** No .NET SDK in the authoring environment and no reachable
+package feed. Per §18 an uncompiled archive is a prediction — build it before believing any of the above.
 
-`ContextDumpExclusionContractTests` has never executed. It parses shell arrays with regular expressions,
-which is exactly the kind of code whose first honest test is its first real run — although the same parse
-was run here in Python against your four actual scripts and returned the right five arrays.
+**`xunit.v3` 4.0.0 was not restored.** Its release notes and both Microsoft references were read; what its
+dependency graph resolves to on your machine was not. **If `--report-xunit-trx` is rejected with exit code 5,
+delete that flag and the `--` before it from both CI steps.** The report is an artifact upload, not a gate.
 
-**Two of the four assertions were proven against real defects; two were not.** Facts 3 and 4 were run by
-hand against the unfixed state and failed there, which is this project's usual sensitivity requirement.
-Fact 1's non-vacuity guard is untested, and **fact 2 — the load-bearing one — has never been shown to fail
-on a tree where the link was missing.**
+**MTP's zero-tests exit code (8) was not exercised.** Skipped tests are reported tests, so a solution-wide run
+where the end-to-end scenarios skip should not trip it. If it does, `--ignore-exit-code 8` on that step is the
+documented remedy — but check first, because "no tests ran" on a project with 17 of them is a finding.
 
-`shellcheck` here was `shellcheck-py` rather than your distribution binary, so a version difference could
-report differently on your machine. Clean at `--severity=warning` (blocking) and `--severity=style`
-(advisory) on all twelve scripts.
+**No Blazor form was rendered.** Two forms per heading with per-heading `@formname` values is the documented
+static-SSR pattern, and this page now has two per group. If a POST landed on the wrong handler, every heading
+would move the same one. This is the single most likely thing to be wrong, and it is visible in one click.
 
-**Only `export.sh` was actually executed.** `check_tree.sh`, `check_repository.sh` and `ci_local.sh` were
-hand-simulated against their own pattern lists, not run.
+**The 375px barrier was not run**, so `.menu-group-actions button` is asserted to be measured rather than
+measured. **The resequence never ran against PostgreSQL**, so the `FOR UPDATE` ordering is read from
+PostgreSQL's documented behaviour rather than demonstrated by two concurrent transactions.
 
-**The dump this produces has never been consumed by a session.** The claim that three metadata fields
-suffice rests on nine fields never having been used — an observation about past sessions, not a guarantee
-about the next one. If a future slice wants the last-commit line back, that is evidence rather than a
-mistake.
+**`shellcheck` here was `shellcheck-py`**, not your distribution binary, so a version difference could report
+differently. Clean at `--severity=warning` (blocking) and `--severity=style` (advisory) on all twelve scripts.
+
+**One claim was removed rather than shipped.** A comment first said NSubstitute 6.0.0 "was current on
+2026-08-17". Nothing here checked that. It now says the pin is unchanged and unverified by this slice.

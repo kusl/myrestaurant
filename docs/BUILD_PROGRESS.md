@@ -1814,3 +1814,207 @@ starts it successfully.** Carried.
 a judgement rather than made executable. A size threshold that moved history automatically would be a
 script silently rewriting the record of what this project did, which is worse than a document somebody
 has to notice is long.
+
+# M6 Slice 47 — the runner that was a default, and the verb that could finally be written
+
+## Read this first: Slice 46 was green, and the count matched
+
+`total: 1166, failed: 0, succeeded: 1166` on `dotnet test`, with `MYRESTAURANT_E2E` set in that shell — the
+end-to-end project accounts for 155.9s of the 156.5s — and `total: 17` on the separate scenario run. The
+predicted count was 1166 and the run returned 1166, so §18's arithmetic had nothing to chase for the first
+time in three slices.
+
+## Two changes in one archive, and why that is not a reversal of the last two slices' ruling
+
+Slices 45 and 46 each deferred this menu verb by name on one rule: **one change, one green run, then the
+feature**, because a red run beside two changes has two candidate causes and §18's habit of chasing a count
+deviation gets expensive with two. That rule is about *indistinguishable* symptoms. These two are not.
+
+A runner defect cannot fail as an assertion. It fails as an MSBuild error from a `.targets` file, or exit
+code 5 for an argument the platform does not recognise, or a summary reporting no tests at all — before any
+of this tree's own code runs. A verb defect fails as a named assertion in one of two files. So the first
+question a red run raises here answers itself: *did the suite run?* If it did not, nothing in `src/` is
+implicated; if it did, nothing about the runner is.
+
+The order to run them in is therefore also the order to read this entry in, and it is in **What to run**
+below.
+
+## The runner (F-97)
+
+`xunit.v3` 4.0.0 was published on 2026-08-14 and installs `xunit.v3.mtp-v2`, pinning Microsoft.Testing
+Platform 2. **MTP 2 has removed the VSTest target for the .NET 10 SDK**, so bumping the version on a tree
+that carries `Microsoft.NET.Test.Sdk` and `xunit.runner.visualstudio` fails at build time, four times, with
+a message from a `.targets` file inside the NuGet cache that names the four projects and none of the
+packages responsible. That is what happened on the workstation, and reverting the bump was the right
+immediate move.
+
+**The finding is not the build failure.** It is that this tree had carried *both* runners for eight
+milestones, so which one `dotnet test` used was decided by the SDK's default rather than by anything
+written down — and that the choice is spelled in **four independent places** which each move on their own:
+the `test` stanza in `global.json`, a package reference per project, a version pin in
+`Directory.Packages.props`, and the command line in every script and workflow. A half-migrated tree is one
+where `dotnet test` means different things depending on which file was edited last, and the two mechanisms
+disagree about the most ordinary argument there is: VSTest reads a bare path as the thing to run, MTP reads
+it as a directory to search.
+
+What changed:
+
+- **`global.json`** gains `"test": { "runner": "Microsoft.Testing.Platform" }`. This is the .NET 10
+  mechanism. `TestingPlatformDotnetTestSupport` is the .NET 8/9 one, which this tree never had and which
+  the migration guidance calls legacy — worth stating because it is the property most search results still
+  reach for.
+- **Both adapter packages are deleted** from all four test projects and from `Directory.Packages.props`.
+  Deleted rather than pinned back: a version standing ready for a package that cannot be used is an
+  invitation with a comment on it.
+- **Every invocation is respelled.** `--solution MyRestaurant.slnx` and
+  `--project tests/…csproj` instead of bare paths; `--output Detailed` instead of
+  `--logger "console;verbosity=normal"`; `-- --report-xunit-trx` instead of `--logger "trx"`. CI's artifact
+  paths widen to `**/TestResults/**/*.trx`, because where a report lands is now the platform's decision
+  rather than one flag's.
+- **`README.md`** explains why a path needs an option in front of it, since that is the one change a reader
+  meets without being told, and names the filter switches `dotnet test -?` now offers.
+
+## The verb (Stage 3a)
+
+`ResequenceMenuSectionsAsync` takes the **whole ordering** and assigns `0…n-1` from it. Everything else
+follows from that one decision:
+
+- **Why not an absolute write per heading.** `ReorderMenuSectionAsync` already sets an absolute
+  `display_order`, and positions are deliberately permitted to be equal with a name tie-break. Two headings
+  sharing a number have an order nobody assigned, so no single absolute write expresses "move this one up",
+  and a pairwise swap would have to decide what happens when the two numbers are equal. Taking the whole
+  ordering leaves nothing to decide.
+- **The lock is `FOR UPDATE` ordered by identifier**, and the order is the point: PostgreSQL locks rows as
+  the plan produces them, so two administrators resequencing at the same moment take them in the same
+  sequence and one waits rather than the two deadlocking half way through each other's set.
+- **One event per heading that actually moved.** The no-op rule the other verbs follow, applied per row:
+  three headings reversed leaves the middle one where it was and writes two events, not three.
+- **A list that is not a permutation is refused whole.** Short, repeating, or naming a heading the table
+  does not hold are one answer — `MenuSectionSetChanged` — because from the write's side they are one fact:
+  the list does not describe this menu. Partially obeying a stale ordering would leave a menu order nobody
+  chose.
+- **The events of one call share an instant**, so they read in the order the rows were written *only
+  because* §8.1 requires the identifier factory to ascend inside a millisecond. That is F-95, fixed in
+  Slice 45, and it is why this verb waited rather than shipping beside its own dependency.
+
+The surface is `/administration/menu`. Up and Down at the foot of each heading's group, each its own
+static-SSR form named from the heading's identifier, posting the list the page is already rendering with
+two entries exchanged. The ends are **disabled rather than omitted**: a control that vanishes at the edge of
+a list moves every other control up a row on the next render, and §16.3 scenario 16 measures where controls
+are. The editor keeps its absolute-position field, which is a different question rather than a duplicate —
+somebody who wants breakfast at 0 and does not care what else moves is stating an absolute.
+
+**F-93's rule is obeyed on the way in for the first time.** That finding was a barrier that keeps *visiting*
+a surface and stops *measuring* it when the surface's vocabulary changes. The group action row acquired a
+new kind of control — two submit buttons where there was one link — so `HandheldReach` gains
+`.menu-group-actions button` in the same slice, not the slice after.
+
+**No CSS.** `.menu-group-actions .button-secondary` has styled that row since Slice 44 and a `<button>`
+matches the same rule, so the buttons are 44px tall and full width on a handset by declarations that
+already existed. The wide layout stacks the three controls, each on its own line, because a `<form>` is a
+block: usable, honest, and recorded here as a deliberate non-change rather than discovered later. Making
+them a row is a rule in `app.css` and a slice that has a reason to open that file.
+
+## What was verified
+
+- **The four assertions of `TestRunnerContractTests` were run by hand, in Python, against this tree** — all
+  four pass — **and against the pre-fix state, where all four fail**: the `test` stanza removed, both
+  adapters restored to a project, `OutputType` dropped, and the two old command lines put back. That is
+  this project's sensitivity requirement met for every assertion rather than for the convenient ones.
+- **The gate caught a defect in itself before packaging.** Its package scan first matched the bare package
+  name and reported two findings on a correct tree: the comments this slice added to the four projects name
+  both prohibited packages in order to explain their deletion. It now requires the `Include` attribute, on
+  the standard F-67 arrived at — *declared, not merely mentioned* — and that comment is now the proof it
+  does not fire on prose.
+- **`TestingSectionContractTests` was simulated in full** against the edited specification: 23 counted
+  classes, no unresolvable citation, no ambiguous paragraph, no disagreement. The floor moves to 23 in the
+  same slice.
+- **`SpecificationVersionTests` was simulated**: this document's header is v1.32, the newest changelog
+  entry is v1.32, entries descend, and `REQUIREMENTS.md` is untouched and still consistent.
+- **Markdown table shape** was checked on both new Appendix A rows and the new ledger row: four cells each,
+  no unescaped pipe.
+- **Structural checks on every edited C# and Razor file**: string-aware brace, paren and bracket balance; a
+  Razor tag-tree walk on the rewritten component; Razor comment balance; and an orphaned-doc-comment scan,
+  which caught a real defect — a blank line left between two `<para>` blocks, which is CS1587 and therefore
+  an error under `ContinuousIntegrationBuild`.
+- **One unverifiable claim was removed before packaging.** A comment first said NSubstitute 6.0.0 "was
+  current on 2026-08-17". Nothing in this session checked that. It now says the pin is unchanged and
+  unverified by this slice, with the date it was last checked by hand.
+
+## What was NOT verified
+
+**Nothing was compiled and no test was run.** There is no .NET SDK in the authoring environment and the
+package feeds are unreachable from it. Per §18 an uncompiled archive is a prediction: build it before
+believing anything above.
+
+**`xunit.v3` 4.0.0 was not restored.** The release notes and the two Microsoft references were read; what
+the package's dependency graph actually resolves to on your machine was not. If `--report-xunit-trx` is
+rejected with exit code 5, drop that flag and the `--` before it from both CI steps: the report is an
+artifact upload, not a gate, and nothing else depends on it.
+
+**MTP's zero-tests exit code (8) was not exercised.** The end-to-end project reports 17 *skipped* tests
+without `MYRESTAURANT_E2E`, and skipped tests are reported tests, so the solution-wide run should not trip
+it. If it ever does, `--ignore-exit-code 8` on that one step is the documented remedy — but check first,
+because "no tests ran" on a project that has 17 is a finding rather than a nuisance.
+
+**No Blazor form was rendered.** Two forms per heading with per-heading `@formname` values is the documented
+multi-form pattern for static SSR, and this page now has 2N of them. What is untested is the N: if a POST
+lands on the wrong handler, every heading would move the same one.
+
+**The 375px barrier was not run.** `.menu-group-actions button` is asserted to be measured, not measured.
+The buttons inherit `.button-secondary`'s `min-height: var(--touch-target)`, which scenario 16 has been
+passing on since Slice 34 — but that is an argument, not a measurement.
+
+**The resequence was never executed against PostgreSQL.** In particular the `FOR UPDATE … ORDER BY` locking
+order is a documented property of how PostgreSQL produces rows, asserted here by reading rather than by two
+concurrent transactions.
+
+## Test count
+
+1166 predicted and 1166 observed last slice. This slice adds, as uncompiled arithmetic:
+
+- `TestRunnerContractTests` — **4**
+- `MenuSectionResequenceTests` — **8**
+- `MenuWiringTests` — **2**
+
+**1166 + 14 = 1180.** Any other number is the first thing to investigate (§18). If it reads 1180 and a
+*documentation* gate is red, look at §16.4's census first: the floor moves 21 → 23 in the same slice as the
+two paragraphs that raise it, so a mistake there fails twice, once as the floor and once as a count.
+
+## Still open
+
+**The context dump reduction.** Specified in `_CHANGES.md` and deferred by name. Measured composition:
+`TECHNICAL_SPECIFICATION.md` 445 KiB of which Appendix A is 139 KiB and the changelog 64 KiB,
+`DOCUMENTATION_REVIEW.md` 227 KiB, `BUILD_PROGRESS.md` 124 KiB. Every remaining cut is a split of a history
+register that four gates read, which is a slice of its own on the same reasoning Slice 46 used.
+
+**A section's own description under its heading on the guest menu.** Unchanged, and still the largest
+remaining piece of Stage 3.
+
+**The kitchen's "86" panel still groups by nothing.** Stage 3's last surface.
+
+**Reordering items within a heading.** The same design against `menu_item`, and now the only remaining
+ordering hole. It is a second slice because it writes to a different event table with different paired
+CHECKs.
+
+**The wide layout stacks a heading's three controls.** New, and deliberately not fixed here: it is a rule
+in `app.css`, and this slice had no other reason to open that file.
+
+**The handheld barrier visits neither section surface.** Carried.
+
+**No gate can see a count written in a comment, or a claim written beside a computation.** Carried.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried.
+
+**Nothing treats a test that fails and then passes as evidence.** Carried.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Eleventh slice carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a fourteenth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Twenty-third consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried.

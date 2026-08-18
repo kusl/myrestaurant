@@ -58,9 +58,25 @@
   </ItemGroup>
 
   <ItemGroup Label="Test infrastructure (all test projects)">
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
-    <PackageVersion Include="xunit.v3" Version="3.2.2" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <!--
+      xUnit.net v3 4.0.0, published 2026-08-14. TWO PACKAGES LEFT THIS BLOCK WITH IT, and the deletion
+      is the point rather than a tidy-up: `Microsoft.NET.Test.Sdk` and `xunit.runner.visualstudio` are
+      the VSTest half of a test project, and VSTest is no longer reachable from `dotnet test` on this
+      SDK (F-97).
+
+      Installing `xunit.v3` 4.0.0 installs `xunit.v3.mtp-v2`, which pins Microsoft.Testing.Platform 2.
+      MTP 2 removed the VSTest bridge for the .NET 10 SDK and says so at build time rather than at run
+      time — `error: Testing with VSTest target is no longer supported by Microsoft.Testing.Platform on
+      .NET 10 SDK and later` — so a tree that bumps the version and keeps the two references does not
+      build. The opt-in is one stanza in `global.json` (§16), not a property per project: that is the
+      .NET 10 mechanism, and `TestingPlatformDotnetTestSupport` is the .NET 8/9 one this tree never had.
+
+      NSubstitute stays as a version *pin standing ready* for §16.1's "NSubstitute acceptable" rather
+      than a dependency anything takes, which is why outdated mode is silent about it (see the note at
+      the top of this file). Its pin is unchanged and unverified by this slice: 6.0.0 was current when
+      it was last checked by hand, on 2026-08-02, and nothing here re-checked it.
+    -->
+    <PackageVersion Include="xunit.v3" Version="4.0.0" />
     <PackageVersion Include="NSubstitute" Version="6.0.0" />
   </ItemGroup>
 
