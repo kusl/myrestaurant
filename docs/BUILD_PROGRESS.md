@@ -2701,3 +2701,303 @@ F-99's residual, carried.
 starts it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried.
+
+# M6 Slice 51 — the picture a menu could not carry, and three columns a plan had already got wrong
+
+## Read this first: Slice 50 was green, the count matched exactly, and nothing is outstanding
+
+**1202 predicted, 1202 observed, zero failures.** §18's arithmetic matched to the digit for the third
+consecutive slice. The end-to-end suite passed all seventeen scenarios against real browsers **three
+times** — the Debug suite, the Release suite under `scripts/ci_local.sh --with-all --with-e2e`, and a
+standalone Debug run — and every local CI gate reported passing.
+
+The only `Error:` lines anywhere in the log are the two `run.sh --containers-only` prints about a Caddy
+container that does not exist yet, which is a carried item rather than a regression.
+
+**One correction to the record, and it belongs at the top because it is about this log rather than about the
+tree.** The session that authored this slice arrived believing the project was at Slice 46 and predicting
+1166 tests. The tree said Slice 50 and 1202. Nothing was lost — the reconstruction from `dump.txt` is what
+settled it, 353 of 355 file records matching their SHA-256 exactly with the two exceptions being `export.sh`
+(excluded by design) and `LICENSE` (elided since Slice 46) — but it is worth writing down that the
+authoritative account of where this project is, is this file and the terminal log, and that a session's own
+sense of it is not evidence.
+
+## The finding: a schema about to be created out of an unchecked sketch (F-101)
+
+Stage 4 of `docs/MENU_AND_HANDHELD_PLAN.md` has carried a DDL sketch for `menu_item_image` since Slice 30.
+Three of its columns were wrong, and they were wrong in two different ways.
+
+`byte_length integer NOT NULL CHECK (byte_length BETWEEN 1 AND 524288)` **is** `octet_length(bytes)`. One
+fact written twice, in a table where a single `UPDATE` can separate them, and where the copy every read
+would select is the one that can be false. That is **F-65's mechanism met for the seventh time** — F-48 a
+version header against its own changelog, F-50 a variable four documents agreed about, F-56 a port three
+helpers dialled, F-65 a touch target written as a literal eight pixels short, F-89 a census in three places,
+F-94 an index counting one thing and saying another.
+
+`pixel_width` and `pixel_height` are a worse shape, and the argument against them is in the same stage's own
+prose. It says there is no free-libre .NET imaging library available to this stack for this use, and that the
+server therefore *"validates and stores what it is given"*. Nothing in this tree can open an image. So
+neither number could ever have come from anywhere but the uploading browser's word — **recorded as a column,
+in the indicative, beside columns the database actually knows.** A later reader has no way to tell the five
+apart.
+
+### What makes it a finding rather than a refinement
+
+**Three gates read that document and none of them reads a fenced SQL block for meaning.**
+`MarkdownTableContractTests` reads it for table structure, `SpecificationVersionTests` for version
+agreement, `scripts/check_tree.sh` for hygiene. So a DDL sketch in a plan is **authored prose carrying the
+authority of a schema and none of the checking** — and its destination is uniquely unforgiving, because DbUp
+journals by script name and an applied migration is therefore never edited (**F-34**). The slice that copies
+a sketch into `Migrations/` is the last moment the sketch is free to be wrong.
+
+It was found by reading the sketch in order to implement it, which is **F-93's timing arriving a second
+time**: caught in the slice that would have caused it, rather than in the slice after.
+
+### The repair, and where it stops
+
+All three columns are dropped **before `0006` was authored**, and each reason is written into §7 and into the
+script rather than left as an absence a later reader might helpfully repair. `new_byte_length` **is** kept on
+`menu_item_image_event`, and the asymmetry is stated as the point rather than left to look like an
+inconsistency: after a removal the bytes are gone, so the log is the only place that number can live at all.
+
+The dimensions are refused with the general form recorded beside them — *a number nothing in the tree can
+verify is a worse artefact than an absent column* — and `alt_text` is named next to it as the caption that
+**can** honestly be added later, by one `ALTER` with a `DEFAULT ''`, on `0004`'s precedent.
+
+**No gate is added over the plan's SQL blocks**, on F-41 and F-47. A document that sketches a schema *in
+order to argue about it* legitimately contains shapes the tree does not have — Stage 4's sketch also argues
+against two alternatives it never built — so a gate comparing them would report findings on a correct
+document. The residual is stated instead: a fenced code block in a design document is unchecked prose, and
+nothing mechanically prevents the next one.
+
+## The menu progress: a picture, in the schema
+
+**Stage 4a.** `0006_menu_item_images.sql` adds `menu_item_image` and `menu_item_image_event` and touches
+nothing that already existed, which is `0003`'s cut applied a second time — so every read, every write,
+every integration fact and all seventeen §16.3 scenarios mean exactly what they meant before, **green by
+construction rather than by inspection**. `OrderTestWorld` needed no edit at all, because
+`TRUNCATE … CASCADE` on `menu_item` reaches both new tables.
+
+### The storage decision, which is ADR-0015 and is the reason to decide now
+
+`bytea` in PostgreSQL rather than a volume of files, and the argument is **F-38's**. §15 *defines* a recovery
+set as exactly two artefacts and `scripts/restore_drill.sh` rehearses both on every push. A third artefact
+means editing that definition, `backup.sh`, `restore.sh`, the drill and the runbook — after which an operator
+who takes one more backup the old way holds a set that restores, cleanly and quietly, an application whose
+menu has no pictures in it. Object storage is refused one register further out, on R§1's self-hosted premise.
+
+**The direction of reversibility is what settles it rather than the cost.** `bytea` → volume is a migration
+that reads rows and writes files. Volume → `bytea` is a migration that cannot find the files, because by then
+some have moved and nothing ever knew which. Choosing the reversible direction is the whole reason to choose
+before there is data.
+
+**It pays out immediately, in a file that is not in this archive.** `OPERATIONS.md`, both scripts and the
+drill are untouched, because the recovery set is still two artefacts. A volume would have meant editing five
+files whose subject is getting a restaurant's data back.
+
+### Four schema rulings, each of them a thing a later reader would otherwise repair by mistake
+
+**One image per item is `UNIQUE` on the referencing column**, not a `bytea` on `menu_item`. A picture is
+replaced far more often than a dish is renamed, and a column on the item would put the images inside every
+menu read §11.1 and §11.4 perform. It also makes a gallery a later migration that drops the `UNIQUE` and adds
+a position, rather than a redesign.
+
+**A replace mints a new `menu_item_image_identifier` and deletes the old row.** §7's route is
+`GET /menu/image/{menu_item_image_identifier}`, not `…/{menu_item_identifier}`, so the URL changes when the
+picture does and `Cache-Control: public, max-age=31536000, immutable` is a **true statement**. Keying on the
+item would buy an `ETag` and a revalidation round trip per image per page load, on phones, forever, to avoid
+a cost paid once per upload.
+
+**A removal deletes the row, and that is a stated exception to §6.8's hide-never-delete rule.** That rule
+exists so history is never orphaned; here the history is in the log and the bytes are not history — the
+`removed` event names which picture it was and the `attached` or `replaced` event before it records the
+format and the size. Keeping the bytes would grow §15's recovery set by up to half a megabyte for every
+photograph anybody ever retook, for no reader.
+
+**`menu_item_image_event` references `menu_item` and not `menu_item_image`**, naming the image as a bare
+`uuid` with no key. This is the **opposite** of `0005`'s ruling about `new_menu_section_identifier`, and it is
+opposite for a reason: there the identifier is a pointer §11.4 renders, and a dangling one renders as a
+blank; here the row it names is gone by design, so a real key could only forbid the deletion or cascade the
+history away with the bytes.
+
+### The one addition to the sketch rather than a subtraction
+
+**The declared media type is checked against the bytes' own signature.** A `Content-Type` on an upload is the
+client's claim about its own file, and §7's route hands the stored column straight back out as a response
+header on this application's origin — so a column that disagreed with its bytes would make this program
+mislabel its own responses. `MyRestaurant.Domain.Menu.ImageFormat` reads the opening bytes and no more.
+
+It is in `Domain` on **F-100's** argument, one slice after that finding: the subject is a pure function of a
+byte span and the cases worth asserting are the malformed ones, each of which behind an `INSERT` would cost a
+container and arrive as a constraint name instead of a sentence. **Both halves of WebP's RIFF header are
+required**, because `RIFF` alone is also an AVI and a WAV, and a check that stopped there would accept an
+audio file as a picture.
+
+**The media-type vocabulary is therefore declared twice, which is F-80's shape, and the agreement is gated
+behaviourally rather than textually.** F-80's repair read the SQL text and compared two lists. This is
+stronger: a real file of every format the domain can identify is attached and the database must accept it, so
+the two agreeing on paper while nothing can actually be stored is *also* a failure. The reverse direction
+needs no assertion — a type the CHECK admits and the domain cannot identify is a type no caller can produce
+bytes for, because the write refuses the pair before it opens a transaction.
+
+### The cap is the database's, and nothing in C# says how large
+
+§8.2 declares `menu_item_image_bytes_within_cap`. `DapperMenuItemImageAdministration` catches the check
+violation, compares the constraint's **name**, and answers `BytesOverCap`; **no number appears in C# at
+all.** A second copy would be F-65's mechanism, and worse it would be the belt that hides the buckle — F-64,
+F-69 and F-75 are each an instance of a redundant check making the first one's absence invisible.
+
+Two constraints rather than one bounded `BETWEEN`, because an operator who chose an empty file and one whose
+phone produced four megabytes need different sentences, and the constraint name is what carries the
+difference back up. The empty case is refused in C# before the transaction opens, because zero is a
+definition rather than a policy number — and it is refused *first*, so a zero-byte file is not reported as a
+PNG that is not a PNG.
+
+## Two test classes, and why they are two
+
+**`ImageFormatTests`, eight assertions, no container.** The RIFF fact is the one to read: every other fact in
+that file passes on an implementation that checks four bytes and stops. One fact is the non-vacuity guard and
+does more than guard (F-41) — it asserts that every member of `RecognisedContentTypes` is a type **some bytes
+actually produce**, so a media type added to that list with no signature behind it fails there.
+
+**`MenuItemImageTests`, eleven assertions, real PostgreSQL.** Its own class rather than facts on
+`MenuAdministrationTests`, for a structural reason: every verb over there writes one row and one event, so
+*the newest event for this item* is unambiguous and every helper is built on it. These two verbs **delete** a
+row, so that shape does not hold.
+
+Two of the eleven could not have been written any other way. One is the behavioural vocabulary gate above.
+The other **asks the database for its own cap** through `pg_get_constraintdef`, then attaches one byte over it
+and exactly it — so the bound is never written in this file, and a migration that moves the cap moves the
+test with it instead of turning it red.
+
+## What was verified
+
+Nothing was compiled and nothing ran. What was done:
+
+- **Tree reconstruction.** `dump.txt` parsed to 355 file records; 353 of 355 matched their SHA-256 exactly.
+  The two mismatches are `export.sh`, which the dump excludes and reproduces only in its self-documentation
+  section, and `LICENSE`, which the dump elides to metadata and hash by design (Slice 46). Zero unexplained
+  mismatches.
+- **String-aware brace, paren and bracket balance**, zero on all three new C# files and on the three edited
+  ones.
+- **SQL statement balance on `0006`**: parenthesis depth returns to zero at each `;`, three `CREATE` verbs,
+  no dollar-quoted block at all — which is what naming every constraint bought (F-78's collision cannot
+  recur in a script that has no `DO`).
+- **A `TestingSectionContractTests` simulation**: **27 counted classes against a floor of 27**, zero
+  ambiguous paragraphs, zero unresolvable citations, no duplicate test file names anywhere under `tests/`.
+  **It reported one disagreement and that is the part worth recording**: §16.4 said *seven assertions* for
+  `ImageFormatTests` and the file holds eight — the declared-versus-actual fact was written last and the
+  paragraph was not moved. That is precisely **F-70's** shape, in the section written to stop it, caught by
+  simulating the gate rather than by re-reading the prose. The count is eight and the arithmetic below moves
+  with it.
+- **A `MarkdownTableContractTests` simulation**: table runs across the documentation, 0 problems, including
+  the two new Appendix A rows and the new ledger row.
+- **The version gate**: header 1.36 against a newest changelog entry of 1.36, two versioned documents against
+  a floor of two.
+- **The platform-state gate**: no forbidden phrasing in any non-record file this slice touches.
+- **Tree hygiene on every touched and new file**: LF endings, exactly one final newline, no whitespace-only
+  line, no run of twenty or more `#` on a line of its own.
+
+## Test count arithmetic
+
+Uncompiled, per §18. **1202 → 1223.**
+
+| Where | Assertions |
+| --- | --- |
+| `ImageFormatTests` | 8 |
+| `MenuItemImageTests` | 11 |
+| `SchemaMigrationRunnerTests` theory rows | 2 |
+| **Total added** | **21** |
+
+No test is removed and none moves file. §16.3 stays at seventeen — no scenario is added or extended. §16.4
+gains three paragraphs and two counted classes, so the census and its enforced floor both move 25 → 27.
+`SchemaMigrationRunnerTests`' own `[Fact]`/`[Theory]` count stays at **7**, because a theory row is not an
+attribute — which is exactly the distinction F-90 was about, and the reason its §16.4 count does not move
+while the suite total does. **Any deviation from 1223 is the first thing to investigate.**
+
+## What was NOT verified
+
+**Nothing was compiled and nothing ran.** This archive is a prediction until `dotnet build` says otherwise.
+
+**No `bytea` round trip was performed.** `TheContentReadBackIsByteIdenticalToWhatWasStored` is the fact that
+proves Dapper and Npgsql hand a `byte[]` parameter and a `bytea` column back unchanged, and no database was
+available to run it. The likeliest failure in this archive is a parameter type: `byte[]` was chosen over
+`ReadOnlyMemory<byte>` deliberately for that reason, being the mapping Npgsql has always had.
+
+**Whether `PostgresException.ConstraintName` is populated for a check violation.** The cap outcome depends on
+it. PostgreSQL sends the constraint name in the error fields for `23514` and Npgsql surfaces it, and any
+*other* check violation is rethrown by design — so if that field arrives empty, the symptom is a thrown
+`PostgresException` in `BytesOverTheSchemasCapAreRefusedWithNothingWritten` rather than a wrong answer
+anywhere else. That is the second thing to look at on a red run.
+
+**Whether `regexp_match(pg_get_constraintdef(…), '([0-9]+)')` finds the cap.** It relies on the rendered CHECK
+containing exactly one run of digits. `CHECK ((octet_length(bytes) <= 524288))` does, and `octet_length` has
+no digits in it — but the rendering is PostgreSQL's and no server was asked. A wrong answer there fails the
+fact's own guard, which asserts the value is greater than a twelve-byte PNG before using it.
+
+**Whether a private nested record can be a Dapper generic argument across a class boundary.**
+`MenuItemImageTests.ImageEvent` is passed to `OrderTestWorld.QueryAsync<T>`. `DapperMenuSectionEventLog`
+proves private nested records bind, but not from another type — Dapper emits its deserialiser with visibility
+checks skipped, so this should hold, and no runtime confirmed it.
+
+**Whether the collection expressions targeting `ReadOnlySpan<byte>` compile as written.**
+`ImageFormat.IdentifyContentType([.. PngPrefix, 0x00])` and the `params` spread in `Riff` are C# 12 shapes
+this tree has not used before. If either is refused it is a compiler error naming the line, which is the
+cheapest kind of red.
+
+## Carried
+
+**No surface reads or writes a picture, which re-opens the obligation Slice 43 closed.** Named here for the
+first time and to be named every slice until Stage 4b discharges it. It is the weaker form: nothing is added
+behind `IMenuWorkflow`, so no surface can change a picture without announcing it for the reason that no
+surface can change one at all.
+
+**How a file upload reaches a static-SSR page is not settled.** §11.4's pages are static SSR with form posts;
+`InputFile` needs an interactive render mode and `[SupplyParameterFromForm]` does not bind a file. Stage 4b
+chooses between a plain `<form enctype="multipart/form-data">` posting to a minimal API endpoint and making
+one page interactive. **This was not foreseen in the plan's Stage 4 text**, and it is the reason the stage was
+cut at the schema rather than shipped whole.
+
+**Whether a browser downscales before upload.** A phone camera produces four megabytes against a 512 KiB
+cap, so without it the answer to most uploads is *too large*. It changes no schema and it decides whether
+this feature is usable by the person who asked for it.
+
+**§11.11 needs no edit and that is carried to be asserted rather than assumed.** `default-src 'self'`
+declares no `img-src`, so bytes served from this origin are already covered — and because a CSP is the one
+configuration that becomes wrong by editing a file it does not mention (F-49),
+`ContentSecurityPolicyContractTests` gains the fact in the slice that adds the route.
+
+**§16.3 has no scenario for either resequencing verb.** Carried, and still the largest end-to-end gap in the
+menu: scenario 16's barrier measures those controls and nothing presses them.
+
+**`/kitchen` has no §16.3 scenario at all.** Carried — the largest end-to-end gap in the application.
+
+**The wide layout stacks each row's three controls.** The `<form>` is a block element and `app.css` has no
+rule for a row of them. Carried on two registers.
+
+**The handheld barrier visits neither section surface.** Carried.
+
+**The dump reduction.** Specified in `_CHANGES.md` and deferred again by name; both remaining cuts split
+history registers that four gates read, and this slice adds a table to one of them.
+
+**No gate can see a count written in a comment, or a claim written beside a computation.** Carried — and
+F-101 is that class arriving in a fifth form, a *column* written beside a computation in a document no gate
+reads for meaning.
+
+**A fact assembled by copying a sibling inherits that sibling's arrangement along with its numbers.** F-99's
+residual, carried.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried.
+
+**Nothing treats a test that fails and then passes as evidence.** Carried.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Fifteenth slice carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred an eighteenth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Twenty-seventh consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then starts
+it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried.

@@ -101,6 +101,26 @@ public static class OrdersServiceCollectionExtensions
         services.AddScoped<IMenuSectionAdministration, DapperMenuSectionAdministration>();
         services.AddScoped<IMenuSectionEventLog, DapperMenuSectionEventLog>();
 
+        // Menu item images (§7, §8.2, and Stage 4a of docs/MENU_AND_HANDHELD_PLAN.md). Same table
+        // family, same audience, same lifetime, so they are registered here for the reason the section
+        // services are rather than behind a fifth call the composition root has to remember.
+        //
+        // NOTHING RESOLVES EITHER OF THESE YET, AND THAT IS STATED RATHER THAN LEFT TO BE NOTICED.
+        // Stage 4a is the schema and the data access; the route that serves the bytes and the forms that
+        // attach them are Stage 4b's. This deliberately re-opens the obligation Slice 43 closed — a write
+        // service with no caller — and it is the SAME shape IMenuSectionAdministration was in from 0003
+        // until the section editor landed: reached by its integration tests, outside IMenuWorkflow, and
+        // named every slice until it has a surface. It is not the stronger version of that defect: no
+        // IMenuWorkflow verb is added here, so no surface can change a picture without announcing it,
+        // because no surface can change a picture at all.
+        //
+        // WHEN Stage 4b arrives, attach and remove go behind IMenuWorkflow and publish MenuChanged, for
+        // the reason §7 gives about a section rename: §11.1 renders the picture on every open guest
+        // picker, so a photograph swapped mid-service that announced nothing would leave the old one on
+        // every phone until that page happened to reload.
+        services.AddScoped<IMenuItemImageDirectory, DapperMenuItemImageDirectory>();
+        services.AddScoped<IMenuItemImageAdministration, DapperMenuItemImageAdministration>();
+
         // Orders (§6.6, §8.3, §8.5, §11.2).
         services.AddScoped<IOrderMutations, DapperOrderMutations>();
         services.AddScoped<IOrderReadModel, DapperOrderReadModel>();

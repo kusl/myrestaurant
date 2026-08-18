@@ -25,6 +25,13 @@ namespace MyRestaurant.DataAccess.Tests;
 /// <see cref="Run_MakesTheMenuItemSectionReferenceMandatory"/> is the assertion that the <c>NOT NULL</c>
 /// and the foreign key actually landed.</para>
 ///
+/// <para><b><c>0006</c> is back to the cheapest shape a migration in this tree can have</b>, which is the
+/// shape <c>0003</c> had: two relations and nothing existing touched. So it needs no new <em>kind</em> of
+/// fact — two rows on <see cref="KeyRelations"/> are the whole of what this file has to say about it, and
+/// the interesting properties of those tables (the media-type vocabulary agreeing with the domain, the byte
+/// cap being the database's) are asserted where they can be observed, in
+/// <c>Menu/MenuItemImageTests.cs</c>, against writes rather than against DDL.</para>
+///
 /// <para><b>This file is also the gate on <c>WithVariablesDisabled()</c>, and that is deliberate
 /// (F-78).</b> dbup-core substitutes <c>$name$</c> before the splitter runs, and PostgreSQL spells a
 /// dollar-quoted body the same way, so <c>0004</c>'s <c>DO $migrate_menu_item_event_checks$</c> was read
@@ -52,6 +59,8 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
         "public.menu_item",
         "public.menu_section",       // 0003
         "public.menu_section_event", // 0003
+        "public.menu_item_image",       // 0006
+        "public.menu_item_image_event", // 0006
         "public.guest_order",
         "public.order_event",
         "public.order_operation_line_added",

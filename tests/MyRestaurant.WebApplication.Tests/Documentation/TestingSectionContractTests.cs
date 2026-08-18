@@ -85,7 +85,8 @@ public sealed class TestingSectionContractTests
     /// twelve, sixteen, eighteen, nineteen as the vocabulary gate joined the section, twenty with the
     /// identifier ordering gate, twenty-one with the context-dump exclusion gate, twenty-three as the
     /// test-runner gate and the resequencing verb's integration facts joined it together, twenty-four with
-    /// the item resequencing facts, and now twenty-five as the menu grouping gate joins — and it is the one
+    /// the item resequencing facts, twenty-five with the menu grouping gate, and now twenty-seven as the
+    /// menu image schema brings a pure-function class and an integration class together — and it is the one
     /// copy that cannot drift unnoticed, because a census that fell below it fails here rather than sitting
     /// in a sentence nothing reads.</para>
     ///
@@ -95,7 +96,7 @@ public sealed class TestingSectionContractTests
     /// refuses is the collapse to zero, which is the one failure a computed subject cannot report on
     /// itself.</para>
     /// </summary>
-    private const int MinimumCountedClasses = 25;
+    private const int MinimumCountedClasses = 27;
 
     /// <summary>
     /// A test class named inside backticks, in either of the two forms §16.4 uses: the full

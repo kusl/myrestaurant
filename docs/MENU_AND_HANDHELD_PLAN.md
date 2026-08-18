@@ -1,6 +1,6 @@
 # Menu modernization and the handheld contract — staged plan
 
-**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-18, at the close of Slice 50.** This
+**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-18, at the close of Slice 51.** This
 is the execution plan for the first enhancement request the project has received from a person who was
 shown the running application, together with the defect that request arrived beside. It is a working
 document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
@@ -945,67 +945,153 @@ changed that surface and could not assert the change through a browser.
 **The wide layout stacks each row's three controls** on the administration index. Carried on two registers.
 
 **Ordering is complete for both tables, every menu surface groups by heading, and Stage 3 and 3a–3c are closed.**
-The next stage is Stage 4.
+Stage 4a landed next, in Slice 51.
 
 ---
 
-## Stage 4 — images
+## ~~Stage 4a — images: the schema and the data access~~ — **landed, M6 Slice 51**
 
-**Not started, and the model consequence is recorded now because that is what was asked for.** "In the
-future we might even have images" is a question about where bytes live, and the answer is much cheaper to
-give before there is data than after.
+**The recommendation below was `bytea` in PostgreSQL, and that is what was built.** ADR-0015 carries the
+rulings; `0006_menu_item_images.sql` carries the schema; §7 and §8.2 carry the mechanism.
 
-**Recommendation: `bytea` in PostgreSQL, one image per item, hard size cap.**
+**The cut is `0003`'s, a second time.** Two new tables, nothing existing touched, so every read, every write,
+every integration fact and all seventeen §16.3 scenarios mean exactly what they meant before — green by
+construction rather than by inspection. `OrderTestWorld.TruncateAsync` needed **no edit at all**, because
+`TRUNCATE … CASCADE` on `menu_item` reaches both new tables.
 
-The alternative is a volume on disk, and the argument against it is F-38's. §15 *defines* a recovery set as
+### What was built
+
+`menu_item_image` — `menu_item_image_identifier`, `menu_item_identifier` (`NOT NULL UNIQUE`),
+`content_type`, `bytes bytea`, `uploaded_at`, plus a media-type vocabulary CHECK and **two** byte-length
+CHECKs. `menu_item_image_event` — `attached | replaced | removed`, `new_content_type` and `new_byte_length`
+bound to the first two by named biconditionals, referencing `menu_item` rather than the image.
+
+`IMenuItemImageDirectory` (`ListAsync`, `FindForItemAsync`, `ReadContentAsync`) and
+`IMenuItemImageAdministration` (`AttachMenuItemImageAsync`, `RemoveMenuItemImageAsync`), plus
+`MyRestaurant.Domain.Menu.ImageFormat`, which decides what a run of bytes is from its own signature.
+
+### Five places this differs from the sketch below, and each is a ruling
+
+**1. There is no `byte_length` column, and no `pixel_width` or `pixel_height`.** That is **F-101**, and it is
+recorded as a finding rather than a refinement because of where the sketch lived: three gates read this
+document — for table structure, version agreement and hygiene — and none of them reads a fenced SQL block for
+meaning, so a DDL sketch in a plan is authored prose with the authority of a schema and none of the checking.
+`byte_length` is `octet_length(bytes)`, one fact written twice where one `UPDATE` can separate them.
+`pixel_width` and `pixel_height` are worse: point 3 of the sketch below says the server stores what it is
+given, so neither number could ever have come from anywhere but the uploading browser's word — recorded in
+the indicative, beside columns the database actually knows. `new_byte_length` **is** kept on the event table,
+and the asymmetry is the point: after a removal the bytes are gone, so the log is the only place that number
+can live.
+
+**2. The size cap is written once, in the DDL, and reported by constraint name.** No number appears in C#:
+the write catches the check violation, compares `menu_item_image_bytes_within_cap`, and answers
+`BytesOverCap`. Two constraints rather than one bounded `BETWEEN`, because an empty file and a
+four-megabyte photograph need different sentences and the constraint name is what carries the difference
+back up. `MenuItemImageTests` reads the bound out of `pg_get_constraintdef`, so a migration that moves the
+cap moves the test with it.
+
+**3. The row carries no actor.** `menu_item` and `menu_section` both record `created_at` and no
+`created_by`; the actor is the event log's. So `uploaded_by_person_identifier` left the sketch too, and
+`menu_item_image` references only `menu_item`.
+
+**4. `menu_item_image_event` references `menu_item`, not `menu_item_image`.** A replace mints a new
+identifier and drops the old row, and a removal drops it outright, so the row an event describes is gone by
+design — a foreign key to it could only forbid the deletion or cascade the history away with the bytes. The
+image is named as a bare `uuid`, which is the **opposite** of `0005`'s ruling about
+`new_menu_section_identifier`, and opposite for a stated reason: there it is a pointer §11.4 renders, here it
+is evidence that the URL changed.
+
+**5. The declared media type is checked against the bytes.** Not in the sketch at all, and it is the one
+addition rather than a subtraction. §7's route hands the stored `content_type` back out as a response header
+on this application's own origin, so a column that disagreed with its bytes would make this program mislabel
+its own responses. `ImageFormat` lives in `Domain` on **F-100's** argument — a pure function of a byte span,
+whose interesting cases are the malformed ones, each of which behind an `INSERT` would cost a container and
+arrive as a constraint name instead of a sentence. **Both halves of WebP's RIFF header are required**, since
+`RIFF` alone is also an AVI and a WAV.
+
+### What is open after this stage, and one of it is a real question rather than a deferral
+
+**No surface reads or writes a picture, and that re-opens the obligation Slice 43 closed.** Two data-access
+services now exist with no caller outside their integration tests, which is the state
+`IMenuSectionAdministration` was in from `0003` until the section editor. It is the weaker form — **nothing
+is added behind `IMenuWorkflow`**, so no surface can change a picture without announcing it for the reason
+that no surface can change one at all — and it is named on every slice until 4b discharges it.
+
+**How an upload reaches a static-SSR page is not settled, and it is Stage 4b's first decision.** §11.4's
+administration pages are static SSR with form posts; Blazor's `InputFile` needs an interactive render mode,
+and `[SupplyParameterFromForm]` does not bind a file. So 4b has to choose between a plain
+`<form enctype="multipart/form-data">` posting to a minimal API endpoint beside `AccountEndpoints`, and
+making one page interactive. **This was not foreseen in the sketch below** and it is the reason Stage 4 was
+cut here rather than shipped whole.
+
+**Whether a browser downscales before upload is still the open question point 3 named.** A phone camera
+produces four megabytes against a 512 KiB cap, so without it the answer to most uploads is *too large*. It
+is `wwwroot/js/` and a `<canvas>` round trip, it changes no schema, and it is the thing that decides whether
+this feature is usable by the person it was asked for by.
+
+---
+
+## Stage 4b — images: the surfaces
+
+**Not started.** The route, the administrator's form, and §11.1's thumbnail. Four consequences have to be
+settled together, and they were named before Stage 4a was written:
+
+1. **The route and its caching.** `GET /menu/image/{menu_item_image_identifier}` — already satisfied by the
+   schema, which is what decision 2 of ADR-0015 bought. `Cache-Control: public, max-age=31536000, immutable`
+   is truthful because the identifier changes with the bytes.
+2. **The content security policy needs no change, and that must be asserted rather than assumed.** §11.11
+   sets `default-src 'self'` and declares no `img-src`, so `'self'` already covers bytes this application
+   serves. **F-49's whole lesson is that a CSP is the one configuration that becomes wrong by editing a file
+   it does not mention**, so `ContentSecurityPolicyContractTests` gains the fact rather than the policy being
+   left correct by accident.
+3. **The upload transport**, which is the decision above and is genuinely open.
+4. **The 375px layout.** An image per card doubles the height of the guest menu. A thumbnail beside the name
+   rather than a hero above it, `loading="lazy"` on everything below the first section, and an `alt_text`
+   column — one `ALTER` with a `DEFAULT ''`, on `0004`'s precedent — because an `<img>` with no alternative
+   text on a menu is a card a screen reader renders as nothing.
+
+### The sketch this stage was planned from, kept for the argument rather than for the DDL
+
+**The recommendation — `bytea` in PostgreSQL, one image per item, hard size cap — was accepted and is
+ADR-0015.** The reasoning is kept here because it is the part that transfers; the DDL below is **superseded
+by §8.2** and is left as written so that F-101's row has something to point at.
+
+The alternative was a volume on disk, and the argument against it is F-38's. §15 *defines* a recovery set as
 exactly two files — the database dump and the Data Protection key ring — and `restore_drill.sh` gates both
-on every push. A third artefact means editing that definition, both scripts, the drill, and the runbook;
-and an operator who takes a backup the old way from then on has a set that restores an application whose
-menu has no pictures in it. Object storage is worse: MinIO is a service, S3 is a paid dependency, and both
+on every push. A third artefact means editing that definition, both scripts, the drill, and the runbook; and
+an operator who takes a backup the old way from then on has a set that restores an application whose menu
+has no pictures in it. Object storage is worse: MinIO is a service, S3 is a paid dependency, and both
 contradict R§1's self-hosted premise.
 
 The cost of `bytea` is honest and small at this scale: sixty items at 200 KB is 12 MB, inside a `pg_dump
 -Fc` that already compresses, on a database whose whole reason for existing is one restaurant.
 
 ```
-menu_item_image
+menu_item_image                                            -- SUPERSEDED: see §8.2 and F-101
     menu_item_image_identifier  uuid PRIMARY KEY
     menu_item_identifier        uuid NOT NULL UNIQUE REFERENCES menu_item   -- one image per item, in v1
     content_type                text NOT NULL CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp'))
-    byte_length                 integer NOT NULL CHECK (byte_length BETWEEN 1 AND 524288)
-    pixel_width                 integer NOT NULL CHECK (pixel_width BETWEEN 1 AND 4096)
-    pixel_height                integer NOT NULL CHECK (pixel_height BETWEEN 1 AND 4096)
+    byte_length                 integer NOT NULL CHECK (byte_length BETWEEN 1 AND 524288)   -- F-101: dropped
+    pixel_width                 integer NOT NULL CHECK (pixel_width BETWEEN 1 AND 4096)     -- F-101: dropped
+    pixel_height                integer NOT NULL CHECK (pixel_height BETWEEN 1 AND 4096)    -- F-101: dropped
     bytes                       bytea NOT NULL
-    uploaded_by_person_identifier uuid NOT NULL REFERENCES person
+    uploaded_by_person_identifier uuid NOT NULL REFERENCES person            -- dropped; the actor is the log's
     uploaded_at                 timestamptz NOT NULL
 ```
 
 Plus `menu_item_image_event` (`attached | replaced | removed`), because every other mutation in this schema
 leaves a log and an image is the one a guest sees.
 
-Four consequences that have to be settled in the same slice:
-
-1. **The route and its caching.** `GET /menu/image/{menu_item_image_identifier}` rather than
-   `…/{menu_item_identifier}`, so the URL changes when the image does and `Cache-Control: public,
-   max-age=31536000, immutable` is truthful. Keying on the item identifier would need an ETag and a
-   revalidation round trip per image per page load, on phones.
-2. **The content security policy.** F-49's whole lesson is that this is the one configuration that becomes
-   wrong by editing a file it does not mention. §11.11 sets `default-src 'self'` and declares no
-   `img-src`, so `'self'` already covers bytes this application serves — the policy needs **no** change,
-   and `ContentSecurityPolicyContractTests` should be made to say so rather than left to be true by
-   accident.
-3. **No resizing, and say so.** There is no free-libre .NET image library in this stack — ImageSharp's
-   licence is not AGPL-compatible for this use and SkiaSharp is a native dependency in a rootless
-   container. So the server validates and stores what it is given, and the size cap is the whole defence.
-   Whether a browser downscales before upload (a `<canvas>` round trip, perhaps 60 lines of
-   `wwwroot/js/`) is the open question of this stage, and it is a real one: a phone camera produces 4 MB
-   and the cap above is 512 KB, so without it the answer to most uploads is "too big".
-4. **The 375px layout.** An image per card doubles the height of the guest menu. A thumbnail beside the
-   name rather than a hero above it, and `loading="lazy"` on everything below the first section.
+**No resizing, and say so.** There is no free-libre .NET image library in this stack — ImageSharp's licence
+is not AGPL-compatible for this use and SkiaSharp is a native dependency in a rootless container. So the
+server validates and stores what it is given, and the size cap is the whole defence. Whether a browser
+downscales before upload (a `<canvas>` round trip, perhaps 60 lines of `wwwroot/js/`) is the open question of
+this stage, and it is a real one: a phone camera produces 4 MB and the cap above is 512 KB, so without it the
+answer to most uploads is "too big".
 
 **Reversible if the recommendation is wrong.** `bytea` → volume is a migration that reads rows and writes
-files; volume → `bytea` is a migration that cannot find the files. Choosing the reversible direction first
-is the whole reason to choose now.
+files; volume → `bytea` is a migration that cannot find the files. Choosing the reversible direction first is
+the whole reason to choose now.
 
 ---
 
