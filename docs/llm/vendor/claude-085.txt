@@ -13,3 +13,210 @@ I will likely miss those bespoke scripts
 also please remember to update all documentation as necessary 
 remember our main focus is making progress toward enhancing the menu 
 we need to make progress toward that as well 
+
+
+/
+Claude finished the response
+please continue 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+please avoid giving me bespoke scripts to manipulate text in code / documentation 
+remember to give full files for all files that need to change 
+I will likely miss those bespoke scripts 
+also please remember to update all documentation as necessary 
+remember our main focus is making progress toward enhancing the menu 
+we need to make progress toward that as well
+
+
+Ran 48 commands, created a file, edited a file
+Ran 48 commands, created a file, edited a file
+
+Inspecting project files
+
+Inspecting dump.txt header format
+
+Listing file delimiters in dump
+
+Examining file boundary structure
+
+Python splitter to reconstruct the working tree from dump.txt with SHA-256 verification
+
+Running the reconstruction with hash verification
+
+Checking dump footer and the elided LICENSE block
+
+Trim the DUMP SUMMARY footer from the final record
+split_dump.py
++12
+-3
+
+Re-running reconstruction after footer fix
+
+Listing repo root and locating Slice 47 plan content
+
+Finding the most recent slice in BUILD_PROGRESS
+
+Locating recent slices in BUILD_PROGRESS
+
+Reading the Slice 49 build progress entry
+
+Reading the latest terminal output
+
+Scanning terminal output for test results and failures
+
+Confirming test counts and CI gate results
+
+Reading the menu plan outline
+
+Reading what is still open after Stage 3b
+Weighed competing priorities against menu enhancement goals.
+
+
+Locating the 86 panel files
+
+Finding consumers of MenuAvailability
+
+Listing Razor components
+
+Reading the kitchen board with the 86 panel
+
+Finding the guest menu grouping record and its uses
+
+Reading the guest menu section rendering
+
+Reading the GroupedMenu implementation
+Deliberating between panel fix and scenario coverage prioritization.
+
+
+Reading the administration menu index for established grouping vocabulary
+
+Reading MenuItemSummary record shape
+
+Locating 86 panel spec references
+
+Reading spec §11.1 and §11.2
+
+Listing web application test files
+
+Reading KitchenQueue tests and locating the source
+
+Reading KitchenQueue pure function
+Refactoring menu grouping logic into testable functions.
+
+Identified component refactoring need and testability constraints.
+
+
+Reading HandheldLayoutContractTests header
+
+Checking how shared prefixes are enforced
+
+Reading the shared vocabulary fact
+
+Reading TestingSectionContractTests
+
+Locating §16.4 boundaries
+
+Reading §16.4 opening paragraphs
+Architecting static class for kitchen panel grouping logic.
+
+Architected refactoring strategy addressing testability defect and design inconsistencies.
+
+
+Reading §16.3 scenario list
+
+Locating §16.3
+
+Checking spec version and version gate
+
+Reading _CHANGES.md
+
+Reading DOCUMENTATION_REVIEW structure
+
+Checking CSP contract test's style-block count
+
+Checking CSP test for style assertions
+Analyzing kitchen menu styling and group container structure.
+
+Scrutinizing field reassignment logic and documentation alignment.
+
+Identifying documentation bugs and extraction necessity for shared logic.
+
+Architecting grouped menu markup for kitchen panel display.
+
+Architected menu grouping extraction and kitchen panel implementation.
+
+
+Reading RazorDirectiveContractTests forbidden identifiers
+
+Finding prose claims that the kitchen reads the menu flat
+
+Checking ADR-0014's kitchen references
+
+Reading ADR-0014 context and consequences
+Reconsidering ADR documentation treatment approach.
+
+Evaluated ADR documentation philosophy and preservation approach.
+
+
+Checking ADR tail and app.css
+I've reconstructed the tree and read the ground truth. Here's where things stand before I author Slice 50.
+
+Tree reconstruction — verified
+dump.txt parsed to 353 file records; 352 written, 351 SHA-256 hashes matched exactly. The single mismatch is LICENSE, which the dump deliberately elides to metadata-and-hash only (Slice 46's change), so that's expected rather than a fault. export.sh is excluded from the dump by design. Zero unexplained mismatches.
+
+Your last run was fully green
+claude-terminal.txt says Slice 49 landed clean:
+
+total: 1191, failed: 0 — and Slice 49 predicted 1191. §18's arithmetic matched to the digit.
+All seventeen §16.3 scenarios passed three times (Debug suite, Release under ci_local.sh, then Debug again standalone).
+scripts/ci_local.sh --with-all --with-e2e reported all local CI gates passed.
+The only Error: lines in the log are the two carried run.sh --containers-only complaints about myrestaurant_caddy_1 not existing yet — the known carried item, not a regression.
+So there is no defect to chase from the run, and Slice 50 starts from a clean baseline.
+
+What the tree says is next
+Stage 3 is closed as of Slice 49. The plan's own What is still open section and Slice 49's Carried list agree on what remains in the menu:
+
+The kitchen's 86 panel does not group by heading — named as "the last surface that reads the menu flat" now that the guest menu is complete.
+§16.3 has no scenario for either resequencing verb — "the largest end-to-end gap in the menu".
+The wide layout stacks each row's three controls; the handheld barrier visits neither section surface.
+Stage 4 (images) is the next stage, but it's a migration + route + CSP + upload question — a whole slice on its own.
+The finding I found while reading, which decides the slice
+TableOrderSurface.razor's GroupedMenu is a private property inside a Razor component, and it implements §11.1's grouping plus §7's two opposite-pointing rules (an inactive item stays and is marked; an inactive heading vanishes entirely) — the pair the specification restates every time it mentions them because both are easy to lose.
+
+The tree states the rule against exactly this three times: §16.1 records there is no bUnit; KitchenQueue's own summary says "a rule that can only be checked by rendering a Razor component is a rule nobody checks" and names OrderStaging and OrderNarrative as the other two pure functions; and F-59 exists because a property everything assumed and nothing stated is a property nothing can catch. That walk has been asserted by nothing but scenario 17 — a browser and a database and two and a half minutes — since Slice 40.
+
+And the kitchen needs the same walk with the opposite rule about hidden headings. A private property cannot be called from a second component, so grouping the 86 panel without repairing this means pasting the walk — which is F-59's mechanism precisely.
+
+There's a smaller second half: the walk's doc comment claims it takes each heading's name and description "from the first row of each run". It assigns on every row, so it takes them from the last. Harmless only because the INNER JOIN guarantees the rows of a run agree — which is exactly why no test could ever have failed on it.
+
+That's F-100, and it makes the 86 panel the right menu progress rather than an arbitrary pick.
+
+The shape I'm going to build
+New src/MyRestaurant.WebApplication/Menu/MenuGrouping.cs — the walk as a pure function, the fourth member of the OrderStaging / OrderNarrative / KitchenQueue set, with MenuHeadingGroup replacing the component-private MenuSectionOnTheMenu. Two named entry points — VisibleToGuests and EveryHeading — rather than a boolean, because a boolean at a call site is a rule nobody can read.
+TableOrderSurface.razor calls it; behaviour identical.
+KitchenBoard.razor's 86 panel groups by heading, showing headings hidden from guests marked rather than dropped — because 86ing is the kitchen's statement about stock, §7 says switching a heading off does not cascade to its items, and this panel is the only surface that can see or change those flags.
+New tests/MyRestaurant.WebApplication.Tests/Menu/MenuGroupingTests.cs — the rule finally reachable without a browser.
+TestingSectionContractTests' MinimumCountedClasses 24 → 25.
+Full documentation: spec v1.35 (§11.2, §16.4, Appendix A F-100, changelog), DOCUMENTATION_REVIEW.md, BUILD_PROGRESS.md, MENU_AND_HANDHELD_PLAN.md, _CHANGES.md.
+One decision I'll flag rather than make silently: ADR-0014's Context sentence "the kitchen's 86 panel is a flat <ul>" stays as written, because it records what was true when the decision was made — the same clause says the guest picker is a <select>, which stopped being true in Slice 39 and was correctly left alone.
+
+Say the word and I'll author the archive — full files, repo-relative paths, extractable at the repository root in one operation, with the file accounting and the predicted test count stated. No bespoke text-manipulation scripts.
+
+Claude reached its tool-use limit for this turn.
+
+
+Want to be notified when Claude responds?
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+39
+67
