@@ -94,7 +94,7 @@ public sealed class TestingSectionContractTests
     /// refuses is the collapse to zero, which is the one failure a computed subject cannot report on
     /// itself.</para>
     /// </summary>
-    private const int MinimumCountedClasses = 23;
+    private const int MinimumCountedClasses = 24;
 
     /// <summary>
     /// A test class named inside backticks, in either of the two forms §16.4 uses: the full

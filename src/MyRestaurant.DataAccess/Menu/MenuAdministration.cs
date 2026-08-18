@@ -99,6 +99,40 @@ public enum ReorderMenuItemOutcome
     MenuItemNotFound,
 }
 
+/// <summary>The outcome of <see cref="IMenuAdministration.ResequenceMenuItemsAsync"/> (§7).</summary>
+public enum ResequenceMenuItemsOutcome
+{
+    /// <summary>
+    /// At least one item moved. Every item whose position changed was written, and each of those wrote its
+    /// own <c>reordered</c> event; the ones already in place wrote nothing.
+    /// </summary>
+    Resequenced,
+
+    /// <summary>
+    /// The requested order is the stored order, item for item; nothing was written. This is the ordinary
+    /// answer to pressing "move up" on a dish somebody else moved up a second earlier.
+    /// </summary>
+    NoChange,
+
+    /// <summary>
+    /// The list is not a permutation of the items filed under that heading — one is missing from it, one
+    /// appears twice, or one is named that is filed somewhere else. Nothing was written.
+    ///
+    /// <para>Refused rather than reconciled, on the ruling
+    /// <see cref="ResequenceMenuSectionsOutcome.MenuSectionSetChanged"/> records one register up: a list
+    /// that disagrees with the table came from a page rendered before somebody else changed the menu, and
+    /// a partially obeyed stale ordering is an order nobody chose.</para>
+    ///
+    /// <para><b>It is also the answer to a heading this menu does not hold, and there is deliberately no
+    /// fourth case for that.</b> An unknown heading has no items under it, so it reaches this outcome
+    /// through the same comparison every other refusal does — and from the surface's side the two are one
+    /// fact, <em>this page is stale, reload it</em>. A distinction the caller cannot act on differently is
+    /// a distinction not worth returning, which is the same reasoning that gave the section verb three
+    /// outcomes for three shapes of refusal.</para>
+    /// </summary>
+    MenuItemSetChanged,
+}
+
 /// <summary>
 /// A created menu item, as stored (§7). Every member is what the row and its events actually carry, which
 /// is not necessarily what the caller passed: the name and the description are trimmed, the price is
@@ -319,6 +353,53 @@ public interface IMenuAdministration
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Reorders <b>every item filed under one heading</b> at once, assigning positions <c>0…n-1</c> from
+    /// the order given and appending one <c>reordered</c> event per item whose position actually changed.
+    ///
+    /// <para><b>It exists because <see cref="ReorderMenuItemAsync"/> cannot serve a Move-up button</b>, and
+    /// the reason is the one <see cref="IMenuSectionAdministration.ResequenceMenuSectionsAsync"/> records
+    /// one register up: that verb writes an <em>absolute</em> position, positions within a heading are
+    /// deliberately non-unique with a name tie-break (§8.2), so "move this dish up" is not expressible as
+    /// one absolute write — two items sharing a number have an order nobody assigned and no single number
+    /// distinguishes them. A pairwise swap is not expressible either, because it would have to decide what
+    /// happens when the two numbers are equal. Taking the <em>whole</em> ordering leaves nothing to decide:
+    /// the caller sends the list it is already rendering with two entries exchanged, and the stored
+    /// positions become that list's indices.</para>
+    ///
+    /// <para><b>The set is one heading's items rather than the whole menu, and that is the only place this
+    /// differs from the section verb.</b> A position is a position <em>within</em> a section (§7), so the
+    /// heading is a parameter rather than something inferred from the list — which is also what makes an
+    /// empty list against an empty heading a well-formed no-op instead of a special case. Items under other
+    /// headings are neither read nor locked nor moved: reordering the drinks cannot touch the puddings.</para>
+    ///
+    /// <para><b>A list that is not a permutation of that heading's items is refused whole rather than
+    /// reconciled.</b> Short, repeating an identifier, or naming an item filed elsewhere all mean the page
+    /// was rendered before the menu changed, and the answer is
+    /// <see cref="ResequenceMenuItemsOutcome.MenuItemSetChanged"/> with nothing written. An unknown heading
+    /// arrives at the same answer through the same comparison, because it has no items under it.</para>
+    ///
+    /// <para><b>One event per item that moved, not one per item</b>, on the no-op rule this interface
+    /// applies everywhere else: resequencing eight dishes to move one of them writes the two rows whose
+    /// positions changed, so §11.4's per-item history stays a record of decisions rather than of button
+    /// presses.</para>
+    ///
+    /// <para><b>All the events of one call share an instant</b>, because one transaction stamps every row it
+    /// writes with one <see cref="IClock.UtcNow"/>. They read in the order the rows were written because
+    /// <see cref="IIdentifierFactory"/> hands out ascending values inside a millisecond (§8.1) — the
+    /// property <b>F-95</b> found nothing was keeping, and the same property the section verb leans on.</para>
+    /// </summary>
+    /// <param name="menuSectionIdentifier">The heading whose items are being reordered; one this menu does not hold is reported rather than raised.</param>
+    /// <param name="orderedMenuItemIdentifiers">Every item under that heading, exactly once, in the order they should read.</param>
+    /// <param name="actorPersonIdentifier">The administrator each written event records.</param>
+    /// <param name="cancellationToken">Cancels the write.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="orderedMenuItemIdentifiers"/> is null.</exception>
+    Task<ResequenceMenuItemsOutcome> ResequenceMenuItemsAsync(
+        Guid menuSectionIdentifier,
+        IReadOnlyList<Guid> orderedMenuItemIdentifiers,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Files one item under a different heading and appends a <c>section_changed</c> event carrying the
     /// new one — the last verb of the menu enhancement to acquire a caller, and the one
     /// <see cref="CreateMenuItemAsync"/> has been writing half of since <c>0005</c>.
@@ -492,6 +573,36 @@ public sealed class DapperMenuAdministration : IMenuAdministration
         UPDATE menu_item
         SET display_order = @DisplayOrder
         WHERE menu_item_identifier = @MenuItemIdentifier;
+        """;
+
+    /// <summary>
+    /// Every item under one heading with its position, locked for the duration of a resequence and
+    /// <b>ordered by identifier</b> — the order is what stops two concurrent resequences deadlocking half
+    /// way through each other's set, which is the rule
+    /// <see cref="DapperMenuSectionAdministration"/> established one register up.
+    ///
+    /// <para><b>The section row is deliberately NOT locked, and the argument is arithmetic rather than
+    /// preference.</b> A concurrent create or refile appends into this heading at
+    /// <c>MAX(display_order) + 1</c>, computed from the very positions this statement is holding: if those
+    /// are <c>n</c> rows whose maximum is <c>m</c>, then <c>m ≥ n - 1</c>, so the arrival lands at
+    /// <c>m + 1 ≥ n</c> — strictly after every position a resequence of those <c>n</c> rows can assign,
+    /// which is <em>exactly</em> the append those two verbs promise. The interleaving is therefore correct
+    /// with no lock at all, and taking none means this verb adds no new lock ordering to reason about: it
+    /// takes item locks and nothing else, where <see cref="IMenuAdministration.MoveMenuItemToSectionAsync"/>
+    /// takes an item lock and then a section lock. A section lock here would invert that nesting and make
+    /// the deadlock question live for the first time.</para>
+    ///
+    /// <para>An unknown heading returns no rows, which is what makes it indistinguishable here from an
+    /// empty one — see <see cref="ResequenceMenuItemsOutcome.MenuItemSetChanged"/> for why that is the
+    /// answer rather than a gap.</para>
+    /// </summary>
+    private const string LockMenuItemsInSectionSql = """
+        SELECT menu_item.menu_item_identifier AS MenuItemIdentifier,
+               menu_item.display_order        AS DisplayOrder
+        FROM menu_item
+        WHERE menu_item.menu_section_identifier = @MenuSectionIdentifier
+        ORDER BY menu_item.menu_item_identifier
+        FOR UPDATE;
         """;
 
     /// <summary>
@@ -917,6 +1028,85 @@ public sealed class DapperMenuAdministration : IMenuAdministration
         return ReorderMenuItemOutcome.Reordered;
     }
 
+    public async Task<ResequenceMenuItemsOutcome> ResequenceMenuItemsAsync(
+        Guid menuSectionIdentifier,
+        IReadOnlyList<Guid> orderedMenuItemIdentifiers,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(orderedMenuItemIdentifiers);
+
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        IEnumerable<MenuItemPositionRow> locked = await connection
+            .QueryAsync<MenuItemPositionRow>(new CommandDefinition(
+                LockMenuItemsInSectionSql,
+                new { MenuSectionIdentifier = menuSectionIdentifier },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        // The identifier is the table's primary key, so this cannot collide.
+        Dictionary<Guid, int> storedPositions = locked
+            .ToDictionary(row => row.MenuItemIdentifier, row => row.DisplayOrder);
+
+        if (!IsPermutationOf(orderedMenuItemIdentifiers, storedPositions))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return ResequenceMenuItemsOutcome.MenuItemSetChanged;
+        }
+
+        int moved = 0;
+
+        for (int position = 0; position < orderedMenuItemIdentifiers.Count; position++)
+        {
+            Guid menuItemIdentifier = orderedMenuItemIdentifiers[position];
+
+            if (storedPositions[menuItemIdentifier] == position)
+            {
+                // The no-op rule, per row: a resequence that leaves six of eight dishes where they were
+                // writes two events rather than eight (§7).
+                continue;
+            }
+
+            await connection.ExecuteAsync(new CommandDefinition(
+                UpdateDisplayOrderSql,
+                new { MenuItemIdentifier = menuItemIdentifier, DisplayOrder = position },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            await InsertEventAsync(
+                connection,
+                transaction,
+                menuItemIdentifier,
+                actorPersonIdentifier,
+                ReorderedEventType,
+                newName: null,
+                newPriceAmount: null,
+                newDescription: null,
+                position,
+                newMenuSectionIdentifier: null,
+                now,
+                cancellationToken).ConfigureAwait(false);
+
+            moved++;
+        }
+
+        if (moved == 0)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return ResequenceMenuItemsOutcome.NoChange;
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        return ResequenceMenuItemsOutcome.Resequenced;
+    }
+
     /// <summary>
     /// The only verb here that takes two locks, and the order they are taken in is the ruling.
     ///
@@ -1091,8 +1281,39 @@ public sealed class DapperMenuAdministration : IMenuAdministration
     private static string NormalizeDescription(string? description)
         => string.IsNullOrWhiteSpace(description) ? string.Empty : description.Trim();
 
+    /// <summary>
+    /// Whether the requested ordering is exactly the set of items this heading holds, which is the one
+    /// precondition <see cref="ResequenceMenuItemsAsync"/> has.
+    ///
+    /// <para><b>It de-duplicates before it resolves, and that ordering is load-bearing.</b> A list of the
+    /// right length whose every member exists can still name one of them twice — the one shape a length
+    /// check and a membership check each admit on their own — so the distinct count is compared to the
+    /// requested count first. The same three-line shape and the same reason as
+    /// <see cref="DapperMenuSectionAdministration"/>'s, deliberately not shared between them: the two read
+    /// different tables inside different transactions, and a helper spanning both would be a class whose
+    /// only content is a set comparison the BCL already spells.</para>
+    /// </summary>
+    private static bool IsPermutationOf(
+        IReadOnlyList<Guid> requested,
+        Dictionary<Guid, int> storedPositions)
+    {
+        if (requested.Count != storedPositions.Count)
+        {
+            return false;
+        }
+
+        HashSet<Guid> distinct = [.. requested];
+
+        return distinct.Count == requested.Count && distinct.All(storedPositions.ContainsKey);
+    }
+
     // Dapper maps these positional records by constructor-parameter name against the aliased columns above.
     private sealed record MenuSectionPositionRow(string Name, int NextDisplayOrder);
+
+    // The two columns a resequence needs from every row under a heading: which item, and where it sits.
+    private sealed record MenuItemPositionRow(
+        Guid MenuItemIdentifier,
+        int DisplayOrder);
 
     private sealed record MenuItemLockRow(
         string Name,

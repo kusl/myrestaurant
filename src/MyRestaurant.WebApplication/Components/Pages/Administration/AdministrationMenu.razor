@@ -62,9 +62,18 @@
    list moves every other control up a row on the render after a move, and §16.3 scenario 16 measures
    where controls are.
 
-   An absolute position is still writable, on the heading's own page, and that is not a duplicate:
-   somebody who wants breakfast at 0 and does not care what else moves is stating an absolute, and the
-   editor's number field is where that belongs.
+   **AND IT CAN NOW REORDER AN ITEM WITHIN ITS HEADING, WHICH IS SLICE 48.** Slice 47 named this as the
+   next ordering slice rather than widening itself into it, because `menu_item.display_order` has the
+   identical absolute-write shape and the identical non-unique positions but writes to a DIFFERENT event
+   table with different paired CHECKs. `ResequenceMenuItemsAsync` takes a heading and the whole ordering
+   of the items under it — that heading's list, not the menu's, because a position is a position WITHIN a
+   heading and sending the whole menu would renumber the puddings because somebody moved a drink. The
+   list each group's loop is already rendering is the list that gets exchanged and posted, so again
+   nothing is computed from a position.
+
+   An absolute position is still writable, on the heading's own page and on the item's own page, and that
+   is not a duplicate: somebody who wants breakfast at 0 and does not care what else moves is stating an
+   absolute, and a number in a form is what that means.
 
    Two record lists (§11.12) and no inline <style>. The group vocabulary is `.menu-group*` in app.css. *@
 
@@ -95,12 +104,13 @@
 
     <p class="lede">
         Every heading, in the order guests read them, with the items filed under each in the order they
-        appear beneath it. Move a heading with the buttons at the foot of its group — the whole order is
-        rewritten from the list you can see, so a move needs no positions typed anywhere. Prices here are
-        what the <em>next</em> order line costs — anything already on a bill keeps the price it was added
-        at. Open a heading to rename it, describe it, set an absolute position or switch it off; open an
-        item to rename it, reprice it, describe it, refile it, move it within its heading, or mark it
-        unavailable.
+        appear beneath it. Move a heading with the buttons at the foot of its group, and an item with the
+        Up and Down on its own row — either way the whole order is rewritten from the list you can see, so
+        a move needs no positions typed anywhere. An item only ever moves within its own heading; refiling
+        it under a different one is on the item's page. Prices here are what the <em>next</em> order line
+        costs — anything already on a bill keeps the price it was added at. Open a heading to rename it,
+        describe it, set an absolute position or switch it off; open an item to rename it, reprice it,
+        describe it, refile it, set an absolute position, or mark it unavailable.
     </p>
 
     @if (_sections is null)
@@ -209,6 +219,28 @@
                                                 </td>
                                                 <td class="record-numeric" data-label="Position">@item.DisplayOrder</td>
                                                 <td class="record-actions" data-label="">
+                                                    @* Two posts and a link, the same three controls a
+                                                       heading's group carries, one register down. The
+                                                       forms are named from the ITEM's identifier, so a
+                                                       menu with sixty dishes has a hundred and twenty
+                                                       distinct form names and Blazor's static SSR routes
+                                                       each POST to the row that owns it. The ends are
+                                                       disabled rather than omitted, on the rule the
+                                                       group's row already follows. *@
+                                                    <form method="post" @formname="@ItemMoveFormName(item, up: true)"
+                                                          @onsubmit="@(() => MoveItemAsync(menuSectionSummary.MenuSectionIdentifier, item.MenuItemIdentifier, -1))">
+                                                        <AntiforgeryToken />
+                                                        <button type="submit" class="button-secondary"
+                                                                disabled="@IsFirstUnder(menuSectionSummary, item)"
+                                                                aria-label="@($"Move {item.Name} up")">Up</button>
+                                                    </form>
+                                                    <form method="post" @formname="@ItemMoveFormName(item, up: false)"
+                                                          @onsubmit="@(() => MoveItemAsync(menuSectionSummary.MenuSectionIdentifier, item.MenuItemIdentifier, 1))">
+                                                        <AntiforgeryToken />
+                                                        <button type="submit" class="button-secondary"
+                                                                disabled="@IsLastUnder(menuSectionSummary, item)"
+                                                                aria-label="@($"Move {item.Name} down")">Down</button>
+                                                    </form>
                                                     <a class="button-secondary" href="@ManagePath(item.MenuItemIdentifier)"
                                                        aria-label="@($"Manage {item.Name}")">Manage</a>
                                                 </td>
@@ -425,6 +457,72 @@
     }
 
     /// <summary>
+    /// Exchanges one item with its neighbour <b>under the same heading</b> and posts that heading's whole
+    /// ordering (§7).
+    ///
+    /// <para><b>The same shape as <see cref="MoveAsync"/> one register down, and the one difference is the
+    /// set.</b> A position is a position <em>within</em> a heading, so the list exchanged is
+    /// <see cref="ItemsUnder"/>'s — not <c>_items</c>, which is the whole menu and whose neighbours cross
+    /// heading boundaries. Sending the whole menu would ask the write service to renumber the puddings
+    /// because somebody moved a drink.</para>
+    ///
+    /// <para><b>Every failure here is a stale page rather than a fault, and each reloads.</b> An identifier
+    /// this render does not hold under this heading, or a neighbour past either end, means somebody else
+    /// changed the menu between this page being drawn and the button being pressed — as does
+    /// <c>MenuItemSetChanged</c>, which the write service returns when the ordering is no longer a
+    /// permutation of what that heading holds. The honest answer on this side is to render the truth
+    /// again.</para>
+    /// </summary>
+    private async Task MoveItemAsync(Guid menuSectionIdentifier, Guid menuItemIdentifier, int offset)
+    {
+        if (_sections is null)
+        {
+            Navigation.NavigateTo(IndexPath);
+            return;
+        }
+
+        if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } administrator)
+        {
+            // As MoveAsync: endpoint authorization already guarantees this, and
+            // menu_item_event.actor_person_identifier is NOT NULL.
+            _errorMessage = "Your session could not be identified. Sign in again and retry.";
+            return;
+        }
+
+        List<Guid> ordering = _items
+            .Where(item => item.MenuSectionIdentifier == menuSectionIdentifier)
+            .Select(item => item.MenuItemIdentifier)
+            .ToList();
+
+        int from = ordering.IndexOf(menuItemIdentifier);
+        int to = from + offset;
+
+        if (from < 0 || to < 0 || to >= ordering.Count)
+        {
+            Navigation.NavigateTo(IndexPath);
+            return;
+        }
+
+        (ordering[from], ordering[to]) = (ordering[to], ordering[from]);
+
+        ResequenceMenuItemsOutcome outcome = await MenuChanges.ResequenceMenuItemsAsync(
+            menuSectionIdentifier, ordering, administrator, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case ResequenceMenuItemsOutcome.Resequenced:
+                RedirectWithOutcome("item-moved");
+                break;
+            case ResequenceMenuItemsOutcome.NoChange:
+                RedirectWithOutcome("item-move-no-change");
+                break;
+            case ResequenceMenuItemsOutcome.MenuItemSetChanged:
+                RedirectWithOutcome("items-changed");
+                break;
+        }
+    }
+
+    /// <summary>
     /// The items filed under one heading, in the order guests read them.
     ///
     /// <para><b>Filtered rather than grouped, and rather than asked for per section.</b> §7's read
@@ -481,6 +579,35 @@
     private static string MoveFormName(MenuSectionSummary menuSectionSummary, bool up)
         => $"menu-section-move-{(up ? "up" : "down")}-{menuSectionSummary.MenuSectionIdentifier}";
 
+    /// <summary>
+    /// Whether an item is at an end of <b>its own heading's</b> list, which is what disables one of its two
+    /// buttons. Compared by identifier against the filtered list for exactly the reason
+    /// <see cref="IsFirst"/> gives: two items may share a <c>display_order</c>, so "has the lowest number"
+    /// is not "is first", while "is the first entry of the list this group is rendering" is precisely what
+    /// Up would exchange with nothing.
+    /// </summary>
+    private bool IsFirstUnder(MenuSectionSummary section, MenuItemSummary item)
+    {
+        IReadOnlyList<MenuItemSummary> items = ItemsUnder(section);
+
+        return items.Count == 0 || items[0].MenuItemIdentifier == item.MenuItemIdentifier;
+    }
+
+    private bool IsLastUnder(MenuSectionSummary section, MenuItemSummary item)
+    {
+        IReadOnlyList<MenuItemSummary> items = ItemsUnder(section);
+
+        return items.Count == 0 || items[^1].MenuItemIdentifier == item.MenuItemIdentifier;
+    }
+
+    /// <summary>
+    /// One form name per item per direction, built from the item's identifier rather than from its heading's
+    /// — the item identifier is unique across the whole page, so no two rows can collide even when the same
+    /// dish name appears under two headings.
+    /// </summary>
+    private static string ItemMoveFormName(MenuItemSummary item, bool up)
+        => $"menu-item-move-{(up ? "up" : "down")}-{item.MenuItemIdentifier}";
+
     private static string IndexPath => "/administration/menu";
 
     private void RedirectWithOutcome(string outcome)
@@ -497,6 +624,10 @@
         "move-no-change" => "It was already in that position — nothing changed.",
         "menu-changed" => "The headings changed while this page was open, so nothing was moved. This is"
             + " the current order; try again.",
+        "item-moved" => "Moved. Every open menu has already picked up the new order.",
+        "item-move-no-change" => "It was already in that position — nothing changed.",
+        "items-changed" => "The items under that heading changed while this page was open, so nothing was"
+            + " moved. This is the current order; try again.",
         _ => null,
     };
 

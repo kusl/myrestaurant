@@ -157,6 +157,18 @@ internal static class HandheldReach
     /// <c>.button-secondary</c> controls, so nothing about their height is new; what is new is that the
     /// barrier is the only thing in the tree that would notice if that stopped being true.</para>
     ///
+    /// <para><b><c>.record-actions button</c> has been in this list since the barrier was written and
+    /// matched nothing until Slice 48.</b> That is worth recording because it is the one case F-93's rule
+    /// does not cover: the rule says a surface acquiring a new kind of control acquires a selector in the
+    /// same slice, and here the selector was already there — every index's actions cell had held a link and
+    /// only a link, so the <c>button</c> half was a selector waiting for a submit control that had not been
+    /// written yet. The menu index's item rows are the first to render one. <b>No edit was needed and that
+    /// is the finding, not the relief:</b> a selector matching nothing is indistinguishable from a selector
+    /// matching everything it should, so nothing in this file could have told anybody which of the two this
+    /// was. What makes it safe here is that the group's action row was measured through
+    /// <c>.menu-group-actions button</c> one slice earlier, so the same claim was already being asserted
+    /// somewhere on this page.</para>
+    ///
     /// <para>The stream checkboxes inside the filter are deliberately <em>not</em> here. A checkbox is
     /// 1.35rem by declaration — <c>.form-field input[type="checkbox"]</c> sets <c>min-height: 0</c> on
     /// purpose — so the thing a thumb finds is the <c>.filter-choice</c> row around it, and asserting a

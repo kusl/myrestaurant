@@ -222,6 +222,33 @@ public interface IMenuWorkflow
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Reorders every item under one heading at once (§7) and, if anything actually moved, announces it.
+    ///
+    /// <para><b>This is what an up/down control on a group's item rows posts</b>, and it is here rather than
+    /// left to <see cref="ReorderMenuItemAsync"/> for the reason
+    /// <see cref="ResequenceMenuSectionsAsync"/> is here rather than left to
+    /// <see cref="ReorderMenuSectionAsync"/>: "up" is not an absolute position, because §7 permits two items
+    /// under one heading to share one. The surface sends the ordering it is already rendering for that
+    /// heading with two entries exchanged.</para>
+    ///
+    /// <para>Conditional on <c>Resequenced</c> alone. <c>NoChange</c> is an administrator pressing Up on a
+    /// dish somebody else has already moved up, and <c>MenuItemSetChanged</c> is a page rendered before an
+    /// item was created, refiled or the heading itself vanished from the request — all of them commit
+    /// nothing, so all of them announce nothing, and the surface reloads rather than reporting a success
+    /// that did not happen.</para>
+    ///
+    /// <para>The publish is one <c>MenuChanged</c> for the whole call whatever number of rows it wrote,
+    /// which is what §9's "re-read the menu" already means. §11.1 renders each heading's items in stored
+    /// order, so a resequence changes what every open guest picker shows without a single price, name or
+    /// availability flag having moved.</para>
+    /// </summary>
+    Task<ResequenceMenuItemsOutcome> ResequenceMenuItemsAsync(
+        Guid menuSectionIdentifier,
+        IReadOnlyList<Guid> orderedMenuItemIdentifiers,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Files one item under a different heading (§7) and, if it actually moved, announces it.
     ///
     /// <para><b>This is the last verb of the menu enhancement to arrive, and the obligation it discharges
@@ -509,6 +536,31 @@ public sealed class MenuWorkflow : IMenuWorkflow
         // §11.1 and §11.2 both render the menu in display order, so a move that committed changes what
         // every open picker shows even though no item's name, price or availability moved.
         if (outcome is ReorderMenuItemOutcome.Reordered)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
+
+        return outcome;
+    }
+
+    public async Task<ResequenceMenuItemsOutcome> ResequenceMenuItemsAsync(
+        Guid menuSectionIdentifier,
+        IReadOnlyList<Guid> orderedMenuItemIdentifiers,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        ResequenceMenuItemsOutcome outcome = await _administration
+            .ResequenceMenuItemsAsync(
+                menuSectionIdentifier,
+                orderedMenuItemIdentifiers,
+                actorPersonIdentifier,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        // One announcement for the whole call, however many rows it wrote: MenuChanged means "re-read the
+        // menu" and nothing else (§9), so publishing per row would tell every open phone to re-query
+        // several times for one decision.
+        if (outcome is ResequenceMenuItemsOutcome.Resequenced)
         {
             _broadcaster.Publish(new MenuChanged());
         }

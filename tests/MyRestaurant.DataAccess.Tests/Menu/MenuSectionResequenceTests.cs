@@ -246,8 +246,11 @@ public sealed class MenuSectionResequenceTests : IClassFixture<PostgreSqlFixture
         IReadOnlyList<MenuSectionEventEntry> events = await EventLog()
             .ListForSectionAsync(puddings, cancellationToken);
 
+        // The filtering overload rather than Where-then-Single: xUnit2031, and the analyzer is right that
+        // the overload names the subject in the failure message where a pre-filtered empty sequence cannot.
         MenuSectionEventEntry moved = Assert.Single(
-            events.Where(entry => string.Equals(entry.EventType, "reordered", StringComparison.Ordinal)));
+            events,
+            entry => string.Equals(entry.EventType, "reordered", StringComparison.Ordinal));
 
         Assert.Equal(moment, moved.OccurredAt);
         Assert.Equal(_administratorIdentifier, moved.ActorPersonIdentifier);

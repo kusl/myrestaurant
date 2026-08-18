@@ -2018,3 +2018,225 @@ in `app.css`, and this slice had no other reason to open that file.
 starts it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried.
+
+---
+
+# M6 Slice 48 — the rule that caught its own documentation, and the ordering verb one register down
+
+## Read this first: Slice 47 was green on the suite, the count matched exactly, and the governance gate was red
+
+`total: 1180, failed: 0, succeeded: 1180` on `dotnet test` with `MYRESTAURANT_E2E` set, and `total: 17` on
+the separate scenario run. The predicted count was 1180 and the run returned 1180, so §18's arithmetic had
+nothing to chase for the second slice running.
+
+**`scripts/check_repository.sh` failed, and it was not a flake:**
+
+```
+3. no document asserts a repository setting
+   FAIL: docs/TECHNICAL_SPECIFICATION.md:1335 asserts a repository setting it cannot check
+repository governance FAILED: 1 problem(s) in the tree. Nothing was modified.
+```
+
+One line, one gate, and the whole of the finding. It is repaired first in this entry because it was red on
+arrival rather than caused by anything here.
+
+## Two changes in one archive, on the ruling Slice 47 established
+
+The rule Slices 45 and 46 deferred a verb under is about *indistinguishable* symptoms: one change, one green
+run, then the feature. These two cannot be confused. A prose defect fails as a named line number out of a
+grep gate with no test involved and nothing built. A verb defect fails as a named assertion in one of two
+files. So a red run answers its own first question — *which gate went red?* — and the answer partitions the
+archive.
+
+## The gate (F-98)
+
+Gate 3 of `scripts/check_repository.sh` is the F-42 rule made unrepeatable. It greps every tracked file that
+is not a named record file for a short list of claims about GitHub settings, on the distinction that a
+document may state **policy**, which is true wherever it is read, and must not state **platform state**,
+which nothing in this repository can verify.
+
+Slice 46 added §16.4's paragraph on `ContextDumpExclusionContractTests`, and that paragraph had to explain
+why the archived build log is on the exempt list. It explained it by **reproducing the forbidden claim
+verbatim** — a short quotation, in service of an accurate point, inside the one document in this tree that
+is normative about the rule being quoted. So the specification asserted a repository setting it cannot
+check, and the governance gate failed for a sentence whose subject was that very gate.
+
+**The gate was right on every count. The finding is entirely in the prose**, which is what makes it worth a
+row rather than a silent correction. The general shape:
+
+> A paragraph documenting why a forbidden string is permitted somewhere is the paragraph most likely to
+> contain that string. A gate over authored text is tripped by its own documentation before it is tripped by
+> a defect.
+
+Nothing else in the tree reads for that phrasing, so two slices of otherwise-green runs did not see it.
+
+**What changed:** the clause now describes the claim instead of quoting it, and says what the general hazard
+is. `docs/DOCUMENTATION_REVIEW.md` gains the row and the status line.
+
+**Adding `docs/TECHNICAL_SPECIFICATION.md` to `RECORD_FILES` was considered and rejected.** It is the largest
+non-record file in the tree — 449 KiB of normative prose — and widening an exemption to accommodate one
+clause is precisely F-46's argument: a rule stated as a rule and enforced as a list of exceptions is
+enforced as a list of exceptions. The exempt list is for files whose *job* is recording what this tree used
+to say. The specification's job is saying what it does say.
+
+**No new gate**, on F-47 and F-71. The existing gate caught this on the first run after the sentence landed,
+which is a gate working. A second gate asserting that gate 3's subject does not describe itself is a
+monument.
+
+## The verb (Stage 3b)
+
+Slice 47 shipped whole-list reordering for **headings** and named the item-level mirror as out of scope and
+as the next ordering slice. This is that slice.
+
+`ResequenceMenuItemsAsync(menuSectionIdentifier, orderedMenuItemIdentifiers, actorPersonIdentifier, …)`
+assigns `0…n-1` within one heading, writes one `reordered` event per item whose position actually changed,
+and refuses a non-permutation whole with `MenuItemSetChanged`. Outcomes are `Resequenced` / `NoChange` /
+`MenuItemSetChanged`, the same three shapes the section verb returns.
+
+**Why it was a second slice rather than a widening of the first.** The design is identical and the table is
+not. `menu_item_event` has five named paired CHECKs where `menu_section_event` has three, and a verb is a
+write to a table rather than an idea about ordering. Saying so in Slice 47 and then doing it here is cheaper
+than discovering it while editing one file to serve two tables.
+
+**Three things the design did not settle, settled in the writing.**
+
+**1. The heading is a parameter rather than inferred from the list.** A position is a position *within* a
+section (§7), so the set being reordered is one heading's items. Deriving the heading from the first item's
+row would work and would be worse: a caller that assembled a list spanning two headings would get a silent
+partial answer instead of a refusal, and the whole point of taking a whole ordering is that there is nothing
+left to infer. Sending the whole menu is the other alternative, and it asks the write to renumber the
+puddings because somebody moved a drink.
+
+**2. An unknown heading returns `MenuItemSetChanged`, through the ordinary permutation comparison.** There is
+deliberately no fourth outcome for it. An unknown heading has no items under it, so any non-empty list
+against it fails the permutation test on the same line every other refusal fails on. And from the surface's
+side the two are one fact — *this page is stale, reload it* — so a distinction the caller cannot act on
+differently is a distinction not worth returning. That is the same ruling Slice 47 made about three shapes
+of refusal collapsing to one outcome.
+
+There is a fact for it, because "no rows came back" is also what an empty heading looks like and the two
+agreeing should be a decision on the record rather than something a reader has to reconstruct.
+
+**3. The section row is deliberately not locked, and the argument is arithmetic.** This is the one
+substantive difference from the section verb, and it took the longest to be sure of.
+
+A concurrent create or refile appends into this heading at `MAX(display_order) + 1`, computed from the very
+positions the resequence is holding `FOR UPDATE`. If those are `n` rows whose maximum is `m`, then
+`m ≥ n - 1`, so the arrival lands at `m + 1 ≥ n` — strictly after every position a resequence of those `n`
+rows can assign. Which is *exactly* the append those two verbs promise. So the interleaving is correct with
+no lock on the section at all.
+
+And taking none is worth more than the lock would be: this verb takes item locks and nothing else, where
+`MoveMenuItemToSectionAsync` takes an item lock and then a section lock. A section lock here would invert
+that nesting and make the deadlock question live for the first time in this file. The item rows are locked
+**ordered by identifier**, on the rule the section verb established, so two concurrent resequences cannot
+deadlock half way through each other's set.
+
+**What is deliberately not asserted:** the interleaving above. Two transactions racing is a property of a
+scheduler, and a test that happened to pass on one ordering would be F-41's shape rather than evidence. The
+argument is in the code, in §7, and here.
+
+## The surface
+
+Each item row's actions cell gains **Up** and **Down** beside its existing **Manage** link — the same three
+controls a heading's group carries, one register down. Each is its own static-SSR form named from the
+*item's* identifier, so a sixty-dish menu has a hundred and twenty distinct form names and Blazor routes
+each POST to the row that owns it. The ends of each heading's list are **disabled rather than omitted**, on
+the rule the group's row already follows: a control that vanishes at the edge of a list moves every other
+control up a row on the next render, and §16.3 scenario 16 measures where controls are.
+
+The list exchanged is the one that heading's loop is already rendering — `IMenuDirectory`'s six-key order
+filtered to the heading, which is what makes the filter rather than a `GroupBy` load-bearing a second time.
+Nothing is computed from a position.
+
+Three new flash sentences, because the three outcomes are different things to be told and two of them are
+ordinary events on a shared menu rather than errors.
+
+## F-93 needed no edit, and that is the finding rather than the relief
+
+`.record-actions button` has been in the 375px barrier's selector since the barrier was written. It matched
+**nothing** until this slice: every index's actions cell held a link and only a link, so the `button` half
+was a selector waiting for a submit control nobody had written. The item rows are the first to render one.
+
+So the obligation F-93 imposes — a surface acquiring a new *kind* of control acquires a selector in the same
+slice — was discharged by a selector added years of slices early. The uncomfortable part is that **a
+selector matching nothing is indistinguishable from a selector matching everything it should**, and nothing
+in the harness could have said which of the two this was. What makes it safe rather than lucky is that
+`.menu-group-actions button` was already asserting the same claim on the same page, from Slice 47. The
+barrier's comment now records all of this.
+
+`MinimumControlsMeasured` is a floor, so more controls can only satisfy it further. It does not move.
+
+## In passing
+
+One xUnit analyzer warning cleared: `MenuSectionResequenceTests.cs(249,39): xUnit2031`, a `Where` clause
+before `Assert.Single` where the filtering overload belongs. The analyzer is right about the reason — the
+overload names the subject in the failure message where a pre-filtered empty sequence cannot.
+
+## Test count arithmetic
+
+Uncompiled, per §18. **1180 → 1190.**
+
+| Where | Assertions |
+| --- | --- |
+| `MenuItemResequenceTests` (new) | 8 |
+| `MenuWiringTests` | 2 |
+| **Total added** | **10** |
+
+Any deviation from 1190 is the first thing to investigate.
+
+## What was NOT verified
+
+**Nothing was compiled or run.** This archive is a prediction until `dotnet build` says otherwise, which is
+the habit F-71 bought. What *was* done: a string-aware brace and bracket balance over every edited C# file;
+a Razor tag-tree walk over `AdministrationMenu.razor` with generic type arguments and code islands excluded;
+CS4007 and CS1620 scans; every constructor and helper signature the new test file calls checked against the
+tree; a `SpecificationVersionTests` simulation; a `TestingSectionContractTests` simulation that resolved
+every cited class and compared every stated count; a `MarkdownTableContractTests` simulation over every
+tracked Markdown file; and byte hygiene.
+
+**The census delta rather than the census.** `MinimumCountedClasses` moves 23 → 24 on the arithmetic that
+exactly one §16.4 paragraph citing a class with a count was added. The absolute number was not independently
+recomputed by the same code the gate uses, so if the floor is wrong it is wrong by the amount that
+arithmetic is wrong.
+
+**No browser saw the new controls.** §16.3's scenario 17 is not extended in this slice, so nothing asserts
+end to end that an item moves within its heading through a browser. That is a real gap and it is the
+obvious next end-to-end step; it is not here because the barrier already measures these controls and a
+scenario extension is a separate kind of change.
+
+**The lock-free interleaving is argued, not tested.** See above.
+
+**Whether `.record-actions button` renders at the touch-target height on a handset.** The barrier will now
+measure it, which is the point; nothing in the authoring environment can observe the answer in advance.
+
+## Carried
+
+**The wide layout stacks a heading's three controls, and now an item's three too.** The `<form>` is a block
+element and `app.css` has no rule for a row of them. Carried, and it is now on two registers rather than
+one, which makes it slightly more worth fixing than it was.
+
+**The dump reduction.** Specified in `_CHANGES.md` and deferred again by name: both remaining cuts are
+splits of history registers that four gates read, and this slice already edits two of those registers. It
+is the obvious Slice 49.
+
+**§16.3 has no scenario for either resequencing verb.** New, and named above.
+
+**The handheld barrier visits neither section surface.** Carried.
+
+**No gate can see a count written in a comment, or a claim written beside a computation.** Carried.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried.
+
+**Nothing treats a test that fails and then passes as evidence.** Carried.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Twelfth slice carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a fifteenth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Twenty-fourth consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried.

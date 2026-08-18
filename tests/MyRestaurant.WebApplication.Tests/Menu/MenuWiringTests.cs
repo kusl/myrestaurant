@@ -692,6 +692,78 @@ public sealed class MenuWiringTests
     }
 
     /// <summary>
+    /// One resequence, one announcement, and the heading and the ordering both arrive unaltered.
+    ///
+    /// <para><b>One publish for the whole call however many rows it wrote.</b> The same rule the section
+    /// resequence carries and for the same reason: <c>MenuChanged</c> means "re-read the menu" and nothing
+    /// else (§9), so a workflow publishing per written row would tell every open phone in the building to
+    /// re-query several times over one decision.</para>
+    ///
+    /// <para><b>The heading is asserted alongside the list, which is the fact this verb has and the section
+    /// one does not.</b> The set being reordered is one heading's items, so the workflow forwards two things
+    /// that must stay together — a shell that dropped the heading would leave the write service reordering
+    /// whichever heading it felt like. The list is asserted by identity as well as by contents: nothing in
+    /// this verb's contract permits the workflow to sort, de-duplicate or re-order what it was given, since
+    /// the whole ordering <em>is</em> the argument.</para>
+    /// </summary>
+    [Fact]
+    public async Task AnItemResequence_HandsTheHeadingAndTheOrderingThroughAndAnnouncesOnce()
+    {
+        Guid[] ordering =
+        [
+            MenuItemIdentifier,
+            Guid.Parse("0192f000-0000-7000-8000-00000000e001"),
+            Guid.Parse("0192f000-0000-7000-8000-00000000e002"),
+        ];
+
+        FakeMenuAdministration administration = new();
+        RecordingBroadcaster broadcaster = new();
+
+        ResequenceMenuItemsOutcome outcome = await WorkflowOver(administration, broadcaster)
+            .ResequenceMenuItemsAsync(
+                MenuSectionIdentifier, ordering, ActorIdentifier, TestContext.Current.CancellationToken);
+
+        Assert.Equal(ResequenceMenuItemsOutcome.Resequenced, outcome);
+        Assert.Equal(MenuSectionIdentifier, administration.LastMenuSectionIdentifier);
+        Assert.Same(ordering, administration.LastOrdering);
+        Assert.Equal(ActorIdentifier, administration.LastActor);
+        Assert.IsType<MenuChanged>(Assert.Single(broadcaster.Published));
+    }
+
+    /// <summary>
+    /// Two ways for an item resequence to write nothing, and neither is announced.
+    ///
+    /// <para><c>NoChange</c> is the order it already had. <c>MenuItemSetChanged</c> is a page rendered
+    /// before the heading's items changed — or one naming a heading this menu does not hold, which reaches
+    /// the same outcome because an unknown heading has no items under it. The distinction matters to the
+    /// surface, which words them differently; it does not matter here, because the rule this file exists to
+    /// hold is about commits and neither of these committed anything.</para>
+    /// </summary>
+    [Fact]
+    public async Task AnItemResequenceThatWroteNothing_AnnouncesNothing()
+    {
+        foreach (ResequenceMenuItemsOutcome quiet in new[]
+        {
+            ResequenceMenuItemsOutcome.NoChange,
+            ResequenceMenuItemsOutcome.MenuItemSetChanged,
+        })
+        {
+            FakeMenuAdministration administration = new() { ResequenceOutcome = quiet };
+            RecordingBroadcaster broadcaster = new();
+
+            Assert.Equal(
+                quiet,
+                await WorkflowOver(administration, broadcaster).ResequenceMenuItemsAsync(
+                    MenuSectionIdentifier,
+                    [MenuItemIdentifier],
+                    ActorIdentifier,
+                    TestContext.Current.CancellationToken));
+
+            Assert.Empty(broadcaster.Published);
+        }
+    }
+
+    /// <summary>
     /// The last verb of the menu enhancement to acquire a caller, and the loudest of the item verbs.
     ///
     /// <para>§11.1 groups the guest menu by heading, so a committed refile moves a card out of one
@@ -825,6 +897,9 @@ public sealed class MenuWiringTests
         public MoveMenuItemToSectionOutcome MoveOutcome { get; init; }
             = MoveMenuItemToSectionOutcome.Moved;
 
+        public ResequenceMenuItemsOutcome ResequenceOutcome { get; init; }
+            = ResequenceMenuItemsOutcome.Resequenced;
+
         public CreateMenuItemOutcome CreateOutcome { get; init; } = CreateMenuItemOutcome.Created;
 
         public Task<CreateMenuItemResult> CreateMenuItemAsync(
@@ -917,6 +992,19 @@ public sealed class MenuWiringTests
             LastActor = actorPersonIdentifier;
 
             return Task.FromResult(ReorderOutcome);
+        }
+
+        public Task<ResequenceMenuItemsOutcome> ResequenceMenuItemsAsync(
+            Guid menuSectionIdentifier,
+            IReadOnlyList<Guid> orderedMenuItemIdentifiers,
+            Guid actorPersonIdentifier,
+            CancellationToken cancellationToken = default)
+        {
+            LastMenuSectionIdentifier = menuSectionIdentifier;
+            LastOrdering = orderedMenuItemIdentifiers;
+            LastActor = actorPersonIdentifier;
+
+            return Task.FromResult(ResequenceOutcome);
         }
 
         public Task<MoveMenuItemToSectionOutcome> MoveMenuItemToSectionAsync(

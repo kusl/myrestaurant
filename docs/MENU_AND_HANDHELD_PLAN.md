@@ -754,7 +754,8 @@ Two obligations the slice carries, both already written down:
 2. **The item-level mirror is deliberately out of scope**, and saying so is what keeps the slice honest:
    `menu_item.display_order` has the same absolute-write shape and the same non-unique positions, so items
    within a heading need the same verb. It is the same design applied to a second table, and it is a second
-   slice, because the two write to different event tables with different paired CHECKs.
+   slice, because the two write to different event tables with different paired CHECKs. **That is Stage 3b
+   below, landed in M6 Slice 48.**
 
 ### What landed, and the three places it differs from the text above
 
@@ -780,6 +781,74 @@ which has been styling that row since Slice 44, so they are full width and `--to
 with no new declaration. On the wide layout the three controls stack, because a `<form>` is a block element.
 That is recorded as an open item rather than fixed, because fixing it means opening `app.css` and this slice
 had no other reason to.
+
+---
+
+## ~~Stage 3b — the item resequencing verb~~ — **landed, M6 Slice 48**
+
+**Stage 3a named this as out of scope and as the next ordering slice in the same paragraph, rather than
+widening itself into it.** This section is the design and the outcome together, written after the fact,
+because there was nothing left to design: the shape was settled one register up, and the interesting part
+was what the second table made different.
+
+`ResequenceMenuItemsAsync(menuSectionIdentifier, orderedMenuItemIdentifiers, actorPersonIdentifier, …)`
+assigns `0…n-1` within one heading, writes one `reordered` event per item whose position actually changed,
+refuses a non-permutation whole, and returns `Resequenced` / `NoChange` / `MenuItemSetChanged`.
+
+**Why a second slice and not a wider first one.** The design is identical; the table is not.
+`menu_item_event` carries five named paired CHECKs where `menu_section_event` carries three, and a verb is a
+write to a table rather than an idea about ordering. One file serving two tables would have had to be right
+about both vocabularies at once, and the cost of getting that wrong is a constraint name rather than a
+sentence.
+
+### The three things Stage 3a's design did not settle
+
+**1. The heading is a parameter, not inferred from the list.** A position is a position *within* a section,
+so the set is one heading's items. Two alternatives were considered and both are worse. Deriving the heading
+from the first item's row admits a list spanning two headings and answers it with a silent partial write,
+where the whole point of taking a whole ordering is that nothing is left to infer. Taking the entire menu
+asks the write to renumber the puddings because somebody moved a drink.
+
+**2. An unknown heading returns `MenuItemSetChanged`, and there is no fourth outcome.** An unknown heading
+has no items under it, so any non-empty list fails the permutation test on the same line every other refusal
+fails on. And the surface cannot act on the distinction: an unknown heading and a stale item set both mean
+*this page is stale, reload it*. That is Stage 3a's collapse-three-refusals-into-one ruling applied to a
+fourth shape. There is an integration fact for it, because "no rows came back" is also what an empty heading
+looks like, and the two agreeing should be a decision on the record rather than something a reader
+reconstructs.
+
+**3. The section row is deliberately not locked, and the argument is arithmetic.** A concurrent create or
+refile appends at `MAX(display_order) + 1`, computed from the very positions the resequence is holding
+`FOR UPDATE`: `n` rows with maximum `m` give `m ≥ n - 1`, so the arrival lands at `m + 1 ≥ n` — strictly
+after every position a resequence of those `n` rows can assign, which is exactly the append those verbs
+promise. The interleaving is therefore correct with no lock. Taking none is worth more than the lock would
+be: this verb takes item locks and nothing else, where a refile takes an item lock and then a section lock,
+so a section lock here would invert that nesting and make the deadlock question live for the first time in
+that file. Item rows are locked ordered by identifier, on Stage 3a's rule.
+
+**What is deliberately not tested is that interleaving.** Two transactions racing is a property of a
+scheduler; a test passing on one ordering would be F-41's shape rather than evidence.
+
+### F-93 was discharged by a selector added early, which is its own small finding
+
+`.record-actions button` has been in the 375px barrier since the barrier was written and matched **nothing**
+until this slice — every index's actions cell held a link and only a link. The item rows are the first submit
+controls to render in one, so no edit was needed. The uncomfortable half is recorded rather than enjoyed: a
+selector matching nothing is indistinguishable from a selector matching everything it should, and nothing in
+the harness could have said which of the two this was. What makes it safe rather than lucky is that
+`.menu-group-actions button` was already asserting the same claim on the same page.
+
+### What is still open after this stage
+
+**No end-to-end scenario drives either resequencing verb.** §16.3's scenario 17 is not extended, so nothing
+asserts through a browser that a heading or an item moves. The barrier measures the controls; nothing
+exercises them.
+
+**The wide layout stacks each row's three controls.** A `<form>` is a block element and `app.css` has no rule
+for a row of them. It is now true on two registers, which makes it slightly more worth fixing than it was.
+
+**Ordering is complete for both tables**, so no ordering hole remains in the menu enhancement. The next stage
+is Stage 4.
 
 ---
 
