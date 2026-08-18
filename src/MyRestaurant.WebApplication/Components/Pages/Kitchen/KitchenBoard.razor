@@ -221,37 +221,88 @@
         }
 
         @* ---- the "86" panel (§7, §11.2) ---------------------------------------------------------- *@
+        @* GROUPED UNDER HEADINGS AS OF M6 SLICE 50, and this was the last surface in the application
+           that read the menu flat. The guest's picker has been grouped since Slice 40 and the
+           administrator's index since Slice 44; a cook was still scrolling one undivided list of every
+           dish in the building looking for the one that just ran out.
+
+           The walk is `MenuGrouping.EveryHeading`, which is the same walk §11.1 uses through the other
+           door. Two doors rather than a flag, because the rule they express is §7's asymmetry and it
+           points opposite ways for these two readers — see F-100.
+
+           HEADINGS GUESTS CANNOT SEE ARE HERE, MARKED, and that is the opposite of §11.1's rule rather
+           than an oversight. §7: deactivating a heading does NOT deactivate its items — their is_active
+           is untouched, and switching the heading back on brings the menu back exactly as it was. This
+           panel is the only surface in the application that can read or change those flags, so dropping
+           the hidden headings would make that rule unmanageable: a cook could not 86 the eggs they will
+           need the moment breakfast comes back on, and could not bring back something 86'd last week.
+           The heading is chipped instead, which is what the row below does one register down for an item.
+
+           AN EMPTY HEADING IS STILL ABSENT, because groups are built from items and there is nothing on
+           a stock list to say about a heading holding no stock. §11.4's index is the one surface where
+           such a heading is visible.
+
+           THE HEADING'S OWN DESCRIPTION IS DELIBERATELY NOT RENDERED. The record carries it — §11.1
+           needs it — and "served until 11am" is a sentence for a guest choosing, not for a cook counting.
+           A stock list wants to be short. *@
         <section class="kitchen-eighty-six">
             <h2 class="kitchen-recent-heading">Availability (“86”)</h2>
             <p class="muted">
                 Turning something off leaves it on the guest's menu marked <em>currently unavailable</em>
-                and stops it being ordered. Orders already sent are untouched.
+                and stops it being ordered. Orders already sent are untouched. Headings guests cannot see
+                are listed too, because switching a heading off leaves everything under it exactly as the
+                kitchen set it.
             </p>
 
-            @if (_menu.Count == 0)
+            @{
+                IReadOnlyList<MenuHeadingGroup> headings = MenuGrouping.EveryHeading(_menu);
+            }
+
+            @if (headings.Count == 0)
             {
                 <p class="muted">There is nothing on the menu yet.</p>
             }
             else
             {
-                <ul class="kitchen-menu">
-                    @foreach (MenuItemSummary item in _menu)
-                    {
-                        <li class="kitchen-menu-item @(item.IsActive ? string.Empty : "is-off")"
-                            @key="item.MenuItemIdentifier">
-                            <span class="kitchen-menu-name">@item.Name</span>
-                            <span class="kitchen-menu-state">
-                                @(item.IsActive ? "On" : "86'd")
-                            </span>
-                            <button type="button"
-                                    class="@(item.IsActive ? "button-secondary" : "button-primary")"
-                                    disabled="@_busy"
-                                    @onclick="() => ToggleMenuItemAsync(item)">
-                                @(item.IsActive ? "Turn off" : "Bring back")
-                            </button>
-                        </li>
-                    }
-                </ul>
+                @foreach (MenuHeadingGroup heading in headings)
+                {
+                    @* @key on the heading's identifier rather than the loop index: a heading that moves
+                       position between renders would otherwise be reconciled as an edit of whichever
+                       heading now sits where it used to — and this board re-reads on every MenuChanged,
+                       so a resequence from /administration/menu lands here mid-service. *@
+                    <div class="kitchen-menu-group" @key="heading.MenuSectionIdentifier">
+                        <h3 class="kitchen-menu-group-name" id="@HeadingId(heading)">
+                            @heading.MenuSectionName
+                            @if (!heading.MenuSectionIsActive)
+                            {
+                                @* The consequence rather than the flag, which is the wording §11.4's
+                                   index and the section editor both use. "Inactive" is what the column
+                                   says; "hidden from guests" is what it does — and it is the opposite of
+                                   what the same word does one table away. *@
+                                <span class="chip chip-warn">Hidden from guests</span>
+                            }
+                        </h3>
+
+                        <ul class="kitchen-menu" aria-labelledby="@HeadingId(heading)">
+                            @foreach (MenuItemSummary item in heading.Items)
+                            {
+                                <li class="kitchen-menu-item @(item.IsActive ? string.Empty : "is-off")"
+                                    @key="item.MenuItemIdentifier">
+                                    <span class="kitchen-menu-name">@item.Name</span>
+                                    <span class="kitchen-menu-state">
+                                        @(item.IsActive ? "On" : "86'd")
+                                    </span>
+                                    <button type="button"
+                                            class="@(item.IsActive ? "button-secondary" : "button-primary")"
+                                            disabled="@_busy"
+                                            @onclick="() => ToggleMenuItemAsync(item)">
+                                        @(item.IsActive ? "Turn off" : "Bring back")
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
             }
         </section>
     }
@@ -490,6 +541,35 @@
 
     .kitchen-recent-where {
         font-size: 0.85rem;
+        color: var(--ink-soft);
+    }
+
+    /*
+     * The "86" panel's headings (M6 Slice 50). Component-local, like everything else in this block: no
+     * other surface reads a `.kitchen-*` name, and `.kitchen-` is deliberately NOT on
+     * HandheldLayoutContractTests' SharedSelectorPrefixes — which is the list that says which vocabulary
+     * app.css owns. The chip inside the heading is app.css's and is only consumed here, the way
+     * `.chip-ok` already is fifty lines up in this same file.
+     *
+     * No `.menu-group*` name is reached for, and that is the rule rather than a coincidence: those are
+     * app.css's, declared once for §11.4's index, and a page-local rule sharing one of their names would
+     * win from later in the document at the same specificity and the stylesheet would lose in silence
+     * (F-66). A cook's group and an administrator's group are also not the same shape — one is a run of
+     * touch targets, the other a <details> holding a table.
+     */
+    .kitchen-menu-group + .kitchen-menu-group {
+        margin-top: 1.1rem;
+    }
+
+    .kitchen-menu-group-name {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+        margin: 0.9rem 0 0;
+        font-size: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
         color: var(--ink-soft);
     }
 
@@ -781,7 +861,29 @@
         return $"Nothing was changed — {reason} The board has been refreshed.";
     }
 
-    /// <summary>§11.2: "An '86' panel lists menu items with active toggles."</summary>
+    /// <summary>
+    /// The id each heading's <c>&lt;ul&gt;</c> points at with <c>aria-labelledby</c>, so a screen reader
+    /// announces which part of the menu a run of rows belongs to. Built from the identifier rather than
+    /// from the name, because a heading called "Sides &amp; extras" would produce an id with a space in it
+    /// and because two headings can never share an identifier where they could share a slug.
+    ///
+    /// <para>The prefix is this page's rather than the record's, which is why the helper is local and not
+    /// on <see cref="MenuHeadingGroup"/>: <c>/table/{id}</c> builds its own ids over the same headings in
+    /// its own document, and the two must not collide if a heading is ever rendered on both.</para>
+    /// </summary>
+    private static string HeadingId(MenuHeadingGroup heading)
+        => $"kitchen-menu-section-{heading.MenuSectionIdentifier}";
+
+    /// <summary>
+    /// §11.2: "An '86' panel lists menu items with active toggles."
+    ///
+    /// <para>The toggle is per <em>item</em> and there is deliberately no per-heading toggle beside it,
+    /// even though the panel now renders headings. Switching a heading off is a decision about what guests
+    /// can see — §11.4's administrator makes it, from the section editor — where 86ing is a statement about
+    /// what the kitchen has. Putting both on one screen would offer a cook the control that empties a
+    /// quarter of the menu next to the one that removes a dish, and §7 is explicit that the two are
+    /// different requests.</para>
+    /// </summary>
     private async Task ToggleMenuItemAsync(MenuItemSummary item)
     {
         if (_person is not { } person || _busy)

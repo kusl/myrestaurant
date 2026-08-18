@@ -1,6 +1,6 @@
 # Menu modernization and the handheld contract — staged plan
 
-**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-17, at the close of Slice 47.** This
+**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-18, at the close of Slice 50.** This
 is the execution plan for the first enhancement request the project has received from a person who was
 shown the running application, together with the defect that request arrived beside. It is a working
 document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
@@ -683,7 +683,9 @@ itself. A heading with no description renders **no paragraph** rather than an em
 
 - **The render record was widened, against its own comment.** `MenuSectionOnTheMenu` said a surface needing
   the heading's description "would read the directory rather than widen this". Reversed, with the reversion
-  instructions written into the record's summary rather than left in a changelog.
+  instructions written into the record's summary rather than left in a changelog. *(That record was renamed
+  `MenuHeadingGroup` and moved out of the component in Slice 50 — see Stage 3c. The reversion instructions
+  moved with it.)*
 - **The publish needed no edit.** `DescribeMenuSectionAsync` has broadcast `MenuChanged` since the day it
   reached no guest surface at all, on the ruling that `MenuChanged` means *re-read the menu* and nothing
   else. This is the moment that ruling was made for, and neither the workflow nor its wiring fact changed —
@@ -874,9 +876,76 @@ for a row of them. It is now true on two registers, which makes it slightly more
 
 **Stage 3 is closed as of Slice 49.** Its last outstanding piece — a heading's own description under its
 heading on the guest menu — landed, and the paragraph above records which of the two deferred routes was
-taken and why. **The kitchen's 86 panel still reads the menu flat**, which is the one surface left that
-groups by nothing; it is named in this stage's text and is not a Stage 3 obligation, because a cook's panel
-is a different question from a guest's menu. The next stage is Stage 4.
+taken and why. **The kitchen's 86 panel was the one surface left that grouped by nothing, and it landed in
+Slice 50** — recorded as Stage 3c below rather than folded into this stage, because a cook's panel is a
+different question from a guest's menu and it was never a Stage 3 obligation. **No surface in the
+application now reads the menu flat.** The next stage is Stage 4.
+
+---
+
+## ~~Stage 3c — the kitchen's 86 panel~~ — **landed, M6 Slice 50**
+
+**Never a Stage 3 obligation, and recorded here so it is not mistaken for scope creep.** Stage 3's subject is the
+guest's menu and the administrator's index. §11.2's panel is a third reader of the same list, it was named in
+Stage 3's text as the surface that grouped by nothing, and it is filed as its own stage because a cook's panel
+answers a different question: *what has run out*, not *what can I have*.
+
+**It was the last surface in the application that read the menu flat.** The guest's picker has been grouped since
+Slice 39/40 and the index since Slice 44. A cook was still scrolling one undivided list of every dish in the
+building looking for the one that just ran out.
+
+### What forced the shape, which is the part worth keeping
+
+The walk that groups the guest menu was a **private property inside `TableOrderSurface.razor`**, and a private
+property cannot be called from a second component. So this stage had exactly two routes: paste the walk into
+`KitchenBoard.razor`, or move it out. Pasting is F-59's mechanism — one walk, two copies, two sets of §7's rules
+drifting independently with nothing able to see it.
+
+Moving it out also closed a hole nobody had named. That walk carries §11.1's grouping **and** §7's asymmetry
+between an inactive item and an inactive heading, and §16.1 records that this repository has no bUnit — so the
+only thing asserting any of it was §16.3 scenario 17, incidentally, on the way to something else. `KitchenQueue`'s
+own summary had already written the rule down: *a rule that can only be checked by rendering a Razor component is
+a rule nobody checks*. That is **F-100**, and `MenuGrouping` is now the fourth member of the set `KitchenQueue`,
+`OrderStaging` and `OrderNarrative` belong to.
+
+### The one rule that is the opposite of §11.1's, and is required rather than permitted
+
+**Headings guests cannot see are listed, and marked.** §7 says deactivating a heading does not deactivate its
+items — their `is_active` is untouched, and switching the heading back on restores the menu exactly. **This panel
+is the only surface in the application that can read or change those flags.** Drop the hidden headings and that
+rule becomes unmanageable: a cook cannot 86 the eggs they will need the moment breakfast returns, and cannot bring
+back something 86'd last week. The heading is chipped *Hidden from guests* instead — the consequence rather than
+the flag, which is the wording §11.4's index and the section editor already use.
+
+The two rules are reached through **two named entry points rather than one flag**: `VisibleToGuests` and
+`EveryHeading`. A boolean at a call site is a rule nobody reading the call site can see, and this is the pair §7
+restates every time it mentions either.
+
+### What was deliberately not built
+
+- **No per-heading toggle.** Switching a heading off is a decision about what guests see and belongs to §11.4's
+  section editor. On this screen it would sit beside the control that removes one dish while emptying a quarter of
+  the menu, and §7 is explicit the two are different requests.
+- **No heading description.** The record carries it because §11.1 needs it. *"Served until 11am"* is a sentence for
+  a guest choosing, not a cook counting.
+- **No `app.css` edit.** Two component-local rules, legitimate because `.kitchen-` is deliberately absent from
+  `SharedSelectorPrefixes`. Reaching for a `.menu-group*` name would be the F-66 defect — a page-local rule sharing
+  a shared name wins from later in the document and the stylesheet loses in silence.
+- **No end-to-end scenario.** `/kitchen` has none at all, which this stage did not change and which is now recorded
+  as a carried item in its own right.
+
+### What is still open after this stage
+
+**No scenario drives either resequencing verb**, which is the largest end-to-end gap in the menu: the 375px
+barrier measures those controls and nothing presses them.
+
+**`/kitchen` has no §16.3 scenario at all**, which is the largest end-to-end gap in the application. This stage
+changed that surface and could not assert the change through a browser.
+
+**The wide layout stacks each row's three controls** on the administration index. Carried on two registers.
+
+**Ordering is complete for both tables, every menu surface groups by heading, and Stage 3 and 3a–3c are closed.**
+The next stage is Stage 4.
 
 ---
 

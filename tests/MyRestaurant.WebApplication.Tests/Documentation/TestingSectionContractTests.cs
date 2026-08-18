@@ -83,8 +83,9 @@ public sealed class TestingSectionContractTests
     ///
     /// <para>This is the <em>only</em> place the census is written down (F-89). It moves with §16.4 —
     /// twelve, sixteen, eighteen, nineteen as the vocabulary gate joined the section, twenty with the
-    /// identifier ordering gate, twenty-one with the context-dump exclusion gate, and now twenty-three as the
-    /// test-runner gate and the resequencing verb's integration facts join it together — and it is the one
+    /// identifier ordering gate, twenty-one with the context-dump exclusion gate, twenty-three as the
+    /// test-runner gate and the resequencing verb's integration facts joined it together, twenty-four with
+    /// the item resequencing facts, and now twenty-five as the menu grouping gate joins — and it is the one
     /// copy that cannot drift unnoticed, because a census that fell below it fails here rather than sitting
     /// in a sentence nothing reads.</para>
     ///
@@ -94,7 +95,7 @@ public sealed class TestingSectionContractTests
     /// refuses is the collapse to zero, which is the one failure a computed subject cannot report on
     /// itself.</para>
     /// </summary>
-    private const int MinimumCountedClasses = 24;
+    private const int MinimumCountedClasses = 25;
 
     /// <summary>
     /// A test class named inside backticks, in either of the two forms §16.4 uses: the full

@@ -2456,3 +2456,248 @@ F-99 is that residual arriving in a third form, an *arithmetic* written beside a
 starts it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried.
+
+---
+
+# M6 Slice 50 — the last surface that read the menu flat, and the rule that had nowhere to be tested
+
+## Read this first: Slice 49 was green, the count matched exactly, and nothing is outstanding
+
+**1191 predicted, 1191 observed, zero failures.** §18's arithmetic matched to the digit for the second
+consecutive slice, and this time there was no red assertion beside it to explain. The end-to-end suite
+passed all seventeen scenarios against real browsers **three times** — the Debug suite, the Release suite
+under `scripts/ci_local.sh --with-all --with-e2e`, and a third standalone Debug run — and every local CI
+gate reported passing.
+
+So this slice opens with nothing to chase, which has happened rarely enough to say plainly. The only
+`Error:` lines anywhere in the log are the two `run.sh --containers-only` prints about a Caddy container
+that does not exist yet, which is a carried item rather than a regression.
+
+That matters for what follows. **This slice is one change**, and it did not need v1.32's
+distinguishable-failure argument to justify riding beside a second one.
+
+## The finding: a rule with nowhere to be tested (F-100)
+
+`GroupedMenu` was a **private property inside `TableOrderSurface.razor`**, and it had been since Slice 40.
+What it implements is not incidental: §11.1's grouping of the guest menu, **and** the pair of rules §7
+restates every single time it mentions either, because both are easy to lose and they point opposite ways
+one sentence apart —
+
+- an inactive **item** stays on the menu, marked, unorderable: *"the guest sees that the salmon exists and
+  is out, rather than watching it silently vanish"*;
+- an inactive **heading** is not rendered to the guest at all.
+
+§16.1 records that this repository has no bUnit. So for ten slices the only thing in this project asserting
+any of that was §16.3 scenario 17 — which needs a browser, a database and two and a half minutes, and which
+asserts it incidentally, on the way to asserting something else.
+
+**The tree had already written the rule down, three times, and this was the one place not following it.**
+`KitchenQueue`'s own summary is the sentence that governs the case: *a rule that can only be checked by
+rendering a Razor component is a rule nobody checks* — and it names `OrderStaging` and `OrderNarrative` as
+the two others that sit outside their components for exactly that reason. Three pure functions exist
+because of this argument. The fourth was inside a component.
+
+### What made it a defect rather than a preference
+
+This is the half worth keeping, because "extract it for testability" is a preference and this is not that.
+
+**§11.2's "86" panel needs the same walk with the opposite rule about hidden headings, and a private
+property cannot be called from a second component.** So the only route to grouping that panel, with the
+tree as it stood, was to paste the walk into `KitchenBoard.razor` — one walk, two copies, two sets of §7
+rules that would then drift independently. That is **F-59's mechanism exactly**: one paste, four times,
+across four pages nobody had decided about, and nothing able to see it.
+
+### The second, smaller half, found on the way in
+
+The walk's own summary said it took each heading's name and description **from the first row of each run**.
+It assigned both inside the loop body, on every iteration, so it took them from the **last**.
+
+Nothing in this application could ever have failed on that. `MenuItemSummary` joins both columns from one
+`menu_section` row through the INNER JOIN that has carried `MenuSectionName` since `0005`, so every row of
+a run carries byte-identical values and the two readings cannot disagree. **Which is precisely why no test
+could falsify the claim** — it is F-99's residual arriving in its fourth form, a claim written beside a
+computation that no gate reaches.
+
+F-77's habit is to delete such a claim rather than correct it. Here the cheaper direction is available and
+is taken instead: the assignment moves to where a run begins, which costs one `if`, makes the sentence
+true, and puts the assignment in the only place a reader would look for it.
+
+## What shipped
+
+`MenuGrouping` is the fourth member of the set, and `MenuHeadingGroup` replaces the component-private
+`MenuSectionOnTheMenu`.
+
+**Two named entry points rather than one with a flag**, and that is a ruling. `MenuGrouping.VisibleToGuests`
+drops hidden headings; `MenuGrouping.EveryHeading` keeps them. A boolean at a call site is a rule nobody
+reading the call site can see, and these two rules are §7's asymmetry — the thing a reader of either
+surface most needs to know without opening another file. The names state the rule rather than the caller,
+so a second guest-facing surface does not require this file be renamed.
+
+**The guest surface's behaviour is unchanged by construction, not by inspection.** Its markup tag stream is
+identical before and after; the only edit inside the `<div class="order-menu-section">` subtree is the loop
+variable's *type name*, which is C# rather than markup. That is a stronger claim than "I checked it looks
+right", and it is the reason this slice can carry a surface change and a refactor together.
+
+## The menu progress: the kitchen's 86 panel, grouped
+
+**This was the last surface in the application that read the menu flat.** The guest's picker has been
+grouped since Slice 40 and the administrator's index since Slice 44; a cook was still scrolling one
+undivided list of every dish in the building looking for the one that just ran out. §11.2 is now normative
+about it.
+
+### Hidden headings are listed and marked, which is required rather than permitted
+
+The obvious implementation is to reuse the guest's rule, and it is wrong. §7: **deactivating a heading does
+not deactivate its items** — their `is_active` is untouched, and switching the heading back on brings the
+menu back exactly as it was, because cascading the flag would silently rewrite every item's availability
+and lose which of them the kitchen had 86'd.
+
+**This panel is the only surface in the application that can read or change those flags.** Drop the hidden
+headings from it and §7's non-cascade rule becomes unmanageable in practice: a cook cannot 86 the eggs they
+will need the moment breakfast is switched back on, and cannot bring back something 86'd last week. So the
+heading is **chipped rather than dropped** — *Hidden from guests*, the consequence rather than the flag,
+which is the wording §11.4's index and the section editor both already use. It is the same move the guest
+surface makes one register down for an item.
+
+### Three smaller rulings on the panel
+
+**No per-heading toggle.** Switching a heading off is a decision about what guests can see and belongs to
+§11.4's section editor. Putting it here would offer a cook the control that empties a quarter of the menu
+next to the control that removes one dish, and §7 is explicit that the two are different requests.
+
+**The heading's own description is deliberately not rendered.** The record carries it — §11.1 needs it —
+and *"served until 11am"* is a sentence for a guest choosing, not for a cook counting. A stock list wants
+to be short.
+
+**No `app.css` edit and no `.menu-group` name.** The panel's two new rules are component-local, which is
+this file's standing arrangement and is legitimate because `.kitchen-` is deliberately **absent** from
+`HandheldLayoutContractTests`' `SharedSelectorPrefixes` — the list that says which vocabulary the
+stylesheet owns. Reaching for `.menu-group*` would have been the F-66 defect: a page-local rule sharing a
+shared name wins from later in the document at the same specificity and the stylesheet loses in silence.
+A cook's group and an administrator's group are also not the same shape — one is a run of touch targets,
+the other a `<details>` holding a table.
+
+## Two facts nothing else in this project could hold
+
+Worth naming, because "the unit test is faster" would be a weak argument on its own.
+
+**The first-row reading.** The fact hands the walk two rows that **disagree about their own heading's
+name** — an arrangement the INNER JOIN makes impossible through `IMenuDirectory`. That is exactly why no
+integration fact and no scenario can distinguish reading a run's first row from reading its last, and it is
+why the wrong reading survived ten slices under a comment asserting the right one. The arrangement is
+deliberately impossible rather than merely unusual, and the fact's summary says so — because it is the kind
+of thing a later reader repairs by mistake.
+
+**§7's asymmetry as an asymmetry.** One input, both doors, and the **difference** between the two answers
+compared against the hidden heading. Asserting either door alone says very little: a heading missing from
+the guest's answer has several possible causes, and a heading present in the kitchen's has none. It is the
+disagreement that is the test — the same shape scenario 17's closing step uses one register up, where three
+groups on the administrator's index and two groupings on the guest's menu must differ by exactly the empty
+heading. An implementation dropping the hidden heading from **both** lists, or from neither, fails here
+rather than passing half a rule.
+
+## What was verified
+
+Nothing was compiled and nothing ran. What was done:
+
+- **Tree reconstruction.** `dump.txt` parsed to 353 file records; 351 of the 352 written matched their
+  SHA-256 exactly. The one mismatch is `LICENSE`, which the dump elides to metadata and hash by design
+  (Slice 46), so it is expected rather than a fault. Zero unexplained mismatches.
+- **The Razor tag tree, by before-and-after diff**, on the method Slice 49 recorded rather than the
+  absolute walk that slice found to be the broken party. A second pristine extraction served as the
+  control: `AdministrationMenu.razor`, untouched, came back **0 changed events and 0 faults**, so the
+  instrument was trustworthy before it was believed. `KitchenBoard.razor` shows exactly one balanced
+  `<div>` wrapping a balanced `<h3>` containing a balanced `<span>`, inserted between `</p>` and `<ul>`
+  and closing after `</ul>`, and nothing else moved. **`TableOrderSurface.razor` is 247 → 247 markup
+  events, zero delta.**
+- **String-aware brace, paren and bracket balance**, zero on both new C# files.
+- **A `TestingSectionContractTests` simulation**: **25 counted classes against a floor of 25**, zero
+  disagreements, zero ambiguous paragraphs, zero unresolvable citations, and no duplicate test file names
+  anywhere under `tests/`.
+- **A `MarkdownTableContractTests` simulation**: 33 table runs across the documentation, **0 problems**.
+- **A `HandheldLayoutContractTests` simulation**, four facts of it: 14 component `<style>` blocks against
+  a floor of 8 with **zero shared-vocabulary re-declarations** — `.kitchen-menu-group` correctly does not
+  trip the `.menu-group` prefix, since prefix matching is on the *start* of a simple selector; 12 custom
+  properties read and **0 undeclared**; **0 colour literals** in the new CSS; and still exactly one
+  `min-width: 48rem` in the tree.
+- **A `RazorDirectiveContractTests` simulation**: 51 components against a floor of 20, **0 collisions**
+  with `@section` or `@RenderSection`.
+- **The version gate and the platform-state gate**, both simulated: header 1.35 against a newest entry of
+  1.35, two versioned documents against a floor of two, and **no forbidden platform-state phrasing** in
+  any non-record file this slice touches.
+- **Tree hygiene on every touched file**: LF endings, exactly one final newline, no whitespace-only line,
+  no dump separator.
+
+## Test count arithmetic
+
+Uncompiled, per §18. **1191 → 1202.**
+
+| Where | Assertions |
+| --- | --- |
+| `MenuGroupingTests` | 11 |
+| **Total added** | **11** |
+
+No test is removed and none moves file. §16.3 stays at seventeen — no scenario is added or extended. §16.4
+gains one paragraph, so the counted-class census and its enforced floor both move 24 → 25. **Any deviation
+from 1202 is the first thing to investigate.**
+
+## What was NOT verified
+
+**No browser rendered the grouped panel.** `/kitchen` has no §16.3 scenario at all — the board's alert
+state, its queue and its 86 panel are asserted by unit tests over pure functions and by integration tests
+over the writes, and nothing drives the surface. So the likeliest red is not a test: it is the panel
+looking wrong. Nothing in the authoring environment can render 375px, and the new `<h3>` sits inside a
+`<section>` whose `font-size` is 1.05rem by deliberate choice.
+
+**Whether the uppercase heading reads well above the rows.** `.kitchen-menu-group-name` declares
+`text-transform: uppercase` and `--ink-soft`, matching `.kitchen-menu-state` beside it rather than the
+guest menu's `.order-menu-section-name`. That is a judgement, it is reversible in one declaration, and it
+is the thing to look at first on a real screen.
+
+**The chip inside an `<h3>`.** `.chip-warn` is app.css's and is consumed here, which is allowed and which
+this file already does with `.chip-ok` fifty lines up. What is unverified is whether a chip baseline-aligns
+acceptably inside a heading that also declares `letter-spacing` — the flex container should handle it, and
+no engine has been asked.
+
+**Whether `MenuGrouping`'s two names read as well at the call sites as they do in the file.** That is a
+prose judgement about somebody else's future reading, and the reversion is mechanical: collapse the two
+methods into one taking a boolean, and the two call sites each gain an argument.
+
+## Carried
+
+**§16.3 has no scenario for either resequencing verb.** Carried, and it is now unambiguously the largest
+end-to-end gap in the menu: scenario 16's barrier measures those controls and nothing presses them.
+
+**`/kitchen` has no §16.3 scenario at all.** Stated as a carried item for the first time rather than left
+implicit, because this slice changed that surface and could not assert the change through a browser. It is
+the largest end-to-end gap in the *application*, as distinct from in the menu.
+
+**The wide layout stacks each row's three controls.** The `<form>` is a block element and `app.css` has no
+rule for a row of them. Carried on two registers.
+
+**The handheld barrier visits neither section surface.** Carried.
+
+**The dump reduction.** Specified in `_CHANGES.md` and deferred again by name; both remaining cuts split
+history registers that four gates read.
+
+**No gate can see a count written in a comment, or a claim written beside a computation.** Carried — and
+F-100's second half is that residual arriving in a fourth form, a *claim about which row was read* written
+beside the loop that read it. The repair made this instance true and gated it; the class is untouched.
+
+**A fact assembled by copying a sibling inherits that sibling's arrangement along with its numbers.**
+F-99's residual, carried.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried.
+
+**Nothing treats a test that fails and then passes as evidence.** Carried.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Fourteenth slice carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a seventeenth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Twenty-sixth consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried.

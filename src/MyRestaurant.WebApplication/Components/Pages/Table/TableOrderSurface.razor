@@ -5,6 +5,7 @@
 @using MyRestaurant.Domain.Identifiers
 @using MyRestaurant.Domain.LiveUpdates
 @using MyRestaurant.Domain.Orders
+@using MyRestaurant.WebApplication.Menu
 @using MyRestaurant.WebApplication.Orders
 @implements IDisposable
 @inject IMenuDirectory MenuDirectory
@@ -203,19 +204,32 @@
                        0005. The loop is an OUTER one around markup that did not change: Slice 39 built the
                        card, and a heading above a run of cards is all that was ever missing.
 
-                       The grouping is done by the DIRECTORY's ordering rather than by a LINQ GroupBy here.
+                       THE WALK ITSELF IS NO LONGER IN THIS FILE, AND THAT IS F-100. It was a private
+                       property here from Slice 40, which put §11.1's grouping and §7's two
+                       opposite-pointing visibility rules somewhere no unit test could reach — there is no
+                       bUnit in this repository (§16.1), so the only thing asserting any of it was §16.3
+                       scenario 17, which needs a browser and a database. It is now
+                       `MenuGrouping.VisibleToGuests`, beside `KitchenQueue` and `OrderStaging` and for the
+                       reason those two are outside their components; `MenuGroupingTests` asserts it in
+                       milliseconds. What forced the move rather than merely recommending it is that
+                       §11.2's "86" panel needs the same walk with the OPPOSITE rule about hidden
+                       headings, and a private property cannot be called from a second component.
+
+                       The grouping is done by the DIRECTORY's ordering rather than by a LINQ GroupBy.
                        IMenuDirectory.ListAsync orders by section position, then section name, then section
                        identifier, then the same three for the item — so every item under one heading is
-                       contiguous and `GroupedMenu` walks the list once. A GroupBy would work and would
-                       quietly re-order the sections into hash order unless it were sorted again, which is
-                       the ordering decision being made twice in two files.
+                       contiguous and the walk reads the list once. A GroupBy would work and would quietly
+                       re-order the sections into hash order unless it were sorted again, which is the
+                       ordering decision being made twice in two files.
 
                        INACTIVE SECTIONS ARE ABSENT ENTIRELY, and that is §7 rather than an oversight — it
                        is the opposite of the rule one line down for an inactive ITEM, which stays visible
                        and marked. Switching off a heading is a decision about a whole part of the menu
                        ("no breakfast this evening"); 86ing a dish is a decision about one thing a guest is
-                       still entitled to know exists. The filtering is here rather than in the directory
-                       because §11.4's administrator must see every heading.
+                       still entitled to know exists. The filtering is in the grouping rather than in the
+                       directory because §11.4's administrator must see every heading — and it is which
+                       DOOR this surface uses rather than a flag it passes, so the rule is legible from
+                       here without reading the other file.
 
                        THE LOOP VARIABLE IS NOT CALLED `section`, AND THAT IS F-81. `@@section` is Razor's
                        own MVC section directive, so `@@section.MenuSectionName` below was parsed as a
@@ -228,7 +242,7 @@
                        indentation it had before Slice 40 wrapped it in this outer loop. Corrected in the
                        same pass rather than left, because whitespace is the one thing a reader uses to
                        see which loop a `@@key` belongs to. *@
-                    @foreach (MenuSectionOnTheMenu menuSection in GroupedMenu)
+                    @foreach (MenuHeadingGroup menuSection in GroupedMenu)
                     {
                         <div class="order-menu-section" @key="menuSection.MenuSectionIdentifier">
                             <h4 class="order-menu-section-name" id="@SectionHeadingId(menuSection)">
@@ -676,87 +690,39 @@
     /// The menu as §11.1 renders it: one entry per heading a guest can see, each holding the items under
     /// it, in the order <see cref="IMenuDirectory.ListAsync"/> returned them.
     ///
-    /// <para><b>Grouped by walking, not by <c>GroupBy</c>.</b> The directory orders by section position
-    /// then item position, so every item under one heading is contiguous and one pass is enough. A
-    /// <c>GroupBy</c> would produce the same groups in hash order and would then need re-sorting by the
-    /// same keys the query already applied — the ordering decision made a second time, in a second file,
-    /// where the two can drift.</para>
+    /// <para><b>The walk is <see cref="MenuGrouping"/>'s rather than this file's, and that is F-100.</b> It
+    /// was written out here from Slice 40, which put §11.1's grouping and §7's two opposite-pointing
+    /// visibility rules inside a Razor component — where, with no bUnit in this repository (§16.1), the
+    /// only thing that could assert any of it was §16.3 scenario 17. <c>KitchenQueue</c>'s own summary is
+    /// the sentence that applies: a rule that can only be checked by rendering a component is a rule
+    /// nobody checks. What turned that from a preference into a defect is that §11.2's "86" panel needs the
+    /// same walk with the opposite rule about hidden headings, so the alternative to moving it was pasting
+    /// it — F-59's mechanism.</para>
     ///
-    /// <para><b>Inactive sections are dropped and inactive items are not</b> (§7). The two rules point
-    /// opposite ways on purpose and both are here rather than in the directory, because §11.4's
-    /// administrator reads the same list and must see everything. An empty heading cannot occur: this is
-    /// built from items, so a section with nothing under it contributes no entry at all — which is also
-    /// §11.1's rule, since a heading with nothing under it is a promise the kitchen did not make.</para>
+    /// <para><b>Which door is the rule.</b> <see cref="MenuGrouping.VisibleToGuests"/> drops inactive
+    /// headings and keeps inactive items, which is §7's asymmetry; the kitchen calls
+    /// <see cref="MenuGrouping.EveryHeading"/> instead. Naming the rule at the call site rather than
+    /// passing a flag is what makes this line readable without opening the other file. An empty heading
+    /// still cannot occur, because groups are built from items.</para>
+    ///
+    /// <para>Re-computed on each read rather than cached, which is what it was before: the menu is
+    /// single-digit-to-sixty rows, <c>MenuChanged</c> re-reads <c>_menu</c> underneath this (§9), and a
+    /// cached grouping is a second place for the menu to be stale.</para>
     /// </summary>
-    private IReadOnlyList<MenuSectionOnTheMenu> GroupedMenu
-    {
-        get
-        {
-            List<MenuSectionOnTheMenu> sections = [];
-            List<MenuItemSummary> current = [];
-            Guid currentIdentifier = Guid.Empty;
-            string currentName = string.Empty;
-            string currentDescription = string.Empty;
-
-            foreach (MenuItemSummary item in _menu)
-            {
-                if (!item.MenuSectionIsActive)
-                {
-                    continue;
-                }
-
-                if (current.Count > 0 && item.MenuSectionIdentifier != currentIdentifier)
-                {
-                    sections.Add(new MenuSectionOnTheMenu(
-                        currentIdentifier, currentName, currentDescription, current));
-                    current = [];
-                }
-
-                currentIdentifier = item.MenuSectionIdentifier;
-                currentName = item.MenuSectionName;
-                currentDescription = item.MenuSectionDescription;
-                current.Add(item);
-            }
-
-            if (current.Count > 0)
-            {
-                sections.Add(new MenuSectionOnTheMenu(
-                    currentIdentifier, currentName, currentDescription, current));
-            }
-
-            return sections;
-        }
-    }
+    private IReadOnlyList<MenuHeadingGroup> GroupedMenu => MenuGrouping.VisibleToGuests(_menu);
 
     /// <summary>
     /// The id each heading's <c>&lt;ul&gt;</c> points at with <c>aria-labelledby</c>, so a screen reader
     /// announces which part of the menu a list belongs to. Built from the identifier rather than from the
     /// name, because a heading called "Sides &amp; extras" would otherwise produce an id with a space in
     /// it — and because two headings can never share an identifier where they could share a slug.
-    /// </summary>
-    private static string SectionHeadingId(MenuSectionOnTheMenu section)
-        => $"order-menu-section-{section.MenuSectionIdentifier}";
-
-    /// <summary>
-    /// One heading and the items under it, assembled for rendering only (§11.1). Deliberately not a
-    /// <see cref="MyRestaurant.DataAccess.Menu.MenuSectionSummary"/>: that is the section row, position and
-    /// flags and all, and this is a run of a list.
     ///
-    /// <para><b>It carries the heading's description, and the sentence that used to stand here said it
-    /// would not.</b> "A surface that needed the section's own description would read the directory rather
-    /// than widen this" was the ruling until Slice 49, and reading the directory is what was rejected: a
-    /// second read happens at a second instant, so a heading renamed between the two would render its new
-    /// name above its old sentence, and no lock a guest's picker could take would fix that. The description
-    /// now arrives on the item rows themselves, joined from the same <c>menu_section</c> row as the name,
-    /// so this record takes it from the first row of each run exactly as it takes the name. <b>To revert:</b>
-    /// drop the member here and in <c>MenuItemSummary</c>, and read
-    /// <see cref="MyRestaurant.DataAccess.Menu.IMenuSectionDirectory"/> beside the menu instead.</para>
+    /// <para>Local rather than on <see cref="MenuHeadingGroup"/>, and the prefix is why: <c>/kitchen</c>
+    /// builds its own ids over the same headings, and an id prefix is a fact about one page's document
+    /// rather than about a heading.</para>
     /// </summary>
-    private sealed record MenuSectionOnTheMenu(
-        Guid MenuSectionIdentifier,
-        string MenuSectionName,
-        string MenuSectionDescription,
-        IReadOnlyList<MenuItemSummary> Items);
+    private static string SectionHeadingId(MenuHeadingGroup section)
+        => $"order-menu-section-{section.MenuSectionIdentifier}";
 
     private IReadOnlyList<SittingBillEntry> OtherPeople
         => _bill.Where(entry => entry.PersonIdentifier != _person).ToArray();
