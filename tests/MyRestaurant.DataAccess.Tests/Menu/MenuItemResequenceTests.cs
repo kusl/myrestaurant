@@ -218,6 +218,18 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
     /// heading, so resequencing one heading must leave every other heading's rows and events exactly as they
     /// were — a WHERE clause that reached one row too far would renumber a list nobody touched, and every
     /// assertion about the heading that <em>was</em> touched would still pass.
+    ///
+    /// <para><b>The list rotates, so the count is three and not two, and the arithmetic is written down
+    /// because getting it wrong is what <b>F-99</b> was.</b> <c>[cola, tea, coffee]</c> against a stored
+    /// <c>tea, coffee, cola</c> moves every one of the three; a <em>reversal</em> would leave the middle one
+    /// where it is and write two. The rotation is deliberate rather than incidental: this fact is about a
+    /// write not reaching past its heading, and the write that has the most chances to reach past it is the
+    /// one that touches every row under it.</para>
+    ///
+    /// <para>What that costs is stated rather than left to be discovered. Three moved of three listed means
+    /// this total cannot also witness the per-row no-op rule — an implementation writing one event per
+    /// <em>listed</em> item would satisfy it. That rule is <see cref="OnlyTheItemsThatMovedGetAnEvent"/>'s
+    /// fact and is asserted there against a reversal, which is the shape that can see it.</para>
     /// </summary>
     [Fact]
     public async Task ResequencingOneHeadingLeavesTheOtherHeadingAlone()
@@ -245,8 +257,10 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal([trifle, sorbet], untouched.Select(summary => summary.MenuItemIdentifier));
         Assert.Equal([0, 1], untouched.Select(summary => summary.DisplayOrder));
 
-        // Two events, both under Drinks: the puddings wrote none at all.
-        Assert.Equal(2, await World().CountAsync(CountReorderedEventsSql, cancellationToken));
+        // Three events, all three under Drinks, because a rotation of three moves all three: the puddings
+        // wrote none at all. The total is the whole of that claim — five items exist and only the three
+        // named in the list may account for an event.
+        Assert.Equal(3, await World().CountAsync(CountReorderedEventsSql, cancellationToken));
         Assert.Empty(await ReorderedPositionsAsync(trifle, cancellationToken));
         Assert.Empty(await ReorderedPositionsAsync(sorbet, cancellationToken));
     }

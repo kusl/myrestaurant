@@ -369,12 +369,17 @@ public sealed class OrderStagingTests
     /// record silently. It is therefore the good failure: CS7036 named the missing parameter, where a
     /// <c>with</c> expression or an object initialiser would have compiled and left this file describing
     /// an item under no heading.</para>
+    ///
+    /// <para>It is the whole reason this is a factory and the eleventh member cost one line. Slice 49
+    /// joined the heading's <em>description</em> on so §11.1 can render it, and the same CS7036 named the
+    /// same place — which is what a single positional construction site buys.</para>
     /// </summary>
     private static MenuItemSummary Item(Guid identifier, string name, decimal price, bool isActive)
         => new(
             identifier,
             SectionIdentifier,
             "Menu",
+            string.Empty,
             true,
             name,
             string.Empty,

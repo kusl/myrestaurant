@@ -235,6 +235,23 @@
                                 @menuSection.MenuSectionName
                             </h4>
 
+                            @* The heading's own line, which is the last piece of the menu Stage 3 asked
+                               for and had deferred: "served until 11am" is the kind of thing it is for
+                               (S7). Tested by Length rather than for null, the same rule the item card
+                               applies one loop down — the column is NOT NULL DEFAULT '' and "" means
+                               "none".
+
+                               Deliberately no aria-describedby on the list below. It would be the more
+                               precise ARIA, and expressing "no description means no attribute" needs an
+                               attribute whose value is null, which this tree has no precedent for; the
+                               honest alternative was rendering the list twice. What is rendered instead
+                               puts the sentence between the heading and the list in document order,
+                               which is where a screen reader meets it in either case. *@
+                            @if (menuSection.MenuSectionDescription.Length > 0)
+                            {
+                                <p class="order-menu-section-description">@menuSection.MenuSectionDescription</p>
+                            }
+
                             <ul class="order-menu" aria-labelledby="@SectionHeadingId(menuSection)">
                                 @foreach (MenuItemSummary item in menuSection.Items)
                                 {
@@ -679,6 +696,7 @@
             List<MenuItemSummary> current = [];
             Guid currentIdentifier = Guid.Empty;
             string currentName = string.Empty;
+            string currentDescription = string.Empty;
 
             foreach (MenuItemSummary item in _menu)
             {
@@ -689,18 +707,21 @@
 
                 if (current.Count > 0 && item.MenuSectionIdentifier != currentIdentifier)
                 {
-                    sections.Add(new MenuSectionOnTheMenu(currentIdentifier, currentName, current));
+                    sections.Add(new MenuSectionOnTheMenu(
+                        currentIdentifier, currentName, currentDescription, current));
                     current = [];
                 }
 
                 currentIdentifier = item.MenuSectionIdentifier;
                 currentName = item.MenuSectionName;
+                currentDescription = item.MenuSectionDescription;
                 current.Add(item);
             }
 
             if (current.Count > 0)
             {
-                sections.Add(new MenuSectionOnTheMenu(currentIdentifier, currentName, current));
+                sections.Add(new MenuSectionOnTheMenu(
+                    currentIdentifier, currentName, currentDescription, current));
             }
 
             return sections;
@@ -718,13 +739,23 @@
 
     /// <summary>
     /// One heading and the items under it, assembled for rendering only (§11.1). Deliberately not a
-    /// <see cref="MyRestaurant.DataAccess.Menu.MenuSectionSummary"/>: that is the section row, description
-    /// and position and all, and this is a run of a list. A surface that needed the section's own
-    /// description would read the directory rather than widen this.
+    /// <see cref="MyRestaurant.DataAccess.Menu.MenuSectionSummary"/>: that is the section row, position and
+    /// flags and all, and this is a run of a list.
+    ///
+    /// <para><b>It carries the heading's description, and the sentence that used to stand here said it
+    /// would not.</b> "A surface that needed the section's own description would read the directory rather
+    /// than widen this" was the ruling until Slice 49, and reading the directory is what was rejected: a
+    /// second read happens at a second instant, so a heading renamed between the two would render its new
+    /// name above its old sentence, and no lock a guest's picker could take would fix that. The description
+    /// now arrives on the item rows themselves, joined from the same <c>menu_section</c> row as the name,
+    /// so this record takes it from the first row of each run exactly as it takes the name. <b>To revert:</b>
+    /// drop the member here and in <c>MenuItemSummary</c>, and read
+    /// <see cref="MyRestaurant.DataAccess.Menu.IMenuSectionDirectory"/> beside the menu instead.</para>
     /// </summary>
     private sealed record MenuSectionOnTheMenu(
         Guid MenuSectionIdentifier,
         string MenuSectionName,
+        string MenuSectionDescription,
         IReadOnlyList<MenuItemSummary> Items);
 
     private IReadOnlyList<SittingBillEntry> OtherPeople

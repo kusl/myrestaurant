@@ -299,12 +299,13 @@ public sealed class MenuWiringTests
     /// <summary>
     /// A section description that moved is announced; one that did not is not.
     ///
-    /// <para><b>Today this publish reaches no guest surface, and it is still the right call</b> — the same
-    /// argument the item description makes, and it was right then. §11.1 renders a heading's name and not
-    /// its description, because the guest menu groups from <c>MenuItemSummary</c>, which carries the one
-    /// and not the other. <c>MenuChanged</c> means "re-read the menu" and nothing else, and a workflow
-    /// that decided which columns were worth announcing would be a workflow that has to be edited again
-    /// the moment a surface starts reading one.</para>
+    /// <para><b>This publish reached no guest surface for nine slices, and the bet it was making has now
+    /// paid.</b> The argument was that <c>MenuChanged</c> means "re-read the menu" and nothing else, so a
+    /// workflow deciding which columns were worth announcing would have to be edited the moment a surface
+    /// started reading one. Slice 49 is that moment — §11.1 renders a heading's description under its
+    /// heading now — and neither the workflow nor this fact needed changing. A tree where this publish had
+    /// been conditional would have shipped a guest menu that showed the new sentence to whoever reloaded
+    /// and the old one to everybody already looking at it.</para>
     /// </summary>
     [Fact]
     public async Task ASectionDescription_IsAnnouncedOnlyWhenItActuallyMoved()

@@ -27,6 +27,23 @@ namespace MyRestaurant.DataAccess.Menu;
 /// event type if clearing a description wrote NULL. The same rule and the same reason as
 /// <see cref="MenuSectionSummary.Description"/>.</para>
 ///
+/// <para><b><see cref="MenuSectionDescription"/> is joined here rather than read separately, and that
+/// reverses a sentence this tree carried for nine slices.</b> Four places said §11.1 renders a heading's
+/// name and not its description "because the guest menu groups from <c>MenuItemSummary</c>, which carries
+/// the one and not the other", and <c>TableOrderSurface</c>'s own render record said a surface needing it
+/// "would read the directory rather than widen this". The alternative was real and was rejected on a
+/// <em>correctness</em> argument rather than a cost one: two reads happen at two instants, so a heading
+/// renamed between them renders its new name above its old description, and there is no lock a guest's
+/// picker could sensibly take to prevent that. One row of one query cannot disagree with itself. The
+/// column is the same column, on the same row, reached through the same INNER JOIN that has carried
+/// <see cref="MenuSectionName"/> since <c>0005</c> — and for the same stated reason, that a heading edited
+/// once reads under its new text everywhere at once.</para>
+///
+/// <para>What it costs is that a heading's sentence is repeated on every item row under it. That is
+/// already true of <see cref="MenuSectionName"/> and is what a denormalised read model is; the surface
+/// walks the list once and takes the value from the first row of each run (§11.1), so the copies are read
+/// once each and never compared.</para>
+///
 /// <para><see cref="DisplayOrder"/> is where somebody put the item <em>within its section</em>, not where
 /// the alphabet puts it. Before <c>0005</c> it was a menu-wide number that nothing ever set; since
 /// <c>0005</c> an item is created at the end of its own heading and the number means something.</para>
@@ -34,6 +51,7 @@ namespace MyRestaurant.DataAccess.Menu;
 /// <param name="MenuItemIdentifier">The item's UUIDv7 primary key (ADR-0011).</param>
 /// <param name="MenuSectionIdentifier">The heading this item is filed under. NOT NULL since <c>0005</c> — §7: an item under no heading is an item nobody decided about.</param>
 /// <param name="MenuSectionName">That heading's current name, joined at read time — so a renamed section reads under its new name everywhere at once.</param>
+/// <param name="MenuSectionDescription">That heading's current description, joined at read time; <c>""</c> when it has none. Rendered under the heading on the guest menu (§11.1).</param>
 /// <param name="MenuSectionIsActive">False when the whole heading is switched off. §7: such a section is <b>not</b> rendered to the guest, unlike an inactive item.</param>
 /// <param name="Name">The item's current name (§7 — renames are logged in <c>menu_item_event</c>).</param>
 /// <param name="Description">The item's current description; <c>""</c> when it has none.</param>
@@ -45,6 +63,7 @@ public sealed record MenuItemSummary(
     Guid MenuItemIdentifier,
     Guid MenuSectionIdentifier,
     string MenuSectionName,
+    string MenuSectionDescription,
     bool MenuSectionIsActive,
     string Name,
     string Description,
@@ -113,6 +132,7 @@ public sealed class DapperMenuDirectory : IMenuDirectory
         menu_item.menu_item_identifier     AS MenuItemIdentifier,
         menu_item.menu_section_identifier  AS MenuSectionIdentifier,
         menu_section.name                  AS MenuSectionName,
+        menu_section.description           AS MenuSectionDescription,
         menu_section.is_active             AS MenuSectionIsActive,
         menu_item.name                     AS Name,
         menu_item.description              AS Description,
@@ -184,6 +204,7 @@ public sealed class DapperMenuDirectory : IMenuDirectory
         row.MenuItemIdentifier,
         row.MenuSectionIdentifier,
         row.MenuSectionName,
+        row.MenuSectionDescription,
         row.MenuSectionIsActive,
         row.Name,
         row.Description,
@@ -196,6 +217,7 @@ public sealed class DapperMenuDirectory : IMenuDirectory
         Guid MenuItemIdentifier,
         Guid MenuSectionIdentifier,
         string MenuSectionName,
+        string MenuSectionDescription,
         bool MenuSectionIsActive,
         string Name,
         string Description,

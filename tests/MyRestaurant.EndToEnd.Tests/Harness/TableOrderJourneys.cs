@@ -665,6 +665,50 @@ internal static class TableOrderJourneys
     }
 
     /// <summary>
+    /// Each visible heading paired with its own description, in render order (M6 Slice 49) — the value is
+    /// <c>null</c> for a heading that has none, which is a different fact from an empty paragraph.
+    ///
+    /// <para>Read as its own walk over the section blocks rather than derived from
+    /// <see cref="ReadMenuAsync"/>, and the asymmetry with <see cref="ReadMenuSectionNamesAsync"/> is the
+    /// reason: a heading's description is a property of the heading, not of any card under it, so deriving
+    /// it from the cards would answer "which sentence sits above this dish" — a question that has a
+    /// different answer per row on a tree where the join is broken, and therefore the wrong question.</para>
+    ///
+    /// <para><c>TextContent</c> rather than <c>InnerText</c>, on F-88's rule and pre-emptively: no
+    /// <c>text-transform</c> reaches this paragraph today, and the heading immediately above it declares
+    /// one. A reader that would start lying if a stylesheet gained a line is a reader worth writing the
+    /// safe way the first time.</para>
+    /// </summary>
+    internal static async Task<IReadOnlyList<(string SectionName, string? Description)>>
+        ReadMenuSectionDescriptionsAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator sections = page.Locator(MenuSectionSelector);
+        int sectionCount = await sections.CountAsync();
+
+        List<(string SectionName, string? Description)> headings = [];
+
+        for (int index = 0; index < sectionCount; index++)
+        {
+            ILocator section = sections.Nth(index);
+
+            string name = (await section
+                .Locator("h4.order-menu-section-name").First.TextContentAsync() ?? string.Empty).Trim();
+
+            ILocator description = section.Locator("p.order-menu-section-description");
+
+            string? text = await description.CountAsync() == 0
+                ? null
+                : (await description.First.TextContentAsync() ?? string.Empty).Trim();
+
+            headings.Add((name, text));
+        }
+
+        return headings;
+    }
+
+    /// <summary>
     /// What §11.1's detail panel says about the item currently chosen, or <c>null</c> when nothing is
     /// chosen and the panel is therefore absent.
     ///

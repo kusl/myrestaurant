@@ -671,10 +671,33 @@ wrapped in a `.order-menu-section` per heading, the `<ul>` points at its own `<h
 `aria-labelledby`, and the grouping walks the directory's ordering once rather than re-deciding it with a
 `GroupBy`. No new breakpoint — a heading is a block above a grid that was already intrinsic.
 
-**A section's own description under its heading is still outstanding**, and it is the one piece of this
-paragraph that did not land: the surface groups from `MenuItemSummary`, which carries the heading's name and
-not its description, so showing it needs either a second read or a widened record. Deferred rather than
-guessed at.
+**~~A section's own description under its heading is still outstanding~~ — landed, M6 Slice 49**, and the
+choice this paragraph deferred was made in favour of the **widened record**. The two routes named here were a
+second read or a wider one, and what decided it was not cost: two reads happen at two instants, so a heading
+renamed between them renders its new name above its old sentence, and a guest's picker is not in a
+transaction and should not be. `MenuItemSummary` gains `MenuSectionDescription`, joined from the same
+`menu_section` row as the name and by the same INNER JOIN, so one row of one query cannot disagree with
+itself. A heading with no description renders **no paragraph** rather than an empty one.
+
+**Three things about it are rulings rather than implementation, and two reverse sentences this tree carried.**
+
+- **The render record was widened, against its own comment.** `MenuSectionOnTheMenu` said a surface needing
+  the heading's description "would read the directory rather than widen this". Reversed, with the reversion
+  instructions written into the record's summary rather than left in a changelog.
+- **The publish needed no edit.** `DescribeMenuSectionAsync` has broadcast `MenuChanged` since the day it
+  reached no guest surface at all, on the ruling that `MenuChanged` means *re-read the menu* and nothing
+  else. This is the moment that ruling was made for, and neither the workflow nor its wiring fact changed —
+  a tree that had made the publish conditional would show the new sentence to whoever reloaded and the old
+  one to every phone already looking at it.
+- **No `aria-describedby`.** It is the more precise ARIA and expressing "no description, no attribute" needs
+  an attribute whose value is null, which this tree has no precedent for, so the honest alternative was
+  rendering the `<ul>` twice. The paragraph sits between the heading and the list in document order instead,
+  which is where a screen reader meets it either way.
+
+**Scenario 17 gained the assertion and needed no new arrangement**, which is the argument for arranging
+scenarios out of real forms: it has created *Starters* with a description and *Puddings* without one since
+Slice 40, and nothing had ever asserted on either. It is now the only place `menu_section.description` is
+carried from the form that typed it to the phone that reads it.
 
 **§7's asymmetry is now implemented and is the thing to be careful about here.** An inactive *section* is
 not rendered to the guest at all; an inactive *item* is rendered and marked. The filter is on the surface
@@ -847,8 +870,13 @@ exercises them.
 **The wide layout stacks each row's three controls.** A `<form>` is a block element and `app.css` has no rule
 for a row of them. It is now true on two registers, which makes it slightly more worth fixing than it was.
 
-**Ordering is complete for both tables**, so no ordering hole remains in the menu enhancement. The next stage
-is Stage 4.
+**Ordering is complete for both tables**, so no ordering hole remains in the menu enhancement.
+
+**Stage 3 is closed as of Slice 49.** Its last outstanding piece — a heading's own description under its
+heading on the guest menu — landed, and the paragraph above records which of the two deferred routes was
+taken and why. **The kitchen's 86 panel still reads the menu flat**, which is the one surface left that
+groups by nothing; it is named in this stage's text and is not a Stage 3 obligation, because a cook's panel
+is a different question from a guest's menu. The next stage is Stage 4.
 
 ---
 

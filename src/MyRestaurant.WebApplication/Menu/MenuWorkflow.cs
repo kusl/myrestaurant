@@ -89,12 +89,13 @@ public interface IMenuWorkflow
     /// <summary>
     /// Sets or clears one section's description (§7) and, if it actually moved, announces it.
     ///
-    /// <para><b>This publish reaches no guest surface today, and it is still the right call</b> — the
-    /// same argument <see cref="DescribeMenuItemAsync"/> makes and for the same reason. §11.1 renders a
-    /// heading's name and not its description, because the guest menu groups from
-    /// <c>MenuItemSummary</c>, which carries the one and not the other. <c>MenuChanged</c> means "re-read
-    /// the menu" and nothing else; a workflow that decided which columns were worth announcing would be a
-    /// workflow that has to be edited again the moment a surface starts reading one.</para>
+    /// <para><b>This publish reached no guest surface for nine slices, and the argument for making it
+    /// anyway was that a surface would eventually read the column. Slice 49 is that moment, and this
+    /// method needed no edit.</b> §11.1 now renders a heading's description under its heading, because
+    /// <c>MenuItemSummary</c> carries it joined from the same row as the name. <c>MenuChanged</c> means
+    /// "re-read the menu" and nothing else, and it meant that before there was anything new to read —
+    /// which is the point: a workflow that decided which columns were worth announcing would have had to
+    /// be edited here, in this file, on the day the guest surface changed.</para>
     /// </summary>
     Task<DescribeMenuSectionOutcome> DescribeMenuSectionAsync(
         Guid menuSectionIdentifier,

@@ -2447,6 +2447,7 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         const string puddings = "Puddings";
         const string soupDescription = "Lentil and smoked paprika, with sourdough.";
         const string pieDescription = "Bramley apple, short crust, served warm.";
+        const string startersDescription = "Something to begin with.";
 
         GuestAccount guestAccount = new("e2e.menu.reader", "Menu Reader");
 
@@ -2460,7 +2461,7 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         // the alphabet's — "Puddings" sorts before "Starters" and the assertion below would pass by
         // accident if this read alphabetically. §7 appends each new section at MAX + 1.
         Guid startersIdentifier = await AdministrationJourneys.CreateMenuSectionAsync(
-            administrator, starters, "Something to begin with.");
+            administrator, starters, startersDescription);
         Guid puddingsIdentifier = await AdministrationJourneys.CreateMenuSectionAsync(
             administrator, puddings);
 
@@ -2493,6 +2494,24 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         Assert.Equal(
             new[] { starters, puddings },
             (await TableOrderJourneys.ReadMenuSectionNamesAsync(guest)).ToArray());
+
+        // (c2) Each heading's OWN sentence under it, which is the piece of this menu Stage 3 deferred for
+        // nine slices and Slice 49 delivered. Both halves of the rule in one read, and the arrangement at
+        // (a) is what makes that possible without adding a step: "Starters" was created with a description
+        // and "Puddings" was created without one, so this asserts that the sentence arrives AND that a
+        // heading with nothing to say renders no paragraph rather than an empty one. It is the only
+        // assertion in the project that carries `menu_section.description` from the form that typed it to
+        // the phone that reads it — which is what (d) does one register down for the item's own.
+        IReadOnlyList<(string SectionName, string? Description)> headings =
+            await TableOrderJourneys.ReadMenuSectionDescriptionsAsync(guest);
+
+        Assert.Equal(
+            new[] { starters, puddings },
+            headings.Select(heading => heading.SectionName).ToArray());
+
+        Assert.Equal(
+            new string?[] { startersDescription, null },
+            headings.Select(heading => heading.Description).ToArray());
 
         // (d) Each card under its own heading, with its own sentence. Read off the card rather than
         // compared against what was typed in the form and back again: the description travels form →

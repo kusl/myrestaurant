@@ -1,215 +1,152 @@
-# M6 Slice 48 — the rule that caught its own documentation, and the ordering verb one register down
+# M6 Slice 49 — the arithmetic a test got wrong about a tree that was right, and the sentence a guest could finally read
 
 Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-48-governance-fix-and-item-resequence.tar.gz
-git add tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemResequenceTests.cs
+tar -xzf m6-slice-49-resequence-arithmetic-and-heading-descriptions.tar.gz
 git status
 ```
 
 **Files to DELETE: none.**
 
-**`git add` IS required, for one new file, and it is not optional.** Every gate and CI job in this repository
-enumerates with `git ls-files`. An untracked file is invisible to `scripts/check_tree.sh`, to
-`scripts/check_repository.sh`, to the shell-scripts job and to `export.sh`.
+**`git add` is NOT required.** No file in this archive is new — every one of the sixteen replaces a tracked
+file. `git status` should show sixteen modifications and no untracked paths; anything untracked means the
+archive was extracted somewhere other than the repository root.
 
-**No schema change, no migration, no new read, no ADR edit, no `compose.yaml` edit, no `.slnx` edit, no
-`REQUIREMENTS.md` edit, no `export.sh` edit, and no CSS.**
+**No schema change, no migration, no new read, no new test class, no ADR edit, no `compose.yaml` edit, no
+`.slnx` edit, no `REQUIREMENTS.md` edit, and no `export.sh` edit.** One CSS rule is added and it declares
+nothing new.
 
 ---
 
-## Read this first: your last run was green on the suite and red on a gate
+## Read this first: your run was exact, and the one red assertion was the test's fault
 
-`total: 1180, failed: 0, succeeded: 1180`, and the prediction was 1180. §18's arithmetic had nothing to
-chase. But `scripts/check_repository.sh` failed:
+`total: 1190, failed: 1, succeeded: 1189, skipped: 0` — and the prediction was **1190**. §18's arithmetic has
+never landed cleaner: the count matched to the digit, so the single failure had nowhere to hide and no second
+candidate to be confused with. The end-to-end suite passed all seventeen scenarios against real browsers,
+twice, Debug and Release.
 
 ```
-3. no document asserts a repository setting
-   FAIL: docs/TECHNICAL_SPECIFICATION.md:1335 asserts a repository setting it cannot check
-repository governance FAILED: 1 problem(s) in the tree. Nothing was modified.
+Assert.Equal() Failure: Values differ
+Expected: 2
+Actual:   3
+  MenuItemResequenceTests.ResequencingOneHeadingLeavesTheOtherHeadingAlone
 ```
 
-That is fixed here, first, because it was red on arrival rather than caused by anything in this archive.
+**Actual 3 is correct.** Nothing under `src/` was wrong. The fact arranges three drinks at 0, 1, 2 and
+resequences them to `[cola, tea, coffee]` — a **rotation**, which moves all three, so §7's rule of one event
+per item that actually moved writes three.
 
-## Two changes, and why they ride together
+**The 2 came from forty lines up.** `OnlyTheItemsThatMovedGetAnEvent` uses `[cola, coffee, tea]`, a
+**reversal**, which leaves coffee at 1 and writes two. The list came from a third fact that rotates on
+purpose. So the fact was assembled out of two correct facts, took the arrangement from one and the count from
+the other, and reported a defect that did not exist.
 
-Slice 47's ruling: the rule is about *indistinguishable* symptoms, not about counting changes. These two
-cannot be confused.
+This is **F-99**, and the reason it earns a row rather than a one-token edit is the symptom shape: one named
+assertion printing two numbers is *precisely* what a real off-by-one in that verb's `WHERE` clause would have
+produced. Nothing in the failure told you which of the two it was. What decided it was reading the
+arrangement — and the assertions that carry the fact's actual claim (`Assert.Empty` on trifle and sorbet,
+`[0, 1]` on their stored positions) all passed, which means the verb, the `WHERE` clause, the permutation test
+and Slice 45's monotonicity fix are vindicated by this run rather than implicated in it.
 
-- A **prose** defect fails as a named line number out of a grep gate. No build, no test, no suite.
-- A **verb** defect fails as a named assertion in one of two files.
+### The repair, and the decision inside it you may want to reverse
 
-So a red run answers its own first question — *which gate?* — and the answer partitions the archive.
+The count becomes **3**, and the arithmetic is written into the fact's own summary instead of being left for
+the next reader to re-derive.
 
----
+**Keeping the rotation is a ruling, and this is the veto.** The alternative repair — change the list to
+`[cola, coffee, tea]` and keep the 2 — would let this one fact carry two properties at once: the puddings
+wrote nothing *and* only movers wrote. I kept the rotation because this fact is about a write not reaching
+past its heading, and the arrangement with the most chances to reach past it is the one that touches **every**
+row under it; a reversal writes two of three and never touches the row at the end of the heading's run.
 
-## 1. The gate (F-98)
+What that costs is recorded in the fact rather than discovered later: three moved of three listed means this
+total cannot also witness the per-row no-op rule, so that rule stays where a reversal can see it, and the
+summary points there.
 
-Gate 3 of `scripts/check_repository.sh` is the F-42 rule made unrepeatable: a document may state **policy**,
-which is true wherever it is read, and must not state **platform state**, which nothing in this repository
-can verify.
+**To reverse:** in `ResequencingOneHeadingLeavesTheOtherHeadingAlone`, change the list to
+`[cola, coffee, tea]`, restore `Assert.Equal(2, …)`, and delete the two `<para>` blocks in the summary that
+explain the 3. Nothing else depends on the choice.
 
-Slice 46 added §16.4's paragraph on `ContextDumpExclusionContractTests`, and that paragraph had to say why
-the archived build log needs the record-file exemption. It said it by **reproducing the forbidden claim
-verbatim** — a short quotation, in service of an accurate point, inside the one document that is normative
-about the rule being quoted.
-
-So the specification asserted a repository setting it cannot check, and the governance gate failed for a
-sentence whose subject was that very gate. **The gate was right on every count. The finding is entirely in
-the prose.**
-
-The general shape is worth more than the fix:
-
-> A paragraph documenting why a forbidden string is permitted somewhere is the paragraph most likely to
-> contain that string. A gate over authored text is tripped by its own documentation before it is tripped by
-> a defect.
-
-**The repair is to describe the claim rather than quote it.** One clause, in §16.4.
-
-**Adding `docs/TECHNICAL_SPECIFICATION.md` to `RECORD_FILES` was considered and rejected** — and this is the
-one decision in the archive you might want to veto, so here is the argument in full. It is the largest
-non-record file in the tree, 449 KiB of normative prose. Widening an exemption to accommodate one clause is
-exactly F-46's argument: a rule stated as a rule and enforced as a list of exceptions is enforced as a list
-of exceptions. The exempt list is for files whose *job* is recording what this tree used to say; the
-specification's job is saying what it does say. **To reverse:** add `"docs/TECHNICAL_SPECIFICATION.md"` to
-`RECORD_FILES` in `scripts/check_repository.sh` and restore the quoted clause. Note that
-`ContextDumpExclusionContractTests` asserts things about the relationship between that list and `export.sh`'s
-archived set, so check that gate if you do.
-
-**No new gate**, on F-47 and F-71: the existing one caught this on the first run after the sentence landed,
-and a gate asserting that gate 3's subject does not describe itself is a monument.
+**No new gate**, on F-47 and F-71. The suite named the fact, the file, the line and both numbers on the first
+run after the fact landed. A gate over the arithmetic *inside* an assertion is the assertion.
 
 ---
 
-## 2. The verb (Stage 3b) — this is the menu progress
+## The menu progress: a heading's own description, on the guest's phone
 
-Slice 47 shipped whole-list reordering for **headings** and named the item-level mirror as out of scope and
-as the next ordering slice, in the same paragraph. This is that slice, and with it **no ordering hole remains
-in the menu enhancement**.
+**This closes the last outstanding piece of Stage 3's guest menu**, which the plan named and nine slices
+carried unchanged in their *Still open* sections. §11.1 renders a heading's description beneath its name, and
+a heading with none renders **no paragraph** rather than an empty one — `''` is what §7 stores for *none*, and
+an empty box is indistinguishable from a surface that failed to load.
 
-`ResequenceMenuItemsAsync(menuSectionIdentifier, orderedMenuItemIdentifiers, actorPersonIdentifier, …)`
-assigns `0…n-1` within one heading, writes one `reordered` event per item whose position actually changed,
-refuses a non-permutation whole, and returns `Resequenced` / `NoChange` / `MenuItemSetChanged`.
+### The ruling reversal, and the argument for it
 
-### Three things Slice 47's design did not settle
+The plan deferred a choice: *"showing it needs either a second read or a widened record."* Four places in the
+tree had already assumed the answer — §7, `MenuWorkflow`, `MenuWiringTests` and the section editor's lede all
+said §11.1 renders a heading's name and not its description *because the grouping is built from
+`MenuItemSummary`, which carries the one and not the other* — and `TableOrderSurface`'s render record went
+further: *"A surface that needed the section's own description would read the directory rather than widen
+this."*
 
-**1. The heading is a parameter, not inferred from the list.** A position is a position *within* a section,
-so the set is one heading's items. Deriving the heading from the first item's row admits a list spanning two
-headings and answers it with a silent partial write; taking the whole menu asks the write to renumber the
-puddings because somebody moved a drink.
+**I widened the record, and the argument is correctness rather than cost.** Two reads happen at two instants.
+A heading renamed between them renders its **new name above its old sentence**, and there is no lock a guest's
+picker could sensibly take to prevent that — it is not in a transaction and should not be. One row of one
+query cannot disagree with itself. `MenuSectionDescription` is one more aliased column on the INNER JOIN that
+has carried `MenuSectionName` since `0005`, for the same reason that one was joined: a heading edited once
+reads under its new text everywhere at once.
 
-**2. An unknown heading returns `MenuItemSetChanged`, through the ordinary permutation comparison, and there
-is no fourth outcome.** It has no items under it, so any non-empty list fails the permutation test on the
-same line every other refusal fails on — and the surface cannot act on the distinction, since an unknown
-heading and a stale item set both mean *this page is stale, reload it*. There is a fact for it, because "no
-rows came back" is also what an empty heading looks like, and the two agreeing should be a decision on the
-record.
+The cost is that a heading's sentence repeats on every item row under it. That is already true of the name, it
+is what a denormalised read model is, and the walk takes the value from the first row of each run — so the
+copies are read once each and never compared.
 
-**3. The section row is deliberately not locked, and the argument is arithmetic.** This is the one
-substantive difference from the section verb. A concurrent create or refile appends at
-`MAX(display_order) + 1`, computed from the very positions this verb is holding `FOR UPDATE`: `n` rows with
-maximum `m` give `m ≥ n - 1`, so the arrival lands at `m + 1 ≥ n` — strictly after every position a
-resequence of those `n` rows can assign, which is *exactly* the append those verbs promise. The interleaving
-is correct with no lock.
+**To reverse:** drop the member from `MenuItemSummary`, `MenuItemRow`, the SQL alias list, `ToSummary`,
+`MenuSectionOnTheMenu` and `OrderStagingTests.Item`, and read `IMenuSectionDirectory.ListAsync` beside the
+menu instead. Note that `MenuDirectoryTests.List_CarriesEachHeadingsOwnDescription_OnEveryItemUnderIt` and
+scenario 17's step (c2) both assert the widened shape.
 
-Taking none is worth more than the lock would be: this verb takes item locks and nothing else, where
-`MoveMenuItemToSectionAsync` takes an item lock and then a section lock, so a section lock here would invert
-that nesting and make the deadlock question live for the first time in that file. Item rows are locked
-**ordered by identifier**, on Slice 47's rule, so two concurrent resequences cannot deadlock in each other's
-set.
+### The publish needed no edit, which is Slice 40's ruling paying out
 
-**Not tested, deliberately:** that interleaving. Two transactions racing is a property of a scheduler, and a
-test passing on one ordering would be F-41's shape rather than evidence. The argument is in the code, in §7,
-and above.
+`DescribeMenuSectionAsync` has broadcast `MenuChanged` since the day it reached no guest surface at all, on
+the ruling that `MenuChanged` means *re-read the menu* and nothing else. **This is the moment that ruling was
+made for, and neither the workflow nor its wiring fact changed.** A tree that had made the publish conditional
+would have shipped a menu showing the new sentence to whoever reloaded and the old one to every phone already
+looking at it. Three prose sites and one lede are corrected instead — that is the whole of what the ruling
+cost.
 
-### The surface
+### Two smaller rulings on the surface
 
-Each item row's actions cell gains **Up** and **Down** beside **Manage** — the same three controls a
-heading's group carries, one register down. Each is its own static-SSR form named from the *item's*
-identifier. The ends of each heading's list are **disabled rather than omitted**, on the rule the group's row
-follows: a control that vanishes at the edge of a list moves every other control up a row, and §16.3
-scenario 16 measures where controls are.
+**No `aria-describedby` on the list.** It is the more precise ARIA and expressing *no description, no
+attribute* needs an attribute whose value is null, which this tree has no precedent for anywhere — so the
+honest alternative was rendering the `<ul>` twice. The paragraph sits between the heading and the list in
+document order instead, which is where a screen reader meets it either way.
 
-The list exchanged is the one that heading's loop is already rendering. Nothing is computed from a position.
+**No new CSS vocabulary.** `.order-menu-section-description` declares the same three properties
+`.menu-group-description` already carries on the administration index, because it is the same sentence read by
+a different person. No `text-transform`, on F-88 — the heading above it has one, and the new harness read uses
+`TextContent` pre-emptively for the same reason.
 
-### F-93 needed no edit, and that is a finding rather than a relief
+### Scenario 17 needed no new arrangement
 
-`.record-actions button` has been in the 375px barrier since the barrier was written, and it matched
-**nothing** until this slice — every index's actions cell held a link and only a link. The item rows are the
-first submit controls to render in one.
-
-So the obligation was discharged by a selector added many slices early. The uncomfortable half is recorded:
-**a selector matching nothing is indistinguishable from a selector matching everything it should**, and
-nothing in the harness could have said which this was. What makes it safe rather than lucky is that
-`.menu-group-actions button` was already asserting the same claim on the same page. The barrier's comment now
-says all of this. `MinimumControlsMeasured` is a floor and does not move.
-
----
-
-## 3. In passing
-
-`MenuSectionResequenceTests.cs(249,39): xUnit2031` — a `Where` clause before `Assert.Single` where the
-filtering overload belongs. Cleared, with a note that the analyzer is right about why: the overload names the
-subject in the failure message where a pre-filtered empty sequence cannot.
-
----
-
-## 4. The dump — deferred again, by name, and the number is better than you thought
-
-**You are right that it is no longer 87%.** I reconstructed all 351 files from `dump.txt` and **SHA-256
-matched 351 of 351 non-elided files**, so this archive was built on a byte-exact tree. The measurement:
-**5.48 MB / 103,876 lines.**
-
-Where the bytes are:
-
-| Path | Size |
-| --- | --- |
-| `docs/TECHNICAL_SPECIFICATION.md` | 449 KiB — Appendix A 141 KiB, changelog 67 KiB |
-| `docs/DOCUMENTATION_REVIEW.md` | 225 KiB |
-| `docs/BUILD_PROGRESS.md` | 134 KiB |
-| `tests/` | 1,973 KiB |
-| `src/` | 1,890 KiB |
-| `scripts/`, `.github/`, root | 371 KiB |
-
-**`export.sh` is not in this archive, because nothing in it needed to change** — unchanged from Slice 47's
-statement of this. Every remaining cut is a *split of a history register*, and `docs/progress/` is already
-withheld by path, so a split needs no exporter edit. Deferred here for the concrete reason that **this slice
-already edits two of those four-gate-read registers** (Appendix A gains two rows, the ledger gains one), and
-a red gate beside a relocation of the same files would have two candidate causes.
-
-Specified for Slice 49, unchanged:
-
-1. **`docs/DOCUMENTATION_REVIEW.md` splits at a finding boundary**, older tranche to `docs/progress/`.
-   **About 200 KiB.** Same operation Slice 46 performed on the build log, so the pattern and its hazards are
-   already written down.
-2. **Appendix A moves whole** to `docs/progress/`, the section becoming a pointer paragraph so the roughly
-   one hundred *Appendix A* citations stay valid. **139 KiB.**
-
-**Together about 6%.** One thing I want to put in front of you rather than decide, because it is worth more
-than the split and it is a ruling reversal: the specification describes `DOCUMENTATION_REVIEW.md` as *"the
-long-form twin of Appendix A."* If that is literally true, then **366 KiB of the dump is one register written
-twice**, and retiring a twin beats relocating both — a consolidation does not grow back, where a split does.
-I have not touched it. Say the word and Slice 49 is that instead.
-
-The only export-side lever left is the per-file framing: about 430 bytes × 351 files ≈ 151 KiB, reducible to
-roughly 50 KiB by collapsing the metadata block to one line. That costs you the block my reconstruction
-verifies against, for 1.8%. I would decline that trade, and I am recording the number so the decision is
-yours rather than absent.
+It has created *Starters* **with** a description and *Puddings* **without** one since Slice 40, and nothing
+had ever asserted on either. Step (c2) names the literal and asserts both halves of the rule from what was
+already there. It is now the only place `menu_section.description` is carried from the form that typed it to
+the phone that reads it — which is what step (d) does one register down for the item's own description.
 
 ---
 
 ## Test count arithmetic
 
-Uncompiled, per §18. **1180 → 1190.**
+Uncompiled, per §18. **1190 → 1191.**
 
 | Where | Assertions |
 | --- | --- |
-| `MenuItemResequenceTests` (new) | 8 |
-| `MenuWiringTests` | 2 |
-| **Total added** | **10** |
+| `MenuDirectoryTests` | 1 |
+| **Total added** | **1** |
 
-Any deviation from 1190 is the first thing to investigate.
+The resequence repair changes an assertion inside an existing fact, so it moves no count. Scenario 17 is
+extended rather than added, so §16.3 stays at seventeen, and no test class is added, so §16.4's counted-class
+floor of twenty-four does not move. **Any deviation from 1191 is the first thing to investigate.**
 
 ---
 
@@ -217,18 +154,21 @@ Any deviation from 1190 is the first thing to investigate.
 
 | Path | What changed |
 | --- | --- |
-| `src/MyRestaurant.DataAccess/Menu/MenuAdministration.cs` | the outcome enum, the section-scoped locking read, the verb, the permutation helper, the position row |
-| `src/MyRestaurant.WebApplication/Menu/MenuWorkflow.cs` | the verb, one conditional publish |
-| `src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationMenu.razor` | Up and Down per item row, the handler, two end-of-list helpers, the form-name helper, three flash sentences, header comment, lede |
-| `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemResequenceTests.cs` | **new** — eight assertions, `git add` required |
-| `tests/MyRestaurant.DataAccess.Tests/Menu/MenuSectionResequenceTests.cs` | the xUnit2031 fix |
-| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs` | the fake learns the verb; two facts |
-| `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs` | census floor 23 to 24 |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs` | comment only — records that `.record-actions button` has become live |
-| `docs/TECHNICAL_SPECIFICATION.md` | v1.33; **the F-98 fix at §16.4**; §7 and §11.4; one §16.4 paragraph plus one count moved; Appendix A F-98 and the Stage 3b row; changelog |
-| `docs/DOCUMENTATION_REVIEW.md` | F-98 row; status line |
-| `docs/BUILD_PROGRESS.md` | the Slice 48 entry |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 3a's out-of-scope bullet points forward; Stage 3b struck through with what landed and what is still open |
+| `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemResequenceTests.cs` | **the fix** — the count, the comment, and the arithmetic in the summary |
+| `src/MyRestaurant.DataAccess/Menu/MenuDirectory.cs` | `MenuSectionDescription` on the record, the row, the alias list and the projection; the reversal argued |
+| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor` | the paragraph under the heading, the walk carrying it, the render record widened |
+| `src/MyRestaurant.WebApplication/wwwroot/app.css` | `.order-menu-section-description` |
+| `src/MyRestaurant.WebApplication/Menu/MenuWorkflow.cs` | prose only — the publish now reaches a guest surface |
+| `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuSection.razor` | prose only — the lede said guests do not read this |
+| `tests/MyRestaurant.DataAccess.Tests/Menu/MenuDirectoryTests.cs` | one new fact: the sentence on every row of the run, and the empty case |
+| `tests/MyRestaurant.WebApplication.Tests/Orders/OrderStagingTests.cs` | the one positional construction site, plus what it cost |
+| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs` | prose only — the bet the publish was making has paid |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | `ReadMenuSectionDescriptionsAsync` |
+| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | scenario 17 step (c2), and the heading description named as a constant |
+| `docs/TECHNICAL_SPECIFICATION.md` | v1.34; §7 and §11.1; §16.4's count 7 → 8 and F-99's ruling; Appendix A F-99 and the Stage 3 row; changelog |
+| `docs/DOCUMENTATION_REVIEW.md` | F-99 row; status line |
+| `docs/BUILD_PROGRESS.md` | the Slice 49 entry |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | the outstanding line struck with the route taken; Stage 3 closed |
 | `_CHANGES.md` | this file |
 
 ---
@@ -236,35 +176,42 @@ Any deviation from 1190 is the first thing to investigate.
 ## What to run, in this order
 
 ```
-bash scripts/check_repository.sh --offline
 dotnet build
 dotnet test
+bash scripts/check_repository.sh --offline
 bash scripts/ci_local.sh --with-all
 ```
 
-The governance gate first, because it is the one that was red and it needs nothing built. If it still fails,
-nothing else in this archive is implicated. Then the build, because F-71's habit is that an archive which has
-not been compiled is a prediction.
+`dotnet build` first this time, because the widened record is the one change that can fail at the door: a
+positional constructor call I missed reports CS7036 naming the parameter, and there is exactly one such site
+in the tree.
 
 ---
 
 ## What was NOT verified
 
-**Nothing was compiled or run.** What *was* done: a string-aware brace and bracket balance over every edited
-C# file; a Razor tag-tree walk over `AdministrationMenu.razor` with generic type arguments and code islands
-excluded; CS4007 and CS1620 scans; every constructor and helper signature the new test file calls checked
-against the tree; a `SpecificationVersionTests` simulation; a `TestingSectionContractTests` simulation that
-resolved every cited class and compared every stated count against the files; a `MarkdownTableContractTests`
-simulation over every tracked Markdown file; and byte hygiene.
+**Nothing was compiled and nothing ran.** This archive is a prediction until `dotnet build` says otherwise,
+which is the habit F-71 bought.
 
-**The census delta rather than the census.** `MinimumCountedClasses` moves 23 → 24 on the arithmetic that
-exactly one §16.4 paragraph citing a class with a count was added. If that arithmetic is wrong the floor is
-wrong by the same amount.
+**No browser rendered the paragraph.** `ReadMenuSectionDescriptionsAsync` is new and scenario 17's step (c2)
+is its only caller, so the likeliest red is a locator finding nothing —
+`p.order-menu-section-description` inside `div.order-menu-section`. It fails as a length or value mismatch
+naming `null` where the sentence should be, which is distinguishable from the names assertion above it.
 
-**No browser saw the new controls.** §16.3's scenario 17 is not extended, so nothing asserts end to end that
-an item moves within its heading. That is a real gap and the obvious next end-to-end step.
+**No database answered the new column.** `List_CarriesEachHeadingsOwnDescription_OnEveryItemUnderIt` is the
+first read of `menu_section.description` through `IMenuDirectory`; a Dapper binding disagreement fails naming
+the parameter.
 
-**The lock-free interleaving is argued, not tested.**
+**Whether the paragraph looks right under the uppercase heading at 375px.** Nothing here can render.
 
-**Whether `.record-actions button` renders at the touch-target height on a handset.** The barrier will now
-measure it, which is the point; nothing here can observe the answer in advance.
+**What was done instead:** the tree was reconstructed from `dump.txt` and every one of its 353 SHA-256 hashes
+matched, against a second copy fetched from the remote; the Razor edit was checked by diffing the tag-event
+stream before and after, which showed exactly one balanced `<p>` between `</h4>` and `<ul>` and nothing else
+moved; brace and paren balance is zero-delta on all eight edited C# files; the `TestingSectionContractTests`
+gate was simulated and reports twenty-four counted classes against a floor of twenty-four with zero
+disagreements; every construction site of both widened records was found by search rather than by memory; and
+`TreatWarningsAsErrors` under CI is why step (c2) is two array assertions rather than one tuple comparison.
+
+**One instrument was wrong and is worth recording.** The first Razor walker reported faults in *untouched*
+control files, which is how it was known to be the broken party rather than the tree. A checker whose control
+group fails is a checker, not a finding.

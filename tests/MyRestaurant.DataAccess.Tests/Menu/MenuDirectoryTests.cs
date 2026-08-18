@@ -262,6 +262,55 @@ public sealed class MenuDirectoryTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.True(listed.IsActive);
     }
 
+    /// <summary>
+    /// The heading's own description arrives, on <b>every</b> row of that heading's run, and is <c>""</c>
+    /// for a heading that has none (M6 Slice 49).
+    ///
+    /// <para><b>Every row is the assertion rather than the first row, and that is the point of the
+    /// fact.</b> §11.1 groups by walking this list once and takes each heading's description from the first
+    /// item of the run — so a join that produced the sentence for one row and not its siblings would render
+    /// correctly on this arrangement and incorrectly the moment somebody reorders the menu. Reading it off
+    /// the second dish under the heading is what makes the difference visible.</para>
+    ///
+    /// <para>The heading with no description is asserted in the same fact rather than left implied, because
+    /// <c>""</c> and <c>null</c> are the same absence to a reader and only one of them survives
+    /// <c>string.Length</c>. §7's column is <c>NOT NULL DEFAULT ''</c>; a nullable member here would mean
+    /// the join, not the schema, had decided.</para>
+    /// </summary>
+    [Fact]
+    public async Task List_CarriesEachHeadingsOwnDescription_OnEveryItemUnderIt()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string startersDescription = "Served until 11am.";
+
+        Guid starters = await _world!.AddMenuSectionAsync(
+            "Starters", cancellationToken, description: startersDescription, displayOrder: 0);
+        Guid puddings = await _world.AddMenuSectionAsync(
+            "Puddings", cancellationToken, displayOrder: 1);
+
+        await _world.AddMenuItemAsync(
+            "Soup", 4.50m, cancellationToken, displayOrder: 0, menuSectionIdentifier: starters);
+        await _world.AddMenuItemAsync(
+            "Bread", 2.00m, cancellationToken, displayOrder: 1, menuSectionIdentifier: starters);
+        await _world.AddMenuItemAsync(
+            "Trifle", 5.00m, cancellationToken, displayOrder: 0, menuSectionIdentifier: puddings);
+
+        IReadOnlyList<MenuItemSummary> menu = await Directory().ListAsync(cancellationToken);
+
+        Assert.Equal(
+            new[] { startersDescription, startersDescription, string.Empty },
+            menu.Select(item => item.MenuSectionDescription).ToArray());
+
+        // The name is asserted beside it because the two are joined from one row and the failure worth
+        // catching is a join that fetched them from different ones: an ON clause reaching the wrong
+        // section would give a description that belongs to some other heading's name.
+        Assert.Equal(
+            new[] { "Starters", "Starters", "Puddings" },
+            menu.Select(item => item.MenuSectionName).ToArray());
+    }
+
     [Fact]
     public async Task AnEmptyMenu_IsAnEmptyList_NotAFailure()
     {
