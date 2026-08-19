@@ -13,7 +13,7 @@ namespace MyRestaurant.WebApplication.Menu;
 /// have a whole send refused for an 86'd item (§6.5.9) or be quoted a price nobody charges any
 /// more.</para>
 ///
-/// <para>One workflow over three write services, because there is one notification. §9 fires
+/// <para>One workflow over four write services, because there is one notification. §9 fires
 /// <see cref="MenuChanged"/> on "a menu item or <c>menu_item_event</c> commit" without distinguishing
 /// which verb caused it, and every subscriber responds the same way: re-read the menu. Splitting this in
 /// two would make it possible to wire an application that announces 86s and not repricings.</para>
@@ -24,6 +24,14 @@ namespace MyRestaurant.WebApplication.Menu;
 /// does. <c>0005</c> gave exactly one of them a caller — the section create page — and the section editor
 /// gives the other four theirs in one slice, because rename, describe, reorder and set-active are four
 /// forms on one page and shipping any subset would leave the same hole under a smaller name.</para>
+///
+/// <para><b>The picture verbs close the obligation Slice 51 re-opened, and the shape of that re-opening
+/// is worth keeping.</b> <c>0006</c> shipped <see cref="IMenuItemImageAdministration"/> with no caller
+/// anywhere outside its integration tests, and said so — on the standing rule that a write service
+/// reachable only from a test is a code path no surface can be held to. It was the weaker form of the
+/// defect precisely because <em>nothing was added here</em>: no surface could change a picture without
+/// announcing it, for the reason that no surface could change one at all. Both verbs arrive in the slice
+/// that gives them a form, which is the same sequencing five section verbs and the refile followed.</para>
 ///
 /// <para><b>And with <see cref="MoveMenuItemToSectionAsync"/> the rule has no outstanding case at all.</b>
 /// That verb was the last one in the whole menu enhancement written without a surface — deferred by name
@@ -284,6 +292,50 @@ public interface IMenuWorkflow
         bool isActive,
         Guid actorPersonIdentifier,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Puts a picture on an item, replacing whatever was there (§7, Stage 4b), and announces it when a
+    /// row was written.
+    ///
+    /// <para><b>This closes the obligation Slice 51 deliberately re-opened.</b>
+    /// <see cref="IMenuItemImageAdministration"/> shipped with the schema and had no caller outside its
+    /// integration tests, which is exactly the state <see cref="IMenuSectionAdministration"/> was in from
+    /// <c>0003</c> until the section editor; it was named on the slice that created it and is named here
+    /// on the slice that discharges it.</para>
+    ///
+    /// <para><b>Why it publishes, given that no guest surface renders a picture yet.</b> Because
+    /// <c>MenuChanged</c> means <em>re-read the menu</em> and nothing else (§9), and a workflow that
+    /// decided which columns were worth announcing is a workflow that has to be edited again the moment a
+    /// surface starts reading one. That bet has already been settled once in this file: the section
+    /// description published for nine slices before §11.1 rendered it, and when §11.1 did, neither this
+    /// method's sibling nor its wiring test needed an edit. §11.4's own item page reads the picture
+    /// today, so the publish is not even speculative — an administrator with the page open in a second
+    /// tab sees the swap.</para>
+    ///
+    /// <para>Conditional on a stored row. <c>MenuItemNotFound</c>, <c>UnsupportedContentType</c>,
+    /// <c>ContentTypeContradictedByBytes</c>, <c>BytesEmpty</c> and <c>BytesOverCap</c> each commit
+    /// nothing — three of them without opening a transaction at all — so announcing any of them would
+    /// tell every open surface in the building to re-query because somebody chose the wrong file.</para>
+    /// </summary>
+    Task<AttachMenuItemImageResult> AttachMenuItemImageAsync(
+        Guid menuItemImageIdentifier,
+        Guid menuItemIdentifier,
+        string contentType,
+        byte[] bytes,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Takes the picture off an item (§7) and, if a row was deleted, announces it.
+    ///
+    /// <para>Conditional on <c>Removed</c> alone. <c>NoImage</c> is two administrators pressing Remove
+    /// seconds apart, and <c>MenuItemNotFound</c> is a page left open — both commit nothing, on the rule
+    /// every other verb in this file follows.</para>
+    /// </summary>
+    Task<RemoveMenuItemImageOutcome> RemoveMenuItemImageAsync(
+        Guid menuItemIdentifier,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -301,22 +353,26 @@ public sealed class MenuWorkflow : IMenuWorkflow
     private readonly IMenuAvailability _availability;
     private readonly IMenuAdministration _administration;
     private readonly IMenuSectionAdministration _sections;
+    private readonly IMenuItemImageAdministration _images;
     private readonly IDomainEventBroadcaster _broadcaster;
 
     public MenuWorkflow(
         IMenuAvailability availability,
         IMenuAdministration administration,
         IMenuSectionAdministration sections,
+        IMenuItemImageAdministration images,
         IDomainEventBroadcaster broadcaster)
     {
         ArgumentNullException.ThrowIfNull(availability);
         ArgumentNullException.ThrowIfNull(administration);
         ArgumentNullException.ThrowIfNull(sections);
+        ArgumentNullException.ThrowIfNull(images);
         ArgumentNullException.ThrowIfNull(broadcaster);
 
         _availability = availability;
         _administration = administration;
         _sections = sections;
+        _images = images;
         _broadcaster = broadcaster;
     }
 
@@ -609,5 +665,52 @@ public sealed class MenuWorkflow : IMenuWorkflow
         }
 
         return result;
+    }
+
+    public async Task<AttachMenuItemImageResult> AttachMenuItemImageAsync(
+        Guid menuItemImageIdentifier,
+        Guid menuItemIdentifier,
+        string contentType,
+        byte[] bytes,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        AttachMenuItemImageResult result = await _images
+            .AttachMenuItemImageAsync(
+                menuItemImageIdentifier,
+                menuItemIdentifier,
+                contentType,
+                bytes,
+                actorPersonIdentifier,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        // Two outcomes wrote a row and five did not. Keyed on the two rather than on "not a refusal",
+        // because the refusal set has grown twice already — an outcome added to that enum must not
+        // become an announcement by default.
+        if (result.Outcome is AttachMenuItemImageOutcome.Attached
+            or AttachMenuItemImageOutcome.Replaced)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
+
+        return result;
+    }
+
+    public async Task<RemoveMenuItemImageOutcome> RemoveMenuItemImageAsync(
+        Guid menuItemIdentifier,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        RemoveMenuItemImageOutcome outcome = await _images
+            .RemoveMenuItemImageAsync(menuItemIdentifier, actorPersonIdentifier, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (outcome is RemoveMenuItemImageOutcome.Removed)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
+
+        return outcome;
     }
 }

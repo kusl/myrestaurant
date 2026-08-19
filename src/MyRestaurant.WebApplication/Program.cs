@@ -12,6 +12,7 @@ using MyRestaurant.WebApplication.Displays;
 using MyRestaurant.WebApplication.Events;
 using MyRestaurant.WebApplication.Identity;
 using MyRestaurant.WebApplication.LiveUpdates;
+using MyRestaurant.WebApplication.Menu;
 using MyRestaurant.WebApplication.Observability;
 using MyRestaurant.WebApplication.Orders;
 using MyRestaurant.WebApplication.Security;
@@ -279,6 +280,15 @@ app.MapRestaurantClock();
 
 // The POST /sign-out endpoint (antiforgery-protected; exempt from the obligations pipeline).
 app.MapRestaurantAccountEndpoints();
+
+// GET /menu/image/{menu_item_image_identifier} (§7, §11.1, §11.4). Anonymous, because §11.1's guest
+// menu is what it exists for and a guest at a table may not have signed in yet (§4.3). Deliberately
+// NOT added to the §3.5 obligations exemption list, unlike the clock and the source offer: those two
+// are asked for BY a page a locked-down principal is looking at, where this is a subresource of a
+// page such a principal was redirected away from before it rendered. It is mapped after the account
+// endpoints and before the components for readability only — route matching does not depend on the
+// order, and this pattern overlaps nothing.
+app.MapRestaurantMenuImages();
 
 // ContentSecurityFrameAncestorsPolicy = null turns OFF the endpoint convention this call would
 // otherwise install (F-49). Left alone, AddInteractiveServerRenderMode appends

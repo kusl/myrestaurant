@@ -47,10 +47,17 @@ public sealed record MenuItemImageContent(
 /// <summary>
 /// The outcome of <see cref="IMenuItemImageAdministration.AttachMenuItemImageAsync"/> (§7).
 ///
-/// <para><b>Six answers rather than a boolean, and every one of them is a different sentence for the
-/// person who chose the file.</b> "It did not work" on an upload surface is the failure §11.1's own
-/// data-loaded rule exists to prevent one register up: an operator who cannot tell a file too large from a
-/// file that is not an image tries the same file again.</para>
+/// <para><b>An answer per refusal rather than a boolean, and every one of them is a different sentence
+/// for the person who chose the file.</b> "It did not work" on an upload surface is the failure §11.1's
+/// own data-loaded rule exists to prevent one register up: an operator who cannot tell a file too large
+/// from a file that is not an image tries the same file again.</para>
+///
+/// <para><b>No count of the members is stated, and the number that used to be here was wrong (F-102).</b>
+/// It said <em>six</em> and there were seven, three lines below it, in the summary of the very enum it
+/// was counting — which is F-77's ruling arriving in a new shape: a census in prose that no gate reaches,
+/// beside the only honest copy of itself. It is <b>deleted</b> rather than corrected, on that ruling, and
+/// the members below are the census. It was found by reading this type in order to write the surface that
+/// renders one sentence per member, which is <b>F-93's</b> timing for the third time.</para>
 /// </summary>
 public enum AttachMenuItemImageOutcome
 {

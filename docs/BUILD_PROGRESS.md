@@ -3001,3 +3001,329 @@ residual, carried.
 it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried.
+
+# M6 Slice 52 — the transport question that had a third answer, and a count of seven that said six
+
+## Read this first: Slice 51 was green, the count matched exactly, and nothing is outstanding
+
+**1223 predicted, 1223 observed, zero failures.** §18's arithmetic matched to the digit for the fourth
+consecutive slice. The end-to-end suite passed all seventeen scenarios against real browsers twice — the
+Debug suite and the Release suite under `scripts/ci_local.sh --with-all --with-e2e` — and every local CI
+gate reported passing.
+
+The only `Error:` lines anywhere in the log are the two `run.sh --containers-only` prints about a Caddy
+container that does not exist yet, which is a carried item rather than a regression.
+
+**A note about where this project is, because it went wrong once already.** The session that authored
+Slice 51 arrived believing the tree was at Slice 46 and predicting 1166 tests, and it was at Slice 50 and
+1202. The reconstruction from `dump.txt` is what settles this every time: 360 file records, 359 matching
+their SHA-256 exactly, the one exception being `LICENSE`, which the dump elides to metadata and hash by
+design. **This is Slice 52.**
+
+## The stage: Stage 4b, and the open question was a real one
+
+Slice 51 shipped `menu_item_image`, `menu_item_image_event`, `ImageFormat`, and two data-access services
+with **no caller outside their integration tests**. It said so, in four places, and named the obligation it
+was re-opening. This discharges it.
+
+It also named one thing as a genuinely open design question rather than a deferral, and that is the part of
+this slice worth reading.
+
+### The transport: the two candidates, and the answer that was neither
+
+§11.4's pages are static SSR. `[SupplyParameterFromForm]` does not bind a file, and `InputFile` needs an
+interactive render mode. The plan named two ways out.
+
+**A minimal API endpoint** beside `AccountEndpoints`, taking a multipart post. The cost is not the code —
+it is that the endpoint acquires an **authorization rule of its own**, which then has to agree with
+`ManageMenuItem`'s `[Authorize(Policy = Administration)]`. Two places that can disagree about who may change
+a menu is exactly the shape §3.7 exists to prevent, and the way it goes wrong is a policy added to one and
+not the other by somebody who did not know there were two.
+
+**Making the page interactive.** A circuit under §11.4's largest form surface, in order to move one file —
+and it would make this the only administration page whose forms behave differently from every other one's,
+so the next person editing any of the six forms already on it has to know which kind of page they are in.
+
+**Neither was taken.** A plain `enctype="multipart/form-data"` form posts to **the page itself** under an
+ordinary `@formname`, and the handler reads the part back out of `HttpContext.Request.Form.Files`.
+
+**The reason that costs nothing is the part worth keeping.** Blazor's static form handling has already read
+the request body — that is how it found `_handler` and dispatched to this callback rather than to one of the
+other six. So `Request.Form` is a cached collection by the time the handler runs, and the request the model
+binder declined to bind one field of is sitting right there. The page stays static SSR, antiforgery stays
+the framework's job, post/redirect/get is unchanged, and the authorization rule stays in one place.
+
+**What is given up is model binding for exactly one field**, and that is the field the model binder refuses.
+
+### The route
+
+`GET /menu/image/{menu_item_image_identifier}`, a minimal-API endpoint rather than a page, because
+everything a component endpoint does — render a layout, apply the obligations pipeline, negotiate a circuit
+— is wrong for a response whose body is a `bytea` and whose `Content-Type` comes out of a column.
+
+**Anonymous**, and that is a decision rather than an oversight. §11.1's guest menu is the surface this
+exists for, and §4.3 puts registration at the moment of joining a table — so a guest reading a menu may have
+no session at all. A picture of a dish is also what a menu is *for*: it is the thing a restaurant prints.
+The key is a UUIDv7 rather than a filename, so nothing about the URL enumerates a menu.
+
+**It carries no §3.5 obligations exemption, and the distinction from the two that do is worth stating.**
+The clock and the source offer are asked for *by* a page a locked-down principal is looking at. This is a
+**subresource** of a page such a principal was redirected away from before it rendered. An exemption would
+therefore protect nothing and would widen the set of paths that answer during a forced password change.
+
+**`Cache-Control: public, max-age=31536000, immutable`**, and it is a true statement rather than a hope,
+because ADR-0015's second decision keys the route on the image: a replace mints a new identifier and deletes
+the old row, so the address changes exactly when the bytes do.
+
+### The two workflow verbs, and how the publish is keyed
+
+Attach and remove come behind `IMenuWorkflow` and publish `MenuChanged` on a written row. **The publish is
+keyed on the two outcomes that wrote a row rather than on "not a refusal"**, and that is not a style
+preference: `AttachMenuItemImageOutcome`'s refusal set has grown twice already, and keying on the negative
+would make a future member an announcement by default — a menu-wide re-query for an upload that was
+rejected.
+
+**Why publish at all, when no guest surface renders a picture?** Because `MenuChanged` means *re-read the
+menu* and nothing else (§9), and this file has already settled that bet once: the section description
+published for nine slices before §11.1 rendered it, and when §11.1 did, neither the workflow nor its wiring
+test needed an edit. §11.4's own item page reads the picture today, so the publish is not even speculative.
+
+### No number was added anywhere, and that was the hard part
+
+The obvious thing to write in the handler is a size check. It is not there.
+
+§8.2 declares the cap in a named CHECK, `DapperMenuItemImageAdministration` catches the violation and
+compares the constraint's **name**, and a second copy in C# would be F-65's mechanism — and worse, the belt
+that hides the buckle, which F-64, F-69 and F-75 are each an instance of.
+
+**The question that makes this non-trivial is what bounds the buffer.** Reading an upload into a `byte[]`
+in order to have the database refuse it is an allocation an untrusted request chose the size of. The answer
+is that **it needs no new bound at all**: Kestrel's request-body limit already bounds every POST this
+application accepts, on every form, today, and no form here raises it. So the picture form declares no
+transport ceiling because it inherits one, and there is still exactly one number about image size in the
+tree.
+
+### The declared media type is the browser's, and the surface deliberately does not improve on it
+
+`ImageFormat.IdentifyContentType` is public. The page could read the bytes, name the format itself, and
+never produce `UnsupportedContentType` or `ContentTypeContradictedByBytes` at all.
+
+**That is precisely the reason not to.** The write service is the one place that decides what an image is,
+and a surface that pre-judged would leave two of that verb's outcomes unreachable from the only form that
+can produce them — which is the same defect this project keeps recording about verbs with no caller, one
+register in. So the browser's `Content-Type` is handed on unaltered and the refusal message **names what
+the browser sent**, so the failure is diagnosable rather than mysterious.
+
+The residual is carried honestly: an operating system with no extension mapping sends
+`application/octet-stream` for a genuine PNG and gets *"not a picture format this menu serves"*. The fix if
+it ever bites is one line.
+
+## The finding: an enum that counted itself and got it wrong (F-102)
+
+`AttachMenuItemImageOutcome`'s summary opened *"**Six answers** rather than a boolean, and every one of them
+is a different sentence for the person who chose the file."*
+
+The enum has **seven** members. They begin three lines below that sentence.
+
+**The sentence saying six is the sentence explaining why each one matters** — that an operator who cannot
+tell a file too large from a file that is not an image tries the same file again. So the paragraph arguing
+that no answer may be collapsed had collapsed one by miscounting.
+
+It is **deleted rather than corrected**, on F-77's standing ruling, and the row is earned by the shape
+rather than by the arithmetic. This is that ruling's **sixth form** — after a version header disagreeing
+with its own changelog (F-48), a variable four documents agreed about (F-50), a port three helpers dialled
+(F-56), a touch target written eight pixels short (F-65), a class census in three places (F-89), and an
+index counting one thing while saying another (F-94). **A census in prose is wrong at the moment it is
+written or at the moment the thing it counts changes, and nothing in between can tell which.**
+
+Found by reading the type in order to write the surface that renders one sentence per member, which is
+**F-93's timing for the third time**: caught in the slice that would have consumed it rather than the slice
+after.
+
+**No gate is added**, on F-41 and F-47. A rule forbidding a number near an enum would report findings on
+every correct comment that mentions one. The residual is the one this log already carries — nothing can see
+a count written in a comment — and what shrinks it here is a side effect rather than a repair: the new
+handler switches over those outcomes, so a member with no sentence is now a missing `case`.
+
+## The one CSS rule that is not a presentational choice
+
+`.manage-picture-image { max-width: 100%; height: auto; }`.
+
+§7 stores what it is given and nothing in this stack can resize an image, so the intrinsic width of that
+element is whatever somebody's camera produced. **Without the constraint a 3000px photograph makes the
+document wider than a 375px viewport, and §16.3 scenario 16 fails on a page whose every control is
+correctly placed.** That is the kind of failure that gets diagnosed as a control problem for an hour.
+
+It is `.manage-` rather than a `.picture-` prefix of its own, so the vocabulary is inside the set
+`HandheldLayoutContractTests` already forbids a component from redeclaring — from its first day rather than
+from the slice somebody notices. **No test file was edited to make that true**, which is the point of
+choosing an existing prefix.
+
+The form is `.manage-inline-form` rather than a `.form-field` block for the same class of reason: the 375px
+barrier reaches `.manage-inline-form button` and does not reach `.form-actions button`, so this is F-93's
+rule — a surface acquiring a control acquires the selector in the same slice — obeyed by putting the control
+under a selector that was already right.
+
+## The assertion Slice 51 promised, and the one that would actually fail
+
+Slice 51 carried this by name: *"§11.11 needs no edit and that is carried to be asserted rather than
+assumed."* `ContentSecurityPolicyContractTests` now carries it, in two halves.
+
+That `img-src` admits `'self'` is stable and will not fail. **That every `<img>` in the tree is still
+same-origin is the half that would**, because a CDN, an object store or a thumbnail service is exactly the
+shape somebody reaches for when a menu grows pictures — and `NoResourceElementNamesAnAbsoluteUrl` already
+forbids it tree-wide, so this one exists to make the failure *say which feature it is about*.
+
+## The new contract test, and why it is its own class
+
+`MenuItemImageSurfaceContractTests`, **six assertions**, no container.
+
+Separate from `MenuWiringTests` because that file asserts what the workflow does with an upload once it has
+one, and every claim here is about whether an upload ever reaches it. **All six guard one failure mode**:
+the form renders, the button submits, the page redirects, and the file is simply not there. Nothing throws,
+nothing logs, no other test goes red, and the operator's only symptom is that every picture they choose
+comes back reported as empty.
+
+Three of them are about one string being written in one place — the input's `name`, which
+`Request.Form.Files` indexes by; the `accept` list, which is the media-type vocabulary's **third**
+declaration after §8.2's CHECK and `ImageFormat.RecognisedContentTypes` (F-80's shape); and the thumbnail's
+address. In all three the markup is asserted to **reference the constant** rather than to contain the value,
+because the value is what drifts.
+
+**The `accept` one is the copy with no server-side symptom whatsoever.** An `accept` attribute refuses
+nothing — a drifted one just hides the file somebody wants from the picker, and everything else in the
+application keeps working perfectly.
+
+**The sixth is the longest-lived bug this feature can have.** A route pattern re-keyed on the *item* would
+still route, still return a picture, and would then serve last week's photograph out of every browser cache
+in the building **for a year**, because `immutable` means the browser will not even ask.
+
+## What was verified
+
+Nothing was compiled and nothing ran. What was done:
+
+- **Tree reconstruction.** `dump.txt` parsed to 360 file records; **359 of 360 matched their SHA-256
+  exactly**. The one mismatch is `LICENSE`, which the dump elides to metadata and hash by design (Slice 46).
+  Zero unexplained mismatches.
+- **String-aware brace, paren and bracket balance**: zero on the two new C# files and on every edited C# and
+  Razor file.
+- **A Razor tag-tree walk** over `ManageMenuItem.razor`: every element opened is closed, the two new
+  `<form>` elements are siblings rather than nested, and the `<figure>` block balances.
+- **The CSP contract test's own scan, simulated** against the edited tree: one `data:` URL (the favicon,
+  unchanged), the new `<img src>` classified as same-origin, no inline `<script>`, no `on*` attribute
+  introduced — `@onsubmit` is preceded by `@` rather than by whitespace, which is what that scan
+  distinguishes on.
+- **A `TestingSectionContractTests` simulation**: **28 counted classes against a floor of 28**, zero
+  ambiguous paragraphs, zero unresolvable citations, no duplicate test file names anywhere under `tests/`.
+  `MenuItemImageSurfaceContractTests.cs` and the existing `MenuItemImageTests.cs` are deliberately different
+  names for that reason.
+- **A `MarkdownTableContractTests` simulation**: table runs across the documentation, 0 problems, including
+  the two new Appendix A rows.
+- **The version gate**: header 1.37 against a newest changelog entry of 1.37, two versioned documents against
+  a floor of two.
+- **A CSS vocabulary check**: the three new selectors are `.manage-` prefixed, declared once, in `app.css`
+  and in no component; every custom property they read is declared in `:root`; no colour literal.
+- **The platform-state gate**: no forbidden phrasing in any non-record file this slice touches.
+- **Tree hygiene on every touched and new file**: LF endings, exactly one final newline, no whitespace-only
+  line, no run of twenty or more `#` on a line of its own.
+
+## Test count arithmetic
+
+Uncompiled, per §18. **1223 → 1233.**
+
+| Where | Assertions |
+| --- | --- |
+| `MenuItemImageSurfaceContractTests` | 6 |
+| `MenuWiringTests` | 3 |
+| `ContentSecurityPolicyContractTests` | 1 |
+| **Total added** | **10** |
+
+No test is removed and none moves file. §16.3 stays at seventeen — no scenario is added or extended. §16.4
+gains one paragraph and one counted class, so the enforced floor moves 27 → 28. **Any deviation from 1233 is
+the first thing to investigate.**
+
+## What was NOT verified
+
+**Nothing was compiled and nothing ran.** This archive is a prediction until `dotnet build` says otherwise.
+
+**Whether Blazor's static form handling dispatches a `multipart/form-data` post.** This is the load-bearing
+assumption of the whole transport decision. The reasoning is that `_handler` is an ordinary form field and
+`HttpContext.Request.Form` reads multipart bodies, so the dispatch sees what it always sees — but no request
+was made. **If it is wrong the symptom is unmistakable**: the handler never runs, the page re-renders with
+no flash and no error, and nothing is written. That is the first thing to check on a red or a silent run,
+and the fallback is the minimal API endpoint the plan named, at the cost of a second authorization rule.
+
+**Whether `<AntiforgeryToken />` inside a multipart form validates.** It renders the same hidden field it
+renders in every other form on the page, and the framework validates form posts to component endpoints
+regardless of encoding. If it does not, the symptom is a 400 rather than a wrong answer.
+
+**Whether `Results.Bytes` leaves the `Cache-Control` header alone.** It is set on the response before the
+result executes. A result writes the body and the content headers; nothing observed says it clears others.
+A wrong answer here is a picture that is served correctly and re-fetched more often than it needs to be.
+
+**Whether `HttpContext.Request.Form.Files[name]` returns null or throws for an absent part.** The handler
+treats null as an empty upload and reaches `BytesEmpty`. If the indexer throws instead, it is an unhandled
+exception on a form submitted with nothing chosen — which is the second thing to check.
+
+**Whether `using MemoryStream buffer = new(); using Stream content = file.OpenReadStream();` inside an `if`
+block compiles without an analyzer warning under `TreatWarningsAsErrors` in Release.** If it does not, it is
+a compiler message naming the line, which is the cheapest kind of red.
+
+**Whether the file input renders acceptably at 375px inside `.manage-inline-form`.** That class sets
+`width: 100%` and `min-height: var(--touch-target)` on `input`, which a file input inherits — but a file
+input's internal button is the browser's and is not styled by anything here. §16.3 scenario 16 measures the
+`button`, not the input, so a cramped file control would pass the barrier and look wrong.
+
+## Carried
+
+**§11.1 renders no picture, which is the half of this feature that was actually asked for.** Stage 4c, and
+it is two decisions about a 375px screen rather than about bytes: a thumbnail beside the name rather than a
+hero above it, and an `alt_text` column, because a picture on a guest's card may say something its name does
+not.
+
+**`IMenuItemImageDirectory.ListAsync` has no caller.** It is §11.1's. Named on the same rule that named the
+write and weaker than it — an unread read cannot change anything without telling anybody.
+
+**No §16.3 scenario touches a picture.** A picture scenario needs a fixture image the harness has no way to
+produce, and inventing bytes inside the harness would be a test arranging the thing it asserts about.
+Carried, and it is now the largest end-to-end gap in the menu after the two resequencing verbs.
+
+**A browser that sends `application/octet-stream` for a genuine PNG is refused.** The message names what the
+browser sent. Carried with the fix written down.
+
+**Whether a browser downscales before upload.** A phone camera produces four megabytes against a 512 KiB
+cap, so the answer to most uploads is *too large*. It changes no schema. Carried for a third slice, and it
+is now the thing that decides whether this feature is usable by the person who asked for it.
+
+**§16.3 has no scenario for either resequencing verb.** Carried: scenario 16's barrier measures those
+controls and nothing presses them.
+
+**`/kitchen` has no §16.3 scenario at all.** Carried — the largest end-to-end gap in the application.
+
+**The wide layout stacks each row's three controls.** The `<form>` is a block element and `app.css` has no
+rule for a row of them. Carried on two registers.
+
+**The handheld barrier visits neither section surface.** Carried.
+
+**The dump reduction.** Specified in `_CHANGES.md` and deferred again by name.
+
+**No gate can see a count written in a comment, or a claim written beside a computation.** Carried — and
+F-102 is that class arriving in a sixth form, a count of an enum's members in the summary of that enum.
+
+**A fact assembled by copying a sibling inherits that sibling's arrangement along with its numbers.** F-99's
+residual, carried.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried.
+
+**Nothing treats a test that fails and then passes as evidence.** Carried.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Sixteenth slice carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a nineteenth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Twenty-eighth consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then starts
+it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried.

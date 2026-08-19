@@ -178,6 +178,46 @@ public sealed class ContentSecurityPolicyContractTests
             + " while the stylesheets load nothing. Found: " + string.Join(", ", problems));
     }
 
+    /// <summary>
+    /// The bytes this application now serves itself are inside the policy it already publishes — asserted
+    /// rather than assumed, which is the whole of F-49's lesson and was carried by name from the slice
+    /// that created the schema to this one, which added the route.
+    ///
+    /// <para><b>Nothing about §11.11 changed and that is the point.</b> <c>img-src 'self' data:</c>
+    /// admits a same-origin fetch, and <c>/menu/image/{id}</c> is same-origin by construction because the
+    /// bytes come out of this application's own database rather than out of a bucket somebody configured.
+    /// A Content Security Policy is the one configuration here that becomes wrong by editing a file it
+    /// does not mention, so "no change needed" is a claim, and a claim with no assertion behind it is
+    /// how a policy comes to be correct by accident and then stops being.</para>
+    ///
+    /// <para><b>Both halves are asserted, and the second is the one that would actually fail.</b> That
+    /// the directive admits <c>'self'</c> is stable; that the page's <c>&lt;img&gt;</c> is still
+    /// same-origin is not, because the shape that would break it — a CDN, an object store, a thumbnail
+    /// service — is exactly the shape somebody reaches for when a menu grows pictures.
+    /// <see cref="NoResourceElementNamesAnAbsoluteUrl"/> already forbids it tree-wide; this names the
+    /// element that made the question live, so a failure says which feature it is about.</para>
+    /// </summary>
+    [Fact]
+    public void TheServedPictureBytesAreInsideThePolicyAlready()
+    {
+        MarkupScan scan = ScanMarkup();
+
+        Assert.Contains("img-src 'self' data:", PolicyText(), StringComparison.Ordinal);
+
+        // The tree has an <img> at all — without one the assertion below passes vacuously (F-41), and
+        // this is the slice that introduced the first one.
+        Assert.True(
+            scan.ImageSources.Count >= 1,
+            "no <img src> was found, so nothing about img-src is being tested.");
+
+        Assert.True(
+            scan.ImageSources.All(source => !IsOffOrigin(source)),
+            "img-src is 'self' and data:, so a picture loaded from another origin would be refused."
+            + " Menu pictures are served from this application's own /menu/image route by design"
+            + " (ADR-0015). Off-origin: "
+            + string.Join(", ", scan.ImageSources.Where(IsOffOrigin)));
+    }
+
     /// <summary>The first concession, tied to the one fact that earns it.</summary>
     [Fact]
     public void TheOnlyDataUrlIsTheFaviconThatImgSrcAdmits()
@@ -281,6 +321,11 @@ public sealed class ContentSecurityPolicyContractTests
                 if (element == "<link" && attribute == "href" && value.EndsWith(".css", StringComparison.Ordinal))
                 {
                     scan.StylesheetHrefs.Add(value);
+                }
+
+                if (element == "<img" && attribute == "src")
+                {
+                    scan.ImageSources.Add(value);
                 }
 
                 if (IsOffOrigin(value))
@@ -454,6 +499,8 @@ public sealed class ContentSecurityPolicyContractTests
         public List<string> ExternalScriptSources { get; } = [];
 
         public List<string> StylesheetHrefs { get; } = [];
+
+        public List<string> ImageSources { get; } = [];
 
         public List<string> InlineScripts { get; } = [];
 

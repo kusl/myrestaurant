@@ -48,6 +48,14 @@ namespace MyRestaurant.WebApplication.Tests;
 /// quietly omitted, which is the whole reason its arrival can be stated as a fact instead of noticed
 /// later. Every method this file exercises is reachable from a form an administrator can open.</para>
 ///
+/// <para><b>The two picture verbs arrive the same way and close the obligation Slice 51 re-opened by
+/// name.</b> <c>0006</c> shipped <see cref="IMenuItemImageAdministration"/> with no caller outside its
+/// integration tests and said so; it was the weaker form of the defect, because nothing was added behind
+/// <see cref="IMenuWorkflow"/> and therefore no surface could change a picture without announcing it for
+/// the reason that no surface could change one at all. Both arrive with the form on
+/// <c>ManageMenuItem.razor</c>, and the fact worth reading is the refusal set: this is the verb with the
+/// most ways to write nothing in the file, five of them, three of which never open a transaction.</para>
+///
 /// <para><b><c>ResequenceMenuSectionsAsync</c> arrives the same way and is the sixth.</b> It was specified
 /// in the plan and deferred by name for two slices — once for F-95, whose fix it depends on, and once for
 /// the dump reduction — and it arrives with its caller: the Up and Down controls on the menu index. Its two
@@ -129,6 +137,14 @@ public sealed class MenuWiringTests
             scope.ServiceProvider.GetRequiredService<IMenuAdministration>());
         Assert.IsType<DapperMenuSectionAdministration>(
             scope.ServiceProvider.GetRequiredService<IMenuSectionAdministration>());
+
+        // The fourth, as of Stage 4b. Asserted here rather than in a fact of its own because the claim
+        // this one makes is that the workflow covers EVERY write service — a fourth registered beside it
+        // and not behind it is exactly the shape the picture services were in for one slice.
+        Assert.IsType<DapperMenuItemImageAdministration>(
+            scope.ServiceProvider.GetRequiredService<IMenuItemImageAdministration>());
+        Assert.IsType<DapperMenuItemImageDirectory>(
+            scope.ServiceProvider.GetRequiredService<IMenuItemImageDirectory>());
     }
 
     [Fact]
@@ -817,22 +833,188 @@ public sealed class MenuWiringTests
         }
     }
 
-    // Three overloads, distinguished by their first parameter: whichever write service the test is about
+    /// <summary>
+    /// The picture arrives at the write service exactly as the form built it, and a stored one is
+    /// announced.
+    ///
+    /// <para><b>The bytes are asserted by identity rather than by contents</b>, which is the same claim
+    /// the two resequencing facts make about their orderings and it matters more here: nothing in this
+    /// verb's contract permits the workflow to copy, trim, pad or re-encode an upload, and a shell that
+    /// "helpfully" normalised one would be deciding what a photograph is in the one layer with no
+    /// business having an opinion. The declared media type is asserted for the same reason — it is the
+    /// browser's claim, and the write's whole job is to check it against these very bytes.</para>
+    ///
+    /// <para><b>The identifier is asserted because a replace mints a new one.</b> §7's route is keyed on
+    /// the image so that an immutable cache header is true; a workflow that passed the item's identifier
+    /// through instead would produce a URL that never changes and a year of stale photographs.</para>
+    /// </summary>
+    [Fact]
+    public async Task AnAttachedPicture_IsAnnounced_AndItsArgumentsArePassedThrough()
+    {
+        byte[] bytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00];
+        Guid imageIdentifier = Guid.Parse("0192f000-0000-7000-8000-00000000f001");
+
+        FakeMenuItemImageAdministration images = new();
+        RecordingBroadcaster broadcaster = new();
+
+        AttachMenuItemImageResult result = await WorkflowOver(images, broadcaster)
+            .AttachMenuItemImageAsync(
+                imageIdentifier,
+                MenuItemIdentifier,
+                "image/png",
+                bytes,
+                ActorIdentifier,
+                TestContext.Current.CancellationToken);
+
+        Assert.Equal(AttachMenuItemImageOutcome.Attached, result.Outcome);
+        Assert.Equal(imageIdentifier, images.LastMenuItemImageIdentifier);
+        Assert.Equal(MenuItemIdentifier, images.LastMenuItemIdentifier);
+        Assert.Equal("image/png", images.LastContentType);
+        Assert.Same(bytes, images.LastBytes);
+        Assert.Equal(ActorIdentifier, images.LastActor);
+        Assert.IsType<MenuChanged>(Assert.Single(broadcaster.Published));
+    }
+
+    /// <summary>
+    /// Every refusal is silent, and they are asserted as a set rather than one at a time because the set
+    /// is the claim.
+    ///
+    /// <para>This is the verb with the most ways to write nothing in the whole file, and three of them
+    /// never open a transaction at all — an empty upload, a media type this application does not serve,
+    /// and bytes that contradict their own declaration are properties of the arguments. A workflow keyed
+    /// on "not a refusal I have heard of" would announce a future member of that enum by default, which
+    /// is why the implementation keys on the two outcomes that wrote a row instead. <b>A replace is
+    /// announced and is deliberately not in this list</b>: it deleted one row and wrote another, so it
+    /// changed the menu more than an attach did.</para>
+    /// </summary>
+    [Fact]
+    public async Task APictureThatWasNotStored_AnnouncesNothing()
+    {
+        foreach (AttachMenuItemImageOutcome refused in new[]
+        {
+            AttachMenuItemImageOutcome.MenuItemNotFound,
+            AttachMenuItemImageOutcome.UnsupportedContentType,
+            AttachMenuItemImageOutcome.ContentTypeContradictedByBytes,
+            AttachMenuItemImageOutcome.BytesEmpty,
+            AttachMenuItemImageOutcome.BytesOverCap,
+        })
+        {
+            FakeMenuItemImageAdministration images = new() { AttachOutcome = refused };
+            RecordingBroadcaster broadcaster = new();
+
+            AttachMenuItemImageResult result = await WorkflowOver(images, broadcaster)
+                .AttachMenuItemImageAsync(
+                    Guid.Parse("0192f000-0000-7000-8000-00000000f002"),
+                    MenuItemIdentifier,
+                    "image/png",
+                    [0x00],
+                    ActorIdentifier,
+                    TestContext.Current.CancellationToken);
+
+            Assert.Equal(refused, result.Outcome);
+
+            // Nothing was stored, so nothing may claim to have been: a caller that built a URL out of
+            // the identifier it offered would link to a 404 on every card.
+            Assert.Null(result.MenuItemImageIdentifier);
+            Assert.Empty(broadcaster.Published);
+        }
+
+        // The replace half of the same rule, stated positively so the loop above cannot be read as
+        // "anything but Attached is silent".
+        FakeMenuItemImageAdministration replaced = new()
+        {
+            AttachOutcome = AttachMenuItemImageOutcome.Replaced,
+        };
+        RecordingBroadcaster replacedBroadcaster = new();
+
+        await WorkflowOver(replaced, replacedBroadcaster).AttachMenuItemImageAsync(
+            Guid.Parse("0192f000-0000-7000-8000-00000000f003"),
+            MenuItemIdentifier,
+            "image/png",
+            [0x00],
+            ActorIdentifier,
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<MenuChanged>(Assert.Single(replacedBroadcaster.Published));
+    }
+
+    /// <summary>
+    /// A removal that deleted a row is announced; one that found nothing to delete, and one against an
+    /// item that is not there, are not. The middle case is the ordinary one — two administrators pressing
+    /// Remove seconds apart — and it is the reason this verb is conditional rather than unconditional.
+    /// </summary>
+    [Fact]
+    public async Task ARemovedPicture_IsAnnouncedOnlyWhenARowWasDeleted()
+    {
+        FakeMenuItemImageAdministration removed = new();
+        RecordingBroadcaster removedBroadcaster = new();
+
+        Assert.Equal(
+            RemoveMenuItemImageOutcome.Removed,
+            await WorkflowOver(removed, removedBroadcaster).RemoveMenuItemImageAsync(
+                MenuItemIdentifier, ActorIdentifier, TestContext.Current.CancellationToken));
+
+        Assert.Equal(MenuItemIdentifier, removed.LastMenuItemIdentifier);
+        Assert.Equal(ActorIdentifier, removed.LastActor);
+        Assert.IsType<MenuChanged>(Assert.Single(removedBroadcaster.Published));
+
+        foreach (RemoveMenuItemImageOutcome quiet in new[]
+        {
+            RemoveMenuItemImageOutcome.NoImage,
+            RemoveMenuItemImageOutcome.MenuItemNotFound,
+        })
+        {
+            FakeMenuItemImageAdministration images = new() { RemoveOutcome = quiet };
+            RecordingBroadcaster broadcaster = new();
+
+            await WorkflowOver(images, broadcaster).RemoveMenuItemImageAsync(
+                MenuItemIdentifier, ActorIdentifier, TestContext.Current.CancellationToken);
+
+            Assert.Empty(broadcaster.Published);
+        }
+    }
+
+    // Four overloads, distinguished by their first parameter: whichever write service the test is about
     // is the one it passes, and the others are default fakes nothing under test ever calls.
     private static MenuWorkflow WorkflowOver(
         IMenuAdministration administration,
         IDomainEventBroadcaster broadcaster)
-        => new(new FakeMenuAvailability(), administration, new FakeMenuSectionAdministration(), broadcaster);
+        => new(
+            new FakeMenuAvailability(),
+            administration,
+            new FakeMenuSectionAdministration(),
+            new FakeMenuItemImageAdministration(),
+            broadcaster);
 
     private static MenuWorkflow WorkflowOver(
         IMenuAvailability availability,
         IDomainEventBroadcaster broadcaster)
-        => new(availability, new FakeMenuAdministration(), new FakeMenuSectionAdministration(), broadcaster);
+        => new(
+            availability,
+            new FakeMenuAdministration(),
+            new FakeMenuSectionAdministration(),
+            new FakeMenuItemImageAdministration(),
+            broadcaster);
 
     private static MenuWorkflow WorkflowOver(
         IMenuSectionAdministration sections,
         IDomainEventBroadcaster broadcaster)
-        => new(new FakeMenuAvailability(), new FakeMenuAdministration(), sections, broadcaster);
+        => new(
+            new FakeMenuAvailability(),
+            new FakeMenuAdministration(),
+            sections,
+            new FakeMenuItemImageAdministration(),
+            broadcaster);
+
+    private static MenuWorkflow WorkflowOver(
+        IMenuItemImageAdministration images,
+        IDomainEventBroadcaster broadcaster)
+        => new(
+            new FakeMenuAvailability(),
+            new FakeMenuAdministration(),
+            new FakeMenuSectionAdministration(),
+            images,
+            broadcaster);
 
     private static ServiceProvider BuildProvider()
     {
@@ -1170,6 +1352,70 @@ public sealed class MenuWiringTests
             Guid actorPersonIdentifier,
             CancellationToken cancellationToken = default)
             => Task.FromResult(_result);
+    }
+
+    /// <summary>
+    /// The picture write service, whose two verbs came behind the workflow in Stage 4b.
+    ///
+    /// <para>It records its arguments and returns a configurable outcome, like every other fake here,
+    /// and the argument worth recording is <see cref="LastBytes"/> — kept as the reference it was handed
+    /// rather than a copy, because the claim under test is that the upload arrives unaltered and a fake
+    /// that copied could not tell an unaltered array from a re-encoded one.</para>
+    /// </summary>
+    private sealed class FakeMenuItemImageAdministration : IMenuItemImageAdministration
+    {
+        public Guid? LastMenuItemImageIdentifier { get; private set; }
+
+        public Guid? LastMenuItemIdentifier { get; private set; }
+
+        public string? LastContentType { get; private set; }
+
+        public byte[]? LastBytes { get; private set; }
+
+        public Guid? LastActor { get; private set; }
+
+        public AttachMenuItemImageOutcome AttachOutcome { get; init; }
+            = AttachMenuItemImageOutcome.Attached;
+
+        public RemoveMenuItemImageOutcome RemoveOutcome { get; init; }
+            = RemoveMenuItemImageOutcome.Removed;
+
+        public Task<AttachMenuItemImageResult> AttachMenuItemImageAsync(
+            Guid menuItemImageIdentifier,
+            Guid menuItemIdentifier,
+            string contentType,
+            byte[] bytes,
+            Guid actorPersonIdentifier,
+            CancellationToken cancellationToken = default)
+        {
+            LastMenuItemImageIdentifier = menuItemImageIdentifier;
+            LastMenuItemIdentifier = menuItemIdentifier;
+            LastContentType = contentType;
+            LastBytes = bytes;
+            LastActor = actorPersonIdentifier;
+
+            // The real service returns the identifier only when it stored something, and this fake
+            // reproduces that rather than always returning one: a caller that built a URL out of a
+            // refused identifier would link to a 404, and the assertion for it needs a fake that can
+            // be wrong in the same way the real thing could.
+            bool stored = AttachOutcome is AttachMenuItemImageOutcome.Attached
+                or AttachMenuItemImageOutcome.Replaced;
+
+            return Task.FromResult(new AttachMenuItemImageResult(
+                AttachOutcome,
+                stored ? menuItemImageIdentifier : null));
+        }
+
+        public Task<RemoveMenuItemImageOutcome> RemoveMenuItemImageAsync(
+            Guid menuItemIdentifier,
+            Guid actorPersonIdentifier,
+            CancellationToken cancellationToken = default)
+        {
+            LastMenuItemIdentifier = menuItemIdentifier;
+            LastActor = actorPersonIdentifier;
+
+            return Task.FromResult(RemoveOutcome);
+        }
     }
 
     private sealed class RecordingBroadcaster : IDomainEventBroadcaster

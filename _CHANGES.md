@@ -1,282 +1,200 @@
-# M6 Slice 51 — the picture a menu could not carry, and three columns a plan had already got wrong
+# M6 Slice 52 — the transport question that had a third answer, and a count of seven that said six
 
 Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-51-menu-images-schema.tar.gz
+tar -xzf m6-slice-52-menu-images-surfaces.tar.gz
 git status
 ```
 
 **Files to DELETE: none.**
 
-**`git add` IS required — five new files, one of them in a new directory.**
+**`git add` IS required — two new files, both in directories that already exist.**
 
 ```
-git add src/MyRestaurant.Domain/Menu/ImageFormat.cs
-git add src/MyRestaurant.DataAccess/Menu/MenuItemImages.cs
-git add src/MyRestaurant.DataAccess/Migrations/0006_menu_item_images.sql
-git add tests/MyRestaurant.Domain.Tests/ImageFormatTests.cs
-git add tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemImageTests.cs
-git add docs/adr/0015-menu-item-images-in-the-database.md
+git add src/MyRestaurant.WebApplication/Menu/MenuItemImageEndpoints.cs
+git add tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageSurfaceContractTests.cs
 ```
 
-`src/MyRestaurant.Domain/Menu/` **is a new directory** — `Domain` has had `Orders/`, `Security/`, `Time/`,
-`Identifiers/`, `Authentication/` and `LiveUpdates/`, and never a `Menu/`. Every other directory above
-already exists. `git status` should show **seven modifications and six untracked paths**; anything else
-untracked means the archive was extracted somewhere other than the repository root.
+`git status` should show **eleven modifications and two untracked paths**; anything else untracked means
+the archive was extracted somewhere other than the repository root.
 
-**One thing to know about the new migration.** `Migrations/*.sql` is globbed as an `EmbeddedResource` in
-`MyRestaurant.DataAccess.csproj`, so `0006` needs no project-file edit — but it **does** need `git add`, and
-an untracked file is invisible to `git ls-files` and therefore to every gate and to CI.
-
-**No `REQUIREMENTS.md` edit, no `OPERATIONS.md` edit, no `compose.yaml` edit, no `.slnx` edit, no `.csproj`
-edit, no new package, no `export.sh` edit, no existing ADR amended, no read changed, no existing event type,
-no workflow verb, and no CSS at all.** Nothing renders a picture yet.
+**No new directory, no migration, no schema change, no new event type, no new package, no `.slnx` edit, no
+`.csproj` edit, no `compose.yaml` edit, no `REQUIREMENTS.md` edit, no `OPERATIONS.md` edit, no ADR amended,
+no `export.sh` edit, and no §16.3 scenario added or extended.**
 
 ---
 
-## Read this first: your last run was clean, and a correction about where this project is
+## Read this first: your last run was clean
 
-`total: 1202, failed: 0, succeeded: 1202, skipped: 0` — against a prediction of **1202**. §18's arithmetic
-matched to the digit for the third consecutive slice. Seventeen scenarios passed against real browsers three
-times over, and `ci_local.sh --with-all --with-e2e` reported every gate passing.
+`total: 1223, failed: 0, succeeded: 1223, skipped: 0` — against a prediction of **1223**. §18's arithmetic
+matched to the digit for the fourth consecutive slice. Seventeen scenarios passed against real browsers
+twice, and `ci_local.sh --with-all --with-e2e` reported every gate passing.
 
-**The correction is mine and it is worth a line.** I arrived believing this project was at Slice 46 and
-predicting 1166 tests. It is at Slice 50 and 1202: Slices 47 through 50 shipped the section resequencing
-verb, the item resequencing verb, the heading description on the guest menu, and `MenuGrouping` with the
-kitchen's grouped 86 panel. Stage 3 and Stages 3a–3c of the plan are closed. Nothing was lost — reconstructing
-the tree from `dump.txt` settled it, 353 of 355 records matching their SHA-256 — but the authoritative account
-of where this stands is `BUILD_PROGRESS.md` and your terminal log, not a session's recollection.
+The tree was reconstructed from `dump.txt` before anything was authored: **360 file records, 359 matching
+their SHA-256 exactly**, the one exception being `LICENSE`, which the dump elides to metadata and hash by
+design.
 
-So there was nothing to chase. **This slice is Stage 4a**, plus the defect found while reading the plan that
-specifies it.
+This is **Stage 4b**, plus the defect found while reading the type it consumes.
 
 ---
 
-## The finding: a schema about to be created out of an unchecked sketch (F-101)
+## The stage: a picture can now be attached, replaced, removed and seen
 
-Stage 4 of `docs/MENU_AND_HANDHELD_PLAN.md` has carried a DDL sketch for `menu_item_image` since Slice 30.
-Three of its columns were wrong, in two different ways.
+Slice 51 shipped the schema and two data-access services with **no caller outside their integration tests**,
+said so in four places, and named the obligation it was re-opening. This discharges it.
 
-`byte_length integer NOT NULL CHECK (byte_length BETWEEN 1 AND 524288)` **is** `octet_length(bytes)` — one
-fact written twice, in a table where one `UPDATE` can separate them, and where the copy every read would
-select is the one that can be false. **F-65's mechanism, seventh occurrence.**
+### The open question, and why the answer is neither of the two that were on the table
 
-`pixel_width` and `pixel_height` are worse, and the argument is in the same stage's own prose: it says there
-is no free-libre .NET imaging library available for this use and that the server therefore *validates and
-stores what it is given*. **Nothing in this tree can open an image.** So neither number could ever have come
-from anywhere but the uploading browser's word — recorded as a column, in the indicative, beside columns the
-database actually knows.
+§11.4's pages are static SSR, `[SupplyParameterFromForm]` does not bind a file, and `InputFile` needs an
+interactive render mode. The plan named a **minimal API endpoint** and **making a page interactive**.
 
-### What makes it a finding rather than a refinement
+Neither is taken. A plain `enctype="multipart/form-data"` form posts to **the page itself** under an
+ordinary `@formname`, and the handler reads the part out of `HttpContext.Request.Form.Files`.
 
-**Three gates read that document and none reads a fenced SQL block for meaning.**
-`MarkdownTableContractTests` reads it for table structure, `SpecificationVersionTests` for version agreement,
-`check_tree.sh` for hygiene. A DDL sketch in a plan is therefore **authored prose carrying the authority of a
-schema and none of the checking** — and its destination is uniquely unforgiving, because DbUp journals by
-script name and an applied migration is never edited (F-34). The slice that copies a sketch into
-`Migrations/` is the last moment it is free to be wrong.
+**Why that costs nothing:** Blazor's static form handling has already read the request body — that is how it
+found `_handler` and dispatched to this callback rather than to one of the other six on the page. The
+request the model binder declined to bind one field of is sitting right there, cached.
 
-Found by reading the sketch in order to implement it, which is **F-93's timing a second time**.
+**What the two alternatives would have cost.** An endpoint acquires an **authorization rule of its own**
+that then has to agree with `ManageMenuItem`'s `[Authorize]` — two places that can disagree about who may
+change a menu, which is what §3.7 exists to prevent. An interactive page puts a circuit under §11.4's
+largest form surface to move one file, and makes this the only administration page whose forms behave
+differently from every other one's.
 
-### The repair, and where it stops
+**What is given up: model binding for exactly one field**, which is the field the model binder refuses.
 
-All three columns are dropped **before `0006` was authored**, each reason written into §7 and into the script.
-`new_byte_length` **is** kept on `menu_item_image_event`, and the asymmetry is stated as the point: after a
-removal the bytes are gone, so the log is the only place that number can live.
+### The route
 
-**No gate is added over the plan's SQL blocks** (F-41, F-47). A document that sketches a schema *in order to
-argue about it* legitimately contains shapes the tree does not have — Stage 4's sketch also argues against two
-alternatives it never built — so a gate comparing them would report findings on a correct document. The
-sketch is kept in the plan, marked superseded, so F-101's row has something to point at.
+`GET /menu/image/{menu_item_image_identifier}` — a minimal-API endpoint, **anonymous**, 404 for an
+identifier the table does not hold, `Cache-Control: public, max-age=31536000, immutable`.
 
----
+Anonymous because §11.1's guest menu is what it exists for and §4.3 puts registration at the moment of
+joining a table, so a guest reading a menu may have no session at all. The immutable header is **true rather
+than hopeful**, because ADR-0015 keys the route on the image and a replace mints a new identifier.
 
-## The menu progress: Stage 4a
+**No §3.5 obligations exemption**, unlike the clock and the source offer — those are asked for *by* a page a
+locked-down principal is looking at, where this is a subresource of a page such a principal was redirected
+away from before it rendered.
 
-`0006_menu_item_images.sql` adds `menu_item_image` and `menu_item_image_event` and touches **nothing that
-already existed**, which is `0003`'s cut a second time. Every read, every write, every integration fact and
-all seventeen §16.3 scenarios mean exactly what they meant before. `OrderTestWorld` needed **no edit**, because
-`TRUNCATE … CASCADE` on `menu_item` reaches both new tables.
+### No number was added anywhere, and that was the hard part
 
-### ADR-0015: the bytes live in the database
+The obvious thing to write in the handler is a size check. It is not there: §8.2's named CHECK is the cap
+and the write reports a violation of it by constraint name, so a second copy would be F-65's mechanism and,
+worse, the belt that hides the buckle.
 
-`bytea` rather than a volume, on **F-38's** argument. §15 *defines* a recovery set as exactly two artefacts and
-`restore_drill.sh` rehearses both on every push; a third means editing that definition, `backup.sh`,
-`restore.sh`, the drill and the runbook — after which an operator who takes one more backup the old way holds
-a set that restores, quietly, an application whose menu has no pictures in it. Object storage is refused one
-register out, on R§1's self-hosted premise.
+**What bounds the buffer, then?** Kestrel's request-body limit already bounds every POST this application
+accepts, on every form, today. The picture form declares no ceiling because it **inherits** one, and there is
+still exactly one number about image size in the tree.
 
-**The direction of reversibility settles it rather than the cost.** `bytea` → volume reads rows and writes
-files. Volume → `bytea` cannot find the files.
+### The surface deliberately does not identify the format, though it could
 
-**It pays out in a file that is not in this archive:** `OPERATIONS.md`, both scripts and the drill are
-untouched, because the recovery set is still two artefacts.
+`ImageFormat.IdentifyContentType` is public. The page could name the format from the bytes and never produce
+`UnsupportedContentType` or `ContentTypeContradictedByBytes`.
 
-### Four schema rulings
-
-- **One image per item as `UNIQUE` on the referencing column**, not a `bytea` on `menu_item` — a picture is
-  replaced far more often than a dish is renamed, and a column on the item would put the images inside every
-  menu read. A gallery is then a later migration that drops the `UNIQUE`, not a redesign.
-- **A replace mints a new identifier and deletes the old row**, because §7's route is keyed on the image so
-  that `Cache-Control: public, max-age=31536000, immutable` is a **true statement**. Keying on the item buys
-  an `ETag` and a revalidation round trip per image per page load, on phones, forever.
-- **A removal deletes the row** — a *stated exception* to §6.8, because the history is in the log and the
-  bytes are not history. Keeping them would grow the recovery set by half a megabyte per retaken photograph.
-- **The log references `menu_item`, not the image**, naming the image as a bare `uuid`. The **opposite** of
-  `0005`'s ruling about `new_menu_section_identifier`, and opposite because the row it names is gone by
-  design: a real key could only forbid the deletion or cascade the history away.
-
-### The one addition to the sketch
-
-**The declared media type is checked against the bytes' own signature.** §7's route hands the stored column
-back out as a response header on your origin, so a column that disagreed with its bytes would make this
-program mislabel its own responses. `MyRestaurant.Domain.Menu.ImageFormat` reads the opening bytes and no
-more — PNG's eight, JPEG's marker, and **both halves** of WebP's RIFF header, since `RIFF` alone is also an
-AVI and a WAV.
-
-It is in `Domain` on **F-100's** argument, one slice after that finding: a pure function of a byte span, whose
-interesting cases are the malformed ones.
-
-**The vocabulary is declared twice — F-80's shape — and the agreement is gated behaviourally.** F-80's repair
-compared two lists; this attaches a real file of every recognised format and requires the database to accept
-it, so the two agreeing on paper while nothing can be stored is *also* a failure.
-
-### The cap is the database's
-
-§8.2 declares `menu_item_image_bytes_within_cap`. The write catches the check violation, compares the
-constraint's **name**, and answers `BytesOverCap`. **No number appears in C# anywhere.** Two constraints
-rather than one bounded `BETWEEN`, so an empty file and a four-megabyte photograph are distinguishable by
-name; the empty case is refused in C# first, because zero is a definition rather than a policy number — and
-refused first so a zero-byte file is not reported as a PNG that is not a PNG.
+**That is the reason not to.** The write is the one place that decides what an image is, and a surface that
+pre-judged would leave two of that verb's outcomes unreachable from the only form that can produce them —
+the same defect this project keeps recording about verbs with no caller, one register in. The browser's
+`Content-Type` is handed on unaltered and the refusal message **names what the browser sent**.
 
 ---
 
-## Files in this archive
+## The finding: an enum that counted itself and got it wrong (F-102)
 
-**New (six):**
+`AttachMenuItemImageOutcome`'s summary opened *"**Six answers** rather than a boolean, and every one of them
+is a different sentence for the person who chose the file."*
 
-| Path | What |
-| --- | --- |
-| `src/MyRestaurant.Domain/Menu/ImageFormat.cs` | Signature identification, pure, BCL-only |
-| `src/MyRestaurant.DataAccess/Menu/MenuItemImages.cs` | Records, both interfaces, both Dapper implementations |
-| `src/MyRestaurant.DataAccess/Migrations/0006_menu_item_images.sql` | Two tables, one index, nothing existing touched |
-| `tests/MyRestaurant.Domain.Tests/ImageFormatTests.cs` | 8 assertions, no container |
-| `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemImageTests.cs` | 11 assertions, real PostgreSQL |
-| `docs/adr/0015-menu-item-images-in-the-database.md` | The storage decision and its seven rulings |
+**The enum has seven members.** They begin three lines below that sentence — and the sentence saying six is
+the sentence arguing that no answer may be collapsed.
 
-**Modified (seven):**
+**Deleted rather than corrected**, on F-77's ruling. The row is earned by the shape: this is that ruling's
+sixth form, after a version header, a variable four documents agreed about, a port three helpers dialled, a
+touch target eight pixels short, a class census in three places, and an index counting one thing while
+saying another. **A census in prose is wrong at the moment it is written or at the moment the thing it
+counts changes, and nothing in between can tell which.**
 
-| Path | What changed |
-| --- | --- |
-| `src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs` | Two registrations, and the comment naming the re-opened obligation |
-| `tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs` | Two theory rows on `KeyRelations`; one doc paragraph |
-| `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs` | `MinimumCountedClasses` 25 → 27 |
-| `docs/TECHNICAL_SPECIFICATION.md` | v1.36; §7 gains five paragraphs; §8.1; §8.2 gains two tables; §16.4 gains three paragraphs; Appendix A gains F-101 and the Stage 4a row; changelog |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 4 becomes 4a (landed, struck through) and 4b (designed); the sketch is kept and marked superseded |
-| `docs/DOCUMENTATION_REVIEW.md` | Status line and F-101's row |
-| `docs/BUILD_PROGRESS.md` | Slice 51's narrative, appended; shipped complete |
+Found by reading the type in order to write the surface that renders one sentence per member — **F-93's
+timing for the third time**. **No gate is added** (F-41, F-47), and what shrinks the residual here is a side
+effect rather than a repair: the handler switches over those outcomes, so a member with no sentence is now a
+missing `case`.
+
+---
+
+## Two things worth knowing before you read the diff
+
+**One CSS declaration is load-bearing rather than presentational.** `.manage-picture-image` sets
+`max-width: 100%`. Nothing in this stack can resize an image, so that element's intrinsic width is whatever
+a camera produced — and without the constraint a 3000px photograph makes the **document** wider than a 375px
+viewport, so **§16.3 scenario 16 fails on a page whose every control is correctly placed.**
+
+**No test file was edited to accommodate new CSS.** The three new rules use the `.manage-` prefix, which
+`HandheldLayoutContractTests` already protects, and the attach form uses `.manage-inline-form`, which the
+375px barrier already reaches — F-93's rule obeyed by putting a new control under a selector that was
+already right.
 
 ---
 
 ## Test count arithmetic
 
-Uncompiled, per §18. **1202 → 1223.**
+Uncompiled, per §18. **1223 → 1233.**
 
 | Where | Assertions |
 | --- | --- |
-| `ImageFormatTests` | 8 |
-| `MenuItemImageTests` | 11 |
-| `SchemaMigrationRunnerTests` theory rows | 2 |
-| **Total added** | **21** |
+| `MenuItemImageSurfaceContractTests` (new) | 6 |
+| `MenuWiringTests` | 3 |
+| `ContentSecurityPolicyContractTests` | 1 |
+| **Total added** | **10** |
 
-§16.3 stays at seventeen. §16.4's census and its enforced floor both move 25 → 27.
-`SchemaMigrationRunnerTests`' own **assertion** count stays at 7, because a theory row is not a `[Fact]` —
-exactly the distinction F-90 was about, and the reason its §16.4 count does not move while the suite total
-does. **Any deviation from 1223 is the first thing to investigate.**
+§16.4's counted-class floor moves 27 → 28. §16.3 stays at seventeen. **Any deviation from 1233 is the first
+thing to investigate.**
 
 ---
 
-## Two things flagged for your veto, cheaper to reverse now than later
+## The two things to check first on a red run
 
-**1. This re-opens the obligation Slice 43 closed.** Two data-access services now exist with no caller
-outside their integration tests, which is the state `IMenuSectionAdministration` was in from `0003` until the
-section editor. It is the **weaker** form — nothing is added behind `IMenuWorkflow`, so no surface can change
-a picture without announcing it for the reason that no surface can change one at all — and it is named in §7,
-in the DI comment, in the plan and in `BUILD_PROGRESS.md`. **To reverse:** hold `0006` and the two new source
-files until Stage 4b and ship them in one slice with the route and the form. The cost of doing that is a
-slice that carries a migration, a route, an upload transport decision, a CSP assertion and a 375px layout
-together, which is the shape v1.30's ruling exists to avoid.
+**1. Whether Blazor's static form handling dispatches a `multipart/form-data` post.** This is the
+load-bearing assumption of the transport decision. `_handler` is an ordinary form field and
+`HttpContext.Request.Form` reads multipart bodies, so the dispatch sees what it always sees — but no request
+was made. **The symptom if it is wrong is unmistakable:** the handler never runs, the page re-renders with
+no flash and no error, and nothing is written. The fallback is the minimal API endpoint the plan named, at
+the cost of a second authorization rule.
 
-**2. `ImageFormat` is in `Domain`, which is a new directory and a second test class.** The census moves two
-rather than one. **To reverse:** fold `IdentifyContentType` into
-`DapperMenuItemImageAdministration` as a private static, delete `ImageFormatTests`, and drop
-`MinimumCountedClasses` to 26 — at the cost of putting the truncated-signature and not-a-WebP-RIFF cases
-behind a PostgreSQL container, which is the argument F-100 made one slice ago.
+**2. Whether `HttpContext.Request.Form.Files[name]` returns null rather than throwing for an absent part.**
+The handler treats null as an empty upload and reaches `BytesEmpty`. If the indexer throws, it is an
+unhandled exception on a form submitted with nothing chosen.
 
 ---
 
-## What to do with this
+## Files in this archive
 
-```
-tar -xzf m6-slice-51-menu-images-schema.tar.gz
-git add src/MyRestaurant.Domain/Menu/ImageFormat.cs \
-        src/MyRestaurant.DataAccess/Menu/MenuItemImages.cs \
-        src/MyRestaurant.DataAccess/Migrations/0006_menu_item_images.sql \
-        tests/MyRestaurant.Domain.Tests/ImageFormatTests.cs \
-        tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemImageTests.cs \
-        docs/adr/0015-menu-item-images-in-the-database.md
-git status
-bash scripts/ci_local.sh
-```
-
-The integration facts need a container engine; without one they skip rather than fail, which would leave the
-new migration unexercised — so `bash run.sh --smoke` is worth running too, because it applies `0006` against
-a real PostgreSQL and returns 200 or does not.
+| Path | New? |
+| --- | --- |
+| `src/MyRestaurant.WebApplication/Menu/MenuItemImageEndpoints.cs` | **new** |
+| `src/MyRestaurant.WebApplication/Menu/MenuWorkflow.cs` | modified |
+| `src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs` | modified |
+| `src/MyRestaurant.WebApplication/Program.cs` | modified |
+| `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuItem.razor` | modified |
+| `src/MyRestaurant.WebApplication/wwwroot/app.css` | modified |
+| `src/MyRestaurant.DataAccess/Menu/MenuItemImages.cs` | modified (F-102) |
+| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageSurfaceContractTests.cs` | **new** |
+| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs` | modified |
+| `tests/MyRestaurant.WebApplication.Tests/Security/ContentSecurityPolicyContractTests.cs` | modified |
+| `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs` | modified |
+| `docs/TECHNICAL_SPECIFICATION.md` | modified (v1.37) |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | modified |
+| `docs/DOCUMENTATION_REVIEW.md` | modified |
+| `docs/BUILD_PROGRESS.md` | modified |
+| `_CHANGES.md` | modified |
 
 ---
 
-## What was NOT verified
+## What is next
 
-**Nothing was compiled and nothing ran.** This archive is a prediction until `dotnet build` says otherwise.
+**Stage 4c — the guest's menu**, which is the half that was actually asked for. A thumbnail beside the name
+rather than a hero above it, `loading="lazy"` below the first section, and an `alt_text` column: one `ALTER`
+with a `DEFAULT ''` on `0004`'s precedent, because a picture on a guest's card may say something its own
+name does not.
 
-**No `bytea` round trip was performed.** `TheContentReadBackIsByteIdenticalToWhatWasStored` is the fact that
-proves Dapper and Npgsql hand a `byte[]` parameter and a `bytea` column back unchanged. `byte[]` was chosen
-over `ReadOnlyMemory<byte>` deliberately, being the mapping Npgsql has always had.
-
-**Whether `PostgresException.ConstraintName` is populated for a check violation.** The cap outcome depends on
-it, and any *other* check violation is rethrown by design — so if that field arrives empty the symptom is a
-thrown `PostgresException` inside one named fact rather than a wrong answer anywhere else. Second thing to
-look at on a red run.
-
-**Whether `regexp_match(pg_get_constraintdef(…), '([0-9]+)')` finds the cap.** It relies on the rendered
-CHECK holding exactly one run of digits; `CHECK ((octet_length(bytes) <= 524288))` does, and `octet_length`
-has none — but the rendering is PostgreSQL's and no server was asked. A wrong answer fails that fact's own
-guard, which requires the value to exceed a twelve-byte PNG before using it.
-
-**Whether a private nested record can be a Dapper generic argument across a class boundary.**
-`MenuItemImageTests.ImageEvent` is passed to `OrderTestWorld.QueryAsync<T>`. `DapperMenuSectionEventLog`
-proves private nested records bind, but not from another type.
-
-**Whether the collection expressions targeting `ReadOnlySpan<byte>` compile as written.**
-`IdentifyContentType([.. PngPrefix, 0x00])` and the `params` spread in the test's `Riff` helper are C# 12
-shapes this tree has not used before. If either is refused it is a compiler error naming the line, which is
-the cheapest kind of red.
-
-**What was done instead:** the tree was reconstructed from `dump.txt` and 353 of 355 SHA-256 hashes matched
-(the two exceptions are `export.sh`, excluded and reproduced only in the dump's self-documentation, and
-`LICENSE`, elided by design since Slice 46). Brace, paren and bracket balance is zero on all three new C#
-files and the three edited ones. `0006`'s parenthesis depth returns to zero at every `;`, and it contains **no
-dollar-quoted block at all**, which is what naming every constraint bought — F-78's collision cannot recur in
-a script with no `DO`. Four gates were simulated: `TestingSectionContractTests` (27 counted classes against a
-floor of 27, zero ambiguous, zero unresolvable citations — and **one disagreement, which it caught**: §16.4
-said *seven assertions* for `ImageFormatTests` where the file holds eight, because the declared-versus-actual
-fact was written last and the paragraph was not moved. **F-70's shape, in the section written to stop it**,
-found by running the gate's logic rather than by re-reading the sentence. Both the paragraph and the
-arithmetic now say eight),
-`MarkdownTableContractTests` (0 problems, including the two new Appendix A rows and the new ledger row), the
-version gate (header 1.36 against a newest entry of 1.36), and the platform-state gate. Tree hygiene was
-checked on every touched and new file.
-
-**The dump reduction is again specified and deferred by name**, unchanged from v1.33's statement of it: every
-remaining cut splits a history register that four gates read, and this slice adds a table to one of them.
+**Still deferred by name:** whether a browser downscales before upload (a `<canvas>` round trip in
+`wwwroot/js/`, no schema change) — a phone camera produces four megabytes against a 512 KiB cap, so this is
+now the thing that decides whether the feature is usable by the person who asked for it.

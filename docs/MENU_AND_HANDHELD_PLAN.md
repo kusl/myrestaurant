@@ -1031,20 +1031,104 @@ this feature is usable by the person it was asked for by.
 
 ---
 
-## Stage 4b — images: the surfaces
+## ~~Stage 4b — images: the route and the administrator's form~~ — **landed, M6 Slice 52**
 
-**Not started.** The route, the administrator's form, and §11.1's thumbnail. Four consequences have to be
-settled together, and they were named before Stage 4a was written:
+**Three of the four consequences below are settled and the fourth became Stage 4c.** The route exists, the
+policy question is asserted rather than assumed, the transport is decided — and §11.1's thumbnail is split
+off, because it is the one of the four that is about the *guest's* screen rather than about getting bytes
+in and out.
+
+### The transport, which was the open question, and the answer neither option named
+
+The two candidates were a multipart form posting to a **minimal API endpoint** beside `AccountEndpoints`,
+and making **one page interactive**. Neither was taken.
+
+A plain `enctype="multipart/form-data"` form posts to **the page itself** under an ordinary `@formname`,
+and the handler reads the part back out of `HttpContext.Request.Form.Files`. That costs nothing, and the
+reason is the part worth keeping: Blazor's static form handling **has already read the body** in order to
+find `_handler` and dispatch to the right callback, so `Request.Form` is a cached collection by the time a
+handler runs. `[SupplyParameterFromForm]` refuses one field; the request it refuses to bind is sitting
+right there.
+
+**What that buys, stated as what the two alternatives would have cost.** An endpoint would have acquired an
+authorization rule of its own that has to agree with `ManageMenuItem`'s `[Authorize]` — two places that can
+disagree about who may change a menu, which is the shape §3.7 exists to prevent. An interactive page would
+have put a circuit under §11.4's largest form surface to move one file, and would have made this the only
+administration page whose forms behave differently from every other one's.
+
+**What it gives up: model binding for exactly one field**, which is the field the model binder refuses.
+
+### The rest of what landed
+
+`GET /menu/image/{menu_item_image_identifier}` — **anonymous**, because §11.1's guest menu is what it exists
+for and §4.3 puts registration at the moment of joining a table, so a guest reading a menu may have no
+session at all. 404 for an identifier the table does not hold, which is what a URL naming a picture since
+replaced or removed becomes. `Cache-Control: public, max-age=31536000, immutable`, **true** because the
+route is keyed on the image. **No §3.5 obligations exemption**, unlike the clock and the source offer: those
+are asked for *by* a page a locked-down principal is looking at, where this is a subresource of a page such
+a principal was redirected away from before it rendered.
+
+`AttachMenuItemImageAsync` and `RemoveMenuItemImageAsync` behind `IMenuWorkflow`, publishing on the **two
+outcomes that wrote a row** rather than on "not a refusal" — that enum's refusal set has grown twice
+already, and a member added to it must not become an announcement by default. **This discharges the
+obligation Stage 4a re-opened**, on the schedule it was re-opened with.
+
+**No number was added anywhere.** The cap stays §8.2's named CHECK, reported by constraint name; the
+ceiling on what the process buffers is the one every other POST in this application already has, so the
+picture form declares no transport limit of its own.
+
+**The browser's declared media type is handed on unaltered**, and the surface deliberately does not identify
+the format itself even though `ImageFormat` is public and could. The write is the one place that decides
+what an image is, and a surface that pre-judged would leave two of that verb's outcomes unreachable from the
+only form that can produce them.
+
+### What is open after this stage
+
+**`IMenuItemImageDirectory.ListAsync` has no caller.** It is §11.1's, and §11.1 is Stage 4c. Named on the
+same rule that named the write, and weaker than it: an unread read cannot change anything without telling
+anybody.
+
+**A browser that sends `application/octet-stream`** for a genuine PNG — an operating system with no
+extension mapping — gets *"not a picture format this menu serves"*. The message names what the browser sent,
+so the failure is diagnosable rather than mysterious, and the fix if it ever bites is one line: identify
+from the bytes and pass that. It is not taken pre-emptively, because it would make two of the write's
+outcomes unreachable from the only surface that can reach them.
+
+**No §16.3 scenario.** The seventeen are unchanged. A picture scenario needs a fixture image the harness has
+no way to produce yet, and inventing one inside the harness would be a test arranging bytes it also asserts
+about. Named rather than quietly skipped.
+
+---
+
+## Stage 4c — images: the guest's menu
+
+**Not started, and it is the half that was actually asked for.** §11.1's thumbnail. Two things have to be
+decided together and both are about a 375px screen rather than about bytes:
+
+1. **The card, re-laid out rather than decorated.** An image per card doubles the height of the menu. A
+   thumbnail *beside* the name rather than a hero above it, and `loading="lazy"` on everything below the
+   first section.
+2. **`alt_text`.** One `ALTER` with a `DEFAULT ''` on `0004`'s precedent, and a field on the item's picture
+   form. §11.4's own panel needs none and renders `alt=""` deliberately — the picture sits under the item's
+   name in the page's `<h1>`, so alternative text there would make a screen reader read the dish twice —
+   but a guest's card may carry a picture that says something its name does not, and an `<img>` with no
+   alternative text on a menu is a card a screen reader renders as nothing.
+
+### The four consequences this stage was planned from
+
+Three are discharged above; the fourth is point 4. They were named before Stage 4a was written:
 
 1. **The route and its caching.** `GET /menu/image/{menu_item_image_identifier}` — already satisfied by the
    schema, which is what decision 2 of ADR-0015 bought. `Cache-Control: public, max-age=31536000, immutable`
    is truthful because the identifier changes with the bytes.
-2. **The content security policy needs no change, and that must be asserted rather than assumed.** §11.11
-   sets `default-src 'self'` and declares no `img-src`, so `'self'` already covers bytes this application
-   serves. **F-49's whole lesson is that a CSP is the one configuration that becomes wrong by editing a file
-   it does not mention**, so `ContentSecurityPolicyContractTests` gains the fact rather than the policy being
-   left correct by accident.
-3. **The upload transport**, which is the decision above and is genuinely open.
+2. **The content security policy needs no change, and that must be asserted rather than assumed.**
+   **Settled, Slice 52.** §11.11 carries `img-src 'self' data:`, so `'self'` already covers bytes this
+   application serves. **F-49's whole lesson is that a CSP is the one configuration that becomes wrong by
+   editing a file it does not mention**, so `ContentSecurityPolicyContractTests` carries the fact in two
+   halves — that the directive admits `'self'`, and that every `<img>` in the tree is still same-origin.
+   The second is the one that would fail, because a CDN or a thumbnail service is exactly what somebody
+   reaches for when a menu grows pictures.
+3. **The upload transport**, which was the genuinely open one. **Settled, Slice 52** — see above.
 4. **The 375px layout.** An image per card doubles the height of the guest menu. A thumbnail beside the name
    rather than a hero above it, `loading="lazy"` on everything below the first section, and an `alt_text`
    column — one `ALTER` with a `DEFAULT ''`, on `0004`'s precedent — because an `<img>` with no alternative

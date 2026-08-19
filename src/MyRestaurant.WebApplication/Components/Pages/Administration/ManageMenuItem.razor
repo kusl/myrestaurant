@@ -2,12 +2,15 @@
 @attribute [ExcludeFromInteractiveRouting]
 @attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
 @using MyRestaurant.DataAccess.Menu
+@using MyRestaurant.Domain.Identifiers
 @using MyRestaurant.WebApplication.Menu
 @using MyRestaurant.WebApplication.Orders
 @inject IMenuDirectory MenuItems
 @inject IMenuSectionDirectory MenuSections
 @inject IMenuEventLog MenuEvents
+@inject IMenuItemImageDirectory MenuItemPictures
 @inject IMenuWorkflow MenuChanges
+@inject IIdentifierFactory IdentifierFactory
 @inject RestaurantOptions Options
 @inject NavigationManager Navigation
 @inject RestaurantTime RestaurantClock
@@ -17,14 +20,25 @@
    Successful changes redirect back here (post/redirect/get) carrying a one-word outcome so a refresh does
    not re-post; the shape ManageTable established.
 
-   Rename, reprice, describe, refile and reposition are five forms rather than one "save", because §7's
+   Rename, reprice, describe, refile and reposition are separate forms rather than one "save", because §7's
    event vocabulary has `name_changed`, `price_changed`, `description_changed`, `section_changed` and
    `reordered` as separate types with mutually exclusive payload columns — a combined save would write
-   five events anyway and would then have to decide what to do when four of them changed nothing.
+   an event each anyway and would then have to decide what to do when most of them changed nothing. No
+   count of the forms is stated here, on F-77's ruling: this note used to say five and there were six.
 
+   THE PICTURE FORM IS THE ONE EXCEPTION TO THIS PAGE'S BINDING, AND IT IS THE STAGE 4b DECISION.
+   `[SupplyParameterFromForm]` does not bind a file and `InputFile` needs an interactive render mode, so
+   the plan named two ways out: a multipart form posting to a minimal API endpoint beside
+   `AccountEndpoints`, or making this page interactive. Neither was taken. A plain
+   `enctype="multipart/form-data"` form posts to THIS page under an ordinary `@@formname`, and the handler
+   reads the part back out of `HttpContext.Request.Form.Files` — which costs nothing, because Blazor's
+   static form handling has already read the body in order to find `_handler` and dispatch. The page stays
+   static SSR, antiforgery stays the framework's job, post/redirect/get is unchanged, and no second
+   endpoint acquires an authorization rule that has to agree with this page's. What is given up is model
+   binding for exactly one field, and that field is the one the model binder refuses anyway. *@
    The history below is complete and uncapped, oldest first. §11.4: administration renders "the complete
    stored record everywhere — full event streams … never projected or truncated for the administrator". A
-   price argument is settled by reading forward from `created`, so that is the direction it renders. *@
+   price argument is settled by reading forward from `created`, so that is the direction it renders.
 
 <PageTitle>@(_item is null ? "Manage menu item" : $"Manage {_item.Name}")</PageTitle>
 
@@ -163,6 +177,67 @@ else
                 <button type="submit" class="button-primary">Save description</button>
             </div>
         </EditForm>
+
+        <hr class="manage-rule" />
+
+        <h2 class="manage-heading">Picture</h2>
+        <p class="lede">
+            One photograph of the dish. It is stored in this restaurant's own database and served by this
+            application, so nothing about the menu leaves the building. JPEG, PNG or WebP; anything else is
+            refused with a reason. <strong>The size limit belongs to the database rather than to this
+            page</strong>, and a photograph straight off a phone camera is usually over it — the answer
+            will say so and nothing will have changed. Attaching a second picture replaces the first: the
+            old one is deleted and its address stops working, which is exactly why a browser is told it may
+            keep a picture for a year.
+        </p>
+
+        @if (_picture is not null)
+        {
+            <figure class="manage-picture">
+                @* alt="" deliberately, and it is a decision rather than an omission. This picture sits
+                   under the item's own name, which is this page's <h1>, so alternative text here would
+                   make a screen reader read the dish twice and add nothing the page has not said. A
+                   caption somebody writes — an `alt_text` column, one ALTER with a DEFAULT '' on 0004's
+                   precedent — is Stage 4c's, and it is for the guest's menu, where a picture may carry
+                   something its own name does not. *@
+                <img class="manage-picture-image"
+                     src="@MenuImageRoutes.ForImage(_picture.MenuItemImageIdentifier)"
+                     alt="" />
+                <figcaption class="manage-picture-facts">
+                    @_picture.ContentType · @_picture.ByteLength bytes · attached
+                    @RestaurantClock.DateAndTime(_picture.UploadedAt)
+                </figcaption>
+            </figure>
+        }
+        else
+        {
+            <p class="lede muted">No picture. Guests see the name, the price and the description only.</p>
+        }
+
+        @* `.manage-inline-form` rather than a `.form-field` block, so the submit control is measured by
+           §16.3 scenario 16: the 375px barrier reaches `.manage-inline-form button` and does not reach
+           `.form-actions button`, and F-93's rule is that a surface acquiring a control acquires the
+           selector in the same slice. Here the selector was already right and the class is what puts the
+           control under it. *@
+        <form method="post" enctype="multipart/form-data" @formname="menu-item-image-attach" @onsubmit="AttachPictureAsync" class="manage-inline-form">
+            <AntiforgeryToken />
+            <label class="visually-hidden" for="picture-file">Picture file</label>
+            @* Both attributes are read from one place rather than written here. The name is what the
+               handler looks the part up BY, and a rename applied to one side produces no compiler error
+               and no exception — just an upload that reports itself empty forever. The accept list is the
+               media-type vocabulary's third declaration (F-80) and is computed from the domain's own
+               census, never spelled out. *@
+            <input type="file" id="picture-file" name="@MenuItemImageUpload.FileFieldName" accept="@MenuItemImageUpload.AcceptAttribute" />
+            <button type="submit" class="button-primary">@(_picture is null ? "Attach picture" : "Replace picture")</button>
+        </form>
+
+        @if (_picture is not null)
+        {
+            <form method="post" @formname="menu-item-image-remove" @onsubmit="RemovePictureAsync" class="manage-inline-form">
+                <AntiforgeryToken />
+                <button type="submit" class="button-secondary">Remove picture</button>
+            </form>
+        }
 
         <hr class="manage-rule" />
 
@@ -309,12 +384,20 @@ else
    The section picker needed no new rule either: `.manage-inline-form` has styled `select` since Slice 34,
    which is why the comment beside the description form says that class has never styled a `textarea` —
    the two statements are the same sentence read from opposite ends. No count of the forms on this page is
-   written here, on F-77's ruling; the previous version of this note said TWO and there were four. *@
+   written here, on F-77's ruling; the previous version of this note said TWO and there were four.
+
+   THE PICTURE PANEL IS THE ONE THING ON THIS PAGE THAT NEEDED A NEW RULE, and it needed one for a reason
+   that has nothing to do with taste. An `<img>` with no width constraint renders at the intrinsic size of
+   whatever somebody uploaded, so a 3000px photograph would make this document wider than a 375px viewport
+   and §16.3 scenario 16 would fail — on a page whose own controls are all correct. `.manage-picture*` is
+   three rules in app.css under the `.manage-` prefix the shared-vocabulary gate already protects, rather
+   than a new prefix or a component-local block. *@
 
 @code {
     private MenuItemSummary? _item;
     private IReadOnlyList<MenuSectionSummary> _sections = [];
     private IReadOnlyList<MenuItemEventEntry>? _history;
+    private MenuItemImageMetadata? _picture;
     private string? _flashMessage;
     private string? _errorMessage;
 
@@ -364,6 +447,11 @@ else
         _sections = await MenuSections.ListAsync(HttpContext.RequestAborted);
 
         _history = await MenuEvents.ListForItemAsync(MenuItemId, HttpContext.RequestAborted);
+
+        // Metadata rather than the bytes. The panel renders a URL and three facts; the bytes are read
+        // once, by §7's route, when the browser follows that URL — which is the whole reason
+        // IMenuItemImageDirectory has two reads instead of one.
+        _picture = await MenuItemPictures.FindForItemAsync(MenuItemId, HttpContext.RequestAborted);
 
         // On GET, pre-fill both editors with what is stored and render any post/redirect flash. On POST
         // the submitted values are already bound, so they must not be overwritten.
@@ -549,6 +637,123 @@ else
     }
 
     /// <summary>
+    /// Attaches or replaces the picture (§7, §11.4).
+    ///
+    /// <para><b>This is the one handler on the page that reaches past the model binder</b>, and the note
+    /// at the top of the file says why. The file arrives as a multipart part and is looked up by name;
+    /// <c>Request.Form</c> is a cached collection by the time this runs, because the framework read the
+    /// body already in order to dispatch here.</para>
+    ///
+    /// <para><b>No size is checked here and that is deliberate.</b> §8.2 declares the cap in a named
+    /// CHECK, the write service reports a violation of it by constraint name, and a second copy in this
+    /// file would be F-65's mechanism — worse, it would be the belt that hides the buckle. The bound on
+    /// what this process will buffer is the one every other POST in this application already has:
+    /// Kestrel's request-body limit, which no form here raises. So the picture form introduces no new
+    /// number anywhere.</para>
+    ///
+    /// <para><b>The declared media type is the browser's, handed on unaltered.</b> This page does not
+    /// identify the format itself, even though <c>ImageFormat</c> is public and could: the write service
+    /// is the one place that decides what an image is, and a surface that pre-judged would leave two of
+    /// its outcomes unreachable from the only form that can produce them. What the browser sends is what
+    /// gets checked against the bytes.</para>
+    /// </summary>
+    private async Task AttachPictureAsync()
+    {
+        if (!TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        IFormFile? file = HttpContext.Request.Form.Files[MenuItemImageUpload.FileFieldName];
+
+        byte[] bytes = [];
+        if (file is not null)
+        {
+            using MemoryStream buffer = new();
+            using Stream content = file.OpenReadStream();
+            await content.CopyToAsync(buffer, HttpContext.RequestAborted);
+            bytes = buffer.ToArray();
+        }
+
+        // A NEW identifier every time, including on a replace: §7's route is keyed on the image so that
+        // the URL changes when the bytes do, which is what makes the immutable cache header true.
+        AttachMenuItemImageResult result = await MenuChanges.AttachMenuItemImageAsync(
+            IdentifierFactory.Create(),
+            MenuItemId,
+            file?.ContentType ?? string.Empty,
+            bytes,
+            administrator,
+            HttpContext.RequestAborted);
+
+        switch (result.Outcome)
+        {
+            case AttachMenuItemImageOutcome.Attached:
+                RedirectWithOutcome("picture-attached");
+                break;
+            case AttachMenuItemImageOutcome.Replaced:
+                RedirectWithOutcome("picture-replaced");
+                break;
+            case AttachMenuItemImageOutcome.BytesEmpty:
+                // Reported in place rather than redirected, like the refile's stale-heading arm: the
+                // person needs the message beside the control they were using. Worded to cover both
+                // ways of getting here, because a form submitted with nothing chosen sends an empty
+                // part rather than no part at all, and the two are one mistake to the person making it.
+                _errorMessage = "No file was chosen, or the file was empty. Nothing changed.";
+                break;
+            case AttachMenuItemImageOutcome.UnsupportedContentType:
+                _errorMessage =
+                    $"Your browser sent that file as “{file?.ContentType}”, which is not a picture format"
+                    + " this menu serves. Choose a JPEG, a PNG or a WebP. Nothing changed.";
+                break;
+            case AttachMenuItemImageOutcome.ContentTypeContradictedByBytes:
+                _errorMessage =
+                    "That file is not the format its name says it is, so it was refused rather than"
+                    + " stored under a label this application would then serve it with. Nothing changed.";
+                break;
+            case AttachMenuItemImageOutcome.BytesOverCap:
+                _errorMessage =
+                    "That picture is larger than this menu will store. A photograph taken on a phone is"
+                    + " usually several times the limit — export or resize it smaller and try again."
+                    + " Nothing changed.";
+                break;
+            case AttachMenuItemImageOutcome.MenuItemNotFound:
+                Navigation.NavigateTo("/administration/menu");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Takes the picture off the item (§7). The row is deleted rather than flagged, which is a stated
+    /// exception to §6.8 rather than an oversight: the history is in <c>menu_item_image_event</c>, and
+    /// the event that attached the picture records what it was.
+    /// </summary>
+    private async Task RemovePictureAsync()
+    {
+        if (!TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        RemoveMenuItemImageOutcome outcome = await MenuChanges.RemoveMenuItemImageAsync(
+            MenuItemId, administrator, HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case RemoveMenuItemImageOutcome.Removed:
+                RedirectWithOutcome("picture-removed");
+                break;
+            case RemoveMenuItemImageOutcome.NoImage:
+                // Two administrators pressing Remove seconds apart. Nothing changed and nothing is
+                // wrong; re-render on the truth, exactly as the availability toggle does.
+                Navigation.NavigateTo(ManagePath);
+                break;
+            case RemoveMenuItemImageOutcome.MenuItemNotFound:
+                Navigation.NavigateTo("/administration/menu");
+                break;
+        }
+    }
+
+    /// <summary>
     /// The two things every write on this page needs first: the item must still exist, and the acting
     /// administrator must be identifiable — <c>menu_item_event.actor_person_identifier</c> is NOT NULL and
     /// §7 requires every change to name somebody. Endpoint authorization already guarantees the second;
@@ -593,6 +798,10 @@ else
         "move-no-change" => "It was already in that position — nothing changed.",
         "made-unavailable" => "Marked unavailable. It stays on the guest's menu, labelled unavailable, and cannot be ordered.",
         "made-available" => "Marked available. It can be ordered again.",
+        "picture-attached" => "Picture attached.",
+        "picture-replaced" => "Picture replaced. The old one is deleted and its address no longer works,"
+            + " which is why a browser may safely keep the new one for a year.",
+        "picture-removed" => "Picture removed. The record of it stays in the history below.",
         _ => null,
     };
 

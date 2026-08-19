@@ -105,19 +105,19 @@ public static class OrdersServiceCollectionExtensions
         // family, same audience, same lifetime, so they are registered here for the reason the section
         // services are rather than behind a fifth call the composition root has to remember.
         //
-        // NOTHING RESOLVES EITHER OF THESE YET, AND THAT IS STATED RATHER THAN LEFT TO BE NOTICED.
-        // Stage 4a is the schema and the data access; the route that serves the bytes and the forms that
-        // attach them are Stage 4b's. This deliberately re-opens the obligation Slice 43 closed — a write
-        // service with no caller — and it is the SAME shape IMenuSectionAdministration was in from 0003
-        // until the section editor landed: reached by its integration tests, outside IMenuWorkflow, and
-        // named every slice until it has a surface. It is not the stronger version of that defect: no
-        // IMenuWorkflow verb is added here, so no surface can change a picture without announcing it,
-        // because no surface can change a picture at all.
+        // BOTH HAVE CALLERS AS OF STAGE 4b, AND THE OBLIGATION SLICE 51 RE-OPENED IS DISCHARGED.
+        // The write is behind IMenuWorkflow like every other menu write, so no surface resolves it
+        // directly — the same standing IMenuAdministration, IMenuAvailability and
+        // IMenuSectionAdministration have. The DIRECTORY is resolved by surfaces, and legitimately: it is
+        // a read, and reads are taken straight (IMenuDirectory and IMenuSectionDirectory both are). Its
+        // three methods do not all have one yet — ListAsync is §11.1's, which Stage 4c builds — and that
+        // is a read with no caller rather than a write with no caller, which is the weaker of the two:
+        // an unread read cannot change anything without telling anybody.
         //
-        // WHEN Stage 4b arrives, attach and remove go behind IMenuWorkflow and publish MenuChanged, for
-        // the reason §7 gives about a section rename: §11.1 renders the picture on every open guest
-        // picker, so a photograph swapped mid-service that announced nothing would leave the old one on
-        // every phone until that page happened to reload.
+        // The route that serves the bytes is NOT registered here. It is an endpoint rather than a
+        // service, mapped from Program.cs beside the clock and the account endpoints
+        // (MenuItemImageEndpoints.MapRestaurantMenuImages), and it resolves IMenuItemImageDirectory out
+        // of the request scope this call creates.
         services.AddScoped<IMenuItemImageDirectory, DapperMenuItemImageDirectory>();
         services.AddScoped<IMenuItemImageAdministration, DapperMenuItemImageAdministration>();
 
