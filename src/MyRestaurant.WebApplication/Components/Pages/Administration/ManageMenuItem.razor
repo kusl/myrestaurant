@@ -9,6 +9,7 @@
 @inject IMenuSectionDirectory MenuSections
 @inject IMenuEventLog MenuEvents
 @inject IMenuItemImageDirectory MenuItemPictures
+@inject IMenuItemImageEventLog MenuItemPictureEvents
 @inject IMenuWorkflow MenuChanges
 @inject IIdentifierFactory IdentifierFactory
 @inject RestaurantOptions Options
@@ -271,6 +272,58 @@ else
             <ValidationMessage For="@(() => AltTextInput.AltText)" />
         }
 
+        @* OUTSIDE the `_picture is not null` block above, and that placement is the point of this panel
+           rather than an accident of where it was pasted. A removal deletes the row and keeps the log — §7's
+           stated exception to §6.8 — so the state this surface could not describe before Stage 4d is
+           exactly *no picture now, three of them previously*. Rendering the history only when a picture is
+           attached would hide it in the one case somebody opens this page to ask about.
+
+           The heading is an <h3> under the Picture <h2> rather than a fourth <h2> beside it: this is a
+           subsection of the picture panel, not a peer of Section and Position. The item's own History
+           below is an <h2> because it is about the item.
+
+           `.record-list` and `data-label` on every cell, which is §11.12's vocabulary and this page's
+           existing shape — the item history at the bottom of this page is the same three columns. No new
+           CSS: a fourth column would have been a new rule and there is no fourth fact worth a column, so
+           what a picture WAS goes in the sentence rather than in cells of its own. *@
+        <h3 class="manage-subheading">Picture history</h3>
+        @if (_pictureHistory is null || _pictureHistory.Count == 0)
+        {
+            <p class="lede muted">
+                No picture has ever been attached to this item. Once one is, every attach, replacement,
+                caption change and removal is recorded here.
+            </p>
+        }
+        else
+        {
+            <p class="lede">
+                Every change to this item's picture, oldest first — @_pictureHistory.Count
+                @(_pictureHistory.Count == 1 ? "entry" : "entries"), complete and untruncated. A
+                replacement and a removal each delete the photograph itself; this record of it stays.
+            </p>
+            <div class="record-list">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">When</th>
+                            <th scope="col">Change</th>
+                            <th scope="col">By</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (MenuItemImageEventEntry entry in _pictureHistory)
+                        {
+                            <tr>
+                                <td data-label="When">@RestaurantClock.DateAndTime(entry.OccurredAt)</td>
+                                <td class="record-primary" data-label="Change">@DescribePicture(entry)</td>
+                                <td data-label="By">@entry.ActorName</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
         <hr class="manage-rule" />
 
         <h2 class="manage-heading">Section</h2>
@@ -430,6 +483,20 @@ else
     private IReadOnlyList<MenuSectionSummary> _sections = [];
     private IReadOnlyList<MenuItemEventEntry>? _history;
     private MenuItemImageMetadata? _picture;
+
+    /// <summary>
+    /// Everything that has ever happened to this item's picture, oldest first — <c>null</c> until the
+    /// page has read it, which is the same three-state field <see cref="_history"/> is and for the same
+    /// reason: an empty list means <em>no picture has ever been attached</em> and must not be rendered
+    /// while the answer is still <em>not read yet</em>.
+    ///
+    /// <para><b>It is a separate list rather than merged into <see cref="_history"/>.</b> The two logs
+    /// share no event type, carry different payload columns, and answer different questions — one is what
+    /// the menu says about a dish, the other is what a guest looks at — so a merged table would need a
+    /// column saying which log each row came from, which is a table about this application's schema
+    /// rather than about the restaurant.</para>
+    /// </summary>
+    private IReadOnlyList<MenuItemImageEventEntry>? _pictureHistory;
     private string? _flashMessage;
     private string? _errorMessage;
 
@@ -488,6 +555,14 @@ else
         // once, by §7's route, when the browser follows that URL — which is the whole reason
         // IMenuItemImageDirectory has two reads instead of one.
         _picture = await MenuItemPictures.FindForItemAsync(MenuItemId, HttpContext.RequestAborted);
+
+        // Read unconditionally rather than behind `_picture is not null`, and the asymmetry with the line
+        // above is the whole reason this read exists. An item with no picture NOW may have had three: a
+        // removal deletes the row and keeps the log (§7's stated exception to §6.8), so the case where the
+        // metadata is null and the history is not is precisely the case §11.4 could not answer before —
+        // "there used to be a photograph here, who took it down, and when".
+        _pictureHistory = await MenuItemPictureEvents.ListForItemAsync(
+            MenuItemId, HttpContext.RequestAborted);
 
         // On GET, pre-fill both editors with what is stored and render any post/redirect flash. On POST
         // the submitted values are already bound, so they must not be overwritten.
@@ -891,7 +966,11 @@ else
         "picture-attached" => "Picture attached.",
         "picture-replaced" => "Picture replaced. The old one is deleted and its address no longer works,"
             + " which is why a browser may safely keep the new one for a year.",
-        "picture-removed" => "Picture removed. The record of it stays in the history below.",
+        // "the history below" was this sentence's claim from Slice 52 and there was no such record: a
+        // removal writes to menu_item_image_event and the history below this is menu_item_event's, which
+        // has never carried a picture type. Stage 4d makes the sentence true rather than deleting it, and
+        // names which panel — the picture history is directly under the forms, not at the foot of the page.
+        "picture-removed" => "Picture removed. The record of it stays in the picture history above.",
         "caption-saved" => "Caption saved. Guests using a screen reader hear it instead of the picture,"
             + " and every open menu has already picked it up.",
         "caption-cleared" => "Caption cleared. A screen reader will skip the picture, which is the right"
@@ -929,6 +1008,49 @@ else
         "reordered" => $"Moved to position {entry.NewDisplayOrder}",
         "activated" => "Marked available",
         "deactivated" => "Marked unavailable",
+        _ => entry.EventType,
+    };
+
+    /// <summary>
+    /// A friendly label for each picture event type §8.2's vocabulary CHECK admits, falling back to the
+    /// stored string for anything else — the same rule <see cref="Describe"/> follows one method up, and
+    /// for §11.4's reason: this surface renders the record, so an unrecognised type must show as itself
+    /// rather than be swallowed.
+    ///
+    /// <para><b>No count of the vocabulary is stated here</b>, on F-77's ruling and on the precedent
+    /// directly above: the arms are the census. <c>0007</c> made this vocabulary four words a slice after
+    /// <c>0006</c> made it three, which is the same rate that made the item log's prose count wrong twice.
+    /// What checks the arms against the migration is not a number — it is that
+    /// <c>MenuItemImageEventLogTests</c> writes every type through the write service and reads it back
+    /// through this reader.</para>
+    ///
+    /// <para><b>What the picture WAS goes in the sentence rather than in columns of its own.</b> The format
+    /// and the size are on <c>attached</c> and <c>replaced</c> only, and after a removal the event is the
+    /// only record of them (F-101) — so they are worth rendering, and they are worth rendering for exactly
+    /// two of four types. Two columns that are empty half the time would be two columns whose
+    /// <c>data-label</c> says <em>Format</em> beside nothing on the row somebody opened this page to read.
+    /// The bytes are rendered as they are stored, without a unit conversion: §11.4 renders the record, and
+    /// the panel above already reports this picture's size the same way.</para>
+    ///
+    /// <para><c>alt_text_changed</c> reads differently when the caption was cleared, on the item log's
+    /// <c>description_changed</c> reasoning exactly: <c>""</c> is a stored value rather than an absence, so
+    /// the arm tests the payload's length rather than for null, and the <c>?? string.Empty</c> is there so
+    /// that a row written by something which got past the paired CHECK still renders.</para>
+    ///
+    /// <para><b>No identifier is rendered</b>, although every row carries one. A guest-facing URL for a
+    /// picture that has been replaced answers 404 by design (§7), so a link would be a link that mostly
+    /// does not work, and a bare UUIDv7 in a cell is a fact about this schema rather than about the
+    /// restaurant. The identifier's job is to make it legible that a replacement produced a <em>new</em>
+    /// address, and the words <em>Replaced with</em> say that without it.</para>
+    /// </summary>
+    private string DescribePicture(MenuItemImageEventEntry entry) => entry.EventType switch
+    {
+        "attached" => $"Picture attached — {entry.NewContentType}, {entry.NewByteLength} bytes",
+        "replaced" => $"Replaced with a new picture — {entry.NewContentType}, {entry.NewByteLength} bytes",
+        "removed" => "Picture removed",
+        "alt_text_changed" => (entry.NewAltText ?? string.Empty).Length == 0
+            ? "Caption cleared — a screen reader now skips the picture"
+            : $"Caption set to “{entry.NewAltText}”",
         _ => entry.EventType,
     };
 

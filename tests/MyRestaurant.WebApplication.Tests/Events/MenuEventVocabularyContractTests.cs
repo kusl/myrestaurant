@@ -50,17 +50,36 @@ public sealed class MenuEventVocabularyContractTests
     /// the name — <c>0001</c> declared its CHECKs inline and PostgreSQL generated the names — and
     /// <c>0005</c> is the first script to drop one by it.
     /// </summary>
-    private const string ConstraintName = "menu_item_event_type_vocabulary";
+    private const string ItemConstraintName = "menu_item_event_type_vocabulary";
+
+    /// <summary>
+    /// The picture log's own vocabulary constraint. <c>0006</c> declared it named and <c>0007</c> widened it
+    /// by that name, which is the return <c>0006</c> collected on naming every constraint it created.
+    /// </summary>
+    private const string PictureConstraintName = "menu_item_image_event_type_vocabulary";
+
+    /// <summary>
+    /// The surface that renders one sentence per picture event type (§11.4). Named as a path rather than
+    /// searched for, because the claim is about <em>this</em> page: it is the only surface in the
+    /// application that reads <c>menu_item_image_event</c>, so a second page growing a picture history is a
+    /// slice that comes here and says so.
+    /// </summary>
+    private const string PictureHistorySurface =
+        "src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuItem.razor";
+
+    /// <summary>The renderer whose arms are the census (§11.4, F-77).</summary>
+    private const string PictureRenderer = "DescribePicture";
 
     /// <summary>
     /// The <c>event_type IN ( … )</c> list of the <em>last</em> migration that declares
-    /// <see cref="ConstraintName"/>, which is the vocabulary as it stands after every script has applied.
+    /// <see cref="ItemConstraintName"/>, which is the vocabulary as it stands after every script has
+    /// applied.
     /// Ordered by file name, exactly as DbUp applies them.
     /// </summary>
     [Fact]
     public void TheExplorersMenuVocabulary_IsExactlyWhatTheMigrationsDeclare()
     {
-        IReadOnlyList<string> declared = ReadDeclaredVocabulary();
+        IReadOnlyList<string> declared = ReadDeclaredVocabulary(ItemConstraintName);
 
         // Sorted comparison: the C# list is ordered for a human reading a dropdown and the SQL is ordered
         // for a human reading a constraint, and neither ordering is a fact worth asserting. Membership is.
@@ -87,7 +106,76 @@ public sealed class MenuEventVocabularyContractTests
         }
     }
 
-    private static IReadOnlyList<string> ReadDeclaredVocabulary()
+    /// <summary>
+    /// Every picture event type <c>menu_item_image_event</c> admits has a sentence on the one surface that
+    /// renders that log (§7, §11.4, <b>F-105</b>).
+    ///
+    /// <para><b>Why this fact and not a different one.</b> §7's own prose said
+    /// <c>attached | replaced | removed</c> and <em>two named biconditionals</em> for a full slice after
+    /// <c>0007</c> made the vocabulary four types and the biconditionals three. That is F-77's shape for the
+    /// seventh time — a census in prose where nothing looks — and the correction is worth nothing on its own,
+    /// because the next migration to widen this vocabulary will be written by somebody who has not read
+    /// this paragraph. So the enumeration §7 keeps is <em>a</em> copy and this is the gate: the migrations
+    /// are files in the tree, the CHECK is the declaration of record, and comparing it against the surface
+    /// is arithmetic on text.</para>
+    ///
+    /// <para><b>The subject is the surface rather than the write service, and that is deliberate.</b> The
+    /// write service's four type constants are <c>private</c>, and widening them to <c>public</c> so that a
+    /// test could read them would be changing an API for a test's convenience. The surface is the honest
+    /// subject anyway: §11.4 renders the complete stored record and falls back to the raw string for a type
+    /// it does not recognise, <em>by design</em>, so a missing arm throws nothing, logs nothing and costs
+    /// nothing at run time — it shows up as a cell reading <c>alt_text_changed</c> where a sentence belongs,
+    /// on a page an administrator opens once a month. <b>That is F-80's symptom exactly</b>: every gate green
+    /// while the page whose purpose is legibility renders a column of column names.</para>
+    ///
+    /// <para><b>What it does not assert is the other direction</b>, and the omission is F-41's rule rather
+    /// than an oversight: an arm for a type the CHECK does not admit is unreachable rather than wrong, the
+    /// fallback arm covers it, and a gate forbidding one would report a finding on a surface that had merely
+    /// kept a sentence through a migration that narrowed the vocabulary. The non-vacuity guard is that the
+    /// renderer is found in the file before any arm is looked for, because <c>Assert.Contains</c> over a
+    /// list read out of a regex is precisely the shape that passes against an empty list.</para>
+    /// </summary>
+    [Fact]
+    public void EveryPictureEventType_HasASentenceOnTheSurfaceThatRendersIt()
+    {
+        IReadOnlyList<string> declared = ReadDeclaredVocabulary(PictureConstraintName);
+
+        string surfacePath = Path.Combine(
+            FindRepositoryRoot().FullName,
+            PictureHistorySurface.Replace('/', Path.DirectorySeparatorChar));
+
+        Assert.True(File.Exists(surfacePath), $"No surface at '{surfacePath}'.");
+
+        string surface = File.ReadAllText(surfacePath);
+
+        // Non-vacuity, in both halves. A renaming of the renderer must fail here rather than turn every
+        // assertion below into a search of a file that no longer renders this log at all (F-41).
+        Assert.Contains(PictureRenderer, surface, StringComparison.Ordinal);
+        Assert.NotEmpty(declared);
+
+        List<string> missing = [];
+
+        foreach (string type in declared)
+        {
+            // The arm as this tree writes one: the quoted type in switch position. The leading quote is
+            // what keeps this off `"picture-removed"` and `"picture-attached"`, which are the redirect
+            // outcomes on the same page and are arms of a different switch.
+            if (!surface.Contains($"\"{type}\" =>", StringComparison.Ordinal))
+            {
+                missing.Add(type);
+            }
+        }
+
+        Assert.True(
+            missing.Count == 0,
+            $"{PictureHistorySurface} renders no sentence for: {string.Join(", ", missing)}. §8.2 admits"
+                + " the type, so a row carrying it will reach the picture history and be rendered as its"
+                + " own stored string — which is legible to nobody and is what F-105 is about. Add an arm"
+                + " to " + PictureRenderer + ". If the vocabulary genuinely narrowed, this is the file"
+                + " that should record it.");
+    }
+
+    private static IReadOnlyList<string> ReadDeclaredVocabulary(string constraintName)
     {
         DirectoryInfo migrations = new(
             Path.Combine(FindRepositoryRoot().FullName, MigrationsRelativePath));
@@ -109,7 +197,7 @@ public sealed class MenuEventVocabularyContractTests
             // the list is written one line per few types.
             Match match = Regex.Match(
                 text,
-                $@"ADD\s+CONSTRAINT\s+{ConstraintName}\s+CHECK\s*\(\s*event_type\s+IN\s*\((?<list>[^)]*)\)",
+                $@"(?:ADD\s+)?CONSTRAINT\s+{constraintName}\s+CHECK\s*\(\s*event_type\s+IN\s*\((?<list>[^)]*)\)",
                 RegexOptions.IgnoreCase | RegexOptions.Singleline,
                 TimeSpan.FromSeconds(5));
 

@@ -3606,3 +3606,309 @@ residual, carried.
 it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried.
+
+---
+
+# M6 Slice 54 — the transition that broke the build, and the history a picture had never had
+
+## Read this first: Slice 53's archive did not compile
+
+```
+/home/kushal/src/dotnet/myrestaurant/src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor(248,22):
+error RZ1010: Unexpected "{" after "@" character.
+```
+
+One line, one character, and **every project that depends on `MyRestaurant.WebApplication` never ran** —
+which means `dotnet test` produced no count, the container build failed at `dotnet publish`, and
+`ci_local.sh` stopped at gate 5 with gates 6 onward unreported. That is **F-82's mechanism for the fourth
+time**, and this time its cost is exactly nameable rather than general: the two facts that would have
+reported F-105 live in the project that did not build.
+
+Everything upstream of the compiler was green, legitimately. Tree hygiene passed on 365 authored files,
+repository governance passed, all twelve shell scripts passed `bash -n` and `shellcheck`, `run.sh --smoke`
+booted the app against real PostgreSQL and got a 200 from `/healthz/ready`, and the quick tunnel served the
+application publicly for three hours. **A Razor syntax error is invisible to every gate this repository has
+except the one that compiles.**
+
+The tree was reconstructed from `dump.txt` before anything was authored, as it has been for four consecutive
+sessions: **363 file records, 361 verified against their SHA-256 exactly**, the two exceptions by design
+(`export.sh` contains the dump delimiter and is excluded from its own verification; `LICENSE` is elided to
+metadata and hash). No drift this time — the tree was where the previous session left it, including
+`0007_menu_item_image_alt_text.sql`, which had been committed rather than left untracked.
+
+## The defect (F-104)
+
+```razor
+else
+{
+    <p class="order-picker-lede muted">…</p>
+
+    @{ int headingIndex = -1; }        ← RZ1010
+```
+
+The `else` opens a **code block**. Razor is parsing C# from that brace onward; the `<p>` element switches to
+markup for the duration of the element and switches back. So at the line in question there is no markup to
+leave, and `@{` — which is the transition *from markup into code* — is a syntax error. The statement wants
+writing bare.
+
+**What earns this a ledger row rather than a one-word correction is that the correct and the incorrect form
+are indistinguishable on the line itself.** There are three other `@{` blocks in this tree and all three are
+correct:
+
+| File | Encloser | Legal? |
+|---|---|---|
+| `KitchenBoard.razor:257` | `<section class="kitchen-eighty-six">` | yes — markup context |
+| `TableOrderSurface.razor:642` | `<li class="order-party-order">` | yes — markup context |
+| `AdministrationMenu.razor:167` | `<div class="menu-group-body">` | yes — markup context |
+| `TableOrderSurface.razor:248` | `else {` | **no — already in code** |
+
+Every one of the four is preceded by a closed element at the same indentation. The **nearest enclosing
+construct** is the only thing that distinguishes them, and it is not on the line.
+
+**No gate is added, and that is a ruling rather than a shrug.** Deciding markup context from code context is
+not decidable from text without a Razor parser. This project's own habit — *where a rule can be executed, a
+list should not exist* (F-47) — points the other way here, because the rule **is** executed, by `csc`, in
+three seconds, with the file and the column in the message. A second implementation inside the test suite
+would be **two parsers for one rule, with the worse of the two doing the blocking**, which is F-59's
+mechanism inverted. F-71's ruling applies unchanged: the compiler is the gate, it blocked, and a test
+re-asserting what the compiler already refuses is a monument.
+
+What is added instead is the reason, written **beside the statement** rather than only in this log, because
+the next person to reach for `@{` in that file will be reading that file. And the residual is stated in §18:
+**no gate in this repository can see a Razor transition written where the parser is already in C#.** The
+authoring verification that missed it walks tag trees and balances braces, and neither has any notion of
+transition context — which is worth saying plainly, since both instruments were run on this file and both
+passed.
+
+## The stage (4d) — the history a picture had never had
+
+`0006` created `menu_item_image_event` in Slice 51. Slices 51, 52 and 53 wrote to it; `0007` took it to four
+event types. **Nothing in the tree could read it.** §16.4 recorded that on each of those slices under the
+standing rule that a read arrives with the surface that renders it, and `MenuItemImageTests` selected from
+the table directly with a comment saying why. So §11.4 could not answer *when did this photograph last
+change, and who changed it*, and `alt_text_changed` — added one slice ago — was written from its first day
+and rendered nowhere.
+
+`IMenuItemImageEventLog` and `DapperMenuItemImageEventLog` are `IMenuSectionEventLog`'s shape almost line for
+line: one connection per call, no transaction, aliased columns, every reference table-qualified, an internal
+row type with a `DateTime` member because Npgsql materialises `timestamptz` as one, `COALESCE(NULLIF(btrim(…)))`
+on the actor's name, and `ORDER BY (occurred_at, menu_item_image_event_identifier)` so that two events sharing
+an instant — which a replace's row and event always do — come back in a deterministic order.
+
+### The one divergence, and it is the whole design
+
+**This reader must not join `menu_item_image`.**
+
+Every other reader in this family joins the row its events are about, and is right to: `menu_item` and
+`menu_section` rows are never deleted, because §6.8's answer to *get rid of it* is a flag. **A picture is the
+stated exception to that rule.** A replace mints a new identifier and deletes the old row — required, so that
+§7's `Cache-Control: immutable` is a true statement rather than a hope — and a removal deletes the row
+outright. So an event here names a row that, in the ordinary case, is gone.
+
+Both joins a maintainer reaches for are therefore wrong:
+
+- **INNER JOIN** → the history silently **begins at the current photograph**. It reads like a complete
+  history, nothing throws, and no other fact in the file notices.
+- **LEFT JOIN** → everything comes back with a column null on every row but the newest, which is a column
+  about this schema rather than about the restaurant.
+
+`0006` declared no foreign key on that column precisely so the log can outlive its subject, and its comment
+says the identifier is *"not a pointer to a row a reader can open; it is the evidence that the URL changed"*.
+This slice asserts it rather than trusting the comment.
+
+### The surface
+
+Under the picture forms, as `<h3 class="manage-subheading">` — a subsection of the Picture panel rather than a
+peer of Section and Position. Three decisions, none of which the plan had made:
+
+**Rendered whether or not a picture is attached now.** *No picture now, three of them previously* is precisely
+the state §11.4 could not describe before this slice, so gating the panel on `_picture is not null` would hide
+it in the one case somebody opens the page to ask about. The read is therefore unconditional too, and the
+asymmetry with the metadata read on the line above is documented where it is written.
+
+**No identifier and no link.** Every row carries one, and a URL for a replaced picture answers 404 by design,
+so a link would be a link that mostly does not work — while a bare UUIDv7 in a cell is a fact about this
+schema rather than about the restaurant. What the identifier is *for* is making it legible that a replacement
+produced a new address, and *Replaced with a new picture* says that without it.
+
+**What a picture WAS goes inside the sentence.** The format and the size are carried by `attached` and
+`replaced` and by neither of the other two, so two columns of their own would be empty on half the rows — a
+`data-label` reading *Format* beside nothing, on the row somebody came to read, which is the exact card-layout
+failure §11.12's label rule exists to prevent.
+
+**And a sentence that was false becomes true for free.** Slice 52's removal flash said *"The record of it stays
+in the history below"* and there was no such record: a removal writes to `menu_item_image_event`, and the
+history below it is `menu_item_event`'s, which has never carried a picture type. It now names the panel that
+exists. F-77's cheaper direction, arriving without being sought.
+
+## The second defect (F-105)
+
+Reading §7 in order to write the reader turned up this, in the indicative, about the current schema:
+
+> `menu_item_image_event` mirrors every change to it (`attached | replaced | removed`, typed nullable payload
+> columns CHECK-bound to type by two named biconditionals, actor, timestamp)
+
+The vocabulary is **four** types and the biconditionals are **three**, and have been since `0007` — one slice.
+**The aggravating circumstance is three sections above it.** §7's paragraph on `menu_item_event` says, in
+bold, that its own vocabulary *is not counted in prose anywhere* and that the list there is the only copy of
+it in the document. That rule was written down after F-77 and then not applied to the table this project added
+next.
+
+F-77's shape for the **seventh** time, and the second time in three slices that the stale artefact was a
+**specification or design paragraph** rather than a comment (F-101 was a DDL sketch, F-103 an argument for a
+column). Found by reading the section in order to implement against it, which is **F-93's timing for the
+fifth time** — caught in the slice that would have consumed it.
+
+The list is **corrected** on F-77's cheaper direction, as for F-100 and F-103; the **count is deleted** in
+favour of *one named paired biconditional per payload column*, which is a rule a migration cannot falsify; and
+§7 now says of this list what it already said of the other one.
+
+**And the row names something executable**, because on this project's own evidence a corrected sentence is
+worth nothing — the next migration to widen this vocabulary will be written by somebody who has not read the
+sentence. `MenuEventVocabularyContractTests` gains a third fact: every type the migration admits has a
+sentence on the one surface that renders that log.
+
+**Its subject is the surface rather than the write service**, for two reasons worth separating. The service's
+four type constants are `private`, and widening them to `public` so a test could read them would be changing
+an API for a test's convenience. But the surface is the better subject anyway: §11.4 falls back to the raw
+string for an unrecognised type **by design**, so a missing arm throws nothing, logs nothing, and costs
+nothing at run time — it appears as a cell reading `alt_text_changed` where a sentence belongs, on a page an
+administrator opens once a month. **That is F-80's symptom exactly**, which is the class this gate belongs to.
+
+The other direction is deliberately unasserted (F-41): an arm for a type the CHECK no longer admits is
+unreachable rather than wrong, the fallback covers it, and forbidding one would report a finding on a surface
+that had merely kept a sentence through a migration that narrowed the vocabulary. The reader's presence in the
+file is checked before any arm is looked for, because a `Contains` loop over a list read out of a regex is
+precisely the shape that passes against an empty list.
+
+---
+
+## What was verified
+
+- The tree was reconstructed from `dump.txt` before anything was authored: **363 records, 361 matching
+  SHA-256 exactly**, the two exceptions being `export.sh` (excluded; it contains the delimiter) and `LICENSE`
+  (elided by design).
+- **String-aware brace, paren and bracket balance** on every edited `.cs` file, with raw string literals,
+  verbatim strings, char literals and both comment forms handled. **Proven sensitive** by deleting a closing
+  brace from the new reader — reported at the enclosing line — and **proven not to false-positive** by
+  planting `// "{{{" and '}'` in the same file, which it correctly ignored.
+- **Razor tag-tree walk on both edited components, against the pristine files re-extracted from the dump.**
+  `ManageMenuItem.razor` is a clean tree — zero findings — both before and after. `TableOrderSurface.razor`
+  reports exactly the same **four** pre-existing artefacts of a generic type in markup, at the same lines,
+  before and after; nothing was introduced.
+- **The new gate simulated in both directions.** Against the tree as delivered it reports **nothing**; against
+  the pristine `ManageMenuItem.razor` it reports **all four** event types, and its non-vacuity guard correctly
+  reports the renderer as absent. Its arm pattern was probed against `FlashFor`'s `"picture-attached"`,
+  `"picture-replaced"` and `"picture-removed"` arms with `DescribePicture` deleted: none of the four types
+  matches, so the gate is measuring the switch it names.
+- **The regex loosening is behaviour-preserving for the fact that already used it.** Making `ADD` optional was
+  necessary because `0006` declares its constraint inline; run both ways over the migrations, the *item*
+  vocabulary still resolves to `0005` and the same eight types.
+- **§16.4's count gate simulated in full**: **29** counted classes against a floor of **29**, no ambiguous
+  paragraph, no uncited class, **no disagreement** between a stated count and a file's `[Fact]`/`[Theory]`
+  census. The three moved counts were checked against the files rather than asserted.
+- **The Markdown table gate simulated faithfully**, splitting on unescaped pipes exactly as the gate does:
+  **25 documents, 37 tables, 433 rows, zero column-count problems, zero runs without a header.** It caught one
+  real defect while authoring — F-105's row spells `attached | replaced | removed` inside a code span, and a
+  pipe inside a code span is still a cell boundary to a renderer, so it is escaped as `\|`.
+- **The specification version gate simulated**: header `1.39`, newest changelog entry `v1.39`, all **40**
+  entries strictly descending.
+- **The `data-label` parity gate simulated**: `ManageMenuItem.razor` at **6 cells, 6 labels** (was 3 and 3),
+  and **8** pages rendering a record list against a floor of 7.
+- **The directive gate simulated** over 51 components: no `@section`, no `@RenderSection`, and the new comment
+  block's `@@{` is stripped as a comment before the scan, as three existing comment blocks' `@@section` is.
+- `.manage-subheading` was checked to be **already declared in `app.css` and already used** by
+  `ManageSitting.razor`, which is why this slice adds no CSS.
+- Tree hygiene on every edited file: LF only, exactly one final newline, no whitespace-only line, no dump
+  separator.
+
+## Test count arithmetic
+
+Uncompiled, per §18. **1242 → 1250.**
+
+| Class | Was | Now | Why |
+|---|---|---|---|
+| `MenuItemImageEventLogTests` | — | 6 | the stream oldest-first across three verbs; the payload each type is allowed; the history outliving every picture it names; a cleared caption as `""`; the actor fallback; one dish's history and two kinds of empty |
+| `MenuWiringTests` | 27 | 28 | the picture history reader resolves in a scope |
+| `MenuEventVocabularyContractTests` | 2 | 3 | every picture event type has a sentence on the surface that renders it |
+
+§16.4's counted-class floor moves **28 → 29**, because the new integration class acquired a paragraph of its
+own. §16.3 stays at seventeen. **Any deviation from 1250 is the first thing to investigate after a run** — and
+note that this run is the first count since 1233, because the arithmetic that predicted 1242 was never tested.
+
+## What was NOT verified
+
+- **Nothing was compiled.** No SDK, no database, no browser. Given what this slice repairs, that is worth
+  stating twice rather than once: the instrument that would have caught F-104 is the instrument this
+  environment does not have, and the two instruments it does have both passed on the broken file.
+- **The new SQL has never executed.** The two INNER JOINs, the aliased `person AS actor`, and the
+  `ORDER BY` are unrun. The shape is `DapperMenuSectionEventLog`'s, which does run, and the one column that
+  file does not have — `menu_item_image_identifier`, selected bare with nothing joined to it — is the one
+  place a copy could not have carried the correctness with it.
+- **The panel has never been rendered.** Whether four columns' worth of sentence wraps acceptably inside a
+  `.record-list` cell at 375px is a judgement nobody has made against a real screen. `Replaced with a new
+  picture — image/jpeg, 284736 bytes` is the longest sentence it produces.
+- **The byte length is rendered as a bare integer**, which is what §11.4's existing picture facts do. Whether
+  an operator reads `284736 bytes` as easily as `278 KiB` is an opinion this slice did not form, and forming
+  it would have put a unit conversion in a surface where §8.2 stores none.
+- Whether `Assert.SkipUnless` skips the six new integration facts cleanly where no container engine answers —
+  the same as every fact in that directory, but unobserved here.
+
+## Carried
+
+**Browser downscaling is the only thing between this feature and the person who asked for it, and it is named
+as the NEXT slice rather than carried a fifth time.** A phone camera produces four megabytes against §8.2's
+512 KiB cap, so the answer to most uploads is *too large* — and every picture this slice's history would have
+recorded is a picture that could not be uploaded. It changes no schema. Two things make it a real slice rather
+than sixty lines of JavaScript: a static-SSR multipart form has to be handed the downscaled file **in place of
+the chosen one**, and §11.11's `script-src` is the one configuration that becomes wrong by editing a file it
+does not mention (F-49).
+
+**No §16.3 scenario touches a picture.** The seventeen are unchanged, and this slice widens the gap slightly
+rather than not at all: the history panel is one more surface no browser has loaded. A picture scenario needs a
+fixture image the harness has no way to produce.
+
+**A browser that sends `application/octet-stream` for a genuine PNG is refused.** Fifth slice carried, with
+the fix written down.
+
+**No `alt_text` on the administrator's own thumbnail, deliberately.** Not an omission and not open — recorded
+so it is not repaired by mistake.
+
+**F-102 has no row in `DOCUMENTATION_REVIEW.md`.** Second slice carried. Slice 52 put it in the status
+paragraph and in Appendix A and not in the ledger's own table; F-103, F-104 and F-105 all have rows, which
+makes F-102 the only recent finding without one. Named rather than backfilled, because reversing a prior
+slice's filing decision is a decision.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Eighteenth slice carried.
+
+**§16.3 has no scenario for either resequencing verb.** Carried: scenario 16's barrier measures those controls
+and nothing presses them.
+
+**`/kitchen` has no §16.3 scenario at all.** Carried — the largest end-to-end gap in the application.
+
+**The wide layout stacks each row's three controls.** Carried on two registers.
+
+**The handheld barrier visits neither section surface.** Carried.
+
+**The dump reduction.** Deferred again by name, and now overdue on two counts: this log has grown by another
+slice and `MENU_AND_HANDHELD_PLAN.md` has grown a stage.
+
+**No gate can see a count written in a comment, or a claim written beside a computation.** Carried — and
+F-105 is that class arriving in an eighth form, a count in the **specification's own prose** three sections
+from the paragraph that forbids it.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried — and this
+slice is the fourth occurrence, with the cost nameable for the first time: the two facts that would have
+reported F-105 were in the project that did not build. Worth saying that a report naming the skipped gates
+would not have prevented anything here; it would only have made the second defect visible a session earlier.
+
+**Nothing treats a test that fails and then passes as evidence.** Carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a twenty-first time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Thirtieth consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then starts
+it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried.

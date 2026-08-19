@@ -147,6 +147,33 @@ public sealed class MenuWiringTests
             scope.ServiceProvider.GetRequiredService<IMenuItemImageDirectory>());
     }
 
+    /// <summary>
+    /// The picture history reader, resolvable in a scope — the third event log this composition registers,
+    /// after <see cref="IMenuEventLog"/> and <see cref="IMenuSectionEventLog"/>.
+    ///
+    /// <para><b>A fact of its own rather than a line in the one above, and the reason is what each fact
+    /// claims.</b> That one asserts that <see cref="IMenuWorkflow"/> covers every <em>write</em> service, so
+    /// a read added to its body would weaken the sentence it exists to make. This is a read and it is taken
+    /// straight by the surface that renders it, exactly as <see cref="IMenuDirectory"/> and
+    /// <see cref="IMenuSectionDirectory"/> are.</para>
+    ///
+    /// <para><b>What makes it worth a registration fact at all is the failure mode.</b>
+    /// <c>ManageMenuItem.razor</c> is static SSR and resolves this by constructor injection during
+    /// rendering, so an unregistered service is not a compile error and not a test failure — it is an
+    /// exception on §11.4's item page, which is one of the ten surfaces §16.3 scenario 16 visits and
+    /// therefore a red suite, but only after Chromium and a database have started. Two seconds here instead
+    /// of two and a half minutes there is the whole argument for every fact in this class.</para>
+    /// </summary>
+    [Fact]
+    public void MenuItemPictureHistory_IsResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        Assert.IsType<DapperMenuItemImageEventLog>(
+            scope.ServiceProvider.GetRequiredService<IMenuItemImageEventLog>());
+    }
+
     [Fact]
     public async Task ACreatedItem_IsAnnounced_AndItsArgumentsArePassedThrough()
     {

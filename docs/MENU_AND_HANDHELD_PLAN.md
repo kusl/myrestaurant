@@ -1164,10 +1164,9 @@ to disagree with — and that is exactly why the same trick would be wrong for a
 image the harness has no way to produce, and inventing bytes inside the harness would be a test arranging
 what it asserts about. It is now the largest end-to-end gap in the menu after the two resequencing verbs.
 
-**Nothing reads `menu_item_image_event`.** `alt_text_changed` is written from its first day and rendered
-nowhere, so §11.4 still cannot say when a picture last changed or who changed it. Named on the same rule
-that named the write, and it is now four event types deep rather than three — the panel and its reader
-arrive together, as `IMenuSectionEventLog` did with the section editor.
+**~~Nothing reads `menu_item_image_event`.~~ Closed in Stage 4d, one slice later** — the panel and its
+reader arrived together, as `IMenuSectionEventLog` did with the section editor and on the rule this item
+was named under.
 
 **Whether a browser downscales before upload.** Fourth slice carried, and it has stopped being a nicety: a
 phone camera produces four megabytes against a 512 KiB cap, so the answer to most uploads is still *too
@@ -1243,6 +1242,110 @@ answer to most uploads is "too big".
 **Reversible if the recommendation is wrong.** `bytea` → volume is a migration that reads rows and writes
 files; volume → `bytea` is a migration that cannot find the files. Choosing the reversible direction first is
 the whole reason to choose now.
+
+---
+
+## ~~Stage 4d — images: the picture's history~~ — **landed, M6 Slice 54**
+
+**Not in any earlier version of this plan, and it is not scope creep — it is the item Stages 4a, 4b and 4c
+each carried by name.** `0006` created `menu_item_image_event`, three slices wrote to it, `0007` made it four
+event types deep, and **nothing in the tree could read it**. §16.4 recorded the absence of
+`IMenuItemImageEventLog` on each of those slices under the standing rule that a read arrives with the surface
+that renders it; the integration facts that needed the history selected from the table directly and said so
+rather than hiding it. So §11.4 could not answer *when did this photograph last change, and who changed it*
+— and `alt_text_changed`, added in Stage 4c, was written from its first day and rendered nowhere.
+
+It is filed as its own stage rather than folded back into 4c because *what a picture used to be* is a
+different question from *the thumbnail a guest sees*, which is the same shape of reason Stage 3c was filed
+apart from Stage 3.
+
+### The one thing in this stage worth reading twice
+
+**The reader must not join `menu_item_image`, and that is the whole design rather than an optimisation.**
+
+Every other reader in this family joins the row its events are about. `DapperMenuEventLog` joins `menu_item`,
+`DapperMenuSectionEventLog` joins `menu_section`, and both are right to: those rows are never deleted, because
+§6.8's answer to *get rid of it* is a flag. **A picture is the stated exception.** A replace mints a new
+`menu_item_image_identifier` and deletes the old row — required, so that §7's route can carry
+`Cache-Control: immutable` as a *true* statement — and a removal deletes the row outright. So an event on this
+table names a row that, in the ordinary case, is **gone**.
+
+Which makes both joins a maintainer reaches for wrong, and wrong in the worst available way:
+
+- an **INNER JOIN** returns only the events about whichever picture is attached *now*, so the history
+  silently **begins at the current photograph**. It reads like a complete history. Nothing in the application
+  fails.
+- a **LEFT JOIN** returns everything and adds a column null on every row but the newest, which is a column
+  about this schema rather than about the restaurant.
+
+`0006` declared no foreign key on that column precisely so the log can outlive its subject, and its own
+comment says the identifier is *"not a pointer to a row a reader can open; it is the evidence that the URL
+changed"*. This stage asserts that rather than trusting the comment: `MenuItemImageEventLogTests` replaces a
+picture, removes the replacement, and requires all three events back with the two identifiers compared
+**individually** — because *all three rows came back* would also pass on a reader that returned three rows
+carrying one identifier.
+
+### What landed, and the three places it decided something this plan had not
+
+**The panel renders whether or not a picture is attached now**, and that is the placement rather than a
+detail. *No picture now, three of them previously* is precisely the state §11.4 could not describe before this
+stage, so hiding the panel when nothing is attached would hide it in the one case somebody opens the page to
+ask about. It sits under the picture forms as an `<h3 class="manage-subheading">` — a subsection of the
+Picture panel rather than a peer of Section and Position — and the item's own event history stays at the foot
+of the page, because that one is about the dish.
+
+**No identifier and no link is rendered, although every row carries one.** A URL for a replaced picture
+answers 404 by design (§7), so a link would be a link that mostly does not work, and a bare UUIDv7 in a table
+cell is a fact about this schema rather than about the restaurant. What the identifier is *for* is making it
+legible that a replacement produced a **new address**, and the words *Replaced with a new picture* say that
+without it.
+
+**What a picture WAS goes inside the sentence rather than into columns of its own.** The format and the size
+are carried by `attached` and `replaced` and by neither of the other two, and after a removal the event is the
+only record of them (F-101) — so they are worth rendering, and worth rendering on exactly half the rows. Two
+columns empty half the time would put a `data-label` reading *Format* beside nothing on the row somebody came
+to read, which is the card-layout failure §11.12's label rule exists to prevent. Three columns, the same three
+the item history uses, and **no new CSS at all**: `.record-list`, `.manage-subheading` and `data-label` are
+§11.12's existing vocabulary, and `.manage-subheading` was already declared and already used by
+`ManageSitting.razor`.
+
+### A defect found on the way in (F-105)
+
+Reading §7 in order to write the reader turned up the specification describing this table as
+`attached | replaced | removed`, CHECK-bound by **two** named biconditionals. `0007` had made it four types
+and three, one slice earlier. **Three sections above it**, §7 states in bold that `menu_item_event`'s
+vocabulary is *not counted in prose anywhere* and that the list there is the only copy — a rule written down
+after F-77 and then not applied to the table this project added next. F-93's timing for the fifth time:
+caught in the slice that would have consumed it.
+
+The list is corrected and the count deleted, and — because a corrected sentence is worth nothing when the next
+migration will be written by somebody who has not read it — `MenuEventVocabularyContractTests` gains a fact
+that every type the migration admits has a sentence on the surface that renders that log. Its subject is the
+**surface**, because §11.4 falls back to the raw string for an unrecognised type *by design*, so a missing arm
+throws nothing and shows up only as a cell reading `alt_text_changed` where a sentence belongs.
+
+### What is open after this stage
+
+**Browser downscaling is the only thing left between this feature and the person who asked for it, and it is
+named here as the NEXT slice rather than as a fifth deferral.** A phone camera produces four megabytes against
+§8.2's 512 KiB cap, so the answer to most uploads is still *too large* — and every picture this stage's
+history would have recorded is a picture that could not be uploaded in the first place. It changes no schema:
+a `<canvas>` round trip in `wwwroot/js/`. The two things that make it a real slice rather than sixty lines are
+that a static-SSR multipart form has to be handed the *downscaled* file in place of the chosen one, and that
+§11.11's `script-src` is the one configuration that becomes wrong by editing a file it does not mention
+(F-49).
+
+**No §16.3 scenario touches a picture.** The seventeen are unchanged. A picture scenario needs a fixture image
+the harness has no way to produce, and inventing bytes inside the harness would be a test arranging what it
+asserts about. Still the largest end-to-end gap in the menu after the two resequencing verbs — and this stage
+widens it slightly rather than not at all, because a history panel is one more surface no browser has loaded.
+
+**A browser that sends `application/octet-stream` for a genuine PNG is refused.** Carried with the fix written
+down, for a fifth slice.
+
+**There is deliberately no cross-item picture feed** to match `IMenuEventLog.ListRecentAsync`. That one fills
+a panel on `/administration/menu` and there is no such panel for pictures, so inventing a read with no caller
+in the slice whose subject is a read that finally has one would be a poor joke.
 
 ---
 

@@ -118,8 +118,15 @@ public static class OrdersServiceCollectionExtensions
         // service, mapped from Program.cs beside the clock and the account endpoints
         // (MenuItemImageEndpoints.MapRestaurantMenuImages), and it resolves IMenuItemImageDirectory out
         // of the request scope this call creates.
+        //
+        // The picture event log is a read and joins the read side, on IMenuSectionEventLog's precedent
+        // above: §11.4 renders one item's complete uncapped picture history on its own page, and until
+        // Stage 4d nothing in the tree could read menu_item_image_event at all — the integration facts
+        // that needed it selected from the table. THAT is what closes the last read-with-no-caller this
+        // feature carried: ListAsync got its surface in Stage 4c, and this table gets its reader here.
         services.AddScoped<IMenuItemImageDirectory, DapperMenuItemImageDirectory>();
         services.AddScoped<IMenuItemImageAdministration, DapperMenuItemImageAdministration>();
+        services.AddScoped<IMenuItemImageEventLog, DapperMenuItemImageEventLog>();
 
         // Orders (§6.6, §8.3, §8.5, §11.2).
         services.AddScoped<IOrderMutations, DapperOrderMutations>();
