@@ -25,12 +25,14 @@ namespace MyRestaurant.DataAccess.Menu;
 /// <param name="MenuItemIdentifier">The item this picture belongs to. One per item in version 1 (§8.2's UNIQUE).</param>
 /// <param name="ContentType">The stored media type, checked against the bytes' own signature when it was attached.</param>
 /// <param name="ByteLength">How many bytes the picture is, computed from the bytes.</param>
+/// <param name="AltText">The sentence a screen reader reads instead of the picture; <c>""</c> when nobody has written one, which is <em>not</em> the same as an absent attribute — see <see cref="IMenuItemImageAdministration.SetMenuItemImageAltTextAsync"/>.</param>
 /// <param name="UploadedAt">When it was attached, in UTC (rendered in the restaurant's zone by a surface, §8.1).</param>
 public sealed record MenuItemImageMetadata(
     Guid MenuItemImageIdentifier,
     Guid MenuItemIdentifier,
     string ContentType,
     int ByteLength,
+    string AltText,
     DateTimeOffset UploadedAt);
 
 /// <summary>
@@ -107,6 +109,30 @@ public enum RemoveMenuItemImageOutcome
 }
 
 /// <summary>
+/// The outcome of <see cref="IMenuItemImageAdministration.SetMenuItemImageAltTextAsync"/> (§7).
+///
+/// <para><b><see cref="NoImage"/> and <see cref="MenuItemNotFound"/> are two answers rather than one</b>,
+/// on <see cref="RemoveMenuItemImageOutcome"/>'s reading: a caption for a picture that is not there is an
+/// operator whose page went stale under them, and a caption for an item that is not there is a page left
+/// open after somebody else deleted the dish. The surfaces do different things with the two — one reports
+/// in place, the other navigates away — so collapsing them would make the second unreachable.</para>
+/// </summary>
+public enum SetMenuItemImageAltTextOutcome
+{
+    /// <summary>The caption moved, and one <c>alt_text_changed</c> event says what to.</summary>
+    Changed,
+
+    /// <summary>It was already exactly that, character for character. Nothing written, on the no-op rule every menu verb follows.</summary>
+    NoChange,
+
+    /// <summary>The item exists and has no picture, so there is nothing for a caption to describe. Nothing written.</summary>
+    NoImage,
+
+    /// <summary>No such item. Nothing written.</summary>
+    MenuItemNotFound,
+}
+
+/// <summary>
 /// Reads what is stored about menu item pictures (TECHNICAL_SPECIFICATION §7, §11.1, §11.4).
 ///
 /// <para><b>Three reads, and each names the surface it exists for</b>, because a read with no caller is
@@ -115,6 +141,12 @@ public enum RemoveMenuItemImageOutcome
 /// index, which decorate a whole list and must not ask per card; <see cref="FindForItemAsync"/> is the
 /// item's own administration page, which renders one; <see cref="ReadContentAsync"/> is §7's route, which
 /// is the only caller in the application that wants the bytes.</para>
+///
+/// <para><b><see cref="ListAsync"/> now has the caller it was named for, and the obligation it was named
+/// under is discharged.</b> It shipped with <c>0006</c> having none, was recorded as a read with no caller
+/// in three consecutive slices, and §11.1's guest menu is what it was for: <b>one</b> read per page load,
+/// decorating a whole list of cards, where a per-card lookup would have turned a sixty-dish menu into
+/// sixty queries inside a render loop.</para>
 ///
 /// <para><b>There is deliberately no event-log reader here yet.</b> <c>menu_item_image_event</c> is
 /// written from the first day, because §7 requires every menu mutation to leave one and R§6.8 has since
@@ -188,6 +220,19 @@ public interface IMenuItemImageAdministration
     /// <param name="bytes">The picture. Stored verbatim: nothing here decodes, resizes or re-encodes it (§7).</param>
     /// <param name="actorPersonIdentifier">Who did it — recorded on the event, not on the picture, which is the same arrangement <c>menu_item</c> and <c>menu_section</c> have.</param>
     /// <param name="cancellationToken">Cancellation.</param>
+    /// <remarks>
+    /// <b>A replace carries the caption forward onto the new row, and this signature is unchanged by
+    /// <c>0007</c> because of it.</b> The alternative was a sixth parameter and a field on the upload form,
+    /// and it is refused for a concrete reason rather than for brevity: the attach form requires a file, so
+    /// a caption settable only there would make correcting a typo cost a re-upload — a new
+    /// <c>menu_item_image_identifier</c>, every cached copy of a photograph invalidated across the
+    /// building, and a <c>replaced</c> event recording a replacement that replaced nothing. So the caption
+    /// is written by <see cref="SetMenuItemImageAltTextAsync"/>, and this verb moves it from the row it
+    /// deletes to the row it writes, which is also the honest default: somebody replacing a photograph of
+    /// the salmon with a better photograph of the salmon has not withdrawn what they wrote about it. It
+    /// does <b>not</b> write an <c>alt_text_changed</c> event for the carry, on the no-op rule — nothing
+    /// about the caption changed.
+    /// </remarks>
     Task<AttachMenuItemImageResult> AttachMenuItemImageAsync(
         Guid menuItemImageIdentifier,
         Guid menuItemIdentifier,
@@ -206,6 +251,43 @@ public interface IMenuItemImageAdministration
     /// </summary>
     Task<RemoveMenuItemImageOutcome> RemoveMenuItemImageAsync(
         Guid menuItemIdentifier,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes the sentence a screen reader reads instead of the picture (§7, §11.1).
+    ///
+    /// <para><b>Why the caption is a verb of its own rather than a field on the upload.</b> See the remark
+    /// on <see cref="AttachMenuItemImageAsync"/>: a caption settable only at upload time would make fixing
+    /// a typo cost a new identifier and a building's worth of invalidated caches. This verb touches one
+    /// <c>text</c> column and leaves the bytes, the identifier and therefore <em>every URL</em> exactly
+    /// where they were, which is the whole point — §7's route is a content address, and a caption is not
+    /// content.</para>
+    ///
+    /// <para><b>It is on the picture rather than on the item, and that is <c>0007</c>'s ruling.</b>
+    /// Alternative text describes a photograph: <em>"served on a bed of wilted greens with a lemon
+    /// wedge"</em> is true of one picture and false of the next one somebody takes. A column on
+    /// <c>menu_item</c> would outlive the picture it described and nothing could tell that it had stopped
+    /// being true, where a column on <c>menu_item_image</c> is deleted with the bytes it belongs to.</para>
+    ///
+    /// <para><b><c>""</c> is a supported value and means <em>no caption</em></b> (§7), so there is no
+    /// separate clearing verb — the same arrangement <c>menu_item.description</c> has. It is emphatically
+    /// not the same thing as an <c>&lt;img&gt;</c> with no <c>alt</c> attribute at all: a missing attribute
+    /// makes a screen reader announce a URL, where <c>alt=""</c> makes it skip an image whose surroundings
+    /// already say what it is. §11.1's card is a button holding the dish's name and price, so <c>""</c> is
+    /// the <em>correct</em> answer there for most pictures and a caption earns its place only when it says
+    /// something the name does not (<b>F-103</b>).</para>
+    ///
+    /// <para>Takes the item <c>FOR UPDATE</c> and then the picture row, on the same lock ordering both
+    /// verbs above already run in, so nothing here introduces a new one.</para>
+    /// </summary>
+    /// <param name="menuItemIdentifier">The item whose picture is being captioned.</param>
+    /// <param name="altText">The caption. Stored verbatim; <c>""</c> means none. Trimming, if any, belongs to the surface — the same division <c>RenameMenuItemAsync</c> already draws.</param>
+    /// <param name="actorPersonIdentifier">Who wrote it, recorded on the event.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    Task<SetMenuItemImageAltTextOutcome> SetMenuItemImageAltTextAsync(
+        Guid menuItemIdentifier,
+        string altText,
         Guid actorPersonIdentifier,
         CancellationToken cancellationToken = default);
 }
@@ -234,6 +316,7 @@ public sealed class DapperMenuItemImageDirectory : IMenuItemImageDirectory
         menu_item_image.menu_item_identifier        AS MenuItemIdentifier,
         menu_item_image.content_type                AS ContentType,
         octet_length(menu_item_image.bytes)         AS ByteLength,
+        menu_item_image.alt_text                    AS AltText,
         menu_item_image.uploaded_at                 AS UploadedAt
         """;
 
@@ -320,6 +403,7 @@ public sealed class DapperMenuItemImageDirectory : IMenuItemImageDirectory
         row.MenuItemIdentifier,
         row.ContentType,
         row.ByteLength,
+        row.AltText,
         new DateTimeOffset(DateTime.SpecifyKind(row.UploadedAt, DateTimeKind.Utc)));
 
     private sealed record MenuItemImageMetadataRow(
@@ -327,6 +411,7 @@ public sealed class DapperMenuItemImageDirectory : IMenuItemImageDirectory
         Guid MenuItemIdentifier,
         string ContentType,
         int ByteLength,
+        string AltText,
         DateTime UploadedAt);
 }
 
@@ -356,6 +441,8 @@ public sealed class DapperMenuItemImageAdministration : IMenuItemImageAdministra
 
     private const string RemovedEventType = "removed";
 
+    private const string AltTextChangedEventType = "alt_text_changed";
+
     /// <summary>
     /// §8.2's named cap on <c>octet_length(bytes)</c>. The <em>name</em> is here; the number is not, and
     /// that asymmetry is the whole point — a caller learns the upload was too large without this file
@@ -375,16 +462,30 @@ public sealed class DapperMenuItemImageAdministration : IMenuItemImageAdministra
         """;
 
     /// <summary>
-    /// Which picture is already attached, if any, locked. <b>One column, and nothing more</b> — the write
-    /// needs the identifier it is about to replace or remove, the bytes are irrelevant to both verbs, and
-    /// the format and size are already on the event that attached it, which is the whole reason that event
-    /// carries a payload.
+    /// Which picture is already attached, if any, locked. <b>Two columns, and still not the bytes</b> — the
+    /// write needs the identifier it is about to replace or remove, and it needs the caption because
+    /// <c>0007</c>'s ruling is that a replace carries one forward rather than resetting it. The format and
+    /// the size are deliberately still absent: both are on the event that attached the picture, which is
+    /// the whole reason that event carries a payload.
     /// </summary>
     private const string LockExistingImageSql = """
-        SELECT menu_item_image.menu_item_image_identifier
+        SELECT menu_item_image.menu_item_image_identifier AS MenuItemImageIdentifier,
+               menu_item_image.alt_text                   AS AltText
         FROM menu_item_image
         WHERE menu_item_image.menu_item_identifier = @MenuItemIdentifier
         FOR UPDATE;
+        """;
+
+    /// <summary>
+    /// The caption, and nothing else. <b>No <c>uploaded_at</c> touch</b>, which is a decision rather than
+    /// an omission: that column says when the <em>picture</em> arrived, and a surface renders it beside the
+    /// file's format and size as a fact about the upload. Writing a caption is not an upload, and moving
+    /// that timestamp would make §11.4's panel report a photograph as newer than it is.
+    /// </summary>
+    private const string UpdateAltTextSql = """
+        UPDATE menu_item_image
+        SET alt_text = @AltText
+        WHERE menu_item_identifier = @MenuItemIdentifier;
         """;
 
     private const string DeleteImageSql = """
@@ -394,23 +495,26 @@ public sealed class DapperMenuItemImageAdministration : IMenuItemImageAdministra
 
     private const string InsertImageSql = """
         INSERT INTO menu_item_image (
-            menu_item_image_identifier, menu_item_identifier, content_type, bytes, uploaded_at)
+            menu_item_image_identifier, menu_item_identifier, content_type, bytes, alt_text, uploaded_at)
         VALUES (
-            @MenuItemImageIdentifier, @MenuItemIdentifier, @ContentType, @Bytes, @UploadedAt);
+            @MenuItemImageIdentifier, @MenuItemIdentifier, @ContentType, @Bytes, @AltText, @UploadedAt);
         """;
 
     /// <summary>
-    /// One INSERT for all three event types. §8.2's two paired CHECKs tie both payload columns to
-    /// <c>attached</c> and <c>replaced</c> together, so <c>removed</c> passes NULL for both and the
-    /// database refuses any combination this file gets wrong.
+    /// One INSERT for all four event types. §8.2's three paired CHECKs tie each payload column to the
+    /// types that carry it, so every other type passes NULL and the database refuses any combination this
+    /// file gets wrong — <c>removed</c> carries none of the three, and <c>alt_text_changed</c> carries only
+    /// the caption, which is why <c>0007</c> had to widen no constraint but its own.
     /// </summary>
     private const string InsertImageEventSql = """
         INSERT INTO menu_item_image_event (
             menu_item_image_event_identifier, menu_item_identifier, menu_item_image_identifier,
-            actor_person_identifier, event_type, new_content_type, new_byte_length, occurred_at)
+            actor_person_identifier, event_type, new_content_type, new_byte_length, new_alt_text,
+            occurred_at)
         VALUES (
             @MenuItemImageEventIdentifier, @MenuItemIdentifier, @MenuItemImageIdentifier,
-            @ActorPersonIdentifier, @EventType, @NewContentType, @NewByteLength, @OccurredAt);
+            @ActorPersonIdentifier, @EventType, @NewContentType, @NewByteLength, @NewAltText,
+            @OccurredAt);
         """;
 
     private readonly IDatabaseConnectionFactory _connectionFactory;
@@ -472,8 +576,20 @@ public sealed class DapperMenuItemImageAdministration : IMenuItemImageAdministra
             return Refused(AttachMenuItemImageOutcome.MenuItemNotFound);
         }
 
-        Guid? replaced = await ReadAttachedImageAsync(
+        AttachedImageRow? replaced = await ReadAttachedImageAsync(
             connection, transaction, menuItemIdentifier, cancellationToken).ConfigureAwait(false);
+
+        // 0007's ruling, and the one line of behaviour that migration exists to permit: the caption moves
+        // from the row about to be deleted onto the row about to be written. Somebody replacing a
+        // photograph of the salmon with a better photograph of the salmon has not withdrawn what they
+        // wrote about it, and the alternative — resetting to '' — would silently strip alternative text
+        // off a guest's menu as a side effect of improving a picture. A first attach has no row to carry
+        // from and therefore lands at '', which is what "no caption yet" is spelled as (§7).
+        //
+        // NO alt_text_changed EVENT IS WRITTEN FOR THE CARRY. Nothing about the caption changed, and the
+        // no-op rule every verb in this file follows says an event records a change rather than a
+        // transaction.
+        string carriedAltText = replaced?.AltText ?? string.Empty;
 
         // Delete before insert rather than update in place: menu_item_identifier is UNIQUE, and the new
         // picture must land under a NEW identifier so that §7's route key changes with the bytes.
@@ -496,6 +612,7 @@ public sealed class DapperMenuItemImageAdministration : IMenuItemImageAdministra
                     MenuItemIdentifier = menuItemIdentifier,
                     ContentType = contentType,
                     Bytes = bytes,
+                    AltText = carriedAltText,
                     UploadedAt = now,
                 },
                 transaction,
@@ -522,6 +639,7 @@ public sealed class DapperMenuItemImageAdministration : IMenuItemImageAdministra
             replaced is null ? AttachedEventType : ReplacedEventType,
             contentType,
             bytes.Length,
+            newAltText: null,
             now,
             cancellationToken).ConfigureAwait(false);
 
@@ -553,7 +671,7 @@ public sealed class DapperMenuItemImageAdministration : IMenuItemImageAdministra
             return RemoveMenuItemImageOutcome.MenuItemNotFound;
         }
 
-        Guid? attached = await ReadAttachedImageAsync(
+        AttachedImageRow? attached = await ReadAttachedImageAsync(
             connection, transaction, menuItemIdentifier, cancellationToken).ConfigureAwait(false);
 
         if (attached is null)
@@ -576,17 +694,90 @@ public sealed class DapperMenuItemImageAdministration : IMenuItemImageAdministra
             connection,
             transaction,
             menuItemIdentifier,
-            attached.Value,
+            attached.MenuItemImageIdentifier,
             actorPersonIdentifier,
             RemovedEventType,
             newContentType: null,
             newByteLength: null,
+            newAltText: null,
             now,
             cancellationToken).ConfigureAwait(false);
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
         return RemoveMenuItemImageOutcome.Removed;
+    }
+
+    public async Task<SetMenuItemImageAltTextOutcome> SetMenuItemImageAltTextAsync(
+        Guid menuItemIdentifier,
+        string altText,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(altText);
+
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!await MenuItemExistsAsync(
+            connection, transaction, menuItemIdentifier, cancellationToken).ConfigureAwait(false))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return SetMenuItemImageAltTextOutcome.MenuItemNotFound;
+        }
+
+        AttachedImageRow? attached = await ReadAttachedImageAsync(
+            connection, transaction, menuItemIdentifier, cancellationToken).ConfigureAwait(false);
+
+        if (attached is null)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return SetMenuItemImageAltTextOutcome.NoImage;
+        }
+
+        // The no-op check is INSIDE the transaction and under the lock, which is the arrangement every
+        // comparing verb in this layer uses and is not interchangeable with checking it on the way in: a
+        // caption read before the lock is a caption another administrator may have changed in between, and
+        // this verb would then write an alt_text_changed event recording a move that did not happen.
+        //
+        // Ordinal, because a caption is text somebody typed and two strings differing only in case are two
+        // different captions. A culture-sensitive comparison here would make "Wilted greens" and "wilted
+        // greens" the same edit on one operator's machine and different edits on another's.
+        if (string.Equals(attached.AltText, altText, StringComparison.Ordinal))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return SetMenuItemImageAltTextOutcome.NoChange;
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            UpdateAltTextSql,
+            new { MenuItemIdentifier = menuItemIdentifier, AltText = altText },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        // The event names the picture the caption belongs to, which is the same identifier the row carries
+        // and NOT a new one: nothing about the bytes changed, so §7's route key must not change either —
+        // that is the whole reason this is a verb rather than a re-upload.
+        await InsertEventAsync(
+            connection,
+            transaction,
+            menuItemIdentifier,
+            attached.MenuItemImageIdentifier,
+            actorPersonIdentifier,
+            AltTextChangedEventType,
+            newContentType: null,
+            newByteLength: null,
+            altText,
+            now,
+            cancellationToken).ConfigureAwait(false);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        return SetMenuItemImageAltTextOutcome.Changed;
     }
 
     private static AttachMenuItemImageResult Refused(AttachMenuItemImageOutcome outcome)
@@ -607,16 +798,25 @@ public sealed class DapperMenuItemImageAdministration : IMenuItemImageAdministra
         return found is not null;
     }
 
-    private static async Task<Guid?> ReadAttachedImageAsync(
+    private static async Task<AttachedImageRow?> ReadAttachedImageAsync(
         DbConnection connection,
         DbTransaction transaction,
         Guid menuItemIdentifier,
         CancellationToken cancellationToken)
-        => await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(
+        => await connection.QuerySingleOrDefaultAsync<AttachedImageRow>(new CommandDefinition(
             LockExistingImageSql,
             new { MenuItemIdentifier = menuItemIdentifier },
             transaction,
             cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+    /// <summary>
+    /// The locked picture row as both write verbs need it: which picture, and what it is captioned. A
+    /// record rather than a tuple so that the caller reads <c>attached.AltText</c> rather than
+    /// <c>attached.Item2</c>, and a positional record is safe here where it would not be for a stored
+    /// timestamp — no member is a <see cref="DateTimeOffset"/>, so Npgsql's <c>timestamptz</c>
+    /// materialisation is not in play.
+    /// </summary>
+    private sealed record AttachedImageRow(Guid MenuItemImageIdentifier, string AltText);
 
     private async Task InsertEventAsync(
         DbConnection connection,
@@ -627,6 +827,7 @@ public sealed class DapperMenuItemImageAdministration : IMenuItemImageAdministra
         string eventType,
         string? newContentType,
         int? newByteLength,
+        string? newAltText,
         DateTimeOffset occurredAt,
         CancellationToken cancellationToken)
         => await connection.ExecuteAsync(new CommandDefinition(
@@ -640,6 +841,7 @@ public sealed class DapperMenuItemImageAdministration : IMenuItemImageAdministra
                 EventType = eventType,
                 NewContentType = newContentType,
                 NewByteLength = newByteLength,
+                NewAltText = newAltText,
                 OccurredAt = occurredAt,
             },
             transaction,

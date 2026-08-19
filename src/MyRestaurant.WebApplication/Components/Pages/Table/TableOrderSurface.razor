@@ -9,6 +9,7 @@
 @using MyRestaurant.WebApplication.Orders
 @implements IDisposable
 @inject IMenuDirectory MenuDirectory
+@inject IMenuItemImageDirectory MenuItemPictures
 @inject IOrderReadModel OrderReads
 @inject IOrderEventLog EventLog
 @inject IOrderWorkflow Workflow
@@ -242,8 +243,14 @@
                        indentation it had before Slice 40 wrapped it in this outer loop. Corrected in the
                        same pass rather than left, because whitespace is the one thing a reader uses to
                        see which loop a `@@key` belongs to. *@
+                    @* The heading index is what decides `loading`, and it is a counter rather than
+                       `IndexOf` because the collection is walked once. See `ThumbnailLoading`. *@
+                    @{ int headingIndex = -1; }
+
                     @foreach (MenuHeadingGroup menuSection in GroupedMenu)
                     {
+                        headingIndex++;
+
                         <div class="order-menu-section" @key="menuSection.MenuSectionIdentifier">
                             <h4 class="order-menu-section-name" id="@SectionHeadingId(menuSection)">
                                 @menuSection.MenuSectionName
@@ -277,32 +284,77 @@
                                        half, and the card keeps its description, because an item a guest
                                        cannot have tonight is still an item they may want to read
                                        about. *@
-                                    <li class="order-menu-item @(isChosen ? "is-chosen" : string.Empty) @(item.IsActive ? string.Empty : "is-unavailable")"
+                                    MenuItemImageMetadata? picture = PictureFor(item);
+
+                                    <li class="order-menu-item @(isChosen ? "is-chosen" : string.Empty) @(item.IsActive ? string.Empty : "is-unavailable") @(picture is null ? string.Empty : "has-picture")"
                                         @key="item.MenuItemIdentifier">
                                         <button type="button" class="order-menu-choice"
                                                 data-menu-item="@item.MenuItemIdentifier"
                                                 aria-pressed="@(isChosen ? "true" : "false")"
                                                 disabled="@(!item.IsActive)"
                                                 @onclick="() => ChooseItem(item)">
-                                            <span class="order-menu-line">
-                                                <span class="order-menu-name">@item.Name</span>
-                                                <span class="order-menu-price">@Money(item.PriceAmount)</span>
+                                            @* THE TEXT IS ALWAYS WRAPPED, PICTURE OR NO PICTURE, and the
+                                               uniformity is deliberate. The card is a grid; with a
+                                               thumbnail it is two columns and without one it is one, and
+                                               a wrapper that appeared only sometimes would mean two
+                                               different row structures for the same rules to place. The
+                                               harness reads `span.order-menu-name` and its siblings as
+                                               DESCENDANTS of the card, so this wrapper is invisible to
+                                               §16.3 scenario 17. *@
+                                            <span class="order-menu-body">
+                                                <span class="order-menu-line">
+                                                    <span class="order-menu-name">@item.Name</span>
+                                                    <span class="order-menu-price">@Money(item.PriceAmount)</span>
+                                                </span>
+
+                                                @if (item.Description.Length > 0)
+                                                {
+                                                    @* Tested by Length rather than for null: the column is
+                                                       NOT NULL DEFAULT '' and "" means "none" (§7). *@
+                                                    <span class="order-menu-description">@item.Description</span>
+                                                }
+
+                                                @if (!item.IsActive)
+                                                {
+                                                    <span class="chip chip-warn">Currently unavailable</span>
+                                                }
+                                                else if (isChosen)
+                                                {
+                                                    <span class="chip chip-ok">Chosen</span>
+                                                }
                                             </span>
 
-                                            @if (item.Description.Length > 0)
+                                            @if (picture is not null)
                                             {
-                                                @* Tested by Length rather than for null: the column is
-                                                   NOT NULL DEFAULT '' and "" means "none" (§7). *@
-                                                <span class="order-menu-description">@item.Description</span>
-                                            }
+                                                @* THE THUMBNAIL IS LAST IN THE DOCUMENT AND FIRST ON THE
+                                                   SCREEN, which is the one thing about this element worth
+                                                   reading twice. A button's accessible name is computed
+                                                   from its contents in document order, so an <img> placed
+                                                   first would make a captioned dish announce as "served on
+                                                   a bed of wilted greens, Grilled salmon, £24.00" — the
+                                                   description arriving before the thing it describes. It
+                                                   is moved into the left column by `grid-column` in
+                                                   app.css instead; reordering a NON-interactive element
+                                                   visually costs nothing, because there is no focus order
+                                                   for it to disagree with.
 
-                                            @if (!item.IsActive)
-                                            {
-                                                <span class="chip chip-warn">Currently unavailable</span>
-                                            }
-                                            else if (isChosen)
-                                            {
-                                                <span class="chip chip-ok">Chosen</span>
+                                                   `alt` IS ALWAYS WRITTEN AND ITS VALUE IS WHATEVER IS
+                                                   STORED, INCLUDING "". That is F-103, and the two are not
+                                                   interchangeable: an <img> with NO alt attribute makes a
+                                                   screen reader read the URL out, where alt="" makes it
+                                                   skip an image whose surroundings already say what it is
+                                                   — and here they do, because this button holds the dish's
+                                                   name and its price as text. So "" is the RIGHT answer
+                                                   for most pictures on this menu, and a caption earns its
+                                                   place only when it says something the name does not.
+                                                   The plan's own justification for the column had this
+                                                   backwards; the column is still worth having, for the
+                                                   narrower reason. *@
+                                                <img class="order-menu-thumbnail"
+                                                     src="@MenuImageRoutes.ForImage(picture.MenuItemImageIdentifier)"
+                                                     alt="@picture.AltText"
+                                                     loading="@ThumbnailLoading(headingIndex)"
+                                                     decoding="async" />
                                             }
                                         </button>
                                     </li>
@@ -318,6 +370,28 @@
                        produced something rather than silently moving focus nowhere. *@
                     <div class="order-menu-detail" id="order-picker-detail" aria-live="polite">
                         <h4 class="order-menu-detail-name">@chosenItem.Name</h4>
+
+                        @if (PictureFor(chosenItem) is { } chosenPicture)
+                        {
+                            @* §11.1 has said since Slice 39 that this panel is "the surface that item
+                               descriptions, and later ratings and images, are read on", so the picture
+                               belongs here as much as on the card — and here it is UNCROPPED, which is the
+                               reason for having both. The card's thumbnail is a 4rem square under
+                               `object-fit: cover`, because bounding a card's height is what keeps a menu
+                               scrollable on a 375px screen; a guest who taps a dish to look closer should
+                               see the whole photograph.
+
+                               alt="" DELIBERATELY, and it is §11.4's reasoning rather than a copy of the
+                               card's. This is the same picture the card already announced, sitting under
+                               the dish's own name in the <h4> directly above; a screen reader that read the
+                               caption a second time here would be reading one photograph's description
+                               twice on one tap. Never loading="lazy": this element renders because
+                               somebody just asked for it. *@
+                            <img class="order-menu-detail-picture"
+                                 src="@MenuImageRoutes.ForImage(chosenPicture.MenuItemImageIdentifier)"
+                                 alt=""
+                                 decoding="async" />
+                        }
 
                         <dl class="order-menu-facts">
                             <div>
@@ -624,6 +698,18 @@
 
     private IReadOnlyList<MenuItemSummary> _menu = [];
     private Dictionary<Guid, MenuItemSummary> _menuById = new();
+
+    /// <summary>
+    /// Which items have a picture, keyed by the item, read once per menu load.
+    ///
+    /// <para><b>One read for the whole menu rather than one per card, which is what
+    /// <see cref="IMenuItemImageDirectory.ListAsync"/> exists for</b> — the same rule
+    /// <c>ListLinesForSittingAsync</c> follows one panel down, and for the same reason: a round trip inside
+    /// the render loop would turn a sixty-dish menu into sixty queries on every notification. An item with
+    /// no picture is simply absent from this dictionary, because the read lists what is decorated rather
+    /// than left-joining the whole menu.</para>
+    /// </summary>
+    private Dictionary<Guid, MenuItemImageMetadata> _picturesByItem = new();
     private IReadOnlyList<SittingMemberSummary> _roster = [];
     private TableSittingSummary? _sitting;
     private Guid? _myOrderIdentifier;
@@ -723,6 +809,38 @@
     /// </summary>
     private static string SectionHeadingId(MenuHeadingGroup section)
         => $"order-menu-section-{section.MenuSectionIdentifier}";
+
+    /// <summary>
+    /// The stored picture for one item, or <c>null</c> when it has none.
+    ///
+    /// <para>Looked up from the dictionary rather than re-read, and looked up on every render pass rather
+    /// than captured, for <see cref="PickedMenuItem"/>'s reason exactly: <c>MenuChanged</c> makes this
+    /// surface re-read the menu and the pictures together (§9), so a replace while the panel is open must
+    /// change the address the <c>&lt;img&gt;</c> points at. A captured metadata record would keep pointing
+    /// at an identifier §7's route has already begun answering 404 for.</para>
+    /// </summary>
+    private MenuItemImageMetadata? PictureFor(MenuItemSummary item)
+        => _picturesByItem.TryGetValue(item.MenuItemIdentifier, out MenuItemImageMetadata? picture)
+            ? picture
+            : null;
+
+    /// <summary>
+    /// Whether a card's thumbnail may wait until it is scrolled to: <c>"eager"</c> in the first heading,
+    /// <c>"lazy"</c> in every heading after it.
+    ///
+    /// <para><b>The cut is per heading rather than per card, and the reason is that the server cannot know
+    /// where the fold is.</b> How many cards fit above it depends on how long each description is, how wide
+    /// the viewport is and how large the reader has set their text — none of which is available here. A
+    /// heading is the coarsest unit that is certainly right at one end: the first heading's cards are the
+    /// ones a guest is looking at when the page arrives, and no card in the second heading is, on any
+    /// screen this application targets (§11.12's 375px). Guessing a card count would be a number invented
+    /// here and wrong on somebody's phone.</para>
+    ///
+    /// <para><c>"eager"</c> is written out rather than left to the default, because the interesting property
+    /// of this attribute is that it was <em>decided</em> — an omitted attribute reads as an oversight, and
+    /// the next person to touch this markup would have no way to tell the two apart.</para>
+    /// </summary>
+    private static string ThumbnailLoading(int headingIndex) => headingIndex == 0 ? "eager" : "lazy";
 
     private IReadOnlyList<SittingBillEntry> OtherPeople
         => _bill.Where(entry => entry.PersonIdentifier != _person).ToArray();
@@ -871,6 +989,13 @@
     {
         _menu = await MenuDirectory.ListAsync(_stopping);
         _menuById = _menu.ToDictionary(item => item.MenuItemIdentifier);
+
+        // Read in the same pass as the menu, and re-read whenever the menu is: MenuChanged fires on an
+        // attach, a replace, a removal and a caption change (§9), so a picture dictionary loaded once at
+        // initialisation would be a second place for the menu to be stale — which is the exact defect the
+        // GroupedMenu property's own note refuses to introduce one register up.
+        _picturesByItem = (await MenuItemPictures.ListAsync(_stopping))
+            .ToDictionary(picture => picture.MenuItemIdentifier);
     }
 
     /// <summary>

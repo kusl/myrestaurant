@@ -1,9 +1,9 @@
-# M6 Slice 52 — the transport question that had a third answer, and a count of seven that said six
+# M6 Slice 53 — the picture a guest can finally see, and a plan that argued for it wrongly
 
 Extract at the repository root. Every path is repo-relative and every file is complete.
 
 ```
-tar -xzf m6-slice-52-menu-images-surfaces.tar.gz
+tar -xzf m6-slice-53-guest-menu-pictures.tar.gz
 git status
 ```
 
@@ -12,189 +12,177 @@ git status
 **`git add` IS required — two new files, both in directories that already exist.**
 
 ```
-git add src/MyRestaurant.WebApplication/Menu/MenuItemImageEndpoints.cs
-git add tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageSurfaceContractTests.cs
+git add src/MyRestaurant.DataAccess/Migrations/0007_menu_item_image_alt_text.sql
 ```
 
-`git status` should show **eleven modifications and two untracked paths**; anything else untracked means
-the archive was extracted somewhere other than the repository root.
+That is **one** new file. `git status` should show **thirteen modifications and one untracked path**;
+anything else untracked means the archive was extracted somewhere other than the repository root.
 
-**No new directory, no migration, no schema change, no new event type, no new package, no `.slnx` edit, no
-`.csproj` edit, no `compose.yaml` edit, no `REQUIREMENTS.md` edit, no `OPERATIONS.md` edit, no ADR amended,
-no `export.sh` edit, and no §16.3 scenario added or extended.**
-
----
-
-## Read this first: your last run was clean
-
-`total: 1223, failed: 0, succeeded: 1223, skipped: 0` — against a prediction of **1223**. §18's arithmetic
-matched to the digit for the fourth consecutive slice. Seventeen scenarios passed against real browsers
-twice, and `ci_local.sh --with-all --with-e2e` reported every gate passing.
-
-The tree was reconstructed from `dump.txt` before anything was authored: **360 file records, 359 matching
-their SHA-256 exactly**, the one exception being `LICENSE`, which the dump elides to metadata and hash by
-design.
-
-This is **Stage 4b**, plus the defect found while reading the type it consumes.
+**No new directory, no new package, no `.slnx` edit, no `.csproj` edit** — `Migrations/*.sql` is a glob, so
+the migration is picked up without one — **no `compose.yaml` edit, no `REQUIREMENTS.md` edit, no
+`OPERATIONS.md` edit, no ADR amended, no `export.sh` edit, no `SchemaMigrationRunnerTests` edit, and no
+§16.3 scenario added or extended.**
 
 ---
 
-## The stage: a picture can now be attached, replaced, removed and seen
+## Read this first: I arrived believing this project was at Slice 47
 
-Slice 51 shipped the schema and two data-access services with **no caller outside their integration tests**,
-said so in four places, and named the obligation it was re-opening. This discharges it.
+It is at Slice 52, landed and green. `ResequenceMenuSectionsAsync` shipped in Slice 47 and the item-level one
+in Slice 48; the menu index, the kitchen's "86" panel, the image schema and the administrator's upload form
+all followed. **Six slices of drift**, from a summary of prior work rather than from the tree.
 
-### The open question, and why the answer is neither of the two that were on the table
+The reconstruction from `dump.txt` is what caught it, as it did for the session that authored Slice 51 —
+which arrived believing the tree was at Slice 46. **363 file records parsed, 361 verified against their
+SHA-256 exactly**; the two exceptions are by design (`export.sh` contains the dump delimiter and is excluded,
+`LICENSE` is elided to metadata and hash).
 
-§11.4's pages are static SSR, `[SupplyParameterFromForm]` does not bind a file, and `InputFile` needs an
-interactive render mode. The plan named a **minimal API endpoint** and **making a page interactive**.
+Your last run was `total: 1233, failed: 0` against a prediction of **1233** — §18's arithmetic matching to
+the digit for the fifth consecutive slice.
 
-Neither is taken. A plain `enctype="multipart/form-data"` form posts to **the page itself** under an
-ordinary `@formname`, and the handler reads the part out of `HttpContext.Request.Form.Files`.
-
-**Why that costs nothing:** Blazor's static form handling has already read the request body — that is how it
-found `_handler` and dispatched to this callback rather than to one of the other six on the page. The
-request the model binder declined to bind one field of is sitting right there, cached.
-
-**What the two alternatives would have cost.** An endpoint acquires an **authorization rule of its own**
-that then has to agree with `ManageMenuItem`'s `[Authorize]` — two places that can disagree about who may
-change a menu, which is what §3.7 exists to prevent. An interactive page puts a circuit under §11.4's
-largest form surface to move one file, and makes this the only administration page whose forms behave
-differently from every other one's.
-
-**What is given up: model binding for exactly one field**, which is the field the model binder refuses.
-
-### The route
-
-`GET /menu/image/{menu_item_image_identifier}` — a minimal-API endpoint, **anonymous**, 404 for an
-identifier the table does not hold, `Cache-Control: public, max-age=31536000, immutable`.
-
-Anonymous because §11.1's guest menu is what it exists for and §4.3 puts registration at the moment of
-joining a table, so a guest reading a menu may have no session at all. The immutable header is **true rather
-than hopeful**, because ADR-0015 keys the route on the image and a replace mints a new identifier.
-
-**No §3.5 obligations exemption**, unlike the clock and the source offer — those are asked for *by* a page a
-locked-down principal is looking at, where this is a subresource of a page such a principal was redirected
-away from before it rendered.
-
-### No number was added anywhere, and that was the hard part
-
-The obvious thing to write in the handler is a size check. It is not there: §8.2's named CHECK is the cap
-and the write reports a violation of it by constraint name, so a second copy would be F-65's mechanism and,
-worse, the belt that hides the buckle.
-
-**What bounds the buffer, then?** Kestrel's request-body limit already bounds every POST this application
-accepts, on every form, today. The picture form declares no ceiling because it **inherits** one, and there is
-still exactly one number about image size in the tree.
-
-### The surface deliberately does not identify the format, though it could
-
-`ImageFormat.IdentifyContentType` is public. The page could name the format from the bytes and never produce
-`UnsupportedContentType` or `ContentTypeContradictedByBytes`.
-
-**That is the reason not to.** The write is the one place that decides what an image is, and a surface that
-pre-judged would leave two of that verb's outcomes unreachable from the only form that can produce them —
-the same defect this project keeps recording about verbs with no caller, one register in. The browser's
-`Content-Type` is handed on unaltered and the refusal message **names what the browser sent**.
+This is **Stage 4c**, plus the finding found while reading the paragraph that specified it.
 
 ---
 
-## The finding: an enum that counted itself and got it wrong (F-102)
+## The stage: §11.1 renders the picture
 
-`AttachMenuItemImageOutcome`'s summary opened *"**Six answers** rather than a boolean, and every one of them
-is a different sentence for the person who chose the file."*
+`IMenuItemImageDirectory.ListAsync` had been a read with no caller for three slices. It has its caller: one
+read per menu load, in the same pass as the menu and re-read on the same `MenuChanged`, because a picture
+dictionary loaded once would be a second place for the menu to be stale.
 
-**The enum has seven members.** They begin three lines below that sentence — and the sentence saying six is
-the sentence arguing that no answer may be collapsed.
+**A 4rem square thumbnail beside the name, cropped under `object-fit: cover`.** The placement is what the
+plan asked for; the size and the crop are this slice's, and the obvious alternative is wrong. Nothing in this
+stack can resize an image, so at `height: auto` a portrait photograph renders twice as tall as it is wide and
+the card height is straight back where the re-layout started. The crop is paid back in the **detail panel**,
+which renders the same picture uncropped — something §11.1 has owed since Slice 39, when it named that panel
+the surface images are read on.
 
-**Deleted rather than corrected**, on F-77's ruling. The row is earned by the shape: this is that ruling's
-sixth form, after a version header, a variable four documents agreed about, a port three helpers dialled, a
-touch target eight pixels short, a class census in three places, and an index counting one thing while
-saying another. **A census in prose is wrong at the moment it is written or at the moment the thing it
-counts changes, and nothing in between can tell which.**
+**`loading` is per heading, not per card.** How many cards sit above the fold depends on description length,
+viewport width and the reader's text size, none of which the server knows. A heading is the coarsest unit
+certainly right at one end. A card count would be a number invented here and wrong on somebody's phone.
 
-Found by reading the type in order to write the surface that renders one sentence per member — **F-93's
-timing for the third time**. **No gate is added** (F-41, F-47), and what shrinks the residual here is a side
-effect rather than a repair: the handler switches over those outcomes, so a member with no sentence is now a
-missing `case`.
+## The caption: a verb rather than a field, and the attach signature did not change
+
+The plan called `alt_text` *"a field on the item's picture form"*. **The upload form requires a file**, so a
+caption settable only there makes correcting a typo cost a re-upload: a new `menu_item_image_identifier`,
+every cached copy of an *unchanged* photograph invalidated for a year, and a `replaced` event recording a
+replacement that replaced nothing.
+
+So `0007` adds `alt_text_changed`, `SetMenuItemImageAltTextAsync` writes one `text` column, and **the attach
+carries the caption forward** from the row it deletes onto the row it writes with no event for the carry.
+Both halves have a plausible wrong implementation: resetting to `''` would strip alternative text off a menu
+as a side effect of improving a photograph, and an event for the carry would claim a caption moved when it
+did not.
+
+`0007` widened the vocabulary **by name** and **widened neither existing biconditional**, which is the
+surprising half — a caption is not a fact about the file, so `alt_text_changed` sits outside both right-hand
+sides and passes each with NULL.
+
+## The finding (F-103): the plan's justification for the column is false
+
+It read: *"an `<img>` with no alternative text on a menu is a card a screen reader renders as nothing."*
+
+That conflates a **missing** `alt` attribute — a screen reader announces the URL, here a bare UUIDv7 — with
+`alt=""`, which marks an image decorative and is correctly **skipped**. §11.1's card is a `<button>` holding
+the dish's name and price as text, so its accessible name is already *"Grilled salmon £24.00"*. **`""` is the
+right value for most pictures on this menu**, and the column earns its place only for the ones that say
+something a name does not — which is the true claim the same paragraph makes two clauses earlier.
+
+**F-101's mechanism one register up:** there a DDL sketch in a design document became a migration; here an
+*argument* became markup. Three gates read that file and none reads a sentence for whether it is true.
+Corrected rather than deleted (F-77's habit), and the gate is shaped by the defect: the *correct* value is
+usually empty, so the *incorrect* markup renders identically everywhere and exists only in the source.
+
+**One consequence nothing anticipated:** the `<img>` is **last in the document and first on the screen**. A
+button's accessible name is computed in document order, so a captioned picture placed first would announce
+its own description before the dish it describes.
 
 ---
 
-## Two things worth knowing before you read the diff
+## Veto points
 
-**One CSS declaration is load-bearing rather than presentational.** `.manage-picture-image` sets
-`max-width: 100%`. Nothing in this stack can resize an image, so that element's intrinsic width is whatever
-a camera produced — and without the constraint a 3000px photograph makes the **document** wider than a 375px
-viewport, so **§16.3 scenario 16 fails on a page whose every control is correctly placed.**
+Each is flagged because it is a decision rather than an implementation, with how to reverse it.
 
-**No test file was edited to accommodate new CSS.** The three new rules use the `.manage-` prefix, which
-`HandheldLayoutContractTests` already protects, and the attach form uses `.manage-inline-form`, which the
-375px barrier already reaches — F-93's rule obeyed by putting a new control under a selector that was
-already right.
+**1. The caption is a separate verb rather than a parameter on the attach.** This is the largest scope call in
+the slice: it costs a migration, an enum, an interface method, a workflow method, a form and five tests. To
+reverse: drop `SetMenuItemImageAltTextAsync` and its outcome enum, add `altText` as a sixth parameter to
+`AttachMenuItemImageAsync`, delete `alt_text_changed` from `0007` along with the third biconditional, and
+accept that fixing a typo re-uploads the photograph.
+
+**2. The thumbnail crops.** `object-fit: cover` on a fixed 4rem square. To reverse: in `app.css`, change
+`height: 4rem` to `height: auto` and delete `object-fit: cover` from
+`.order-menu-item.has-picture .order-menu-thumbnail`. Card heights then vary with each photograph's aspect
+ratio, which is what the re-layout exists to prevent — the trade is stated beside the rule.
+
+**3. The detail panel renders the picture too.** Not asked for by Stage 4c; §11.1's own text has promised it
+since Slice 39. To reverse: delete the `@if (PictureFor(chosenItem) is { } chosenPicture)` block from
+`TableOrderSurface.razor` and the `.order-menu-detail-picture` rule from `app.css`, and correct §11.1.
+
+**4. F-102 has no row in `DOCUMENTATION_REVIEW.md` and I did not backfill one.** Slice 52 put it in the
+status paragraph and in Appendix A but not in the ledger's table. F-103 has a row. Reversing a prior slice's
+filing decision is a decision, so it is **named as carried** rather than quietly fixed. If you want it, it is
+one row.
+
+**5. `alt` on the administrator's own thumbnail stays `""`.** The caption renders as visible text beside the
+file's facts instead. To reverse: change `alt=""` to `alt="@_picture.AltText"` in `ManageMenuItem.razor` and
+accept that a screen reader reads the dish's name, then the caption, on a page whose `<h1>` is that name.
 
 ---
 
 ## Test count arithmetic
 
-Uncompiled, per §18. **1223 → 1233.**
+Uncompiled, per §18. **1233 → 1242.**
 
-| Where | Assertions |
-| --- | --- |
-| `MenuItemImageSurfaceContractTests` (new) | 6 |
-| `MenuWiringTests` | 3 |
-| `ContentSecurityPolicyContractTests` | 1 |
-| **Total added** | **10** |
+| Class | Was | Now | Why |
+|---|---|---|---|
+| `MenuItemImageTests` | 11 | 15 | the caption stored without moving the identifier; the no-op and the clearing; the carry across a replace with no event; the two silent refusals |
+| `MenuItemImageSurfaceContractTests` | 6 | 10 | the caption form carries no file input; the guest card renders the picture and reads once; every `<img>` carries `alt`; the card's `alt` comes from the column |
+| `MenuWiringTests` | 26 | 27 | a caption is announced only when it moved, and arrives verbatim |
 
-§16.4's counted-class floor moves 27 → 28. §16.3 stays at seventeen. **Any deviation from 1233 is the first
-thing to investigate.**
+§16.4's counted-class floor **stays at 28** — the guest surface joined the existing class rather than
+founding a new one, because the route-helper claim is one claim over two files, and the census counts
+classes. §16.3 stays at seventeen.
+
+**Any deviation from 1242 is the first thing to investigate after a run.**
 
 ---
 
-## The two things to check first on a red run
+## What was verified, and what was not
 
-**1. Whether Blazor's static form handling dispatches a `multipart/form-data` post.** This is the
-load-bearing assumption of the transport decision. `_handler` is an ordinary form field and
-`HttpContext.Request.Form` reads multipart bodies, so the dispatch sees what it always sees — but no request
-was made. **The symptom if it is wrong is unmistakable:** the handler never runs, the page re-renders with
-no flash and no error, and nothing is written. The fallback is the minimal API endpoint the plan named, at
-the cost of a second authorization rule.
+**Verified.** The SHA-256 reconstruction above. A Razor tag-tree walk on both edited components **against the
+pristine files re-extracted from the dump** — with `@(…)` expressions masked, `ManageMenuItem.razor` is a
+clean tree before and after, and `TableOrderSurface.razor` retains exactly three pre-existing artefacts of a
+generic type in markup, identical before and after. §16.4's count gate **simulated in full**: 28 counted
+classes against a floor of 28, no ambiguity, no uncited class, no disagreement. The specification version
+gate simulated: header `1.38`, newest entry `v1.38`, all descending. The Markdown table gate simulated across
+all five edited documents. Brace and paren balance on every edited file, compared against the pristine file
+where a naive count was already non-zero. Every implementer of the three changed interfaces enumerated and
+updated. `Migrations/*.sql` confirmed to be a glob. The end-to-end harness confirmed to read the card's spans
+as **descendants**, so the new `.order-menu-body` wrapper cannot break scenario 17. Byte hygiene on all
+fourteen files. Every CSS custom property confirmed present in `:root`.
 
-**2. Whether `HttpContext.Request.Form.Files[name]` returns null rather than throwing for an absent part.**
-The handler treats null as an empty upload and reaches `BytesEmpty`. If the indexer throws, it is an
-unhandled exception on a form submitted with nothing chosen.
+**Not verified.** **Nothing was compiled** — no SDK, no database, no browser. `0007` has never run. **The
+4rem square has never been rendered**, so whether the crop treats a real photograph acceptably is a judgement
+you will want to make after looking at it — that is the likeliest thing in this slice to want an opinion. **No
+screen reader has read any of this**: the F-103 argument is reasoned from the accessible-name computation
+rather than observed, and the gate asserts the markup, which is the checkable half.
 
 ---
 
 ## Files in this archive
 
 | Path | New? |
-| --- | --- |
-| `src/MyRestaurant.WebApplication/Menu/MenuItemImageEndpoints.cs` | **new** |
+|---|---|
+| `src/MyRestaurant.DataAccess/Migrations/0007_menu_item_image_alt_text.sql` | **new** |
+| `src/MyRestaurant.DataAccess/Menu/MenuItemImages.cs` | modified |
 | `src/MyRestaurant.WebApplication/Menu/MenuWorkflow.cs` | modified |
-| `src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs` | modified |
-| `src/MyRestaurant.WebApplication/Program.cs` | modified |
+| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor` | modified |
 | `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuItem.razor` | modified |
 | `src/MyRestaurant.WebApplication/wwwroot/app.css` | modified |
-| `src/MyRestaurant.DataAccess/Menu/MenuItemImages.cs` | modified (F-102) |
-| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageSurfaceContractTests.cs` | **new** |
+| `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemImageTests.cs` | modified |
 | `tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs` | modified |
-| `tests/MyRestaurant.WebApplication.Tests/Security/ContentSecurityPolicyContractTests.cs` | modified |
-| `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs` | modified |
-| `docs/TECHNICAL_SPECIFICATION.md` | modified (v1.37) |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | modified |
-| `docs/DOCUMENTATION_REVIEW.md` | modified |
-| `docs/BUILD_PROGRESS.md` | modified |
-| `_CHANGES.md` | modified |
-
----
-
-## What is next
-
-**Stage 4c — the guest's menu**, which is the half that was actually asked for. A thumbnail beside the name
-rather than a hero above it, `loading="lazy"` below the first section, and an `alt_text` column: one `ALTER`
-with a `DEFAULT ''` on `0004`'s precedent, because a picture on a guest's card may say something its own
-name does not.
-
-**Still deferred by name:** whether a browser downscales before upload (a `<canvas>` round trip in
-`wwwroot/js/`, no schema change) — a phone camera produces four megabytes against a 512 KiB cap, so this is
-now the thing that decides whether the feature is usable by the person who asked for it.
+| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageSurfaceContractTests.cs` | modified |
+| `docs/TECHNICAL_SPECIFICATION.md` | modified (v1.38) |
+| `docs/DOCUMENTATION_REVIEW.md` | modified (F-103) |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | modified (Stage 4c landed) |
+| `docs/BUILD_PROGRESS.md` | modified (Slice 53) |
+| `_CHANGES.md` | this file |

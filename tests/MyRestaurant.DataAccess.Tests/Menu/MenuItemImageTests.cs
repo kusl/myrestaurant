@@ -55,6 +55,8 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
 
     private const string RemovedEvent = "removed";
 
+    private const string AltTextChangedEvent = "alt_text_changed";
+
     private const string CountImagesSql = """
         SELECT count(*)::int FROM menu_item_image;
         """;
@@ -72,7 +74,8 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
     private const string ReadEventsSql = """
         SELECT event_type       AS EventType,
                new_content_type AS NewContentType,
-               new_byte_length  AS NewByteLength
+               new_byte_length  AS NewByteLength,
+               new_alt_text     AS NewAltText
         FROM menu_item_image_event
         WHERE menu_item_identifier = @MenuItemIdentifier
         ORDER BY occurred_at, menu_item_image_event_identifier;
@@ -171,7 +174,11 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(PngBytes.Length, stored.ByteLength);
         Assert.Equal(_clock.UtcNow, stored.UploadedAt);
 
-        ImageEvent[] expected = [new(AttachedEvent, ImageFormat.PngContentType, PngBytes.Length)];
+        // A first attach has no caption, and "" is how §7 spells that — not null, so a surface tests
+        // Length. 0007's DEFAULT '' is what makes this true without the write naming the column.
+        Assert.Equal(string.Empty, stored.AltText);
+
+        ImageEvent[] expected = [new(AttachedEvent, ImageFormat.PngContentType, PngBytes.Length, null)];
 
         Assert.Equal(expected, await ReadHistoryAsync(item, cancellationToken));
     }
@@ -220,8 +227,8 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
 
         ImageEvent[] expected =
         [
-            new(AttachedEvent, ImageFormat.PngContentType, PngBytes.Length),
-            new(ReplacedEvent, ImageFormat.JpegContentType, JpegBytes.Length),
+            new(AttachedEvent, ImageFormat.PngContentType, PngBytes.Length, null),
+            new(ReplacedEvent, ImageFormat.JpegContentType, JpegBytes.Length, null),
         ];
 
         Assert.Equal(expected, await ReadHistoryAsync(item, cancellationToken));
@@ -257,8 +264,8 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         // which is what §8.2's two biconditionals require of that type.
         ImageEvent[] expected =
         [
-            new(AttachedEvent, ImageFormat.PngContentType, PngBytes.Length),
-            new(RemovedEvent, null, null),
+            new(AttachedEvent, ImageFormat.PngContentType, PngBytes.Length, null),
+            new(RemovedEvent, null, null, null),
         ];
 
         Assert.Equal(expected, await ReadHistoryAsync(item, cancellationToken));
@@ -540,6 +547,203 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
     }
 
     /// <summary>
+    /// The caption is written, the event carries it, and <b>the picture's identifier does not move</b> —
+    /// which is the reason this is a verb rather than a re-upload. An implementation that minted a new
+    /// identifier would pass a naive reading of "the caption changed" and would invalidate every cached
+    /// copy of an unchanged photograph across the building.
+    /// </summary>
+    [Fact]
+    public async Task ACaptionIsStoredAndItsEventCarriesItWithoutMovingTheIdentifier()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid item = await World().AddMenuItemAsync("Salmon", 18.50m, cancellationToken);
+        Guid image = _identifiers.Create();
+
+        await Administration().AttachMenuItemImageAsync(
+            image, item, ImageFormat.PngContentType, PngBytes, _administratorIdentifier, cancellationToken);
+
+        const string Caption = "Served on a bed of wilted greens with a lemon wedge";
+
+        Assert.Equal(
+            SetMenuItemImageAltTextOutcome.Changed,
+            await Administration().SetMenuItemImageAltTextAsync(
+                item, Caption, _administratorIdentifier, cancellationToken));
+
+        MenuItemImageMetadata? stored = await Directory().FindForItemAsync(item, cancellationToken);
+
+        Assert.NotNull(stored);
+        Assert.Equal(Caption, stored!.AltText);
+
+        // The address a browser may cache for a year is unchanged, and the bytes behind it still answer.
+        Assert.Equal(image, stored.MenuItemImageIdentifier);
+        Assert.NotNull(await Directory().ReadContentAsync(image, cancellationToken));
+
+        // §8.2's third biconditional in both directions: 'alt_text_changed' carries the caption and
+        // neither of the file's two facts, and the attach before it carries the file's two and no caption.
+        ImageEvent[] expected =
+        [
+            new(AttachedEvent, ImageFormat.PngContentType, PngBytes.Length, null),
+            new(AltTextChangedEvent, null, null, Caption),
+        ];
+
+        Assert.Equal(expected, await ReadHistoryAsync(item, cancellationToken));
+    }
+
+    /// <summary>
+    /// Saving the caption that is already stored writes nothing, and <c>""</c> clears it.
+    ///
+    /// <para><b>The no-op arm is the ordinary case rather than an edge case</b>, which is why it is asserted
+    /// rather than assumed: §11.4's form is pre-filled with what is stored, so every operator who opens the
+    /// picture panel, changes a price and presses the caption's own button submits an unchanged caption. A
+    /// verb that wrote an event for that would fill the history a person reads with rows recording that
+    /// somebody pressed a button.</para>
+    ///
+    /// <para>The clearing half is asserted in the same fact because it is the same rule read the other way:
+    /// <c>""</c> is a value rather than an absence (§7), so clearing a caption is a change and writes an
+    /// event, where clearing an <em>already empty</em> one is not.</para>
+    /// </summary>
+    [Fact]
+    public async Task ACaptionThatDidNotMoveWritesNothingAndAnEmptyOneClearsIt()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid item = await World().AddMenuItemAsync("Salmon", 18.50m, cancellationToken);
+
+        await Administration().AttachMenuItemImageAsync(
+            _identifiers.Create(),
+            item,
+            ImageFormat.PngContentType,
+            PngBytes,
+            _administratorIdentifier,
+            cancellationToken);
+
+        // A fresh picture is captioned "", so writing "" is the no-op before anything else happens.
+        Assert.Equal(
+            SetMenuItemImageAltTextOutcome.NoChange,
+            await Administration().SetMenuItemImageAltTextAsync(
+                item, string.Empty, _administratorIdentifier, cancellationToken));
+
+        await Administration().SetMenuItemImageAltTextAsync(
+            item, "Grilled, skin on", _administratorIdentifier, cancellationToken);
+
+        Assert.Equal(
+            SetMenuItemImageAltTextOutcome.NoChange,
+            await Administration().SetMenuItemImageAltTextAsync(
+                item, "Grilled, skin on", _administratorIdentifier, cancellationToken));
+
+        Assert.Equal(
+            SetMenuItemImageAltTextOutcome.Changed,
+            await Administration().SetMenuItemImageAltTextAsync(
+                item, string.Empty, _administratorIdentifier, cancellationToken));
+
+        MenuItemImageMetadata? stored = await Directory().FindForItemAsync(item, cancellationToken);
+
+        Assert.NotNull(stored);
+        Assert.Equal(string.Empty, stored!.AltText);
+
+        // Four calls, two of which committed: the attach, the caption, the clearing. Three events.
+        ImageEvent[] expected =
+        [
+            new(AttachedEvent, ImageFormat.PngContentType, PngBytes.Length, null),
+            new(AltTextChangedEvent, null, null, "Grilled, skin on"),
+            new(AltTextChangedEvent, null, null, string.Empty),
+        ];
+
+        Assert.Equal(expected, await ReadHistoryAsync(item, cancellationToken));
+    }
+
+    /// <summary>
+    /// <b>A replace carries the caption forward onto the new row and writes no event for the carry</b>,
+    /// which is the one line of behaviour <c>0007</c> exists to permit.
+    ///
+    /// <para>Both halves have a plausible wrong implementation that leaves a plausible artefact. Resetting
+    /// to <c>""</c> would silently strip alternative text off a guest's menu as a side effect of somebody
+    /// improving a photograph, and nothing else in this file would notice. Writing an
+    /// <c>alt_text_changed</c> event for the carry would put a row in §11.4's history claiming a caption
+    /// moved when it did not — the same species of noise the no-op rule exists to keep out.</para>
+    /// </summary>
+    [Fact]
+    public async Task ACaptionSurvivesAReplaceAndTheCarryWritesNoEvent()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid item = await World().AddMenuItemAsync("Salmon", 18.50m, cancellationToken);
+        Guid first = _identifiers.Create();
+        Guid second = _identifiers.Create();
+
+        await Administration().AttachMenuItemImageAsync(
+            first, item, ImageFormat.PngContentType, PngBytes, _administratorIdentifier, cancellationToken);
+
+        const string Caption = "Whole fillet, skin side up";
+
+        await Administration().SetMenuItemImageAltTextAsync(
+            item, Caption, _administratorIdentifier, cancellationToken);
+
+        Assert.Equal(
+            AttachMenuItemImageOutcome.Replaced,
+            (await Administration().AttachMenuItemImageAsync(
+                second,
+                item,
+                ImageFormat.JpegContentType,
+                JpegBytes,
+                _administratorIdentifier,
+                cancellationToken)).Outcome);
+
+        MenuItemImageMetadata? stored = await Directory().FindForItemAsync(item, cancellationToken);
+
+        Assert.NotNull(stored);
+        Assert.Equal(second, stored!.MenuItemImageIdentifier);
+        Assert.Equal(Caption, stored.AltText);
+
+        ImageEvent[] expected =
+        [
+            new(AttachedEvent, ImageFormat.PngContentType, PngBytes.Length, null),
+            new(AltTextChangedEvent, null, null, Caption),
+            new(ReplacedEvent, ImageFormat.JpegContentType, JpegBytes.Length, null),
+        ];
+
+        Assert.Equal(expected, await ReadHistoryAsync(item, cancellationToken));
+
+        // And the caption goes with the bytes when they go: it is a fact about the photograph, not about
+        // the dish, which is 0007's reason for putting the column where it is.
+        await Administration().RemoveMenuItemImageAsync(
+            item, _administratorIdentifier, cancellationToken);
+
+        Assert.Null(await Directory().FindForItemAsync(item, cancellationToken));
+    }
+
+    /// <summary>
+    /// A caption for a picture that is not there and a caption for an item that is not there are two
+    /// answers, both silent. The first is reachable by two administrators seconds apart — one removes the
+    /// photograph while the other is typing about it — and §11.4 reports it in place rather than
+    /// redirecting, which is only possible because it is distinguishable from the second.
+    /// </summary>
+    [Fact]
+    public async Task ACaptionIsRefusedWithNoPictureAndWithNoItem()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid bare = await World().AddMenuItemAsync("Soup", 4.50m, cancellationToken);
+
+        Assert.Equal(
+            SetMenuItemImageAltTextOutcome.NoImage,
+            await Administration().SetMenuItemImageAltTextAsync(
+                bare, "A bowl of soup", _administratorIdentifier, cancellationToken));
+
+        Assert.Equal(
+            SetMenuItemImageAltTextOutcome.MenuItemNotFound,
+            await Administration().SetMenuItemImageAltTextAsync(
+                _identifiers.Create(), "Nothing", _administratorIdentifier, cancellationToken));
+
+        Assert.Equal(0, await World().CountAsync(CountEventsSql, cancellationToken));
+    }
+
+    /// <summary>
     /// A PNG whose signature is real and whose remainder is padding, at an exact total length. The write
     /// reads the first eight bytes and no more (§7), so padding is the honest way to reach a size without
     /// committing a large binary to this repository.
@@ -580,5 +784,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
     private sealed record ImageEvent(
         string EventType,
         string? NewContentType,
-        int? NewByteLength);
+        int? NewByteLength,
+        string? NewAltText);
 }

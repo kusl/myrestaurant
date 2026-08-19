@@ -1100,19 +1100,86 @@ about. Named rather than quietly skipped.
 
 ---
 
-## Stage 4c — images: the guest's menu
+## ~~Stage 4c — images: the guest's menu~~ — **landed, M6 Slice 53**
 
-**Not started, and it is the half that was actually asked for.** §11.1's thumbnail. Two things have to be
+**Landed, and it was the half that was actually asked for.** §11.1's thumbnail. Two things have to be
 decided together and both are about a 375px screen rather than about bytes:
 
 1. **The card, re-laid out rather than decorated.** An image per card doubles the height of the menu. A
    thumbnail *beside* the name rather than a hero above it, and `loading="lazy"` on everything below the
    first section.
-2. **`alt_text`.** One `ALTER` with a `DEFAULT ''` on `0004`'s precedent, and a field on the item's picture
-   form. §11.4's own panel needs none and renders `alt=""` deliberately — the picture sits under the item's
-   name in the page's `<h1>`, so alternative text there would make a screen reader read the dish twice —
-   but a guest's card may carry a picture that says something its name does not, and an `<img>` with no
-   alternative text on a menu is a card a screen reader renders as nothing.
+2. **`alt_text`.** One `ALTER` with a `DEFAULT ''` on `0004`'s precedent. §11.4's own panel needs none and
+   renders `alt=""` deliberately — the picture sits under the item's name in the page's `<h1>`, so
+   alternative text there would make a screen reader read the dish twice — but a guest's card may carry a
+   picture that says something its name does not.
+
+   **Two clauses that used to end this point were wrong, and the first is F-103.** It read: *"an `<img>`
+   with no alternative text on a menu is a card a screen reader renders as nothing."* That conflates a
+   **missing** `alt` attribute, where a screen reader falls back to announcing the URL — here a bare
+   UUIDv7 — with `alt=""`, which marks an image decorative and is correctly **skipped**. §11.1's card is a
+   `<button>` holding the dish's name and its price as text, so the button's accessible name is already
+   *"Grilled salmon £24.00"*: sufficient, and `""` is therefore the **right** value for most pictures on
+   this menu. The column is kept for the narrower and true reason above, and the sentence is corrected
+   rather than deleted because the cheaper direction was available (F-77's habit, as for F-100). The second
+   clause said the caption is *"a field on the item's picture form"*; it is **its own form and its own
+   verb**, because the upload form requires a file and a caption settable only there would make correcting
+   a typo cost a re-upload — see below.
+
+### What landed, and the four places it differs from the text above
+
+**The thumbnail is a fixed 4rem square under `object-fit: cover`.** Point 1 said *beside the name* and
+stopped there; the size and the crop are this slice's. `height: auto` was the obvious alternative and it
+defeats the point: nothing in this stack can resize an image, so a portrait photograph would render twice
+as tall as it is wide and put the card height straight back where the whole re-layout started. **What the
+crop costs is the edges of the frame**, and it is paid back in the detail panel, which renders the picture
+uncropped — §11.1 has named that panel the surface images are read on since Slice 39, so it was already
+owed one. Reverting the crop is one declaration and the consequence is written beside it.
+
+**`loading="lazy"` is per heading, not "everything below the first section".** Those are the same rule; what
+the plan did not say is why the cut is not per *card*. How many cards sit above the fold depends on how long
+each description is, how wide the viewport is and how large the reader has set their text — none of which
+the server knows. A heading is the coarsest unit that is certainly right at one end, and a card count would
+be a number invented here and wrong on somebody's phone. `eager` is written out rather than left to the
+default, so that the next reader can tell a decision from an oversight.
+
+**The caption is its own verb, and `AttachMenuItemImageAsync`'s signature did not change.** Point 2 called
+it *a field on the item's picture form*, which would have been a sixth parameter on the attach. It is
+refused for a concrete reason: the upload form requires a file, so a caption settable only there makes
+correcting a typo cost a re-upload — a new `menu_item_image_identifier`, every cached copy of an unchanged
+photograph invalidated across the building for a year, and a `replaced` event recording a replacement that
+replaced nothing. So `0007` adds `alt_text_changed`, `SetMenuItemImageAltTextAsync` writes one `text`
+column, and **the attach carries the caption forward** from the row it deletes onto the row it writes,
+without an event, because nothing about the caption changed. Somebody replacing a photograph of the salmon
+with a better photograph of the salmon has not withdrawn what they wrote about it.
+
+**The `<img>` is last in the document and first on the screen**, which nothing above anticipated. A button's
+accessible name is computed from its contents in document order, so a captioned picture placed first
+announces its own description *before* the dish it describes. `grid-column` moves it into the left column;
+reordering a non-interactive element visually is free, because there is no focus order for the visual order
+to disagree with — and that is exactly why the same trick would be wrong for a control.
+
+### What is open after this stage
+
+**No §16.3 scenario touches a picture.** The seventeen are unchanged. A picture scenario needs a fixture
+image the harness has no way to produce, and inventing bytes inside the harness would be a test arranging
+what it asserts about. It is now the largest end-to-end gap in the menu after the two resequencing verbs.
+
+**Nothing reads `menu_item_image_event`.** `alt_text_changed` is written from its first day and rendered
+nowhere, so §11.4 still cannot say when a picture last changed or who changed it. Named on the same rule
+that named the write, and it is now four event types deep rather than three — the panel and its reader
+arrive together, as `IMenuSectionEventLog` did with the section editor.
+
+**Whether a browser downscales before upload.** Fourth slice carried, and it has stopped being a nicety: a
+phone camera produces four megabytes against a 512 KiB cap, so the answer to most uploads is still *too
+large*, and now the pictures those uploads would have become are the feature a guest sees. It changes no
+schema — a `<canvas>` round trip in `wwwroot/js/` — and it is the thing that decides whether this stage is
+usable by the person who asked for it.
+
+**A browser that sends `application/octet-stream` for a genuine PNG is refused.** Carried with the fix
+written down.
+
+**No `alt_text` on the administrator's own thumbnail, deliberately.** It renders `alt=""` and shows the
+caption as visible text instead. Not an omission and not open — recorded so it is not repaired by mistake.
 
 ### The four consequences this stage was planned from
 

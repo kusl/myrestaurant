@@ -5,8 +5,16 @@ using Xunit;
 namespace MyRestaurant.WebApplication.Tests.Menu;
 
 /// <summary>
-/// The picture form and the route that serves what it stores, asserted against the markup and the
-/// composition root (TECHNICAL_SPECIFICATION §7, §11.4, §16.4).
+/// The picture markup at both ends of the feature — the administrator's forms, the route that serves what
+/// they store, and the guest's card that renders it — asserted against the markup and the composition root
+/// (TECHNICAL_SPECIFICATION §7, §11.1, §11.4, §16.4).
+///
+/// <para><b>Both surfaces are in one class rather than two, and the route helper is why.</b> Neither page
+/// may build a picture's address by hand: §7's route is keyed on the <em>image</em> so that an immutable
+/// cache header is a true statement, and a path written out in either file goes wrong when the route moves.
+/// That is one claim over two files, so a second class would either assert it twice or leave one surface
+/// unguarded — and the §16.4 census counts classes, so splitting would also make the count move for a
+/// filing decision rather than for a fact.</para>
 ///
 /// <para><b>Why this exists rather than more facts on <c>MenuWiringTests</c>.</b> That file asserts what
 /// the workflow <em>does</em> with an upload once it has one. Every claim here is about whether an upload
@@ -39,12 +47,20 @@ public sealed class MenuItemImageSurfaceContractTests
     private const string ItemPageRelativePath =
         "src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuItem.razor";
 
+    private const string GuestPageRelativePath =
+        "src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor";
+
+    private const string ComponentsRelativePath = "src/MyRestaurant.WebApplication/Components";
+
     private const string CompositionRootRelativePath = "src/MyRestaurant.WebApplication/Program.cs";
 
     /// <summary>The <c>@formname</c> the attach form posts under, and the remove form's.</summary>
     private const string AttachFormName = "menu-item-image-attach";
 
     private const string RemoveFormName = "menu-item-image-remove";
+
+    /// <summary>The caption editor's own <c>@formname</c> (Stage 4c).</summary>
+    private const string AltTextFormName = "menu-item-image-alt-text";
 
     /// <summary>
     /// The scan is real and the page is the one this file thinks it is (F-41). Every assertion below
@@ -60,6 +76,41 @@ public sealed class MenuItemImageSurfaceContractTests
         Assert.Contains($"@formname=\"{AttachFormName}\"", page, StringComparison.Ordinal);
         Assert.Contains($"@formname=\"{RemoveFormName}\"", page, StringComparison.Ordinal);
         Assert.Contains("<input type=\"file\"", page, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The caption is edited by a form of its own, and that form does <b>not</b> carry a file input.
+    ///
+    /// <para><b>The negative half is the claim.</b> A caption folded into the upload form would compile,
+    /// render and work — and would make correcting a typo cost a re-upload: a new
+    /// <c>menu_item_image_identifier</c>, every cached copy of an unchanged photograph invalidated across
+    /// the building for a year, and a <c>replaced</c> event recording a replacement that replaced nothing.
+    /// Nothing else in the suite can see that, because the outcome of the wrong design is a page that
+    /// works.</para>
+    /// </summary>
+    [Fact]
+    public void TheCaptionIsEditedByItsOwnFormWithNoFileInput()
+    {
+        string page = ItemPage();
+
+        Assert.Contains($"FormName=\"{AltTextFormName}\"", page, StringComparison.Ordinal);
+
+        int marker = page.IndexOf($"FormName=\"{AltTextFormName}\"", StringComparison.Ordinal);
+        int open = page.LastIndexOf("<EditForm", marker, StringComparison.Ordinal);
+        Assert.True(open >= 0, "the caption form's marker is not inside an <EditForm> tag.");
+
+        int close = page.IndexOf("</EditForm>", marker, StringComparison.Ordinal);
+        Assert.True(close > marker, "the caption form is unterminated.");
+
+        string form = page[open..close];
+
+        Assert.DoesNotContain("type=\"file\"", form, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            MenuItemImageUpload.FileFieldName + "\"", form, StringComparison.Ordinal);
+
+        // F-93's rule: a surface acquiring a control acquires the selector §16.3 scenario 16 reaches. The
+        // barrier reaches `.manage-inline-form button` and does not reach `.form-actions button`.
+        Assert.Contains("class=\"manage-inline-form\"", form, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -163,7 +214,119 @@ public sealed class MenuItemImageSurfaceContractTests
         Assert.Contains("immutable", MenuImageRoutes.ImmutableCacheControl, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// §11.1's card renders the picture, builds its address through the route helper, and reads the whole
+    /// menu's pictures in <b>one</b> query.
+    ///
+    /// <para><b>The single-read half is the one with no visible symptom.</b>
+    /// <see cref="IMenuItemImageDirectory.ListAsync"/> exists so that a surface decorating a list of cards
+    /// asks once; <c>FindForItemAsync</c> is the item page's, and a call to it from inside this component's
+    /// render loop would turn a sixty-dish menu into sixty queries per notification — a page that looks
+    /// exactly right and gets slower as the restaurant's menu grows, which is the failure this assertion
+    /// exists to catch while the menu is still small enough that nobody would notice.</para>
+    /// </summary>
+    [Fact]
+    public void TheGuestMenuRendersThePictureAndReadsThemAllAtOnce()
+    {
+        string page = GuestPage();
+
+        Assert.True(page.Length > 1000, $"{GuestPageRelativePath} is too short to be the guest surface.");
+
+        Assert.Contains("order-menu-thumbnail", page, StringComparison.Ordinal);
+        Assert.Contains("MenuImageRoutes.ForImage(", page, StringComparison.Ordinal);
+
+        // One read, and it is the list read. The negative is the substantive half.
+        Assert.Contains("MenuItemPictures.ListAsync(", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("FindForItemAsync", page, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// <b>Every <c>&lt;img&gt;</c> in the component tree carries an <c>alt</c> attribute</b>, which is
+    /// F-103 turned into something a build can refuse.
+    ///
+    /// <para><b>The distinction this gate protects is not cosmetic, and the plan got it backwards.</b>
+    /// <c>docs/MENU_AND_HANDHELD_PLAN.md</c> justified the <c>alt_text</c> column by saying that an
+    /// <c>&lt;img&gt;</c> with no alternative text on a menu is a card a screen reader renders as nothing.
+    /// That conflates two different things. A <b>missing</b> <c>alt</c> attribute makes a screen reader fall
+    /// back to announcing the URL — here a bare UUID, which is worse than silence. <c>alt=""</c> makes it
+    /// <em>skip</em> an image whose surroundings already say what it is, and on §11.1's card they do, because
+    /// the card is a button holding the dish's name and its price as text. So <c>""</c> is the correct value
+    /// for most pictures on this menu and the column earns its place only for the ones that say something a
+    /// name does not.</para>
+    ///
+    /// <para><b>Which is exactly why this needs a gate rather than a sentence.</b> The right value is often
+    /// the empty one, so the wrong markup — no attribute at all — is invisible on any screen and produces a
+    /// page that looks perfect. The one thing that is never correct is omitting the attribute, and that is
+    /// what is asserted. Its own non-vacuity guard is the count, because a scan that found no
+    /// <c>&lt;img&gt;</c> at all would pass by having nothing to judge (F-41).</para>
+    /// </summary>
+    [Fact]
+    public void EveryImageInTheTreeCarriesAnAltAttribute()
+    {
+        List<string> missing = [];
+        int images = 0;
+
+        foreach (string file in Directory
+            .EnumerateFiles(PathUnder(ComponentsRelativePath), "*.razor", SearchOption.AllDirectories)
+            .Order(StringComparer.Ordinal))
+        {
+            string text = File.ReadAllText(file);
+            string name = Path.GetFileName(file);
+
+            for (int index = text.IndexOf("<img", StringComparison.Ordinal);
+                 index >= 0;
+                 index = text.IndexOf("<img", index + 4, StringComparison.Ordinal))
+            {
+                int close = text.IndexOf('>', index);
+
+                // An unterminated tag is a defect of its own and is reported as one rather than skipped:
+                // a scan that quietly ignored what it could not parse is how a gate stops reaching things.
+                Assert.True(close > index, $"{name} has an unterminated <img> tag.");
+
+                string tag = text[index..close];
+                images++;
+
+                if (!tag.Contains(" alt=", StringComparison.Ordinal))
+                {
+                    missing.Add($"{name}: {tag.Trim()}");
+                }
+            }
+        }
+
+        Assert.True(images >= 2, $"only {images} <img> tag(s) were found, so nothing is being tested.");
+
+        Assert.True(
+            missing.Count == 0,
+            $"{missing.Count} <img> tag(s) carry no alt attribute: {string.Join("; ", missing)}. An"
+                + " omitted alt makes a screen reader announce the URL — for a menu picture that is a bare"
+                + " UUID. alt=\"\" is the correct value for a picture whose surroundings already name it,"
+                + " and it is a DIFFERENT thing: write the attribute and leave it empty.");
+    }
+
+    /// <summary>
+    /// The guest's card takes its <c>alt</c> from the stored column, and §11.4's own thumbnail does not.
+    ///
+    /// <para><b>The two surfaces want different things from one column and the difference is the
+    /// assertion.</b> On the administrator's item page the picture sits under the dish's name in the page's
+    /// <c>&lt;h1&gt;</c>, so a caption there would make a screen reader read the dish twice; on a guest's
+    /// card among sixty others it is the only thing that can say what the photograph shows. A page that
+    /// hard-coded <c>alt=""</c> on the guest's card would render identically, pass the gate above, and make
+    /// the whole column unreachable from the only surface it was added for.</para>
+    /// </summary>
+    [Fact]
+    public void TheGuestCardTakesItsAltTextFromTheStoredColumn()
+    {
+        Assert.Contains("alt=\"@picture.AltText\"", GuestPage(), StringComparison.Ordinal);
+
+        // The administrator's thumbnail keeps the empty one, deliberately, and the constant that carries
+        // the caption is still the record's own member rather than a second spelling of the column.
+        Assert.Contains("class=\"manage-picture-image\"", ItemPage(), StringComparison.Ordinal);
+        Assert.Contains("AltTextInput.AltText", ItemPage(), StringComparison.Ordinal);
+    }
+
     private static string ItemPage() => File.ReadAllText(PathUnder(ItemPageRelativePath));
+
+    private static string GuestPage() => File.ReadAllText(PathUnder(GuestPageRelativePath));
 
     /// <summary>
     /// The opening tag of the form posting under <paramref name="formName"/>, so an attribute asserted

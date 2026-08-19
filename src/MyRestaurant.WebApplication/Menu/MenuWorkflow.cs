@@ -336,6 +336,27 @@ public interface IMenuWorkflow
         Guid menuItemIdentifier,
         Guid actorPersonIdentifier,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes the sentence a screen reader reads instead of the picture (§7, §11.1, Stage 4c) and, if the
+    /// caption actually moved, announces it so every open menu re-reads itself.
+    ///
+    /// <para><b>It publishes, and the reason is the one that made the section description publish for nine
+    /// slices before anything rendered it.</b> A caption is on the guest's card as of this stage, so this
+    /// is not even the speculative case: an administrator writing one while a party is ordering changes
+    /// what a screen reader announces on every open picker, and a guest who has to reload to hear it is a
+    /// guest for whom the caption arrived too late to matter.</para>
+    ///
+    /// <para>Conditional on <c>Changed</c> alone. <c>NoChange</c> is somebody saving a caption they did not
+    /// edit — the ordinary case, because §11.4's form is pre-filled with what is stored — and
+    /// <c>NoImage</c> and <c>MenuItemNotFound</c> are a page left open. All three commit nothing, on the
+    /// rule every other verb in this file follows.</para>
+    /// </summary>
+    Task<SetMenuItemImageAltTextOutcome> SetMenuItemImageAltTextAsync(
+        Guid menuItemIdentifier,
+        string altText,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -707,6 +728,25 @@ public sealed class MenuWorkflow : IMenuWorkflow
             .ConfigureAwait(false);
 
         if (outcome is RemoveMenuItemImageOutcome.Removed)
+        {
+            _broadcaster.Publish(new MenuChanged());
+        }
+
+        return outcome;
+    }
+
+    public async Task<SetMenuItemImageAltTextOutcome> SetMenuItemImageAltTextAsync(
+        Guid menuItemIdentifier,
+        string altText,
+        Guid actorPersonIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        SetMenuItemImageAltTextOutcome outcome = await _images
+            .SetMenuItemImageAltTextAsync(
+                menuItemIdentifier, altText, actorPersonIdentifier, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (outcome is SetMenuItemImageAltTextOutcome.Changed)
         {
             _broadcaster.Publish(new MenuChanged());
         }

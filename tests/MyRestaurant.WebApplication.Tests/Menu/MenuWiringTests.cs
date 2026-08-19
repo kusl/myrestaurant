@@ -974,6 +974,56 @@ public sealed class MenuWiringTests
         }
     }
 
+    /// <summary>
+    /// A caption that moved is announced; one that did not, and one with nothing to caption, are not.
+    ///
+    /// <para><b>The middle arm is the ordinary case rather than an edge case, and that is why it is
+    /// asserted.</b> §11.4's caption form is pre-filled with what is stored, so the commonest submission of
+    /// it is an unchanged caption — a workflow keyed on "the call returned" rather than on <c>Changed</c>
+    /// would tell every open surface in the building to re-query the menu because somebody pressed a
+    /// button. <c>NoImage</c> is two administrators seconds apart, one removing a photograph while the
+    /// other types about it, and <c>MenuItemNotFound</c> is a page left open.</para>
+    ///
+    /// <para>The caption is asserted to arrive <b>verbatim</b>, on the same reading as the upload's bytes
+    /// one fact up: nothing in this verb's contract permits the shell to trim, case-fold or normalise text
+    /// somebody wrote, and here a trim would not merely tidy — <c>""</c> means no caption, so trimming a
+    /// space is a clearing nobody asked for.</para>
+    /// </summary>
+    [Fact]
+    public async Task ACaption_IsAnnouncedOnlyWhenItMoved_AndArrivesVerbatim()
+    {
+        const string Caption = "  Served on a bed of wilted greens  ";
+
+        FakeMenuItemImageAdministration changed = new();
+        RecordingBroadcaster changedBroadcaster = new();
+
+        Assert.Equal(
+            SetMenuItemImageAltTextOutcome.Changed,
+            await WorkflowOver(changed, changedBroadcaster).SetMenuItemImageAltTextAsync(
+                MenuItemIdentifier, Caption, ActorIdentifier, TestContext.Current.CancellationToken));
+
+        Assert.Equal(MenuItemIdentifier, changed.LastMenuItemIdentifier);
+        Assert.Equal(Caption, changed.LastAltText);
+        Assert.Equal(ActorIdentifier, changed.LastActor);
+        Assert.IsType<MenuChanged>(Assert.Single(changedBroadcaster.Published));
+
+        foreach (SetMenuItemImageAltTextOutcome quiet in new[]
+        {
+            SetMenuItemImageAltTextOutcome.NoChange,
+            SetMenuItemImageAltTextOutcome.NoImage,
+            SetMenuItemImageAltTextOutcome.MenuItemNotFound,
+        })
+        {
+            FakeMenuItemImageAdministration images = new() { AltTextOutcome = quiet };
+            RecordingBroadcaster broadcaster = new();
+
+            await WorkflowOver(images, broadcaster).SetMenuItemImageAltTextAsync(
+                MenuItemIdentifier, Caption, ActorIdentifier, TestContext.Current.CancellationToken);
+
+            Assert.Empty(broadcaster.Published);
+        }
+    }
+
     // Four overloads, distinguished by their first parameter: whichever write service the test is about
     // is the one it passes, and the others are default fakes nothing under test ever calls.
     private static MenuWorkflow WorkflowOver(
@@ -1380,6 +1430,18 @@ public sealed class MenuWiringTests
         public RemoveMenuItemImageOutcome RemoveOutcome { get; init; }
             = RemoveMenuItemImageOutcome.Removed;
 
+        /// <summary>
+        /// The caption the workflow handed through, recorded verbatim. <b>Not trimmed and not normalised
+        /// by this fake</b>, because the claim under test is that the shell alters nothing — and a caption
+        /// is the one argument in this file where a "helpful" trim would change meaning rather than
+        /// tidy it: <c>""</c> means <em>no caption</em> (§7), so a shell that trimmed a single space would
+        /// silently turn one operator's edit into a clearing.
+        /// </summary>
+        public string? LastAltText { get; private set; }
+
+        public SetMenuItemImageAltTextOutcome AltTextOutcome { get; init; }
+            = SetMenuItemImageAltTextOutcome.Changed;
+
         public Task<AttachMenuItemImageResult> AttachMenuItemImageAsync(
             Guid menuItemImageIdentifier,
             Guid menuItemIdentifier,
@@ -1415,6 +1477,19 @@ public sealed class MenuWiringTests
             LastActor = actorPersonIdentifier;
 
             return Task.FromResult(RemoveOutcome);
+        }
+
+        public Task<SetMenuItemImageAltTextOutcome> SetMenuItemImageAltTextAsync(
+            Guid menuItemIdentifier,
+            string altText,
+            Guid actorPersonIdentifier,
+            CancellationToken cancellationToken = default)
+        {
+            LastMenuItemIdentifier = menuItemIdentifier;
+            LastAltText = altText;
+            LastActor = actorPersonIdentifier;
+
+            return Task.FromResult(AltTextOutcome);
         }
     }
 

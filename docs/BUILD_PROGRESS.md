@@ -3327,3 +3327,282 @@ residual, carried.
 it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried.
+
+---
+
+# M6 Slice 53 — the picture a guest can finally see, and a plan that argued for it wrongly
+
+## Read this first: Slice 52 was green, the count matched exactly, and the session before it was wrong about where the project was
+
+**1233 predicted, 1233 observed, zero failures.** §18's arithmetic has now matched to the digit for five
+consecutive slices. Seventeen end-to-end scenarios passed against real browsers twice — the Debug suite and
+the Release suite under `scripts/ci_local.sh --with-all --with-e2e` — and every local gate reported passing.
+The only `Error:` lines in the log are the two `run.sh --containers-only` prints about a Caddy container that
+does not exist yet, which is a carried item rather than a regression.
+
+**And it happened again, which is why this paragraph is here for the second slice running.** The session that
+authored *this* slice arrived believing the tree was at **Slice 47** and that `ResequenceMenuSectionsAsync`
+was unwritten. It was at Slice 52, and that verb landed in Slice 47 with the item-level one in Slice 48. Six
+slices of drift, from a summary of prior work rather than from the tree.
+
+**The reconstruction from `dump.txt` is what settles this, every time, and it is cheap.** 363 file records
+parsed, **361 verified against their SHA-256 exactly**; the two exceptions are both by design — `export.sh`
+contains the dump delimiter as literal text and is excluded, and `LICENSE` is elided to metadata and hash.
+Doing that read *before* authoring anything is the difference between a slice and a fiction. The rule is
+already written down for the withheld archive; it holds for the whole tree.
+
+This is **Stage 4c**, plus the finding found while reading the paragraph that specified it.
+
+---
+
+## The stage: §11.1 renders the picture, and the card was re-laid out rather than decorated
+
+`0006` put a picture in the database, Stage 4b put it on the administrator's page and on a route, and the
+guest's menu — the half that was actually asked for — showed nothing. `IMenuItemImageDirectory.ListAsync`
+had been **a read with no caller** for three slices, named each time on the rule that names an unreachable
+write and each time as the weaker case, because an unread read cannot change anything without telling
+anybody. It has its caller.
+
+### The thumbnail, and why the crop is the decision rather than the placement
+
+The plan said *a thumbnail beside the name rather than a hero above it* and stopped. The placement is the
+easy half: an image per card roughly **doubles** the height of the menu, and at 375px the card grid is
+already one column, so doubling card height doubles how far a guest scrolls to compare two dishes.
+
+What the plan did not settle is the size, and there the obvious choice is wrong. **`width: 4rem; height:
+auto` defeats the entire re-layout.** Nothing in this stack can resize an image — §7 stores what it is
+given, because there is no free-libre .NET imaging library available for this use — so the intrinsic
+dimensions of that element are whatever somebody's camera produced. A portrait photograph at `height: auto`
+renders twice as tall as it is wide, and the card height is back where it started. So it is a **fixed 4rem
+square under `object-fit: cover`**.
+
+**That crops, and the crop is paid for rather than hidden.** The detail panel renders the same picture
+**uncropped** — which §11.1 has owed since Slice 39, when it named that panel *"the surface that item
+descriptions, and later ratings and images, are read on"*. A guest who wants the whole frame taps the dish.
+Reverting the crop is one declaration and the consequence is written beside it in `app.css`.
+
+### `loading` is per heading, and the interesting part is why not per card
+
+`loading="lazy"` on everything after the first heading is what the plan asked for. What is worth recording is
+why the cut is not finer: **how many cards sit above the fold depends on how long each description is, how
+wide the viewport is, and how large the reader has set their text**, none of which the server knows. A
+heading is the coarsest unit that is certainly right at one end — the first heading's cards are what a guest
+is looking at when the page arrives, and no card in the second heading is, on any screen §11.12 targets. A
+card count would be a number invented here and wrong on somebody's phone.
+
+`eager` is written out rather than left to the default, because the interesting property of that attribute is
+that it was *decided*: an omitted attribute reads as an oversight and the next reader could not tell.
+
+### One read, and it is the list read
+
+The pictures are read in the same pass as the menu and re-read on the same `MenuChanged`, because a picture
+dictionary loaded once at initialisation would be **a second place for the menu to be stale** — which is
+precisely what `GroupedMenu`'s own note refuses one register up. The assertion that guards it is negative:
+`FindForItemAsync` must not appear in that component at all. A per-card lookup would render a page that
+looks exactly right and gets slower as the restaurant's menu grows, which is a defect with no symptom until
+it has one.
+
+---
+
+## The caption: a verb, not a field, and `AttachMenuItemImageAsync`'s signature did not change
+
+The plan called `alt_text` *"one `ALTER` with a `DEFAULT ''` … and a field on the item's picture form"*. The
+`ALTER` is right. The field is not, and the reason is concrete rather than aesthetic.
+
+**The upload form requires a file.** So a caption settable only there means that correcting a typo costs a
+re-upload: a new `menu_item_image_identifier`, every cached copy of an **unchanged** photograph invalidated
+across the building for a year, and a `replaced` event recording a replacement that replaced nothing. The
+whole point of keying §7's route on the image was that the URL is a content address; a caption is not
+content.
+
+So `0007` adds `alt_text_changed`, `SetMenuItemImageAltTextAsync` writes one `text` column and moves no
+identifier, no bytes and not `uploaded_at` — which says when the *picture* arrived, and moving it would make
+§11.4's panel report a photograph as newer than it is.
+
+**And the attach carries the caption forward**, from the row it deletes onto the row it writes, with **no
+event for the carry**. Both halves have a plausible wrong implementation that leaves a plausible artefact.
+Resetting to `''` would strip alternative text off a guest's menu as a side effect of somebody improving a
+photograph, and nothing else in the suite would notice; writing an event for the carry would put a row in
+§11.4's history claiming a caption moved when it did not.
+
+**The column is on the picture and not on `menu_item`**, which is the ruling that made the carry necessary in
+the first place. Alternative text describes a photograph: *"served on a bed of wilted greens with a lemon
+wedge"* is true of one picture and false of the next one somebody takes. A column on the item would outlive
+the picture it described with nothing able to tell that it had stopped being true; a column on the picture is
+deleted with the bytes it belongs to.
+
+### What `0007` did not have to widen
+
+The vocabulary CHECK is dropped and re-added **by name** — two ordinary statements, nothing to query and
+nothing to dollar-quote. That is the return `0006` collected by naming every constraint it declared, and the
+contrast is `0004`, which had to write a PL/pgSQL loop over `pg_constraint`, a dollar-quoted body, and then
+the F-78 fix in the runner's configuration, all because `0001` left four CHECKs unnamed.
+
+**The two existing biconditionals needed no widening at all, and that is the surprising half.** A new event
+type on a table with two total equalities would normally need both. `alt_text_changed` needs neither, because
+**a caption is not a fact about the file**: it sits outside both right-hand sides and passes each with NULL.
+
+---
+
+## The finding: a plan argued for a column with a sentence that is false (F-103)
+
+The plan's justification for `alt_text` read: *"an `<img>` with no alternative text on a menu is a card a
+screen reader renders as nothing."*
+
+**It conflates two different pieces of markup with two different behaviours.** An `<img>` with **no** `alt`
+attribute makes a screen reader fall back to announcing the URL — for this feature, a bare UUIDv7, which is
+worse than silence. `alt=""` marks an image decorative and is correctly **skipped**.
+
+And §11.1's card is a `<button>` holding the dish's name and its price as text, so the button's accessible
+name is already *"Grilled salmon £24.00"* — correct and sufficient. **`""` is therefore the right value for
+most pictures on this menu**, and the column earns its place only for the ones that say something a name does
+not, which is the narrower claim the same paragraph makes two clauses earlier and which is true.
+
+**This is F-101's mechanism a second time, one register up.** There it was a DDL sketch in a design document
+becoming a migration; here it is an *argument* in a design document becoming markup. Three gates read that
+file — for structure, for tables, for version — and none of them reads a sentence for whether it is true. So
+the slice that implements a paragraph is the last moment its reasoning is free to be wrong. Found while
+writing the markup the paragraph specified, which is **F-93's timing** for the fourth time.
+
+**Corrected rather than deleted**, because the cheaper direction was available — F-77's habit, taking the
+same turn it took for F-100's first-row claim.
+
+### The row names something executable, and the gate had to be shaped by the defect
+
+`alt` is now **always written**, on every `<img>` in the tree, with whatever is stored — `""` included. The
+gate asserts exactly that: every `<img>` under `Components/` carries the attribute, with the tag count as its
+own non-vacuity guard (F-41).
+
+**Why that shape rather than an assertion about values.** The *correct* value is usually the empty one, so
+the *incorrect* markup — no attribute at all — renders identically on every screen, in every browser, and
+would pass any test that looked at output. The only place the difference exists is the source. A second fact
+covers the other direction, because a page that hard-coded `alt=""` on the guest's card would also render
+identically, also pass the tree-wide gate, and make the whole column unreachable from the only surface it was
+added for.
+
+### One consequence nothing above anticipated
+
+**The `<img>` is last in the document and first on the screen.** A button's accessible name is computed from
+its contents in document order, so a captioned picture placed first announces its own description *before*
+the dish it describes — *"served on a bed of wilted greens, Grilled salmon, £24.00"*. `grid-column` moves it
+into the left column instead. Reordering a **non-interactive** element visually is free, because there is no
+focus order for the visual order to disagree with, and that is exactly why the same trick would be wrong for
+a control.
+
+---
+
+## What was verified
+
+- The tree was reconstructed from `dump.txt` before anything was authored: **363 records, 361 matching
+  SHA-256 exactly**, the two exceptions being `export.sh` (excluded; it contains the delimiter) and `LICENSE`
+  (elided by design).
+- **Razor tag-tree walk on both edited components, against the pristine files re-extracted from the dump.**
+  With `@(…)` expressions masked, `ManageMenuItem.razor` is a clean tree — zero unclosed, zero mismatches —
+  both before and after. `TableOrderSurface.razor` retains exactly three pre-existing artefacts of a generic
+  type in markup, **identical before and after**, so nothing was introduced.
+- **§16.4's count gate simulated in full**: 28 counted classes against a floor of 28, no ambiguous
+  paragraph, no uncited class, **no disagreement** between a stated count and a file's `[Fact]`/`[Theory]`
+  census. The three moved counts were checked against the files, not asserted.
+- **The specification version gate simulated**: header `1.38`, newest changelog entry `v1.38`, every entry
+  descending; `REQUIREMENTS.md` untouched at rev 6.
+- **The Markdown table gate simulated** over all five edited documents: the four new rows carry five pipes
+  against a four-column header and contain no pipe inside a code span. The pre-existing discrepancies the
+  simulation reports are inline-code pipes in rows this slice did not touch.
+- Brace and parenthesis balance on every edited `.cs` and `.css` file, and against the pristine file where a
+  naive count was already non-zero (`MenuItemImageSurfaceContractTests.cs` has one unmatched `{` inside a
+  string literal, before and after).
+- Every implementer of the three changed interfaces was enumerated and updated:
+  `DapperMenuItemImageAdministration`, `FakeMenuItemImageAdministration`, `MenuWorkflow`. Nothing constructs
+  `MenuItemImageMetadata` positionally outside its own declaration, so the sixth member breaks no caller.
+- `Migrations/*.sql` is a glob in the `.csproj`, so `0007` needs no project edit — checked rather than
+  assumed.
+- The end-to-end harness reads `span.order-menu-name`, `span.order-menu-price` and
+  `span.order-menu-description` as **descendants** of `button.order-menu-choice`, and counts
+  `dl.order-menu-facts > div`. The new `.order-menu-body` wrapper and the `<img>` before the `<dl>` are
+  therefore invisible to scenario 17 — verified by reading the harness, not by inference.
+- Every custom property used by the new CSS is already declared in `app.css`'s `:root`.
+
+## Test count arithmetic
+
+Uncompiled, per §18. **1233 → 1242.**
+
+| Class | Was | Now | Why |
+|---|---|---|---|
+| `MenuItemImageTests` | 11 | 15 | the caption stored without moving the identifier; the no-op and the clearing; the carry across a replace with no event; the two silent refusals |
+| `MenuItemImageSurfaceContractTests` | 6 | 10 | the caption form carries no file input; the guest card renders the picture and reads once; every `<img>` carries `alt`; the card's `alt` comes from the column |
+| `MenuWiringTests` | 26 | 27 | a caption is announced only when it moved, and arrives verbatim |
+
+§16.4's counted-class floor **stays at 28** — the guest surface joined the existing class rather than
+founding a new one, because the route-helper claim is one claim over two files. §16.3 stays at seventeen.
+**Any deviation from 1242 is the first thing to investigate after a run.**
+
+## What was NOT verified
+
+- **Nothing was compiled.** No SDK, no database, no browser in the authoring environment. `0007` has never
+  run: the `DROP CONSTRAINT … ADD CONSTRAINT` pair, the `DEFAULT ''` on a table whose rows may be half a
+  megabyte, and the third biconditional are all unexecuted.
+- **The 4rem square has never been rendered**, so whether `object-fit: cover` crops a real photograph
+  acceptably is a judgement nobody has made against a real picture on a real 375px screen. It is the one
+  thing in this slice most likely to want an opinion after you look at it.
+- **No screen reader has read any of this.** The whole F-103 argument is about what a screen reader does with
+  `alt=""` versus a missing attribute, and it is reasoned from the accessible-name computation rather than
+  observed. The gate asserts the markup, which is the checkable half.
+- Whether `Assert.SkipUnless` skips the four new integration facts cleanly where no container engine answers
+  — the same as every fact in that file, but unobserved here.
+
+## Carried
+
+**No §16.3 scenario touches a picture.** The seventeen are unchanged. A picture scenario needs a fixture
+image the harness has no way to produce, and inventing bytes inside the harness would be a test arranging
+what it asserts about. It is now the largest end-to-end gap in the menu after the two resequencing verbs.
+
+**Nothing reads `menu_item_image_event`.** `alt_text_changed` is written from its first day and rendered
+nowhere, so §11.4 still cannot say when a picture last changed or who changed it — now four event types deep
+rather than three. The panel and its reader arrive together, as `IMenuSectionEventLog` did with the section
+editor.
+
+**Whether a browser downscales before upload.** Fourth slice carried, and it has stopped being a nicety: a
+phone camera produces four megabytes against a 512 KiB cap, so the answer to most uploads is still *too
+large* — and the pictures those uploads would have become are now the feature a guest sees.
+
+**A browser that sends `application/octet-stream` for a genuine PNG is refused.** Carried with the fix
+written down.
+
+**F-102 has no row in `DOCUMENTATION_REVIEW.md`.** Slice 52 put it in the status paragraph and in Appendix A
+and not in the ledger's own table. F-103 has a row; F-102's absence is named rather than backfilled here,
+because reversing a prior slice's filing decision is a decision, not a tidy-up. It is the same shape as the
+carried item below it.
+
+**F-41 has no row in `DOCUMENTATION_REVIEW.md`.** Seventeenth slice carried.
+
+**§16.3 has no scenario for either resequencing verb.** Carried: scenario 16's barrier measures those
+controls and nothing presses them.
+
+**`/kitchen` has no §16.3 scenario at all.** Carried — the largest end-to-end gap in the application.
+
+**The wide layout stacks each row's three controls.** The `<form>` is a block element and `app.css` has no
+rule for a row of them. Carried on two registers.
+
+**The handheld barrier visits neither section surface.** Carried.
+
+**The dump reduction.** Deferred again by name, and it is now overdue: this log has grown by another slice
+and `0007` adds a file.
+
+**No gate can see a count written in a comment, or a claim written beside a computation.** Carried — and
+F-103 is that class arriving in a seventh form, a claim in a *design document* rather than in a comment.
+
+**A fact assembled by copying a sibling inherits that sibling's arrangement along with its numbers.** F-99's
+residual, carried.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried.
+
+**Nothing treats a test that fails and then passes as evidence.** Carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a twentieth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Twenty-ninth consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then starts
+it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried.

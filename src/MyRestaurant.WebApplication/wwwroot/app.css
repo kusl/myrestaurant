@@ -2068,6 +2068,75 @@ a:focus-visible,
     color: var(--ink-soft);
 }
 
+/* -----------------------------------------------------------------------------
+ * THE PICTURE ON A GUEST'S CARD (S7, S11.1, S11.12; Stage 4c)
+ *
+ * A THUMBNAIL BESIDE THE NAME RATHER THAN A HERO ABOVE IT, and that is the whole
+ * layout decision of this stage rather than a taste. An image per card above the
+ * text roughly DOUBLES the height of the menu; at 375px the card grid is already
+ * one column, so doubling card height doubles how far a guest scrolls to compare
+ * two dishes. Beside the name it costs one row's worth of height and nothing
+ * more.
+ *
+ * `.order-menu-body` WRAPS THE TEXT ON EVERY CARD, WITH OR WITHOUT A PICTURE.
+ * The uniformity is the point: this element carries the row rhythm the card used
+ * to carry itself, so a card with a thumbnail and a card without one lay their
+ * text out under one rule instead of two.
+ *
+ * THE `<img>` IS LAST IN THE DOCUMENT AND FIRST ON THE SCREEN. A button's
+ * accessible name is computed from its contents in document order, so a
+ * captioned picture placed first would announce its own description before the
+ * dish it describes. `grid-column`/`grid-row` put it back in the left column
+ * visually. Reordering a NON-interactive element costs nothing here — there is
+ * no focus order for the visual order to disagree with, which is exactly why the
+ * same trick would be wrong for a control.
+ */
+.order-menu-body {
+    display: grid;
+    gap: 0.2rem;
+    align-content: start;
+    min-width: 0;
+}
+
+.order-menu-item.has-picture .order-menu-choice {
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 0.7rem;
+    align-items: start;
+}
+
+.order-menu-item.has-picture .order-menu-body {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+/*
+ * A FIXED SQUARE UNDER `object-fit: cover`, AND THE CROP IS THE PRICE OF A
+ * BOUNDED CARD. Nothing in this stack can resize an image (S7: the server stores
+ * what it is given), so the intrinsic size of this element is whatever somebody's
+ * camera produced — a portrait photograph at `height: auto` would be twice as
+ * tall as it is wide and would put the card height back where this stage started.
+ * `cover` fills the square from the middle of the picture instead. What it costs
+ * is the edges of the frame, and the guest who wants the whole photograph taps
+ * the card: `.order-menu-detail-picture` below renders it uncropped.
+ *
+ * Reverting the crop is one declaration — `height: auto` and drop `object-fit` —
+ * and the consequence is stated above rather than left to be rediscovered.
+ *
+ * `flex-shrink` is not needed and not present: this is a grid item in an `auto`
+ * column, so it is sized by these declarations and by nothing else.
+ */
+.order-menu-item.has-picture .order-menu-thumbnail {
+    grid-column: 1;
+    grid-row: 1;
+    display: block;
+    width: 4rem;
+    height: 4rem;
+    object-fit: cover;
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    background-color: var(--surface);
+}
+
 /* --- what is known about the chosen item ---------------------------------------------------------- */
 
 .order-menu-detail {
@@ -2081,6 +2150,29 @@ a:focus-visible,
 .order-menu-detail-name {
     margin: 0 0 0.5rem;
     font-size: 1rem;
+}
+
+/*
+ * The same picture, uncropped, because this panel is what a guest opened to look
+ * closer. `max-width: 100%` is the load-bearing declaration and it is not a
+ * presentational choice — it is `.manage-picture-image`'s reason, one surface
+ * over: an <img> with no width constraint renders at whatever a camera produced,
+ * so a 3000px photograph would make the DOCUMENT wider than a 375px viewport and
+ * S16.3 scenario 16 would fail on a page whose every control is correctly placed.
+ *
+ * `height: auto` beside it because no height attribute is set; the two together
+ * are what keep the aspect ratio while the width is clamped. No `object-fit`
+ * here, deliberately: cropping is the card's bargain, and this element is the
+ * one place the whole frame is shown.
+ */
+.order-menu-detail-picture {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 0 0.6rem;
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    background-color: var(--surface);
 }
 
 .order-menu-facts {

@@ -194,12 +194,13 @@ else
         @if (_picture is not null)
         {
             <figure class="manage-picture">
-                @* alt="" deliberately, and it is a decision rather than an omission. This picture sits
-                   under the item's own name, which is this page's <h1>, so alternative text here would
-                   make a screen reader read the dish twice and add nothing the page has not said. A
-                   caption somebody writes — an `alt_text` column, one ALTER with a DEFAULT '' on 0004's
-                   precedent — is Stage 4c's, and it is for the guest's menu, where a picture may carry
-                   something its own name does not. *@
+                @* alt="" deliberately, and it stays "" now that the column exists, which is the part worth
+                   reading twice. This picture sits under the item's own name — this page's <h1> — so
+                   alternative text HERE would make a screen reader read the dish twice and add nothing the
+                   page has not said. The caption the form below writes is for the GUEST'S menu, where the
+                   picture sits on a card among sixty others; the two surfaces want different things from
+                   the same column, and this one wants nothing. The caption is rendered below as visible
+                   text instead, because an operator who cannot see what they wrote cannot correct it. *@
                 <img class="manage-picture-image"
                      src="@MenuImageRoutes.ForImage(_picture.MenuItemImageIdentifier)"
                      alt="" />
@@ -237,6 +238,37 @@ else
                 <AntiforgeryToken />
                 <button type="submit" class="button-secondary">Remove picture</button>
             </form>
+
+            <p class="lede">
+                <strong>What a screen reader says instead of the picture.</strong> Leave it empty unless the
+                photograph shows something the dish's name does not — the guest's menu already reads out the
+                name and the price beside it, so a caption repeating the name would have somebody hear the
+                dish twice. <em>“Served on a bed of wilted greens with a lemon wedge”</em> is the kind of
+                thing worth writing. Changing it does <strong>not</strong> re-upload the photograph and does
+                not change its address, and replacing the photograph later keeps whatever is written here.
+            </p>
+
+            @* Its own form rather than a field on the upload above, and the reason is the one the write
+               service's own summary gives: the upload form requires a file, so a caption settable only
+               there would make fixing a typo cost a re-upload — a new image identifier, every cached copy
+               invalidated, and a "replaced" event recording a replacement that replaced nothing.
+
+               `.manage-inline-form` for F-93's reason, the same as the two forms above: the 375px barrier
+               in §16.3 scenario 16 reaches `.manage-inline-form button` and does not reach
+               `.form-actions button`, so a control that wants measuring wants this class. That class has
+               styled `input` and `select` since Slice 34 and has never styled a `textarea`, which is why
+               this is a one-line text input — a caption is a sentence, not a paragraph. *@
+            <EditForm method="post" Model="AltTextInput" OnValidSubmit="SetPictureAltTextAsync"
+                      FormName="menu-item-image-alt-text" class="manage-inline-form">
+                <DataAnnotationsValidator />
+                <label class="visually-hidden" for="picture-alt-text">What a screen reader says</label>
+                <InputText id="picture-alt-text" @bind-Value="AltTextInput.AltText"
+                           maxlength="500" autocomplete="off"
+                           placeholder="Leave empty unless it says more than the name" />
+                <button type="submit" class="button-primary">Save caption</button>
+            </EditForm>
+
+            <ValidationMessage For="@(() => AltTextInput.AltText)" />
         }
 
         <hr class="manage-rule" />
@@ -422,6 +454,9 @@ else
     [SupplyParameterFromForm(FormName = "menu-item-reorder")]
     private ReorderInputModel ReorderInput { get; set; } = default!;
 
+    [SupplyParameterFromForm(FormName = "menu-item-image-alt-text")]
+    private AltTextInputModel AltTextInput { get; set; } = default!;
+
     [SupplyParameterFromQuery]
     private string? Done { get; set; }
 
@@ -435,6 +470,7 @@ else
         DescribeInput ??= new();
         MoveInput ??= new();
         ReorderInput ??= new();
+        AltTextInput ??= new();
 
         _item = await MenuItems.GetAsync(MenuItemId, HttpContext.RequestAborted);
         if (_item is null)
@@ -475,6 +511,13 @@ else
             // whichever heading happened to sort first. CreateMenuItem pre-selects for the mirror-image
             // reason: a <select> with nothing selected shows and posts its first option either way.
             MoveInput.MenuSectionIdentifier = _item.MenuSectionIdentifier;
+
+            // Pre-filled with what is stored, including "" — the same reasoning the description editor
+            // above uses: on a GET nothing has bound, so assigning unconditionally is both correct and
+            // simpler, and `IsNullOrEmpty` could not tell "nothing bound" from "no caption" anyway. The
+            // consequence is that saving an untouched form is the no-op the write service reports, which
+            // is why that outcome is the ordinary one rather than an edge case.
+            AltTextInput.AltText = _picture?.AltText ?? string.Empty;
 
             _flashMessage = FlashFor(Done);
         }
@@ -754,6 +797,53 @@ else
     }
 
     /// <summary>
+    /// Writes the caption a screen reader reads instead of the picture (§7, §11.1).
+    ///
+    /// <para><b>Trimmed here rather than in the write service</b>, on the division this page already draws
+    /// for a rename: whitespace somebody's keyboard added is a property of a form submission, and the write
+    /// service stores what it is given. It matters more here than for a name, because a caption trimmed to
+    /// nothing is the same thing as no caption — <c>""</c> means <em>none</em> (§7) — so a form submitted
+    /// with a single space clears it rather than storing a space a screen reader would read as a pause.</para>
+    ///
+    /// <para><b><c>NoImage</c> is reachable and is reported in place.</b> The form only renders when a
+    /// picture exists, so getting here needs two administrators and a few seconds — one removes the
+    /// photograph while the other is typing about it. Redirecting on that would throw away what they wrote
+    /// with no explanation, which is the same reasoning the refile's stale-heading arm follows.</para>
+    /// </summary>
+    private async Task SetPictureAltTextAsync()
+    {
+        if (!TryBegin(out Guid administrator))
+        {
+            return;
+        }
+
+        SetMenuItemImageAltTextOutcome outcome = await MenuChanges.SetMenuItemImageAltTextAsync(
+            MenuItemId,
+            AltTextInput.AltText.Trim(),
+            administrator,
+            HttpContext.RequestAborted);
+
+        switch (outcome)
+        {
+            case SetMenuItemImageAltTextOutcome.Changed:
+                RedirectWithOutcome(
+                    AltTextInput.AltText.Trim().Length == 0 ? "caption-cleared" : "caption-saved");
+                break;
+            case SetMenuItemImageAltTextOutcome.NoChange:
+                RedirectWithOutcome("caption-no-change");
+                break;
+            case SetMenuItemImageAltTextOutcome.NoImage:
+                _errorMessage =
+                    "There is no picture on this item any more, so there is nothing for a caption to"
+                    + " describe. Somebody may have removed it while this page was open. Nothing changed.";
+                break;
+            case SetMenuItemImageAltTextOutcome.MenuItemNotFound:
+                Navigation.NavigateTo("/administration/menu");
+                break;
+        }
+    }
+
+    /// <summary>
     /// The two things every write on this page needs first: the item must still exist, and the acting
     /// administrator must be identifiable — <c>menu_item_event.actor_person_identifier</c> is NOT NULL and
     /// §7 requires every change to name somebody. Endpoint authorization already guarantees the second;
@@ -802,6 +892,11 @@ else
         "picture-replaced" => "Picture replaced. The old one is deleted and its address no longer works,"
             + " which is why a browser may safely keep the new one for a year.",
         "picture-removed" => "Picture removed. The record of it stays in the history below.",
+        "caption-saved" => "Caption saved. Guests using a screen reader hear it instead of the picture,"
+            + " and every open menu has already picked it up.",
+        "caption-cleared" => "Caption cleared. A screen reader will skip the picture, which is the right"
+            + " outcome unless the photograph shows something the dish's name does not.",
+        "caption-no-change" => "That was already the caption — nothing changed.",
         _ => null,
     };
 
@@ -872,5 +967,15 @@ else
         // The upper bound is `integer`'s, and it is stated so the form refuses what the column would.
         [Range(0, 2147483647, ErrorMessage = "The position must be 0 or greater.")]
         public int DisplayOrder { get; set; }
+    }
+
+    private sealed class AltTextInputModel
+    {
+        // No [Required]: clearing the caption is a supported change and "" means none (§7), exactly as it
+        // does for the description above. The 500 is THIS FORM'S opinion and not the column's — `text` has
+        // no ceiling — and it is lower than the description's 2,000 on purpose: alternative text a screen
+        // reader has to get through before the name and the price is alternative text nobody finishes.
+        [StringLength(500, ErrorMessage = "The caption must be 500 characters or fewer.")]
+        public string AltText { get; set; } = string.Empty;
     }
 }
