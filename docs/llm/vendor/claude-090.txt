@@ -364,3 +364,80 @@ Claude is AI and can make mistakes. Please double-check cited sources.
 04
 
 please continue and please include as much as possible. the context is huge and you'd have to read it all over again each time we start a new conversation
+
+
+/
+
+# Kids' Lungs Recovered Faster Than Anyone Expected. Here's the Part That's Easy to Miss A five-year London study found children's lung growth caught up within years of a clean-air policy taking effect — and the reason it worked so fast has a lot to say about which environmental fights are actually
+
+pasted
+
+I have included a dump of a source code in the context. 
+the code is at https://github.com/kusl/dotnetcms 
+the instance is https://kush.runasp.net/ 
+for some reason when I try to update the body of the blog with the text above, it does not work. Is this a flaw in the code or is this a malformed markdown blog post? How do I fix it?
+
+
+Ran 20 commands, viewed 9 files, created 6 files · 7 notes
+Ran 20 commands, viewed 9 files, created 6 files · 7 notes
+It's a flaw in the code, not the Markdown. I can prove both halves.
+
+The Markdown is fine
+I ported your MarkdownService line-for-line (all nine GeneratedRegex patterns) and ran your article through it. 16,530 chars in, 16,866 out: 1 <h1>, 7 <h2>, 1 <h3>, 2 <hr />, 28 <p>, 4 <em>, zero unclosed tags, no stray asterisks. No links, images, backticks, tables, or list markers anywhere in the article, so none of the fragile paths are even exercised. Nothing hangs, nothing throws.
+
+What's actually broken — the live site gave it away
+I fetched your post. The row says:
+
+published_time: 2026-08-19T10:00:21
+modified_time: 2026-08-19T15:51:25
+body: What is going on here?
+So the save at 15:51 ran and succeeded — it just wrote back the value _content was already holding from OnInitializedAsync. Your paste never reached the server. That's the whole bug.
+
+Three defects combine to make it possible and silent:
+
+@bind on the content textarea uses the default onchange event. The value only crosses to the server on blur. Meanwhile <Routes @rendermode="InteractiveServer" /> prerenders, so the editor exists as static HTML before the circuit is live — paste into that window and the handler isn't attached yet. The DOM keeps showing your article while the server still holds the old string. Note your Title field has @bind:event="oninput" and the title did save. That asymmetry is the fingerprint.
+Save() never verifies what it's about to write. It writes _content unconditionally and reports success, so a stale binding silently overwrites.
+MaximumReceiveMessageSize is at SignalR's 32 KB default (HubOptionsSetup.DefaultMaximumMessageSize = 32 * 1024, confirmed in the .NET 10 source). Your article is ~17 KB over BlazorPack, so this wasn't today's trigger — but it's a hard cliff at roughly 2× this article, and when you cross it the circuit is aborted mid-save with exactly the same "nothing happened" symptom.
+The fixes
+Path	Change
+src/MyBlog.Web/Components/Pages/Admin/PostEditor.razor	@bind:event="oninput" on summary + content; _interactive gate via OnAfterRender (which never runs during prerender) making fields readonly and Save disabled until the circuit is live; debounced preview via @bind:after; live "N characters received by the server" counters; content-required guard
+src/MyBlog.Web/Program.cs	.AddHubOptions(o => o.MaximumReceiveMessageSize = ...) on the circuit hub, configurable, default 1 MB. ReaderHub deliberately left at 32 KB since it only receives slugs. DetailedErrors in Development
+src/MyBlog.Web/Components/Shared/MarkdownRenderer.razor	Skip re-parsing when Content is unchanged — OnParametersSetAsync fires on every parent render, so without this oninput would re-parse 16 KB per keystroke
+src/MyBlog.Web/Components/Pages/Admin/PostEditor.razor.css	Styles for .editor-status and .char-count
+src/MyBlog.Web/appsettings.json	Blazor:MaximumReceiveMessageSizeBytes: 1048576
+src/MyBlog.Tests/Unit/MarkdownServiceLongDocumentTests.cs	4 new tests; assertions verified against the actual parser output, including a 61 KB document
+To recover the post: open the editor, paste, and watch the character counter under the box. If it reads ~16,530 the server has it and Save will persist it. That counter is the whole point — it makes this class of failure impossible to miss.
+
+One unrelated thing I noticed but did not change: PostRepository.UpdateAsync calls _context.Posts.Update(post) on a graph loaded with .Include(p => p.Author), so EF marks the User as Modified and rewrites the Users row (password hash included) on every post save. Harmless today, worth knowing.
+
+
+Posteditor
+RAZOR 
+
+Program
+CS 
+
+Markdownrenderer
+RAZOR 
+
+Posteditor.razor
+Code · CSS 
+
+Appsettings
+Code · JSON 
+
+Markdownservicelongdocumenttests
+CS 
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+00
+08
+
