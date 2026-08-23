@@ -1326,19 +1326,20 @@ throws nothing and shows up only as a cell reading `alt_text_changed` where a se
 
 ### What is open after this stage
 
-**Browser downscaling is the only thing left between this feature and the person who asked for it, and it is
-named here as the NEXT slice rather than as a fifth deferral.** A phone camera produces four megabytes against
-§8.2's 512 KiB cap, so the answer to most uploads is still *too large* — and every picture this stage's
-history would have recorded is a picture that could not be uploaded in the first place. It changes no schema:
-a `<canvas>` round trip in `wwwroot/js/`. The two things that make it a real slice rather than sixty lines are
-that a static-SSR multipart form has to be handed the *downscaled* file in place of the chosen one, and that
-§11.11's `script-src` is the one configuration that becomes wrong by editing a file it does not mention
-(F-49).
+**~~Browser downscaling is the only thing left between this feature and the person who asked for it, and it
+is named here as the NEXT slice rather than as a fifth deferral.~~ Landed as Stage 4e in Slice 55**, and both
+of the things named as making it a real slice turned out to be true — the multipart form is handed the
+downscaled file through a `DataTransfer` rather than through anything the form knows about, and §11.11 was
+the first thing checked. It needed no change, because `createImageBitmap` and `canvas.toBlob` between them
+never produce a URL.
 
-**No §16.3 scenario touches a picture.** The seventeen are unchanged. A picture scenario needs a fixture image
-the harness has no way to produce, and inventing bytes inside the harness would be a test arranging what it
-asserts about. Still the largest end-to-end gap in the menu after the two resequencing verbs — and this stage
-widens it slightly rather than not at all, because a history panel is one more surface no browser has loaded.
+**~~No §16.3 scenario touches a picture.~~ Closed in Stage 4e — and this paragraph is the reason that stage
+had to happen when it did.** The objection was half right. A checked-in photograph would be an opaque blob and
+a base64 constant would be the same blob with worse ergonomics; but *inventing bytes* was never the problem,
+because nothing downstream asserts anything about the bytes. `PictureFixtures` generates a real PNG at any
+size, and scenarios **18** and **19** are the result. **The cost of leaving it open for four slices is
+recorded in the ledger as F-106**: a `ValidationMessage` outside its `EditForm` made every menu item with a
+picture on it answer HTTP 500, the upload having succeeded first, and the operator found it.
 
 **A browser that sends `application/octet-stream` for a genuine PNG is refused.** Carried with the fix written
 down, for a fifth slice.
@@ -1346,6 +1347,69 @@ down, for a fifth slice.
 **There is deliberately no cross-item picture feed** to match `IMenuEventLog.ListRecentAsync`. That one fills
 a panel on `/administration/menu` and there is no such panel for pictures, so inventing a read with no caller
 in the slice whose subject is a read that finally has one would be a poor joke.
+
+---
+
+## ~~Stage 4e — images: a picture a phone can actually upload~~ — **landed, M6 Slice 55**
+
+**The stage this whole feature was for.** §8.2 caps a stored picture at half a megabyte and a phone camera
+produces four, so for four slices the honest answer to almost every real upload was *too large*. The schema
+was right, the write service was right, both surfaces were right, and the feature was unusable.
+
+### Why the resizing is in the browser, stated as a constraint rather than a preference
+
+Nothing on the server can do it. There is no free-libre .NET image library available to this stack for this
+use — ImageSharp's licence does not admit it, SkiaSharp is a native dependency inside a rootless container —
+which is why `ImageFormat` reads signatures and never decodes, and why `0006` deliberately stores no
+`pixel_width` and no `pixel_height` (F-101). The one decoder every guest and every member of staff already
+has is the browser's, so `wwwroot/js/menu-picture.js` decodes the chosen file, redraws it into a `<canvas>`
+no larger than a declared longest edge, re-encodes as JPEG down a ladder of dimension-and-quality pairs
+until one fits, and replaces the file input's selection through a `DataTransfer`. The multipart form, the
+antiforgery token and the post/redirect/get are untouched.
+
+### The four rulings
+
+**It never refuses anything.** Every refusal is still the write service's and the schema's, and every
+failure path leaves the operator's chosen file exactly where it was so the server answers. A downscaler that
+refused would be a second authority on what may be stored, in the one place an attacker controls entirely.
+
+**A picture already inside the cap is left completely alone**, bytes and declared media type both — §7
+stores what it was given, and re-encoding something that fits would throw away quality to solve a problem
+nobody has.
+
+**The budget is read, never written (F-107).** `IMenuItemImageDirectory.ReadDeclaredByteCapAsync` asks
+`pg_get_constraintdef` for `menu_item_image_bytes_within_cap`'s bound and the page splats it onto the input
+as `data-picture-byte-budget`. **The attribute's presence is the switch**: a `null` cap renders no attribute
+and the mechanism turns itself off. No file under `src/` contains the number, comments included, and the
+twelfth fact on `MenuItemImageSurfaceContractTests` computes that claim out of the migration itself.
+
+**JPEG rather than WebP**, although `0006` admits both. WebP is smaller at equal quality; the stored bytes
+are served back to whatever a guest is holding, and a picture that will not decode on an older handset at a
+table is worse than one forty kilobytes larger. The canvas is filled white first, because JPEG has no alpha
+and a transparent PNG would otherwise re-encode onto a ground that renders black.
+
+### The defect this stage was scheduled behind (F-106)
+
+**The upload was already broken and nothing in the repository knew.** `ManageMenuItem.razor` carried
+`<ValidationMessage>` one line outside its `EditForm`, inside `@if (_picture is not null)`. A sibling of an
+`EditForm` gets no cascading `EditContext` and `ValidationMessage` throws without one — so the attaching
+POST, which renders while `_picture` is still null, **succeeded and committed**, and the redirected GET
+answered **500**. Every administrator view of a decorated item answered 500 thereafter, including the one
+carrying the Remove button, so nothing in the product could undo it.
+
+It is filed here rather than in a stage of its own because the two are one story: the reason nobody saw it
+is the reason this plan gave for deferring a picture scenario four times, and both are closed together.
+
+### What is open after this stage
+
+**A browser that sends `application/octet-stream` for a genuine PNG is refused.** Carried for a sixth slice
+— and narrowed rather than fixed, because a downscaled picture arrives as `image/jpeg` whatever it was
+labelled. The remaining case is a file already under the cap.
+
+**Nothing here resizes on the guest's side of the menu.** §11.1 renders the stored bytes at whatever size
+they are, inside `.order-menu-thumbnail`'s own box. With a 1600px longest edge that is a handset
+downloading rather more than it displays. A `srcset` would need stored variants, which is a schema change
+and a second copy of every photograph; revisit only if somebody measures it on a real service.
 
 ---
 

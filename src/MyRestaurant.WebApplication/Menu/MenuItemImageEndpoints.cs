@@ -65,6 +65,54 @@ public static class MenuItemImageUpload
     /// </summary>
     public static string AcceptAttribute { get; } =
         string.Join(",", ImageFormat.RecognisedContentTypes);
+
+    /// <summary>
+    /// The attribute carrying §8.2's cap to the browser, in bytes (Stage 4e).
+    ///
+    /// <para><b>Its presence is what switches the downscaler on</b>, which is the whole of the
+    /// arrangement's safety: <c>wwwroot/js/menu-picture.js</c> does nothing at all to an input that does
+    /// not carry this, so a surface that cannot read the cap — see
+    /// <c>IMenuItemImageDirectory.ReadDeclaredByteCapAsync</c>, which may answer <c>null</c> — renders no
+    /// budget and gets the behaviour this feature had before Stage 4e rather than a downscaler guessing.
+    /// The number is never written in C#, in Razor or in JavaScript; it travels from the migration,
+    /// through the constraint, to the attribute, and no copy of it exists anywhere in this tree.</para>
+    /// </summary>
+    public const string ByteBudgetAttributeName = "data-picture-byte-budget";
+
+    /// <summary>
+    /// The attribute carrying the longest edge, in pixels, that a re-encoded picture may have.
+    ///
+    /// <para><b>This is a genuinely new number and it is declared once, here.</b> It is not a second copy
+    /// of anything: §8.2 stores no <c>pixel_width</c> and no <c>pixel_height</c> on purpose (F-101,
+    /// because nothing in this stack can measure one), so no dimension has ever been written down in this
+    /// repository and there is nothing for it to drift from.</para>
+    /// </summary>
+    public const string LongestEdgeAttributeName = "data-picture-longest-edge";
+
+    /// <summary>
+    /// The <c>id</c> of the element the downscaler writes its one sentence into, and the value the file
+    /// input's <c>aria-describedby</c> carries.
+    ///
+    /// <para><b>One association doing two jobs.</b> The script resolves the element it reports into from
+    /// the input's own <c>aria-describedby</c> rather than from a marker of its own, which means the
+    /// sentence a sighted operator reads under the control is the same sentence a screen reader
+    /// announces as that control's description — with no second attribute for somebody to rename half
+    /// of. It is a constant for <see cref="FileFieldName"/>'s reason: both ends are strings, a rename
+    /// applied to one side produces no compiler error, and the symptom is a downscaler that silently
+    /// stops reporting.</para>
+    /// </summary>
+    public const string StatusElementId = "picture-status";
+
+    /// <summary>
+    /// The longest edge a re-encoded picture may have, in pixels.
+    ///
+    /// <para>Sized for the two surfaces that render one and no larger: §11.1's guest card is a thumbnail
+    /// on a handset and §11.4's panel is capped by <c>.manage-picture-image</c>'s own width, so anything
+    /// past this is detail no screen in this building will show. It is also the bound that does most of
+    /// the work — a phone camera's four megabytes are mostly pixels rather than quality, and shrinking
+    /// the raster is what turns them into something §8.2 will store.</para>
+    /// </summary>
+    public const int LongestEdgePixels = 1600;
 }
 
 /// <summary>

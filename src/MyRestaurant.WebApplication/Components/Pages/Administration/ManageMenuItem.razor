@@ -229,9 +229,29 @@ else
                and no exception — just an upload that reports itself empty forever. The accept list is the
                media-type vocabulary's third declaration (F-80) and is computed from the domain's own
                census, never spelled out. *@
-            <input type="file" id="picture-file" name="@MenuItemImageUpload.FileFieldName" accept="@MenuItemImageUpload.AcceptAttribute" />
+            @* The two data attributes are Stage 4e's whole interface to the browser, and the first is
+               also its off switch: `wwwroot/js/menu-picture.js` ignores any file input that does not
+               carry a byte budget, so a database this page could not interrogate renders no budget and
+               gets exactly the behaviour this form had before the downscaler existed. THE NUMBER IS NOT
+               WRITTEN HERE, in C#, or in JavaScript — it is read out of §8.2's own constraint at render
+               time, which is what keeps `0006` the only place in this repository that says how large a
+               picture may be. *@
+            <input type="file" id="picture-file" name="@MenuItemImageUpload.FileFieldName" accept="@MenuItemImageUpload.AcceptAttribute"
+                   aria-describedby="@MenuItemImageUpload.StatusElementId" @attributes="PictureBudgetAttributes" />
             <button type="submit" class="button-primary">@(_picture is null ? "Attach picture" : "Replace picture")</button>
         </form>
+
+        @* Written by the script, hidden until it has something to say. It is not decoration: without it
+           an operator who chose a four-megabyte photograph watches a file input do nothing for a second
+           and a half and then sees a form that behaves normally, with no account of the fact that what
+           will be attached is not the file they picked. The sentence it writes always says that.
+
+           FOUND THROUGH `aria-describedby` RATHER THAN THROUGH A MARKER CLASS OF ITS OWN, which is one
+           mechanism doing two jobs rather than two doing one each: the script resolves it from the
+           input's own description, and a screen reader announces the same sentence as the file control's
+           description without anybody writing a second association. `role="status"` is what makes a
+           change to it announced rather than merely present. *@
+        <p id="@MenuItemImageUpload.StatusElementId" class="lede muted" role="status" hidden></p>
 
         @if (_picture is not null)
         {
@@ -267,9 +287,18 @@ else
                            maxlength="500" autocomplete="off"
                            placeholder="Leave empty unless it says more than the name" />
                 <button type="submit" class="button-primary">Save caption</button>
+                @* INSIDE the form, and the position is the whole of F-106. A ValidationMessage takes its
+                   EditContext from a cascading value an EditForm supplies to its CHILDREN, so one placed
+                   beside the form is not a message that renders empty — it is an InvalidOperationException
+                   thrown during render, which is a 500 on the page rather than a missing sentence. It sat
+                   one line below `</EditForm>` from Slice 53, inside `@if (_picture is not null)`, so the
+                   POST that attached a picture rendered while `_picture` was still null, succeeded,
+                   committed and redirected — and the GET it redirected to was the first render in which
+                   the block existed. Every menu item WITH a picture answered 500 from then on, including
+                   the page carrying the Remove button, so the state was not reversible from any surface.
+                   The other five editors on this page have always had theirs inside. *@
+                <ValidationMessage For="@(() => AltTextInput.AltText)" />
             </EditForm>
-
-            <ValidationMessage For="@(() => AltTextInput.AltText)" />
         }
 
         @* OUTSIDE the `_picture is not null` block above, and that placement is the point of this panel
@@ -497,6 +526,24 @@ else
     /// rather than about the restaurant.</para>
     /// </summary>
     private IReadOnlyList<MenuItemImageEventEntry>? _pictureHistory;
+
+    /// <summary>
+    /// §8.2's cap on a stored picture, in bytes, as the database itself reports it — or <c>null</c> when
+    /// the constraint could not be read (Stage 4e).
+    ///
+    /// <para><b>Read rather than written, and that is the point of the whole arrangement.</b> The number
+    /// is declared once, in <c>0006</c>, and the write service reports a violation of it by reading the
+    /// constraint's NAME so that no C# file has an opinion about it. The browser needs the number itself
+    /// — a downscaler with no budget cannot decide when to stop — so this page asks the constraint that
+    /// owns it. A constant here, in the markup or in the script would each be F-65's mechanism, and this
+    /// feature spent four slices carefully not introducing one.</para>
+    ///
+    /// <para><c>null</c> renders no budget attribute at all, which switches the downscaler off. That is
+    /// the correct degradation rather than a fallback number: the server refuses an oversized upload
+    /// either way, with the sentence it has always had.</para>
+    /// </summary>
+    private int? _pictureByteCap;
+
     private string? _flashMessage;
     private string? _errorMessage;
 
@@ -528,6 +575,29 @@ else
     private string? Done { get; set; }
 
     private string ManagePath => $"/administration/menu/{MenuItemId}";
+
+    /// <summary>
+    /// The two attributes that switch the browser-side downscaler on, or <b>nothing at all</b> when the
+    /// cap could not be read.
+    ///
+    /// <para>Splatted rather than written as two conditional attributes, because the alternative renders
+    /// an attribute that is PRESENT and empty when the cap is unknown — and present-and-empty is exactly
+    /// the state the script would read as <em>there is a budget here</em>. An absent key in this
+    /// dictionary is an absent attribute on the rendered element, which is the distinction the whole
+    /// degradation rests on.</para>
+    ///
+    /// <para>The longest edge is invariant and the budget is not, so they could have been rendered
+    /// separately; they are handed over together because a longest edge with no budget describes a
+    /// resizing nothing will perform.</para>
+    /// </summary>
+    private IReadOnlyDictionary<string, object> PictureBudgetAttributes
+        => _pictureByteCap is { } cap
+            ? new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                [MenuItemImageUpload.ByteBudgetAttributeName] = cap,
+                [MenuItemImageUpload.LongestEdgeAttributeName] = MenuItemImageUpload.LongestEdgePixels,
+            }
+            : new Dictionary<string, object>(StringComparer.Ordinal);
 
     protected override async Task OnInitializedAsync()
     {
@@ -563,6 +633,14 @@ else
         // "there used to be a photograph here, who took it down, and when".
         _pictureHistory = await MenuItemPictureEvents.ListForItemAsync(
             MenuItemId, HttpContext.RequestAborted);
+
+        // Asked of the database on every render of this page rather than cached in a singleton, and the
+        // cost is one index lookup on a catalogue table beside the five reads above it. Caching it would
+        // buy nothing measurable and would make the number a thing this process remembers across a
+        // migration that changed it — which is the shape of staleness §17 exists to prevent one register
+        // up. It is read unconditionally, like the history and unlike the metadata: the upload form
+        // renders whether or not a picture is attached, so the budget is wanted in both states.
+        _pictureByteCap = await MenuItemPictures.ReadDeclaredByteCapAsync(HttpContext.RequestAborted);
 
         // On GET, pre-fill both editors with what is stored and render any post/redirect flash. On POST
         // the submitted values are already bound, so they must not be overwritten.

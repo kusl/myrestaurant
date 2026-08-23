@@ -1,158 +1,125 @@
-# M6 Slice 54 — the transition that broke the build, and the history a picture had never had
+# M6 Slice 55 — the 500 an operator found, and the picture a phone can finally upload
 
-Extract at the repository root. Every path is repo-relative and every file is complete.
-
-```
-tar -xzf m6-slice-54-picture-history.tar.gz
-git status
-```
-
-**Files to DELETE: none.**
-
-**`git add` IS required — two new files, both in directories that already exist.**
+Extract at the repository root. Every file in the archive is a **complete file**; nothing is a patch, and
+there are no scripts to run.
 
 ```
-git add src/MyRestaurant.DataAccess/Menu/MenuItemImageEventLog.cs
-git add tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemImageEventLogTests.cs
+tar -xzf m6-slice-55-downscaling-and-the-500.tar.gz
 ```
 
-That is **two** new files. `git status` should show **eleven modifications and two untracked paths** — plus
-whatever `docs/llm/vendor/claude-output.txt` was already showing, which your last run had modified before this
-archive was built. Anything else untracked means the archive was extracted somewhere other than the repository
-root.
+## Files to delete
 
-**No new directory, no new package, no `.slnx` edit, no `.csproj` edit, no migration, no `compose.yaml` edit,
-no `REQUIREMENTS.md` edit, no `OPERATIONS.md` edit, no ADR amended, no `export.sh` edit, no `app.css` edit,
-and no §16.3 scenario added or extended.**
+**None.** Nothing is removed by this slice.
 
----
+## New files — these must be `git add`ed
 
-## First: your build is broken by one character, and this fixes it
+Several gates in this tree enumerate their subject with `git ls-files`, so an untracked new file is a file
+they do not see:
 
 ```
-TableOrderSurface.razor(248,22): error RZ1010: Unexpected "{" after "@" character.
+git add src/MyRestaurant.WebApplication/wwwroot/js/menu-picture.js
+git add tests/MyRestaurant.WebApplication.Tests/Components/EditContextConsumerContractTests.cs
+git add tests/MyRestaurant.EndToEnd.Tests/Harness/PictureFixtures.cs
+git add tests/MyRestaurant.EndToEnd.Tests/MenuPictureScenarios.cs
 ```
 
-Line 248 was `@{ int headingIndex = -1; }`, and it sits inside the `else` block that renders the grouped
-menu — where Razor is **already parsing C#**. `@{` is the transition *from markup into code*, so writing it
-where there is no markup to leave is a syntax error. It is now a bare `int headingIndex = -1;`.
+## What is in the archive
 
-Everything else in your run was green and legitimately so. Tree hygiene passed on 365 files, governance
-passed, all twelve shell scripts passed `shellcheck`, and `run.sh --smoke` got a 200 out of `/healthz/ready`
-against real PostgreSQL. **A Razor syntax error is invisible to every gate in this repository except the one
-that compiles** — and because `MyRestaurant.WebApplication` did not build, every project depending on it never
-ran. That is F-82 a fourth time, and this time the cost is exactly nameable: the two facts that would have
-reported the second defect below are in the project that did not build.
+| Path | Why |
+| --- | --- |
+| `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuItem.razor` | **F-106**: the `ValidationMessage` moves inside its `EditForm`. Also reads the cap and splats the two downscaler attributes onto the file input |
+| `src/MyRestaurant.WebApplication/Components/App.razor` | Loads `js/menu-picture.js` beside the other four classic scripts |
+| `src/MyRestaurant.WebApplication/Menu/MenuItemImageEndpoints.cs` | `MenuItemImageUpload` gains the two attribute names, the status element id, and the longest edge |
+| `src/MyRestaurant.WebApplication/wwwroot/js/menu-picture.js` | **new** — the browser-side downscaler |
+| `src/MyRestaurant.DataAccess/Menu/MenuItemImages.cs` | `IMenuItemImageDirectory.ReadDeclaredByteCapAsync`, so the cap travels instead of being copied (**F-107**) |
+| `tests/MyRestaurant.WebApplication.Tests/Components/EditContextConsumerContractTests.cs` | **new** — the gate for F-106, two facts |
+| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageSurfaceContractTests.cs` | Ten facts to twelve (Stage 4e, F-107) |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/PictureFixtures.cs` | **new** — a real PNG at any size, generated rather than carried |
+| `tests/MyRestaurant.EndToEnd.Tests/MenuPictureScenarios.cs` | **new** — §16.3 scenarios 18 and 19 |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.40**: §7 downscaling, §16.3 18–19, §16.4 the new gate and the widened surface contract, Appendix A F-106 and F-107, changelog |
+| `docs/DOCUMENTATION_REVIEW.md` | F-106 and F-107 rows, and the status line |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 4e, and Stage 4d's two open items closed |
+| `docs/BUILD_PROGRESS.md` | The Slice 55 narrative |
+| `_CHANGES.md` | This file |
 
-**No gate is added for it, and I want to be explicit that this is a ruling rather than laziness.** Deciding
-markup context from code context is not decidable from text without a Razor parser. The rule *is* already
-executed — by `csc`, in three seconds, naming the file and the column — so a second implementation inside the
-test suite would be **two parsers for one rule with the worse one blocking**, which is F-59's mechanism
-inverted, and F-71's ruling covers it: a test re-asserting what the compiler already refuses is a monument.
-What is added is the reason written beside the statement, and a residual recorded in §18.
+## Test count
 
-Worth knowing, because it is the part that would catch you again: the three other `@{` blocks in this tree are
-all correct, and every one of the four sits after a closed element at the same indentation. What separates
-them is the **nearest enclosing construct** — `<section>`, `<li>` and `<div>` for the legal three, `else {` for
-this one — and that is not visible on the line.
+Baseline **1250**, verified from your terminal log rather than predicted — the first slice in three whose
+starting count was confirmed rather than assumed.
 
-## The menu progress: Stage 4d, the picture's history
+| Where | Facts | Running |
+| --- | --- | --- |
+| Baseline (verified) | — | 1250 |
+| `EditContextConsumerContractTests` (new) | +2 | 1252 |
+| `MenuItemImageSurfaceContractTests` (10 to 12) | +2 | 1254 |
+| `MenuPictureScenarios` (new) | +2 | 1256 |
 
-The tree named this slice itself. §16.4 has said since Slice 51:
+**Predicted: 1256.** The §16.3 suite moves from seventeen to **nineteen**; a run without
+`MYRESTAURANT_E2E=1` reports the two new scenarios as skipped, exactly as it does the other seventeen.
+Anything other than 1256 is the first thing to investigate.
 
-> *There is deliberately no `IMenuItemImageEventLog` … the reader arrives with the surface that renders it,
-> exactly as `IMenuSectionEventLog` arrived with the section editor.*
+## The defect, in three steps
 
-`0006` created `menu_item_image_event`, three slices wrote to it, `0007` took it to four event types, and
-nothing could read it — so §11.4 could not say when a photograph last changed or who changed it, and
-`alt_text_changed` was written from its first day and rendered nowhere.
+Your report named the wrong request, which is why this was hard to find.
+`ManageMenuItem.razor` carried `<ValidationMessage For="@(() => AltTextInput.AltText)" />` one line
+**below** `</EditForm>`, inside the block that only renders when a picture exists:
 
-**The one thing worth your attention is a join that is deliberately absent.** Every other reader in this
-family joins the row its events are about, and here that row is *usually gone*: a replace mints a new
-identifier and deletes the old row so that `Cache-Control: immutable` is a true statement, and a removal
-deletes it outright. An INNER JOIN would return a history that silently **begins at the current photograph**
-— it reads like a complete history and nothing throws — and a LEFT JOIN would add a column null on every row
-but the newest. `0006` declared no foreign key on that column precisely so the log can outlive its subject;
-this slice asserts it rather than trusting the comment that says so.
+1. The attaching POST renders the page first, while `_picture` is still `null` — the row is not written
+   yet — so the block does not render. The upload **succeeds**, commits, writes its `attached` event, and
+   redirects.
+2. The browser follows the redirect. That GET is the first render in which a picture exists. An `EditForm`
+   cascades its `EditContext` to its **children**, a sibling receives none, and
+   `ValidationMessage.OnParametersSet` throws `InvalidOperationException` without one. **500.**
+3. Every subsequent view of that item answered 500 — **including the one carrying the Remove button** — so
+   the state was not reversible from any surface in the application.
 
-The panel goes under the picture forms on `/administration/menu/{id}`, and it renders **whether or not a
-picture is attached now** — because *no picture now, three of them previously* is exactly the state the page
-could not describe. No CSS: `.record-list`, `.manage-subheading` and `data-label` are all §11.12 vocabulary,
-and `.manage-subheading` was already declared and already in use on `ManageSitting.razor`.
+If you have an item stuck in that state from before this slice, deploying this fixes it. Nothing needs to
+be undone in the database: the picture and its event were written correctly all along.
 
-## And a second defect, found reading §7 to write the reader (F-105)
+## Veto points
 
-§7 described this table, in the indicative, as `attached | replaced | removed` with **two** named
-biconditionals. It is four types and three, and has been since `0007`. **Three sections above it**, §7 states
-in bold that `menu_item_event`'s vocabulary is *not counted in prose anywhere* and that the list there is the
-only copy — a rule this project wrote down after F-77 and then did not apply to the table it added next.
+Three decisions are worth reversing if you disagree, and each is reversible on its own.
 
-Corrected, the count deleted in favour of a rule, and **discharged with something executable**, because on
-this project's own evidence a corrected sentence is worth nothing: the next migration to widen this vocabulary
-will be written by somebody who has not read it. `MenuEventVocabularyContractTests` gains a fact that every
-type the migration admits has a sentence on the surface that renders that log.
+**1. `ReadDeclaredByteCapAsync` runs on every render of the item page.** One lookup on a catalogue table,
+beside the five reads already there. The alternative was a startup-cached singleton, refused because a
+process remembering a number across a migration that changed it is the staleness §17 exists to prevent one
+register up. *To reverse:* delete the method from `IMenuItemImageDirectory` and its implementation in
+`DapperMenuItemImageDirectory`; delete `_pictureByteCap`, `PictureBudgetAttributes` and the
+`_pictureByteCap = await …` line from `ManageMenuItem.razor`; drop `@attributes="PictureBudgetAttributes"`
+from the file input. The downscaler then never switches on, and `TheUploadControlIsHandedTheCapAndAPlaceToReport`
+and `NoFileUnderSourceRestatesTheStoredPictureCap` must go with it — leaving `MenuItemImageSurfaceContractTests`
+at ten facts and §16.4 saying **Ten assertions** again.
 
-**This is the vetoable part of the delivery.** If you would rather not take a gate that reads a `switch` in
-Razor text, delete the `EveryPictureEventType_HasASentenceOnTheSurfaceThatRendersIt` method and revert that
-file's `ItemConstraintName` / `PictureConstraintName` pair to the single `ConstraintName` const it had, with
-`ReadDeclaredVocabulary()` taking no argument. The §7 correction stands either way; the count becomes **1249**
-and `MinimumCountedClasses` goes back to **28** in
-`tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs`. You would also want to
-drop the `holds 3 assertions` paragraph's third clause in §16.4 back to two, and F-105's ledger rows lose their
-*names something executable* half.
+**2. The longest edge is 1600px, and it is a genuinely new number.** It is not a second copy of anything —
+no pixel dimension has ever been written down in this repository, because §8.2 stores none (F-101) — but it
+is still a number somebody chose. *To reverse:* change `MenuItemImageUpload.LongestEdgePixels`. Nothing
+else reads it.
 
----
+**3. Scenario 19 is the riskiest thing in this delivery.** It drives a real `<canvas>` in headless
+Chromium and waits on a settled status sentence beside a re-enabled control. Nothing here was executed, so
+if it is flaky the likeliest cause is timing rather than the mechanism. *To reverse:* delete
+`MenuPictureScenarios.cs` and `PictureFixtures.cs`, remove §16.3's rows 18 and 19 and the fixture
+paragraph, and put "nineteen" back to "seventeen" in §16.4's CI sentence. **Scenario 18 is the one that
+would have caught F-106**, so if only one survives, keep that one — it needs `PictureFixtures` too.
 
-## Test count prediction
+## What was verified before packaging, and what was not
 
-**1242 → 1250.** Note that 1242 was never tested — the build failed before `dotnet test` produced a count — so
-the last verified number is **1233**.
+**Verified mechanically.** The working tree was reconstructed from `dump.txt` and SHA-256 checked file by
+file: 364 of 365 matched, the exception being `LICENSE`, which the dump elides to metadata by design. The
+PNG generator's exact arithmetic — the CRC-32 table, the Adler-32 accumulator, the stored-block framing,
+the integer-division ramp — was re-implemented and its output decoded at both fixture sizes: 12px is 512
+bytes and decodes as 12×12 RGB, 640px is 1,229,598 bytes and re-encodes to about 16 KB as JPEG. The new
+`EditContextConsumer` walk was run against the repaired tree (51 components, 83 consumers, 0 findings)
+**and** against `ManageMenuItem.razor` as it shipped in the dump, where it reported one finding at the
+right line. The §16.4 counted-class gate was emulated over the edited specification: 30 counted classes
+against a floor of 29, no disagreements, no ambiguous paragraphs, no uncited names. The Markdown table gate
+was emulated over every edited document. Byte hygiene — no CR, final newline present, no whitespace-only
+lines — was checked on every file in the archive. The cap-restatement fact was emulated over the real tree:
+the bound parses out of `0006` as six digits, 178 files under `src/` were scanned, and none restates it.
 
-| Class | Was | Now | Why |
-|---|---|---|---|
-| `MenuItemImageEventLogTests` | — | 6 | the stream oldest-first; the payload each type is allowed; the history outliving every picture it names; a cleared caption as `""`; the actor fallback; one dish's history and two kinds of empty |
-| `MenuWiringTests` | 27 | 28 | the picture history reader resolves in a scope |
-| `MenuEventVocabularyContractTests` | 2 | 3 | every picture event type has a sentence on the surface that renders it |
-
-`MinimumCountedClasses` moves **28 → 29**. §16.3 stays at seventeen. Any deviation from 1250 is the first thing
-to investigate.
-
-## What I could not check
-
-Nothing was compiled — no SDK, no database, no browser. Given what this slice repairs, that is worth stating
-twice: the instrument that would have caught F-104 is the one this environment does not have, and the two it
-does have (tag-tree walk, brace balance) both passed on the broken file.
-
-The new SQL has never run. The panel has never been rendered, so whether `Replaced with a new picture —
-image/jpeg, 284736 bytes` wraps acceptably in a `.record-list` cell at 375px is a judgement nobody has made
-against a real screen. The byte length is rendered bare rather than as `278 KiB`, matching what §11.4's
-existing picture facts already do.
-
-## Files in this archive
-
-**New (2):**
-
-```
-src/MyRestaurant.DataAccess/Menu/MenuItemImageEventLog.cs
-tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemImageEventLogTests.cs
-```
-
-**Modified (11):**
-
-```
-src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
-src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuItem.razor
-src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs
-tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs
-tests/MyRestaurant.WebApplication.Tests/Events/MenuEventVocabularyContractTests.cs
-tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs
-docs/TECHNICAL_SPECIFICATION.md
-docs/DOCUMENTATION_REVIEW.md
-docs/MENU_AND_HANDHELD_PLAN.md
-docs/BUILD_PROGRESS.md
-_CHANGES.md
-```
-
-Thirteen files in the archive. Six carry behaviour, five carry documentation, and `_CHANGES.md` is this note.
-Nothing in the archive is a script, a patch, or a fragment — every file is complete and lands where its path
-says.
+**Not verified.** Nothing was compiled and nothing was run. There is no .NET SDK and no reachable NuGet
+from where this slice was authored, so the C# is reviewed rather than built — in particular the Playwright
+call shapes in `MenuPictureScenarios`, which are the least familiar API surface in this delivery. The
+downscaler has not executed in any browser; its behaviour is argued from the specifications of
+`createImageBitmap`, `canvas.toBlob` and `DataTransfer`, and from the JPEG sizes measured on the fixture
+images.

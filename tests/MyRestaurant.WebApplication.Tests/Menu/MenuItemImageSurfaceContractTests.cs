@@ -23,6 +23,17 @@ namespace MyRestaurant.WebApplication.Tests.Menu;
 /// other test goes red, and the operator's only symptom is that every picture they choose comes back
 /// reported as empty.</para>
 ///
+/// <para><b>Stage 4e adds the two facts about the browser-side downscaler, and they are the opposite
+/// shape from the six above them.</b> Those six assert that a string is written in one place; these two
+/// assert that a <em>number</em> is written in one place and that the one place is not this side of the
+/// wire at all. §8.2's cap is declared in <c>0006</c> and nowhere else — the write service reports a
+/// violation by reading the constraint's NAME so that no C# file has an opinion about it — and Stage 4e
+/// is the first thing in this feature that needs the number rather than the outcome, because a
+/// downscaler with no budget cannot decide when to stop. It is read out of <c>pg_constraint</c> at render
+/// time and handed to the browser in an attribute, so the second fact is the one that keeps that true:
+/// it takes the bound out of the migration and requires that it appear nowhere under <c>src/</c>
+/// besides.</para>
+///
 /// <para><b>Three of the five substantive facts are about one string being written in one place.</b> The
 /// file input's <c>name</c> is what <c>Request.Form.Files</c> looks the part up by; the <c>accept</c>
 /// list is the media-type vocabulary's third declaration after §8.2's CHECK and
@@ -61,6 +72,25 @@ public sealed class MenuItemImageSurfaceContractTests
 
     /// <summary>The caption editor's own <c>@formname</c> (Stage 4c).</summary>
     private const string AltTextFormName = "menu-item-image-alt-text";
+
+    private const string DownscalerRelativePath =
+        "src/MyRestaurant.WebApplication/wwwroot/js/menu-picture.js";
+
+    private const string RootComponentRelativePath =
+        "src/MyRestaurant.WebApplication/Components/App.razor";
+
+    private const string ImageMigrationRelativePath =
+        "src/MyRestaurant.DataAccess/Migrations/0006_menu_item_images.sql";
+
+    private const string SourceRelativePath = "src";
+
+    private const string MigrationsDirectoryName = "Migrations";
+
+    /// <summary>
+    /// §8.2's named cap, by name. The <em>name</em> is written here and the <em>number</em> is not, which
+    /// is the same asymmetry <c>DapperMenuItemImageAdministration</c> carries and for the same reason.
+    /// </summary>
+    private const string ByteCapConstraintName = "menu_item_image_bytes_within_cap";
 
     /// <summary>
     /// The scan is real and the page is the one this file thinks it is (F-41). Every assertion below
@@ -322,6 +352,153 @@ public sealed class MenuItemImageSurfaceContractTests
         // the caption is still the record's own member rather than a second spelling of the column.
         Assert.Contains("class=\"manage-picture-image\"", ItemPage(), StringComparison.Ordinal);
         Assert.Contains("AltTextInput.AltText", ItemPage(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The upload control is handed §8.2's cap and a place to report into, and every one of the four
+    /// strings that carries them is read from the constant both sides share (Stage 4e).
+    ///
+    /// <para><b>The failure mode is the one every fact in this class is about: nothing breaks.</b> A
+    /// budget attribute that stopped being rendered leaves a file input that works exactly as it did
+    /// before the downscaler existed — the operator chooses a four-megabyte photograph, the form posts
+    /// it, and the server refuses it with a sentence about size. No exception, no log, nothing red, and
+    /// the only symptom is a feature that quietly stopped being usable. The <c>aria-describedby</c> half
+    /// fails even more quietly: the script resolves the element it reports into from that attribute, so a
+    /// broken pairing is a downscaler that resizes correctly and says nothing about it.</para>
+    ///
+    /// <para><b>What is deliberately not asserted is the number.</b> This fact requires the attribute to
+    /// be present and to be rendered from a splatted dictionary rather than written out; whether the
+    /// value in it is right is <see cref="NoFileUnderSourceRestatesTheStoredPictureCap"/>'s question and
+    /// ultimately PostgreSQL's answer.</para>
+    /// </summary>
+    [Fact]
+    public void TheUploadControlIsHandedTheCapAndAPlaceToReport()
+    {
+        string page = ItemPage();
+
+        // The two attribute names are constants, so the markup must reference the splat rather than
+        // spell either of them — a name written in the markup and renamed in the script produces no
+        // compiler error on either side.
+        Assert.Contains("@attributes=\"PictureBudgetAttributes\"", page, StringComparison.Ordinal);
+        Assert.Contains("MenuItemImageUpload.ByteBudgetAttributeName", page, StringComparison.Ordinal);
+        Assert.Contains("MenuItemImageUpload.LongestEdgeAttributeName", page, StringComparison.Ordinal);
+
+        // The cap is asked of the database on this page rather than carried in from anywhere.
+        Assert.Contains("ReadDeclaredByteCapAsync(", page, StringComparison.Ordinal);
+
+        // The status element and the description that points at it are one constant, used twice.
+        Assert.Contains(
+            "aria-describedby=\"@MenuItemImageUpload.StatusElementId\"",
+            page,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "id=\"@MenuItemImageUpload.StatusElementId\"",
+            page,
+            StringComparison.Ordinal);
+
+        Assert.False(
+            string.IsNullOrWhiteSpace(MenuItemImageUpload.StatusElementId),
+            "the status element id is blank, so aria-describedby would point at nothing.");
+
+        Assert.True(
+            MenuItemImageUpload.LongestEdgePixels > 0,
+            "a non-positive longest edge would scale every picture to nothing.");
+
+        // The script exists, is loaded from this origin, and reads the same two attributes. Asserted
+        // here rather than in the CSP class because the claim is about this feature: that class already
+        // forbids an off-origin or inline script tree-wide and has no opinion about which files exist.
+        string script = File.ReadAllText(PathUnder(DownscalerRelativePath));
+
+        Assert.Contains(MenuItemImageUpload.ByteBudgetAttributeName, script, StringComparison.Ordinal);
+        Assert.Contains(MenuItemImageUpload.LongestEdgeAttributeName, script, StringComparison.Ordinal);
+        Assert.Contains(
+            "<script src=\"js/menu-picture.js\" defer></script>",
+            File.ReadAllText(PathUnder(RootComponentRelativePath)),
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// §8.2's cap on a stored picture appears in the migration that declares it and <b>nowhere else under
+    /// <c>src/</c></b> (Stage 4e, <b>F-65</b>'s mechanism guarded rather than described).
+    ///
+    /// <para><b>The subject is computed, not listed (F-47).</b> The bound is read out of
+    /// <c>0006_menu_item_images.sql</c> and then searched for; this file does not contain it and cannot,
+    /// which is what makes the assertion something other than a comparison of one constant against
+    /// itself. A migration that changed the cap would change what is searched for in the same commit.</para>
+    ///
+    /// <para><b>Why this needed a gate on this slice specifically.</b> Four slices of this feature were
+    /// built around the rule that the number lives in one place — the write service reports
+    /// <see cref="AttachMenuItemImageOutcome.BytesOverCap"/> by reading a constraint's name precisely so
+    /// that no C# file has to know it. Stage 4e is the first thing that needs the value, and the obvious
+    /// implementation of a browser-side downscaler is a constant in a script. That constant would work,
+    /// would look careful, and would be wrong on the day somebody edits the migration — which is F-65's
+    /// shape exactly, and F-64 and F-69 are the same mechanism found twice more.</para>
+    ///
+    /// <para><b>Scoped to <c>src/</c>, and the exclusions are reasons rather than convenience.</b>
+    /// <c>Migrations/</c> is the declaration site. <c>tests/</c> legitimately quotes the rendered CHECK in
+    /// a doc comment while reading the bound from <c>pg_constraint</c> at run time, so a finding there
+    /// would be a finding on a correct file. <c>docs/</c> quotes the DDL, which is the whole job of a
+    /// specification, and F-46's lesson is that a rule enforced against the wrong subject is worse than
+    /// one enforced against none.</para>
+    /// </summary>
+    [Fact]
+    public void NoFileUnderSourceRestatesTheStoredPictureCap()
+    {
+        string migration = File.ReadAllText(PathUnder(ImageMigrationRelativePath));
+
+        int marker = migration.IndexOf(ByteCapConstraintName, StringComparison.Ordinal);
+        Assert.True(marker >= 0, $"{ImageMigrationRelativePath} no longer declares {ByteCapConstraintName}.");
+
+        // The CHECK that follows the name, read to the end of its own line. Anything wider would sweep
+        // up the digits in `octet_length` had it one, and anything narrower would depend on where the
+        // migration happens to break its lines.
+        int check = migration.IndexOf("CHECK", marker, StringComparison.Ordinal);
+        Assert.True(check > marker, $"{ByteCapConstraintName} is declared without a CHECK.");
+
+        int endOfLine = migration.IndexOf('\n', check);
+        Assert.True(endOfLine > check, "the cap constraint's CHECK is unterminated.");
+
+        string bound = new string(
+            migration[check..endOfLine].Where(char.IsAsciiDigit).ToArray());
+
+        // Non-vacuity, and it is the whole guard: a search for the empty string finds it everywhere, and
+        // a search for a bound that failed to parse finds it nowhere. Either way the assertion below
+        // would say nothing about the tree.
+        Assert.True(
+            bound.Length >= 3,
+            $"the cap parsed out of {ByteCapConstraintName} as '{bound}', which is not a byte count.");
+
+        List<string> restatements = [];
+        int filesScanned = 0;
+
+        foreach (string file in Directory
+            .EnumerateFiles(PathUnder(SourceRelativePath), "*", SearchOption.AllDirectories)
+            .Where(path => !path.Contains(MigrationsDirectoryName, StringComparison.Ordinal))
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal))
+        {
+            filesScanned++;
+
+            if (File.ReadAllText(file).Contains(bound, StringComparison.Ordinal))
+            {
+                restatements.Add(Path.GetFileName(file));
+            }
+        }
+
+        Assert.True(
+            filesScanned >= 20,
+            $"Only {filesScanned} file(s) under {SourceRelativePath}/ were scanned, so an emptiness"
+                + " assertion over them is not about this tree (F-41).");
+
+        Assert.True(
+            restatements.Count == 0,
+            $"{restatements.Count} file(s) under {SourceRelativePath}/ restate §8.2's picture cap"
+                + $" ({bound}): {string.Join(", ", restatements)}. It is declared once, in"
+                + $" {MigrationsDirectoryName}/, and everything that needs it asks: the write service"
+                + " reports a violation by the constraint's NAME, and the upload surface reads the value"
+                + " through IMenuItemImageDirectory.ReadDeclaredByteCapAsync. A second copy is one fact"
+                + " in two places where one edit can make them disagree (F-65).");
     }
 
     private static string ItemPage() => File.ReadAllText(PathUnder(ItemPageRelativePath));

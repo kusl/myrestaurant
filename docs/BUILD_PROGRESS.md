@@ -3912,3 +3912,263 @@ would not have prevented anything here; it would only have made the second defec
 it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried.
+
+---
+
+# M6 Slice 55 — the 500 an operator found, and the picture a phone can finally upload
+
+## Read this first: uploading worked, and the page that showed the result did not
+
+The report was four words long — *when I try to upload an image I get a 500 error* — and it named the
+wrong request, which is why it is worth writing down carefully.
+
+`ManageMenuItem.razor` gained the caption editor in Slice 53. Its `<ValidationMessage>` was placed one line
+**below** `</EditForm>`:
+
+```
+                <button type="submit" class="button-primary">Save caption</button>
+            </EditForm>
+
+            <ValidationMessage For="@(() => AltTextInput.AltText)" />
+        }
+```
+
+An `EditForm` supplies its `EditContext` as a **cascading value to its children**. A sibling receives none,
+and `ValidationMessage.OnParametersSet` throws `InvalidOperationException` when it has none. So that line is
+not a message that renders empty. It is an unhandled exception during render.
+
+The whole block sits inside `@if (_picture is not null)`, and that is what turned a placement mistake into
+the worst symptom this repository has shipped:
+
+1. The POST that attaches a picture renders the page first. `OnInitializedAsync` has already run and
+   `_picture` is still `null` — the row is not written yet — so the block does not render.
+2. `AttachPictureAsync` then runs. The transaction commits, the `attached` event is written, and
+   post/redirect/get issues a 302. **The upload succeeds.**
+3. The browser follows the redirect. That GET is the first render in which a picture exists. It throws.
+   **500.**
+
+And from then on, *every* administrator view of that item answered 500 — including the one carrying the
+Remove button. The state was not reversible from any surface in the application. An operator's only way out
+was `DELETE FROM menu_item_image`.
+
+**Nothing in this repository could have caught it, and the reasons generalise.**
+`MenuItemImageSurfaceContractTests` reads that exact file, and reads it as text: it asserted what is inside
+the caption form and had no opinion about what is beside it. §16.1 rules out bUnit, so nothing renders a
+component. The placement is legal Razor and legal C#, so the compiler is silent. And no §16.3 scenario had
+ever uploaded a picture — an absence this log recorded on each of the four slices that built the feature,
+deferred each time on the ground that the harness could not produce a fixture image.
+
+That is **F-49's shape with the mitigating half removed**. F-49 was a control that existed, worked, and was
+unowned. This is a path four slices built and no browser ever walked.
+
+## What landed
+
+Two changes, and they ride together under v1.32's rule because their failure modes are in different
+projects with different names: a misplaced tag with a gate and two browser scenarios, and a browser-side
+downscaler.
+
+### The fix, and the gate that makes it a rule (F-106)
+
+The tag moves inside the form, where the page's other five editors have always had theirs. One line.
+
+`EditContextConsumerContractTests` is the rule. It walks every `.razor` file under `Components/`, tracks
+`EditForm` depth, and requires every `ValidationMessage`, `ValidationSummary` and
+`DataAnnotationsValidator` to sit at depth ≥ 1. Fifty-one components, eighty-three consumers, zero
+findings after the repair.
+
+Four decisions in it are worth reading:
+
+- **The set is those three and not the `InputBase` family.** All three require the cascading context and
+  all three throw without it, so a failure here always means the same thing. A bound input outside its form
+  is a different defect with a different symptom, and folding it in would make the message ambiguous.
+- **Depth rather than a boolean.** Nesting is legal markup even where this tree has none, and a walk that
+  answered yes/no would have to interpret an unbalanced document instead of reporting it.
+- **The close-tag count is clamped at zero.** Letting it go negative would make the *next* consumer on the
+  page look correct, which is the one direction a gate must never fail in.
+- **A self-closed `<EditForm />` does not open.** It supplies a context to nothing, so counting it would put
+  every consumer after it inside a form with no children.
+
+**Proven sensitive twice, and the first way is the strongest form of that proof this project has had
+occasion to use:** the walk was run against `ManageMenuItem.razor` *as it shipped in the dump* and reported
+`line 216 <ValidationMessage>`. The second is the sensitivity fact itself, written against synthesised
+markup — the shipped shape, the repaired shape, the self-closed form, an element whose name merely begins
+with the same letters, and a consumer stranded between two forms — because the first fact must stay true
+after the repair and cannot depend on the tree still containing the defect.
+
+### §16.3 scenarios 18 and 19, and the fixture objection answered
+
+The plan deferred a picture scenario four times, and the stated reason was that *a picture scenario needs a
+fixture image the harness has no way to produce, and inventing bytes inside the harness would be a test
+arranging what it asserts about*. Half of that is right and half is not, and the difference is what
+`PictureFixtures` is.
+
+The right half: a checked-in photograph would be an opaque blob nobody can reason about, and a hard-coded
+base64 string is the same blob with worse ergonomics. The wrong half: the objection about *arranging what it
+asserts* does not apply, because nothing downstream asserts anything about these bytes. The claims are that
+an upload round-trips, that the browser reduces one over the cap, and that the history records it.
+
+So the harness **writes** a PNG: truecolour, 8-bit, unfiltered, uninterlaced, no ancillary chunks, with the
+pixels in **stored** deflate blocks. Two consequences, both wanted. The byte length is
+`edge × (1 + edge × 3)` plus about sixty bytes, so a caller asks for a picture over the cap by choosing a
+number rather than by guessing — `ZLibStream` would have been three lines shorter and would have compressed
+a gradient to nothing, which is precisely the file scenario 19 cannot use. And the content is a smooth
+gradient rather than noise, which is load-bearing: JPEG's whole design is that smooth content is cheap, and
+a random raster can survive every rung of the downscaler's ladder and still exceed the cap, failing the
+scenario for a reason that has nothing to do with the product.
+
+The generator was verified before delivery by re-implementing its exact arithmetic — the CRC-32 table, the
+Adler-32 accumulator, the stored-block framing, the integer-division ramp — and decoding the output. A
+12px square is 512 bytes and decodes as 12×12 RGB; a 640px square is 1,229,598 bytes, which is 2.34× the
+cap, and re-encodes as JPEG at quality 0.82 to about 16 KB.
+
+**Scenario 18** attaches a small picture and then walks *forward from the POST*, because that is where
+F-106 lived: the flash is read on the redirected GET, the thumbnail is required to have **decoded** in the
+browser rather than merely to be present in the markup — one assertion that covers §7's route answering, the
+stored content type suiting the stored bytes, and §11.11's `img-src` admitting it — and the picture history
+is required to carry the attach. Then the caption editor is used, which is F-106's own form and the one
+whose validation could not previously be reached at all.
+
+**Scenario 19** is the whole of Stage 4e and is not assertable anywhere else in this repository. The cap is
+never written in the file: it is read off the rendered `data-picture-byte-budget`, and what is asserted is
+the pair of inequalities that hold whatever the cap is — the chosen file is over it, the file the control
+ends up holding is under it and smaller than what was chosen, and the upload is **not refused**. The closing
+assertions read the stored format and byte count off §11.4's own panel, because a smaller file existing in a
+browser proves nothing; a smaller file in the database does.
+
+### Stage 4e: browser downscaling, and the number that had to leave the database (F-107)
+
+§8.2 caps a stored picture at half a megabyte. A phone camera produces four. So the honest answer to almost
+every real upload was *too large*, and every picture Slice 54's history panel would have recorded is a
+picture that could not be uploaded in the first place.
+
+Nothing on the server can help, and that is written down rather than assumed: there is no free-libre .NET
+image library available to this stack for this use — ImageSharp's licence does not admit it, SkiaSharp is a
+native dependency inside a rootless container — which is why `ImageFormat` reads signatures and never
+decodes, and why `0006` stores no pixel dimensions (F-101). The one decoder everybody already has is the
+browser's.
+
+`wwwroot/js/menu-picture.js` is a classic script beside `passkey.js`, `display.js`, `kitchen.js` and
+`clock.js`, and it is about a hundred and eighty lines of which most is comment. On `change`, it decodes the
+chosen file with `createImageBitmap`, redraws it into a `<canvas>` no larger than a declared longest edge,
+re-encodes as JPEG down a ladder of dimension-and-quality pairs until one fits, and replaces the input's
+selection through a `DataTransfer`. The existing multipart form then posts the smaller file.
+
+**Five things about it are decisions, not implementation.**
+
+**It is an optimisation and never a check.** Every refusal is still the write service's and the schema's,
+and every failure path fails **open** — the operator's chosen file stays selected and the server answers. A
+downscaler that refused an upload would be a second authority on what may be stored, in the one place an
+attacker controls entirely, which is F-64 and F-69's mechanism written in JavaScript.
+
+**A picture already inside the cap is left completely alone**, bytes and declared media type both. §7 stores
+what it was given; re-encoding something that already fits would throw away quality to solve a problem
+nobody has and would silently convert a PNG somebody chose deliberately.
+
+**The budget is not written anywhere in this application, and that is F-107.** Four slices were built on the
+rule that the cap lives in one place — the write service reports `BytesOverCap` by reading the violated
+constraint's *name*, with a comment saying a copy in C# "would be F-65's mechanism and, worse, would be the
+belt that hides the buckle". That held only because nothing had yet wanted the *value*. A downscaler does.
+The obvious implementation is a constant in a script: it would work, it would read as careful, and it would
+be wrong on the day somebody edits the migration. So `IMenuItemImageDirectory.ReadDeclaredByteCapAsync` asks
+`pg_get_constraintdef` for the bound — the same read `MenuItemImageTests` has performed since `0006`
+shipped, given an interface — and the page splats it onto the input as `data-picture-byte-budget`.
+**The attribute's presence is the switch**: a `null` cap renders no attribute, which turns the mechanism off
+and restores the behaviour this form had before it. The twelfth fact on
+`MenuItemImageSurfaceContractTests` computes the bound out of the migration and requires it to appear
+nowhere under `src/` besides `Migrations/` — including in comments, which is why the doc comment on the new
+read says the shape of the CHECK without quoting its number.
+
+**It costs §11.11 nothing, and that was designed for rather than discovered.** `createImageBitmap` takes the
+`File` directly and `canvas.toBlob` returns a `Blob` that becomes a `File`, so nothing ever produces a
+`blob:` or `data:` URL and `img-src 'self' data:` needed no widening; the script is same-origin, so
+`script-src 'self'` needed nothing either. The plan named the CSP as the thing that becomes wrong by editing
+a file it does not mention (F-49). It did not, because the approach was chosen so that it could not.
+
+**The output is JPEG although `0006` admits WebP.** WebP is smaller at equal quality on every current
+browser, and that is not the property being optimised for: the stored bytes are served back to whatever a
+guest is holding, and a picture that will not decode on an older handset at a table is worse than one forty
+kilobytes larger. A `canvas.toBlob` JPEG also carries the `FF D8 FF` signature `ImageFormat` identifies, so
+the re-encoded file passes the same check the original would have. The canvas is filled white before the
+draw, because JPEG has no alpha and a transparent PNG would otherwise re-encode onto an undefined ground
+that renders black — a defect with no error attached to it.
+
+**Two smaller decisions, each with a symptom behind it.** The listener is delegated on `document` in the
+capture-free bubble phase rather than bound to the input, because enhanced navigation replaces the body
+without a reload and a handler bound at load time stops existing the first time somebody follows a link —
+the same shape the other four scripts use for the same reason. And the submit control is **disabled for the
+duration**: decoding four megabytes takes a noticeable moment, and a form submitted during it would post the
+*original* file, which the server would refuse, correctly, with a message about size that the operator has
+just watched the page promise to handle.
+
+The status line is written through `aria-describedby` rather than a marker of its own — one association
+doing two jobs, so the sentence a sighted operator reads under the control is the sentence a screen reader
+announces as that control's description, and there is no second attribute for somebody to rename half of.
+It is also what makes scenario 19 deterministic: the scenario waits on a settled sentence beside a control
+that is not busy, which is unambiguous where either condition alone races a canvas.
+
+## §18 arithmetic
+
+Baseline **1250**, verified by the terminal log rather than predicted — the first slice in three whose
+starting count was confirmed rather than assumed.
+
+| Where | Facts | Running |
+| --- | --- | --- |
+| Baseline (verified) | — | 1250 |
+| `EditContextConsumerContractTests` (new) | +2 | 1252 |
+| `MenuItemImageSurfaceContractTests` (10 → 12) | +2 | 1254 |
+| `MenuPictureScenarios` (new, §16.3 18–19) | +2 | 1256 |
+
+**Predicted: 1256.** The end-to-end suite moves from seventeen to **nineteen**; `dotnet test` without
+`MYRESTAURANT_E2E=1` will report the two new scenarios as skipped, exactly as it does the other seventeen.
+
+Any deviation from 1256 is the first thing to investigate.
+
+## What was verified before delivery, and what was not
+
+**Verified.** The working tree was reconstructed from `dump.txt` and SHA-256 checked file by file: 364 of
+365 matched, the exception being `LICENSE`, which the dump elides to metadata by design. The PNG
+generator's exact arithmetic was re-implemented and its output decoded, at both sizes the scenarios use.
+The new `EditContextConsumer` walk was run against the repaired tree (51 components, 83 consumers, 0
+findings) **and** against the file as it shipped (1 finding, at the right line). The §16.4 counted-class
+gate was emulated over the edited specification: 30 counted classes against a floor of 29, no
+disagreements, no ambiguous paragraphs, no uncited names. The Markdown table gate was emulated over both
+registers and over the specification: no row disagrees with its header. Byte hygiene — no CR, final
+newline present, no whitespace-only lines — was checked on every edited document. The cap-restatement fact
+was emulated over the real tree: the bound parses out of `0006` as six digits, 178 files under `src/` were
+scanned, and none restates it.
+
+**Not verified.** Nothing was compiled and nothing was run. There is no .NET SDK and no NuGet reachable
+from where this slice was authored, so the C# is reviewed rather than built — in particular the Playwright
+call shapes in `MenuPictureScenarios`, which are the least familiar API surface in this delivery. The
+downscaler has not been executed in any browser; its behaviour is argued from the specifications of
+`createImageBitmap`, `canvas.toBlob` and `DataTransfer` and from the JPEG sizes measured on the fixture
+images. **Scenario 19 is the fact most likely to need a second pass**, and the likeliest reason would be a
+timing condition rather than the mechanism.
+
+## Open items after this slice
+
+**Browser downscaling is closed.** It was named as the next slice at the end of Stage 4d and it is this
+one.
+
+**A browser that sends `application/octet-stream` for a genuine PNG is refused.** Carried with the fix
+written down, for a sixth slice — and it is now *slightly* less likely to bite, because a downscaled
+picture is re-encoded by the browser and arrives as `image/jpeg` whatever the original was labelled. That
+narrows the case to files already under the cap, which is the wrong direction for a fix to arrive from and
+is recorded so nobody mistakes it for a repair.
+
+**The two menu resequencing verbs still have no §16.3 scenario.** With 18 and 19 landed they are the
+largest end-to-end gap in the menu.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried.
+
+**Nothing treats a test that fails and then passes as evidence.** Carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a twenty-second time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Thirty-first consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried, and this slice makes it
+more pressing: `BUILD_PROGRESS.md` is now past four thousand lines.

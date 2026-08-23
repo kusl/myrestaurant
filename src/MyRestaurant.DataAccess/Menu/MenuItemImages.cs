@@ -181,6 +181,34 @@ public interface IMenuItemImageDirectory
     Task<MenuItemImageContent?> ReadContentAsync(
         Guid menuItemImageIdentifier,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// §8.2's cap on a stored picture, in bytes, <b>asked of the database rather than restated</b> — or
+    /// <c>null</c> when the constraint cannot be read.
+    ///
+    /// <para><b>This exists so that a number can leave this system without being copied.</b> The cap is
+    /// declared in exactly one place, <c>0006</c>'s <c>menu_item_image_bytes_within_cap</c>, and the whole
+    /// of <see cref="IMenuItemImageAdministration"/>'s design rests on that: the write reports
+    /// <see cref="AttachMenuItemImageOutcome.BytesOverCap"/> by reading the violated constraint's
+    /// <em>name</em> precisely so no C# file has an opinion about how large is too large. Stage 4e needs
+    /// the browser to know the number — a downscaler with no budget cannot decide when to stop — and the
+    /// only honest way to hand it over is to ask the constraint that owns it. A constant here would be
+    /// F-65's mechanism arriving through the one door this feature had left open.</para>
+    ///
+    /// <para><c>pg_get_constraintdef</c> renders the CHECK as PostgreSQL stores it — a
+    /// <c>CHECK ((octet_length(bytes) &lt;= N))</c> whose only run of digits is the bound — so the number
+    /// in the migration is the number a caller gets. <b>The bound is deliberately not quoted in this
+    /// comment</b>, because <c>MenuItemImageSurfaceContractTests</c> asserts that no file under
+    /// <c>src/</c> outside <c>Migrations/</c> contains it, and a doc comment is a file. That gate is what
+    /// makes the sentence above checkable rather than merely intended.</para>
+    ///
+    /// <para><b><c>null</c> is a real answer and callers must degrade rather than throw.</b> A renamed or
+    /// dropped constraint is a schema this application would refuse to start against (migrations run
+    /// before HTTP binds, §17), so the reachable case is a database a reader cannot interrogate — and the
+    /// right response on a surface is to hand the browser no budget, which turns the downscaler off and
+    /// leaves the server the sole authority it was always meant to be.</para>
+    /// </summary>
+    Task<int?> ReadDeclaredByteCapAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -335,6 +363,18 @@ public sealed class DapperMenuItemImageDirectory : IMenuItemImageDirectory
         WHERE menu_item_image.menu_item_identifier = @MenuItemIdentifier;
         """;
 
+    /// <summary>
+    /// §8.2's cap, asked for rather than restated. The <c>conname</c> here and the one
+    /// <see cref="DapperMenuItemImageAdministration"/> matches a violation against are the same string in
+    /// the same migration; this read is what lets a surface tell a browser the number without any file in
+    /// this tree containing it.
+    /// </summary>
+    private const string ByteCapSql = """
+        SELECT (regexp_match(pg_get_constraintdef(pg_constraint.oid), '([0-9]+)'))[1]::int
+        FROM pg_constraint
+        WHERE pg_constraint.conname = 'menu_item_image_bytes_within_cap';
+        """;
+
     private const string ContentSql = """
         SELECT menu_item_image.menu_item_image_identifier AS MenuItemImageIdentifier,
                menu_item_image.content_type               AS ContentType,
@@ -394,6 +434,21 @@ public sealed class DapperMenuItemImageDirectory : IMenuItemImageDirectory
             .QuerySingleOrDefaultAsync<MenuItemImageContent>(new CommandDefinition(
                 ContentSql,
                 new { MenuItemImageIdentifier = menuItemImageIdentifier },
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+    }
+
+    public async Task<int?> ReadDeclaredByteCapAsync(CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        // QuerySingleOrDefault over int? rather than ExecuteScalar, so "no such constraint" and "the
+        // constraint parsed to nothing" are one answer — null — rather than one being an exception the
+        // caller would have to catch in order to do the same thing with it.
+        return await connection
+            .QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
+                ByteCapSql,
                 cancellationToken: cancellationToken))
             .ConfigureAwait(false);
     }
