@@ -7,19 +7,19 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-23T22:04:19-04:00
+  Generated at   : 2026-08-23T23:46:51-04:00
   Generator      : export.sh
 
 REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 77b73404c9251f7d1026a3f72428b1c011cb1b89
-  Commit (short) : 77b7340
-  Commit date    : 2026-08-23 22:03:53 -0400
+  Commit (full)  : cece563e23a3030dd1d98696509e64323f92c7be
+  Commit (short) : cece563
+  Commit date    : 2026-08-23 23:46:38 -0400
   Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 370
+  Files included : 373
   Withheld paths : docs/llm/, docs/progress/
   Excluded files : export.sh
   Elided files   : LICENSE (metadata and SHA-256 only)
@@ -579,7 +579,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (370 included files)
+# FILE TREE  (373 included files)
 ################################################################################
 .
 ├── .dockerignore
@@ -663,6 +663,7 @@ cat "$OUTPUT_FILE"
 │   │   │   ├── MenuEventLog.cs
 │   │   │   ├── MenuItemImageEventLog.cs
 │   │   │   ├── MenuItemImages.cs
+│   │   │   ├── MenuItemReactions.cs
 │   │   │   ├── MenuSectionAdministration.cs
 │   │   │   ├── MenuSectionDirectory.cs
 │   │   │   └── MenuSectionEventLog.cs
@@ -673,7 +674,8 @@ cat "$OUTPUT_FILE"
 │   │   │   ├── 0004_menu_item_descriptions.sql
 │   │   │   ├── 0005_menu_item_sections.sql
 │   │   │   ├── 0006_menu_item_images.sql
-│   │   │   └── 0007_menu_item_image_alt_text.sql
+│   │   │   ├── 0007_menu_item_image_alt_text.sql
+│   │   │   └── 0008_menu_item_reactions.sql
 │   │   ├── MyRestaurant.DataAccess.csproj
 │   │   ├── NpgsqlDatabaseConnectionFactory.cs
 │   │   ├── Orders
@@ -891,6 +893,7 @@ cat "$OUTPUT_FILE"
     │   │   ├── MenuEventLogTests.cs
     │   │   ├── MenuItemImageEventLogTests.cs
     │   │   ├── MenuItemImageTests.cs
+    │   │   ├── MenuItemReactionTests.cs
     │   │   ├── MenuItemResequenceTests.cs
     │   │   ├── MenuSectionAdministrationTests.cs
     │   │   ├── MenuSectionEventLogTests.cs
@@ -3304,17 +3307,17 @@ This document describes how a report gets handled, not what anyone is entitled t
 
 --- METADATA ---
   Relative path:         _CHANGES.md
-  Size:                  7.7 KiB (7906 bytes)
-  SHA-256:               24ba364b365e4f664bfa0a9470c6c2c20c4781d72e9670ec4e663349de8e2615
+  Size:                  11.2 KiB (11488 bytes)
+  SHA-256:               d1b84d60791a758f6fca7271de242d15906213b9c24c094d6d659bc184e41a43
 
 --- CONTENT ---
-# M6 Slice 56 — the bytes decide the format, and the build CI runs
+# M6 Slice 57 — likes: the schema and the data access, and a paragraph that contradicted the DDL above it
 
 Extract at the repository root. Every file in the archive is a **complete file**; nothing is a patch, and
 there are no scripts to run.
 
 ```
-tar -xzf m6-slice-56-bytes-decide-the-format.tar.gz
+tar -xzf m6-slice-57-likes-schema-and-data-access.tar.gz
 ```
 
 ## Files to delete
@@ -3327,109 +3330,148 @@ Several gates in this tree enumerate their subject with `git ls-files`, so an un
 they do not see:
 
 ```
-git add tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageContentTypeContractTests.cs
+git add src/MyRestaurant.DataAccess/Migrations/0008_menu_item_reactions.sql
+git add src/MyRestaurant.DataAccess/Menu/MenuItemReactions.cs
+git add tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemReactionTests.cs
 ```
 
-That is the only new file.
+Those are the only three.
 
 ## What is in the archive
 
 | Path | Why |
 | --- | --- |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/PictureFixtures.cs` | **F-108**: the `stackalloc` moves above the loop. This is the build break |
-| `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuItem.razor` | **F-109**: identifies the media type from the bytes. **F-110**: both format censuses become derived. Also gains `@using MyRestaurant.Domain.Menu` |
-| `src/MyRestaurant.WebApplication/Menu/MenuItemImageEndpoints.cs` | **F-110**: `MenuItemImageUpload.RecognisedTypesForOperators`, derived from the same census `AcceptAttribute` is |
-| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageContentTypeContractTests.cs` | **new** — three facts, all proven sensitive against the tree as it shipped |
-| `tests/MyRestaurant.EndToEnd.Tests/MenuPictureScenarios.cs` | §16.3 scenario **20** |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.41**: §7 rewritten on what decides a media type, §16.3 scenario 20, §16.4 the new class, Appendix A F-108/F-109/F-110, changelog |
-| `docs/DOCUMENTATION_REVIEW.md` | Three ledger rows, and a status line about deferrals rather than about media types |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 4f, and Stage 4e's carried item struck through and closed |
-| `docs/BUILD_PROGRESS.md` | The Slice 56 narrative, shipped whole |
+| `src/MyRestaurant.DataAccess/Migrations/0008_menu_item_reactions.sql` | **new** — `menu_item_reaction_event`, its index, and the `menu_item_reaction_current` fold. Touches nothing existing |
+| `src/MyRestaurant.DataAccess/Menu/MenuItemReactions.cs` | **new** — `IMenuItemReactionDirectory` (two reads) and `IMenuItemReactions` (the press) |
+| `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemReactionTests.cs` | **new** — nine integration facts against a real PostgreSQL |
+| `src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs` | Registers both, and states why the write is deliberately **not** behind `IMenuWorkflow` |
+| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs` | The registration fact, and the standing fact narrowed to *every write that changes the menu* |
+| `tests/MyRestaurant.WebApplication.Tests/Events/MenuEventVocabularyContractTests.cs` | **F-111**: a fourth fact holding §8.2's quoted DDL to the migrations, both directions |
+| `tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs` | Two `KeyRelations` rows — a table **and** a view — and the paragraph saying why `0008` needs both |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.42**: §7's five reaction paragraphs, §8.2's DDL, §8.3's fold, the F-111 repair, §16.4's new class and two moved counts, Appendix A, changelog |
+| `docs/DOCUMENTATION_REVIEW.md` | The F-111 row, and a status line about which copy of a fact gets maintained |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 5 becomes Stage 5a (landed) with both of its rulings made, and Stage 5b named; Stage 6 inherits one of the rulings |
+| `docs/BUILD_PROGRESS.md` | The Slice 57 narrative, shipped whole |
 | `_CHANGES.md` | This file |
 
 ## Test count
 
-Baseline **1256**, verified from your terminal log. Slice 55 predicted 1256 and the run returned 1256.
+Baseline **1260**, verified from your terminal log rather than assumed. Slice 56 predicted 1260 and the run
+returned 1260 — two exact predictions in a row, which is a first for this project.
 
 | Where | Facts | Running |
 | --- | --- | --- |
-| Baseline (verified) | — | 1256 |
-| `MenuItemImageContentTypeContractTests` (new) | +3 | 1259 |
-| `MenuPictureScenarios` (2 to 3) | +1 | 1260 |
+| Baseline (verified) | — | 1260 |
+| `MenuItemReactionTests` (new) | +9 | 1269 |
+| `MenuWiringTests` (28 to 29) | +1 | 1270 |
+| `MenuEventVocabularyContractTests` (3 to 4) | +1 | 1271 |
+| `SchemaMigrationRunnerTests.KeyRelations` (15 to 17 rows) | +2 | 1273 |
 
-**Predicted: 1260.** The §16.3 suite moves from nineteen to **twenty**. Anything other than 1260 is the
-first thing to investigate.
+**Predicted: 1273.** Recomputed from the edited tree rather than carried: 921 `[Fact]` methods + 329
+`[InlineData]` rows + 17 + 6 `MemberData` rows. The last two come from theory **rows**, so §16.4's count for
+`SchemaMigrationRunnerTests` stays at 7 — that number counts methods. The §16.3 suite stays at **twenty**,
+because Stage 5a builds no surface for a browser to visit. Anything other than 1273 is the first thing to
+investigate.
 
-## The build break, in one paragraph
+*(I told you 1272 in the previous message. That estimate omitted one increment; the arithmetic above is the
+corrected one, stated plainly rather than quietly fixed, since §18's whole point is that a number which
+moves without explanation is the thing to chase.)*
 
-`ci_local.sh` stopped at step 5 and everything after it never ran. `PictureFixtures.Deflate` declared a
-four-byte `stackalloc` inside its loop; stack memory is released when the *method* returns rather than when
-the iteration ends, so the frame grows once per pass. In fact it cost seventy-six bytes. What matters is
-that `Directory.Build.props` deliberately leaves warnings non-fatal for a plain `dotnet build` and makes
-them errors under the flag CI passes — so the same defect is one line of scrollback locally and a halt in
-the pipeline. Your session shows three green signals and then the one that counts. **No gate is added:**
-CA2014 is the gate, it ran, it decided correctly and it blocked.
+## Both of Stage 5's rulings, made rather than carried
 
-## The six-slice item, and why it took six slices
+The plan had said since it was written that likes needed two rulings before shipping. Neither took an hour,
+which is the argument for deciding at the moment it is cheap.
 
-Stage 4b diagnosed F-109 correctly, wrote the fix out in full — *identify from the bytes and pass that* —
-and declined it on one sentence: doing so *"would make two of the write's outcomes unreachable from the only
-surface that can reach them"*. That sentence was copied forward into four consecutive open-item lists
-without being re-read as a claim.
+**Who sees the count: staff.** A count of 3 on a menu of sixty items is noise that makes a restaurant look
+empty. So *which of these is popular* is §11.4's question and *which of these do I like* is §11.1's — two
+reads over one fold. The guest gets their own press back, or the control is an affordance with no feedback;
+what they do not get is everybody else's.
 
-It is true, and it is not a cost. Those two outcomes belong to a **library**, and `MenuItemImageTests`
-reaches both directly on every integration run; an outcome no *form* can produce is not an outcome nothing
-tests. The real worry underneath — that a surface deciding what an image is would be a second authority on
-what may be stored — is answered rather than dismissed: what the surface passes is the answer of the same
-pure function the write consults, so there is one decision procedure called twice, and the write's two
-checks are now true by construction rather than by luck.
+**Whether a like requires having ordered the item: no**, and this is the one Stage 6 inherits.
+`order_current_line` records what somebody **ordered**, not what they ate, and a table shares — so the
+requirement refuses the case it most wants to admit (*I ate my partner's dessert and it was the best thing
+on the menu*) while admitting the one it wants to refuse. It would also make a menu write read order
+history, inverting §6.5.4's direction. What bounds the number instead is the door: §4.3 authenticates every
+person at a table. **And it stays reversible additively** — if the restriction is ever wanted it belongs on
+the *read*, as a narrower second count.
 
-**F-62 said a reason for not doing something is a claim about the tree, checked before it is written down.
-This adds the other half: a claim used to defer is re-checked each time it is used again.**
+## The one fact that could not have been written any other way
+
+`TwoPressesAtOneInstantFoldToTheLater`. Nobody hides an order twice in one millisecond, so
+`order_visibility_current`'s identifier tie-break has never had to work. **Everybody taps a heart twice**,
+and one transaction stamps its rows with one `IClock.UtcNow`, so two presses genuinely share an
+`occurred_at`. Without the tie-break `DISTINCT ON` returns the *oldest* row and a double-tap reads back as
+the state before it. It is an answer only because **F-95** made `IIdentifierFactory` ascend inside a
+millisecond. The fact asserts its own premise first — two rows, one distinct instant — because a fixture
+whose clock had started moving would make it pass while testing nothing (F-41).
+
+## F-111, in one paragraph
+
+§8.2's note beneath `menu_item_event`'s DDL described a table with **five** event types and **two** payload
+columns — twelve lines below a DDL block correctly showing eight and five — and required *"integration tests
+must assert all ten combinations"*. Two things make it a finding rather than a typo. The sentence is
+**normative**, and its arithmetic was wrong even for the schema it was written against: five types over two
+nullable columns is twenty states, not ten. And the obligation it states is one **§16.4 separately rules
+against writing** — a payload the CHECK refuses is refused loudly and by name, and re-asserting a constraint
+is a monument (F-47). One section required tests another forbade; the tree obeyed the second; nothing could
+see it. The counts are deleted, the obligation is reversed, and the *quotation* is made executable.
 
 ## Veto points
 
 Three decisions are worth reversing if you disagree, and each is reversible on its own.
 
-**1. `ContentTypeContradictedByBytes`'s arm is kept although nothing can now reach it from that page.** The
-alternative is deleting it, which is tidier and which answers a future refusal with a redirect and silence —
-the worst failure available on an upload surface. *To reverse:* delete the `case` and its comment from
-`ManageMenuItem.razor`. Nothing else changes; the enum member and its write-side test stay where they are.
+**1. `SetLikedAsync` takes `menu_item` `FOR UPDATE`, which is wider than the conflict it guards.** The
+conflict is one person against themselves; the lock serialises every press on one dish against every other,
+and against a rename of it. It is the standing idiom in that file's neighbours and it answers
+`MenuItemNotFound` from the same statement. *To reverse:* drop `FOR UPDATE` from `LockMenuItemSql`. You keep
+the existence check and the outcome, and you lose the serialisation — the fold stays correct under a race
+and the **log** can gain a second `'liked'` row for one opinion, which is the failure ADR-0002 cares about.
 
-**2. The refusal renders media types (`image/jpeg, image/png, image/webp`) rather than English names.** It
-reads a little more mechanically. The alternative needs a map from type to article-and-name, which would be
-the fourth copy of the vocabulary this change exists to remove. *To reverse:* change
-`MenuItemImageUpload.RecognisedTypesForOperators`; both the lede paragraph and the refusal read it, and the
-third gate keeps working as long as no format name is spelled in the page itself.
+**2. `IMenuItemReactions` is registered outside `IMenuWorkflow`, and it is the first menu write that is.**
+*To reverse:* add a forwarding verb to `MenuWorkflow`, register it, move the `Assert.IsType` line into
+`MenuWorkflow_IsResolvableInAScope_AndCoversEveryWriteServiceThatChangesTheMenu`, and rename that method
+back. Note what you are buying: every heart-tap becomes a `MenuChanged` broadcast, and this is the one write
+in the application that can fire many times a minute at one table.
 
-**3. Scenario 20 asserts that the downscaler leaves a small file's declared type untouched.** That is
-argued from `menu-picture.js`'s early return rather than observed, and it is the one assertion in the new
-scenario that could fail for a reason having nothing to do with F-109. *To reverse:* delete the
-`Assert.Equal(UnnamedContentType, held)` block. The scenario still proves the fix; it just stops proving
-that it is testing what it thinks it is.
+**3. F-111's gate reads a 609 KiB document with a regex on every unit run.** That is a real cost in the fast
+suite for a defect that arrives once every few migrations. *To reverse:* delete
+`EveryVocabularyTheSpecificationQuotes_IsTheOneTheMigrationsDeclare` and its two helpers, move §16.4's count
+for that class back to 3, and drop the fourth-fact sentence from its paragraph. The prose repair stands on
+its own; what you lose is the reason to believe the *next* note will not drift.
 
 ## What was verified before packaging, and what was not
 
 **Verified mechanically.** The tree was reconstructed from `dump.txt` and SHA-256 checked file by file: 370
 files, the only differences being `export.sh` (it embeds its own file marker) and `LICENSE` (elided by
-design). **No session drift.** All three new gates were emulated twice — against the repaired tree, where
-each passes, and against `ManageMenuItem.razor` exactly as it shipped in your dump, where each fails: the
-first naming `file.ContentType`, the second reporting no `IdentifyContentType` call, the third naming all
-three format words and the missing census. 185 files under `src/` were walked and exactly one binds an
-`IFormFile`. The §16.4 counted-class gate was emulated over the edited specification: 31 counted classes
-against a floor of 29, no disagreements, no ambiguous paragraphs, no uncited names. The Markdown table gate
-was emulated with the real unescaped-pipe splitter across every tracked document: 415 rows, no problems.
-The version gate was emulated: two versioned documents, headers matching their newest entries, entries
-descending. Byte hygiene was checked on every file in the archive.
+design). **Session drift was caught** — this session opened two slices behind, believing the tree was at
+Slice 54 with an unverified 1242 baseline, and the tree said otherwise before anything was authored. The
+test-count arithmetic was rebuilt from the tree and reproduces your terminal exactly: 910 + 329 + 21 = 1260.
+The §16.4 counted-class gate was emulated over the edited specification — **31** counted classes, no
+disagreements — and it caught the one regression this slice created (`MenuWiringTests` stated 28 against a
+file holding 29) before the number was corrected. The Markdown table gate was emulated with the real
+unescaped-pipe splitter over every tracked document: no problems. The version gate was emulated on both
+versioned documents: headers matching their newest entries, entries descending. **The new vocabulary gate
+was emulated in both directions and proven sensitive three ways** — a widened list planted in §8.2's quoted
+`menu_item_event` DDL is reported as a value mismatch, deleting `menu_item_image_event_type_vocabulary`'s
+quoted CHECK is reported as a key mismatch, and narrowing the quoted reaction list to one word is reported.
+The standing authoring scans were run over every changed file: no `IndexOf(char, int, StringComparison)`, no
+`await` in an interpolated hole, no `string.Create` chain, no `stackalloc` in a loop, no `@section` outside
+an escaped `@@section` in a comment, no collection expression on a `Dictionary`. Byte hygiene — no CR,
+exactly one final newline, no whitespace-only line, no context-dump separator — was checked on every file in
+the archive.
 
-**Not verified.** Nothing was compiled and nothing was run — and since this slice exists partly because of
-that gap, it is worth stating plainly. The specific risks, in order: the `@using MyRestaurant.Domain.Menu`
-added to `ManageMenuItem.razor` is a new import on a Razor page and would fail as `CS0246` if `ImageFormat`
-did not resolve from there (it is `public static` in `MyRestaurant.Domain`, which `MyRestaurant.WebApplication`
-references transitively through `MyRestaurant.DataAccess`, and `MenuItemImageEndpoints.cs` already imports
-that namespace in the same assembly); the second gate's argument walk assumes the attach call's first `);`
-is its own, which is true of the shipped formatting and would break if the call were reformatted onto one
-line; and scenario 20's `type` assertion is argued rather than observed, which is veto point 3.
+**Not verified.** Nothing was compiled and nothing was run; there is no .NET SDK reachable from where this
+slice was authored, so the C# is reviewed rather than built (F-71's standing caveat). The specific risks, in
+order. `Dapper.ExecuteScalarAsync<Guid?>` against a `SELECT … FOR UPDATE` is the one call shape in the new
+write service with no exact precedent in this tree — `DapperMenuAvailability` uses
+`QuerySingleOrDefaultAsync<T>` over a row type for the same job, and the scalar form was chosen because the
+lock statement selects one column; if it misbehaves it does so as a null where an identifier belongs, which
+`AnUnknownItemReportsNotFoundAndWritesNothing` reaches from the wrong side. `count(*)::integer` is cast in
+SQL rather than widened in C# so the column and `MenuItemLikeCount.LikeCount` agree at the boundary; a
+reader expecting `long` would fail as an `InvalidCastException` from Dapper rather than as a wrong number.
+And the two new `KeyRelations` rows assert a **view** through `to_regclass`, which resolves any relation and
+is therefore correct — but it is the one thing in the migration gate this slice did not exercise against a
+database.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3604,8 +3646,8 @@ volumes:
 
 --- METADATA ---
   Relative path:         docs/BUILD_PROGRESS.md
-  Size:                  287.7 KiB (294579 bytes)
-  SHA-256:               ce2ffe0c97d3e6ff699abfb9a6ced3df1e62bebddf96913d46038fe60ef6cd01
+  Size:                  305.8 KiB (313155 bytes)
+  SHA-256:               dd321ae46ff5c1a2c8d03a564deb0046b34f685317468bbdc877a1385fea3197
 
 --- CONTENT ---
 # Build progress
@@ -8007,19 +8049,269 @@ starts it successfully.** Carried.
 **Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
 past four thousand two hundred lines.
 
+---
+
+# M6 Slice 57 — the first stage of the menu that is not about a dish's own columns
+
+## What arrived, and what the terminal said first
+
+Two changes. Stage 5a of the menu plan — the like, its fold, and the two reads over it — and **F-111**, a
+paragraph in the specification that had been describing `menu_item_event` three migrations out of date
+while requiring a set of integration tests another section of the same document rules against writing.
+v1.32's distinguishable-failure ruling governs the pair and is comfortably satisfied: one fails as nine
+named integration facts against a real PostgreSQL plus one registration fact in the web project, the other
+as a single contract fact over two text files. Nothing about the two can be confused for the other on a red
+run.
+
+**The prediction was exact for the second consecutive slice.** Slice 56 predicted **1260** and the run
+returned 1260 — `dotnet test` green with nothing failed, the end-to-end project green at twenty, and
+`scripts/ci_local.sh --with-all --with-e2e` clear, which is the gate that stopped at step 5 the slice
+before. Two consecutive exact predictions is the first time this project has had that, and it is worth
+recording because the §18 habit exists precisely so that a run which *disagrees* is loud.
+
+**Session memory was stale by two slices and the tree corrected it.** This session opened believing the
+tree was at Slice 54 with a predicted ~1250 against an unverified 1242 baseline. It is at Slice 56 with a
+verified 1260. That is the fourth drift event this log records, and the SHA-256 reconstruction caught it
+before a line was written — which is the whole reason the reconstruction is the first thing a session does.
+
+## Stage 5a — what was cut, and why it was cut there
+
+Stage 4 closed completely in Slice 56, so this is the first slice in eight with no picture in it. Stage 5
+was specified when the plan was written and had been sitting behind two rulings it named and did not make.
+**Both are made here**, and neither took an hour — which is the argument for making a decision at the
+moment it is cheap rather than at the moment it is forced.
+
+**Who sees the count: staff.** A count of 3 on a menu of sixty items is noise that makes a restaurant look
+empty, and the number's only honest audience is the person deciding what to stock. So *which of these is
+popular* is §11.4's question and *which of these do I like* is §11.1's — two reads over one fold, rather
+than one read handing every guest the restaurant's opinion. The guest still gets their own press back, or
+the control is an affordance with no feedback; what they do not get is everybody else's.
+
+**Whether a like requires having ordered the item: no**, and this is the ruling worth reading because
+Stage 6 inherits it. `order_current_line` records what somebody **ordered**, not what they ate, and a table
+shares — so the requirement refuses the case it most wants to admit (*I ate my partner's dessert and it was
+the best thing on the menu*) while admitting the one it wants to refuse (*I ordered it, sent it back, and
+liked it anyway*). It would also make a menu write read order history, inverting §6.5.4's direction: an
+order prices itself **from** the menu, and nothing in the menu has ever looked the other way. What bounds
+the number instead is the door — §4.3 authenticates every person at a table and R§8 permits no anonymous
+ordering — so a like is one authenticated person's press. **The decision is reversible additively:** if the
+restriction is ever wanted it belongs on the *read*, as a second and narrower count, not on the write as a
+refusal a guest at a table has to be given a sentence about.
+
+The cut itself is Stage 4a's, applied a second time: **schema and data access, no surface.** The two
+surfaces belong to different people and neither is a small page, and a slice that shipped one of them would
+have to decide the other's shape in passing.
+
+## `0008`, and the four rulings inside it
+
+`0008_menu_item_reactions.sql` is the third migration in this tree that touches nothing existing — one
+table, one index, one view, no `ALTER`, no backfill, no constraint widened. That is `0003`'s cut and
+`0006`'s, and it is why the suite is green here **by construction** rather than by inspection.
+
+**It is an event table and not a row per like.** The small schema is `(menu_item_identifier,
+person_identifier)` `UNIQUE` with a `DELETE` to withdraw, and it is smaller, and it gets every visible
+answer right — the fold, the count, the guest's own state. It also destroys the record. R§6.8 makes this
+system append-only because a record that can be removed is a record nobody can audit, and §6.8's
+hide-never-delete rule has exactly **one** stated exception — the image bytes — granted because the history
+of those lives in a log beside them. A like has no log beside it, because the log **is** the record. Three
+of the nine integration facts fail against the rejected schema, which is what makes the rejection a
+decision rather than a preference.
+
+**There is no `actor_person_identifier`**, which every other event table in this schema has. Elsewhere the
+subject and the actor genuinely differ: an administrator renames somebody else's dish, and §11.1 renders
+*"kitchen removed Salmon"*. A reaction's subject **is** the person reacting, and no surface in §11 could
+offer to press it on somebody else's behalf, so an actor column would be constrained to equal its neighbour
+on every row that will ever exist. That is F-65's rule arriving as a column that was never written.
+
+**There is no count column and no count view.** A `menu_item_reaction_count` view is one line, and §8.3's
+views exist to give the application a shape it would otherwise assemble from event tables by hand rather
+than to save a `GROUP BY`; a second view would be a second place for *which of these is popular* to be
+defined, and the second definition is the one that counts presses instead of people. A `like_count` on
+`menu_item` is refused one register harder, on F-101's reasoning — a stored total beside the rows it totals
+is one fact written twice, in the one table in this schema that grows a row every time a thumb moves.
+
+**The fold's identifier tie-break is load-bearing here in a way it is not on `order_visibility_current`,**
+and this is the sentence worth reading twice. Nobody hides an order twice in one millisecond. **Everybody
+taps a heart twice**, and one transaction stamps its rows with one `IClock.UtcNow` (§8.1), so two presses
+genuinely share an `occurred_at`. Without the tie-break `DISTINCT ON` returns whichever row the scan reached
+first — the *oldest* — and a double-tap reads back as the state before it. It is an answer only because §8.1
+requires `IIdentifierFactory` to ascend inside a millisecond, which is the property **F-95** found nothing
+was keeping. `TwoPressesAtOneInstantFoldToTheLater` is the one fact in this slice that could not have been
+written any other way, and it asserts its own premise first — two rows, one distinct instant — because a
+fixture whose clock had started moving would make it pass while testing nothing (F-41).
+
+## The lock, and what it costs
+
+`SetLikedAsync` takes the `menu_item` row `FOR UPDATE` before it compares, which is the standing rule in
+this file's neighbours and is doing two jobs at once: it answers `MenuItemNotFound` from the same statement
+that takes the lock, and it serialises read-compare-append against itself. Without it two presses from one
+person could both read *not liked* and both append `'liked'` — the fold would still be right and the
+history would be a lie, which is the worse of the two failures in an append-only system (ADR-0002).
+
+**What it costs is written down rather than left to be discovered.** The lock is wider than the conflict:
+the conflict is one person against themselves, and this serialises every press on one dish against every
+other, and against a rename of it. The alternatives were an advisory lock keyed on the pair — a second
+locking scheme in a codebase that has one — and no lock at all, which trades a truthful log for concurrency
+nobody at one restaurant's table will ever need. A dish is locked for the duration of one `INSERT`.
+
+**Absence and `'unliked'` are one state**, deliberately. The fold has no row for a person who has never
+pressed anything, so the read coalesces to `false`, and unliking something never liked is
+`AlreadyInThatState` and writes nothing rather than being a fourth outcome nobody could act on. The
+alternative puts a row in the log recording a withdrawal of an opinion never held.
+
+## A reaction publishes nothing, and it is the first menu write not behind `IMenuWorkflow`
+
+Stated as a ruling rather than left to be inferred from an absence, in the composition root, in §7, and in
+the wiring fact's own summary. §9's `MenuChanged` means *re-read the menu*. A like moves no name, no price,
+no heading, no position, no availability flag and no photograph — there is nothing for a picker to re-read
+— and this is **the one write in this application that can fire many times a minute at one table**, so a
+broadcast would make one thumb re-read the whole menu on every phone in the building. The presser's own
+feedback needs no announcement either: a static surface re-renders through post/redirect/get and an
+interactive one re-renders itself.
+
+`MenuWiringTests`' standing fact is therefore narrowed from *covers every write service* to **covers every
+write service that changes the menu**, which is what it always meant, and the two reaction services get a
+registration fact of their own. That separation is the interesting half: the twenty-eighth fact is outside
+the workflow's body because `IMenuItemImageEventLog` is a *read*; the twenty-ninth is outside it because
+`IMenuItemReactions` is a **write that is deliberately not behind the workflow**, and putting it in that
+body would make the fact assert the negation of its own name.
+
+## F-111 — the paragraph twelve lines below the DDL that contradicted it
+
+Not in this feature. §8.2's note beneath `menu_item_event`'s DDL said the CHECKs bind `new_name` and
+`new_price_amount`, that *"`activated`/`deactivated` therefore carry neither"*, and that **"integration
+tests must assert all ten combinations (five types × payload present/absent)"**. `0004` took the table to
+seven types and four payload columns; `0005` took it to eight and five. The DDL block twelve lines above the
+note records all of it correctly and has done since each migration landed.
+
+**The mechanism is the finding.** A quoted DDL block stays right because it is the thing a person adding a
+table *copies*. The paragraph explaining it goes stale because nobody re-reads an explanation they have
+already understood — and every gate over this document reads table shape, header versions or assertion
+counts, none of which is a sentence.
+
+**Two things lift it above a typo.** The sentence is **normative**: it states an obligation on the suite,
+and the figure it computes that obligation from was never right even for the schema it was written against
+— five types over two nullable columns is twenty states, not ten. And the obligation it states is one
+**§16.4 separately rules against**: a payload the CHECK refuses is refused loudly and by name on the first
+insert, and `MenuSectionEventLogTests`' own summary says in as many words that re-asserting a constraint is
+a monument (F-47). So one section of this specification required a set of tests another section forbade,
+the tree obeyed the second, and nothing anywhere could see the disagreement.
+
+**F-77's shape for the eighth time, one register up.** That row deleted three stale counts of this same
+vocabulary out of code comments where nothing looks; this is the same vocabulary miscounted in the document
+those comments defer to. Found by opening §8.2 in order to add a table to it, which is how F-54, F-58 and
+F-79 arrived, and which is **F-93's timing for the sixth time**: the slice that edits a section is the last
+moment its content is free to be wrong.
+
+**The repair, and the executable half.** The counts are **deleted rather than corrected**, which is this
+project's standing pattern for a census that can be derived. The testing sentence is **reversed to agree
+with §16.4** rather than restated. And the *quotation* is made executable:
+`MenuEventVocabularyContractTests` gains a fourth fact comparing every **named** `event_type` vocabulary
+this specification quotes against the one the migrations declare, **in both directions with the subject
+computed on each side** (F-47, F-58) — so a migration that widens a vocabulary and forgets §8.2 fails here,
+and so does one that adds a table §8.2 never records. **The residual is stated:** only *named* constraints
+are in scope, because that is the only form a text scan can key on, so `menu_section_event`'s inline
+vocabulary is outside the gate — which is precisely the reason `0006` began naming every constraint it
+creates and the reason `0008` does.
+
+## Test count
+
+Baseline **1260**, verified from the terminal log rather than assumed. Slice 56 predicted 1260 and the run
+returned 1260.
+
+| Where | Facts | Running |
+| --- | --- | --- |
+| Baseline (verified) | — | 1260 |
+| `MenuItemReactionTests` (new) | +9 | 1269 |
+| `MenuWiringTests` (28 to 29) | +1 | 1270 |
+| `MenuEventVocabularyContractTests` (3 to 4) | +1 | 1271 |
+| `SchemaMigrationRunnerTests.KeyRelations` (15 to 17 rows) | +2 | 1273 |
+
+**Predicted: 1273.** The two extra come from theory rows rather than from `[Fact]` methods, so §16.4's
+count for `SchemaMigrationRunnerTests` stays at 7 — it counts methods, and both new relations are
+`MemberData` rows on a method that already exists. The §16.3 suite stays at **twenty**: Stage 5a builds no
+surface, so there is nothing for a browser to visit. Anything other than 1273 is the first thing to
+investigate.
+
+## What was verified before packaging, and what was not
+
+**Verified mechanically.** The working tree was reconstructed from `dump.txt` and SHA-256 checked file by
+file: 370 files, with the only differences being `export.sh`, which embeds its own file marker, and
+`LICENSE`, which the dump elides to metadata by design. **Session drift was caught and corrected** — this
+session opened two slices behind, and the tree said so before anything was authored. The test-count
+arithmetic was rebuilt from the tree and reproduces the terminal exactly: 910 `[Fact]` methods, 329
+`[InlineData]` rows and 21 `MemberData` rows is 1260, which is the number the run returned to the unit.
+The §16.4 counted-class gate was emulated over the edited specification: **31** counted classes, no
+disagreements — and it caught the one regression this slice created, `MenuWiringTests` at 28 against a file
+holding 29, before the count was corrected. The Markdown table gate was emulated with the real
+unescaped-pipe splitter over every tracked document: no problems. The version gate was emulated on both
+versioned documents: headers matching their newest entries, entries descending. The new vocabulary gate was
+emulated in both directions against the edited tree — three named vocabularies on each side, sets equal —
+and **proven sensitive two ways**: a widened list planted in §8.2's quoted `menu_item_event` DDL is
+reported, and deleting `menu_item_image_event_type_vocabulary`'s quoted CHECK outright is reported as a key
+mismatch. Byte hygiene — no CR, exactly one final newline, no whitespace-only line, no context-dump
+separator — was checked on every file in the archive.
+
+**Not verified.** Nothing was compiled and nothing was run; there is no .NET SDK reachable from where this
+slice was authored, so the C# is reviewed rather than built (F-71's standing caveat). The specific risks, in
+order. `Dapper.ExecuteScalarAsync<Guid?>` against a `SELECT … FOR UPDATE` is the one call shape in the new
+write service that this tree has no exact precedent for — `DapperMenuAvailability` uses
+`QuerySingleOrDefaultAsync<T>` over a row type for the same purpose, and the scalar form was chosen because
+the lock statement selects one column; if it misbehaves it will do so as a null where an identifier belongs,
+which `AnUnknownItemReportsNotFoundAndWritesNothing` reaches from the wrong side. The new gate reads a
+609 KiB document with a regex on every run, which is a cost rather than a risk but is worth knowing about.
+And `count(*)::integer` is cast in SQL rather than widened in C# so that `MenuItemLikeCount.LikeCount` and
+the column agree at the boundary; a reader expecting `long` would fail as an `InvalidCastException` from
+Dapper rather than as a wrong number.
+
+## Open items after this slice
+
+**Stage 5b, and it is two surfaces with no decisions left in them.** §11.4's count on the administrator's
+menu index, and §11.1's control in the guest's detail panel — the panel rather than the card, because the
+card is a button that stages an item and a second interactive element inside a button is not markup this
+application can write.
+
+**Two reads and one write have no caller**, which Stage 5a re-opened deliberately and which 5b closes. The
+write is the stronger of the two, on the standing rule that a write nothing calls is a code path no test can
+reach through the interface meant to protect it — the same position `IMenuItemImageAdministration` was in
+between Stage 4a and Stage 4b.
+
+**The two menu resequencing verbs still have no §16.3 scenario.** With no picture work in front of them
+they are now the largest end-to-end gap in the menu, for a second consecutive slice.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried.
+
+**Nothing treats a test that fails and then passes as evidence.** Carried.
+
+**An inline unnamed CHECK is outside the new vocabulary gate.** F-111's stated residual — `0001` and `0003`
+declare theirs inline, so `menu_section_event`'s vocabulary is unreachable by a text scan. Not a gap the
+gate can close; it is the reason `0006` began naming every constraint it creates.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a twenty-fourth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Thirty-third consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
+past four thousand four hundred lines.
+
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
 ################################################################################
 
 --- METADATA ---
   Relative path:         docs/DOCUMENTATION_REVIEW.md
-  Size:                  250.2 KiB (256190 bytes)
-  SHA-256:               1b5e18d1b8a7f7899125b1a28ad864de9d3007d807bbfac57354d6709e0ebacd
+  Size:                  254.7 KiB (260859 bytes)
+  SHA-256:               c2b218a897078b6691ffbd19ad057107573bf43b8cb2c183ba16b0e4f41590af
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
 
-**Status:** All findings resolved. **F-108**, **F-109** and **F-110** closed in M6 Slice 56 — a build that was red only under the flag CI passes, and the oldest open item this project has carried: F-109 was diagnosed correctly in Slice 52, written down as a one-line fix, and then deferred through six consecutive slices on an objection that turned out to be answerable rather than binding. **The register's own lesson from it is about deferrals rather than about media types.** A recorded fix with a recorded reason is a comfortable thing to carry: it reads as diligence every time it is re-read, and the sentence that justifies it is never re-examined, because re-examining it is not what re-reading it is for. F-62 says a reason for not doing something is a claim about the tree and is checked before it is written down; this adds the other half — **a claim used to defer is re-checked each time it is used again**, and this one was copied forward four times without anybody asking whether "two outcomes would become unreachable" was a cost or merely a consequence.
+**Status:** All findings resolved. **F-111** closed in M6 Slice 57 — a paragraph in the specification that had been describing a table three migrations out of date, twelve lines beneath a DDL block that was correct the whole time, and requiring a set of integration tests that another section of the same document rules against writing. **The register's own lesson from it is about which copy gets maintained.** A block of quoted DDL stays right because it is the thing people *copy*; the prose beneath it explaining that same DDL goes stale, because reading is not re-reading, and nothing in this tree had ever compared one against the other. F-77 deleted three stale counts of this very vocabulary out of code comments where nothing looks; this is the same vocabulary miscounted in the schema of record, inside a **requirement**, where the count was load-bearing for an obligation nobody could have satisfied. The repair deletes the counts and makes the *quotation* executable: every named `event_type` vocabulary this specification quotes is now compared, in both directions, against the one the migrations declare. What that gate cannot reach is stated rather than implied — an inline unnamed CHECK has no name to key on, which is the reason `0006` began naming every constraint it creates and the reason `0008` does.
+
+**Previously:** **F-108**, **F-109** and **F-110** closed in M6 Slice 56 — a build that was red only under the flag CI passes, and the oldest open item this project has carried: F-109 was diagnosed correctly in Slice 52, written down as a one-line fix, and then deferred through six consecutive slices on an objection that turned out to be answerable rather than binding. **The register's own lesson from it is about deferrals rather than about media types.** A recorded fix with a recorded reason is a comfortable thing to carry: it reads as diligence every time it is re-read, and the sentence that justifies it is never re-examined, because re-examining it is not what re-reading it is for. F-62 says a reason for not doing something is a claim about the tree and is checked before it is written down; this adds the other half — **a claim used to defer is re-checked each time it is used again**, and this one was copied forward four times without anybody asking whether "two outcomes would become unreachable" was a cost or merely a consequence.
 **Scope of the original review (2026-07-16):** `REQUIREMENTS.md` rev 1 (commit `af51017`) and the `dump.txt` produced by `export.sh`.
 **Rulings:** the owner ruled on every finding on 2026-07-17 — F-01–05, F-09–11, F-13–19, F-21–24 accepted as raised; F-06, F-07 (Q1), F-08 (Q2/Q3), and F-12 (Q4/Q5) resolved with the defaults proposed in the ruling exchange ("all of this is fine").
 
@@ -8164,6 +8456,7 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 | F-108 | **A `stackalloc` inside a loop, and the build that treats it as an error is not the build anybody runs on a workstation.** `PictureFixtures.Deflate` declared `Span<byte> lengths = stackalloc byte[4]` inside its stored-block loop. Stack memory is released when the **method** returns, not when the iteration ends, so the frame grows once per pass — which is CA2014, and which is a temporary leak on any input and a stack overflow on a large enough one. **The actual cost here was seventy-six bytes**: the loop runs once per 64 KiB and the largest fixture is nineteen blocks, so nothing in the suite could ever have failed on it. **What earns it a row is the asymmetry that let it reach a delivery.** `Directory.Build.props` sets `TreatWarningsAsErrors` false for a plain `dotnet build` and true under `-p:ContinuousIntegrationBuild=true`, and that is a deliberate, well-argued ruling: a fresh clone on tomorrow's SDK must build through analyzer drift rather than refusing at the door. Its consequence is that the same defect is *one line among eleven seconds of build output* locally and *a halt* in CI. The operator's session shows exactly that — `dotnet build` succeeded, `dotnet test` returned **1256** green and matching the prediction exactly, and `scripts/ci_local.sh` stopped at step 5 with every step after it unrun. | The declaration is hoisted above the loop, which is behaviour-identical because every pass overwrites all four bytes before reading any of them. **No gate is added, and that is a ruling rather than an omission** (F-47, F-71, F-88): CA2014 *is* the gate — it exists, it ran, it decided correctly, and it blocked the build. A lexical re-implementation of a Roslyn analyzer inside xUnit would be strictly weaker than the analyzer while adding a second thing that can be wrong, which is F-41's *reaching past what it can decide* wearing a new hat. **The failure was authoring-side and is named as such:** this slice's predecessor was written without a .NET SDK, so its C# was reviewed rather than compiled, and its own "what was NOT verified" said so. The ruling is that the ordering matters — `ci_local.sh` is the reproduction of CI and its verdict is the one that counts, so a green `dotnet test` earlier in the same session is not evidence about the build CI will run. | S§18 · `tests/MyRestaurant.EndToEnd.Tests/Harness/PictureFixtures.cs` · BUILD_PROGRESS M6 Slice 56 |
 | F-109 | **The upload surface trusted a string that is not a fact about the file, and the refusal it produced blamed the operator's photograph — for six slices, with the fix written down the whole time.** `ManageMenuItem.AttachPictureAsync` passed `IFormFile.ContentType` into the write service. That value is whatever the operating system's extension map produced for the chosen **filename**: a Linux desktop without `shared-mime-info`, an Android browser handed a file from a document provider, and any file saved with no extension all send `application/octet-stream` for a genuine PNG. §8.2's census does not admit that string, so the write answered `UnsupportedContentType` and the page rendered *"which is not a picture format this menu serves"* about a picture whose format was fine. **The interesting half is the deferral rather than the defect.** Slice 52 diagnosed it correctly, wrote down the one-line fix — *identify from the bytes and pass that* — and declined to take it on the ground that doing so *"would make two of the write's outcomes unreachable from the only surface that can reach them"*. That sentence was then copied forward into four consecutive slices' open-item lists without being re-read as a claim. It is true, and it is not a cost: an outcome unreachable from one caller is not an outcome that has stopped being tested, because the write is a library whose integration facts reach both directly. **Stage 4e narrowed it without closing it**, which is what made the remainder easy to keep deferring: anything the downscaler touches returns from `canvas.toBlob` as `image/jpeg` whatever it was labelled, so only files already under the cap still reproduced it — which is to say screenshots and small photographs, and nothing anybody was testing with. | The surface asks `ImageFormat.IdentifyContentType` what the bytes are and passes that; bytes it cannot identify become the empty string, which is in no census, so **every refusal is still the write service's and no new refusal path exists**. The deferral's objection is answered rather than overridden: what the surface passes is the answer of *the same pure function the write consults*, so there is one decision procedure called twice rather than two that can disagree, and the write's census check and signature check become true by construction instead of by luck. `ContentTypeContradictedByBytes` is thereby unreachable from this form; **its arm is kept deliberately**, because the failure mode of deleting it is the worst one on the menu — a redirect and silence — and a surface's defence in depth is not a second opinion about what may be stored. **The row names something executable** (F-38's lesson, twenty-first application): two facts on the new `MenuItemImageContentTypeContractTests`, the first of which **computes its own subject** (F-47) — it names no page, but finds every file under `src/` binding an `IFormFile` and scopes the ban to *that binding* rather than to the string, since §11.4's panel renders the stored `ContentType` and a blanket rule would report a finding on a correct file (F-41). The second is its positive half, because emptiness is cheap: passing a literal would satisfy *does not read the browser's declaration* while breaking every upload. **And §16.3 gains scenario 20**, which uploads a real PNG named without an extension under the fallback media type and requires the stored format to be `image/png` and not the declared one. | S§7, S§16.3, S§16.4 · `Components/Pages/Administration/ManageMenuItem.razor`, `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageContentTypeContractTests.cs` (new), `tests/MyRestaurant.EndToEnd.Tests/MenuPictureScenarios.cs` · BUILD_PROGRESS M6 Slice 56 |
 | F-110 | **The media-type vocabulary had a fourth and a fifth declaration, both in English, both on the surface an operator actually reads, and neither reachable by any gate.** §8.2's CHECK declares it, `ImageFormat.RecognisedContentTypes` declares it, and `MenuItemImageUpload.AcceptAttribute` **derives** it — that third copy having been made derived in Slice 52 precisely on the argument that a stale `accept` list has no server-side symptom at all. Two more copies were written in that same slice and neither has a symptom either: the explanatory paragraph above the upload form said *"JPEG, PNG or WebP; anything else is refused with a reason"*, and the refusal itself said *"Choose a JPEG, a PNG or a WebP"*. A migration admitting a fourth format leaves both sentences quietly wrong — read by an operator, believed, and contradicted by a file picker that would happily offer the format the prose has just told them is unavailable. **F-80's shape in a fifth place.** Found while rewording the refusal F-109 had to change anyway, which is **F-93's timing for the fifth time**: the slice that edits a paragraph is the last moment its content is free to be wrong. | Both render `MenuItemImageUpload.RecognisedTypesForOperators`, derived from the same census the `accept` hint is derived from. **It renders media types rather than English names, and that is the ruling rather than a shortcut**: turning `image/webp` into *"a WebP"* requires a map from type to article-and-name, and that map would itself be the fourth copy this change exists to remove — so the operator is shown exactly the list their file picker was filtered by, and the two surfaces cannot disagree about what may be chosen. **The row names something executable:** a third fact on `MenuItemImageContentTypeContractTests`, with the forbidden words **derived** from the census rather than listed, so a fourth format is a word the gate begins looking for on its own. It scans the whole page rather than the refusal alone — scoping to the `switch` would have caught the message and left the paragraph, which is F-46's mechanism exactly. Its anti-evasion half requires the derived census to be *rendered*, because the cheapest way to stop naming formats is to stop telling the operator which ones are accepted, and a refusal that does not say what would have worked sends somebody back to the same file. | S§7, S§16.4 · `src/MyRestaurant.WebApplication/Menu/MenuItemImageEndpoints.cs`, `Components/Pages/Administration/ManageMenuItem.razor`, `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageContentTypeContractTests.cs` · BUILD_PROGRESS M6 Slice 56 |
+| F-111 | **The schema of record described `menu_item_event` as a table with five event types and two payload columns, twelve lines below a DDL block correctly showing eight and five.** §8.2's note beneath that DDL said the CHECKs bind `new_name` and `new_price_amount`, that *"`activated`/`deactivated` therefore carry neither"*, and that **"integration tests must assert all ten combinations (five types × payload present/absent)"**. `0004` took the table to seven types and four payload columns, `0005` to eight and five; the DDL block was updated by both migrations and the note by neither. **The mechanism is the finding.** A quoted DDL block stays right because it is what a person adding a table *copies*; the paragraph explaining it goes stale because nobody re-reads an explanation they have already understood — and every gate over this document reads table shape, header versions or assertion counts, none of which is a sentence. **Two things lift it above a typo.** The sentence is **normative**: it states an obligation on the suite, and the figure it computes that obligation from was never right even for the schema it was written against — five types over two nullable columns is twenty states, not ten. And the obligation it states is one **§16.4 separately rules against**: a payload the CHECK refuses is refused loudly and by name on the first insert, and `MenuSectionEventLogTests`' own summary says in as many words that re-asserting a constraint is a monument (F-47). So one section of this specification required a set of tests another section forbade, the tree obeyed the second, and nothing anywhere could see the disagreement. **F-77's shape for the eighth time and one register up** — that row deleted three stale counts of this same vocabulary out of code comments; this is the same vocabulary miscounted in the document those comments defer to. | The counts are **deleted rather than corrected**, which is this project's standing pattern for a census that can be derived: the DDL above is the enumeration, and the note now states the property, which is true at every size. The testing sentence is **reversed to agree with §16.4** rather than restated, and names where the facts that matter actually live — the class of failure a database cannot see. **The row names something executable** (F-38's lesson, and the answer to why the *next* note will not drift): `MenuEventVocabularyContractTests` gains a fourth fact comparing every **named** `event_type` vocabulary this specification quotes against the one the migrations declare, **in both directions with the subject computed on each side** (F-47, F-58) — so a migration that widens a vocabulary and forgets §8.2 fails here, and so does one that adds a table §8.2 never records. Proven sensitive two ways: a widened list planted in the quoted DDL, and a quoted constraint deleted outright. **The residual is stated:** only *named* constraints are in scope, because that is the only form a text scan can key on, so `menu_section_event`'s inline vocabulary is outside the gate — which is precisely the reason `0006` began naming every constraint it creates and the reason `0008` does. | S§7, S§8.2, S§16.4 · `docs/TECHNICAL_SPECIFICATION.md`, `tests/MyRestaurant.WebApplication.Tests/Events/MenuEventVocabularyContractTests.cs` · BUILD_PROGRESS M6 Slice 57 |
 
 
 ## Going forward
@@ -8615,8 +8908,8 @@ tie-break hold, so the sentence points at something a test can fail.
 
 --- METADATA ---
   Relative path:         docs/MENU_AND_HANDHELD_PLAN.md
-  Size:                  115.3 KiB (118043 bytes)
-  SHA-256:               0426dff7b9b4b3de390e3906d6500282c4343c8e80f6956c82420a46cb3bcdca
+  Size:                  123.4 KiB (126372 bytes)
+  SHA-256:               255588ae9f75de05e9c7c8c578b9c1d7536fe51cecfb08bbad8939cc3b4bd03d
 
 --- CONTENT ---
 # Menu modernization and the handheld contract — staged plan
@@ -10100,38 +10393,132 @@ delivery, and because the honest lesson is about which verdict counts rather tha
 guest-side `srcset` question named in 4e is not carried forward as an item, because it was explicitly
 conditioned on somebody measuring it on a real service and nobody has.
 
-**The next thing in this plan is Stage 5**, and the two rulings it needs are unchanged and are stated
-below.
+**The next thing in this plan is Stage 5**, and the two rulings it needed are made below rather than
+carried. That is F-109's other half applied on the first opportunity: a claim used to defer is re-checked
+each time it is used again, and a ruling that costs nothing to make is not a deferral at all.
 
 ---
 
-## Stage 5 — likes
+## ~~Stage 5a — likes: the schema and the data access~~ — **landed, M6 Slice 57**
 
-**Not started.** Deliberately split from comments, and the split is the recommendation: a like is a
-number, a comment is a person's words shown to strangers, and only one of those raises a question this
-system has never answered.
+**Both of Stage 5's open rulings are made, and neither cost anything to make.** They had been sitting in
+this plan since it was written, described as *"two rulings needed before it ships"* — and re-reading them
+in the slice that had to act on them took under an hour, which is the argument for making a decision at
+the moment it is cheap rather than at the moment it is forced.
 
-The shape is already in the tree. §8.3's `order_visibility_event` + `order_visibility_current` is an
-append-only per-person boolean folded by `DISTINCT ON`, which is exactly a like:
+### The two rulings
 
-```
-menu_item_reaction_event
-    menu_item_reaction_event_identifier uuid PRIMARY KEY
-    menu_item_identifier                uuid NOT NULL REFERENCES menu_item
-    person_identifier                   uuid NOT NULL REFERENCES person
-    event_type                          text NOT NULL CHECK (event_type IN ('liked', 'unliked'))
-    occurred_at                         timestamptz NOT NULL
-```
+**Who sees the count: staff.** The plan's own instinct was right and is now the rule. A count of 3 on a
+menu of sixty items is noise that makes a restaurant look empty, and the number's only honest audience is
+the person deciding what to stock. So *which of these is popular* is §11.4's question and *which of these
+do I like* is §11.1's — **two reads over one fold**, rather than one read handing every guest the
+restaurant's opinion. The guest still needs their own press back, or the control is an affordance with no
+feedback; what they do not get is everybody else's.
 
-with `menu_item_reaction_current` as the `DISTINCT ON (menu_item_identifier, person_identifier)` fold and a
-count per item on top of it. No new idiom, no moderation, no text, no rate-limit question worth the name —
-a like and an unlike from one person is a row per press and the fold is the answer.
+**Whether a like requires having ordered the item: no.** This is the ruling worth reading, because it is
+the one Stage 6 will inherit. `order_current_line` records what somebody **ordered**, not what they ate,
+and a table shares — so the requirement refuses the case it most wants to admit (*I ate my partner's
+dessert and it was the best thing on the menu*) while admitting the one it wants to refuse (*I ordered it,
+sent it back, and liked it anyway*). It would also make a menu write read order history, which inverts
+§6.5.4's direction: an order prices itself **from** the menu, and nothing in the menu has ever looked the
+other way. What bounds the number instead is the door — §4.3 authenticates every person at a table and R§8
+permits no anonymous ordering — so a like is one authenticated person's press. **And the decision is
+reversible additively rather than baked in:** if the restriction is ever wanted it belongs on the *read*,
+as a second and narrower count, not on the write as a refusal a guest at a table has to be given a
+sentence about.
 
-Two rulings needed before it ships. **Who sees the count** — a guest, or only staff? A count of 3 on a
-menu of sixty items is noise that makes the restaurant look empty, so the honest answer is probably staff
-until it is not, which makes this an administration read first and a guest-facing number later. And
-**whether it requires having ordered the item**, which is the same question Stage 6 asks about comments
-and is cheaper to answer here.
+### What landed
+
+`0008_menu_item_reactions.sql`, one new data-access file, two registrations, nine integration facts and
+one wiring fact. **No surface**, which is the whole of the cut and is Stage 4a's cut applied a second
+time: the schema and the reads first, the two surfaces second, because they belong to different people
+and neither is a small page.
+
+- **`menu_item_reaction_event`** — `liked | unliked`, the person, the dish, the instant. Two types, **no
+  payload columns and therefore no paired biconditional**: each type carries its own name and nothing
+  else, which is `menu_item_image_event`'s `removed` and is the whole of `order_visibility_event`.
+- **`menu_item_reaction_current`** — `DISTINCT ON (menu_item_identifier, person_identifier)`, the last
+  press from each person about each dish. `order_visibility_current`'s shape with a two-column partition.
+- **`IMenuItemReactionDirectory`** — `ListLikeCountsAsync` for §11.4, `ListLikedByAsync` for §11.1. Both
+  are whole-menu reads and neither takes an item, on `IMenuItemImageDirectory.ListAsync`'s argument: a
+  per-item lookup inside a render loop turns a sixty-dish menu into sixty queries.
+- **`IMenuItemReactions.SetLikedAsync`** — locks the `menu_item` row, compares against the fold, appends
+  when that is a change and nothing when it is not.
+
+### The four rulings the schema needed, and each is a thing a later reader would repair by mistake
+
+**It is an event table and not a row per like.** The small schema is `(menu_item_identifier,
+person_identifier)` `UNIQUE` with a `DELETE` to withdraw, and it gets every visible answer right — the
+fold, the count, the guest's own state — while destroying the record. R§6.8 makes this system append-only
+because a record that can be removed is a record nobody can audit, and §6.8's hide-never-delete rule has
+exactly **one** stated exception, the image bytes, granted because the history of those lives in a log
+beside them. A like has no log beside it, because the log **is** the record.
+
+**There is no `actor_person_identifier`**, which every other event table in this schema has. Elsewhere the
+subject and the actor genuinely differ: an administrator renames somebody else's dish, and §11.1 renders
+*"kitchen removed Salmon"*. A reaction's subject **is** the person reacting, and no surface in §11 could
+offer to press it on somebody else's behalf, so an actor column would be constrained to equal its
+neighbour on every row that will ever exist.
+
+**There is no count column and no count view.** `SELECT menu_item_identifier, count(*) FROM
+menu_item_reaction_current WHERE is_liked GROUP BY 1` is one line, and §8.3's views exist to give the
+application a shape it would otherwise assemble from event tables by hand rather than to save a `GROUP
+BY`. A `like_count` on `menu_item` is refused one register harder, on F-101's reasoning: a stored total
+beside the rows it totals is one fact written twice, in the one table in this schema that grows a row
+every time a thumb moves.
+
+**The fold's identifier tie-break is load-bearing here in a way it is not on `order_visibility_current`.**
+Nobody hides an order twice in one millisecond. **Everybody taps a heart twice**, and one transaction
+stamps its rows with one `IClock.UtcNow` (§8.1), so two presses genuinely share an `occurred_at`. Without
+the tie-break `DISTINCT ON` returns whichever row the scan reached first — the *oldest* — and a double-tap
+reads back as the state before it. It is an answer only because §8.1 requires `IIdentifierFactory` to
+ascend inside a millisecond, which is the property **F-95** found nothing was keeping. That is the fact
+this stage contributes that nothing else in the tree has, and it has an integration assertion of its own.
+
+### A reaction publishes nothing, and it is the first menu write not behind `IMenuWorkflow`
+
+Stated here rather than left to be inferred from an absence. §9's `MenuChanged` means *re-read the menu*.
+A like moves no name, no price, no heading, no position, no availability flag and no photograph — there is
+nothing for a picker to re-read — and this is **the one write in this application that can fire many times
+a minute at one table**, so a broadcast would make one thumb re-read the whole menu on every phone in the
+building. The presser's own feedback needs no announcement either: a static surface re-renders through
+post/redirect/get and an interactive one re-renders itself.
+
+`MenuWiringTests`' standing fact is therefore narrowed to say what it always meant — the workflow covers
+every write **that changes the menu** — and the two reaction services get a registration fact of their own
+rather than a line in that one, because adding a write that is deliberately outside the workflow to the
+fact whose name says it covers every write would make that fact assert its own negation.
+
+### The defect found on the way in (F-111)
+
+Not in this feature. §8.2's note beneath `menu_item_event`'s DDL described a table with **five** event
+types and **two** payload columns — twelve lines below a DDL block correctly showing eight and five — and
+required *"integration tests must assert all ten combinations"*, an obligation whose arithmetic was wrong
+even for the schema it was written against and which §16.4 separately **rules against writing** (F-47).
+Found by opening §8.2 in order to add a table to it, which is how F-54, F-58 and F-79 arrived, and which
+is **F-93's timing for the sixth time**: the slice that edits a section is the last moment its content is
+free to be wrong. The counts are deleted rather than corrected, and the quotation is made executable —
+every named `event_type` vocabulary the specification quotes is now compared against the migrations, both
+directions, subject computed on each side.
+
+### What is open after this stage
+
+**Stage 5b, and only Stage 5b.** Both rulings are made, so what remains is two surfaces and no decisions:
+
+- **§11.4's count.** The administrator's menu index or the item's own page — probably the index, since the
+  question is comparative and a per-item number answers it one dish at a time. `ListLikeCountsAsync` is
+  the read, and a heading's group is where a total would go if one is wanted.
+- **§11.1's control.** The guest's detail panel is where it belongs rather than the card: the card is a
+  button that stages an item, and a second interactive element inside a button is not markup this
+  application can write. `TableOrderSurface` is an interactive island, so the press is a circuit event and
+  needs no post/redirect/get.
+- **The two obligations Stage 5a re-opened**, which close when those surfaces land: two reads with no
+  caller and one **write** with no caller — the second being the stronger of the two, on the standing
+  rule that a write nothing calls is a code path no test can reach through the interface meant to protect
+  it.
+
+**Not carried forward:** a guest-visible count, and any notion of a like that requires an order. Both were
+ruled against above, and neither is an item.
 
 ---
 
@@ -10149,6 +10536,12 @@ follow, and three of them are edits to documents rather than to code.
    single-valued rejection handler, so a refused registration would answer *"too many pairing attempts"* —
    wrong, and deliberate-looking. Comments hit the identical wall. **This stage cannot land before that
    ruling is revisited**, and revisiting it is a slice of its own with no menu in it.
+1b. **One of Stage 6's questions is already answered.** *Does it require having ordered the item* is the
+   same question for a comment as for a like, and Stage 5a ruled on it: **no**, because
+   `order_current_line` records what somebody ordered rather than what they ate and a table shares. That
+   ruling was made where it was cheap — a like has no privacy question attached to it — which is exactly
+   why this plan said the question was *"cheaper to answer here"*. It transfers, and Stage 6 inherits it
+   rather than re-deliberating it.
 2. **Privacy, and it is new intent.** §5.3 gives absolute table-to-table privacy: a guest never learns who
    else is in the building. A comment signed with a display name is this system disclosing one person's
    name to strangers for the first time. Initials, an opt-in, a pseudonym, or "a guest" are all defensible;
@@ -10162,7 +10555,7 @@ follow, and three of them are edits to documents rather than to code.
    `'unsafe-inline'`, which is what F-49 built it for. `ContentSecurityPolicyContractTests` computes what
    the application loads by scanning the tree, so it will notice a new inline handler on its own.
 
-**Recommendation: do Stage 5 and stop.** Likes answer "which of these is popular" with no new question
+**Recommendation: do Stage 5b and stop.** Likes answer "which of these is popular" with no new question
 attached. Comments answer a question nobody has asked for yet at the cost of a rate-limiting slice, a
 requirements revision about guest privacy, and a moderation surface — and the request itself says *"I am
 not sure if it is doable right now"*, which is the correct instinct.
@@ -10904,13 +11297,13 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
 
 --- METADATA ---
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
-  Size:                  595.5 KiB (609786 bytes)
-  SHA-256:               bc1765868650f718b1ee7bb539b5c1cf6fdb253cd215b3c5c91c6afc2746dbee
+  Size:                  615.0 KiB (629775 bytes)
+  SHA-256:               2511fad6931b554a7244b997b690a8adc04dcd1f34cd214d3cac9e5c4897d26f
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
 
-**Version 1.41 — 2026-08-23 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
+**Version 1.42 — 2026-08-24 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
 This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md`. It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. The decisions register in Appendix A maps every ruling to its embodiment.
 
@@ -11178,6 +11571,16 @@ Administrator-only appended events per §6.5(8), fully visible in history views 
 **`alt` is always written and its value is whatever is stored, `''` included — and the two are not interchangeable.** An `<img>` with **no** `alt` attribute makes a screen reader announce the URL, which here is a bare UUID; `alt=""` makes it *skip* an image whose surroundings already say what it is. On §11.1's card they do, because the card is a button holding the dish's name and its price as text, so **`''` is the correct value for most pictures on this menu** and a caption earns its place only for the ones that say something a name does not (**F-103**). The consequence for the markup is that the `<img>` is **last in the document and first on the screen**: a button's accessible name is computed from its contents in document order, so a captioned picture placed first would announce its own description before the dish it describes; it is moved into the left column by `grid-column`, which is free for a non-interactive element because there is no focus order for the visual order to disagree with. §11.4's own thumbnail keeps `alt=""` and renders the caption as **visible text** beside the file's facts instead, on the reasoning that panel already had — the picture sits under the item's own name in the page's `<h1>` — and because an operator who cannot see what they wrote cannot correct it.
 
 **The guest picker is a list of items, and as of `0004` it renders the description.** §11.1's staging area was one `<select>` with every item flattened into it and the price concatenated onto the label, which is what a menu looks like when the model cannot express a menu: a closed dropdown shows exactly one option, so comparing two items means opening a modal list twice, and an `<option>` renders text and nothing else — no element for a description, no chip for availability, no room for anything this menu grows later. It is now a card per item, each a button carrying the item's identifier, and choosing one opens a panel naming what is recorded about it. **Where nothing is recorded the panel says so in a sentence** rather than rendering an empty box, which is the honest reading of "more information if such information exists": a blank panel is indistinguishable from a surface that failed to load, and that confusion is what §11.10's `data-loaded` bit exists to prevent one level up. §7's availability rule is unchanged and is now more legible rather than less: the card stays in the list, keeps its description, carries a *currently unavailable* chip, and its button is `disabled`.
+
+**A person may like a dish, and `0008` is the third migration in this tree that touches nothing existing.** `menu_item_reaction_event` records one press — `liked | unliked`, the person, the dish, the instant — and `menu_item_reaction_current` folds it to one row per person per dish with `DISTINCT ON`, which is `order_visibility_event` + `order_visibility_current` one register over. No payload columns and therefore **no paired biconditional**: each type carries its own name and nothing else. Stage 5 of `docs/MENU_AND_HANDHELD_PLAN.md` carries the staging, and `0003`'s cut applies for the third time — one table, one index, one view, no `ALTER`, no backfill, nothing existing changed in meaning.
+
+**Four rulings decide the shape, and each is a thing a later reader would otherwise repair by mistake.** **It is an event table and not a row per like**, although the row-per-like schema is smaller and gets every visible answer right: unliking would be a `DELETE`, and R§6.8 makes this system append-only precisely because a record that can be removed is a record nobody can audit. §6.8's hide-never-delete rule has exactly one stated exception — the image bytes — granted because the history of those lives in a log beside them, and a like has no log beside it because the log *is* the record. **There is no `actor_person_identifier`**, which every other event table here has: elsewhere the subject and the actor genuinely differ, and a reaction's subject *is* the person reacting, so an actor column would be constrained to equal its neighbour on every row that will ever exist. **There is no count column on `menu_item` and no count view**, on the reasoning that removed `byte_length` from `menu_item_image` (F-101): a stored total beside the rows it totals is one fact written twice, in the one table in this schema that grows a row every time a thumb moves. And **the fold's identifier tie-break is load-bearing here in a way it is not on `order_visibility_current`** — nobody hides an order twice in one millisecond, everybody taps a heart twice, and one transaction stamps its rows with one `IClock.UtcNow` (§8.1), so two presses genuinely share an `occurred_at`. Without the tie-break `DISTINCT ON` returns the *oldest* row and a double-tap reads back as the state before it; the tie-break is only an answer because §8.1 requires the identifier factory to ascend inside a millisecond, which is the property F-95 found nothing was keeping.
+
+**A like does not require having ordered the dish, and that is a ruling rather than a simplification.** `order_current_line` records what somebody *ordered*, not what they ate, and a table shares — so the requirement would refuse the case it most wants to admit (I ate my partner's dessert and it was the best thing on the menu) while admitting the one it wants to refuse (I ordered it, sent it back, and liked it anyway). It would also make a menu write read order history, inverting §6.5.4's direction, in which an order prices itself *from* the menu. What bounds the number instead is the door: §4.3 authenticates every person at a table and R§8 permits no anonymous ordering, so a like is one authenticated person's press. If the restriction is ever wanted it belongs on the **read**, as a second and narrower count, rather than on the write as a refusal a guest at a table would have to be given a sentence about.
+
+**The count is staff-facing and the guest sees only their own press.** A count of 3 on a menu of sixty items is noise that makes a restaurant look empty, so *which of these is popular* is §11.4's question and *which of these do I like* is §11.1's, and they are two reads over one fold rather than one read handing every guest the restaurant's opinion. **A dish nobody currently likes is absent from the count rather than present with a zero**, because the caller already holds the menu; the plausible wrong reader counts `'liked'` rows in the event table, which counts presses instead of people and is permanently wrong in the direction that flatters the dish from the first time anybody changes their mind.
+
+**A reaction publishes nothing, and it is the first menu write not behind `IMenuWorkflow`.** §9's `MenuChanged` means *re-read the menu*; a like moves no name, no price, no heading, no position, no availability flag and no photograph, so no surface has anything to re-read. This is also the one write in this application that can fire many times a minute at one table, and a broadcast would make one thumb re-read the whole menu on every phone in the building. The guest's own feedback needs no announcement either — a static surface re-renders through post/redirect/get and an interactive one re-renders itself. `MenuWiringTests`' standing fact is therefore narrowed to say what it always meant: the workflow covers every write **that changes the menu**.
 
 Two existing rules survive that change and are restated here because both are easy to lose while rewriting a menu surface, **and they point in opposite directions one sentence apart.** A deactivated *item* stays visible **under its section heading**, marked and unorderable — which reads better than it does in a flat list, not worse. An inactive *section* is **not rendered to the guest at all.** That is not a contradiction: switching off a heading is a decision about a whole part of the menu ("no breakfast this evening"), where 86ing a dish is a decision about one thing a guest is still entitled to know exists. And **deactivating a section does not deactivate its items:** their `is_active` is untouched, and reactivating the heading brings the menu back exactly as it was. Cascading the flag downward would silently rewrite every item's availability and lose which of them the kitchen had 86'd, which is F-10b's mistake in a new place. **Both flags are carried by `IMenuDirectory` and neither is filtered there** — §11.4's administrator must see every heading, including the ones no guest can reach, because that is precisely the row somebody is looking for when they wonder why an available dish is not on the menu.
 
@@ -11512,6 +11915,29 @@ CREATE TABLE menu_item_image_event (
 CREATE INDEX menu_item_image_event_item_index
     ON menu_item_image_event (menu_item_identifier, occurred_at);
 
+-- 0008. Two types, no payload columns, so no paired biconditional: each type carries its own name and
+-- nothing else, which is order_visibility_event's shape. NO actor_person_identifier, deliberately — the
+-- subject of a reaction IS the person reacting, and no surface in §11 could offer to press this on
+-- somebody else's behalf, so an actor column would be constrained to equal its neighbour on every row
+-- that will ever exist. Both references are real foreign keys, unlike menu_item_image_event's bare uuid,
+-- because nothing here is ever deleted.
+CREATE TABLE menu_item_reaction_event (
+    menu_item_reaction_event_identifier uuid PRIMARY KEY,
+    menu_item_identifier                uuid NOT NULL
+                                        REFERENCES menu_item (menu_item_identifier),
+    person_identifier                   uuid NOT NULL
+                                        REFERENCES person (person_identifier),
+    event_type                          text NOT NULL,
+    occurred_at                         timestamptz NOT NULL,
+    CONSTRAINT menu_item_reaction_event_type_vocabulary CHECK (event_type IN
+        ('liked', 'unliked'))
+);
+-- The fold's prefix, and the write's own lookup is the same prefix, so one index serves both directions.
+-- Deliberately NOT UNIQUE on any prefix: a person may like, unlike and like again, and a unique index
+-- would be the delete-on-unlike schema arriving through the back door.
+CREATE INDEX menu_item_reaction_event_item_person_index
+    ON menu_item_reaction_event (menu_item_identifier, person_identifier, occurred_at);
+
 CREATE TABLE guest_order (
     guest_order_identifier   uuid PRIMARY KEY,
     table_sitting_identifier uuid NOT NULL REFERENCES table_sitting (table_sitting_identifier),
@@ -11633,7 +12059,7 @@ CREATE INDEX order_visibility_event_order_index
     ON order_visibility_event (guest_order_identifier, occurred_at);
 ```
 
-Note on the `menu_item_event` CHECKs: they are biconditionals — `new_name` is present exactly when the type is `created` or `name_changed`, and `new_price_amount` exactly when the type is `created` or `price_changed`; `activated`/`deactivated` therefore carry neither. Integration tests must assert all ten combinations (five types × payload present/absent).
+Note on the `menu_item_event` CHECKs: they are **biconditionals**, one per payload column, each binding that column's presence to exactly the event types that carry it — the DDL above is the enumeration and **this sentence states no count of either** (**F-111**). It said *five types* and named two payload columns for three migrations after the table had eight and five, directly beneath a DDL block that was correct the whole time: the block is what a person adding a table copies, and the prose is what nobody re-reads. It also carried a testing obligation — *assert all ten combinations* — that §16.4 separately **rules against writing**: a payload the CHECK refuses is refused loudly, by name, on the first insert, and a test re-asserting what a constraint already enforces is a monument (F-47). What integration tests owe this table is the class of failure the database *cannot* see — whether the pair of rows was written at all, whether a no-op quietly appended an event saying nothing happened, and whether a position was assigned by appending or invented by counting — and §16.4 names where each of those lives. The agreement between this document's quoted DDL and the migrations that apply it is asserted by `MenuEventVocabularyContractTests` rather than remembered.
 
 Note on the `menu_section_event` CHECKs: there are three of them, they are biconditionals of the same shape, and they are **named** rather than declared inline. `new_name` is present exactly when the type is `created` or `renamed`, `new_description` exactly when it is `created` or `described`, `new_display_order` exactly when it is `created` or `reordered`; `activated` and `deactivated` therefore carry none of the three, and `created` carries all three — a section is created with a name, a description that may be the empty string, and the position it was appended at. They are named because `0001` declared `menu_item_event`'s inline and PostgreSQL generated `menu_item_event_check` and `menu_item_event_check1`, which are deterministic, undocumented, and not a thing for `0004` to depend on when it has to widen them. `0004` accordingly did not depend on them: it dropped every CHECK on that table by querying `pg_constraint` and added named ones back, so `0005` faces the position this note anticipated.
 
@@ -11758,6 +12184,27 @@ SELECT DISTINCT ON (guest_order_identifier)
     (event_type = 'hidden') AS is_hidden
 FROM order_visibility_event
 ORDER BY guest_order_identifier, occurred_at DESC, order_visibility_event_identifier DESC;
+
+-- 0008. The same fold with a two-column partition: the last press from each person about each dish is
+-- that person's current opinion, and everything before it is history and is kept. The identifier
+-- tie-break is load-bearing rather than defensive here — two presses in one millisecond is an ordinary
+-- gesture, and one transaction stamps one instant (§8.1), so without it DISTINCT ON returns the OLDEST
+-- row and a double-tap reads back as the state before it.
+--
+-- (event_type = 'liked') rather than a NOT IN or a CASE, on the line above's precedent, and the equality
+-- is what makes a third word in the vocabulary a VISIBLE change: a 'loved' added to the CHECK would fold
+-- to FALSE here, which is wrong and which a reader can see, where "not unliked" would fold to TRUE and
+-- look correct.
+CREATE VIEW menu_item_reaction_current AS
+SELECT DISTINCT ON (menu_item_identifier, person_identifier)
+    menu_item_identifier,
+    person_identifier,
+    (event_type = 'liked') AS is_liked
+FROM menu_item_reaction_event
+ORDER BY menu_item_identifier,
+         person_identifier,
+         occurred_at DESC,
+         menu_item_reaction_event_identifier DESC;
 ```
 
 The bill (sum over `sitting_bill` for a sitting) **includes still-pending lines** by design; the counter reviews them before close (§5.3).
@@ -12338,7 +12785,7 @@ Deliberately **not** folded into the tree gate. That script's five gates are all
 
 **The grouping the guest menu and the “86” panel share is a pure function, so it is asserted without a browser (F-100).** `tests/MyRestaurant.WebApplication.Tests/Menu/MenuGroupingTests.cs` covers `MenuGrouping` in 11 assertions, and the reason the file exists is that the walk it tests spent ten slices somewhere no unit test could reach — a private property inside `TableOrderSurface.razor`, holding §11.1's grouping *and* §7's two opposite-pointing visibility rules, with §16.1 recording that this repository has no bUnit and §16.3 scenario 17 therefore the only thing asserting any of it. It is the fourth member of the set `KitchenQueue`, `OrderStaging` and `OrderNarrative` belong to, and it is there for the reason that set's own summaries give: a rule that can only be checked by rendering a component is a rule nobody checks. **Two of the eleven could not have been written any other way.** One hands the walk a heading whose rows disagree about their own name — an arrangement the INNER JOIN makes impossible through `IMenuDirectory`, which is exactly why no integration fact and no scenario can distinguish reading a run's first row from reading its last, and the walk's own comment claimed the first while the code took the last. The other asserts §7's asymmetry **as** an asymmetry: one input through both doors, and the difference between the two answers compared against the hidden heading, because a heading missing from the guest's list has several possible causes and one present in the kitchen's has none — the same shape scenario 17's closing step uses one register up. What is deliberately not asserted here is the ordering, which is SQL and belongs to the read's own integration facts; what is asserted is that this walk *preserves* the order it is handed and re-decides nothing, which is the property a `GroupBy` would silently take away.
 
-**A write that committed nothing must announce nothing, and that rule now governs every menu verb there is.** `…/Menu/MenuWiringTests.cs` holds the workflow in 28 assertions: a section rename, a section description, a section move and a section visibility flip each publish `MenuChanged` exactly once when they committed and nothing when they did not, one walks all four against a section that is not there, and the newest trio is the **picture** — whose refusal fact is the widest silence assertion in the file, five outcomes that wrote nothing and three of which never opened a transaction, asserted as a set rather than one at a time because the set is the claim: an implementation keyed on *not a refusal I have heard of* would announce a future member of that enum by default, which is why the publish is keyed on the two outcomes that wrote a row. Its attach fact asserts the upload **by identity** rather than by contents, for the reason the resequencing facts assert their orderings that way — nothing in that verb's contract permits the workflow to copy, trim or re-encode a photograph. Before it, the **item** resequence — which asserts one thing the section resequence's pair cannot, that the heading and the ordering arrive **together and unaltered**, because this verb forwards two arguments that are meaningless apart and a shell that dropped the first would leave the write service reordering whichever heading it liked. The rename fact asserts three *different* silences rather than one — `NoChange`, `NameTaken` and `MenuSectionNotFound` — because a workflow that keyed on "not NoChange" would announce a collision the database refused. The visibility fact asserts **both directions**, because "announce the removal and not the restoration" is a plausible half-implementation that leaves a menu missing a heading it should have. The fake write service deliberately does **not** normalize a null description to the empty string, although the real one does — what is under test is whether the workflow hands the argument through unaltered, and a fake that trimmed would hide the only failure this file is able to see. **The twenty-eighth is a registration rather than a behaviour**, and it is a fact of its own rather than a line in the workflow's: `IMenuItemImageEventLog` is a *read*, taken straight by the surface that renders it as `IMenuDirectory` and `IMenuSectionDirectory` are, so adding it to the fact whose claim is that the workflow covers every **write** service would weaken the sentence that fact exists to make. It is worth asserting at all because §11.4's item page is static SSR and resolves it while rendering: an unregistered service is not a compile error and not a unit failure, it is an exception on one of the ten surfaces §16.3 scenario 16 visits — a red suite two and a half minutes and a Chromium later, for a defect available here in two seconds.
+**A write that committed nothing must announce nothing, and that rule now governs every menu verb there is.** `…/Menu/MenuWiringTests.cs` holds the workflow in 29 assertions: a section rename, a section description, a section move and a section visibility flip each publish `MenuChanged` exactly once when they committed and nothing when they did not, one walks all four against a section that is not there, and the newest trio is the **picture** — whose refusal fact is the widest silence assertion in the file, five outcomes that wrote nothing and three of which never opened a transaction, asserted as a set rather than one at a time because the set is the claim: an implementation keyed on *not a refusal I have heard of* would announce a future member of that enum by default, which is why the publish is keyed on the two outcomes that wrote a row. Its attach fact asserts the upload **by identity** rather than by contents, for the reason the resequencing facts assert their orderings that way — nothing in that verb's contract permits the workflow to copy, trim or re-encode a photograph. Before it, the **item** resequence — which asserts one thing the section resequence's pair cannot, that the heading and the ordering arrive **together and unaltered**, because this verb forwards two arguments that are meaningless apart and a shell that dropped the first would leave the write service reordering whichever heading it liked. The rename fact asserts three *different* silences rather than one — `NoChange`, `NameTaken` and `MenuSectionNotFound` — because a workflow that keyed on "not NoChange" would announce a collision the database refused. The visibility fact asserts **both directions**, because "announce the removal and not the restoration" is a plausible half-implementation that leaves a menu missing a heading it should have. The fake write service deliberately does **not** normalize a null description to the empty string, although the real one does — what is under test is whether the workflow hands the argument through unaltered, and a fake that trimmed would hide the only failure this file is able to see. **The twenty-eighth is a registration rather than a behaviour**, and it is a fact of its own rather than a line in the workflow's: `IMenuItemImageEventLog` is a *read*, taken straight by the surface that renders it as `IMenuDirectory` and `IMenuSectionDirectory` are, so adding it to the fact whose claim is that the workflow covers every **write** service would weaken the sentence that fact exists to make. It is worth asserting at all because §11.4's item page is static SSR and resolves it while rendering: an unregistered service is not a compile error and not a unit failure, it is an exception on one of the ten surfaces §16.3 scenario 16 visits — a red suite two and a half minutes and a Chromium later, for a defect available here in two seconds. **The twenty-ninth is Stage 5a's pair, and it is separate for the opposite reason the twenty-eighth is.** That one is outside the workflow's fact because it is a read; `IMenuItemReactions` is outside it because it is a **write that is deliberately not behind the workflow** (§7), so putting it in that body would make the fact assert the negation of its own name. Neither reaction service has a caller until Stage 5b builds the two surfaces, and the fact is worth its two seconds meanwhile for the reason every registration fact in this class is: the surfaces that will resolve them resolve while rendering.
 
 **Four of those five verbs used to make the section fake throw, and the throw was load-bearing rather than decorative.** It was reachable from every test in that file through the default overloads, so a verb that quietly answered would have let a workflow start calling one with nothing there noticing — which is the state a workflow verb with no caller is in, and the whole argument for keeping it outside `IMenuWorkflow` in the first place. The throws are gone because the obligation is discharged, not because they became inconvenient.
 
@@ -12358,7 +12805,7 @@ Deliberately **not** folded into the tree gate. That script's five gates are all
 
 **Every component that consumes an `EditContext` sits inside the `EditForm` that supplies one.** `…/Components/EditContextConsumerContractTests.cs` holds 2 assertions (**F-106**). Slice 53 placed `<ValidationMessage For="@(() => AltTextInput.AltText)" />` one line below `</EditForm>` on `ManageMenuItem.razor`. An `EditForm` cascades its `EditContext` to its **children**, a sibling receives none, and `ValidationMessage.OnParametersSet` throws `InvalidOperationException` without one — so this is not a message that renders empty, it is an unhandled exception during render, which is **HTTP 500**. Because the block sits inside `@if (_picture is not null)` and the attaching POST renders while `_picture` is still null, the upload succeeded and committed and the *redirected GET* was the first render that threw; from then on every administrator view of that item answered 500, including the one carrying the Remove button, so the state was not reversible from any surface. **The rule is a consequence of the framework rather than of taste**, which is the standard `RazorDirectiveContractTests` sets for an absolute rule in that directory: `ValidationMessage`, `ValidationSummary` and `DataAnnotationsValidator` all require the cascading context and all three throw without it, and there is no arrangement in which one outside a form is correct. The `InputBase` family is deliberately **not** in the set — those tolerate a missing context in some arrangements, and a bound input outside its form is a different defect with a different symptom, so a failure here always means the same thing. The walk tracks `EditForm` depth rather than answering yes/no, because nesting is legal markup even where this tree has none and an unbalanced document should be reported rather than interpreted; the close-tag count is clamped at zero, because letting it go negative would make the *next* consumer on the page look correct, which is the one direction a gate must never fail in. Razor comments are stripped first, on the standard every component scan in that directory applies (F-67). Two non-vacuity guards, both required: at least twenty components opened, and at least five consumers found — a walk that reached everything and recognised nothing would pass an emptiness assertion by having nothing to judge (F-41). The second assertion is a sensitivity fact **proven against synthesised markup rather than against the tree**, because the first must stay true after the repair: it checks the shipped shape and the repaired shape, a self-closed `<EditForm />` that supplies a context to nothing, an ordinary element whose name merely begins with the same letters, and a consumer stranded between two forms. It was additionally proven against the defect **as it actually shipped**, which is the strongest form of that proof this project has had occasion to use.
 
-**The vocabulary the migrations declare is compared against the C# list the dropdown offers, and for one slice that comparison could not be made.** `…/Events/MenuEventVocabularyContractTests.cs` holds 3 assertions: the `event_type IN (…)` list of the last migration declaring `menu_item_event_type_vocabulary` is set-equal to `EventTypeCatalogue.MenuEventTypes`; every menu type also reaches `EventTypeCatalogue.All`; and **every type `menu_item_image_event_type_vocabulary` admits has a sentence on the one surface that renders that log** (**F-105**). It reads SQL text rather than a database, so the fact stays in the fast suite. **The third is the picture log's, and it discharges a defect in this very document**: §7 said `attached | replaced | removed` and *two named biconditionals* for a slice after `0007` made it four types and three. Correcting the sentence is worth nothing on its own, because the next migration to widen this vocabulary will be written by somebody who has not read the sentence — so the enumeration §7 keeps is *a* copy and this is the gate. **Its subject is the surface rather than the write service**, for two reasons: the service's four type constants are `private`, and widening them for a test would be changing an API for a test's convenience; and the surface is the honest subject anyway, because §11.4 falls back to the raw string for an unrecognised type **by design**, so a missing arm throws nothing and logs nothing and shows up only as a cell reading `alt_text_changed` where a sentence belongs — F-80's symptom exactly. **The other direction is deliberately not asserted** (F-41): an arm for a type the CHECK no longer admits is unreachable rather than wrong, and forbidding one would report a finding on a surface that had merely kept a sentence through a migration that narrowed the vocabulary. The non-vacuity guard is that the renderer is found in the file before any arm is looked for, since a `Contains` loop over a list read out of a regex is exactly the shape that passes against an empty list. **It shipped naming a type that has never existed in this tree** — `EventTypeVocabulary`, which is what F-80's rows in Appendix A and in `DOCUMENTATION_REVIEW.md` both called it, and what that slice's delivery note called it — so the file did not compile and the repair for F-80 was, for one slice, a vocabulary that was correct in `EventExplorerReads.cs` and guarded by nothing (**F-83**). The name was taken from the ledger rather than from the file the ledger was about, which is why four documents agreed with each other and none of them with the tree. **No gate is added**, on F-71's ruling: the compiler is the gate, it blocked, and a test re-asserting what CSC already refuses is a monument. What the blocking cost is the part worth stating — this is the third consecutive slice in which a build failure's real expense was the gates downstream of it reporting nothing (F-82).
+**The vocabulary the migrations declare is compared against the C# list the dropdown offers, and for one slice that comparison could not be made.** `…/Events/MenuEventVocabularyContractTests.cs` holds 4 assertions: the `event_type IN (…)` list of the last migration declaring `menu_item_event_type_vocabulary` is set-equal to `EventTypeCatalogue.MenuEventTypes`; every menu type also reaches `EventTypeCatalogue.All`; and **every type `menu_item_image_event_type_vocabulary` admits has a sentence on the one surface that renders that log** (**F-105**). It reads SQL text rather than a database, so the fact stays in the fast suite. **The third is the picture log's, and it discharges a defect in this very document**: §7 said `attached | replaced | removed` and *two named biconditionals* for a slice after `0007` made it four types and three. Correcting the sentence is worth nothing on its own, because the next migration to widen this vocabulary will be written by somebody who has not read the sentence — so the enumeration §7 keeps is *a* copy and this is the gate. **Its subject is the surface rather than the write service**, for two reasons: the service's four type constants are `private`, and widening them for a test would be changing an API for a test's convenience; and the surface is the honest subject anyway, because §11.4 falls back to the raw string for an unrecognised type **by design**, so a missing arm throws nothing and logs nothing and shows up only as a cell reading `alt_text_changed` where a sentence belongs — F-80's symptom exactly. **The other direction is deliberately not asserted** (F-41): an arm for a type the CHECK no longer admits is unreachable rather than wrong, and forbidding one would report a finding on a surface that had merely kept a sentence through a migration that narrowed the vocabulary. The non-vacuity guard is that the renderer is found in the file before any arm is looked for, since a `Contains` loop over a list read out of a regex is exactly the shape that passes against an empty list. **It shipped naming a type that has never existed in this tree** — `EventTypeVocabulary`, which is what F-80's rows in Appendix A and in `DOCUMENTATION_REVIEW.md` both called it, and what that slice's delivery note called it — so the file did not compile and the repair for F-80 was, for one slice, a vocabulary that was correct in `EventExplorerReads.cs` and guarded by nothing (**F-83**). The name was taken from the ledger rather than from the file the ledger was about, which is why four documents agreed with each other and none of them with the tree. **No gate is added**, on F-71's ruling: the compiler is the gate, it blocked, and a test re-asserting what CSC already refuses is a monument. What the blocking cost is the part worth stating — this is the third consecutive slice in which a build failure's real expense was the gates downstream of it reporting nothing (F-82). **The fourth compares this document against the migrations** (**F-111**), which is a different claim from the three above it: those hold a migration against C# and against a Razor surface, and this holds it against §8.2, which calls itself the schema of record and quotes the DDL in full. That quotation is F-50's shape — one fact in two places, joined only by somebody remembering to edit the second — and it is the copy every future migration is written by, because a person adding a table reads §8.2 rather than seven `.sql` files. It asserts **both directions** with the subject computed on each (F-47, F-58): nothing names a constraint, so a vocabulary the migrations declare and §8.2 never quotes fails here too, which is the drift that arrives with the *next* migration rather than with an edit to an existing one. **The residual is stated rather than papered over:** only *named* constraints are in scope, because that is the only form a text scan can key on — `0001` and `0003` declare theirs inline, so `menu_section_event`'s vocabulary is outside this gate, which is the reason `0006` began naming every constraint it created and the reason `0008` does.
 
 **The identifier factory is asserted to hand out values that ascend, and the comparison it is asserted under is PostgreSQL's rather than the BCL's.** `tests/MyRestaurant.Domain.Tests/UuidV7IdentifierFactoryTests.cs` holds Seven assertions: version 7; the RFC 9562 variant bits surviving the two fields the factory overwrites; no repeats; a thousand-value burst ascending, which is the arrangement every write in §8 creates because one transaction stamps all its rows with one `IClock.UtcNow` and then mints an identifier per row; the same across two factory instances, which is what makes the state's being process-wide a tested decision rather than an implementation detail; five thousand inside one millisecond, so the 12-bit counter is exhausted and must carry into the timestamp rather than wrap; and eight threads minting four thousand values with no two sharing a sort key. **Every comparison is over `ToByteArray(bigEndian: true)`, and that is the load-bearing choice.** The relation that matters is the one the database applies — unsigned, byte-wise, RFC 9562 layout — and `Guid.CompareTo` is not it: the BCL reads the second field as a *signed* 16-bit integer and that field holds the low sixteen bits of the millisecond, so the two orders disagree wherever a pair straddles a boundary at which those bits cross 0x7FFF. A file written with `CompareTo`, with `Comparer<Guid>.Default`, or with `OrderBy(identifier => identifier)` would pass while pinning a relation no read uses — which is F-41's shape arriving through a comparison operator instead of through a scope.
 
@@ -12376,6 +12823,8 @@ Deliberately **not** folded into the tree gate. That script's five gates are all
 **What a run of bytes actually is, decided without a database.** `tests/MyRestaurant.Domain.Tests/ImageFormatTests.cs` covers `MyRestaurant.Domain.Menu.ImageFormat` in 8 assertions, and the reason it is a unit test rather than an integration fact is F-100's argument on its second application: the subject is a pure function of a byte span, and the cases that matter are the malformed ones — a truncated signature, a RIFF container that is not a WebP, a format this application refuses to serve — each of which behind an `INSERT` would cost a container and would arrive as a constraint name rather than as a sentence. **The one worth reading is the RIFF fact.** WebP is a RIFF form, so the naive check is the four bytes at the start, which an AVI and a WAV also open with; a signature check that stopped there would accept an audio file as a picture and §7's route would serve it from this application's own origin under `Content-Type: image/webp`. Every other fact in that file passes on that implementation. One fact is the non-vacuity guard and it does more than guard (F-41): it asserts that every member of `RecognisedContentTypes` is a type **some bytes actually produce**, so a media type added to that list without a signature behind it fails there — which is the half a list on its own can never promise. **No sample image is committed and none is needed**, because a signature is a prefix; that is also the limit of what the file claims, since nothing in this stack decodes an image and so nothing here asserts that the remainder is decodable.
 
 **Menu item pictures are asserted against a real database, and the facts are about what survives a deletion.** `…/Menu/MenuItemImageTests.cs` covers §7's three image verbs and its three reads in 15 assertions, on this project's usual terms — own fixture, truncate per test, skip where no container engine answers. It is a class of its own rather than facts on `MenuAdministrationTests` for a structural reason: every verb over there writes one row and one event, and these two **delete** a row, so *the newest event for this item* is no longer the shape a helper can be built on. Three of the eleven are about what is not stored, and each has a plausible wrong implementation that leaves an artefact reading correctly — a replace that reused the identifier passes every other fact in the file and makes `Cache-Control: immutable` a false statement, leaving last week's photograph on every phone with the menu open; a picture whose bytes contradict their declared type would be served under the wrong header; and a removal that took the history with the bytes would leave §11.4 unable to say a picture had ever been there. **Two of the eleven could not have been written any other way.** One walks every media type the domain can identify, attaches a real file of it, and requires §8.2's CHECK to accept it — which is **F-80's shape gated behaviourally** rather than by comparing two lists, and is strictly stronger, because the two agreeing on paper while nothing can be stored is also a failure; its own non-vacuity guard is that the sample dictionary's key set equals the recognised set before the walk begins (F-41). The other **asks the database for its own cap** through `pg_get_constraintdef` and then attaches one byte over it and exactly it, so the bound is never written in C# at all: a migration that moves the cap moves that fact with it instead of turning it red, which is the arrangement F-101 rules for. `OrderTestWorld` needed **no edit**, because `TRUNCATE … CASCADE` on `menu_item` reaches both of `0006`'s tables — the property the stage was cut for. **Four of the fifteen are Stage 4c's caption, and two of those pin the halves with a plausible wrong implementation.** That a caption is stored and its event carries it **without moving the picture's identifier** — an implementation that minted a new one would satisfy a naive reading of "the caption changed" and would invalidate every cached copy of an unchanged photograph in the building. That **a replace carries the caption forward and writes no event for the carry**: resetting to `''` would strip alternative text off a guest's menu as a side effect of somebody improving a photograph, and nothing else in the file would notice, while writing an event for the carry would put a row in §11.4's history claiming a caption moved when it did not. Beside them the no-op arm, asserted because it is the *ordinary* case rather than an edge — §11.4's form is pre-filled, so the commonest submission is an unchanged caption — together with clearing, which is the same rule read the other way since `''` is a value rather than an absence; and the two silent refusals, which are two answers rather than one so that §11.4 can report the reachable one in place. **`SchemaMigrationRunnerTests` needed no edit**: `0007` adds columns rather than relations, and its new biconditional is exercised behaviourally by every event these facts write.
+
+**Likes are asserted against a real database, and three of the nine facts fail against the schema this stage rejected.** `…/Menu/MenuItemReactionTests.cs` covers `0008`'s write and its two reads in 9 assertions, on this project's usual terms — own fixture, truncate per test, skip where no container engine answers. The rejected schema is the small one: a row per like with a `DELETE` to withdraw it, which gets the fold, the count and every visible answer right and destroys the record (R§6.8, ADR-0002). So unliking is asserted to **append** a second row rather than remove the first; the count is asserted to exclude a person who unliked, which is where a reader over `menu_item_reaction_event` answers a number permanently too large; and a dish nobody currently likes is asserted **absent** from the counts with a second dish in the database, so that "absent" is a decision the query made rather than the only row there was. Two people exist in the fixture for one reason: a reader that forgot the `person_identifier` filter is indistinguishable from a correct one against a single person. **The one that could not have been written any other way is the tie-break fact.** `FixedClock` does not move and one transaction stamps one instant, so a like and an unlike genuinely share an `occurred_at` — and the arrangement is asserted before the conclusion is, because a fixture whose clock had started moving would make the fact pass while testing nothing (F-41). It is deliberately **two** presses rather than three: with two, a fold ordered by `occurred_at` alone returns the first row and the assertion fails definitely rather than by luck of a scan order. **`OrderTestWorld` needed no edit**, on the property `0008` was cut for: both of its references are real foreign keys, so `TRUNCATE … CASCADE` on `menu_item` and `person` reaches this table.
 
 **The picture history is a third reader and is asserted like the first two, plus one property neither of them can have.** `…/Menu/MenuItemImageEventLogTests.cs` covers `menu_item_image_event` in 6 assertions against a real PostgreSQL container on this project's usual terms — own fixture, truncate per test, skip where no container engine answers. The stream is complete and oldest-first across all three write verbs; each of the four event types carries exactly the payload §8.2's three named biconditionals allow it, **including the one whose entire payload is its own name** and the caption column that is non-null on `alt_text_changed` and on nothing else, which is why `0007` widened neither existing biconditional; a replace's payload is **its own picture's and not the one it replaced**, asserted with two formats so that a reader carrying the wrong row's content type forward cannot still read plausibly; a cleared caption is an event carrying `""` rather than a null, which is the entire reason the column is `NOT NULL DEFAULT ''`; the actor falls back from display name to username, which is where a new reader in this layer forgets the `COALESCE`; and one dish's history contains no other dish's, with an item that has never been photographed and an identifier that names nothing both yielding an empty list rather than an error. **The sixth is the one that fails on the reader a maintainer writes by reflex**, and it is the reason this class exists rather than four facts on the write side: after a replace and a removal, **every event on this table names a `menu_item_image_identifier` that no longer exists**, so an INNER JOIN to `menu_item_image` returns a history that silently begins at the current photograph and a LEFT JOIN adds a column null on every row but the newest. `0006` declared no foreign key on that column precisely so that the history can outlive its subject, and the identifiers are compared individually because *all three rows came back* would also pass on a reader that returned three rows carrying one identifier. **`OrderTestWorld` needed no edit**, on the property `0006` was cut for: `TRUNCATE … CASCADE` on `menu_item` reaches both of its tables.
 
@@ -12519,6 +12968,8 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`) — **except 
 | Menu enhancement, Stage 3 section editor (enhancement, not a finding) | A heading could be created and never edited: a typo could only be worked around by making a second heading, and four of `IMenuSectionAdministration`'s five verbs had been outside `IMenuWorkflow` since `0003` for want of a caller | `/administration/menu/sections/{id}` — static SSR, four forms, post/redirect/get with a one-word outcome, the heading's items, and its **complete uncapped** `menu_section_event` stream (§11.4). `IMenuSectionEventLog` is a second reader beside `IMenuEventLog` rather than a widening of it, with **no** cross-section activity feed, because no surface wants one. Rename, describe, reorder and set-active come behind `IMenuWorkflow` together, each publishing `MenuChanged` on a committed row: §11.1 renders a heading above every card under it, and §7 removes an inactive heading from the guest's menu entirely. The create panel, the menu index's Section column and each item's own page now link here, which is what the index was waiting for — a record list whose rows link nowhere is a list of dead ends. §16.3 scenario 17 regains the two steps Slice 40 cut and recorded | §7, §11.4, §16.3, §16.4 · ADR-0014 · `docs/MENU_AND_HANDHELD_PLAN.md` Stage 3 · BUILD_PROGRESS M6 Slice 41 |
 | Menu enhancement, Stage 3 first surface (enhancement, not a finding) | The guest picker was the half of the enhancement request that was actually asked for — *"please rethink the UI/UX of the menu"* — and it was still one `<select>` two slices after the column it exists to show had landed | The picker becomes a card per item: name, price, description, an availability chip, a `disabled` control where §7 says so, and a detail panel that names what is recorded and says plainly when nothing more is. `data-menu-item` carries the identifier the old `<option>` carried as its value, so §16.3's scenarios choose an item the same way they always did. Two `auto-fit` grids rather than a second breakpoint (§11.12). `TableOrderJourneys` gains `ChooseAsync`, `ReadMenuAsync`, `ReadChosenItemDetailAsync` and `WaitForMenuAsync` — reads the old dropdown could not express, which is why `0004`'s description column had no assertion behind it until now | §7, §11.1, §16.4 · ADR-0014 · `docs/MENU_AND_HANDHELD_PLAN.md` Stage 3 · BUILD_PROGRESS M6 Slice 39 |
 | Menu sections and descriptions (enhancement, not a finding) | The first request from a user rather than from a document: a menu needs headings and each item needs a sentence explaining it, and `menu_item`'s four columns express neither | ADR-0014 rules the schema — `menu_section` as a table, `menu_item.menu_section_identifier` NOT NULL, `citext UNIQUE` on a section name where an item name is deliberately neither, non-unique explicit `display_order` on both, `description text NOT NULL DEFAULT ''` because a paired CHECK cannot bind an optional payload, three new item event types beside a new `menu_section_event`, and `created` deliberately still carrying name and price only. Recorded in Appendix A without an F-number because it is not a defect: the ledger is for findings, and an enhancement's trail is the ADR, this register, §19's M7 line and BUILD_PROGRESS | §7, §8.2, §19 · ADR-0014 · `docs/MENU_AND_HANDHELD_PLAN.md` Stage 2 · BUILD_PROGRESS M6 Slice 30 |
+| F-111 | **§8.2's DDL was kept current through four migrations and the paragraph explaining it was not — and the paragraph is the one that tells an implementer how to test.** The note beneath `menu_item_event`'s DDL said its CHECKs bind `new_name` and `new_price_amount`, that *\"`activated`/`deactivated` therefore carry neither\"*, and that **\"integration tests must assert all ten combinations (five types × payload present/absent)\"**. `0004` took the table to seven types and four payload columns and `0005` to eight and five, and the DDL block twelve lines above the note records all of it correctly. The block is what a person adding a table copies; the prose is what nobody re-reads. **Two things make it a finding rather than a typo.** The sentence is **normative** — it states an obligation on the suite — and the figure it computes that obligation from was never right even for the schema it was written against: five types over two nullable columns is twenty states, not ten. And the obligation it states is one **§16.4 separately rules against**: a payload the CHECK refuses is refused loudly, by name, on the first insert, and `MenuSectionEventLogTests`' own summary says in as many words that re-asserting a constraint is a monument (F-47). So one document required a set of tests, another forbade them, the tree obeyed the second, and nothing could see the disagreement. **F-77's shape for the eighth time, one register up:** that row deleted three stale counts of this same vocabulary from comments where nothing looks; this is the same vocabulary miscounted in the specification, inside a requirement | The counts are **deleted rather than corrected**, on F-77's ruling and this project's now-standing pattern — the DDL above is the enumeration and the note states the property, which is true at every size. The testing sentence is **reversed to agree with §16.4** rather than restated, and points at where the facts that matter actually live: the class of failure a database cannot see. **The row names something executable** (F-38's lesson, and the answer to \"why will the *next* note not drift\"): `MenuEventVocabularyContractTests` gains a fourth fact comparing every **named** `event_type` vocabulary this document quotes against the one the migrations declare, **in both directions, subject computed on each side** (F-47, F-58) — so a migration that widens a vocabulary and forgets §8.2 fails here, and so does a migration that adds a table §8.2 never records. **The residual is stated:** only named constraints are in scope, because that is the only form a text scan can key on, so `menu_section_event`'s inline vocabulary is outside it — which is the reason `0006` began naming every constraint it creates and the reason `0008` does. Proven sensitive by planting a widened list in the quoted DDL and by deleting a quoted constraint outright | §7, §8.2, §16.4 · `docs/TECHNICAL_SPECIFICATION.md`, `tests/MyRestaurant.WebApplication.Tests/Events/MenuEventVocabularyContractTests.cs` · BUILD_PROGRESS M6 Slice 57 |
+| Menu likes, Stage 5a (enhancement, not a finding) | Stage 5 of the menu plan had been specified and unstarted since the plan was written, behind two rulings it named and did not make: whether a guest or only staff sees the count, and whether liking requires having ordered the dish | Both are ruled and recorded in §7. **The count is staff-facing**, because 3 on a menu of sixty makes a restaurant look empty — so *which of these is popular* is §11.4's question and *which of these do I like* is §11.1's, two reads over one fold. **A like requires only a person**, because `order_current_line` records what somebody ordered rather than what they ate and a table shares, so the requirement would refuse the case it most wants and invert §6.5.4's direction besides; if it is ever wanted it belongs on the read as a narrower count. `0008` adds `menu_item_reaction_event` and `menu_item_reaction_current` and touches nothing existing. **A reaction publishes nothing and is the first menu write not behind `IMenuWorkflow`**, because a like moves nothing any surface renders from the menu and is the one write here that can fire many times a minute at one table. Recorded without an F-number because it is not a defect: the ledger is for findings, and an enhancement's trail is this register, the plan and BUILD_PROGRESS | §7, §8.2, §8.3, §16.4 · `docs/MENU_AND_HANDHELD_PLAN.md` Stage 5a · BUILD_PROGRESS M6 Slice 57 |
 | F-21 – F-24 | — | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | — | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | — | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP re-enrollment only if enrolled pre-reset; obligations pipeline runs on passkey path too; counter fallback = same rotating QR (no short-code) | §10.1–10.2, §3.5, §3.7, §4.5 · ledger notes |
@@ -12526,6 +12977,12 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`) — **except 
 ---
 
 ## Changelog
+
+**v1.42 — 2026-08-24.** The first stage of the menu enhancement that is not about a dish's own columns, and a paragraph that had been quietly asking for tests nobody should write. **Two changes, and v1.32's distinguishable-failure ruling governs both:** one is a migration with nine integration facts against a real database and one registration fact, the other is one contract fact over two text files. They fail in different projects with different names.
+
+**The stage (5a).** **§7** records the like: `0008` adds `menu_item_reaction_event` and `menu_item_reaction_current` and touches nothing existing, which is `0003`'s cut for the third time. Four rulings are written down rather than left in the code — it is an **event table and not a row per like**, because the small schema makes unliking a `DELETE` and R§6.8 exists so that a record cannot be removed; there is **no `actor_person_identifier`**, because a reaction's subject is the person reacting and the column would be constrained to equal its neighbour forever; there is **no count column and no count view** (F-101's reasoning, in the one table that grows a row every time a thumb moves); and the fold's **identifier tie-break is load-bearing**, because two presses in one millisecond is an ordinary gesture rather than a contrivance and one transaction stamps one instant (§8.1) — it is an answer only because F-95 made the identifier factory ascend. **Both of Stage 5's open rulings are made:** the count is **staff-facing**, and a like requires **only a person**. And **a reaction publishes nothing**, which makes it the first menu write not behind `IMenuWorkflow` — §9's `MenuChanged` means *re-read the menu* and a like moves nothing a menu renders, so the standing wiring fact is narrowed to *every write that changes the menu*. **§8.2** and **§8.3** gain the table, its index and the fold. **§16.4** gains `MenuItemReactionTests` (nine assertions) and its counted-class census moves to **thirty-two**; `MenuWiringTests` moves 28 → 29 and `MenuEventVocabularyContractTests` 3 → 4. **Neither reaction service has a caller**, and Stage 5a says so: Stage 5b builds §11.4's count and §11.1's control, and the obligation is re-opened here exactly as Stage 4a re-opened it for the picture services.
+
+**The finding (F-111).** The note beneath `menu_item_event`'s DDL described a table with five event types and two payload columns, twelve lines below a DDL block correctly showing eight and five — and required *\"integration tests must assert all ten combinations\"*, an obligation whose arithmetic was wrong even for the schema it was written against and which **§16.4 separately rules against writing** (F-47). The counts are deleted rather than corrected, the obligation is reversed to agree with §16.4, and the row names something executable: a fourth fact comparing every **named** `event_type` vocabulary this document quotes against the migrations, in both directions, subject computed on each side. No `REQUIREMENTS.md` edit — R§6.8 has required an append-only record since rev 1, so this is a mechanism catching up rather than new intent. No `OPERATIONS.md` edit, no ADR amended, no new package, no new §16.3 scenario (Stage 5a builds no surface for a browser to visit). Predicted test count 1260 → **1272**.
 
 **v1.41 — 2026-08-23.** A red CI build, and the open item this feature had carried longer than any other. **Two changes, and v1.32's distinguishable-failure ruling governs both:** one is a `stackalloc` moved up seven lines, which fails as a CA2014 diagnostic from the compiler naming a file and a column in the end-to-end project; the other is what decides a stored media type, which fails as three named contract facts and one browser scenario. Nothing about the two can be confused for the other on a red run.
 
@@ -25629,6 +26086,385 @@ public sealed class DapperMenuItemImageAdministration : IMenuItemImageAdministra
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.DataAccess/Menu/MenuItemReactions.cs
+################################################################################
+
+--- METADATA ---
+  Relative path:         src/MyRestaurant.DataAccess/Menu/MenuItemReactions.cs
+  Size:                  17.4 KiB (17868 bytes)
+  SHA-256:               cc7f659d751e04e7b9f59909d330da1b067d8722331a0c86401be4daded82c99
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.Time;
+
+namespace MyRestaurant.DataAccess.Menu;
+
+/// <summary>
+/// How many people currently like one dish (TECHNICAL_SPECIFICATION §7, §8.3, §11.4).
+///
+/// <para><b>"Currently" is the whole of it.</b> The number is a count over
+/// <c>menu_item_reaction_current</c>, which holds one row per person per dish — their <em>last</em>
+/// press. Somebody who liked a dish in March and unliked it in April contributes nothing, and somebody
+/// who liked it three times contributes one. The plausible wrong implementation counts <c>'liked'</c>
+/// rows in the event table, which is a count of presses rather than of people and which grows every time
+/// anybody changes their mind.</para>
+/// </summary>
+/// <param name="MenuItemIdentifier">The dish.</param>
+/// <param name="LikeCount">People who currently like it. Never zero — an item nobody likes is absent from the list rather than present with a zero, because the caller already holds the menu (§11.4).</param>
+public sealed record MenuItemLikeCount(Guid MenuItemIdentifier, int LikeCount);
+
+/// <summary>
+/// Reads what people think of the menu (TECHNICAL_SPECIFICATION §7, §8.3). The read side only; the press
+/// itself is <see cref="IMenuItemReactions"/>, exactly as <see cref="IMenuDirectory"/> stands beside
+/// <see cref="IMenuAdministration"/>.
+///
+/// <para><b>Two reads, because there are two questions and they belong to different people.</b>
+/// <see cref="ListLikeCountsAsync"/> is "which of these is popular", which §11.4's administrator asks
+/// about the whole menu; <see cref="ListLikedByAsync"/> is "which of these do <em>I</em> like", which
+/// §11.1's guest asks about their own presses so the control can render the state it is in. A single
+/// read returning both would hand every guest the whole restaurant's opinion, which is the thing Stage 5
+/// ruled against.</para>
+///
+/// <para><b>Both are whole-menu reads and neither takes an item.</b> A per-item lookup inside a render
+/// loop turns a sixty-dish menu into sixty queries, which is the argument
+/// <see cref="IMenuItemImageDirectory.ListAsync"/> already carries and the reason it exists in that
+/// shape.</para>
+///
+/// <para><b>Neither has a caller yet, and that is Stage 5a's stated position rather than an
+/// oversight.</b> Stage 5b builds the two surfaces. A read with no caller is the weaker of this
+/// project's two "no caller" defects — an unread read cannot change anything without telling anybody —
+/// and it is the same position <see cref="IMenuItemImageDirectory"/> was in for three slices after
+/// <c>0006</c>.</para>
+/// </summary>
+public interface IMenuItemReactionDirectory
+{
+    /// <summary>
+    /// Every dish anybody currently likes, with the number of people who do, ordered by identifier so
+    /// the result is stable across calls. Dishes nobody likes are simply absent — this is not a left
+    /// join over <c>menu_item</c>, because the caller already holds the menu and wants to know which of
+    /// it is liked.
+    /// </summary>
+    Task<IReadOnlyList<MenuItemLikeCount>> ListLikeCountsAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every dish one person currently likes, ordered by identifier. An unknown person and a person who
+    /// likes nothing are the same answer — an empty list — deliberately: the caller is a surface
+    /// rendering for a principal that has already been authenticated, so a second null-ish outcome would
+    /// make every call site handle a case it cannot reach.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListLikedByAsync(
+        Guid personIdentifier,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>What happened to one press (§7, §11.1).</summary>
+public enum SetMenuItemReactionOutcome
+{
+    /// <summary>The opinion moved and a <c>menu_item_reaction_event</c> row was written.</summary>
+    Changed,
+
+    /// <summary>The person already thought that; nothing was written.</summary>
+    AlreadyInThatState,
+
+    /// <summary>No item has that identifier; nothing was written.</summary>
+    MenuItemNotFound,
+}
+
+/// <summary>
+/// The outcome of one press, carrying the state the person is now in so a caller can render the control
+/// without a second read.
+/// </summary>
+public sealed record SetMenuItemReactionResult(
+    SetMenuItemReactionOutcome Outcome,
+    Guid MenuItemIdentifier,
+    Guid PersonIdentifier,
+    bool IsLiked)
+{
+    /// <summary>True when a row was written.</summary>
+    public bool Changed => Outcome is SetMenuItemReactionOutcome.Changed;
+
+    /// <summary>True unless the identifier named nothing.</summary>
+    public bool ItemExists => Outcome is not SetMenuItemReactionOutcome.MenuItemNotFound;
+}
+
+/// <summary>
+/// One person's opinion of one dish (TECHNICAL_SPECIFICATION §7, §8.2, §8.3; Stage 5a of
+/// <c>docs/MENU_AND_HANDHELD_PLAN.md</c>).
+///
+/// <para><b>This is the first menu write in this tree that is not behind <see cref="IMenuWorkflow"/>,
+/// and that is a ruling rather than an omission.</b> The workflow exists so that a change to the menu is
+/// announced (§9) — a reprice nobody announced quotes a guest a price nobody charges, and an 86 nobody
+/// announced leaves a dish tappable on every open picker. A reaction changes nothing any surface renders
+/// from the menu: the dish keeps its name, its price, its heading, its position, its availability and
+/// its photograph. What it changes is a number only staff read and a control the presser is looking at,
+/// and a static or interactive surface both re-render that for themselves. Publishing <c>MenuChanged</c>
+/// here would make a heart-tap re-read the entire menu on every phone in the building — and this is the
+/// one write in this application that can happen many times a minute at one table.</para>
+///
+/// <para><b>The person is the actor.</b> Every other write in this family takes an
+/// <c>actorPersonIdentifier</c> distinct from its subject, because an administrator renames somebody
+/// else's dish. Nobody presses this on another person's behalf and no surface in §11 could offer to, so
+/// the one identifier is both — which is why <c>0008</c> declares no <c>actor_person_identifier</c>
+/// column.</para>
+///
+/// <para><b>Nothing here asks whether the person ordered the dish, and Stage 5 ruled on that
+/// explicitly.</b> <c>order_current_line</c> records what somebody <em>ordered</em>, not what they ate,
+/// and a table shares — so the requirement would refuse the case it most wants to admit (I ate my
+/// partner's dessert and it was the best thing on the menu) while admitting the one it wants to refuse.
+/// It would also make a menu write read order history, inverting §6.5.4's direction. If the restriction
+/// is ever wanted it belongs on the <em>read</em> as a second, narrower count, not here as a refusal a
+/// guest at a table would have to be given a sentence about.</para>
+/// </summary>
+public interface IMenuItemReactions
+{
+    /// <summary>
+    /// Records that a person does or does not like a dish, appending one
+    /// <c>menu_item_reaction_event</c> row when that is a change and nothing when it is not.
+    ///
+    /// <para>A press that changes nothing writes nothing, on the no-op rule every other menu verb
+    /// follows (§7): an append-only log of "somebody's thumb touched glass" is noise, and this is the
+    /// table most able to fill with it — a double-tap is an ordinary gesture rather than an edge
+    /// case.</para>
+    /// </summary>
+    Task<SetMenuItemReactionResult> SetLikedAsync(
+        Guid menuItemIdentifier,
+        Guid personIdentifier,
+        bool isLiked,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// The Dapper implementation of <see cref="IMenuItemReactionDirectory"/>. Reads only: own connection per
+/// call, no transaction, nothing locked — the shape <see cref="DapperMenuDirectory"/> and
+/// <see cref="DapperMenuItemImageDirectory"/> both have.
+///
+/// <para><b>Both queries read the view rather than the event table</b>, which is the entire reason
+/// <c>0008</c> declares one. The fold is where "this person's current opinion" is defined; a reader
+/// assembling it from <c>menu_item_reaction_event</c> would be a second definition of it, and the
+/// second definition is the one that counts presses instead of people.</para>
+/// </summary>
+public sealed class DapperMenuItemReactionDirectory : IMenuItemReactionDirectory
+{
+    // WHERE is_liked rather than WHERE event_type = 'liked': the view has already folded, so this
+    // filters people's current opinions and not rows. count(*) is bigint in PostgreSQL, cast here
+    // rather than widened in C# so the column and the record agree at the boundary.
+    private const string ListLikeCountsSql = """
+        SELECT menu_item_identifier AS MenuItemIdentifier,
+               count(*)::integer    AS LikeCount
+        FROM menu_item_reaction_current
+        WHERE is_liked
+        GROUP BY menu_item_identifier
+        ORDER BY menu_item_identifier;
+        """;
+
+    private const string ListLikedByPersonSql = """
+        SELECT menu_item_identifier
+        FROM menu_item_reaction_current
+        WHERE person_identifier = @PersonIdentifier
+          AND is_liked
+        ORDER BY menu_item_identifier;
+        """;
+
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+
+    public DapperMenuItemReactionDirectory(IDatabaseConnectionFactory connectionFactory)
+    {
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+
+        _connectionFactory = connectionFactory;
+    }
+
+    public async Task<IReadOnlyList<MenuItemLikeCount>> ListLikeCountsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        IEnumerable<MenuItemLikeCount> rows = await connection
+            .QueryAsync<MenuItemLikeCount>(new CommandDefinition(
+                ListLikeCountsSql,
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return rows.ToArray();
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListLikedByAsync(
+        Guid personIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        IEnumerable<Guid> rows = await connection
+            .QueryAsync<Guid>(new CommandDefinition(
+                ListLikedByPersonSql,
+                new { PersonIdentifier = personIdentifier },
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return rows.ToArray();
+    }
+}
+
+/// <summary>
+/// The Dapper implementation of <see cref="IMenuItemReactions"/>. One connection and one transaction per
+/// press, one <see cref="IClock.UtcNow"/> instant on the row, a UUIDv7 key from
+/// <see cref="IIdentifierFactory"/> (ADR-0011) — the shape every write in this layer has.
+///
+/// <para><b>The <c>menu_item</c> row is taken <c>FOR UPDATE</c> before the comparison</b>, which is the
+/// standing rule in this file's neighbours and is doing two jobs at once here: it answers
+/// <see cref="SetMenuItemReactionOutcome.MenuItemNotFound"/> from the same statement that takes the
+/// lock, and it serialises the read-compare-append against itself. Without it two presses from one
+/// person could both read "not liked" and both append <c>'liked'</c> — the fold would still be right and
+/// the history would be a lie, which is the worse of the two failures in an append-only system
+/// (ADR-0002).</para>
+///
+/// <para><b>What that lock costs is stated rather than left to be discovered.</b> It is wider than the
+/// conflict: the conflict is one person against themselves, and this serialises every press on one dish
+/// against every other, and against a rename of it. The alternatives were an advisory lock keyed on the
+/// pair, which is a second locking scheme in a codebase that has one, and no lock at all, which trades a
+/// truthful log for concurrency nobody at one restaurant's table will ever need. A dish is locked for
+/// the duration of one <c>INSERT</c>.</para>
+///
+/// <para><b>Absence and <c>'unliked'</c> are the same state, deliberately.</b> The fold has no row for a
+/// person who has never pressed anything, so the read below coalesces to <c>false</c> — which means
+/// unliking something never liked is <see cref="SetMenuItemReactionOutcome.AlreadyInThatState"/> and
+/// writes nothing, rather than a fourth outcome nobody could act on. The alternative would put a
+/// <c>'unliked'</c> row in the log recording a withdrawal of an opinion never held.</para>
+/// </summary>
+public sealed class DapperMenuItemReactions : IMenuItemReactions
+{
+    /// <summary>Stored spellings of <c>menu_item_reaction_event.event_type</c> (<c>0008</c>'s CHECK).</summary>
+    private const string LikedEventType = "liked";
+
+    private const string UnlikedEventType = "unliked";
+
+    private const string LockMenuItemSql = """
+        SELECT menu_item.menu_item_identifier
+        FROM menu_item
+        WHERE menu_item.menu_item_identifier = @MenuItemIdentifier
+        FOR UPDATE;
+        """;
+
+    // Reads the fold, not the event table, and reads it inside the transaction so it sees this
+    // transaction's own uncommitted rows — which is what makes a second press within one request
+    // compare against the first.
+    private const string ReadCurrentSql = """
+        SELECT is_liked
+        FROM menu_item_reaction_current
+        WHERE menu_item_identifier = @MenuItemIdentifier
+          AND person_identifier = @PersonIdentifier;
+        """;
+
+    private const string InsertReactionEventSql = """
+        INSERT INTO menu_item_reaction_event (
+            menu_item_reaction_event_identifier, menu_item_identifier,
+            person_identifier, event_type, occurred_at)
+        VALUES (
+            @MenuItemReactionEventIdentifier, @MenuItemIdentifier,
+            @PersonIdentifier, @EventType, @OccurredAt);
+        """;
+
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+    private readonly IClock _clock;
+    private readonly IIdentifierFactory _identifierFactory;
+
+    public DapperMenuItemReactions(
+        IDatabaseConnectionFactory connectionFactory,
+        IClock clock,
+        IIdentifierFactory identifierFactory)
+    {
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+        ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(identifierFactory);
+
+        _connectionFactory = connectionFactory;
+        _clock = clock;
+        _identifierFactory = identifierFactory;
+    }
+
+    public async Task<SetMenuItemReactionResult> SetLikedAsync(
+        Guid menuItemIdentifier,
+        Guid personIdentifier,
+        bool isLiked,
+        CancellationToken cancellationToken = default)
+    {
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        Guid? item = await connection
+            .ExecuteScalarAsync<Guid?>(new CommandDefinition(
+                LockMenuItemSql,
+                new { MenuItemIdentifier = menuItemIdentifier },
+                transaction,
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        if (item is null)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new SetMenuItemReactionResult(
+                SetMenuItemReactionOutcome.MenuItemNotFound,
+                menuItemIdentifier,
+                personIdentifier,
+                IsLiked: false);
+        }
+
+        bool? stored = await connection
+            .ExecuteScalarAsync<bool?>(new CommandDefinition(
+                ReadCurrentSql,
+                new { MenuItemIdentifier = menuItemIdentifier, PersonIdentifier = personIdentifier },
+                transaction,
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        // No row means never pressed, which is the same opinion as 'unliked'. See the class summary:
+        // the alternative writes a withdrawal of an opinion never held.
+        bool currentlyLiked = stored ?? false;
+
+        if (currentlyLiked == isLiked)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new SetMenuItemReactionResult(
+                SetMenuItemReactionOutcome.AlreadyInThatState,
+                menuItemIdentifier,
+                personIdentifier,
+                currentlyLiked);
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            InsertReactionEventSql,
+            new
+            {
+                MenuItemReactionEventIdentifier = _identifierFactory.Create(),
+                MenuItemIdentifier = menuItemIdentifier,
+                PersonIdentifier = personIdentifier,
+                EventType = isLiked ? LikedEventType : UnlikedEventType,
+                OccurredAt = now,
+            },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        return new SetMenuItemReactionResult(
+            SetMenuItemReactionOutcome.Changed,
+            menuItemIdentifier,
+            personIdentifier,
+            isLiked);
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.DataAccess/Menu/MenuSectionAdministration.cs
 ################################################################################
 
@@ -28173,6 +29009,160 @@ ALTER TABLE menu_item_image_event
 -- record grows two columns and the projection views grow none. A caption is read
 -- by the guest's menu and by the administrator's item page, both of which read
 -- menu_item_image directly.
+
+################################################################################
+# FILE: src/MyRestaurant.DataAccess/Migrations/0008_menu_item_reactions.sql
+################################################################################
+
+--- METADATA ---
+  Relative path:         src/MyRestaurant.DataAccess/Migrations/0008_menu_item_reactions.sql
+  Size:                  8.3 KiB (8534 bytes)
+  SHA-256:               53446e73cc35f7c440b762af0ff811d900bd10fcd5c81570867dbe2ae598cbf2
+
+--- CONTENT ---
+-- =============================================================================
+-- 0008_menu_item_reactions.sql
+--
+-- A person may like a dish, and may stop. Applied at startup by DbUp (ADR-0012).
+-- TECHNICAL_SPECIFICATION §7, §8.2 and §8.3 carry the mechanism; Stage 5a of
+-- docs/MENU_AND_HANDHELD_PLAN.md carries the staging.
+--
+-- 0001 through 0007 are not edited. DbUp journals by script name, so a change to
+-- an applied script is a change that never runs (F-34).
+--
+-- THIS SCRIPT TOUCHES NOTHING THAT ALREADY EXISTS. One new table, one new index,
+-- one new view: no ALTER, no backfill, no constraint widened, no existing row,
+-- query, form or scenario changed in meaning. That is 0003's cut and 0006's, and
+-- it is why the suite is green here BY CONSTRUCTION rather than by inspection.
+--
+-- WHY THIS IS AN EVENT TABLE AND NOT A ROW PER LIKE. The obvious schema is
+-- (menu_item_identifier, person_identifier) UNIQUE with a DELETE for unliking,
+-- and it is smaller. It is also the one shape in this repository that would
+-- destroy evidence: R§6.8 and ADR-0002 make this system append-only because a
+-- record that can be removed is a record nobody can audit, and §6.8's hide-never-
+-- delete rule has exactly one stated exception — the image bytes (§7) — granted
+-- because the history of those lives in a log beside them. A like has no bytes
+-- and no log beside it; the log IS the record. So the fold is a view and the
+-- press is a row, which is order_visibility_event's shape one register over.
+--
+-- WHY THERE IS NO actor_person_identifier, WHICH EVERY OTHER EVENT TABLE HERE
+-- HAS. On menu_item_event, menu_section_event and menu_item_image_event the
+-- subject and the actor genuinely differ: an administrator renames somebody
+-- else's dish, and §11.1 renders "kitchen removed Salmon". A reaction's subject
+-- IS the person reacting — nobody likes a dish on another person's behalf, and
+-- there is no surface in §11 that could offer to — so an actor column would be a
+-- column constrained to equal its neighbour on every row that will ever exist.
+-- One fact, one copy (F-65's rule, arriving as a column that was never written).
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- 1. The event table
+-- -----------------------------------------------------------------------------
+--
+-- Two types and no payload columns, so there is no paired biconditional to
+-- write: 'liked' and 'unliked' each carry their own name and nothing else, which
+-- is the shape menu_item_image_event's 'removed' has and the shape
+-- order_visibility_event has entirely.
+--
+-- THE VOCABULARY CONSTRAINT IS NAMED, on 0006's rule rather than 0001's. 0001
+-- declared menu_item_event's CHECKs inline, PostgreSQL generated
+-- menu_item_event_check and menu_item_event_check1, and 0004 had to write a
+-- PL/pgSQL loop over pg_constraint, a dollar-quoted body, and — because dbup-core
+-- substitutes $variables$ before PostgreSQL ever sees the text — the F-78 fix in
+-- the runner's configuration. 0006 named every constraint it created and 0007
+-- collected the return in two ordinary ALTER statements. A third word here costs
+-- two lines because of that.
+--
+-- BOTH FOREIGN KEYS ARE REAL. menu_item_image_event deliberately carries a bare
+-- uuid for the picture it names, because a replace deletes the row it points at;
+-- nothing here is deleted, so the opposite ruling applies and both references are
+-- keys. What that buys is the property this stage was cut for: TRUNCATE ... 
+-- CASCADE on menu_item and person reaches this table, so OrderTestWorld needs no
+-- edit at all.
+CREATE TABLE menu_item_reaction_event (
+    menu_item_reaction_event_identifier uuid PRIMARY KEY,
+    menu_item_identifier                uuid NOT NULL
+                                        REFERENCES menu_item (menu_item_identifier),
+    person_identifier                   uuid NOT NULL
+                                        REFERENCES person (person_identifier),
+    event_type                          text NOT NULL,
+    occurred_at                         timestamptz NOT NULL,
+    CONSTRAINT menu_item_reaction_event_type_vocabulary CHECK (event_type IN
+        ('liked', 'unliked'))
+);
+
+-- -----------------------------------------------------------------------------
+-- 2. One index, and its column order is the fold's
+-- -----------------------------------------------------------------------------
+--
+-- (menu_item_identifier, person_identifier, occurred_at) rather than
+-- menu_item_image_event's (menu_item_identifier, occurred_at), because the read
+-- this table exists for is DISTINCT ON (menu_item_identifier,
+-- person_identifier) and that is the prefix it wants. The write's own lookup —
+-- "what does this person currently think of this dish" — is the same prefix, so
+-- one index serves both directions and there is no second one to keep honest.
+--
+-- Deliberately NOT UNIQUE on any prefix. A person may like, unlike and like again,
+-- and each press is a row; a unique index would be the delete-on-unlike schema
+-- arriving through the back door.
+CREATE INDEX menu_item_reaction_event_item_person_index
+    ON menu_item_reaction_event (menu_item_identifier, person_identifier, occurred_at);
+
+-- -----------------------------------------------------------------------------
+-- 3. The fold (§8.3)
+-- -----------------------------------------------------------------------------
+--
+-- order_visibility_current's shape with a two-column partition. The last press
+-- from each person about each dish is that person's current opinion; everything
+-- before it is history and is kept.
+--
+-- THE IDENTIFIER TIE-BREAK IS LOAD-BEARING HERE IN A WAY IT IS NOT ON
+-- order_visibility_current, and this is the sentence worth reading twice. Hiding
+-- an order twice in one millisecond is a thing nobody does. Tapping a heart twice
+-- in one millisecond is a thing everybody does, and one transaction stamps its
+-- rows with one IClock.UtcNow (§8.1), so two presses genuinely share an
+-- occurred_at. Without the tie-break DISTINCT ON returns whichever row the scan
+-- reached first, which is the OLDEST — so a double-tap would read back as the
+-- state before it. The tie-break is only an answer because §8.1 requires
+-- IIdentifierFactory to ascend within a millisecond, which is the property F-95
+-- found nothing was keeping and made true.
+--
+-- is_liked is (event_type = 'liked') rather than a NOT IN or a CASE, on
+-- order_visibility_current's precedent — and the equality is what makes a third
+-- word in the vocabulary a visible change rather than a silent one: a 'loved'
+-- added to the CHECK above would fold to FALSE here, which is wrong and which
+-- somebody reading this line can see, where "not unliked" would fold to TRUE and
+-- look correct.
+CREATE VIEW menu_item_reaction_current AS
+SELECT DISTINCT ON (menu_item_identifier, person_identifier)
+    menu_item_identifier,
+    person_identifier,
+    (event_type = 'liked') AS is_liked
+FROM menu_item_reaction_event
+ORDER BY menu_item_identifier,
+         person_identifier,
+         occurred_at DESC,
+         menu_item_reaction_event_identifier DESC;
+
+-- -----------------------------------------------------------------------------
+-- 4. No count view, and no reaction column on menu_item
+-- -----------------------------------------------------------------------------
+--
+-- A menu_item_reaction_count view would be one line — SELECT menu_item_identifier,
+-- count(*) FROM menu_item_reaction_current WHERE is_liked GROUP BY 1 — and it is
+-- deliberately not written. §8.3's views exist to give the application a shape it
+-- would otherwise assemble from event tables by hand; an aggregate over a view
+-- that already exists is a GROUP BY, and a second view would be a second place
+-- for "which of these is popular" to be defined. The reader carries it, and the
+-- plausible wrong version of it — counting 'liked' rows in the event table, which
+-- counts every press anybody ever made — is asserted against in
+-- MenuItemReactionTests rather than prevented by adding DDL.
+--
+-- And no like_count column on menu_item, for the reason there is no byte_length
+-- column on menu_item_image (F-101): a stored total beside the rows it totals is
+-- one fact written twice in a place where a single INSERT can make the two
+-- disagree, and this is the one table in the schema that grows a row every time
+-- somebody's thumb moves.
 
 ################################################################################
 # FILE: src/MyRestaurant.DataAccess/MyRestaurant.DataAccess.csproj
@@ -60904,8 +61894,8 @@ public sealed class OrderWorkflow : IOrderWorkflow
 
 --- METADATA ---
   Relative path:         src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs
-  Size:                  11.2 KiB (11471 bytes)
-  SHA-256:               e57e10f570d503e114fe27194409801df6761dc0e21d3a27fc764dfadad25341
+  Size:                  13.2 KiB (13562 bytes)
+  SHA-256:               c8cd98e34aea76ddf209f62eb830a1be60986464f180bbe6e0ce81f8af8cce44
 
 --- CONTENT ---
 using MyRestaurant.DataAccess.Menu;
@@ -61037,6 +62027,31 @@ public static class OrdersServiceCollectionExtensions
         services.AddScoped<IMenuItemImageDirectory, DapperMenuItemImageDirectory>();
         services.AddScoped<IMenuItemImageAdministration, DapperMenuItemImageAdministration>();
         services.AddScoped<IMenuItemImageEventLog, DapperMenuItemImageEventLog>();
+
+        // Menu item reactions (§7, §8.2, §8.3, and Stage 5a of docs/MENU_AND_HANDHELD_PLAN.md). Same
+        // table family, same lifetime, so they are registered here for the reason every group above is
+        // rather than behind a call the composition root has to remember.
+        //
+        // IMenuItemReactions IS NOT BEHIND IMenuWorkflow, AND IT IS THE FIRST MENU WRITE THAT IS NOT.
+        // That is a ruling and not an omission, so it is stated here rather than left to be inferred
+        // from an absence. The workflow exists to satisfy §9: a menu change nobody announced leaves a
+        // stale price on an open picker, or a dish tappable after the kitchen has 86'd it. A reaction
+        // changes nothing any surface renders FROM the menu — name, price, heading, position,
+        // availability and photograph are all untouched — so there is nothing to re-read. Publishing
+        // MenuChanged here would make one thumb re-read the whole menu on every phone in the building,
+        // and this is the one write in this application that can fire many times a minute at one table.
+        // MenuWiringTests' "covers every write service" fact is narrowed to say what it always meant:
+        // every write that CHANGES THE MENU.
+        //
+        // NEITHER HAS A CALLER YET, and Stage 5a says so rather than implying otherwise. Stage 5b builds
+        // the two surfaces — §11.4's count for staff, §11.1's control for the guest pressing it. This is
+        // the same position IMenuItemImageDirectory and IMenuItemImageAdministration were in between
+        // Stage 4a and Stage 4b, and it is recorded on the same terms: a read with no caller cannot
+        // change anything without telling anybody, and a write with no caller is a code path no test can
+        // reach through the interface meant to protect it. The obligation is re-opened here and closes
+        // in 5b.
+        services.AddScoped<IMenuItemReactionDirectory, DapperMenuItemReactionDirectory>();
+        services.AddScoped<IMenuItemReactions, DapperMenuItemReactions>();
 
         // Orders (§6.6, §8.3, §8.5, §11.2).
         services.AddScoped<IOrderMutations, DapperOrderMutations>();
@@ -74069,6 +75084,360 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemReactionTests.cs
+################################################################################
+
+--- METADATA ---
+  Relative path:         tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemReactionTests.cs
+  Size:                  15.6 KiB (15968 bytes)
+  SHA-256:               b528a199e155a267d2caf09f390613b293197c343b85138e72edcf151499a397
+
+--- CONTENT ---
+using MyRestaurant.DataAccess.Menu;
+using MyRestaurant.DataAccess.Tests.Identity;
+using MyRestaurant.DataAccess.Tests.Orders;
+using MyRestaurant.Domain.Identifiers;
+using Xunit;
+
+namespace MyRestaurant.DataAccess.Tests.Menu;
+
+/// <summary>
+/// Integration tests for <see cref="DapperMenuItemReactions"/> and
+/// <see cref="DapperMenuItemReactionDirectory"/> against a real PostgreSQL 17 container — Stage 5a's
+/// like, and the fold that answers what anybody currently thinks (§7, §8.2, §8.3).
+///
+/// <para><b>What earns a fact here is a plausible wrong implementation that leaves an artefact reading
+/// correctly.</b> That is this repository's standing rule for an append-only table (ADR-0002), and this
+/// one has more of them than usual because the obvious schema is not an event table at all: a row per
+/// like with a <c>DELETE</c> for unliking gets every visible answer right and destroys the record. Three
+/// of the nine below fail against exactly that implementation.</para>
+///
+/// <para><b>The one that could not have been written any other way is
+/// <see cref="TwoPressesAtOneInstantFoldToTheLater"/>.</b> One transaction stamps its rows with one
+/// <see cref="Domain.Time.IClock.UtcNow"/> (§8.1) and this fixture's clock is fixed, so a like and an
+/// unlike genuinely share an <c>occurred_at</c> — which is not a contrivance here the way it would be on
+/// <c>order_visibility_event</c>. Nobody hides an order twice in one millisecond; everybody taps a heart
+/// twice. <c>DISTINCT ON</c> with no tie-break returns whichever row the scan reached first, which is the
+/// <em>oldest</em>, so the double-tap would read back as the state before it. The tie-break is only an
+/// answer because §8.1 requires <see cref="IIdentifierFactory"/> to ascend inside a millisecond, which is
+/// the property F-95 found nothing was keeping.</para>
+///
+/// <para><b><c>OrderTestWorld</c> needed no edit</b>, on the property <c>0008</c> was cut for:
+/// <c>TRUNCATE … CASCADE</c> on <c>menu_item</c> and <c>person</c> reaches this table, because both of
+/// its references are real foreign keys.</para>
+/// </summary>
+public sealed class MenuItemReactionTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
+{
+    private const string CountReactionEventsSql = """
+        SELECT count(*)::int FROM menu_item_reaction_event;
+        """;
+
+    private readonly PostgreSqlFixture _fixture;
+    private readonly FixedClock _clock = new(new DateTimeOffset(2026, 5, 14, 18, 0, 0, TimeSpan.Zero));
+    private readonly UuidV7IdentifierFactory _identifiers = new();
+    private NpgsqlDatabaseConnectionFactory? _connectionFactory;
+    private OrderTestWorld? _world;
+
+    private Guid _adaIdentifier;
+    private Guid _benIdentifier;
+
+    public MenuItemReactionTests(PostgreSqlFixture fixture) => _fixture = fixture;
+
+    public async ValueTask InitializeAsync()
+    {
+        if (_fixture.ConnectionString is null)
+        {
+            return;
+        }
+
+        new SchemaMigrationRunner(_fixture.ConnectionString)
+        {
+            MaximumAttempts = 3,
+            DelayBetweenAttempts = TimeSpan.FromMilliseconds(200),
+        }.Run();
+
+        _connectionFactory = new NpgsqlDatabaseConnectionFactory(_fixture.ConnectionString);
+        _world = new OrderTestWorld(_connectionFactory, _clock, _identifiers);
+
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        await _world.TruncateAsync(cancellationToken);
+
+        // Three characters minimum: person.username has carried
+        // CHECK (char_length(username) BETWEEN 3 AND 64) since 0001, and a two-character name fails in
+        // InitializeAsync where the message names the fixture rather than any test (F-85).
+        _adaIdentifier = await _world.AddPersonAsync("ada", "Ada", cancellationToken);
+        _benIdentifier = await _world.AddPersonAsync("ben", "Ben", cancellationToken);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connectionFactory is not null)
+        {
+            await _connectionFactory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task LikingWritesOneEventAndTheFoldSaysLiked()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        SetMenuItemReactionResult result = await Reactions()
+            .SetLikedAsync(salmon, _adaIdentifier, isLiked: true, cancellationToken);
+
+        Assert.Equal(SetMenuItemReactionOutcome.Changed, result.Outcome);
+        Assert.True(result.Changed);
+        Assert.True(result.ItemExists);
+        Assert.True(result.IsLiked);
+        Assert.Equal(salmon, result.MenuItemIdentifier);
+        Assert.Equal(_adaIdentifier, result.PersonIdentifier);
+
+        Assert.Equal(1, await World().CountAsync(CountReactionEventsSql, cancellationToken));
+
+        string? eventType = await World().ScalarAsync<string>(
+            """
+            SELECT event_type
+            FROM menu_item_reaction_event
+            WHERE menu_item_identifier = @MenuItemIdentifier
+              AND person_identifier = @PersonIdentifier;
+            """,
+            new { MenuItemIdentifier = salmon, PersonIdentifier = _adaIdentifier },
+            cancellationToken);
+
+        Assert.Equal("liked", eventType);
+
+        IReadOnlyList<Guid> liked = await Directory()
+            .ListLikedByAsync(_adaIdentifier, cancellationToken);
+
+        Assert.Equal(salmon, Assert.Single(liked));
+    }
+
+    /// <summary>
+    /// The no-op rule, and on this table it governs the <em>ordinary</em> gesture rather than an edge
+    /// case: a control that is already on, pressed again, is a double-tap. An implementation that
+    /// appended every press would leave §11.4 reading a log of thumbs rather than of opinions.
+    /// </summary>
+    [Fact]
+    public async Task LikingSomethingAlreadyLikedWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        await Reactions().SetLikedAsync(salmon, _adaIdentifier, isLiked: true, cancellationToken);
+
+        SetMenuItemReactionResult again = await Reactions()
+            .SetLikedAsync(salmon, _adaIdentifier, isLiked: true, cancellationToken);
+
+        Assert.Equal(SetMenuItemReactionOutcome.AlreadyInThatState, again.Outcome);
+        Assert.False(again.Changed);
+        Assert.True(again.ItemExists);
+        Assert.True(again.IsLiked);
+
+        Assert.Equal(1, await World().CountAsync(CountReactionEventsSql, cancellationToken));
+    }
+
+    /// <summary>
+    /// Unliking <b>appends</b>. This is the fact that fails against the schema Stage 5a rejected — one
+    /// row per like with a <c>DELETE</c> to withdraw it — which gets the fold right and leaves nothing
+    /// behind to audit (R§6.8, ADR-0002).
+    /// </summary>
+    [Fact]
+    public async Task UnlikingAppendsASecondEventAndReversesTheFold()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        await Reactions().SetLikedAsync(salmon, _adaIdentifier, isLiked: true, cancellationToken);
+
+        SetMenuItemReactionResult undone = await Reactions()
+            .SetLikedAsync(salmon, _adaIdentifier, isLiked: false, cancellationToken);
+
+        Assert.Equal(SetMenuItemReactionOutcome.Changed, undone.Outcome);
+        Assert.False(undone.IsLiked);
+
+        Assert.Equal(2, await World().CountAsync(CountReactionEventsSql, cancellationToken));
+        Assert.Empty(await Directory().ListLikedByAsync(_adaIdentifier, cancellationToken));
+    }
+
+    /// <summary>
+    /// Absence and <c>'unliked'</c> are one state. A person who has never pressed anything has no row in
+    /// the fold, and unliking is therefore a no-op rather than a fourth outcome — the alternative writes
+    /// a withdrawal of an opinion never held, which is a row §11.4 would render as a sentence about
+    /// somebody changing their mind.
+    /// </summary>
+    [Fact]
+    public async Task UnlikingSomethingNeverLikedWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        SetMenuItemReactionResult result = await Reactions()
+            .SetLikedAsync(salmon, _adaIdentifier, isLiked: false, cancellationToken);
+
+        Assert.Equal(SetMenuItemReactionOutcome.AlreadyInThatState, result.Outcome);
+        Assert.False(result.Changed);
+        Assert.True(result.ItemExists);
+        Assert.False(result.IsLiked);
+
+        Assert.Equal(0, await World().CountAsync(CountReactionEventsSql, cancellationToken));
+    }
+
+    [Fact]
+    public async Task AnUnknownItemReportsNotFoundAndWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        SetMenuItemReactionResult result = await Reactions()
+            .SetLikedAsync(_identifiers.Create(), _adaIdentifier, isLiked: true, cancellationToken);
+
+        Assert.Equal(SetMenuItemReactionOutcome.MenuItemNotFound, result.Outcome);
+        Assert.False(result.ItemExists);
+        Assert.False(result.Changed);
+        Assert.False(result.IsLiked);
+
+        Assert.Equal(0, await World().CountAsync(CountReactionEventsSql, cancellationToken));
+    }
+
+    /// <summary>
+    /// The count is of <b>people</b>, not of presses. The plausible wrong reader counts <c>'liked'</c>
+    /// rows in the event table, which is right until the first person changes their mind and then
+    /// permanently wrong in the direction that flatters the dish.
+    /// </summary>
+    [Fact]
+    public async Task TheCountExcludesAPersonWhoUnliked()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        await Reactions().SetLikedAsync(salmon, _adaIdentifier, isLiked: true, cancellationToken);
+        await Reactions().SetLikedAsync(salmon, _benIdentifier, isLiked: true, cancellationToken);
+        await Reactions().SetLikedAsync(salmon, _adaIdentifier, isLiked: false, cancellationToken);
+
+        // Three rows on the table, one person currently liking it. A reader over the event table would
+        // answer two.
+        Assert.Equal(3, await World().CountAsync(CountReactionEventsSql, cancellationToken));
+
+        IReadOnlyList<MenuItemLikeCount> counts = await Directory()
+            .ListLikeCountsAsync(cancellationToken);
+
+        MenuItemLikeCount only = Assert.Single(counts);
+        Assert.Equal(salmon, only.MenuItemIdentifier);
+        Assert.Equal(1, only.LikeCount);
+    }
+
+    /// <summary>
+    /// A dish nobody currently likes is <b>absent</b> rather than present with a zero, which is the
+    /// contract §11.4's caller reads against — it already holds the menu and is asking which of it is
+    /// liked. Asserted with a second dish in the database so that "absent" is a decision the query made
+    /// rather than the only row there was.
+    /// </summary>
+    [Fact]
+    public async Task ADishNobodyLikesIsAbsentFromTheCounts()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+        Guid soup = await World().AddMenuItemAsync("Soup", 4.50m, cancellationToken);
+
+        await Reactions().SetLikedAsync(salmon, _adaIdentifier, isLiked: true, cancellationToken);
+        await Reactions().SetLikedAsync(soup, _benIdentifier, isLiked: true, cancellationToken);
+        await Reactions().SetLikedAsync(soup, _benIdentifier, isLiked: false, cancellationToken);
+
+        IReadOnlyList<MenuItemLikeCount> counts = await Directory()
+            .ListLikeCountsAsync(cancellationToken);
+
+        MenuItemLikeCount only = Assert.Single(counts);
+        Assert.Equal(salmon, only.MenuItemIdentifier);
+        Assert.DoesNotContain(counts, count => count.MenuItemIdentifier == soup);
+    }
+
+    /// <summary>
+    /// One person's list contains only their own presses. The wrong reader here is one that forgets the
+    /// <c>person_identifier</c> filter and returns everything anybody likes — which on a fresh fixture
+    /// with one person is indistinguishable from the right answer, and is why there are two people in
+    /// this class.
+    /// </summary>
+    [Fact]
+    public async Task OnePersonsLikesDoNotAppearInAnothersList()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+        Guid soup = await World().AddMenuItemAsync("Soup", 4.50m, cancellationToken);
+
+        await Reactions().SetLikedAsync(salmon, _adaIdentifier, isLiked: true, cancellationToken);
+        await Reactions().SetLikedAsync(soup, _benIdentifier, isLiked: true, cancellationToken);
+
+        IReadOnlyList<Guid> adasLikes = await Directory()
+            .ListLikedByAsync(_adaIdentifier, cancellationToken);
+        IReadOnlyList<Guid> bensLikes = await Directory()
+            .ListLikedByAsync(_benIdentifier, cancellationToken);
+
+        Assert.Equal(salmon, Assert.Single(adasLikes));
+        Assert.Equal(soup, Assert.Single(bensLikes));
+        Assert.Empty(await Directory().ListLikedByAsync(_identifiers.Create(), cancellationToken));
+    }
+
+    /// <summary>
+    /// The fold's tie-break, which is the fact this class exists for. Both rows carry the same
+    /// <c>occurred_at</c> because <see cref="FixedClock"/> does not move and §8.1 stamps one instant per
+    /// transaction, so the only thing separating them is
+    /// <c>menu_item_reaction_event_identifier DESC</c>. Deliberately two presses rather than three: with
+    /// two, a fold ordered by <c>occurred_at</c> alone returns the <em>first</em> row — <c>'liked'</c> —
+    /// and the assertion below fails definitely rather than by luck of a scan order.
+    /// </summary>
+    [Fact]
+    public async Task TwoPressesAtOneInstantFoldToTheLater()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        await Reactions().SetLikedAsync(salmon, _adaIdentifier, isLiked: true, cancellationToken);
+        await Reactions().SetLikedAsync(salmon, _adaIdentifier, isLiked: false, cancellationToken);
+
+        // The arrangement is the assertion's premise, so it is checked rather than assumed: two rows,
+        // one instant.
+        Assert.Equal(2, await World().CountAsync(CountReactionEventsSql, cancellationToken));
+
+        int distinctInstants = await World().CountAsync(
+            """
+            SELECT count(DISTINCT occurred_at)::int FROM menu_item_reaction_event;
+            """,
+            cancellationToken);
+
+        Assert.Equal(1, distinctInstants);
+
+        Assert.Empty(await Directory().ListLikedByAsync(_adaIdentifier, cancellationToken));
+        Assert.Empty(await Directory().ListLikeCountsAsync(cancellationToken));
+    }
+
+    private void SkipIfNoContainer()
+        => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+
+    private DapperMenuItemReactions Reactions() => new(_connectionFactory!, _clock, _identifiers);
+
+    private DapperMenuItemReactionDirectory Directory() => new(_connectionFactory!);
+
+    private OrderTestWorld World() => _world!;
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemResequenceTests.cs
 ################################################################################
 
@@ -79977,8 +81346,8 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs
-  Size:                  16.1 KiB (16488 bytes)
-  SHA-256:               2aa1363018849dc51c99b9bf78c7a6ff8902ff5358b814284c9543a4f99eb68d
+  Size:                  17.0 KiB (17441 bytes)
+  SHA-256:               26a0060d446b723bc87eb1c5f82a05d6c93b117b70d6fbae43d6ffa6f7140573
 
 --- CONTENT ---
 using Dapper;
@@ -80015,6 +81384,15 @@ namespace MyRestaurant.DataAccess.Tests;
 /// cap being the database's) are asserted where they can be observed, in
 /// <c>Menu/MenuItemImageTests.cs</c>, against writes rather than against DDL.</para>
 ///
+/// <para><b><c>0008</c> has that same shape and adds one thing to say about it</b>, which is why it takes
+/// two rows here rather than one: a table and a <em>view</em>. <c>menu_item_reaction_current</c> is the
+/// fold every reader of that table goes through, so a script that created the table and stopped before
+/// the view leaves a schema in which nothing can answer what anybody currently likes — and a relation
+/// census that only knew about tables would report that migration as having run. Its interesting
+/// properties (a press being appended rather than a row deleted, the count being of people rather than
+/// of presses, and the identifier tie-break that decides a double-tap) are asserted where they can be
+/// observed, in <c>Menu/MenuItemReactionTests.cs</c>, against writes rather than against DDL.</para>
+///
 /// <para><b>This file is also the gate on <c>WithVariablesDisabled()</c>, and that is deliberate
 /// (F-78).</b> dbup-core substitutes <c>$name$</c> before the splitter runs, and PostgreSQL spells a
 /// dollar-quoted body the same way, so <c>0004</c>'s <c>DO $migrate_menu_item_event_checks$</c> was read
@@ -80042,8 +81420,10 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
         "public.menu_item",
         "public.menu_section",       // 0003
         "public.menu_section_event", // 0003
-        "public.menu_item_image",       // 0006
-        "public.menu_item_image_event", // 0006
+        "public.menu_item_image",           // 0006
+        "public.menu_item_image_event",     // 0006
+        "public.menu_item_reaction_event",  // 0008
+        "public.menu_item_reaction_current",// 0008 — view
         "public.guest_order",
         "public.order_event",
         "public.order_operation_line_added",
@@ -106424,8 +107804,8 @@ public sealed class EventsWiringTests
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Events/MenuEventVocabularyContractTests.cs
-  Size:                  12.8 KiB (13135 bytes)
-  SHA-256:               d1ea018010bb7d2c278042884e52a30deeaa01c0c5695e47dc400843b7f6bac0
+  Size:                  19.5 KiB (19921 bytes)
+  SHA-256:               288b48a4d95c5d866988c854adb785f0499d9b70a8ee8d0ed172127d0ac47a46
 
 --- CONTENT ---
 using System.Text.RegularExpressions;
@@ -106499,6 +107879,13 @@ public sealed class MenuEventVocabularyContractTests
 
     /// <summary>The renderer whose arms are the census (§11.4, F-77).</summary>
     private const string PictureRenderer = "DescribePicture";
+
+    /// <summary>
+    /// The schema of record (§8.2). It quotes the DDL the migrations apply, which makes it a
+    /// <em>restatement</em> in F-50's sense — joined to its subject only by somebody having written the
+    /// vocabulary a second time.
+    /// </summary>
+    private const string SpecificationRelativePath = "docs/TECHNICAL_SPECIFICATION.md";
 
     /// <summary>
     /// The <c>event_type IN ( … )</c> list of the <em>last</em> migration that declares
@@ -106605,6 +107992,69 @@ public sealed class MenuEventVocabularyContractTests
                 + " that should record it.");
     }
 
+    /// <summary>
+    /// Every <b>named</b> <c>event_type</c> vocabulary <c>docs/TECHNICAL_SPECIFICATION.md</c> §8.2 quotes
+    /// is the vocabulary the migrations declare, and every one the migrations declare is quoted there
+    /// (§8.2, <b>F-111</b>).
+    ///
+    /// <para><b>Why this is a different claim from the two facts above.</b> Those compare a migration
+    /// against C# and against a Razor surface. This compares a migration against the <em>specification</em>,
+    /// which §8.2 calls the schema of record and which quotes the DDL in full. That quotation is F-50's
+    /// shape exactly — one fact written in two places, joined only by somebody remembering to edit the
+    /// second — and it is the copy every future migration is written by, because a person adding a table
+    /// reads §8.2 rather than seven `.sql` files.</para>
+    ///
+    /// <para><b>What made it worth writing is that the neighbouring prose had already drifted.</b> The DDL
+    /// blocks were kept current through <c>0004</c>, <c>0005</c>, <c>0006</c> and <c>0007</c>; the note
+    /// beneath them describing those same CHECKs still named five event types and two payload columns
+    /// against a table that had eight and five, and still stated a testing obligation computed from the
+    /// stale figure — an obligation §16.4 separately rules against writing (F-47). The blocks are copied
+    /// and the prose is read, so the blocks stayed right. This fact keeps them right by machine instead of
+    /// by luck.</para>
+    ///
+    /// <para><b>Both directions, and the subject is computed on both sides</b> (F-47, F-58): nothing here
+    /// names a constraint. A vocabulary the migrations declare and §8.2 never quotes is a table the schema
+    /// of record does not document, which is the drift that arrives with the <em>next</em> migration rather
+    /// than with an edit to an existing one.</para>
+    ///
+    /// <para><b>The residual is real and is stated rather than papered over.</b> Only <em>named</em>
+    /// constraints are in scope, because that is the only form a text scan can key on — <c>0001</c> and
+    /// <c>0003</c> declare their vocabularies inline and unnamed, and <c>menu_section_event</c>'s is
+    /// therefore outside this gate. That is not a gap this fact can close; it is the reason <c>0006</c>
+    /// began naming every constraint it created, and the reason <c>0008</c> does.</para>
+    /// </summary>
+    [Fact]
+    public void EveryVocabularyTheSpecificationQuotes_IsTheOneTheMigrationsDeclare()
+    {
+        IReadOnlyDictionary<string, string[]> quoted = ReadNamedVocabularies(
+            File.ReadAllText(Path.Combine(
+                FindRepositoryRoot().FullName,
+                SpecificationRelativePath.Replace('/', Path.DirectorySeparatorChar))));
+
+        IReadOnlyDictionary<string, string[]> declared = ReadMigrationVocabularies();
+
+        // Non-vacuity, both sides. A regex that stopped matching would otherwise satisfy every comparison
+        // below by having nothing to compare (F-41).
+        Assert.True(
+            quoted.Count >= 2,
+            $"Read {quoted.Count} named event_type vocabularies out of {SpecificationRelativePath}; §8.2"
+                + " quotes more than that, so this scan has stopped reading the document.");
+        Assert.True(
+            declared.Count >= 2,
+            $"Read {declared.Count} named event_type vocabularies out of the migrations.");
+
+        Assert.Equal(
+            declared.Keys.Order(StringComparer.Ordinal).ToArray(),
+            quoted.Keys.Order(StringComparer.Ordinal).ToArray());
+
+        foreach (KeyValuePair<string, string[]> entry in declared)
+        {
+            Assert.Equal(
+                entry.Value.Order(StringComparer.Ordinal).ToArray(),
+                quoted[entry.Key].Order(StringComparer.Ordinal).ToArray());
+        }
+    }
+
     private static IReadOnlyList<string> ReadDeclaredVocabulary(string constraintName)
     {
         DirectoryInfo migrations = new(
@@ -106649,6 +108099,66 @@ public sealed class MenuEventVocabularyContractTests
         Assert.NotEmpty(types);
 
         return types;
+    }
+
+    /// <summary>
+    /// Every <c>CONSTRAINT &lt;name&gt; CHECK (event_type IN ( … ))</c> in one body of text, keyed by the
+    /// constraint's name. <c>ADD</c> is optional so that one pattern reads a <c>CREATE TABLE</c> body and
+    /// an <c>ALTER TABLE</c> statement alike, which is what lets the specification's consolidated DDL be
+    /// compared against a migration that widened it.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string[]> ReadNamedVocabularies(string text)
+    {
+        Dictionary<string, string[]> found = new();
+
+        foreach (Match match in Regex.Matches(
+            text,
+            @"(?:ADD\s+)?CONSTRAINT\s+(?<name>[a-z_]+)\s+CHECK\s*\(\s*event_type\s+IN\s*\((?<list>[^)]*)\)",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline,
+            TimeSpan.FromSeconds(5)))
+        {
+            string[] types = Regex
+                .Matches(match.Groups["list"].Value, @"'(?<type>[^']+)'", RegexOptions.None, TimeSpan.FromSeconds(5))
+                .Select(quoted => quoted.Groups["type"].Value)
+                .ToArray();
+
+            // A named constraint that matched and yielded no quoted word is a parse failure rather than an
+            // empty vocabulary, and recording it as the latter is how this gate would assert nothing.
+            Assert.NotEmpty(types);
+
+            // Last declaration wins, which is the same rule ReadDeclaredVocabulary applies and is what
+            // makes a widened constraint read as its widened self.
+            found[match.Groups["name"].Value] = types;
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// The same, over every migration in DbUp's apply order — which is file-name order, not the file
+    /// system's timestamps.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string[]> ReadMigrationVocabularies()
+    {
+        DirectoryInfo migrations = new(
+            Path.Combine(FindRepositoryRoot().FullName, MigrationsRelativePath));
+
+        Assert.True(migrations.Exists, $"No migrations directory at '{migrations.FullName}'.");
+
+        Dictionary<string, string[]> found = new();
+
+        foreach (FileInfo script in migrations
+            .GetFiles("*.sql")
+            .OrderBy(file => file.Name, StringComparer.Ordinal))
+        {
+            foreach (KeyValuePair<string, string[]> entry in ReadNamedVocabularies(
+                File.ReadAllText(script.FullName)))
+            {
+                found[entry.Key] = entry.Value;
+            }
+        }
+
+        return found;
     }
 
     private static DirectoryInfo FindRepositoryRoot()
@@ -109715,8 +111225,8 @@ public sealed class MenuItemImageSurfaceContractTests
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs
-  Size:                  71.1 KiB (72796 bytes)
-  SHA-256:               0061e305caa30465fd9ea0f001c732a203061f40aedbecfc6f2d20f52a6a7aed
+  Size:                  73.4 KiB (75195 bytes)
+  SHA-256:               69a4c7070409c294d623e5ca255e0afd697dbdc74e09770087bf2e6bc5f41639
 
 --- CONTENT ---
 using System.Data.Common;
@@ -109842,12 +111352,21 @@ public sealed class MenuWiringTests
     }
 
     /// <summary>
-    /// One workflow over all three write services. §9 does not distinguish which verb changed the menu,
-    /// and every subscriber responds to <see cref="MenuChanged"/> the same way, so a second workflow would
-    /// only make it possible to wire an application that announces 86s and not repricings.
+    /// One workflow over every write service <em>that changes the menu</em>. §9 does not distinguish which
+    /// verb changed it, and every subscriber responds to <see cref="MenuChanged"/> the same way, so a
+    /// second workflow would only make it possible to wire an application that announces 86s and not
+    /// repricings.
+    ///
+    /// <para><b>That qualifier arrived with Stage 5a and it narrows the sentence rather than weakening
+    /// it.</b> <see cref="IMenuItemReactions"/> is a write and is deliberately not behind the workflow:
+    /// a like moves no name, no price, no heading, no position, no availability flag and no photograph,
+    /// so no surface has anything to re-read, and it is the one write in this application that can fire
+    /// many times a minute at one table. What this fact claims is what it always meant — that a write
+    /// which changes what a guest's picker renders cannot be reached without going through the thing
+    /// that announces it.</para>
     /// </summary>
     [Fact]
-    public void MenuWorkflow_IsResolvableInAScope_AndCoversEveryWriteService()
+    public void MenuWorkflow_IsResolvableInAScope_AndCoversEveryWriteServiceThatChangesTheMenu()
     {
         using ServiceProvider provider = BuildProvider();
         using IServiceScope scope = provider.CreateScope();
@@ -109893,6 +111412,34 @@ public sealed class MenuWiringTests
 
         Assert.IsType<DapperMenuItemImageEventLog>(
             scope.ServiceProvider.GetRequiredService<IMenuItemImageEventLog>());
+    }
+
+    /// <summary>
+    /// The two reaction services, resolvable in a scope (Stage 5a).
+    ///
+    /// <para><b>A fact of its own, and for the opposite reason the picture history has one.</b> That read
+    /// is outside the workflow's fact because it is a <em>read</em>. These two are outside it because one
+    /// of them is a <b>write that is deliberately not behind the workflow</b> — so putting
+    /// <see cref="IMenuItemReactions"/> into the body above would make that fact assert the negation of
+    /// what its own name says. Keeping them apart is what lets both sentences stay true.</para>
+    ///
+    /// <para><b>Worth asserting although nothing resolves either service yet.</b> Stage 5a registers them
+    /// and Stage 5b builds the surfaces, and the failure mode in between is the one this whole class
+    /// exists for: §11.1's picker and §11.4's item page are rendered by components that resolve their
+    /// dependencies while rendering, so an unregistered service is not a compile error and not a unit
+    /// failure — it is an exception on a live surface, found by Chromium and a database two and a half
+    /// minutes later. Two seconds here instead.</para>
+    /// </summary>
+    [Fact]
+    public void MenuItemReactionServices_AreResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        Assert.IsType<DapperMenuItemReactionDirectory>(
+            scope.ServiceProvider.GetRequiredService<IMenuItemReactionDirectory>());
+        Assert.IsType<DapperMenuItemReactions>(
+            scope.ServiceProvider.GetRequiredService<IMenuItemReactions>());
     }
 
     [Fact]
@@ -115802,10 +117349,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 370
-  Total size     : 6.0 MiB (6242678 bytes)
+  Files dumped   : 373
+  Total size     : 6.1 MiB (6352422 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-23T22:04:24-04:00
+  Completed at   : 2026-08-23T23:46:56-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
