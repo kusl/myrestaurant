@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Playwright;
+using MyRestaurant.Domain.Security;
 using MyRestaurant.WebApplication.Identity;
 
 namespace MyRestaurant.EndToEnd.Tests.Harness;
