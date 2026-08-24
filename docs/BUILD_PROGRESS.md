@@ -4396,3 +4396,251 @@ starts it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
 past four thousand two hundred lines.
+
+---
+
+# M6 Slice 57 — the first stage of the menu that is not about a dish's own columns
+
+## What arrived, and what the terminal said first
+
+Two changes. Stage 5a of the menu plan — the like, its fold, and the two reads over it — and **F-111**, a
+paragraph in the specification that had been describing `menu_item_event` three migrations out of date
+while requiring a set of integration tests another section of the same document rules against writing.
+v1.32's distinguishable-failure ruling governs the pair and is comfortably satisfied: one fails as nine
+named integration facts against a real PostgreSQL plus one registration fact in the web project, the other
+as a single contract fact over two text files. Nothing about the two can be confused for the other on a red
+run.
+
+**The prediction was exact for the second consecutive slice.** Slice 56 predicted **1260** and the run
+returned 1260 — `dotnet test` green with nothing failed, the end-to-end project green at twenty, and
+`scripts/ci_local.sh --with-all --with-e2e` clear, which is the gate that stopped at step 5 the slice
+before. Two consecutive exact predictions is the first time this project has had that, and it is worth
+recording because the §18 habit exists precisely so that a run which *disagrees* is loud.
+
+**Session memory was stale by two slices and the tree corrected it.** This session opened believing the
+tree was at Slice 54 with a predicted ~1250 against an unverified 1242 baseline. It is at Slice 56 with a
+verified 1260. That is the fourth drift event this log records, and the SHA-256 reconstruction caught it
+before a line was written — which is the whole reason the reconstruction is the first thing a session does.
+
+## Stage 5a — what was cut, and why it was cut there
+
+Stage 4 closed completely in Slice 56, so this is the first slice in eight with no picture in it. Stage 5
+was specified when the plan was written and had been sitting behind two rulings it named and did not make.
+**Both are made here**, and neither took an hour — which is the argument for making a decision at the
+moment it is cheap rather than at the moment it is forced.
+
+**Who sees the count: staff.** A count of 3 on a menu of sixty items is noise that makes a restaurant look
+empty, and the number's only honest audience is the person deciding what to stock. So *which of these is
+popular* is §11.4's question and *which of these do I like* is §11.1's — two reads over one fold, rather
+than one read handing every guest the restaurant's opinion. The guest still gets their own press back, or
+the control is an affordance with no feedback; what they do not get is everybody else's.
+
+**Whether a like requires having ordered the item: no**, and this is the ruling worth reading because
+Stage 6 inherits it. `order_current_line` records what somebody **ordered**, not what they ate, and a table
+shares — so the requirement refuses the case it most wants to admit (*I ate my partner's dessert and it was
+the best thing on the menu*) while admitting the one it wants to refuse (*I ordered it, sent it back, and
+liked it anyway*). It would also make a menu write read order history, inverting §6.5.4's direction: an
+order prices itself **from** the menu, and nothing in the menu has ever looked the other way. What bounds
+the number instead is the door — §4.3 authenticates every person at a table and R§8 permits no anonymous
+ordering — so a like is one authenticated person's press. **The decision is reversible additively:** if the
+restriction is ever wanted it belongs on the *read*, as a second and narrower count, not on the write as a
+refusal a guest at a table has to be given a sentence about.
+
+The cut itself is Stage 4a's, applied a second time: **schema and data access, no surface.** The two
+surfaces belong to different people and neither is a small page, and a slice that shipped one of them would
+have to decide the other's shape in passing.
+
+## `0008`, and the four rulings inside it
+
+`0008_menu_item_reactions.sql` is the third migration in this tree that touches nothing existing — one
+table, one index, one view, no `ALTER`, no backfill, no constraint widened. That is `0003`'s cut and
+`0006`'s, and it is why the suite is green here **by construction** rather than by inspection.
+
+**It is an event table and not a row per like.** The small schema is `(menu_item_identifier,
+person_identifier)` `UNIQUE` with a `DELETE` to withdraw, and it is smaller, and it gets every visible
+answer right — the fold, the count, the guest's own state. It also destroys the record. R§6.8 makes this
+system append-only because a record that can be removed is a record nobody can audit, and §6.8's
+hide-never-delete rule has exactly **one** stated exception — the image bytes — granted because the history
+of those lives in a log beside them. A like has no log beside it, because the log **is** the record. Three
+of the nine integration facts fail against the rejected schema, which is what makes the rejection a
+decision rather than a preference.
+
+**There is no `actor_person_identifier`**, which every other event table in this schema has. Elsewhere the
+subject and the actor genuinely differ: an administrator renames somebody else's dish, and §11.1 renders
+*"kitchen removed Salmon"*. A reaction's subject **is** the person reacting, and no surface in §11 could
+offer to press it on somebody else's behalf, so an actor column would be constrained to equal its neighbour
+on every row that will ever exist. That is F-65's rule arriving as a column that was never written.
+
+**There is no count column and no count view.** A `menu_item_reaction_count` view is one line, and §8.3's
+views exist to give the application a shape it would otherwise assemble from event tables by hand rather
+than to save a `GROUP BY`; a second view would be a second place for *which of these is popular* to be
+defined, and the second definition is the one that counts presses instead of people. A `like_count` on
+`menu_item` is refused one register harder, on F-101's reasoning — a stored total beside the rows it totals
+is one fact written twice, in the one table in this schema that grows a row every time a thumb moves.
+
+**The fold's identifier tie-break is load-bearing here in a way it is not on `order_visibility_current`,**
+and this is the sentence worth reading twice. Nobody hides an order twice in one millisecond. **Everybody
+taps a heart twice**, and one transaction stamps its rows with one `IClock.UtcNow` (§8.1), so two presses
+genuinely share an `occurred_at`. Without the tie-break `DISTINCT ON` returns whichever row the scan reached
+first — the *oldest* — and a double-tap reads back as the state before it. It is an answer only because §8.1
+requires `IIdentifierFactory` to ascend inside a millisecond, which is the property **F-95** found nothing
+was keeping. `TwoPressesAtOneInstantFoldToTheLater` is the one fact in this slice that could not have been
+written any other way, and it asserts its own premise first — two rows, one distinct instant — because a
+fixture whose clock had started moving would make it pass while testing nothing (F-41).
+
+## The lock, and what it costs
+
+`SetLikedAsync` takes the `menu_item` row `FOR UPDATE` before it compares, which is the standing rule in
+this file's neighbours and is doing two jobs at once: it answers `MenuItemNotFound` from the same statement
+that takes the lock, and it serialises read-compare-append against itself. Without it two presses from one
+person could both read *not liked* and both append `'liked'` — the fold would still be right and the
+history would be a lie, which is the worse of the two failures in an append-only system (ADR-0002).
+
+**What it costs is written down rather than left to be discovered.** The lock is wider than the conflict:
+the conflict is one person against themselves, and this serialises every press on one dish against every
+other, and against a rename of it. The alternatives were an advisory lock keyed on the pair — a second
+locking scheme in a codebase that has one — and no lock at all, which trades a truthful log for concurrency
+nobody at one restaurant's table will ever need. A dish is locked for the duration of one `INSERT`.
+
+**Absence and `'unliked'` are one state**, deliberately. The fold has no row for a person who has never
+pressed anything, so the read coalesces to `false`, and unliking something never liked is
+`AlreadyInThatState` and writes nothing rather than being a fourth outcome nobody could act on. The
+alternative puts a row in the log recording a withdrawal of an opinion never held.
+
+## A reaction publishes nothing, and it is the first menu write not behind `IMenuWorkflow`
+
+Stated as a ruling rather than left to be inferred from an absence, in the composition root, in §7, and in
+the wiring fact's own summary. §9's `MenuChanged` means *re-read the menu*. A like moves no name, no price,
+no heading, no position, no availability flag and no photograph — there is nothing for a picker to re-read
+— and this is **the one write in this application that can fire many times a minute at one table**, so a
+broadcast would make one thumb re-read the whole menu on every phone in the building. The presser's own
+feedback needs no announcement either: a static surface re-renders through post/redirect/get and an
+interactive one re-renders itself.
+
+`MenuWiringTests`' standing fact is therefore narrowed from *covers every write service* to **covers every
+write service that changes the menu**, which is what it always meant, and the two reaction services get a
+registration fact of their own. That separation is the interesting half: the twenty-eighth fact is outside
+the workflow's body because `IMenuItemImageEventLog` is a *read*; the twenty-ninth is outside it because
+`IMenuItemReactions` is a **write that is deliberately not behind the workflow**, and putting it in that
+body would make the fact assert the negation of its own name.
+
+## F-111 — the paragraph twelve lines below the DDL that contradicted it
+
+Not in this feature. §8.2's note beneath `menu_item_event`'s DDL said the CHECKs bind `new_name` and
+`new_price_amount`, that *"`activated`/`deactivated` therefore carry neither"*, and that **"integration
+tests must assert all ten combinations (five types × payload present/absent)"**. `0004` took the table to
+seven types and four payload columns; `0005` took it to eight and five. The DDL block twelve lines above the
+note records all of it correctly and has done since each migration landed.
+
+**The mechanism is the finding.** A quoted DDL block stays right because it is the thing a person adding a
+table *copies*. The paragraph explaining it goes stale because nobody re-reads an explanation they have
+already understood — and every gate over this document reads table shape, header versions or assertion
+counts, none of which is a sentence.
+
+**Two things lift it above a typo.** The sentence is **normative**: it states an obligation on the suite,
+and the figure it computes that obligation from was never right even for the schema it was written against
+— five types over two nullable columns is twenty states, not ten. And the obligation it states is one
+**§16.4 separately rules against**: a payload the CHECK refuses is refused loudly and by name on the first
+insert, and `MenuSectionEventLogTests`' own summary says in as many words that re-asserting a constraint is
+a monument (F-47). So one section of this specification required a set of tests another section forbade,
+the tree obeyed the second, and nothing anywhere could see the disagreement.
+
+**F-77's shape for the eighth time, one register up.** That row deleted three stale counts of this same
+vocabulary out of code comments where nothing looks; this is the same vocabulary miscounted in the document
+those comments defer to. Found by opening §8.2 in order to add a table to it, which is how F-54, F-58 and
+F-79 arrived, and which is **F-93's timing for the sixth time**: the slice that edits a section is the last
+moment its content is free to be wrong.
+
+**The repair, and the executable half.** The counts are **deleted rather than corrected**, which is this
+project's standing pattern for a census that can be derived. The testing sentence is **reversed to agree
+with §16.4** rather than restated. And the *quotation* is made executable:
+`MenuEventVocabularyContractTests` gains a fourth fact comparing every **named** `event_type` vocabulary
+this specification quotes against the one the migrations declare, **in both directions with the subject
+computed on each side** (F-47, F-58) — so a migration that widens a vocabulary and forgets §8.2 fails here,
+and so does one that adds a table §8.2 never records. **The residual is stated:** only *named* constraints
+are in scope, because that is the only form a text scan can key on, so `menu_section_event`'s inline
+vocabulary is outside the gate — which is precisely the reason `0006` began naming every constraint it
+creates and the reason `0008` does.
+
+## Test count
+
+Baseline **1260**, verified from the terminal log rather than assumed. Slice 56 predicted 1260 and the run
+returned 1260.
+
+| Where | Facts | Running |
+| --- | --- | --- |
+| Baseline (verified) | — | 1260 |
+| `MenuItemReactionTests` (new) | +9 | 1269 |
+| `MenuWiringTests` (28 to 29) | +1 | 1270 |
+| `MenuEventVocabularyContractTests` (3 to 4) | +1 | 1271 |
+| `SchemaMigrationRunnerTests.KeyRelations` (15 to 17 rows) | +2 | 1273 |
+
+**Predicted: 1273.** The two extra come from theory rows rather than from `[Fact]` methods, so §16.4's
+count for `SchemaMigrationRunnerTests` stays at 7 — it counts methods, and both new relations are
+`MemberData` rows on a method that already exists. The §16.3 suite stays at **twenty**: Stage 5a builds no
+surface, so there is nothing for a browser to visit. Anything other than 1273 is the first thing to
+investigate.
+
+## What was verified before packaging, and what was not
+
+**Verified mechanically.** The working tree was reconstructed from `dump.txt` and SHA-256 checked file by
+file: 370 files, with the only differences being `export.sh`, which embeds its own file marker, and
+`LICENSE`, which the dump elides to metadata by design. **Session drift was caught and corrected** — this
+session opened two slices behind, and the tree said so before anything was authored. The test-count
+arithmetic was rebuilt from the tree and reproduces the terminal exactly: 910 `[Fact]` methods, 329
+`[InlineData]` rows and 21 `MemberData` rows is 1260, which is the number the run returned to the unit.
+The §16.4 counted-class gate was emulated over the edited specification: **31** counted classes, no
+disagreements — and it caught the one regression this slice created, `MenuWiringTests` at 28 against a file
+holding 29, before the count was corrected. The Markdown table gate was emulated with the real
+unescaped-pipe splitter over every tracked document: no problems. The version gate was emulated on both
+versioned documents: headers matching their newest entries, entries descending. The new vocabulary gate was
+emulated in both directions against the edited tree — three named vocabularies on each side, sets equal —
+and **proven sensitive two ways**: a widened list planted in §8.2's quoted `menu_item_event` DDL is
+reported, and deleting `menu_item_image_event_type_vocabulary`'s quoted CHECK outright is reported as a key
+mismatch. Byte hygiene — no CR, exactly one final newline, no whitespace-only line, no context-dump
+separator — was checked on every file in the archive.
+
+**Not verified.** Nothing was compiled and nothing was run; there is no .NET SDK reachable from where this
+slice was authored, so the C# is reviewed rather than built (F-71's standing caveat). The specific risks, in
+order. `Dapper.ExecuteScalarAsync<Guid?>` against a `SELECT … FOR UPDATE` is the one call shape in the new
+write service that this tree has no exact precedent for — `DapperMenuAvailability` uses
+`QuerySingleOrDefaultAsync<T>` over a row type for the same purpose, and the scalar form was chosen because
+the lock statement selects one column; if it misbehaves it will do so as a null where an identifier belongs,
+which `AnUnknownItemReportsNotFoundAndWritesNothing` reaches from the wrong side. The new gate reads a
+609 KiB document with a regex on every run, which is a cost rather than a risk but is worth knowing about.
+And `count(*)::integer` is cast in SQL rather than widened in C# so that `MenuItemLikeCount.LikeCount` and
+the column agree at the boundary; a reader expecting `long` would fail as an `InvalidCastException` from
+Dapper rather than as a wrong number.
+
+## Open items after this slice
+
+**Stage 5b, and it is two surfaces with no decisions left in them.** §11.4's count on the administrator's
+menu index, and §11.1's control in the guest's detail panel — the panel rather than the card, because the
+card is a button that stages an item and a second interactive element inside a button is not markup this
+application can write.
+
+**Two reads and one write have no caller**, which Stage 5a re-opened deliberately and which 5b closes. The
+write is the stronger of the two, on the standing rule that a write nothing calls is a code path no test can
+reach through the interface meant to protect it — the same position `IMenuItemImageAdministration` was in
+between Stage 4a and Stage 4b.
+
+**The two menu resequencing verbs still have no §16.3 scenario.** With no picture work in front of them
+they are now the largest end-to-end gap in the menu, for a second consecutive slice.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried.
+
+**Nothing treats a test that fails and then passes as evidence.** Carried.
+
+**An inline unnamed CHECK is outside the new vocabulary gate.** F-111's stated residual — `0001` and `0003`
+declare theirs inline, so `menu_section_event`'s vocabulary is unreachable by a text scan. Not a gap the
+gate can close; it is the reason `0006` began naming every constraint it creates.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a twenty-fourth time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Thirty-third consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
+past four thousand four hundred lines.

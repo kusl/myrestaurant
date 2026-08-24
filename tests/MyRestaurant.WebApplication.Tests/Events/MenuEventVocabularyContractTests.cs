@@ -71,6 +71,13 @@ public sealed class MenuEventVocabularyContractTests
     private const string PictureRenderer = "DescribePicture";
 
     /// <summary>
+    /// The schema of record (§8.2). It quotes the DDL the migrations apply, which makes it a
+    /// <em>restatement</em> in F-50's sense — joined to its subject only by somebody having written the
+    /// vocabulary a second time.
+    /// </summary>
+    private const string SpecificationRelativePath = "docs/TECHNICAL_SPECIFICATION.md";
+
+    /// <summary>
     /// The <c>event_type IN ( … )</c> list of the <em>last</em> migration that declares
     /// <see cref="ItemConstraintName"/>, which is the vocabulary as it stands after every script has
     /// applied.
@@ -175,6 +182,69 @@ public sealed class MenuEventVocabularyContractTests
                 + " that should record it.");
     }
 
+    /// <summary>
+    /// Every <b>named</b> <c>event_type</c> vocabulary <c>docs/TECHNICAL_SPECIFICATION.md</c> §8.2 quotes
+    /// is the vocabulary the migrations declare, and every one the migrations declare is quoted there
+    /// (§8.2, <b>F-111</b>).
+    ///
+    /// <para><b>Why this is a different claim from the two facts above.</b> Those compare a migration
+    /// against C# and against a Razor surface. This compares a migration against the <em>specification</em>,
+    /// which §8.2 calls the schema of record and which quotes the DDL in full. That quotation is F-50's
+    /// shape exactly — one fact written in two places, joined only by somebody remembering to edit the
+    /// second — and it is the copy every future migration is written by, because a person adding a table
+    /// reads §8.2 rather than seven `.sql` files.</para>
+    ///
+    /// <para><b>What made it worth writing is that the neighbouring prose had already drifted.</b> The DDL
+    /// blocks were kept current through <c>0004</c>, <c>0005</c>, <c>0006</c> and <c>0007</c>; the note
+    /// beneath them describing those same CHECKs still named five event types and two payload columns
+    /// against a table that had eight and five, and still stated a testing obligation computed from the
+    /// stale figure — an obligation §16.4 separately rules against writing (F-47). The blocks are copied
+    /// and the prose is read, so the blocks stayed right. This fact keeps them right by machine instead of
+    /// by luck.</para>
+    ///
+    /// <para><b>Both directions, and the subject is computed on both sides</b> (F-47, F-58): nothing here
+    /// names a constraint. A vocabulary the migrations declare and §8.2 never quotes is a table the schema
+    /// of record does not document, which is the drift that arrives with the <em>next</em> migration rather
+    /// than with an edit to an existing one.</para>
+    ///
+    /// <para><b>The residual is real and is stated rather than papered over.</b> Only <em>named</em>
+    /// constraints are in scope, because that is the only form a text scan can key on — <c>0001</c> and
+    /// <c>0003</c> declare their vocabularies inline and unnamed, and <c>menu_section_event</c>'s is
+    /// therefore outside this gate. That is not a gap this fact can close; it is the reason <c>0006</c>
+    /// began naming every constraint it created, and the reason <c>0008</c> does.</para>
+    /// </summary>
+    [Fact]
+    public void EveryVocabularyTheSpecificationQuotes_IsTheOneTheMigrationsDeclare()
+    {
+        IReadOnlyDictionary<string, string[]> quoted = ReadNamedVocabularies(
+            File.ReadAllText(Path.Combine(
+                FindRepositoryRoot().FullName,
+                SpecificationRelativePath.Replace('/', Path.DirectorySeparatorChar))));
+
+        IReadOnlyDictionary<string, string[]> declared = ReadMigrationVocabularies();
+
+        // Non-vacuity, both sides. A regex that stopped matching would otherwise satisfy every comparison
+        // below by having nothing to compare (F-41).
+        Assert.True(
+            quoted.Count >= 2,
+            $"Read {quoted.Count} named event_type vocabularies out of {SpecificationRelativePath}; §8.2"
+                + " quotes more than that, so this scan has stopped reading the document.");
+        Assert.True(
+            declared.Count >= 2,
+            $"Read {declared.Count} named event_type vocabularies out of the migrations.");
+
+        Assert.Equal(
+            declared.Keys.Order(StringComparer.Ordinal).ToArray(),
+            quoted.Keys.Order(StringComparer.Ordinal).ToArray());
+
+        foreach (KeyValuePair<string, string[]> entry in declared)
+        {
+            Assert.Equal(
+                entry.Value.Order(StringComparer.Ordinal).ToArray(),
+                quoted[entry.Key].Order(StringComparer.Ordinal).ToArray());
+        }
+    }
+
     private static IReadOnlyList<string> ReadDeclaredVocabulary(string constraintName)
     {
         DirectoryInfo migrations = new(
@@ -219,6 +289,66 @@ public sealed class MenuEventVocabularyContractTests
         Assert.NotEmpty(types);
 
         return types;
+    }
+
+    /// <summary>
+    /// Every <c>CONSTRAINT &lt;name&gt; CHECK (event_type IN ( … ))</c> in one body of text, keyed by the
+    /// constraint's name. <c>ADD</c> is optional so that one pattern reads a <c>CREATE TABLE</c> body and
+    /// an <c>ALTER TABLE</c> statement alike, which is what lets the specification's consolidated DDL be
+    /// compared against a migration that widened it.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string[]> ReadNamedVocabularies(string text)
+    {
+        Dictionary<string, string[]> found = new();
+
+        foreach (Match match in Regex.Matches(
+            text,
+            @"(?:ADD\s+)?CONSTRAINT\s+(?<name>[a-z_]+)\s+CHECK\s*\(\s*event_type\s+IN\s*\((?<list>[^)]*)\)",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline,
+            TimeSpan.FromSeconds(5)))
+        {
+            string[] types = Regex
+                .Matches(match.Groups["list"].Value, @"'(?<type>[^']+)'", RegexOptions.None, TimeSpan.FromSeconds(5))
+                .Select(quoted => quoted.Groups["type"].Value)
+                .ToArray();
+
+            // A named constraint that matched and yielded no quoted word is a parse failure rather than an
+            // empty vocabulary, and recording it as the latter is how this gate would assert nothing.
+            Assert.NotEmpty(types);
+
+            // Last declaration wins, which is the same rule ReadDeclaredVocabulary applies and is what
+            // makes a widened constraint read as its widened self.
+            found[match.Groups["name"].Value] = types;
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// The same, over every migration in DbUp's apply order — which is file-name order, not the file
+    /// system's timestamps.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string[]> ReadMigrationVocabularies()
+    {
+        DirectoryInfo migrations = new(
+            Path.Combine(FindRepositoryRoot().FullName, MigrationsRelativePath));
+
+        Assert.True(migrations.Exists, $"No migrations directory at '{migrations.FullName}'.");
+
+        Dictionary<string, string[]> found = new();
+
+        foreach (FileInfo script in migrations
+            .GetFiles("*.sql")
+            .OrderBy(file => file.Name, StringComparer.Ordinal))
+        {
+            foreach (KeyValuePair<string, string[]> entry in ReadNamedVocabularies(
+                File.ReadAllText(script.FullName)))
+            {
+                found[entry.Key] = entry.Value;
+            }
+        }
+
+        return found;
     }
 
     private static DirectoryInfo FindRepositoryRoot()

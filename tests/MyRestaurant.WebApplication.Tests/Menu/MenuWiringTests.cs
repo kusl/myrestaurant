@@ -121,12 +121,21 @@ public sealed class MenuWiringTests
     }
 
     /// <summary>
-    /// One workflow over all three write services. §9 does not distinguish which verb changed the menu,
-    /// and every subscriber responds to <see cref="MenuChanged"/> the same way, so a second workflow would
-    /// only make it possible to wire an application that announces 86s and not repricings.
+    /// One workflow over every write service <em>that changes the menu</em>. §9 does not distinguish which
+    /// verb changed it, and every subscriber responds to <see cref="MenuChanged"/> the same way, so a
+    /// second workflow would only make it possible to wire an application that announces 86s and not
+    /// repricings.
+    ///
+    /// <para><b>That qualifier arrived with Stage 5a and it narrows the sentence rather than weakening
+    /// it.</b> <see cref="IMenuItemReactions"/> is a write and is deliberately not behind the workflow:
+    /// a like moves no name, no price, no heading, no position, no availability flag and no photograph,
+    /// so no surface has anything to re-read, and it is the one write in this application that can fire
+    /// many times a minute at one table. What this fact claims is what it always meant — that a write
+    /// which changes what a guest's picker renders cannot be reached without going through the thing
+    /// that announces it.</para>
     /// </summary>
     [Fact]
-    public void MenuWorkflow_IsResolvableInAScope_AndCoversEveryWriteService()
+    public void MenuWorkflow_IsResolvableInAScope_AndCoversEveryWriteServiceThatChangesTheMenu()
     {
         using ServiceProvider provider = BuildProvider();
         using IServiceScope scope = provider.CreateScope();
@@ -172,6 +181,34 @@ public sealed class MenuWiringTests
 
         Assert.IsType<DapperMenuItemImageEventLog>(
             scope.ServiceProvider.GetRequiredService<IMenuItemImageEventLog>());
+    }
+
+    /// <summary>
+    /// The two reaction services, resolvable in a scope (Stage 5a).
+    ///
+    /// <para><b>A fact of its own, and for the opposite reason the picture history has one.</b> That read
+    /// is outside the workflow's fact because it is a <em>read</em>. These two are outside it because one
+    /// of them is a <b>write that is deliberately not behind the workflow</b> — so putting
+    /// <see cref="IMenuItemReactions"/> into the body above would make that fact assert the negation of
+    /// what its own name says. Keeping them apart is what lets both sentences stay true.</para>
+    ///
+    /// <para><b>Worth asserting although nothing resolves either service yet.</b> Stage 5a registers them
+    /// and Stage 5b builds the surfaces, and the failure mode in between is the one this whole class
+    /// exists for: §11.1's picker and §11.4's item page are rendered by components that resolve their
+    /// dependencies while rendering, so an unregistered service is not a compile error and not a unit
+    /// failure — it is an exception on a live surface, found by Chromium and a database two and a half
+    /// minutes later. Two seconds here instead.</para>
+    /// </summary>
+    [Fact]
+    public void MenuItemReactionServices_AreResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        Assert.IsType<DapperMenuItemReactionDirectory>(
+            scope.ServiceProvider.GetRequiredService<IMenuItemReactionDirectory>());
+        Assert.IsType<DapperMenuItemReactions>(
+            scope.ServiceProvider.GetRequiredService<IMenuItemReactions>());
     }
 
     [Fact]

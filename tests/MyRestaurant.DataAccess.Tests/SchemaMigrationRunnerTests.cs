@@ -32,6 +32,15 @@ namespace MyRestaurant.DataAccess.Tests;
 /// cap being the database's) are asserted where they can be observed, in
 /// <c>Menu/MenuItemImageTests.cs</c>, against writes rather than against DDL.</para>
 ///
+/// <para><b><c>0008</c> has that same shape and adds one thing to say about it</b>, which is why it takes
+/// two rows here rather than one: a table and a <em>view</em>. <c>menu_item_reaction_current</c> is the
+/// fold every reader of that table goes through, so a script that created the table and stopped before
+/// the view leaves a schema in which nothing can answer what anybody currently likes — and a relation
+/// census that only knew about tables would report that migration as having run. Its interesting
+/// properties (a press being appended rather than a row deleted, the count being of people rather than
+/// of presses, and the identifier tie-break that decides a double-tap) are asserted where they can be
+/// observed, in <c>Menu/MenuItemReactionTests.cs</c>, against writes rather than against DDL.</para>
+///
 /// <para><b>This file is also the gate on <c>WithVariablesDisabled()</c>, and that is deliberate
 /// (F-78).</b> dbup-core substitutes <c>$name$</c> before the splitter runs, and PostgreSQL spells a
 /// dollar-quoted body the same way, so <c>0004</c>'s <c>DO $migrate_menu_item_event_checks$</c> was read
@@ -59,8 +68,10 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
         "public.menu_item",
         "public.menu_section",       // 0003
         "public.menu_section_event", // 0003
-        "public.menu_item_image",       // 0006
-        "public.menu_item_image_event", // 0006
+        "public.menu_item_image",           // 0006
+        "public.menu_item_image_event",     // 0006
+        "public.menu_item_reaction_event",  // 0008
+        "public.menu_item_reaction_current",// 0008 — view
         "public.guest_order",
         "public.order_event",
         "public.order_operation_line_added",

@@ -1479,38 +1479,132 @@ delivery, and because the honest lesson is about which verdict counts rather tha
 guest-side `srcset` question named in 4e is not carried forward as an item, because it was explicitly
 conditioned on somebody measuring it on a real service and nobody has.
 
-**The next thing in this plan is Stage 5**, and the two rulings it needs are unchanged and are stated
-below.
+**The next thing in this plan is Stage 5**, and the two rulings it needed are made below rather than
+carried. That is F-109's other half applied on the first opportunity: a claim used to defer is re-checked
+each time it is used again, and a ruling that costs nothing to make is not a deferral at all.
 
 ---
 
-## Stage 5 — likes
+## ~~Stage 5a — likes: the schema and the data access~~ — **landed, M6 Slice 57**
 
-**Not started.** Deliberately split from comments, and the split is the recommendation: a like is a
-number, a comment is a person's words shown to strangers, and only one of those raises a question this
-system has never answered.
+**Both of Stage 5's open rulings are made, and neither cost anything to make.** They had been sitting in
+this plan since it was written, described as *"two rulings needed before it ships"* — and re-reading them
+in the slice that had to act on them took under an hour, which is the argument for making a decision at
+the moment it is cheap rather than at the moment it is forced.
 
-The shape is already in the tree. §8.3's `order_visibility_event` + `order_visibility_current` is an
-append-only per-person boolean folded by `DISTINCT ON`, which is exactly a like:
+### The two rulings
 
-```
-menu_item_reaction_event
-    menu_item_reaction_event_identifier uuid PRIMARY KEY
-    menu_item_identifier                uuid NOT NULL REFERENCES menu_item
-    person_identifier                   uuid NOT NULL REFERENCES person
-    event_type                          text NOT NULL CHECK (event_type IN ('liked', 'unliked'))
-    occurred_at                         timestamptz NOT NULL
-```
+**Who sees the count: staff.** The plan's own instinct was right and is now the rule. A count of 3 on a
+menu of sixty items is noise that makes a restaurant look empty, and the number's only honest audience is
+the person deciding what to stock. So *which of these is popular* is §11.4's question and *which of these
+do I like* is §11.1's — **two reads over one fold**, rather than one read handing every guest the
+restaurant's opinion. The guest still needs their own press back, or the control is an affordance with no
+feedback; what they do not get is everybody else's.
 
-with `menu_item_reaction_current` as the `DISTINCT ON (menu_item_identifier, person_identifier)` fold and a
-count per item on top of it. No new idiom, no moderation, no text, no rate-limit question worth the name —
-a like and an unlike from one person is a row per press and the fold is the answer.
+**Whether a like requires having ordered the item: no.** This is the ruling worth reading, because it is
+the one Stage 6 will inherit. `order_current_line` records what somebody **ordered**, not what they ate,
+and a table shares — so the requirement refuses the case it most wants to admit (*I ate my partner's
+dessert and it was the best thing on the menu*) while admitting the one it wants to refuse (*I ordered it,
+sent it back, and liked it anyway*). It would also make a menu write read order history, which inverts
+§6.5.4's direction: an order prices itself **from** the menu, and nothing in the menu has ever looked the
+other way. What bounds the number instead is the door — §4.3 authenticates every person at a table and R§8
+permits no anonymous ordering — so a like is one authenticated person's press. **And the decision is
+reversible additively rather than baked in:** if the restriction is ever wanted it belongs on the *read*,
+as a second and narrower count, not on the write as a refusal a guest at a table has to be given a
+sentence about.
 
-Two rulings needed before it ships. **Who sees the count** — a guest, or only staff? A count of 3 on a
-menu of sixty items is noise that makes the restaurant look empty, so the honest answer is probably staff
-until it is not, which makes this an administration read first and a guest-facing number later. And
-**whether it requires having ordered the item**, which is the same question Stage 6 asks about comments
-and is cheaper to answer here.
+### What landed
+
+`0008_menu_item_reactions.sql`, one new data-access file, two registrations, nine integration facts and
+one wiring fact. **No surface**, which is the whole of the cut and is Stage 4a's cut applied a second
+time: the schema and the reads first, the two surfaces second, because they belong to different people
+and neither is a small page.
+
+- **`menu_item_reaction_event`** — `liked | unliked`, the person, the dish, the instant. Two types, **no
+  payload columns and therefore no paired biconditional**: each type carries its own name and nothing
+  else, which is `menu_item_image_event`'s `removed` and is the whole of `order_visibility_event`.
+- **`menu_item_reaction_current`** — `DISTINCT ON (menu_item_identifier, person_identifier)`, the last
+  press from each person about each dish. `order_visibility_current`'s shape with a two-column partition.
+- **`IMenuItemReactionDirectory`** — `ListLikeCountsAsync` for §11.4, `ListLikedByAsync` for §11.1. Both
+  are whole-menu reads and neither takes an item, on `IMenuItemImageDirectory.ListAsync`'s argument: a
+  per-item lookup inside a render loop turns a sixty-dish menu into sixty queries.
+- **`IMenuItemReactions.SetLikedAsync`** — locks the `menu_item` row, compares against the fold, appends
+  when that is a change and nothing when it is not.
+
+### The four rulings the schema needed, and each is a thing a later reader would repair by mistake
+
+**It is an event table and not a row per like.** The small schema is `(menu_item_identifier,
+person_identifier)` `UNIQUE` with a `DELETE` to withdraw, and it gets every visible answer right — the
+fold, the count, the guest's own state — while destroying the record. R§6.8 makes this system append-only
+because a record that can be removed is a record nobody can audit, and §6.8's hide-never-delete rule has
+exactly **one** stated exception, the image bytes, granted because the history of those lives in a log
+beside them. A like has no log beside it, because the log **is** the record.
+
+**There is no `actor_person_identifier`**, which every other event table in this schema has. Elsewhere the
+subject and the actor genuinely differ: an administrator renames somebody else's dish, and §11.1 renders
+*"kitchen removed Salmon"*. A reaction's subject **is** the person reacting, and no surface in §11 could
+offer to press it on somebody else's behalf, so an actor column would be constrained to equal its
+neighbour on every row that will ever exist.
+
+**There is no count column and no count view.** `SELECT menu_item_identifier, count(*) FROM
+menu_item_reaction_current WHERE is_liked GROUP BY 1` is one line, and §8.3's views exist to give the
+application a shape it would otherwise assemble from event tables by hand rather than to save a `GROUP
+BY`. A `like_count` on `menu_item` is refused one register harder, on F-101's reasoning: a stored total
+beside the rows it totals is one fact written twice, in the one table in this schema that grows a row
+every time a thumb moves.
+
+**The fold's identifier tie-break is load-bearing here in a way it is not on `order_visibility_current`.**
+Nobody hides an order twice in one millisecond. **Everybody taps a heart twice**, and one transaction
+stamps its rows with one `IClock.UtcNow` (§8.1), so two presses genuinely share an `occurred_at`. Without
+the tie-break `DISTINCT ON` returns whichever row the scan reached first — the *oldest* — and a double-tap
+reads back as the state before it. It is an answer only because §8.1 requires `IIdentifierFactory` to
+ascend inside a millisecond, which is the property **F-95** found nothing was keeping. That is the fact
+this stage contributes that nothing else in the tree has, and it has an integration assertion of its own.
+
+### A reaction publishes nothing, and it is the first menu write not behind `IMenuWorkflow`
+
+Stated here rather than left to be inferred from an absence. §9's `MenuChanged` means *re-read the menu*.
+A like moves no name, no price, no heading, no position, no availability flag and no photograph — there is
+nothing for a picker to re-read — and this is **the one write in this application that can fire many times
+a minute at one table**, so a broadcast would make one thumb re-read the whole menu on every phone in the
+building. The presser's own feedback needs no announcement either: a static surface re-renders through
+post/redirect/get and an interactive one re-renders itself.
+
+`MenuWiringTests`' standing fact is therefore narrowed to say what it always meant — the workflow covers
+every write **that changes the menu** — and the two reaction services get a registration fact of their own
+rather than a line in that one, because adding a write that is deliberately outside the workflow to the
+fact whose name says it covers every write would make that fact assert its own negation.
+
+### The defect found on the way in (F-111)
+
+Not in this feature. §8.2's note beneath `menu_item_event`'s DDL described a table with **five** event
+types and **two** payload columns — twelve lines below a DDL block correctly showing eight and five — and
+required *"integration tests must assert all ten combinations"*, an obligation whose arithmetic was wrong
+even for the schema it was written against and which §16.4 separately **rules against writing** (F-47).
+Found by opening §8.2 in order to add a table to it, which is how F-54, F-58 and F-79 arrived, and which
+is **F-93's timing for the sixth time**: the slice that edits a section is the last moment its content is
+free to be wrong. The counts are deleted rather than corrected, and the quotation is made executable —
+every named `event_type` vocabulary the specification quotes is now compared against the migrations, both
+directions, subject computed on each side.
+
+### What is open after this stage
+
+**Stage 5b, and only Stage 5b.** Both rulings are made, so what remains is two surfaces and no decisions:
+
+- **§11.4's count.** The administrator's menu index or the item's own page — probably the index, since the
+  question is comparative and a per-item number answers it one dish at a time. `ListLikeCountsAsync` is
+  the read, and a heading's group is where a total would go if one is wanted.
+- **§11.1's control.** The guest's detail panel is where it belongs rather than the card: the card is a
+  button that stages an item, and a second interactive element inside a button is not markup this
+  application can write. `TableOrderSurface` is an interactive island, so the press is a circuit event and
+  needs no post/redirect/get.
+- **The two obligations Stage 5a re-opened**, which close when those surfaces land: two reads with no
+  caller and one **write** with no caller — the second being the stronger of the two, on the standing
+  rule that a write nothing calls is a code path no test can reach through the interface meant to protect
+  it.
+
+**Not carried forward:** a guest-visible count, and any notion of a like that requires an order. Both were
+ruled against above, and neither is an item.
 
 ---
 
@@ -1528,6 +1622,12 @@ follow, and three of them are edits to documents rather than to code.
    single-valued rejection handler, so a refused registration would answer *"too many pairing attempts"* —
    wrong, and deliberate-looking. Comments hit the identical wall. **This stage cannot land before that
    ruling is revisited**, and revisiting it is a slice of its own with no menu in it.
+1b. **One of Stage 6's questions is already answered.** *Does it require having ordered the item* is the
+   same question for a comment as for a like, and Stage 5a ruled on it: **no**, because
+   `order_current_line` records what somebody ordered rather than what they ate and a table shares. That
+   ruling was made where it was cheap — a like has no privacy question attached to it — which is exactly
+   why this plan said the question was *"cheaper to answer here"*. It transfers, and Stage 6 inherits it
+   rather than re-deliberating it.
 2. **Privacy, and it is new intent.** §5.3 gives absolute table-to-table privacy: a guest never learns who
    else is in the building. A comment signed with a display name is this system disclosing one person's
    name to strangers for the first time. Initials, an opt-in, a pseudonym, or "a guest" are all defensible;
@@ -1541,7 +1641,7 @@ follow, and three of them are edits to documents rather than to code.
    `'unsafe-inline'`, which is what F-49 built it for. `ContentSecurityPolicyContractTests` computes what
    the application loads by scanning the tree, so it will notice a new inline handler on its own.
 
-**Recommendation: do Stage 5 and stop.** Likes answer "which of these is popular" with no new question
+**Recommendation: do Stage 5b and stop.** Likes answer "which of these is popular" with no new question
 attached. Comments answer a question nobody has asked for yet at the cost of a rate-limiting slice, a
 requirements revision about guest privacy, and a moderation surface — and the request itself says *"I am
 not sure if it is doable right now"*, which is the correct instinct.

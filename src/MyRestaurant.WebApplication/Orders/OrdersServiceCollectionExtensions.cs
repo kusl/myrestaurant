@@ -128,6 +128,31 @@ public static class OrdersServiceCollectionExtensions
         services.AddScoped<IMenuItemImageAdministration, DapperMenuItemImageAdministration>();
         services.AddScoped<IMenuItemImageEventLog, DapperMenuItemImageEventLog>();
 
+        // Menu item reactions (§7, §8.2, §8.3, and Stage 5a of docs/MENU_AND_HANDHELD_PLAN.md). Same
+        // table family, same lifetime, so they are registered here for the reason every group above is
+        // rather than behind a call the composition root has to remember.
+        //
+        // IMenuItemReactions IS NOT BEHIND IMenuWorkflow, AND IT IS THE FIRST MENU WRITE THAT IS NOT.
+        // That is a ruling and not an omission, so it is stated here rather than left to be inferred
+        // from an absence. The workflow exists to satisfy §9: a menu change nobody announced leaves a
+        // stale price on an open picker, or a dish tappable after the kitchen has 86'd it. A reaction
+        // changes nothing any surface renders FROM the menu — name, price, heading, position,
+        // availability and photograph are all untouched — so there is nothing to re-read. Publishing
+        // MenuChanged here would make one thumb re-read the whole menu on every phone in the building,
+        // and this is the one write in this application that can fire many times a minute at one table.
+        // MenuWiringTests' "covers every write service" fact is narrowed to say what it always meant:
+        // every write that CHANGES THE MENU.
+        //
+        // NEITHER HAS A CALLER YET, and Stage 5a says so rather than implying otherwise. Stage 5b builds
+        // the two surfaces — §11.4's count for staff, §11.1's control for the guest pressing it. This is
+        // the same position IMenuItemImageDirectory and IMenuItemImageAdministration were in between
+        // Stage 4a and Stage 4b, and it is recorded on the same terms: a read with no caller cannot
+        // change anything without telling anybody, and a write with no caller is a code path no test can
+        // reach through the interface meant to protect it. The obligation is re-opened here and closes
+        // in 5b.
+        services.AddScoped<IMenuItemReactionDirectory, DapperMenuItemReactionDirectory>();
+        services.AddScoped<IMenuItemReactions, DapperMenuItemReactions>();
+
         // Orders (§6.6, §8.3, §8.5, §11.2).
         services.AddScoped<IOrderMutations, DapperOrderMutations>();
         services.AddScoped<IOrderReadModel, DapperOrderReadModel>();
