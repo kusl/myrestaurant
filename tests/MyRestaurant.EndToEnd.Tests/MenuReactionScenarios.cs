@@ -70,10 +70,16 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
     //      (e) Unliking is written too, and also survives a reload. A verb that appended only 'liked'
     //          rows passes every step above: the fold would answer from the last row it wrote, which
     //          would be the like.
+    //      (f) §11.4 READS THE SAME EVENT BACK — one like against the salmon and none against the
+    //          pudding while the press stands, and none against the salmon once it is withdrawn. This
+    //          is the only place in the repository where §11.1's write and §11.4's read meet, and it
+    //          is what makes "two reads over one fold" a fact rather than a design note. A count over
+    //          'liked' EVENTS rather than over current opinions passes every step before it.
     //
-    //      No count is read anywhere, and none is on screen to read: Stage 5a ruled the number
-    //      staff-facing. MenuItemReactionSurfaceContractTests holds that as a fact over the whole
-    //      guest directory, in two seconds rather than in a browser.
+    //      No count is on the GUEST's screen to read, and that is Stage 5a's ruling rather than
+    //      something not yet built. MenuItemReactionSurfaceContractTests holds it as a fact over the
+    //      whole guest directory — and holds the mirror of it over §11.4's index, which must read the
+    //      whole-menu count and never one person's presses — in two seconds rather than in a browser.
     // -------------------------------------------------------------------------------------------
     [Fact]
     public async Task Guest_LikesADish_AndTheOpinionSurvivesAReload()
@@ -129,6 +135,17 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
 
         Assert.True(await TableOrderJourneys.ReadChosenItemLikedAsync(guest));
 
+        // (c2) THE TWO READS OVER ONE FOLD MEET, and this is the only place in the repository where
+        //      they do. §11.1 asked "which of these do I like" and §11.4 asks "which of these is
+        //      popular"; they are different queries against the same rows, written by different people
+        //      on different surfaces, and nothing but a browser can say that the guest's press and the
+        //      staff's number are the same event. The pudding is asserted alongside, because "the count
+        //      is 1" is also what a page hard-wired to report 1 would say.
+        Assert.Equal(1, await AdministrationJourneys.ReadMenuIndexLikeCountAsync(
+            administrator, salmon.Identifier));
+        Assert.Null(await AdministrationJourneys.ReadMenuIndexLikeCountAsync(
+            administrator, pudding.Identifier));
+
         // (d) The opinion is about a dish. Choosing the other one re-renders the same panel with the
         //     other item's state in it.
         await TableOrderJourneys.ChooseAsync(guest, pudding);
@@ -145,6 +162,14 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
         await ReopenTheMenuAsync(guest, salmon);
 
         Assert.False(await TableOrderJourneys.ReadChosenItemLikedAsync(guest));
+
+        // (e2) And the count comes back DOWN. A fold that answered from the earliest row rather than
+        //      the latest, or a count over 'liked' events rather than over current opinions, passes
+        //      every step up to here and fails on this one — which is the failure mode the data-access
+        //      layer's own summary names as the plausible wrong implementation. Null rather than zero,
+        //      because §11.4's read lists what is liked instead of left-joining the menu.
+        Assert.Null(await AdministrationJourneys.ReadMenuIndexLikeCountAsync(
+            administrator, salmon.Identifier));
     }
 
     /// <summary>

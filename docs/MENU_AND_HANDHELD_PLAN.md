@@ -1698,14 +1698,11 @@ untouched**. It throws rather than asserting, which is the one thing that change
 journey in that directory reports a failure as an exception naming what the surface was showing instead, and
 only `RestaurantHarness` references xUnit at all.
 
-### What is open after this stage
+### ~~What is open after this stage~~ — closed by Stage 5b-ii below
 
-**Stage 5b-ii, and only Stage 5b-ii: §11.4's count.** `ListLikeCountsAsync` is the last read in this feature
-with no caller, and it is now the weaker of the two defects rather than the stronger — an unread read cannot
-change anything without telling anybody. The administrator's menu index is the likely home, since the
-question is comparative and a per-item number answers it one dish at a time; a heading's group is where a
-total would go if one is wanted. **The scenario extends rather than being invented**: 21 already presses a
-heart, so the count slice adds an administrator reading the number back.
+**~~Stage 5b-ii, and only Stage 5b-ii: §11.4's count.~~ Landed, M6 Slice 59.** `ListLikeCountsAsync` was
+the last read in this feature with no caller, and it was the weaker of the two defects rather than the
+stronger — an unread read cannot change anything without telling anybody.
 
 **A guest cannot like an unavailable dish**, carried with the reason above.
 
@@ -1713,6 +1710,81 @@ heart, so the count slice adds an administrator reading the number back.
 ruled against in Stage 5a, and neither is an item.
 
 ---
+
+## ~~Stage 5b-ii — likes: §11.4's count~~ — **landed, M6 Slice 59**
+
+**The half that answers the question the number exists for.** Stage 5a ruled the count staff-facing and
+said what it is for: *which of these is popular*, which is **comparative** — so it belongs on the index,
+where sixty dishes are on one screen, rather than on an item's own page where it answers one dish at a
+time.
+
+### Three rulings about where a number goes
+
+**Beside the name rather than in a column of its own, and this is Stage 4d's ruling a second time.** A
+column empty on most rows puts a `data-label` reading *Liked* beside nothing on the handheld card, which
+is precisely the failure §11.12's label rule exists to prevent — Stage 4d refused two columns that would
+have been empty on *half* the rows, and this one would be empty on most of them. What is gained by the
+column, sortability, is not on offer anyway: the index sorts by heading and position, and adding a sort is
+a feature rather than a cell. On a menu of sixty the chips **are** the comparison.
+
+**Neutral rather than `-ok` or `-warn`.** A count of likes is neither good news nor a warning, and both
+modifiers already mean something one cell over — available and unavailable. A `chip-ok` here would read as
+*this dish is fine*, which is a different claim about the same row.
+
+**Nothing rather than a zero.** `ListLikeCountsAsync` lists the dishes that *are* liked instead of
+left-joining the menu, and its own summary says so. Rendering *0 likes* on fifty-eight rows of a sixty-dish
+menu would be this surface inventing a fact the read deliberately declined to state, and would bury the
+four rows that answer the question.
+
+### The fifth contract fact is the half that fails plausibly
+
+The index must call `ListLikeCountsAsync` and must never call `ListLikedByAsync`. **They are one keystroke
+apart and only one of them is about the person reading the page.** An index calling the wrong one renders
+*perfectly*: every chip says *1 like* or is absent, because the page is showing the administrator their own
+opinion presented as the restaurant's. Nothing throws, no number is malformed, no other test goes red, and
+the surface answers *which of these do I like* on a page that asks *which of these is popular*. Two reads
+over one fold is the whole of Stage 5a's first ruling, and the failure is that **both call sites compile**.
+
+Both halves are asserted, because either alone is satisfied by an index that reads neither — an index that
+had simply lost the read renders a menu with no counts on it, which a prohibition cannot see.
+
+### Scenario 21 is extended rather than a scenario added
+
+This plan predicted that, in Stage 5b-i's own open list, and the prediction is worth checking rather than
+just noting: *"21 already presses a heart, so the count slice adds an administrator reading the number
+back."* That is what happened, and the extension is stronger than a second scenario would have been.
+**It is the only place in this repository where §11.1's write and §11.4's read meet.** Two different
+queries against the same rows, written for two different people on two different surfaces; nothing but a
+browser can say they describe the same event.
+
+Three assertions, and each refuses an implementation that passes the others. One like against the dish
+while the press stands. **None against the other dish**, because *the count is 1* is also what a page
+hard-wired to report 1 would say. And **none against either once the press is withdrawn** — a count over
+`'liked'` *events* rather than over current opinions passes every step before this one, which is exactly
+the plausible wrong implementation the data-access layer's own summary names.
+
+### No CSS, and the reason the hook is an attribute
+
+`.chip` has been declared in `app.css` since Slice 30, so the chip needs nothing. The **number's** hook is
+`data-like-count` — a data attribute rather than a class — for two reasons that agree. The harness reads an
+integer instead of parsing *"3 likes"*, so the assertion does not depend on the one part of the chip that
+is free to change. And `.record-` is §11.12's shared vocabulary prefix: a hook borrowing that prefix
+without declaring a rule would put a name in the shared namespace that the stylesheet has never heard of,
+which is F-67's neighbourhood.
+
+### What is open after this stage
+
+**Nothing about likes.** Every read and every write `0008` introduced now has a caller, no verb in §7 is
+without a surface, and Stage 5's open list is empty for the first time since 5a.
+
+**A guest cannot like an unavailable dish**, carried from Stage 5b-i with its reason. It follows from the
+control's placement rather than from a decision, and the repair is a second route into the detail panel for
+items that cannot be staged.
+
+**The next thing in this plan is Stage 6**, which is *not startable* and says why below: a comment is the
+first user-generated content in this system, and it needs a rate-limiting slice with no menu in it, a
+`REQUIREMENTS.md` revision about guest privacy, and a moderation surface. The recommendation recorded there
+— **do Stage 5b and stop** — is now discharged rather than pending.
 
 ## Stage 6 — comments, and what has to be settled first
 

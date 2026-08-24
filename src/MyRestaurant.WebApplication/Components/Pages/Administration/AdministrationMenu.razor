@@ -6,6 +6,7 @@
 @using MyRestaurant.WebApplication.Orders
 @inject IMenuSectionDirectory MenuSections
 @inject IMenuDirectory MenuItems
+@inject IMenuItemReactionDirectory MenuItemReactionReads
 @inject IMenuEventLog MenuEvents
 @inject IMenuWorkflow MenuChanges
 @inject NavigationManager Navigation
@@ -195,6 +196,40 @@
                                             <tr @key="item.MenuItemIdentifier">
                                                 <td class="record-primary" data-label="">
                                                     <a class="record-link" href="@ManagePath(item.MenuItemIdentifier)">@item.Name</a>
+
+                                                    @* §11.4's half of the like (Stage 5b-ii). BESIDE THE
+                                                       NAME RATHER THAN IN A COLUMN OF ITS OWN, and that
+                                                       is Stage 4d's ruling applied a second time: a
+                                                       column empty on most rows puts a `data-label`
+                                                       reading *Liked* beside nothing on the handheld
+                                                       card, which is the shape S11.12's label rule
+                                                       exists to prevent. A dish nobody likes renders no
+                                                       chip at all, which is what the read already says
+                                                       — it lists what IS liked rather than left-joining
+                                                       the menu — and on a menu of sixty the chips
+                                                       ARE the comparison this panel is asked for.
+
+                                                       A NEUTRAL CHIP: no `-ok`, no `-warn`. A count of
+                                                       likes is neither good news nor a warning, and the
+                                                       two modifiers on this page already mean available
+                                                       and unavailable one cell over.
+
+                                                       `data-like-count` carries the number machine
+                                                       readably so S16.3 reads an integer rather than
+                                                       parsing a sentence. A data attribute rather than a
+                                                       class, deliberately: `.record-` is a shared
+                                                       vocabulary prefix (S11.12), and a hook that
+                                                       borrowed that prefix without declaring a rule
+                                                       would be a name in the shared namespace that the
+                                                       stylesheet has never heard of. THIS SLICE ADDS NO
+                                                       CSS AT ALL. *@
+                                                    @if (LikeCount(item) is { } likes)
+                                                    {
+                                                        <span class="chip" data-like-count="@likes">
+                                                            @likes @(likes == 1 ? "like" : "likes")
+                                                        </span>
+                                                    }
+
                                                     @if (item.Description.Length > 0)
                                                     {
                                                         @* Under the name rather than in a column of its
@@ -355,6 +390,17 @@
 
     private IReadOnlyList<MenuSectionSummary>? _sections;
     private IReadOnlyList<MenuItemSummary> _items = [];
+    /// <summary>
+    /// How many people currently like each dish, for the dishes anybody does (§7, §11.4).
+    ///
+    /// <para><b>A dish nobody likes is absent rather than present with a zero</b>, which is what
+    /// <see cref="IMenuItemReactionDirectory.ListLikeCountsAsync"/> returns and is why
+    /// <see cref="LikeCount"/> answers <c>null</c> rather than <c>0</c>. The surface renders no chip for
+    /// it. Storing a zero here would be this page inventing a fact the read deliberately declined to
+    /// state.</para>
+    /// </summary>
+    private Dictionary<Guid, int> _likeCounts = new();
+
     private IReadOnlyList<MenuItemEventEntry>? _recent;
     private int _itemCount;
     private int _activeItemCount;
@@ -377,6 +423,17 @@
         // own doc comment says that is what it is for.
         _sections = await MenuSections.ListAsync(HttpContext.RequestAborted);
         _items = await MenuItems.ListAsync(HttpContext.RequestAborted);
+
+        // The third read, and it is ListLikeCountsAsync rather than ListLikedByAsync. The two are one
+        // keystroke apart and the wrong one produces a page that renders perfectly with every number
+        // either 0 or 1 — this administrator's own opinion, presented as the restaurant's. §11.4 asks
+        // *which of these is popular*; §11.1 asks *which of these do I like*; they are two reads over one
+        // fold, and this is the one that is not about the person reading it.
+        //
+        // One read for the whole menu rather than one per row, which is what that verb exists for: a
+        // lookup inside the render loop would turn a sixty-dish menu into sixty queries.
+        _likeCounts = (await MenuItemReactionReads.ListLikeCountsAsync(HttpContext.RequestAborted))
+            .ToDictionary(count => count.MenuItemIdentifier, count => count.LikeCount);
 
         _itemCount = _items.Count;
         _activeItemCount = _items.Count(item => item.IsActive);
@@ -636,6 +693,18 @@
 
     private static string SectionPath(Guid menuSectionIdentifier)
         => $"/administration/menu/sections/{menuSectionIdentifier}";
+
+    /// <summary>
+    /// How many people currently like one dish, or <c>null</c> where nobody does.
+    ///
+    /// <para><b><c>null</c> rather than <c>0</c>, and the distinction is the read's rather than this
+    /// page's.</b> <c>ListLikeCountsAsync</c> lists the dishes that <em>are</em> liked instead of
+    /// left-joining the whole menu, so an absent key means nobody has pressed it — and rendering
+    /// <c>0 likes</c> on fifty-eight rows of a sixty-dish menu would bury the four that answer the
+    /// question this panel exists for.</para>
+    /// </summary>
+    private int? LikeCount(MenuItemSummary item)
+        => _likeCounts.TryGetValue(item.MenuItemIdentifier, out int likes) ? likes : null;
 
     private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
 

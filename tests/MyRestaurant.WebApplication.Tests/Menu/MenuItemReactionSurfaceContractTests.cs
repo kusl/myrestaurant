@@ -45,6 +45,9 @@ public sealed class MenuItemReactionSurfaceContractTests
     private const string WorkflowRelativePath =
         "src/MyRestaurant.WebApplication/Menu/MenuWorkflow.cs";
 
+    private const string AdministrationIndexRelativePath =
+        "src/MyRestaurant.WebApplication/Components/Pages/Administration/AdministrationMenu.razor";
+
     /// <summary>The marker class the control carries, which every fact below keys on.</summary>
     private const string LikeControlClass = "order-menu-like";
 
@@ -231,6 +234,46 @@ public sealed class MenuItemReactionSurfaceContractTests
                 + " minute at one table — so a verb behind the workflow would make a heart-tap re-read"
                 + " the whole menu on every phone in the building. The symptom is load, not an error.");
         }
+    }
+
+    /// <summary>
+    /// §11.4's index reads the whole-menu count and never one person's presses — the mirror of the fact
+    /// above it, and the half that fails <em>plausibly</em>.
+    ///
+    /// <para><b>The two reads are one keystroke apart and only one of them is about the person
+    /// reading.</b> An index calling <c>ListLikedByAsync</c> renders perfectly: every chip on the page
+    /// says <c>1 like</c> or is absent, because it is showing the administrator their own opinion
+    /// presented as the restaurant's. Nothing throws, no number is malformed, and the page answers a
+    /// different question from the one §11.4 asks — <em>which of these is popular</em> against
+    /// <em>which of these do I like</em>. Two reads over one fold is the whole design (Stage 5a), and
+    /// the failure is that both call sites compile.</para>
+    ///
+    /// <para><b>Both halves are asserted, because either alone is satisfiable by an index that reads
+    /// neither.</b> The prohibition is the interesting one and the requirement is its non-vacuity guard
+    /// (F-41) — an index that had lost the read entirely would render a menu with no counts on it and
+    /// pass a fact that only forbade.</para>
+    ///
+    /// <para>The keys carry an open parenthesis for the reason the directory fact's do: this page
+    /// explains in a comment which read it must not make, and a gate keyed on the bare identifier would
+    /// report a finding on the explanation (F-67).</para>
+    /// </summary>
+    [Fact]
+    public void TheAdministrationIndex_ReadsTheCount_AndNeverOnePersonsPresses()
+    {
+        string index = File.ReadAllText(PathUnder(AdministrationIndexRelativePath));
+
+        Assert.True(
+            index.Contains(WholeMenuCountRead, StringComparison.Ordinal),
+            $"§11.4's menu index does not call {WholeMenuCountRead}, so the prohibition below asserts"
+            + " nothing. The count is this surface's question (Stage 5a); an index that stopped asking it"
+            + " renders a menu with no counts on it and no test would otherwise notice.");
+
+        Assert.False(
+            index.Contains(PerPersonRead, StringComparison.Ordinal),
+            $"§11.4's menu index calls {PerPersonRead}, which answers about the person reading the page."
+            + " Every chip would then say '1 like' or be absent — this administrator's own opinion"
+            + " rendered as the restaurant's, on a page that asks which dishes are popular. Nothing"
+            + " throws and no number is malformed, which is why this is a test rather than a comment.");
     }
 
     private static string GuestPage() => File.ReadAllText(PathUnder(GuestPageRelativePath));

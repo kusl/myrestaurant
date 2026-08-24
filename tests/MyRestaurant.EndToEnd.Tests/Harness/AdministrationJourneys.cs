@@ -645,6 +645,64 @@ internal static class AdministrationJourneys
     /// the first-use panel and no wrapper, so a caller arriving too early fails here naming the page
     /// rather than thirty seconds later inside a group that was never going to exist.</para>
     /// </summary>
+    /// <summary>
+    /// How many likes <c>/administration/menu</c> reports against one dish, or <c>null</c> where it
+    /// reports none (§11.4; Stage 5b-ii).
+    ///
+    /// <para><b>Read off <c>data-like-count</c> rather than out of the chip's sentence</b>, so the
+    /// scenario compares an integer with an integer. Parsing <c>"3 likes"</c> would make the assertion
+    /// depend on the wording, and the wording is the one part of this chip that is free to change.</para>
+    ///
+    /// <para><b><c>null</c> is a real answer rather than a failure.</b> The read behind this surface lists
+    /// the dishes anybody likes instead of left-joining the menu, so a dish nobody has pressed carries no
+    /// chip at all — and a caller asserting "nobody likes this yet" needs that to be distinguishable from
+    /// zero rather than collapsed into it.</para>
+    ///
+    /// <para>The row is found by the dish's own management link, which is the only thing in a row that is
+    /// keyed on its identifier: matching on the visible name would make this method wrong the moment two
+    /// dishes shared one, which §7 permits deliberately.</para>
+    /// </summary>
+    internal static async Task<int?> ReadMenuIndexLikeCountAsync(IPage page, Guid menuItemIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(MenuPath);
+
+        ILocator row = page
+            .Locator($"div.menu-group-body tr:has(a.record-link[href*='{menuItemIdentifier:D}'])")
+            .First;
+
+        try
+        {
+            await row.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The menu index has no row for item {menuItemIdentifier:D}. ")
+                + await DescribeFailureAsync(page),
+                exception);
+        }
+
+        ILocator chip = row.Locator("td.record-primary span.chip[data-like-count]");
+
+        if (await chip.CountAsync() == 0)
+        {
+            return null;
+        }
+
+        string? declared = await chip.First.GetAttributeAsync("data-like-count");
+
+        return int.TryParse(declared, NumberStyles.Integer, CultureInfo.InvariantCulture, out int likes)
+            ? likes
+            : throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"§11.4's like chip carries data-like-count=\"{declared}\", which is not an integer."));
+    }
+
     internal static async Task<IReadOnlyList<MenuHeadingOnTheIndex>> ReadMenuIndexAsync(IPage page)
     {
         ArgumentNullException.ThrowIfNull(page);

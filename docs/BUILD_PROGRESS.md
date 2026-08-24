@@ -4851,3 +4851,163 @@ starts it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
 past four thousand six hundred lines.
+
+---
+
+# M6 Slice 59 — likes: §11.4's count, and the end of the menu enhancement's open list
+
+**What shipped.** The like count on `/administration/menu`; a fifth fact on
+`MenuItemReactionSurfaceContractTests`; scenario 21 extended with the read-back. Stage 5b-ii of
+`docs/MENU_AND_HANDHELD_PLAN.md`. **No migration, no schema change, no CSS, no new scenario.**
+
+**This slice stacks on Slice 58, and the baseline is therefore predicted rather than verified.** That is
+weaker footing than this project normally accepts and it is stated first rather than buried: 58 has not
+been built or run. If its run does not return **1278**, that is the thing to chase before this archive is
+applied — the two slices touch different surfaces and different test classes, so a deviation is
+attributable, but §18's method depends on knowing which number was real.
+
+## Where a number goes, which is most of what this slice decided
+
+The read has existed since Slice 57 and the surface is a chip. What took the thinking was where the chip
+goes, and all three answers are rulings a later slice would reverse without noticing.
+
+**Beside the name rather than in a column of its own — Stage 4d's ruling a second time.** A column empty on
+most rows puts a `data-label` reading *Liked* beside nothing on the handheld card, which is exactly the
+failure §11.12's label rule exists to prevent. Stage 4d refused two columns that would have been empty on
+*half* their rows; this one would be empty on most of them. What a column buys is sortability, and that is
+not on offer anyway — the index sorts by heading and position, and adding a sort is a feature rather than a
+cell. On a menu of sixty the chips **are** the comparison this panel was asked for.
+
+**Neutral rather than `-ok` or `-warn`.** A count of likes is neither good news nor a warning, and both
+modifiers already mean something one cell over — available, currently unavailable. A `chip-ok` here would
+read as *this dish is fine*, which is a different claim about the same row and one the page already makes.
+
+**Nothing rather than a zero.** `ListLikeCountsAsync` lists the dishes that *are* liked instead of
+left-joining the menu, and says so in its own summary. Rendering *0 likes* on fifty-eight rows of a
+sixty-dish menu would be this surface inventing a fact the read deliberately declined to state, and would
+bury the four rows that answer the question. `LikeCount` returns `int?` for that reason and not for a
+null-safety one.
+
+## The fifth contract fact is the half that fails plausibly
+
+The index must call `ListLikeCountsAsync` and must never call `ListLikedByAsync`. **They are one keystroke
+apart, and only one of them is about the person reading the page.**
+
+An index calling the wrong one **renders perfectly**. Every chip says *1 like* or is absent, because the
+page is showing the administrator their own opinion presented as the restaurant's. Nothing throws, no
+number is malformed, no other test goes red, and the surface answers *which of these do I like* on a page
+that asks *which of these is popular*. Two reads over one fold is the whole of Stage 5a's first ruling, and
+the failure mode is that **both call sites compile**.
+
+That is a different shape from the fact it mirrors. Fact three forbids the count on the guest's side, where
+the defect is a *disclosure* — a number reaching an audience a ruling said it should not. Fact five is a
+*substitution*, where the number reaches the right audience and is the wrong number. The first is caught by
+reading the page; the second is not, because a restaurant where four dishes have one like each and the rest
+have none is a plausible restaurant.
+
+**Both halves are asserted**, because either alone is satisfied by an index that reads neither: an index
+that had simply lost the read renders a menu with no counts on it, and a prohibition cannot see that.
+Proven sensitive both ways before delivery — swapping the read is reported twice over, deleting it is
+reported once.
+
+## Scenario 21 was extended, and the prediction is worth checking rather than noting
+
+Slice 58's open list said: *"21 already presses a heart, so the count slice adds an administrator reading
+the number back."* That is what happened, and it is worth recording that the prediction held, because this
+log more often records where one did not.
+
+**The extension is stronger than a second scenario would have been.** It is the only place in this
+repository where §11.1's write and §11.4's read meet — two different queries against the same rows, written
+for two different people on two different surfaces. Nothing but a browser can say they describe the same
+event.
+
+Three assertions, each refusing an implementation that passes the others. One like against the dish while
+the press stands. **None against the other dish**, because *the count is 1* is also what a page hard-wired
+to report 1 would say. And **none against either once the press is withdrawn** — a count over `'liked'`
+*events* rather than over current opinions passes every step before this one, which is precisely the
+plausible wrong implementation `MenuItemLikeCount`'s own summary names.
+
+The suite stays at **twenty-one**, which is the point: extending a scenario that already arranges a seated
+guest and a pressed heart is cheaper than arranging a second one, and it asserts something neither half
+could alone.
+
+## The hook is an attribute, and the reason is not convenience
+
+`data-like-count` rather than a marker class, for two reasons that agree.
+
+The harness reads an **integer** instead of parsing *"3 likes"*, so the assertion does not depend on the one
+part of the chip that is free to change. Wording is exactly the sort of thing that gets improved.
+
+And `.record-` is §11.12's shared vocabulary prefix. A hook named `.record-like-count` would put a name in
+the shared namespace that `app.css` has never heard of — not a re-declaration, so no existing gate would
+report it, but a name whose only definition is the fact that somebody typed it. That is F-67's
+neighbourhood: the rule there is that shared vocabulary is *declared* rather than merely referenced, and the
+cheapest way to obey it is not to reach for the shared prefix at all.
+
+**This slice adds no CSS**, which is worth stating because a count is exactly the kind of thing that
+acquires a rule. `.chip` has been declared since Slice 30.
+
+## One small thing that changed during authoring
+
+The pluralisation started as a `LikeCountText` helper using `string.Create(CultureInfo.InvariantCulture, …)`
+and `CultureInfo` is not imported in that component. Adding `@using System.Globalization` would have worked
+and would have been the third thing in that file's header for a two-word decision. The helper is gone
+instead: the markup writes `@likes @(likes == 1 ? "like" : "likes")`, which is Razor rendering an integer
+the way it already renders `@item.DisplayOrder` twenty lines up, and the culture question does not arise.
+**The smaller change was available because the helper was not earning its place** — it existed to hold a
+`?:` that reads better inline.
+
+## §18 arithmetic
+
+| Where | Facts | Running |
+| --- | --- | --- |
+| Baseline — **predicted by Slice 58, not verified** | — | 1278 |
+| `MenuItemReactionSurfaceContractTests` (4 → 5) | +1 | 1279 |
+
+**Predicted 1279**, and the §16.3 suite stays at **21**. If the number that comes back is 1279 then Slice
+58's prediction of 1278 was also right, because this slice adds exactly one; any other number is a question
+about *both* slices and 58's is the one to answer first.
+
+## What was verified, and what was not
+
+**Verified mechanically.** All five contract facts were emulated against the edited tree and the new one
+**proven sensitive both ways** — an index calling `ListLikedByAsync` instead is reported twice over (the
+requirement fails and the prohibition fires), and an index that has lost the read entirely is reported
+once. The §16.4 counted-class gate was emulated over the edited specification: **33 classes, no
+disagreement between any claimed count and its file**, the census unchanged because the new assertion
+joined an existing class. The Markdown table gate was emulated over all 25 tracked documents: clean. The
+version gate was emulated: header 1.44, newest entry 1.44, 45 entries strictly descending. A Razor tag-tree
+walk over the new chip block confirms its one `<span>` pair balances, and the `@code` block's braces close
+with nothing after them. The standing authoring scans ran over every changed file: no `await` in an
+interpolated hole, no `string.Create` chain with a plain literal, no `@section`, no tabs, no CR bytes, one
+final newline each, no whitespace-only or trailing-space lines.
+
+**Not verified.** Nothing was compiled and nothing was run (F-71's standing caveat), **and this slice's
+baseline is a prediction rather than a measurement**, which is the larger of the two gaps. The specific
+risks, in order. **The harness's row locator** — `tr:has(a.record-link[href*='{identifier:D}'])` — is the
+one selector in this slice with no precedent in the file: `ReadMenuIndexAsync` walks groups and reads all
+link texts, and nothing has previously reached a row *by* its item. `:has()` is supported by the Chromium
+Playwright ships, and the fallback if it is not is to walk rows and compare hrefs. **`int.TryParse` with
+`NumberStyles.Integer`** on an attribute Razor wrote from an `int` cannot fail, so the throw arm is
+unreachable and is there to make the reader total rather than because it is expected. And **the chip's
+placement inside `td.record-primary`** puts a second element in a cell whose handheld card layout was
+designed around a link and an optional sentence; it is `display: inline-block` by `.chip`'s existing rule
+and should flow, but nothing here measured it at 375px — §16.3 scenario 16 visits this page and asserts the
+document is not wider than its viewport, which is the check that would catch it.
+
+## Open items carried
+
+**No end-to-end scenario drives either resequencing verb.** The 375px barrier measures those controls and
+nothing presses them. Carried, and now the only such gap in the menu.
+
+**`/kitchen` has no §16.3 scenario at all.** Carried; the largest end-to-end gap in the application.
+
+**The wide layout stacks each row's three controls** on the administration index. Carried on two registers.
+
+**A guest cannot like an unavailable dish.** Carried from Slice 58 with its reason.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
+past four thousand nine hundred lines.
