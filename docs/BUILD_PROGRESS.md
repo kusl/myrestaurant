@@ -4172,3 +4172,227 @@ starts it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried, and this slice makes it
 more pressing: `BUILD_PROGRESS.md` is now past four thousand lines.
+
+---
+
+# M6 Slice 56 — the bytes decide the format, and a build that was red only where it mattered
+
+## What arrived, and what the terminal said first
+
+Two changes. `scripts/ci_local.sh` stopped at step 5 on the tree Slice 55 delivered, with an analyzer
+error in the end-to-end project; and Stage 4f closed the open item this plan has carried longer than any
+other. v1.32's distinguishable-failure ruling governs the pair, and here it is almost trivially satisfied:
+one fails as `CA2014` from the compiler naming a file and a column, the other as three named contract facts
+and one browser scenario. Nothing about the two can be confused for the other on a red run.
+
+**The prediction was exact and that is worth recording before the defect is.** Slice 55 predicted **1256**
+and the run returned 1256 — the first slice in four whose starting count was confirmed rather than assumed,
+and the confirmation of a prediction that had itself been made against a verified baseline. Scenarios 18
+and 19 both passed. Scenario 19 was flagged in that slice's own veto section as *the riskiest thing in this
+delivery* — a real `<canvas>` in headless Chromium, waiting on a settled status sentence beside a
+re-enabled control, authored without ever having been executed. It passed on the first run. The
+end-to-end suite ran nineteen scenarios in 2m22s with nothing skipped.
+
+## F-108 — the `stackalloc`, and the two builds that disagree
+
+`PictureFixtures.Deflate` declared `Span<byte> lengths = stackalloc byte[4]` **inside** its stored-block
+loop. Stack memory is released when the *method* returns rather than when the iteration ends, so the frame
+grows once per pass. That is CA2014, and the analyzer's own name for it — *potential stack overflow* — is
+the general case rather than this one: the loop runs once per 64 KiB of raster and the largest fixture is
+nineteen blocks, so the actual cost was **seventy-six bytes** and nothing in the suite could ever have
+failed on it. The repair is to hoist the declaration, which is behaviour-identical because every pass
+overwrites all four bytes before reading any of them.
+
+**What earns it a ledger row is the asymmetry that let it reach a delivery, and the asymmetry is
+deliberate.** `Directory.Build.props` sets `TreatWarningsAsErrors` **false** for a plain `dotnet build` and
+**true** under `-p:ContinuousIntegrationBuild=true`, with a comment arguing the case at length: a fresh
+clone on tomorrow's SDK must build through analyzer drift rather than refusing at the door, and flipping it
+globally would be a worse outcome than a warning nobody read. That argument is right. Its consequence is
+that the same defect is *one line among eleven seconds of build output* on a workstation and *a halt* in
+the pipeline — and the operator's session shows exactly that shape:
+
+```
+dotnet build   → Build succeeded with 1 warning(s) in 11.1s
+dotnet test    → total: 1256   failed: 0   succeeded: 1256   skipped: 0
+ci_local.sh    → error CA2014 … Build failed with 1 error(s) in 4.6s   [stops at step 5]
+```
+
+Three green signals in a row and then the one that counts. **The ruling is about ordering rather than about
+spans:** `scripts/ci_local.sh` exists to reproduce CI, so its verdict is the one that decides whether a tree
+is deliverable, and a green `dotnet test` earlier in the same session is not evidence about the build CI
+will run.
+
+**No gate is added, and that is a ruling rather than an omission** (F-47, F-71, F-88). CA2014 *is* the gate.
+It exists, it ran, it decided correctly, and it blocked. A lexical re-implementation of a Roslyn analyzer
+inside xUnit would be strictly weaker than the analyzer while adding a second thing that can be wrong,
+which is F-41's *reaching past what it can decide* wearing a new hat. What failed was authoring-side
+verification without a compiler — which Slice 55's own "what was NOT verified" section stated in advance,
+and which is a property of how that slice was written rather than of the tree.
+
+## Stage 4f — F-109, and six slices of a fix that was already written down
+
+`ManageMenuItem.AttachPictureAsync` passed `IFormFile.ContentType` into the write service. **That value is
+not a fact about the file.** It is whatever the operating system's extension map produced for the chosen
+filename, so a Linux desktop without `shared-mime-info`, an Android browser handed a file from a document
+provider, and any file saved with no extension all send `application/octet-stream` for a genuine PNG.
+§8.2's census does not admit that string, so the write answered `UnsupportedContentType` and the page
+rendered *"which is not a picture format this menu serves"* about a picture whose format was fine.
+
+**The defect is ordinary. The deferral is the finding.** Stage 4b diagnosed it correctly and wrote the fix
+out in full — *identify from the bytes and pass that* — and declined to take it on one sentence: doing so
+*"would make two of the write's outcomes unreachable from the only surface that can reach them"*. That
+sentence was then copied forward, unchanged, into Stage 4c's open list, Stage 4d's and Stage 4e's, and into
+four consecutive BUILD_PROGRESS entries.
+
+It is true. **It is not a cost.** `UnsupportedContentType` and `ContentTypeContradictedByBytes` are the
+write service's answers, and the write service is a *library*: its contract is for any caller, and
+`MenuItemImageTests` reaches both of them directly, without a surface, on every integration run. An outcome
+no *form* can produce is not an outcome nothing tests.
+
+There is a real worry underneath it and it is answered rather than waved away. A surface that decided for
+itself what an image is would be a **second authority** on what may be stored — F-64/F-69's mechanism, and
+refusing it would be right. But what the surface passes is the answer of **the same pure function the write
+consults**: one decision procedure called twice, not two that can disagree. The write still checks the
+census and still checks the signature, and both are now true *by construction* rather than by luck, which
+is a stronger arrangement than the one it replaces.
+
+**Stage 4e narrowed this without closing it, and the narrowing is why it stayed easy to defer.** Anything
+the downscaler touches comes back from `canvas.toBlob` as `image/jpeg` whatever it was labelled, so after
+Slice 55 only files *already under the cap* still reproduced it — which is to say screenshots and small
+photographs, and nothing anybody happened to be testing with. A defect that gets rarer without getting
+fixed is a defect that stops being reported and does not stop happening.
+
+### The lesson, stated generally
+
+F-62 established that **a reason for not doing something is a claim about the tree, and is checked against
+the tree before it is written down.** This adds the other half: **a claim used to defer is re-checked each
+time it is used again.** A recorded fix with a recorded reason is comfortable to carry — it reads as
+diligence every time it is re-read, and the justifying sentence is never re-examined, because
+re-examination is not what re-reading is for.
+
+## F-110 — the fourth and fifth copies of the vocabulary, found on the way in
+
+The refusal F-109 forced a rewording of said *"Choose a JPEG, a PNG or a WebP"*. The paragraph above the
+form said *"JPEG, PNG or WebP; anything else is refused with a reason."* Both are declarations of the
+media-type vocabulary, after §8.2's CHECK, `ImageFormat.RecognisedContentTypes`, and the `accept` attribute
+— which was made **derived** in Slice 52 on the explicit argument that a stale `accept` list has no
+server-side symptom at all. **Two more copies were written in that same slice**, and neither has a symptom
+either: a migration admitting a fourth format leaves both sentences quietly wrong, read by an operator,
+believed, and contradicted by a file picker that would happily offer the format the prose has just said is
+unavailable.
+
+F-80's shape in a fifth place, and **F-93's timing for the fifth time** — found while editing a paragraph
+for another reason, which is the last moment its content is free to be wrong.
+
+Both now render `MenuItemImageUpload.RecognisedTypesForOperators`. **It renders media types rather than
+English names, and that is a ruling rather than a shortcut**: turning `image/webp` into *"a WebP"* needs a
+map from type to article-and-name, and that map would itself be the copy this removes. The operator is
+shown exactly the list their file picker was filtered by, so the two cannot disagree.
+
+## The gates, and where they had to live
+
+Three facts, in a **new class** — `MenuItemImageContentTypeContractTests` — rather than on
+`MenuItemImageSurfaceContractTests`. That was not a filing preference. `MenuItemImageSurfaceContractTests`
+is at **twelve**, and `TestingSectionContractTests.NumberWords` stops at twelve, saying in its own summary
+that *a contract test with more than twelve assertions is a contract test that has become two, and the gate
+refusing to parse the word is a reasonable place to find that out.* Writing "Fifteen assertions" into §16.4
+would have made that paragraph unparseable and silently dropped it from the comparison; writing "15" would
+have parsed and dodged the rule. **The tree's own constraint decided the design**, and the split is honest
+on its own terms: one class asks whether an upload can *reach* the write service, and the new one asks what
+the write service is *told* when it does.
+
+**The first fact computes its own subject (F-47/F-58).** It names no page. It finds every file under `src/`
+that binds an `IFormFile`, captures what each binding is called, and requires that none has `.ContentType`
+read off it — so a second upload surface acquires this rule by existing rather than by somebody remembering
+to add it. It is scoped to the **binding** rather than to the string, because §11.4's own panel renders the
+*stored* `ContentType` and a blanket ban would report a finding on a correct file (F-41).
+
+**The second is its positive half**, and it is needed because emptiness is cheap: deleting the argument or
+passing a literal would satisfy *does not read the browser's declaration* while breaking every upload,
+which is a worse product than the defect. The local is captured from its own assignment and required to be
+among the arguments the attach call is given.
+
+**The third scans the whole page rather than the refusal**, with the forbidden words derived from the
+census. Scoping it to the `switch` would have caught the message and left the paragraph, which is F-46's
+mechanism exactly — a rule enforced against the example that prompted it.
+
+**Comments are stripped before every scan (F-67), and here it is load-bearing rather than tidy:** the
+paragraph that *explains* F-109 necessarily contains both `IFormFile.ContentType` and the word PNG, so a
+gate that read comments would report a finding on the very file it had just been satisfied by.
+
+**All three were proven sensitive against the tree as it shipped, with nothing planted** — the strongest
+form of that proof this project has occasion to use, and the third time it has been available.
+
+## §16.3 scenario 20
+
+An administrator uploads a real PNG named `shrimp`, with no extension, under `application/octet-stream`.
+The picture is deliberately **under** the cap, which is what makes the scenario about F-109 and nothing
+else: the downscaler leaves it completely alone, so the label survives all the way to the server, and the
+scenario asserts that too — if that ever stops being true, the scenario silently stops being about
+anything. The closing assertions are that the stored format is `image/png` **and is not the declared one**,
+because accepting the upload alone would also be satisfied by a server that believed the label and then
+handed it back as a response header, on this origin, for a year.
+
+## Test count
+
+Baseline **1256**, verified from the terminal log.
+
+| Where | Facts | Running |
+| --- | --- | --- |
+| Baseline (verified) | — | 1256 |
+| `MenuItemImageContentTypeContractTests` (new) | +3 | 1259 |
+| `MenuPictureScenarios` (2 to 3) | +1 | 1260 |
+
+**Predicted: 1260.** The §16.3 suite moves from nineteen to **twenty**. Anything other than 1260 is the
+first thing to investigate.
+
+## What was verified before packaging, and what was not
+
+**Verified mechanically.** The working tree was reconstructed from `dump.txt` and SHA-256 checked file by
+file: 370 files, with the only differences being `export.sh`, which embeds its own file marker, and
+`LICENSE`, which the dump elides to metadata by design. No session drift — the tree matched what
+`_CHANGES.md` said it was, which is the first time in several slices that check has been uneventful. All
+three new gates were emulated **twice**: against the repaired tree, where each passes, and against
+`ManageMenuItem.razor` **exactly as it shipped in the dump**, where each fails — the first naming
+`file.ContentType`, the second reporting no `IdentifyContentType` call, the third naming all three format
+words and the absent census. 185 files under `src/` were walked, one binds an `IFormFile`, and one binding
+was named in it. The §16.4 counted-class gate was emulated over the edited specification: **31** counted
+classes against a floor of 29, no disagreements, no ambiguous paragraphs, no uncited names. The Markdown
+table gate was emulated with the real unescaped-pipe splitter over every tracked document: 415 rows, no
+problems. The specification version gate was emulated: two versioned documents, headers matching their
+newest entries, entries descending. Byte hygiene — no CR, final newline present, no whitespace-only lines —
+was checked on every file in the archive.
+
+**Not verified.** Nothing was compiled and nothing was run. There is no .NET SDK reachable from where this
+slice was authored, so the C# is reviewed rather than built — and given that this slice exists partly
+*because* of that gap, the point deserves stating plainly rather than in a footnote. The specific risks, in
+order: the `@using MyRestaurant.Domain.Menu` added to `ManageMenuItem.razor` is a new import on a Razor
+page and would fail as `CS0246` if `ImageFormat` did not resolve; the argument walk in the second gate
+assumes the attach call's first `);` is its own, which is true of the shipped formatting and would break if
+the call were reformatted onto one line; and scenario 20's assertion that the downscaler leaves a small
+file's `type` untouched is argued from `menu-picture.js`'s early return rather than observed.
+
+## Open items after this slice
+
+**The picture feature has no open items.** Stage 4's list is empty for the first time since 4a. The
+guest-side `srcset` question named in Stage 4e is not carried forward, because it was explicitly
+conditioned on somebody measuring it on a real service and nobody has.
+
+**The two menu resequencing verbs still have no §16.3 scenario.** With 18, 19 and 20 landed they are the
+largest end-to-end gap in the menu, and there is now no picture work in front of them.
+
+**Nothing reports which gates a failed build prevented from running.** F-82's residual, carried — and F-108
+is a second instance of the shape it describes, one register out: the build that failed was not the build
+that had just reported green.
+
+**Nothing treats a test that fails and then passes as evidence.** Carried.
+
+**`.sitting-meta` is declared by two components and the two have drifted.** Deferred a twenty-third time.
+
+**A CI job that runs the canonical stack on the canonical engine.** Thirty-second consecutive slice.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
+past four thousand two hundred lines.

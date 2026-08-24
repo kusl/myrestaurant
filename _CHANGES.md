@@ -1,10 +1,10 @@
-# M6 Slice 55 — the 500 an operator found, and the picture a phone can finally upload
+# M6 Slice 56 — the bytes decide the format, and the build CI runs
 
 Extract at the repository root. Every file in the archive is a **complete file**; nothing is a patch, and
 there are no scripts to run.
 
 ```
-tar -xzf m6-slice-55-downscaling-and-the-500.tar.gz
+tar -xzf m6-slice-56-bytes-decide-the-format.tar.gz
 ```
 
 ## Files to delete
@@ -17,109 +17,106 @@ Several gates in this tree enumerate their subject with `git ls-files`, so an un
 they do not see:
 
 ```
-git add src/MyRestaurant.WebApplication/wwwroot/js/menu-picture.js
-git add tests/MyRestaurant.WebApplication.Tests/Components/EditContextConsumerContractTests.cs
-git add tests/MyRestaurant.EndToEnd.Tests/Harness/PictureFixtures.cs
-git add tests/MyRestaurant.EndToEnd.Tests/MenuPictureScenarios.cs
+git add tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageContentTypeContractTests.cs
 ```
+
+That is the only new file.
 
 ## What is in the archive
 
 | Path | Why |
 | --- | --- |
-| `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuItem.razor` | **F-106**: the `ValidationMessage` moves inside its `EditForm`. Also reads the cap and splats the two downscaler attributes onto the file input |
-| `src/MyRestaurant.WebApplication/Components/App.razor` | Loads `js/menu-picture.js` beside the other four classic scripts |
-| `src/MyRestaurant.WebApplication/Menu/MenuItemImageEndpoints.cs` | `MenuItemImageUpload` gains the two attribute names, the status element id, and the longest edge |
-| `src/MyRestaurant.WebApplication/wwwroot/js/menu-picture.js` | **new** — the browser-side downscaler |
-| `src/MyRestaurant.DataAccess/Menu/MenuItemImages.cs` | `IMenuItemImageDirectory.ReadDeclaredByteCapAsync`, so the cap travels instead of being copied (**F-107**) |
-| `tests/MyRestaurant.WebApplication.Tests/Components/EditContextConsumerContractTests.cs` | **new** — the gate for F-106, two facts |
-| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageSurfaceContractTests.cs` | Ten facts to twelve (Stage 4e, F-107) |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/PictureFixtures.cs` | **new** — a real PNG at any size, generated rather than carried |
-| `tests/MyRestaurant.EndToEnd.Tests/MenuPictureScenarios.cs` | **new** — §16.3 scenarios 18 and 19 |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.40**: §7 downscaling, §16.3 18–19, §16.4 the new gate and the widened surface contract, Appendix A F-106 and F-107, changelog |
-| `docs/DOCUMENTATION_REVIEW.md` | F-106 and F-107 rows, and the status line |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 4e, and Stage 4d's two open items closed |
-| `docs/BUILD_PROGRESS.md` | The Slice 55 narrative |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/PictureFixtures.cs` | **F-108**: the `stackalloc` moves above the loop. This is the build break |
+| `src/MyRestaurant.WebApplication/Components/Pages/Administration/ManageMenuItem.razor` | **F-109**: identifies the media type from the bytes. **F-110**: both format censuses become derived. Also gains `@using MyRestaurant.Domain.Menu` |
+| `src/MyRestaurant.WebApplication/Menu/MenuItemImageEndpoints.cs` | **F-110**: `MenuItemImageUpload.RecognisedTypesForOperators`, derived from the same census `AcceptAttribute` is |
+| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageContentTypeContractTests.cs` | **new** — three facts, all proven sensitive against the tree as it shipped |
+| `tests/MyRestaurant.EndToEnd.Tests/MenuPictureScenarios.cs` | §16.3 scenario **20** |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.41**: §7 rewritten on what decides a media type, §16.3 scenario 20, §16.4 the new class, Appendix A F-108/F-109/F-110, changelog |
+| `docs/DOCUMENTATION_REVIEW.md` | Three ledger rows, and a status line about deferrals rather than about media types |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 4f, and Stage 4e's carried item struck through and closed |
+| `docs/BUILD_PROGRESS.md` | The Slice 56 narrative, shipped whole |
 | `_CHANGES.md` | This file |
 
 ## Test count
 
-Baseline **1250**, verified from your terminal log rather than predicted — the first slice in three whose
-starting count was confirmed rather than assumed.
+Baseline **1256**, verified from your terminal log. Slice 55 predicted 1256 and the run returned 1256.
 
 | Where | Facts | Running |
 | --- | --- | --- |
-| Baseline (verified) | — | 1250 |
-| `EditContextConsumerContractTests` (new) | +2 | 1252 |
-| `MenuItemImageSurfaceContractTests` (10 to 12) | +2 | 1254 |
-| `MenuPictureScenarios` (new) | +2 | 1256 |
+| Baseline (verified) | — | 1256 |
+| `MenuItemImageContentTypeContractTests` (new) | +3 | 1259 |
+| `MenuPictureScenarios` (2 to 3) | +1 | 1260 |
 
-**Predicted: 1256.** The §16.3 suite moves from seventeen to **nineteen**; a run without
-`MYRESTAURANT_E2E=1` reports the two new scenarios as skipped, exactly as it does the other seventeen.
-Anything other than 1256 is the first thing to investigate.
+**Predicted: 1260.** The §16.3 suite moves from nineteen to **twenty**. Anything other than 1260 is the
+first thing to investigate.
 
-## The defect, in three steps
+## The build break, in one paragraph
 
-Your report named the wrong request, which is why this was hard to find.
-`ManageMenuItem.razor` carried `<ValidationMessage For="@(() => AltTextInput.AltText)" />` one line
-**below** `</EditForm>`, inside the block that only renders when a picture exists:
+`ci_local.sh` stopped at step 5 and everything after it never ran. `PictureFixtures.Deflate` declared a
+four-byte `stackalloc` inside its loop; stack memory is released when the *method* returns rather than when
+the iteration ends, so the frame grows once per pass. In fact it cost seventy-six bytes. What matters is
+that `Directory.Build.props` deliberately leaves warnings non-fatal for a plain `dotnet build` and makes
+them errors under the flag CI passes — so the same defect is one line of scrollback locally and a halt in
+the pipeline. Your session shows three green signals and then the one that counts. **No gate is added:**
+CA2014 is the gate, it ran, it decided correctly and it blocked.
 
-1. The attaching POST renders the page first, while `_picture` is still `null` — the row is not written
-   yet — so the block does not render. The upload **succeeds**, commits, writes its `attached` event, and
-   redirects.
-2. The browser follows the redirect. That GET is the first render in which a picture exists. An `EditForm`
-   cascades its `EditContext` to its **children**, a sibling receives none, and
-   `ValidationMessage.OnParametersSet` throws `InvalidOperationException` without one. **500.**
-3. Every subsequent view of that item answered 500 — **including the one carrying the Remove button** — so
-   the state was not reversible from any surface in the application.
+## The six-slice item, and why it took six slices
 
-If you have an item stuck in that state from before this slice, deploying this fixes it. Nothing needs to
-be undone in the database: the picture and its event were written correctly all along.
+Stage 4b diagnosed F-109 correctly, wrote the fix out in full — *identify from the bytes and pass that* —
+and declined it on one sentence: doing so *"would make two of the write's outcomes unreachable from the only
+surface that can reach them"*. That sentence was copied forward into four consecutive open-item lists
+without being re-read as a claim.
+
+It is true, and it is not a cost. Those two outcomes belong to a **library**, and `MenuItemImageTests`
+reaches both directly on every integration run; an outcome no *form* can produce is not an outcome nothing
+tests. The real worry underneath — that a surface deciding what an image is would be a second authority on
+what may be stored — is answered rather than dismissed: what the surface passes is the answer of the same
+pure function the write consults, so there is one decision procedure called twice, and the write's two
+checks are now true by construction rather than by luck.
+
+**F-62 said a reason for not doing something is a claim about the tree, checked before it is written down.
+This adds the other half: a claim used to defer is re-checked each time it is used again.**
 
 ## Veto points
 
 Three decisions are worth reversing if you disagree, and each is reversible on its own.
 
-**1. `ReadDeclaredByteCapAsync` runs on every render of the item page.** One lookup on a catalogue table,
-beside the five reads already there. The alternative was a startup-cached singleton, refused because a
-process remembering a number across a migration that changed it is the staleness §17 exists to prevent one
-register up. *To reverse:* delete the method from `IMenuItemImageDirectory` and its implementation in
-`DapperMenuItemImageDirectory`; delete `_pictureByteCap`, `PictureBudgetAttributes` and the
-`_pictureByteCap = await …` line from `ManageMenuItem.razor`; drop `@attributes="PictureBudgetAttributes"`
-from the file input. The downscaler then never switches on, and `TheUploadControlIsHandedTheCapAndAPlaceToReport`
-and `NoFileUnderSourceRestatesTheStoredPictureCap` must go with it — leaving `MenuItemImageSurfaceContractTests`
-at ten facts and §16.4 saying **Ten assertions** again.
+**1. `ContentTypeContradictedByBytes`'s arm is kept although nothing can now reach it from that page.** The
+alternative is deleting it, which is tidier and which answers a future refusal with a redirect and silence —
+the worst failure available on an upload surface. *To reverse:* delete the `case` and its comment from
+`ManageMenuItem.razor`. Nothing else changes; the enum member and its write-side test stay where they are.
 
-**2. The longest edge is 1600px, and it is a genuinely new number.** It is not a second copy of anything —
-no pixel dimension has ever been written down in this repository, because §8.2 stores none (F-101) — but it
-is still a number somebody chose. *To reverse:* change `MenuItemImageUpload.LongestEdgePixels`. Nothing
-else reads it.
+**2. The refusal renders media types (`image/jpeg, image/png, image/webp`) rather than English names.** It
+reads a little more mechanically. The alternative needs a map from type to article-and-name, which would be
+the fourth copy of the vocabulary this change exists to remove. *To reverse:* change
+`MenuItemImageUpload.RecognisedTypesForOperators`; both the lede paragraph and the refusal read it, and the
+third gate keeps working as long as no format name is spelled in the page itself.
 
-**3. Scenario 19 is the riskiest thing in this delivery.** It drives a real `<canvas>` in headless
-Chromium and waits on a settled status sentence beside a re-enabled control. Nothing here was executed, so
-if it is flaky the likeliest cause is timing rather than the mechanism. *To reverse:* delete
-`MenuPictureScenarios.cs` and `PictureFixtures.cs`, remove §16.3's rows 18 and 19 and the fixture
-paragraph, and put "nineteen" back to "seventeen" in §16.4's CI sentence. **Scenario 18 is the one that
-would have caught F-106**, so if only one survives, keep that one — it needs `PictureFixtures` too.
+**3. Scenario 20 asserts that the downscaler leaves a small file's declared type untouched.** That is
+argued from `menu-picture.js`'s early return rather than observed, and it is the one assertion in the new
+scenario that could fail for a reason having nothing to do with F-109. *To reverse:* delete the
+`Assert.Equal(UnnamedContentType, held)` block. The scenario still proves the fix; it just stops proving
+that it is testing what it thinks it is.
 
 ## What was verified before packaging, and what was not
 
-**Verified mechanically.** The working tree was reconstructed from `dump.txt` and SHA-256 checked file by
-file: 364 of 365 matched, the exception being `LICENSE`, which the dump elides to metadata by design. The
-PNG generator's exact arithmetic — the CRC-32 table, the Adler-32 accumulator, the stored-block framing,
-the integer-division ramp — was re-implemented and its output decoded at both fixture sizes: 12px is 512
-bytes and decodes as 12×12 RGB, 640px is 1,229,598 bytes and re-encodes to about 16 KB as JPEG. The new
-`EditContextConsumer` walk was run against the repaired tree (51 components, 83 consumers, 0 findings)
-**and** against `ManageMenuItem.razor` as it shipped in the dump, where it reported one finding at the
-right line. The §16.4 counted-class gate was emulated over the edited specification: 30 counted classes
+**Verified mechanically.** The tree was reconstructed from `dump.txt` and SHA-256 checked file by file: 370
+files, the only differences being `export.sh` (it embeds its own file marker) and `LICENSE` (elided by
+design). **No session drift.** All three new gates were emulated twice — against the repaired tree, where
+each passes, and against `ManageMenuItem.razor` exactly as it shipped in your dump, where each fails: the
+first naming `file.ContentType`, the second reporting no `IdentifyContentType` call, the third naming all
+three format words and the missing census. 185 files under `src/` were walked and exactly one binds an
+`IFormFile`. The §16.4 counted-class gate was emulated over the edited specification: 31 counted classes
 against a floor of 29, no disagreements, no ambiguous paragraphs, no uncited names. The Markdown table gate
-was emulated over every edited document. Byte hygiene — no CR, final newline present, no whitespace-only
-lines — was checked on every file in the archive. The cap-restatement fact was emulated over the real tree:
-the bound parses out of `0006` as six digits, 178 files under `src/` were scanned, and none restates it.
+was emulated with the real unescaped-pipe splitter across every tracked document: 415 rows, no problems.
+The version gate was emulated: two versioned documents, headers matching their newest entries, entries
+descending. Byte hygiene was checked on every file in the archive.
 
-**Not verified.** Nothing was compiled and nothing was run. There is no .NET SDK and no reachable NuGet
-from where this slice was authored, so the C# is reviewed rather than built — in particular the Playwright
-call shapes in `MenuPictureScenarios`, which are the least familiar API surface in this delivery. The
-downscaler has not executed in any browser; its behaviour is argued from the specifications of
-`createImageBitmap`, `canvas.toBlob` and `DataTransfer`, and from the JPEG sizes measured on the fixture
-images.
+**Not verified.** Nothing was compiled and nothing was run — and since this slice exists partly because of
+that gap, it is worth stating plainly. The specific risks, in order: the `@using MyRestaurant.Domain.Menu`
+added to `ManageMenuItem.razor` is a new import on a Razor page and would fail as `CS0246` if `ImageFormat`
+did not resolve from there (it is `public static` in `MyRestaurant.Domain`, which `MyRestaurant.WebApplication`
+references transitively through `MyRestaurant.DataAccess`, and `MenuItemImageEndpoints.cs` already imports
+that namespace in the same assembly); the second gate's argument walk assumes the attach call's first `);`
+is its own, which is true of the shipped formatting and would break if the call were reformatted onto one
+line; and scenario 20's `type` assertion is argued rather than observed, which is veto point 3.

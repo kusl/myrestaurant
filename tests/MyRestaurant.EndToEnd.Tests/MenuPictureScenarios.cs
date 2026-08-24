@@ -6,8 +6,9 @@ using Xunit;
 namespace MyRestaurant.EndToEnd.Tests;
 
 /// <summary>
-/// §16.3 scenarios <b>18</b> and <b>19</b>: an administrator puts a photograph on a dish, and the browser
-/// makes one that is too large fit (TECHNICAL_SPECIFICATION §7, §11.4, §16.3; Stage 4e).
+/// §16.3 scenarios <b>18</b>, <b>19</b> and <b>20</b>: an administrator puts a photograph on a dish, the
+/// browser makes one that is too large fit, and one the browser cannot name is stored as what it is
+/// (TECHNICAL_SPECIFICATION §7, §11.4, §16.3; Stages 4e and 4f).
 ///
 /// <para><b>Why these exist, and it is not tidiness.</b> Four slices built this feature and no browser
 /// had ever loaded a picture through it. The consequence arrived exactly as an unexercised path does:
@@ -33,7 +34,14 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// round-trips, that the browser reduces one over §8.2's cap, and that the history records what
 /// happened.</para>
 ///
-/// <para>Both begin with <see cref="SkipUnlessHarnessAvailable"/>, on the same opt-in
+/// <para><b>Scenario 20 closes the item the other two narrowed (F-109, Stage 4f).</b> Stage 4e stopped
+/// this defect reproducing on anything the downscaler touched — a re-encoded picture arrives as
+/// <c>image/jpeg</c> whatever it was labelled — and left the case of a file that already fits, which is
+/// the case a small photograph and a screenshot are. That scenario uploads a real PNG under a name with
+/// no extension and the media type a browser falls back to when it cannot classify one, and requires the
+/// server to store it as what its <em>bytes</em> are.</para>
+///
+/// <para>All three begin with <see cref="SkipUnlessHarnessAvailable"/>, on the same opt-in
 /// (<c>MYRESTAURANT_E2E=1</c>) plus container engine plus Chromium plus current build that every other
 /// scenario needs.</para>
 /// </summary>
@@ -64,6 +72,14 @@ public sealed class MenuPictureScenarios : IClassFixture<RestaurantHarness>
     private const string FlashSelector = ".status-success";
 
     private const string ThumbnailSelector = "img.manage-picture-image";
+
+    /// <summary>
+    /// What a browser sends when it cannot name a file's format — an operating system with no extension
+    /// mapping, or a file with no extension at all. Scenario 20's whole arrangement, and it is written
+    /// here rather than derived because it is deliberately <b>not</b> a member of §8.2's census: this is
+    /// the string that must never decide anything, so there is nothing for it to drift from.
+    /// </summary>
+    private const string UnnamedContentType = "application/octet-stream";
 
     public MenuPictureScenarios(RestaurantHarness harness) => _harness = harness;
 
@@ -312,6 +328,98 @@ public sealed class MenuPictureScenarios : IClassFixture<RestaurantHarness>
             "Picture attached",
             await PictureHistoryAsync(administrator),
             StringComparison.Ordinal);
+    }
+
+    // -------------------------------------------------------------------------------------------
+    //  20. A browser that cannot name the format uploads a picture anyway, and the bytes decide.
+    //
+    //      The open item this feature carried for six slices (F-109). IFormFile.ContentType is not a
+    //      fact about the file: it is whatever the operating system's extension map produced for the
+    //      chosen filename, so a Linux desktop with no shared-mime-info, an Android browser handed a
+    //      file from a document provider, and any file saved WITHOUT AN EXTENSION all send
+    //      application/octet-stream for a perfectly good PNG. That string is in no census, so the
+    //      upload was refused and the operator read a sentence blaming the format of a file whose
+    //      format was fine.
+    //
+    //      The picture is deliberately UNDER the cap, which is what makes this scenario about F-109
+    //      and nothing else. Stage 4e narrowed this defect without closing it: anything the downscaler
+    //      touches comes back from canvas.toBlob as image/jpeg whatever it was labelled, so an
+    //      oversized upload had already stopped reproducing it. A file that already fits is left
+    //      completely alone, declared media type included — which is exactly the remaining case, and
+    //      the reason the fixture edge here is the small one.
+    //
+    //      The closing assertion is that the STORED format is image/png. Accepting the upload alone
+    //      would also be satisfied by a server that believed the label and wrote octet-stream into the
+    //      column — which §7's route would then hand back as a response header, on this origin, for a
+    //      year.
+    // -------------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Administrator_AttachesAPictureTheBrowserCouldNotName()
+    {
+        SkipUnlessHarnessAvailable();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        const string dish = "E2E Potted Shrimp";
+
+        await using RestaurantInstance instance =
+            await _harness.StartInstanceAsync(cancellationToken: cancellationToken);
+
+        IPage administrator = instance.Page;
+        await AccountJourneys.CompleteSetupAsync(administrator, AccountJourneys.DefaultAdministrator);
+
+        MenuItemOnTheMenu item =
+            await AdministrationJourneys.CreateMenuItemAsync(administrator, dish, 9.75m);
+
+        await administrator.GotoAsync($"/administration/menu/{item.Identifier:D}");
+
+        byte[] picture = PictureFixtures.SquareGradientPng(SmallPictureEdge);
+
+        // No extension on the name and the media type every system with no mapping falls back to.
+        // Both halves are the arrangement: a name a browser cannot classify is how the fallback is
+        // reached in the first place.
+        await administrator.SetInputFilesAsync(
+            FileInputSelector,
+            new FilePayload
+            {
+                Name = "shrimp",
+                MimeType = UnnamedContentType,
+                Buffer = picture,
+            });
+
+        await administrator.Locator(StatusSelector).WaitForAsync(
+            new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 30_000 });
+
+        // The downscaler leaves it alone, which is what keeps the label intact all the way to the
+        // server. If this ever stops being true the scenario silently stops being about F-109.
+        string held = await administrator
+            .Locator(FileInputSelector)
+            .EvaluateAsync<string>("element => element.files[0].type");
+
+        Assert.Equal(UnnamedContentType, held);
+
+        await administrator.ClickAsync("button:has-text('Attach picture')");
+
+        await administrator.Locator(FlashSelector).WaitForAsync(
+            new LocatorWaitForOptions { Timeout = 30_000 });
+
+        Assert.Contains(
+            "Picture attached",
+            await administrator.InnerTextAsync(FlashSelector),
+            StringComparison.Ordinal);
+
+        // Stored as what it IS. Before Stage 4f this upload's only possible outcome was a refusal;
+        // believing the label instead would put octet-stream in the column and then into §7's response
+        // header, so the positive assertion and the negative one are both required.
+        string facts = await administrator.InnerTextAsync("figcaption.manage-picture-facts");
+
+        Assert.Contains("image/png", facts, StringComparison.Ordinal);
+        Assert.DoesNotContain(UnnamedContentType, facts, StringComparison.Ordinal);
+
+        ILocator thumbnail = administrator.Locator(ThumbnailSelector);
+        await thumbnail.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+
+        int decodedWidth = await thumbnail.EvaluateAsync<int>("element => element.naturalWidth");
+        Assert.Equal(SmallPictureEdge, decodedWidth);
     }
 
     /// <summary>

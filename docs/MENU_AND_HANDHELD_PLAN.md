@@ -1402,14 +1402,85 @@ is the reason this plan gave for deferring a picture scenario four times, and bo
 
 ### What is open after this stage
 
-**A browser that sends `application/octet-stream` for a genuine PNG is refused.** Carried for a sixth slice
-— and narrowed rather than fixed, because a downscaled picture arrives as `image/jpeg` whatever it was
-labelled. The remaining case is a file already under the cap.
+**A browser that sends `application/octet-stream` for a genuine PNG is refused.** ~~Carried for a sixth
+slice~~ — **closed in Stage 4f below, M6 Slice 56.** The narrowing recorded here was correct and was the
+reason it stayed easy to defer: a downscaled picture arrives as `image/jpeg` whatever it was labelled, so
+only files already under the cap still reproduced it.
 
 **Nothing here resizes on the guest's side of the menu.** §11.1 renders the stored bytes at whatever size
 they are, inside `.order-menu-thumbnail`'s own box. With a 1600px longest edge that is a handset
 downloading rather more than it displays. A `srcset` would need stored variants, which is a schema change
 and a second copy of every photograph; revisit only if somebody measures it on a real service.
+
+---
+
+## Stage 4f — images: the bytes decide the format — **landed, M6 Slice 56**
+
+**The oldest open item this plan has carried, and it was never a hard problem.** Stage 4b recorded it in
+its own "what is open" list with the fix written out in full — *identify from the bytes and pass that* —
+and it was then copied forward, unchanged, into Stage 4c's list, Stage 4d's, and Stage 4e's. Six slices.
+An administrator whose desktop has no MIME mapping, whose browser handed the form a file from a document
+provider, or who simply saved a screenshot without an extension, uploaded a perfectly good PNG and was
+told it was *"not a picture format this menu serves"*.
+
+### Why the deferral held for so long, which is the part worth keeping
+
+The reason given each time was one sentence: taking the fix *"would make two of the write's outcomes
+unreachable from the only surface that can reach them"*. **That sentence is true and it is not a cost**,
+and the difference is the whole ruling. `UnsupportedContentType` and `ContentTypeContradictedByBytes` are
+the write service's answers, and the write service is a **library** — its contract is for any caller, and
+`MenuItemImageTests` reaches both of them directly, without a surface, on every integration run. An
+outcome no *form* can produce is not an outcome nothing tests.
+
+There is a real version of the worry underneath it, and it is answered rather than dismissed: a surface
+that decided for itself what an image is would be a **second authority** on what may be stored. That is
+F-64/F-69's mechanism and it would be right to refuse. But what the surface passes is the answer of
+**the same pure function the write consults** — one decision procedure called twice, not two that can
+disagree. The write still checks the census and still checks the signature; both are now true by
+construction rather than by luck, which is a stronger arrangement than the one being replaced.
+
+**The general lesson is about deferrals rather than about media types, and it is in the ledger as
+F-109.** A recorded fix with a recorded reason is comfortable to carry: it reads as diligence every time
+it is re-read, and the justifying sentence is never re-examined, because re-examination is not what
+re-reading is for. F-62 established that a reason for not doing something is a claim about the tree and is
+checked before it is written down. This adds the other half: **a claim used to defer is re-checked each
+time it is used again.**
+
+### The three rulings
+
+**Unidentifiable bytes are handed on as the empty string rather than refused at the surface.** The empty
+string is in no census, so the write answers `UnsupportedContentType` exactly as it did and this page
+renders the sentence for it. A local refusal would have been shorter code and would have made this form
+the first place in the application able to turn an upload away without the write service having seen it.
+
+**`ContentTypeContradictedByBytes`'s arm is kept although nothing can now produce it here.** Deleting it
+would answer a future refusal with a redirect and silence, which is the worst failure available on an
+upload surface. A surface's defence in depth is not a second opinion about what may be stored.
+
+**The refusal names the formats by rendering the census, not by spelling them.** Found on the way in
+(**F-110**): the refusal said *"Choose a JPEG, a PNG or a WebP"* and the paragraph above the form said
+*"JPEG, PNG or WebP"* — a fourth and fifth declaration of the vocabulary, both invisible to every gate,
+both silently wrong the day a migration admits a fourth format. It renders **media types** rather than
+English names deliberately: a map from `image/webp` to *"a WebP"* would itself be the copy being removed,
+and the operator now sees exactly the list their file picker was filtered by.
+
+### The build break this stage shipped behind (F-108)
+
+Stage 4e's fixture generator declared a `stackalloc` inside a loop. CA2014 — and the reason it shipped is
+that `Directory.Build.props` deliberately leaves warnings non-fatal for a plain `dotnet build` and makes
+them errors under the flag CI passes, so the same defect is one line of scrollback locally and a halt in
+the pipeline. `dotnet test` returned **1256** green, exactly as predicted, while `scripts/ci_local.sh`
+stopped at step 5. It is filed with this stage rather than in one of its own because the two are one
+delivery, and because the honest lesson is about which verdict counts rather than about spans.
+
+### What is open after this stage
+
+**Nothing about the picture feature.** Stage 4's open list is empty for the first time since 4a — the
+guest-side `srcset` question named in 4e is not carried forward as an item, because it was explicitly
+conditioned on somebody measuring it on a real service and nobody has.
+
+**The next thing in this plan is Stage 5**, and the two rulings it needs are unchanged and are stated
+below.
 
 ---
 

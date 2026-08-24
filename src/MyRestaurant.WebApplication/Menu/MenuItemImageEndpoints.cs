@@ -67,6 +67,27 @@ public static class MenuItemImageUpload
         string.Join(",", ImageFormat.RecognisedContentTypes);
 
     /// <summary>
+    /// The same census, punctuated for a person to read, for the one refusal that has to name it
+    /// (Stage 4f).
+    ///
+    /// <para><b>Why this exists rather than three words in a sentence.</b> The refusal an operator reads
+    /// when their file is not a picture has to say which formats <em>are</em>, and until Stage 4f it said
+    /// so by spelling them out — <em>"Choose a JPEG, a PNG or a WebP"</em>. That is the media-type
+    /// vocabulary's <b>fourth</b> declaration, after §8.2's CHECK, <see cref="ImageFormat"/>'s own census
+    /// and <see cref="AcceptAttribute"/>, and it is the copy furthest from anything that could refuse a
+    /// fourth format being added without it (<b>F-110</b>). Deriving it puts the sentence on the same
+    /// footing the file picker's hint has been on since Stage 4b.</para>
+    ///
+    /// <para><b>It renders media types rather than English names</b>, which reads a little more
+    /// mechanically and is the honest choice: turning <c>image/webp</c> into <em>"a WebP"</em> needs a
+    /// map from type to article-and-name, and that map would itself be a fourth copy — the thing this
+    /// property exists to remove. The operator sees exactly the list their file picker was filtered by,
+    /// which is the same list, so the two surfaces cannot disagree about what may be chosen.</para>
+    /// </summary>
+    public static string RecognisedTypesForOperators { get; } =
+        string.Join(", ", ImageFormat.RecognisedContentTypes);
+
+    /// <summary>
     /// The attribute carrying §8.2's cap to the browser, in bytes (Stage 4e).
     ///
     /// <para><b>Its presence is what switches the downscaler on</b>, which is the whole of the

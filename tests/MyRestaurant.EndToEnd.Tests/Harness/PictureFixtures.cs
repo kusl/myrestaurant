@@ -121,6 +121,15 @@ internal static class PictureFixtures
         stream.WriteByte(0x78);
         stream.WriteByte(0x01);
 
+        // DECLARED HERE RATHER THAN INSIDE THE LOOP, AND THAT IS CA2014 (F-108). A `stackalloc` is
+        // released when the METHOD returns, not when the iteration ends, so one inside a loop grows the
+        // frame once per pass — a temporary leak on any input and a stack overflow on a large enough
+        // one. This loop runs once per 64 KiB of raster, so the 640px fixture ran it nineteen times for
+        // seventy-six bytes: harmless in fact, and an error under `-p:ContinuousIntegrationBuild=true`,
+        // which is what CI builds with. Hoisting is behaviour-identical because every pass overwrites
+        // all four bytes before reading any of them.
+        Span<byte> lengths = stackalloc byte[4];
+
         int offset = 0;
         while (true)
         {
@@ -131,7 +140,6 @@ internal static class PictureFixtures
             // here, which is the whole reason this encoding needs no bit writer.
             stream.WriteByte((byte)(final ? 1 : 0));
 
-            Span<byte> lengths = stackalloc byte[4];
             BinaryPrimitives.WriteUInt16LittleEndian(lengths[..2], (ushort)take);
             BinaryPrimitives.WriteUInt16LittleEndian(lengths[2..], (ushort)~(ushort)take);
             stream.Write(lengths);

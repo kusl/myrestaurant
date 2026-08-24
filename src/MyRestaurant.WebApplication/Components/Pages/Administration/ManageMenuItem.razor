@@ -3,6 +3,7 @@
 @attribute [Authorize(Policy = AuthorizationPolicies.Administration)]
 @using MyRestaurant.DataAccess.Menu
 @using MyRestaurant.Domain.Identifiers
+@using MyRestaurant.Domain.Menu
 @using MyRestaurant.WebApplication.Menu
 @using MyRestaurant.WebApplication.Orders
 @inject IMenuDirectory MenuItems
@@ -184,12 +185,16 @@ else
         <h2 class="manage-heading">Picture</h2>
         <p class="lede">
             One photograph of the dish. It is stored in this restaurant's own database and served by this
-            application, so nothing about the menu leaves the building. JPEG, PNG or WebP; anything else is
-            refused with a reason. <strong>The size limit belongs to the database rather than to this
-            page</strong>, and a photograph straight off a phone camera is usually over it — the answer
-            will say so and nothing will have changed. Attaching a second picture replaces the first: the
-            old one is deleted and its address stops working, which is exactly why a browser is told it may
-            keep a picture for a year.
+            application, so nothing about the menu leaves the building. The formats it stores are
+            @MenuItemImageUpload.RecognisedTypesForOperators — and <strong>what a file is decides
+            that, rather than what it is called</strong>, so a picture saved without an extension is
+            perfectly acceptable and anything that is not a picture is refused with a reason.
+            <strong>The size limit belongs to the database rather than to this page</strong>, and a
+            photograph straight off a phone camera is usually several times over it — this browser will
+            resize a copy to fit before it is sent, and say below what it did. The file on this device is
+            never altered. Attaching a second picture replaces the first: the old one is deleted and its
+            address stops working, which is exactly why a browser is told it may keep a picture for a
+            year.
         </p>
 
         @if (_picture is not null)
@@ -847,11 +852,30 @@ else
     /// Kestrel's request-body limit, which no form here raises. So the picture form introduces no new
     /// number anywhere.</para>
     ///
-    /// <para><b>The declared media type is the browser's, handed on unaltered.</b> This page does not
-    /// identify the format itself, even though <c>ImageFormat</c> is public and could: the write service
-    /// is the one place that decides what an image is, and a surface that pre-judged would leave two of
-    /// its outcomes unreachable from the only form that can produce them. What the browser sends is what
-    /// gets checked against the bytes.</para>
+    /// <para><b>THE BYTES DECIDE THE MEDIA TYPE, AND THE BROWSER'S <c>Content-Type</c> IS NOT READ AT
+    /// ALL (F-109, Stage 4f).</b> An <c>IFormFile.ContentType</c> on a multipart upload is whatever the
+    /// operating system's extension map produced for the chosen filename — so a Linux desktop without
+    /// <c>shared-mime-info</c>, an Android browser handed a file from a document provider, and any file
+    /// saved without an extension all send <c>application/octet-stream</c> for a perfectly good PNG, and
+    /// this form refused every one of them with a sentence blaming the format. It was carried as an open
+    /// item for six slices. This page now asks <c>ImageFormat.IdentifyContentType</c> what the bytes are
+    /// and passes <em>that</em>.</para>
+    ///
+    /// <para><b>This is not a second authority on what may be stored, and the distinction is the whole
+    /// of the ruling.</b> The objection recorded when the fix was first written down was that a surface
+    /// which pre-judged would leave two of the write's outcomes unreachable from the only form that can
+    /// produce them. What is passed here is the answer of <em>the very function the write service
+    /// consults</em>, so there is one decision procedure called twice rather than two procedures that
+    /// can disagree: the write still checks the census and still checks the signature, and both checks
+    /// are now true by construction rather than by luck. Both outcomes remain reachable at the write's
+    /// own boundary, where <c>MenuItemImageTests</c> reaches them directly — the write is a library and
+    /// its contract is for any caller, not only for this one.</para>
+    ///
+    /// <para><b>Unidentifiable bytes are handed on as <c>string.Empty</c> rather than refused here</b>,
+    /// which keeps every refusal the write service's exactly as it was: the empty string is in no
+    /// census, so the write answers <c>UnsupportedContentType</c> and this page renders the sentence for
+    /// it. A local refusal would have been shorter code and would have made this form the first place in
+    /// the application able to reject an upload the write service never saw.</para>
     /// </summary>
     private async Task AttachPictureAsync()
     {
@@ -871,12 +895,18 @@ else
             bytes = buffer.ToArray();
         }
 
+        // What the bytes ARE, not what the browser guessed from the filename (F-109). Null — nothing
+        // this application serves, or too few bytes to carry a signature — becomes the empty string,
+        // which is in no census, so the write refuses it as it always did and this page keeps exactly
+        // one place where an upload can be turned away.
+        string identified = ImageFormat.IdentifyContentType(bytes) ?? string.Empty;
+
         // A NEW identifier every time, including on a replace: §7's route is keyed on the image so that
         // the URL changes when the bytes do, which is what makes the immutable cache header true.
         AttachMenuItemImageResult result = await MenuChanges.AttachMenuItemImageAsync(
             IdentifierFactory.Create(),
             MenuItemId,
-            file?.ContentType ?? string.Empty,
+            identified,
             bytes,
             administrator,
             HttpContext.RequestAborted);
@@ -897,14 +927,29 @@ else
                 _errorMessage = "No file was chosen, or the file was empty. Nothing changed.";
                 break;
             case AttachMenuItemImageOutcome.UnsupportedContentType:
+                // Reworded with Stage 4f, because the old sentence quoted what the browser had sent and
+                // nothing sends it any more. It also spelled the vocabulary out in English, which was
+                // its fourth declaration in this repository (F-110); the list now comes from the same
+                // census the file picker's own `accept` hint is built from, so the two cannot disagree
+                // about what may be chosen. The second sentence is the useful half: an operator whose
+                // file was refused for its NAME would try renaming it, and this refusal is not about
+                // the name.
                 _errorMessage =
-                    $"Your browser sent that file as “{file?.ContentType}”, which is not a picture format"
-                    + " this menu serves. Choose a JPEG, a PNG or a WebP. Nothing changed.";
+                    "That file is not a picture in any format this menu stores ("
+                    + MenuItemImageUpload.RecognisedTypesForOperators
+                    + "). This was decided by reading the file itself rather than its name, so renaming"
+                    + " it will not help. Nothing changed.";
                 break;
             case AttachMenuItemImageOutcome.ContentTypeContradictedByBytes:
+                // UNREACHABLE FROM THIS PAGE SINCE STAGE 4f, AND KEPT DELIBERATELY. The type handed to
+                // the write is the one the write's own identifier derived from these same bytes, so the
+                // comparison that produces this outcome cannot fail here. It stays because the write is
+                // a library whose contract is for any caller, and because the failure mode of deleting
+                // the arm is the worst one available: an operator would get a redirect and silence. It
+                // is a surface's defence in depth rather than a second opinion about what may be stored.
                 _errorMessage =
-                    "That file is not the format its name says it is, so it was refused rather than"
-                    + " stored under a label this application would then serve it with. Nothing changed.";
+                    "That file was refused because its contents and its declared format disagree."
+                    + " Nothing changed.";
                 break;
             case AttachMenuItemImageOutcome.BytesOverCap:
                 _errorMessage =
