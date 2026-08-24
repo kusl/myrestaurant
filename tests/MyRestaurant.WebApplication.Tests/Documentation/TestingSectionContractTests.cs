@@ -81,14 +81,17 @@ public sealed class TestingSectionContractTests
     /// empty — would satisfy every comparison below by having none to make, which is the failure mode of
     /// every gate that computes its own subject (F-41).
     ///
-    /// <para>This is the <em>only</em> place the census is written down (F-89). It moves with §16.4 —
-    /// twelve, sixteen, eighteen, nineteen as the vocabulary gate joined the section, twenty with the
-    /// identifier ordering gate, twenty-one with the context-dump exclusion gate, twenty-three as the
-    /// test-runner gate and the resequencing verb's integration facts joined it together, twenty-four with
-    /// the item resequencing facts, twenty-five with the menu grouping gate, and now twenty-seven as the
-    /// menu image schema brings a pure-function class and an integration class together — and it is the one
-    /// copy that cannot drift unnoticed, because a census that fell below it fails here rather than sitting
-    /// in a sentence nothing reads.</para>
+    /// <para>This is the <em>only</em> place the census is written down (F-89), and this paragraph used
+    /// to hold a second copy of it — <b>F-112</b>. It recited the whole sequence, twelve through
+    /// "twenty-seven", one line above a constant reading twenty-nine, against a §16.4 that by then stated
+    /// thirty-two. Three numbers, two of them wrong, in the one place a previous ruling had gone to the
+    /// trouble of clearing. <b>F-89's own remedy is what applies</b>: a prose copy of a number is deleted
+    /// rather than corrected, because the constant below is asserted on every run and can therefore only
+    /// go stale <em>loudly</em>, which is the property that made it the copy worth keeping. The narrative
+    /// is gone; <c>docs/BUILD_PROGRESS.md</c> is where the history of a number belongs.</para>
+    ///
+    /// <para>It moves with §16.4, in the slice that moves §16.4 — that habit is F-73's and it is the one
+    /// part of that ruling still standing.</para>
     ///
     /// <para>A floor rather than an equality, on purpose. An equality would turn every paragraph that
     /// merely <em>describes</em> a class without enumerating it into a failure, and §16.4 is prose — the
@@ -96,7 +99,7 @@ public sealed class TestingSectionContractTests
     /// refuses is the collapse to zero, which is the one failure a computed subject cannot report on
     /// itself.</para>
     /// </summary>
-    private const int MinimumCountedClasses = 29;
+    private const int MinimumCountedClasses = 33;
 
     /// <summary>
     /// A test class named inside backticks, in either of the two forms §16.4 uses: the full

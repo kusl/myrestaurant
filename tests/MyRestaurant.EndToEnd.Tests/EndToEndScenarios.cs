@@ -2862,49 +2862,25 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     }
 
     /// <summary>
-    /// One guest, from a code on a table to a live ordering surface: scan, self-register with a passkey,
-    /// join, and wait for the circuit. Returns their page.
+    /// One guest, from a code on a table to a live ordering surface — this file's eight call sites,
+    /// supplying <see cref="InteractivityPatience"/>.
     ///
-    /// <para><b>Their own browser context, with its own authenticator.</b> Cookies are per-context, and a
-    /// WebAuthn credential belongs to the authenticator that minted it — a passkey created anywhere else
-    /// would be offered to the wrong person and to nobody useful. §16.3 scenario 5 needs two of these
-    /// alive at once, which is the reason this is a method rather than four lines inside one
-    /// arrangement.</para>
-    ///
-    /// <para><b>The token is computed at the moment of the scan</b>, from the secret read out of the row
-    /// (<see cref="RestaurantInstance.ReadJoinSecretAsync"/>) rather than decoded off a display: these
-    /// scenarios are about what happens after the guest is seated, and pairing a tablet to get at a QR
-    /// would put scenario 2's whole apparatus in front of them. The token is still one the server really
-    /// verifies, and a second guest arriving later gets the code the table is showing then rather than a
-    /// copy of the first guest's.</para>
+    /// <para><b>The journey itself moved to <see cref="TableJourneys.SeatGuestAsync"/> in M6 Slice 58,
+    /// and this forwarder is what kept the move from touching eight call sites.</b> It was private here
+    /// from Slice 5, which was right while one file seated guests; a second scenario file needed one, and
+    /// a private method cannot be called from a second file, so the alternative to moving it was pasting
+    /// it — F-59's mechanism, and F-100's ruling about a walk that lived inside a Razor component. What
+    /// stays here is the one thing that is genuinely this file's: how long its scenarios are willing to
+    /// wait for a circuit.</para>
     /// </summary>
-    private static async Task<IPage> SeatGuestAsync(
+    private static Task<IPage> SeatGuestAsync(
         RestaurantInstance instance,
         Guid tableIdentifier,
         byte[] joinSecret,
         GuestAccount account,
         CancellationToken cancellationToken)
-    {
-        string token = JoinTokenService.ComputeCurrentToken(
-            joinSecret, tableIdentifier, DateTimeOffset.UtcNow, instance.TableJoinTokenRotationSeconds);
-
-        IPage guest = await instance.OpenIsolatedPageAsync(withVirtualAuthenticator: true);
-
-        Assert.Equal(
-            TableJourneys.JoinStage.SentToSignIn,
-            await TableJourneys.ScanAsync(guest, tableIdentifier, token));
-
-        await AccountJourneys.RegisterGuestWithPasskeyAsync(guest, account);
-        await TableJourneys.JoinAsync(guest);
-        await TableOrderJourneys.WaitForLiveSurfaceAsync(guest, InteractivityPatience);
-
-        // The cancellation token is not idle: it is the scenario's, and every wait above is bounded by
-        // its own timeout rather than by cancellation. Observing it here means a cancelled run stops at
-        // the seam between guests instead of registering a second account nobody will look at.
-        cancellationToken.ThrowIfCancellationRequested();
-
-        return guest;
-    }
+        => TableJourneys.SeatGuestAsync(
+            instance, tableIdentifier, joinSecret, account, InteractivityPatience, cancellationToken);
 
     /// <summary>
     /// Waits until a token minted at <paramref name="mintedAt"/> is outside §4.3's acceptance window.

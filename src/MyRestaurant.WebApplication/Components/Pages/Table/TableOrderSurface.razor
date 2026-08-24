@@ -10,6 +10,8 @@
 @implements IDisposable
 @inject IMenuDirectory MenuDirectory
 @inject IMenuItemImageDirectory MenuItemPictures
+@inject IMenuItemReactionDirectory MenuItemReactionReads
+@inject IMenuItemReactions MenuItemReactionWrites
 @inject IOrderReadModel OrderReads
 @inject IOrderEventLog EventLog
 @inject IOrderWorkflow Workflow
@@ -433,6 +435,45 @@
                                 staff if you would like to know more.
                             </p>
                         }
+
+                        @* §11.1's LIKE, and it is in THIS PANEL rather than on the card for a reason
+                           that is mechanical rather than aesthetic (Stage 5b). The card IS a
+                           `<button>`; a `<button>` inside a `<button>` is not markup a browser will
+                           keep, because the HTML parser closes the outer one when it meets the inner,
+                           so the card would silently become two elements and the half holding the name
+                           would stop staging anything. The plan ruled this before the markup was
+                           written and the ruling is recorded here because the failure it avoids is
+                           invisible in source and obvious only in a DOM inspector.
+
+                           NO COUNT REACHES THIS SURFACE, and that is Stage 5a's ruling rather than
+                           something not yet built. A count of 3 on a menu of sixty dishes is noise that
+                           makes a restaurant look empty, and the number's honest audience is the person
+                           deciding what to stock — so `ListLikeCountsAsync` is §11.4's read and this
+                           surface calls `ListLikedByAsync`, which answers about the presser and nobody
+                           else. `MenuItemReactionSurfaceContractTests` holds that as a fact over this
+                           whole directory, because it is exactly the kind of ruling a later slice
+                           improves away by adding one span.
+
+                           THE ACCESSIBLE NAME DOES NOT MOVE WITH THE STATE. A screen reader announces a
+                           toggle as name-then-state, so a button whose label changed to "Liked" would
+                           announce "Liked, pressed" — the state twice, in two vocabularies, one of them
+                           guessable. The word is constant, `aria-pressed` carries the state, and the
+                           glyph beside it changes shape rather than only colour so that a sighted
+                           reader who cannot distinguish the two colours still sees a difference. The
+                           card one loop up legitimately does the opposite: it is a one-of-many CHOICE
+                           whose chip says which one, not a toggle. *@
+                        <div class="order-menu-detail-actions">
+                            <button type="button"
+                                    class="order-menu-like @(IsLikedByMe(chosenItem) ? "is-liked" : string.Empty)"
+                                    data-menu-item-like="@chosenItem.MenuItemIdentifier"
+                                    aria-pressed="@(IsLikedByMe(chosenItem) ? "true" : "false")"
+                                    @onclick="() => ToggleLikeAsync(chosenItem)">
+                                <span class="order-menu-like-glyph" aria-hidden="true">
+                                    @(IsLikedByMe(chosenItem) ? "\u2665" : "\u2661")
+                                </span>
+                                <span class="order-menu-like-label">Like</span>
+                            </button>
+                        </div>
                     </div>
                 }
 
@@ -720,6 +761,30 @@
     /// than left-joining the whole menu.</para>
     /// </summary>
     private Dictionary<Guid, MenuItemImageMetadata> _picturesByItem = new();
+
+    /// <summary>
+    /// Which dishes <em>this</em> person currently likes (§7, §11.1; Stage 5b).
+    ///
+    /// <para><b>Their own presses and nobody else's.</b> <c>ListLikedByAsync</c> is keyed on the person,
+    /// and the other read on that directory — <c>ListLikeCountsAsync</c> — is deliberately not called
+    /// from anywhere on this surface: Stage 5a ruled the count staff-facing, so what a guest sees about
+    /// a dish is whether <em>they</em> pressed it.</para>
+    ///
+    /// <para><b>A set rather than a per-item read</b>, on the argument
+    /// <see cref="IMenuItemImageDirectory.ListAsync"/> already carries two fields up: a lookup inside
+    /// the render loop would turn a sixty-dish menu into sixty queries on every notification. It is read
+    /// in <see cref="LoadMenuAsync"/> beside the pictures because that is the one place this surface
+    /// loads the menu's per-item facts, and re-read whenever the menu is — harmless, and it incidentally
+    /// picks up a press this person made on a second device.</para>
+    ///
+    /// <para><b>A press updates it from the write's own answer rather than by re-reading.</b>
+    /// <see cref="SetMenuItemReactionResult.IsLiked"/> is the state the transaction left the person in,
+    /// which is a stronger thing to render than the state this surface asked for: an
+    /// <see cref="SetMenuItemReactionOutcome.AlreadyInThatState"/> answer settles the control on the
+    /// truth rather than on the tap.</para>
+    /// </summary>
+    private HashSet<Guid> _likedByMe = [];
+
     private IReadOnlyList<SittingMemberSummary> _roster = [];
     private TableSittingSummary? _sitting;
     private Guid? _myOrderIdentifier;
@@ -1006,6 +1071,73 @@
         // GroupedMenu property's own note refuses to introduce one register up.
         _picturesByItem = (await MenuItemPictures.ListAsync(_stopping))
             .ToDictionary(picture => picture.MenuItemIdentifier);
+
+        // One read for the whole menu, on the same argument as the pictures above it, and keyed on the
+        // person because that is the only question §11.1 asks of that directory (§7). A person who has
+        // never pressed anything gets an empty list rather than a null-ish outcome, which is why there
+        // is no branch here.
+        _likedByMe = _person is { } person
+            ? (await MenuItemReactionReads.ListLikedByAsync(person, _stopping)).ToHashSet()
+            : [];
+    }
+
+    /// <summary>
+    /// Whether this person currently likes one dish — the state
+    /// <c>.order-menu-like</c>'s <c>aria-pressed</c> renders (§11.1).
+    /// </summary>
+    private bool IsLikedByMe(MenuItemSummary item) => _likedByMe.Contains(item.MenuItemIdentifier);
+
+    /// <summary>
+    /// Records that this person does, or no longer does, like the chosen dish (§7, Stage 5b).
+    ///
+    /// <para><b>It does not touch the chosen item, and that is load-bearing rather than tidy.</b> This
+    /// control lives inside the panel <see cref="_pickedMenuItemIdentifier"/> renders, so a handler that
+    /// also toggled the choice would delete the panel out from under the finger that pressed it — the
+    /// worst available outcome for a control whose whole job is to give feedback. Quantity and note are
+    /// left alone for <see cref="ChooseItem"/>'s reason: a guest who typed "no onions" has not withdrawn
+    /// it by having an opinion about the dish.</para>
+    ///
+    /// <para><b>There is no in-flight guard, deliberately, and a later reader would add one by analogy
+    /// with <c>_sending</c>.</b> A double-tap is the ordinary gesture on a heart rather than an edge
+    /// case; Blazor dispatches circuit events serially, so two taps are a like and then an unlike, which
+    /// is exactly what the gesture means and what the log should record. A guard would swallow the
+    /// second tap. It is also the gesture <c>menu_item_reaction_current</c>'s identifier tie-break was
+    /// written for, since one transaction stamps one <c>IClock.UtcNow</c> and two presses inside a
+    /// millisecond genuinely share an instant (F-95).</para>
+    ///
+    /// <para><b>No <c>MenuChanged</c> is published and none is expected back</b> (§9): a like moves no
+    /// name, no price, no heading, no position, no availability flag and no photograph, so there is
+    /// nothing for any picker to re-read — and this is the one write in the application that can fire
+    /// many times a minute at one table. The re-render is this component's own, which is what an
+    /// interactive island is for.</para>
+    ///
+    /// <para><b>A refusal needs no sentence.</b> The only one this surface can meet is
+    /// <see cref="SetMenuItemReactionOutcome.MenuItemNotFound"/>, which needs a menu item to have
+    /// stopped existing — and §6.8 has no delete for one, so it is reachable only from a page open
+    /// across a database restore. The result carries <c>IsLiked: false</c> for it, which is the truth,
+    /// and applying it is the whole of the handling.</para>
+    /// </summary>
+    private async Task ToggleLikeAsync(MenuItemSummary item)
+    {
+        if (_person is not { } person)
+        {
+            return;
+        }
+
+        bool wanted = !_likedByMe.Contains(item.MenuItemIdentifier);
+
+        SetMenuItemReactionResult result = await MenuItemReactionWrites.SetLikedAsync(
+            item.MenuItemIdentifier, person, wanted, _stopping);
+
+        // The answer, not the intent. See _likedByMe's summary.
+        if (result.IsLiked)
+        {
+            _likedByMe.Add(item.MenuItemIdentifier);
+        }
+        else
+        {
+            _likedByMe.Remove(item.MenuItemIdentifier);
+        }
     }
 
     /// <summary>

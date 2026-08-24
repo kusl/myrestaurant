@@ -123,6 +123,79 @@ internal static class TableJourneys
     }
 
     /// <summary>
+    /// One guest, from a code on a table to a live ordering surface: scan, self-register with a passkey,
+    /// join, and wait for the circuit. Returns their page.
+    ///
+    /// <para><b>It lives in the harness rather than in a scenario file, and that is F-100's argument
+    /// applied to a test helper.</b> It was <c>private static</c> inside <c>EndToEndScenarios</c> from
+    /// M6 Slice 5 until Slice 58, which was correct while exactly one file seated guests. A private
+    /// method cannot be called from a second one, so the moment a second scenario file needed a seated
+    /// guest the choice was to move it or to paste it — and pasting is the mechanism this project has
+    /// ruled against four times, because two copies of a journey drift and nothing can see it. The old
+    /// call sites are unchanged: that file keeps a one-line forwarder supplying its own patience
+    /// constant.</para>
+    ///
+    /// <para><b>Their own browser context, with its own authenticator.</b> Cookies are per-context, and a
+    /// WebAuthn credential belongs to the authenticator that minted it — a passkey created anywhere else
+    /// would be offered to the wrong person and to nobody useful. §16.3 scenario 5 needs two of these
+    /// alive at once, which is the reason this is a method rather than four lines inside one
+    /// arrangement.</para>
+    ///
+    /// <para><b>The token is computed at the moment of the scan</b>, from the secret read out of the row
+    /// (<see cref="RestaurantInstance.ReadJoinSecretAsync"/>) rather than decoded off a display: these
+    /// scenarios are about what happens after the guest is seated, and pairing a tablet to get at a QR
+    /// would put scenario 2's whole apparatus in front of them. The token is still one the server really
+    /// verifies, and a second guest arriving later gets the code the table is showing then rather than a
+    /// copy of the first guest's.</para>
+    ///
+    /// <para><b>It throws rather than asserting</b>, which is the one thing that changed in the move.
+    /// Every other journey in this directory reports a failure as an <see cref="InvalidOperationException"/>
+    /// naming what the surface was showing instead, and only <c>RestaurantHarness</c> references xUnit at
+    /// all. The scan's outcome is the one branch worth a sentence, because §4.4 makes three of its four
+    /// results look alike on screen.</para>
+    /// </summary>
+    internal static async Task<IPage> SeatGuestAsync(
+        RestaurantInstance instance,
+        Guid tableIdentifier,
+        byte[] joinSecret,
+        GuestAccount account,
+        TimeSpan patience,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        ArgumentNullException.ThrowIfNull(joinSecret);
+        ArgumentNullException.ThrowIfNull(account);
+
+        string token = JoinTokenService.ComputeCurrentToken(
+            joinSecret, tableIdentifier, DateTimeOffset.UtcNow, instance.TableJoinTokenRotationSeconds);
+
+        IPage guest = await instance.OpenIsolatedPageAsync(withVirtualAuthenticator: true);
+
+        JoinStage afterScan = await ScanAsync(guest, tableIdentifier, token);
+
+        if (afterScan is not JoinStage.SentToSignIn)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"A fresh scan of table {tableIdentifier:D} resolved to {afterScan} rather than"
+                    + $" {JoinStage.SentToSignIn}. An anonymous scanner holding a live token is sent to"
+                    + $" sign in (§4.4), so this is a dead token or a table nobody can join."));
+        }
+
+        await AccountJourneys.RegisterGuestWithPasskeyAsync(guest, account);
+        await JoinAsync(guest);
+        await TableOrderJourneys.WaitForLiveSurfaceAsync(guest, patience);
+
+        // The cancellation token is not idle: it is the scenario's, and every wait above is bounded by
+        // its own timeout rather than by cancellation. Observing it here means a cancelled run stops at
+        // the seam between guests instead of registering a second account nobody will look at.
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return guest;
+    }
+
+    /// <summary>
     /// Which of §4.4's outcomes the page is currently showing. Read from the markup rather than from
     /// the URL, because three of the four share one: only the sign-in redirect changes the path.
     /// </summary>

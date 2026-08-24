@@ -368,6 +368,15 @@ internal static class TableOrderJourneys
     /// <summary>§11.1's detail panel, present only while an item is chosen.</summary>
     private const string MenuDetailSelector = "#table-order-surface div.order-menu-detail";
 
+    /// <summary>
+    /// §11.1's like control, which lives in the detail panel rather than on the card (Stage 5b). Scoped
+    /// through <c>div.order-menu-detail</c> deliberately: a selector that matched
+    /// <c>button.order-menu-like</c> anywhere on the surface would keep working if the control were ever
+    /// moved into the card's <c>&lt;button&gt;</c>, which is the one placement that breaks the card.
+    /// </summary>
+    private const string LikeControlSelector =
+        "#table-order-surface div.order-menu-detail button.order-menu-like";
+
     /// <summary>§11.1's per-line "take this off my order" tick, offered only on an open sitting.</summary>
     private const string RemovalCheckboxSelector = "#table-order-surface label.order-line-remove";
 
@@ -752,6 +761,91 @@ internal static class TableOrderJourneys
         }
 
         return new ChosenItemDetail(name, descriptionText, facts);
+    }
+
+    /// <summary>
+    /// Whether §11.1's like control is currently pressed, for the item whose detail panel is open —
+    /// <c>null</c> when no item is chosen and the panel is therefore absent (Stage 5b).
+    ///
+    /// <para><b>Read from <c>aria-pressed</c> rather than from a class</b>, and that is the assertion
+    /// rather than a convenience. The class is what styles the control; the attribute is what a screen
+    /// reader announces and is the only place the state is stated in a vocabulary a user agent
+    /// understands. A control that kept its colour and lost its attribute would look identical on every
+    /// screen in the building and be unreadable to anybody not looking at it.</para>
+    ///
+    /// <para>The selector reaches through <c>div.order-menu-detail</c>, so this method answers about the
+    /// panel's control and cannot be satisfied by one that has been moved into the card.</para>
+    /// </summary>
+    internal static async Task<bool?> ReadChosenItemLikedAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator control = page.Locator(LikeControlSelector);
+
+        if (await control.CountAsync() == 0)
+        {
+            return null;
+        }
+
+        string? pressed = await control.First.GetAttributeAsync("aria-pressed");
+
+        return pressed switch
+        {
+            "true" => true,
+            "false" => false,
+            _ => throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"§11.1's like control carries aria-pressed=\"{pressed}\", which is neither"
+                    + $" \"true\" nor \"false\". A toggle button states its state there or states it"
+                    + $" nowhere a user agent can read.")),
+        };
+    }
+
+    /// <summary>
+    /// Presses §11.1's like control and returns once the state it reports has actually changed.
+    ///
+    /// <para><b>Waiting for the state to move is the whole method.</b> The press is a circuit event: the
+    /// click returns as soon as the browser has dispatched it, and the transaction, the re-render and the
+    /// round trip back all happen afterwards. A scenario that clicked and read would be sampling a race,
+    /// which is F-44's defect and the reason every other reader in this file is a wait.</para>
+    ///
+    /// <para>It returns the state it settled on rather than <c>void</c>, so a caller asserts on what the
+    /// surface reported rather than on what it assumed the press would do.</para>
+    /// </summary>
+    internal static async Task<bool> PressLikeAsync(IPage page, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        bool? before = await ReadChosenItemLikedAsync(page);
+
+        if (before is not { } was)
+        {
+            throw new InvalidOperationException(
+                "There is no like control to press: §11.1 renders it inside the detail panel, so an item"
+                + " has to be chosen first.");
+        }
+
+        await page.Locator(LikeControlSelector).First.ClickAsync();
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await ReadChosenItemLikedAsync(page) is { } now && now != was)
+            {
+                return now;
+            }
+
+            await Task.Delay(PollInterval);
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"The like control still reports {was} {timeout.TotalSeconds:F0}s after it was pressed."
+                + $" A press writes one row and re-renders this island; nothing about it waits on a"
+                + $" broadcast, because a reaction deliberately publishes none (§9)."));
     }
 
     /// <summary>

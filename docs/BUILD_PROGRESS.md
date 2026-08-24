@@ -4644,3 +4644,210 @@ starts it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
 past four thousand four hundred lines.
+
+---
+
+# M6 Slice 58 — the half of the like a guest can see, and a number in its third generation
+
+**What shipped.** §11.1's like control, in the item's detail panel; §16.3 scenario 21; a four-fact contract
+class; `SeatGuestAsync` moved into the harness; and **F-112**. Stage 5b-i of
+`docs/MENU_AND_HANDHELD_PLAN.md`.
+
+**The tree opened three slices ahead of where this session believed it was.** Session memory said Slice 54
+with an unverified baseline near 1250. The SHA-256 reconstruction said Slice 57 with a **verified 1273**,
+and it said so before anything was authored. That is the fourth time this ritual has caught drift and the
+second time it has caught more than two slices' worth. The baseline was then rebuilt from the tree
+independently of the terminal log and reproduces it exactly: 921 `[Fact]` + 329 `[InlineData]` + 17
+`KeyRelations` + 6 `KeyColumnsAddedByAlter` = **1273**. A naive count of `[InlineData]` gives 330; the
+extra one is inside a comment in `ProfileDetailsTests.cs` explaining why a bare `[InlineData(null)]` needs
+a cast. Worth recording because §18's whole method is to chase a one-count discrepancy, and this one is a
+scanning artefact rather than a defect — a distinction that costs ten minutes to establish and would cost
+an hour to rediscover.
+
+## Why the guest's control came before the administrator's count
+
+Stage 5a closed with two reads and one write having no caller, and named which was worse: *a write nothing
+calls is a code path no test can reach through the interface meant to protect it*. That settles the order on
+its own. Two further arguments agree with it and are worth keeping because they generalise.
+
+**A count surface shipped first would be a read with no writer**, which is the same defect inverted and
+harder to see: the column renders, the page is correct, and every number on it is zero because the only
+thing in the application that can produce a press is the surface that has not been built. A read with no
+caller announces itself in a census; a read whose only writer is an integration test looks like a working
+feature nobody uses.
+
+**And only this surface can produce a press**, so the end-to-end scenario is writable in this slice. The
+count slice then *extends* scenario 21 rather than inventing an arrangement — an administrator reading back
+a number a guest really pressed, which is a stronger claim than either half alone.
+
+## The placement was predicted; the failure mode was not
+
+The plan has said since Stage 5a that the control belongs in the detail panel, on the ground that *a second
+interactive element inside a button is not markup this application can write*. True, and one register short
+of the reason worth having: the HTML parser does not **reject** a nested button, it **repairs** it. Meeting
+the inner `<button>`, it closes the outer one — so the card becomes two elements, and the half carrying the
+dish's name and price stops being a control at all. Nothing throws. The Razor compiles. §16.1 rules out
+bUnit so nothing renders a component, and §16.3's barrier measures where controls *are* rather than whether
+they still do anything. A guest would find it by tapping a dish and having nothing happen.
+
+That is why the ruling became a test rather than staying a sentence. `MenuItemReactionSurfaceContractTests`
+takes the card's opening tag to the first `</button>` after it and requires the like control's class not to
+appear between them.
+
+## Two paragraphs stopped being paragraphs
+
+Stage 5a made two rulings and wrote both into §7, where each is **one line away from being improved into a
+defect**.
+
+**The count is staff-facing.** One span on a card renders it to every guest. The gate walks
+`Components/Pages/Table/` — the subject computed rather than named (F-47), because the ruling is about the
+guest's half of the application and not about whichever component holds the menu after the next re-layout —
+and requires that nothing there **calls** `ListLikeCountsAsync`, with the positive half (something does call
+`ListLikedByAsync`) as its own non-vacuity guard (F-41).
+
+**A reaction publishes nothing.** One forwarding verb on `MenuWorkflow` makes a heart-tap re-read the entire
+menu on every phone, kitchen board and display in the building. The symptom is **load, not an error**: no
+test fails, nothing logs, and the tree stays green while the one write that can fire many times a minute at
+one table starts broadcasting. Every other menu write is behind that interface, so a reader meeting this one
+outside it will read the asymmetry as an omission and tidy it — which is precisely the shape a gate is for.
+
+**Both keys carry an open parenthesis, and that turned out to matter.** The first draft keyed on the bare
+identifier and failed against the tree — because the file that must not call the count read is also the
+natural place to write down *why*, and the surface's own comment names it twice. A gate that reports a
+finding on a component whose only offence is explaining the ruling it obeys is a gate that will be deleted.
+The rule is that a guest surface must not **call** the read, a call cannot omit its parentheses, and the
+narrower key is the accurate one rather than the lenient one. **F-67's shape**: a mention is not a use.
+
+## The scenario shipped with the control, and that is F-109 rather than diligence
+
+This plan deferred a picture scenario four times, each time with a recorded and reasonable-sounding reason,
+and the cost was **F-106** — an upload that committed, a redirect onto a page answering HTTP 500, every
+administrator view of a decorated dish broken *including the one carrying the Remove button*, and eleven
+hundred unit facts, every integration fact and seventeen scenarios green throughout. The operator found it.
+
+A like control has the identical profile: an interactive island, a circuit event, a toggle that looks right
+in source. So scenario **21** ships here, and **the reload is the whole scenario**. Everything before it —
+the control renders, reports unpressed, reports pressed after a tap — is satisfied exactly as well by a
+`bool` field on a Blazor component that no database ever hears about. That implementation is not a straw
+man: it is what *make the heart fill in when you tap it* produces, it is smaller than the real one, and
+every unit fact and every other scenario stays green against it. Reloading destroys the circuit and every
+field on it, so the second reading can only have come from `menu_item_reaction_current`.
+
+Four further claims ride the same arrangement, each refusing an implementation that passes the ones before
+it: nothing to press until an item is chosen; the *other* dish reports unpressed, so the opinion is about a
+dish rather than about the surface or about whether this person has liked anything at all; and the press is
+then withdrawn and reloaded again, because a verb that only appended `'liked'` rows passes every step above
+— the fold would answer from the last row it wrote.
+
+## F-112 — a number in its third generation
+
+**F-73** ruled that the §16.4 counted-class census should be kept in prose and moved by habit. The habit
+failed twice. **F-89** reversed it, deleted both prose copies, and kept `MinimumCountedClasses` as the only
+place the number is written, on the stated ground that a constant asserted on every run can go stale only
+*loudly*.
+
+The doc comment **on that constant** then grew a narrative census of its own. By this slice it recited
+*twelve, sixteen, eighteen, nineteen … twenty-five, and now twenty-seven*, one line above `= 29`, guarding a
+§16.4 that stated **32**. Three numbers about one fact, two of them wrong, in the one place a ruling had
+gone to the trouble of clearing.
+
+**Nothing could see it, and F-89 had already written down why:** the gate compares *assertion counts per
+class* against files, and a census is a count of *paragraphs*. Found by computing the census in order to
+move it for a new counted class — **F-93's timing for the seventh time**.
+
+The narrative is **deleted**, which is F-89's own remedy applied to the copy F-89 created, and the floor
+moves **29 → 33** with the census. **No gate**, and the reason is F-89's rather than a shrug: the instrument
+that would catch a stale floor is an *equality*, and an equality would report a finding on every §16.4
+paragraph that describes a class without enumerating its assertions — which §16.4 legitimately does for the
+three response-header classes covered as a group by directory. A floor can only be too low, and too low
+costs nothing but the check it declines to make.
+
+**The transferable claim is narrower than "keep one copy".** Twice a ruling has said *this number will be
+moved by habit*, and twice the habit failed within three slices. The variable is not the diligence of the
+person editing; it is that **a number written beside an enforced copy of itself reads as part of the
+enforcement**. That is worse camouflage than an ordinary duplicate, not better.
+
+## `SeatGuestAsync` moved, and it is the loudest change here by design
+
+It was `private static` inside `EndToEndScenarios` from Slice 5, which was right while exactly one file
+seated guests. A second scenario file needs one, and a private method cannot be called from a second file,
+so the alternative to moving it was pasting it — F-59's mechanism, with **F-100's** ruling already written
+against it one register up, for a walk that had lived inside a Razor component.
+
+It is now `TableJourneys.SeatGuestAsync`, taking a patience parameter. **The old file keeps a one-line
+forwarder supplying its own constant, so its eight call sites are untouched** — which is the whole reason
+this was affordable in a slice about something else. It throws rather than asserting: every other journey in
+that directory reports failure as an exception naming what the surface was showing instead, and only
+`RestaurantHarness` references xUnit at all.
+
+**Its failure mode is why it can ride along.** If the move is wrong, every scenario that seats a guest fails
+at once, under names that have nothing to do with likes. The one-change-one-green-run rule permits a
+passenger whose failure is distinguishable, and this one is not merely distinguishable but unmistakable.
+
+## One consequence, recorded rather than repaired
+
+**A guest cannot like an unavailable dish.** §7 renders a deactivated item on the menu, marked, with a
+`disabled` card — so the detail panel never opens for it and the control is unreachable. *The salmon is off
+tonight and it is still the best thing here* is a real opinion and this surface cannot record it. It follows
+from the placement rather than from a decision, and it is not repaired here because the repair is a second
+route into the panel for items that cannot be staged — a surface change with its own questions. Written down
+so that a reader meeting the gap does not assume nobody noticed.
+
+## §18 arithmetic
+
+| Where | Facts | Running |
+| --- | --- | --- |
+| Baseline, verified from the terminal log and rebuilt from the tree | — | 1273 |
+| `MenuItemReactionSurfaceContractTests` (new) | +4 | 1277 |
+| `MenuReactionScenarios` (new, §16.3 scenario 21) | +1 | 1278 |
+
+**Predicted 1278**, and the §16.3 suite moves **20 → 21**. Anything else is the first thing to investigate.
+
+## What was verified, and what was not
+
+**Verified mechanically.** The tree was reconstructed from `dump.txt` and SHA-256 checked file by file: 371
+clean, the two differences being `export.sh` (it embeds its own file marker) and `LICENSE` (elided by
+design). All four new contract facts were emulated against the edited tree and **each proven sensitive by a
+planted defect**: nesting the control inside the card is reported by two facts at once, deleting the control
+is reported as a count of zero, redirecting the guest's read to the count is reported both as a prohibited
+call and as the positive half going vacuous, and a `SetLikedAsync` mention added to `MenuWorkflow` is
+reported by name. The §16.4 counted-class gate was emulated over the edited specification — **33 classes,
+no disagreements between a claimed count and a file** — and the floor was set to match. The Markdown table
+gate was emulated with the real unescaped-pipe splitter over all 25 tracked documents: clean. The version
+gate was emulated on both versioned documents: headers match their newest entries, entries strictly
+descending, 44 of them. A Razor tag-tree walk over the edited panel confirms the new `<div>`, `<button>` and
+two `<span>` pairs balance inside the block `@if (PickedMenuItem is { } chosenItem)` opens. The standing
+authoring scans ran over every changed file: no `await` in an interpolated hole (CS4007), every operand of
+every `string.Create` chain an interpolated string (CS1620), no `stackalloc`, no `@section`, no CR bytes,
+one final newline each, no whitespace-only or trailing-space lines.
+
+**Not verified.** Nothing was compiled and nothing was run; there is no .NET SDK reachable from where this
+slice was authored, so the C# and the Razor are reviewed rather than built (F-71's standing caveat). The
+specific risks, in order. **The scenario is the largest one**: `PressLikeAsync` waits for `aria-pressed` to
+change, and if the circuit re-render is slower than the poll interval in a way the other journeys have not
+met, it fails as a timeout rather than as a wrong answer — the message says which state it is still
+reporting, which is the diagnosis, but it would still be a red run for a reason that is about the harness.
+**`ToHashSet()` on `IReadOnlyList<Guid>`** is the one call shape in the new component code with no exact
+precedent in this file; the neighbouring read uses `.ToDictionary(…)` and the two resolve from the same
+`System.Linq`. **The `\u2665` / `\u2661` escapes inside a Razor explicit expression** follow the same shape
+as the `@(chosenItem.IsActive ? "…" : "…")` two lines above them, which compiles today, but they are the
+only place in this tree where a Unicode escape sits inside markup content. And **the `SeatGuestAsync`
+forwarder** changes the failure of a bad scan from an xUnit assertion to an `InvalidOperationException`;
+both fail the test, and no scenario asserts on the exception type, but it is a behaviour change in eight
+scenarios this slice is not otherwise about.
+
+## Open items carried
+
+**No end-to-end scenario drives either resequencing verb.** The 375px barrier measures those controls and
+nothing presses them. Carried, and now the only such gap in the menu — scenario 21 closes the reaction one
+on the way in.
+
+**`/kitchen` has no §16.3 scenario at all.** Carried; the largest end-to-end gap in the application.
+
+**The wide layout stacks each row's three controls** on the administration index. Carried on two registers.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
+past four thousand six hundred lines.

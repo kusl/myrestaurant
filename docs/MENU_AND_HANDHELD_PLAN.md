@@ -1589,7 +1589,8 @@ directions, subject computed on each side.
 
 ### What is open after this stage
 
-**Stage 5b, and only Stage 5b.** Both rulings are made, so what remains is two surfaces and no decisions:
+**~~Stage 5b, and only Stage 5b.~~ Half of it landed in Slice 58 as Stage 5b-i below; §11.4's count is
+what remains.** Both rulings were made here, so what was left was two surfaces and no decisions:
 
 - **§11.4's count.** The administrator's menu index or the item's own page — probably the index, since the
   question is comparative and a per-item number answers it one dish at a time. `ListLikeCountsAsync` is
@@ -1605,6 +1606,111 @@ directions, subject computed on each side.
 
 **Not carried forward:** a guest-visible count, and any notion of a like that requires an order. Both were
 ruled against above, and neither is an item.
+
+---
+
+## ~~Stage 5b-i — likes: the guest's control~~ — **landed, M6 Slice 58**
+
+**The half a guest can see, and it is deliberately first.** Stage 5a left two reads and one write with no
+caller and said which was worse: *a write nothing calls is a code path no test can reach through the
+interface meant to protect it*. So the press comes before the count.
+
+**The order is a ruling rather than a preference, and the argument is what the other order produces.**
+§11.4's count shipped first would be a column reading zero on every row, on a surface whose only writer is
+an integration test — a read with no *writer*, which is the same defect inverted and harder to notice
+because the page renders correctly. And only this surface can produce a press, so an end-to-end scenario is
+writable in this slice and can be *extended* by the count slice rather than invented by it.
+
+### The three rulings the markup needed
+
+**The control is in the detail panel and never on the card, and the reason is mechanical.** The card *is* a
+`<button>` — it is what stages a dish. The HTML parser does not permit a button inside a button and does not
+report the attempt: it closes the outer element when it meets the inner one, so the card silently becomes
+two elements and the half carrying the dish's name and price stops being a control at all. Nothing throws,
+the Razor compiles, §16.1 rules out bUnit so nothing renders it, and the §16.3 barrier measures where
+controls *are* rather than whether they still work. This plan predicted the placement before the markup was
+written; what it did not have was the failure mode, which is why the contract test refuses the other
+placement by name rather than trusting the sentence.
+
+**A toggle's accessible name does not move with its state.** A screen reader announces name-then-state, so a
+button whose label changed to *Liked* would announce the state twice, in two vocabularies, one of them
+guessable. The word is constant, `aria-pressed` carries the state, and the glyph beside it changes **shape**
+rather than only colour — filled against outlined — so the two states are distinguishable without colour
+vision. **The card one loop up legitimately does the opposite** and that is worth stating, because it looks
+like an inconsistency: a card is a one-of-many *choice* whose chip says which one is chosen, not a toggle.
+
+**The press applies the write's answer rather than the tap's intent.** `SetMenuItemReactionResult` carries
+the state the transaction left the person in, which is a stronger thing to render than what the surface
+asked for: an `AlreadyInThatState` answer settles the control on the truth. **And there is no in-flight
+guard**, which is the decision a later reader would reverse by analogy with `_sending`: a double-tap is the
+ordinary gesture on a heart rather than an edge case, Blazor dispatches circuit events serially, so two taps
+are a like and then an unlike — exactly what the gesture means and what the log should record. A guard would
+swallow the second half of it. It is also the gesture `menu_item_reaction_current`'s identifier tie-break
+was written for (F-95).
+
+### One consequence, recorded so it is not repaired by mistake
+
+**A guest cannot like an unavailable dish**, and that follows from the placement rather than from a
+decision. §7 renders a deactivated item on the menu, marked, with a `disabled` card — so the detail panel
+never opens for it and the control is unreachable. *The salmon is off tonight and it is still the best thing
+here* is a real opinion and this surface cannot record it. It is not repaired here because the repair is a
+second path to the panel for items that cannot be staged, which is a surface change with its own questions;
+it is written down because a reader meeting the gap will otherwise assume nobody noticed.
+
+### Two rulings stopped being paragraphs
+
+Stage 5a decided that the count is **staff-facing** and that a reaction **publishes nothing**, and wrote both
+into §7 — where each is one line away from being improved into a defect. A span on a card renders the count;
+a forwarding verb on `MenuWorkflow` makes a heart-tap re-read the entire menu on every phone, kitchen board
+and display in the building, with **load rather than an error** as the symptom and the tree staying green.
+`MenuItemReactionSurfaceContractTests` holds both: no surface under `Components/Pages/Table/` **calls**
+`ListLikeCountsAsync`, subject computed over the directory rather than named as a file (F-47); and
+`MenuWorkflow` mentions neither reaction symbol. **Both keys carry an open parenthesis**, which is the
+difference between a use and a mention (F-67's shape) — the file that must not call the count read is also
+the natural place to write down why, and a gate keyed on the bare identifier would report a finding on a
+component whose only offence was explaining the ruling it obeys.
+
+### The scenario ships with the control, and that is F-109 rather than diligence
+
+This plan deferred a picture scenario **four times**, each time with a recorded and reasonable-sounding
+reason, and the cost was **F-106**: an upload that committed, a redirect onto a page answering HTTP 500,
+every administrator view of a decorated dish broken including the one carrying the Remove button, and eleven
+hundred unit facts, every integration fact and seventeen scenarios green throughout. The operator found it.
+A like control has the identical profile — an interactive island, a circuit event, a toggle that looks right
+in source — so **§16.3 scenario 21** ships in the same slice.
+
+**The reload is the scenario.** Everything before it is satisfied exactly as well by a `bool` field on a
+Blazor component that no database ever hears about, and that is not a straw man: it is what *make the heart
+fill in when you tap it* produces, it is smaller than the real implementation, and every unit fact and every
+other scenario stays green against it. Four further claims ride on the same arrangement, each refusing an
+implementation that passes the ones before it — nothing to press until an item is chosen; the *other* dish
+reports unpressed, so the opinion is about a dish rather than about the surface; and the press is withdrawn
+and reloaded again, because a verb that only ever appended `'liked'` rows passes every step above.
+
+### One thing moved that is not about the menu
+
+`SeatGuestAsync` was `private static` inside `EndToEndScenarios` from Slice 5, which was right while exactly
+one file seated guests. A second scenario file needs one, and a private method cannot be called from a
+second file, so the alternative to moving it was pasting it — F-59's mechanism, with **F-100's** ruling
+already written down against it one register up. It is now `TableJourneys.SeatGuestAsync`, taking a patience
+parameter; the old file keeps a one-line forwarder supplying its own constant, so its **eight call sites are
+untouched**. It throws rather than asserting, which is the one thing that changed in the move: every other
+journey in that directory reports a failure as an exception naming what the surface was showing instead, and
+only `RestaurantHarness` references xUnit at all.
+
+### What is open after this stage
+
+**Stage 5b-ii, and only Stage 5b-ii: §11.4's count.** `ListLikeCountsAsync` is the last read in this feature
+with no caller, and it is now the weaker of the two defects rather than the stronger — an unread read cannot
+change anything without telling anybody. The administrator's menu index is the likely home, since the
+question is comparative and a per-item number answers it one dish at a time; a heading's group is where a
+total would go if one is wanted. **The scenario extends rather than being invented**: 21 already presses a
+heart, so the count slice adds an administrator reading the number back.
+
+**A guest cannot like an unavailable dish**, carried with the reason above.
+
+**Not carried forward:** a guest-visible count, and any notion of a like that requires an order. Both were
+ruled against in Stage 5a, and neither is an item.
 
 ---
 
