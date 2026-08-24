@@ -1,0 +1,55 @@
+00
+10
+
+please continue 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+please avoid giving me bespoke scripts to manipulate text in code / documentation 
+remember to give full files for all files that need to change 
+I will likely miss those bespoke scripts 
+also please remember to update all documentation as necessary 
+remember our main focus is making progress toward enhancing the menu 
+we need to make progress toward that as well 
+
+Memory stack allocation inside a loop can cause a temporary memory leak because the allocated memory is freed only when the method returns
+```csharp /home/kushal/src/dotnet/myrestaurant/tests/MyRestaurant.EndToEnd.Tests/Harness/PictureFixtures.cs
+/// <summary>
+/// A zlib stream carrying <paramref name="raw"/> in stored deflate blocks: the two-byte header, the
+/// blocks, and Adler-32 of the uncompressed data.
+/// </summary>
+private static byte[] Deflate(byte[] raw)
+{
+    using MemoryStream stream = new();
+
+    // CM = 8 (deflate), CINFO = 7 (32 KiB window); the second byte carries no preset dictionary and
+    // makes the pair a multiple of 31, which is what a decoder checks.
+    stream.WriteByte(0x78);
+    stream.WriteByte(0x01);
+
+    int offset = 0;
+    while (true)
+    {
+        int take = Math.Min(StoredBlockLimit, raw.Length - offset);
+        bool final = offset + take >= raw.Length;
+
+        // BFINAL in bit 0 and BTYPE = 00 (stored) in bits 1-2. A stored block is byte-aligned from
+        // here, which is the whole reason this encoding needs no bit writer.
+        stream.WriteByte((byte)(final ? 1 : 0));
+
+        Span<byte> lengths = stackalloc byte[4];
+        BinaryPrimitives.WriteUInt16LittleEndian(lengths[..2], (ushort)take);
+        BinaryPrimitives.WriteUInt16LittleEndian(lengths[2..], (ushort)~(ushort)take);
+        stream.Write(lengths);
+
+        stream.Write(raw, offset, take);
+        offset += take;
+
+        if (final)
+        {
+            break;
+        }
+    }
+```
