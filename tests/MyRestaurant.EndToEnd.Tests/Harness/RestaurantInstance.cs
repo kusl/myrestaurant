@@ -9,43 +9,6 @@ using Npgsql;
 namespace MyRestaurant.EndToEnd.Tests.Harness;
 
 /// <summary>
-/// One scenario's private stack: its own database, its own data-protection keys, the real web
-/// application in its own process on its own loopback port, and one browser context holding one page
-/// and one virtual authenticator — plus any additional isolated contexts the scenario asks for.
-///
-/// <para><b>Why a child process rather than <c>WebApplicationFactory</c>.</b> Playwright drives a real
-/// browser over a real socket, and <c>WebApplicationFactory</c>'s in-memory <c>TestServer</c> has no
-/// socket to connect to. Beyond that, <c>Program.cs</c> is top-level statements that <c>return 1</c>
-/// on invalid configuration, so its generated entry point is not a <c>TEntryPoint</c> a factory can
-/// use without opening up the assembly. Booting the built binary is also the more honest test: it
-/// exercises the same composition root, the same DbUp migration pass, and the same fail-fast
-/// configuration validation a deployment does.</para>
-///
-/// <para><b>Why one instance per scenario rather than one per class.</b> §16.3's first scenario needs
-/// a database with <em>no</em> administrator; its thirteenth needs one with an administrator who has
-/// both a passkey and TOTP. Sharing a stack would force an execution order, and xUnit deliberately
-/// does not promise one. A fresh database plus a fresh process costs a few seconds and buys
-/// scenarios that can be read, and run, in any order.</para>
-///
-/// <para><b>Why more than one browser context.</b> Several scenarios need two or three principals at the
-/// same time in the same restaurant: an administrator, the tablet on the table, a guest with a phone.
-/// Cookies are per-context, so each of those is a context — and for the display device it is not merely
-/// hygiene. <c>DisplayDeviceAuthenticationMiddleware</c> ignores the device credential whenever the
-/// Identity cookie already authenticated the request, so a screen paired inside the administrator's
-/// browser resolves as the administrator and never renders a join code at all. See
-/// <see cref="OpenIsolatedPageAsync"/>.</para>
-///
-/// <para><b>The origin.</b> The app is served over <c>http://localhost:{port}</c> and
-/// <c>RESTAURANT_PUBLIC_ORIGIN</c> is set to <c>https://localhost:{port}</c> — the scheme mismatch is
-/// deliberate and load-bearing in two directions. §13 refuses to start on a non-https public origin,
-/// so the configured value must say https; and Chromium treats <c>localhost</c> as a secure context
-/// regardless of scheme, so WebAuthn ceremonies run and <c>Secure</c> cookies (the §3.1 authentication
-/// cookie is <c>CookieSecurePolicy.Always</c>, and so is the §4.2 display credential) are accepted over
-/// plain HTTP. The host matches, which is all
-/// <see cref="MyRestaurant.WebApplication.Identity.WebAuthnOriginPolicy"/> and the §3.3
-/// relying-party derivation actually compare.</para>
-/// </summary>
-/// <summary>
 /// A table's currently open sitting (§5.1) and the usernames on its roster, in join order.
 /// </summary>
 internal sealed record OpenSitting(Guid SittingIdentifier, IReadOnlyList<string> MemberUsernames);
@@ -88,6 +51,49 @@ internal sealed record SettledSitting(
 /// </summary>
 internal sealed record KitchenNotificationTally(int Initial, int Reminder);
 
+/// <summary>
+/// One scenario's private stack: its own database, its own data-protection keys, the real web
+/// application in its own process on its own loopback port, and one browser context holding one page
+/// and one virtual authenticator — plus any additional isolated contexts the scenario asks for.
+///
+/// <para><b>Why a child process rather than <c>WebApplicationFactory</c>.</b> Playwright drives a real
+/// browser over a real socket, and <c>WebApplicationFactory</c>'s in-memory <c>TestServer</c> has no
+/// socket to connect to. Beyond that, <c>Program.cs</c> is top-level statements that <c>return 1</c>
+/// on invalid configuration, so its generated entry point is not a <c>TEntryPoint</c> a factory can
+/// use without opening up the assembly. Booting the built binary is also the more honest test: it
+/// exercises the same composition root, the same DbUp migration pass, and the same fail-fast
+/// configuration validation a deployment does.</para>
+///
+/// <para><b>Why one instance per scenario rather than one per class.</b> §16.3's first scenario needs
+/// a database with <em>no</em> administrator; its thirteenth needs one with an administrator who has
+/// both a passkey and TOTP. Sharing a stack would force an execution order, and xUnit deliberately
+/// does not promise one. A fresh database plus a fresh process costs a few seconds and buys
+/// scenarios that can be read, and run, in any order.</para>
+///
+/// <para><b>Why more than one browser context.</b> Several scenarios need two or three principals at the
+/// same time in the same restaurant: an administrator, the tablet on the table, a guest with a phone.
+/// Cookies are per-context, so each of those is a context — and for the display device it is not merely
+/// hygiene. <c>DisplayDeviceAuthenticationMiddleware</c> ignores the device credential whenever the
+/// Identity cookie already authenticated the request, so a screen paired inside the administrator's
+/// browser resolves as the administrator and never renders a join code at all. See
+/// <see cref="OpenIsolatedPageAsync"/>.</para>
+///
+/// <para><b>The origin.</b> The app is served over <c>http://localhost:{port}</c> and
+/// <c>RESTAURANT_PUBLIC_ORIGIN</c> is set to <c>https://localhost:{port}</c> — the scheme mismatch is
+/// deliberate and load-bearing in two directions. §13 refuses to start on a non-https public origin,
+/// so the configured value must say https; and Chromium treats <c>localhost</c> as a secure context
+/// regardless of scheme, so WebAuthn ceremonies run and <c>Secure</c> cookies (the §3.1 authentication
+/// cookie is <c>CookieSecurePolicy.Always</c>, and so is the §4.2 display credential) are accepted over
+/// plain HTTP. The host matches, which is all
+/// <see cref="MyRestaurant.WebApplication.Identity.WebAuthnOriginPolicy"/> and the §3.3
+/// relying-party derivation actually compare.</para>
+///
+/// <para><b>This block sat at the top of the file until F-114</b>, as a second
+/// <c>&lt;summary&gt;</c> element stacked above <see cref="OpenSitting"/>'s — so a reader
+/// hovering that four-line record was handed an essay about child processes and WebAuthn
+/// origins, and this class carried no summary at all. C# has no file-level documentation
+/// comment; a <c>///</c> block binds to the next declaration whatever it was written about.</para>
+/// </summary>
 internal sealed class RestaurantInstance : IAsyncDisposable
 {
     /// <summary>

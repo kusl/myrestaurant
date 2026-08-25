@@ -5204,3 +5204,247 @@ starts it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
 past five thousand one hundred lines.
+
+---
+
+# M6 Slice 61 — the controls the barrier had been measuring, and a comment that described somebody else
+
+**The oldest open item this project carried, and it outlived four stages.** Stage 3a shipped
+`ResequenceMenuSectionsAsync` and its two buttons in Slice 47; Stage 3b shipped
+`ResequenceMenuItemsAsync` and its two in Slice 48, and closed with the sentence this slice exists to
+discharge: *"No end-to-end scenario drives either resequencing verb. §16.3's scenario 17 is not extended,
+so nothing asserts through a browser that a heading or an item moves. The barrier measures the controls;
+nothing exercises them."* Stage 3c repeated it, Stages 4a–4f and 5a–5c carried it, and by Slice 60 it was
+the only end-to-end gap left in the menu.
+
+**No session-memory drift, for the first time in five sessions.** The SHA-256 reconstruction from
+`dump.txt` verified **374 of 375 files byte-exact** and agreed with the incoming belief on every fact:
+Slice 60, specification v1.45, ledger through F-113, twenty-one §16.3 scenarios, carried prediction 1281.
+The two files that did not verify are the two that never do — `export.sh`, whose dump rewrites its own
+header into the copy it embeds, and `LICENSE`, which the dump elides to metadata deliberately. Nothing was
+reconstructed on a guess.
+
+**The baseline is a prediction rather than a measurement, and that is stated first.** Slice 60 measured
+1279 and predicted 1281; no run of 1281 exists. So this slice's arithmetic rides on an unverified number,
+and reconciling 1281 against a real run is the first thing to do before reading anything below.
+
+## Why the open item was so easy to carry
+
+**The controls were never unasserted.** §16.3 scenario 16 has measured them since the slice each landed in
+— where they sit, how tall they are, that they lie inside a 375px viewport — and Stage 3b even recorded a
+small finding about that: `.record-actions button` had matched *nothing* until the item rows became the
+first submit controls to render in one. So every re-reading of the open item met a page whose controls were
+demonstrably on the screen, in a repository whose data-access layer asserts both verbs against a real
+PostgreSQL. The deferral read as diligence, and the sentence justifying it was never re-examined — which is
+**F-109's mechanism**, recorded in Stage 4f and now observed on a second kind of deferral.
+
+**What the two existing instruments have in common is that neither presses anything.** A barrier measures
+where a control *is*. An integration fact calls the write service directly. The gap between them is
+precisely what a browser adds, and naming it is what makes the scenario worth its minutes.
+
+## The three claims only a browser can make
+
+**A press reaches the form that owns it.** Every heading renders two static-SSR forms named from its own
+identifier and every item row two more from its own, so scenario 17's menu carries twelve distinct
+`@formname` values on one page. Blazor dispatches a POST to the form that names it; a dispatch that routed
+a press to the wrong one would move the wrong heading and **report success**. Nothing below the browser can
+see it, because nothing below the browser renders a form.
+
+**An already-open menu re-orders itself.** Both verbs publish `MenuChanged` on `Resequenced` and on nothing
+else, and §11.1 renders headings and items in stored order — so a resequence changes the shape of every open
+guest picker without a name, a price or an availability flag having moved. `MenuWiringTests` asserts the
+publish against a fake broadcaster; whether a phone at a table re-reads is a different claim.
+
+**An item moves within its heading and nowhere else.** §7 makes a position a position *within* a heading, so
+the index sends that heading's ordering and not the menu's. The failure this catches is a page that sent the
+whole menu and renumbered the starters because somebody moved a pudding — caught only by asserting the
+heading that was **not** touched, which is why both halves are read.
+
+## Three rulings about the scenario's shape
+
+**Scenario 17 is extended rather than a scenario 22 added**, on the reason Slices 59 and 60 both gave and
+which is now this project's default: the arrangement already exists. Seventeen ends with three headings, a
+two-item heading, an empty heading, and a guest whose circuit has been open across five broadcasts. A
+scenario 22 would have cost a second container, a second passkey registration and a second join to arrange
+what is already standing. The suite therefore stays at **twenty-one**.
+
+**Both directions of both controls, each with its restoration**, and the restoration is the stronger half.
+A resequence writes **absolute** positions `0…n-1` over the list it was sent, so an implementation writing a
+relative offset — or the right rows in the wrong order — gets the first move right and cannot get the move
+back right as well. And a page that wired Up and left Down inert passes every assertion scenario 17 held
+before this slice.
+
+**The count of `reordered` events is deliberately not asserted.** One event per row that *actually moved* is
+the no-op rule, and it belongs to `MenuSectionResequenceTests` and `MenuItemResequenceTests`, which run
+against a real database and can count rows. A browser reading the *Recent activity* feed would be a weaker
+instrument for the same claim, and the section half is not even visible there — `menu_section_event` has no
+cross-section feed, on the standing rule that a read with no caller is a defect.
+
+## A §11.4 ruling that turned out to have no assertion anywhere
+
+**"Disabled rather than omitted" had never been checked.** Both controls are rendered on every group and the
+one that would exchange with nothing is disabled, because a control that vanishes at the end of a list moves
+every other control up a row on the render after a move — and scenario 16 measures where controls *are*. The
+ruling is in §7, in §11.4 and in the component's own comment, and nothing in the tree had an opinion about
+it. A page that omitted the edge control would have satisfied every existing assertion including the
+barrier's, whose floor merely counts controls and would have counted fewer.
+
+Discharged in two halves, deliberately. **Presence is the reader's**: `ReadMenuIndexAsync` refuses a group
+carrying anything other than two move controls, so the omit-at-the-edge implementation fails in the harness
+with a sentence naming the heading. **Enabled-ness is the scenario's**: the first heading offers no Up, the
+last offers no Down, the middle offers both. The split is the one `MenuCard` already makes between §7's
+`disabled` and the chip beside it — whichever of the two is the contract is the one to read.
+
+## Two harness journeys, and one selector that was refused
+
+`MoveMenuHeadingAsync` and `MoveMenuItemAsync` find the group by its own *Manage this heading* link and the
+row by its own management link, which are the only identifier-keyed things in each — matching on a visible
+name would make a journey depend on copy, which is the mistake choosing a guest menu card by its formatted
+price would be. The item journey is scoped to `div.menu-group-body`, which keeps the row out of the *Recent
+activity* feed at the foot of the same page: that table links to the same route with the same class and has
+no move controls at all, so an unscoped match would find a row and then fail looking for a button, naming
+the wrong thing.
+
+**Blazor's reserved `_handler` field was the obvious selector and is refused.** Static SSR renders each
+`@formname` into a hidden input, so `input[value='menu-section-move-up-{id}']` would name the exact form —
+and it would make a harness selector depend on a framework's private wire format rather than on anything
+§11.4 promises. What is read is what an operator sees.
+
+**A disabled control is refused immediately rather than clicked.** Playwright waits for a control to become
+enabled and then times out, so pressing the first heading's Up would cost thirty seconds and report a
+timeout on a page behaving exactly as specified. One line instead.
+
+**The confirmation is matched case-sensitively, and that is what makes it decidable.** A resequence has
+three outcomes and §11.4 writes a sentence for each; only one wrote a row. The stale-set sentence ends *so
+nothing was moved*, so a case-insensitive search for the word would accept the one outcome the journey
+exists to reject. `Moved.` with a capital and a full stop occurs in exactly one of the three. What the flash
+cannot say is **which verb ran** — §11.4 renders the same sentence for a heading and an item, correctly,
+because an operator knows which button they pressed — so the scoping carries that claim instead.
+
+## The finding found on the way in — F-114
+
+Opening `AdministrationJourneys.cs` to add the journeys turned up something better than the slice's own
+subject. **A documentation comment can describe a member other than the one it is attached to.** A `///`
+block binds to the next declaration; C# has no file-level documentation comment; and a block holding two
+`<summary>` elements compiles, publishes malformed XML documentation, and renders whichever one the tooling
+reaches first. **Eight were in the tree, in five files, one under `src/`.**
+
+| Site | What it did |
+| --- | --- |
+| `HiddenRecords.razor` | `ListPath`'s comment on `IsExpanded` — a production component |
+| `OrderTestWorld.cs` (INSERT) | **a falsified claim preserved above its own correction** |
+| `OrderTestWorld.cs` (`AddMenuItemAsync`) | the Slice 38 account stacked above the Slice 40 one |
+| `AdministrationJourneys.cs` (head) | the class's essay bound to a three-member record |
+| `AdministrationJourneys.cs` (index reader) | orphaned by Slice 59 inserting a method between comment and subject |
+| `RestaurantInstance.cs` | several hundred words on child processes bound to a four-member record |
+| `CounterJourneys.cs` | a forward and an inverse whose comments were swapped |
+| `TableOrderJourneys.cs` | `ReadBadgeAsync`'s comment on `ReadPriceAdjustmentsAsync` |
+
+**The second row is what gives this a number rather than a tidy-up.** `OrderTestWorld`'s
+`menu_item_event` INSERT carried its own pre-F-86 description — *the payload columns `0004` and `0005` added
+are omitted rather than passed as NULL*, and *the casts on the two columns that remain* — six lines above a
+statement that lists all five and casts all five. **F-86 wrote its correction underneath the claim it
+falsified instead of over it**, and because two summaries are legal the falsified sentence stayed first for
+twenty-two slices. So this mechanism does not merely misplace prose: it preserves a refuted claim in the
+position a reader meets first, with nothing in the repository able to report it. That is F-109's lesson
+applied to a **repair** rather than to a deferral — a justifying sentence is not re-examined, because
+re-examination is not what re-reading is for.
+
+**All eight are repaired.** An orphan moves onto the member it describes; where two summaries describe the
+**same** member the superseded one is **deleted** rather than merged, on F-77's ruling and F-89's precedent,
+because a stale account of a member is the same artefact as a stale count of one. Each repair leaves a
+paragraph saying what moved and why (F-70).
+
+**And the rule is made executable, because it is total.** XML documentation gives a member one summary and
+every other element it may carry is unaffected, so there is no legitimate second one to exempt. That puts it
+in **F-81's class rather than F-104's**: decidable from text with certainty, and therefore a consequence of
+the language rather than of anybody's preference. Subject computed, no file named (F-58). An escaped mention
+is outside the rule by construction rather than by exclusion, which matters because every repair above
+refers to the tag that way — **F-67's distinction between a use and a mention, in a third form**.
+
+**Writing the sensitivity proof found this gate's own instance of its subject.** The synthesised defect,
+written as a raw string literal, would have put two consecutive `///` lines carrying a summary each into the
+test file — which the walk reads as text and cannot tell from a real comment. The first emulation reported a
+finding on the file proving the gate works. The fixtures are composed at run time through a helper instead,
+and the marker never appears in the file.
+
+## Why two changes in one slice
+
+The scenario fails as a named step of one Playwright fact in `MyRestaurant.EndToEnd.Tests`. F-114 fails as
+one of two named unit facts in `MyRestaurant.WebApplication.Tests`, computing over source text, and its
+eight repairs change no behaviour whatsoever. Neither can make the other red and a red run names which,
+which is v1.32's distinguishable-failure exemption. **The gate could not have shipped later than the
+repair**, because a gate on a tree that violates it is red on arrival — and the finding was found inside the
+file the scenario needed, which is F-93's timing for the ninth time.
+
+## §18 arithmetic
+
+| Where | Facts | Running |
+| --- | --- | --- |
+| Baseline — **predicted, not measured** | — | 1281 |
+| `DocumentationCommentContractTests` (new) | +2 | 1283 |
+
+**Predicted 1283**, and the §16.3 suite stays at **21** — scenario 17 is extended, not joined. Two facts
+rather than three: the resequencing work adds assertions *inside* an existing `[Fact]`, and the eight F-114
+repairs add none at all.
+
+**A deviation here is not attributable to this slice alone**, and that is the honest statement. The baseline
+was carried rather than measured, so a run returning 1281 means the new class did not execute, a run
+returning 1279 means Slice 60's two facts are also missing, and anything else needs Slice 60 reconciled
+first.
+
+## What was verified, and what was not
+
+**Verified mechanically.** The new gate was emulated over the edited tree with both non-vacuity floors:
+**302 files opened, 2,389 documentation comments parsed, no comment holding more than one summary** — and
+**proven sensitive by a planted defect**, reintroduced into `HiddenRecords.razor` and reported at the right
+line, then removed. Its three synthesised shapes were run through the same reader: the stacked defect
+reports two summaries in one block, the escaped mention reports one, and two adjacent members read as two
+blocks. The §16.4 counted-class gate was emulated over the edited specification: **34 classes, no
+ambiguity, no disagreement between any claimed count and its file**, with `MinimumCountedClasses` moved
+33 → 34 in this slice per F-73's surviving habit. The Markdown table gate was emulated with the real
+unescaped-pipe splitter over all **25** tracked documents — **45 tables, 440 rows, clean**. The version gate
+was emulated: header 1.46, newest entry 1.46, **47** entries strictly descending. The standing authoring
+scans ran over every changed file: no `await` in an interpolated hole (CS4007), **no plain literal in a
+`string.Create` chain (CS1620** — three were introduced and all three corrected, and the scan confirmed the
+tree had no prior instance), no `@section`, no tabs, no CR bytes, one final newline each, no whitespace-only
+or trailing-space lines.
+
+**Not verified.** Nothing was compiled and nothing was run (F-71's standing caveat). The specific risks, in
+order. **The scenario's four new waits are the largest**, because each depends on a §9 broadcast reaching an
+open circuit and none of them has ever been observed for these two verbs — if a wait times out, the
+question is whether the publish happened or whether the predicate is wrong, and the predicates read
+`observed[0].SectionName`, which is DOM order rather than anything the surface promises by name.
+**`ReadMenuIndexAsync` now throws on a group with anything but two move controls**, which is a new way for
+scenario 17 to fail that has nothing to do with ordering; it is the right place for that claim but it means
+a §11.4 markup change now fails in the harness rather than on the page. **`MenuHeadingOnTheIndex` gained two
+members**, and although the only construction site is inside the reader itself, a positional record is a
+positional record. **The `[href$='/{id:D}']` suffix match** on the item row assumes no other link on that
+page ends with the same identifier; the *Recent activity* feed does, which is why the selector is scoped —
+if the scoping is ever loosened that selector becomes ambiguous. And **F-114's eight repairs moved prose
+between declarations**, so a mis-anchored move would be a comment describing the wrong member again, in the
+slice whose subject is exactly that; the gate cannot see it, because one summary in the wrong place is still
+one summary.
+
+## Open items carried
+
+**`/kitchen` has no §16.3 scenario at all.** Now the largest end-to-end gap in the application by a clear
+margin. Scenario 21 opens that board and presses one control on it, which is the only thing any scenario has
+ever done there.
+
+**The wide layout stacks each row's three controls** on the administration index. Carried on two registers
+since Slice 47 — and this slice pressed those very controls without opening `app.css`, which is one more
+slice of evidence that nobody minds enough to.
+
+**Nothing in this repository measures §11.1 at 375px.** Carried from Slice 60. The handheld barrier is scoped
+to §11.4's surfaces and the guest menu's box model changed in that slice.
+
+**A member with no summary at all is not reported by the new gate.** Named on arrival rather than
+discovered: asserting that every member is documented would be a gate about how much prose this project
+writes, and it would report findings on hundreds of correct one-line helpers.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
+past five thousand three hundred lines, and this entry is the longest addition in six slices.

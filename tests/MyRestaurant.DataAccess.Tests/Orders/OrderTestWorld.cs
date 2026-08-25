@@ -130,19 +130,21 @@ internal sealed class OrderTestWorld
         """;
 
     /// <summary>
-    /// The payload columns <c>0004</c> and <c>0005</c> added are omitted rather than passed as NULL,
-    /// which is the same thing to PostgreSQL and a smaller surface here: no test in this project writes a
-    /// <c>description_changed</c>, a <c>reordered</c> or a <c>section_changed</c> event by hand — the
-    /// ones that care about those verbs drive <c>DapperMenuAdministration</c>, because the pair of rows is
-    /// the fact worth asserting. The casts on the two columns that remain are load-bearing: Dapper sends
-    /// an untyped parameter for a null, and §8.2's paired CHECKs are evaluated against the column's type.
-    /// </summary>
-    /// <summary>
     /// Every payload column <c>menu_item_event</c> has, which is five rather than the two this statement
     /// listed until F-86. <c>0004</c> added <c>new_description</c> and <c>new_display_order</c> and
     /// <c>0005</c> added <c>new_menu_section_identifier</c>, each bound to its own type by a named
     /// biconditional CHECK — so a column absent from this INSERT is not an omission the database
     /// tolerates, it is a row the database refuses.
+    ///
+    /// <para>The casts are load-bearing on every one of the five: Dapper sends an untyped parameter for a
+    /// null, and §8.2's paired CHECKs are evaluated against the column's type.</para>
+    ///
+    /// <para><b>A falsified paragraph stood above this one until F-114.</b> It said the columns
+    /// <c>0004</c> and <c>0005</c> added were <em>omitted rather than passed as NULL</em>, and that the
+    /// casts were on <em>the two columns that remain</em> — both true before F-86 widened this statement
+    /// and neither true afterwards. It survived because it was a second <c>&lt;summary&gt;</c> in one
+    /// documentation comment, which the C# compiler accepts in silence: F-86 wrote the correction
+    /// underneath the claim instead of over it, and the claim stayed first.</para>
     /// </summary>
     private const string InsertMenuItemEventSql = """
         INSERT INTO menu_item_event (
@@ -313,23 +315,25 @@ internal sealed class OrderTestWorld
             cancellationToken);
 
     /// <summary>
-    /// Writes one <c>menu_item</c> row and returns its identifier.
+    /// Puts an item on the menu (§7) — one <c>menu_item</c> row, and its identifier back.
+    /// <paramref name="menuSectionIdentifier"/> is optional, and that optionality is what kept
+    /// <c>0005</c> from reaching a dozen test files that have nothing to do with menu sections: omitting
+    /// it files the item under a house section this world creates once and reuses, so "an item exists"
+    /// stays the single-line arrangement it has always been.
+    ///
+    /// <para>The house section is created lazily rather than in <see cref="TruncateAsync"/>, because a
+    /// fixture that never touches the menu should not carry a row it did not ask for — several classes
+    /// here count what is in the database.</para>
     ///
     /// <para><paramref name="description"/> and <paramref name="displayOrder"/> are trailing optional
     /// parameters with the column defaults as their values, so every existing call site reads exactly as
     /// it did and means exactly what it did. That is deliberate rather than lazy: eleven call sites across
     /// four test classes arrange a menu they have no opinion about, and making them all restate <c>""</c>
     /// and <c>0</c> would be eleven edits that assert nothing.</para>
-    /// </summary>
-    /// <summary>
-    /// Puts an item on the menu (§7). <paramref name="menuSectionIdentifier"/> is optional, and that
-    /// optionality is what kept <c>0005</c> from reaching a dozen test files that have nothing to do with
-    /// menu sections: omitting it files the item under a house section this world creates once and
-    /// reuses, so "an item exists" stays the single-line arrangement it has always been.
     ///
-    /// <para>The house section is created lazily rather than in <see cref="TruncateAsync"/>, because a
-    /// fixture that never touches the menu should not carry a row it did not ask for — several classes
-    /// here count what is in the database.</para>
+    /// <para><b>Those two paragraphs were two separate <c>&lt;summary&gt;</c> elements in one
+    /// documentation comment until F-114</b>, the Slice 38 account of this method stacked above the Slice
+    /// 40 one. Both were true, neither was reachable from the other, and the compiler said nothing.</para>
     /// </summary>
     public async Task<Guid> AddMenuItemAsync(
         string name,

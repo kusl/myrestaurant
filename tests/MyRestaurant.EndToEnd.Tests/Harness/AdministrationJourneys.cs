@@ -4,19 +4,6 @@ using Microsoft.Playwright;
 namespace MyRestaurant.EndToEnd.Tests.Harness;
 
 /// <summary>
-/// The administration journeys the §16.3 scenarios walk: creating a table, issuing a display pairing
-/// code, rotating a table's join secret, putting something on the menu, and — on the people side —
-/// creating a staff account, reading one's facts back, and resetting its credentials
-/// (TECHNICAL_SPECIFICATION §3.7, §4.1, §4.2, §7, §11.4).
-///
-/// <para>All of them go through the real static-SSR administration surfaces on a page that is signed in as
-/// an administrator, because that is what the scenarios are about — "admin creates table" in §16.3 means
-/// the form, the antiforgery token, the endpoint authorization and the redirect, not an
-/// <c>INSERT</c>. The one place these scenarios do reach past the UI is reading a <c>join_secret</c>
-/// (<see cref="RestaurantInstance.ReadJoinSecretAsync"/>), and only because §4.1 makes it deliberately
-/// unreachable from every surface — which is the property under test rather than an obstacle to it.</para>
-/// </summary>
-/// <summary>
 /// Something an administrator put on the menu (§7): the identifier the guest picker's card carries in
 /// <c>data-menu-item</c>, and the name every surface — the guest's basket, the kitchen ticket, the bill —
 /// reads.
@@ -41,14 +28,26 @@ internal sealed record MenuItemOnTheMenu(Guid Identifier, string Name, decimal P
 /// <para><see cref="IsVisibleToGuests"/> is read off the chip rather than inferred from anything, because
 /// the chip is where §7's asymmetry is stated to the administrator: an inactive heading is hidden from the
 /// guest entirely, which is the opposite of what the same flag does to an item one table away.</para>
+///
+/// <para><b><see cref="OffersMoveUp"/> and <see cref="OffersMoveDown"/> are <em>enabled</em>-ness, not
+/// presence, and the distinction is §11.4's ruling rather than a convenience.</b> The first heading's Up
+/// and the last heading's Down are rendered <b>disabled rather than omitted</b>, because a control that
+/// vanishes at the edge of a list moves every other control up a row on the render after a move — and
+/// §16.3 scenario 16 measures where controls are. So presence is asserted by
+/// <c>ReadMenuIndexAsync</c> itself, which refuses a group that renders anything other than two of them;
+/// what these two members carry is which of the two a person can actually press.</para>
 /// </summary>
 /// <param name="Name">The heading, as the summary line declares it.</param>
 /// <param name="IsVisibleToGuests">True when the group carries the <c>Visible to guests</c> chip.</param>
 /// <param name="ItemNames">The items under it, in rendered order; empty where the group says it is empty.</param>
+/// <param name="OffersMoveUp">True when the group's Up control is rendered <em>and</em> enabled.</param>
+/// <param name="OffersMoveDown">True when the group's Down control is rendered <em>and</em> enabled.</param>
 internal sealed record MenuHeadingOnTheIndex(
     string Name,
     bool IsVisibleToGuests,
-    IReadOnlyList<string> ItemNames);
+    IReadOnlyList<string> ItemNames,
+    bool OffersMoveUp,
+    bool OffersMoveDown);
 
 /// <summary>
 /// The roles §3.7's create-staff form offers, as the flags an administrator ticks. A flags enum rather
@@ -138,6 +137,25 @@ internal sealed record ManagedAccount(
     IReadOnlyList<string> Roles,
     IReadOnlyList<string> Credentials);
 
+/// <summary>
+/// The administration journeys the §16.3 scenarios walk: creating a table, issuing a display pairing
+/// code, rotating a table's join secret, putting something on the menu, and — on the people side —
+/// creating a staff account, reading one's facts back, and resetting its credentials
+/// (TECHNICAL_SPECIFICATION §3.7, §4.1, §4.2, §7, §11.4).
+///
+/// <para>All of them go through the real static-SSR administration surfaces on a page that is signed in as
+/// an administrator, because that is what the scenarios are about — "admin creates table" in §16.3 means
+/// the form, the antiforgery token, the endpoint authorization and the redirect, not an
+/// <c>INSERT</c>. The one place these scenarios do reach past the UI is reading a <c>join_secret</c>
+/// (<see cref="RestaurantInstance.ReadJoinSecretAsync"/>), and only because §4.1 makes it deliberately
+/// unreachable from every surface — which is the property under test rather than an obstacle to it.</para>
+///
+/// <para><b>This block sat at the top of the file until F-114</b>, as a second
+/// <c>&lt;summary&gt;</c> element stacked above <see cref="MenuItemOnTheMenu"/>'s. C# has no
+/// file-level documentation comment: a <c>///</c> block binds to the next declaration whatever it
+/// was written about, and two <c>&lt;summary&gt;</c> elements in one block are accepted in
+/// silence — so this class carried none and a three-member record carried two.</para>
+/// </summary>
 internal static class AdministrationJourneys
 {
     private const string TablesPath = "/administration/tables";
@@ -619,32 +637,200 @@ internal static class AdministrationJourneys
     }
 
     /// <summary>
-    /// Reads <c>/administration/menu</c> as the administrator sees it since M6 Slice 44: a list of
-    /// headings in stored order, each holding the items filed under it (§7, §11.4).
+    /// Moves one heading one place up or down the menu by pressing the control at the foot of its group
+    /// on <c>/administration/menu</c> (§7, §11.4), and returns once the surface confirms it committed.
     ///
-    /// <para><b>This is the administration counterpart of
-    /// <c>TableOrderJourneys.ReadMenuCardsAsync</c>, and the pair is the assertion.</b> §7 states an
-    /// asymmetry that no single surface can demonstrate: the guest is rendered no empty heading and no
-    /// inactive one, and §11.4's administrator is rendered both. A scenario that read only the guest's
-    /// menu would see a heading missing and could not say which of three reasons put it there; a scenario
-    /// that read only this page would see every heading and learn nothing about the rule. Reading both
-    /// and comparing them is what makes the difference between the two lists the thing under test.</para>
+    /// <para><b>This is the first thing in the repository that presses a resequencing control, and the
+    /// gap it closes was carried by name for thirteen slices.</b> §16.3 scenario 16 has measured these
+    /// buttons since Slice 47 — where they sit, how tall they are, that they are inside a 375px viewport
+    /// — and nothing had ever pressed one. What only a browser can say is that the whole-ordering POST
+    /// dispatches to the group that owns it: every heading renders two static-SSR forms, so a menu with
+    /// eight headings carries sixteen distinct <c>@formname</c> values, and a page that routed a press to
+    /// the wrong one would move the wrong heading and report success.</para>
     ///
-    /// <para><b>The groups are read in document order and nothing is sorted here.</b> Stored order is the
-    /// property under assertion — §7 orders headings by <c>(display_order, name,
-    /// menu_section_identifier)</c> and a helper that sorted its own output would make every ordering
-    /// assertion above it a tautology.</para>
+    /// <para><b>The group is found by its own <em>Manage this heading</em> link, and the item journey
+    /// below by the row's own management link.</b> An exact <c>href</c> match on
+    /// <c>/administration/menu/sections/{id}</c> is the only thing in a group keyed on the identifier —
+    /// matching on the heading's visible name would make this journey depend on copy, which is the
+    /// mistake choosing a guest menu card by its formatted price would be, and the item rows' links are a
+    /// different route so they cannot collide.</para>
     ///
-    /// <para><b>The name comes off <c>.menu-group-name</c> as declared text.</b> The summary line also
-    /// carries a chip and a count, so reading the <c>&lt;summary&gt;</c> whole would return
-    /// <c>"Starters Visible to guests 2 items · position 0"</c> — and <see cref="ScreenText"/> is used for
-    /// the same reason it exists: a heading is content, but the count beside it lives under a rule that
-    /// could acquire a transform, and the narrow read cannot pick that up at all.</para>
+    /// <para><b>Blazor's reserved <c>_handler</c> field was the obvious alternative and is refused.</b>
+    /// Static SSR renders each <c>@formname</c> into a hidden input, so
+    /// <c>input[value='menu-section-move-up-{id}']</c> would name the exact form — and it would make a
+    /// harness selector depend on a framework's private wire format rather than on anything §11.4
+    /// promises. What is read here is what an operator sees.</para>
     ///
-    /// <para>Waiting on <c>.menu-groups</c> rather than on a group: a menu with no headings at all renders
-    /// the first-use panel and no wrapper, so a caller arriving too early fails here naming the page
-    /// rather than thirty seconds later inside a group that was never going to exist.</para>
+    /// <para><b>A disabled control is refused immediately rather than clicked.</b> Playwright waits for a
+    /// control to become enabled and then times out, so pressing the first heading's Up would cost thirty
+    /// seconds and report a timeout on a page that is behaving exactly as §11.4 specifies. This says so in
+    /// one line instead.</para>
     /// </summary>
+    internal static async Task MoveMenuHeadingAsync(IPage page, Guid menuSectionIdentifier, bool up)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(MenuPath);
+
+        ILocator group = page
+            .Locator(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"details.menu-group:has(div.menu-group-actions"
+                    + $" a[href='{MenuSectionsPath}/{menuSectionIdentifier:D}'])"))
+            .First;
+
+        try
+        {
+            await group.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The menu index renders no group for heading {menuSectionIdentifier:D}. ")
+                + await DescribeFailureAsync(page),
+                exception);
+        }
+
+        string label = up ? "Move up" : "Move down";
+
+        await PressMoveAsync(
+            page,
+            group.Locator($"div.menu-group-actions button:has-text('{label}')").First,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"'{label}' on heading {menuSectionIdentifier:D}"));
+    }
+
+    /// <summary>
+    /// Moves one item one place up or down <b>within its own heading</b>, by pressing the control on its
+    /// row on <c>/administration/menu</c> (§7, §11.4), and returns once the surface confirms it committed.
+    ///
+    /// <para><b>Within its heading is the whole of what makes this a second journey rather than an
+    /// argument to the one above.</b> §7 makes a position a position <em>within</em> a heading, so the
+    /// index sends that heading's ordering and not the menu's — and the failure a browser can see, which
+    /// no integration fact can, is a page that sent the whole menu and renumbered the puddings because
+    /// somebody moved a drink. The caller names an item and not a heading, because the page already knows
+    /// which group the row is in and asking a scenario to restate it would be asking it to agree with the
+    /// surface about the thing under test.</para>
+    ///
+    /// <para>Scoped to <c>div.menu-group-body</c>, which is what keeps the row out of the <em>Recent
+    /// activity</em> feed at the foot of the same page: that table links to the same route with the same
+    /// class, and it has no move controls at all — so an unscoped match would find a row and then fail
+    /// looking for a button, naming the wrong thing.</para>
+    /// </summary>
+    internal static async Task MoveMenuItemAsync(IPage page, Guid menuItemIdentifier, bool up)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await page.GotoAsync(MenuPath);
+
+        ILocator row = page
+            .Locator(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"div.menu-group-body tr:has(a.record-link[href$='/{menuItemIdentifier:D}'])"))
+            .First;
+
+        try
+        {
+            await row.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The menu index has no row for item {menuItemIdentifier:D}. ")
+                + await DescribeFailureAsync(page),
+                exception);
+        }
+
+        string label = up ? "Up" : "Down";
+
+        await PressMoveAsync(
+            page,
+            row.Locator($"td.record-actions button:has-text('{label}')").First,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"'{label}' on item {menuItemIdentifier:D}"));
+    }
+
+    /// <summary>
+    /// Presses one move control and requires the page to come back saying it committed.
+    ///
+    /// <para><b>The flash is matched rather than merely found, and the sentence is chosen carefully.</b>
+    /// A resequence has three outcomes and §11.4 writes a sentence for each: it moved, it was already
+    /// there, or the set changed underneath the page. Only the first wrote a row, so only the first is
+    /// this method's success — and a journey that accepted any of the three would hand a scenario a
+    /// surface that had done nothing and let the ordering assertion fail thirty seconds later blaming the
+    /// guest's circuit.</para>
+    ///
+    /// <para><b>The match is case-sensitive, and that is what makes it decidable.</b> The stale-set
+    /// sentence ends <em>so nothing was moved</em>, so a case-insensitive search for the word would
+    /// accept the one outcome this method exists to reject. <c>Moved.</c> with a capital and a full stop
+    /// occurs in exactly one of the three.</para>
+    ///
+    /// <para><b>What the flash cannot tell anybody is which verb ran.</b> §11.4 renders the same sentence
+    /// for a heading that moved and an item that moved, correctly — an operator knows which button they
+    /// pressed. So the scoping is what carries that claim: each journey above finds one control inside one
+    /// group or one row and presses that, and the assertion that the right thing moved belongs to the
+    /// scenario reading the order back.</para>
+    /// </summary>
+    private static async Task PressMoveAsync(IPage page, ILocator control, string what)
+    {
+        if (await control.CountAsync() == 0)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The menu index offers no {what}. ")
+                + await DescribeFailureAsync(page));
+        }
+
+        if (await control.IsDisabledAsync())
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{what} is disabled, which §11.4 means: it is at that end of its list already and"
+                    + $" would exchange with nothing. The control is rendered rather than omitted on"
+                    + $" purpose, so this is the surface behaving correctly and the caller asking for a"
+                    + $" move that does not exist."));
+        }
+
+        await control.ClickAsync();
+
+        ILocator confirmation = page.Locator("p.status-success").First;
+
+        try
+        {
+            await confirmation.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                string.Create(CultureInfo.InvariantCulture, $"Pressing {what} was not confirmed. ")
+                + await DescribeFailureAsync(page),
+                exception);
+        }
+
+        string message = await ScreenText.DeclaredAsync(confirmation);
+
+        if (!message.Contains("Moved.", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Pressing {what} reported '{message}', which is one of §11.4's two outcomes that"
+                    + $" wrote nothing — the position was already that one, or the set changed while the"
+                    + $" page was open. Neither is a move, and neither will produce the order the caller"
+                    + $" is about to wait for."));
+        }
+    }
+
     /// <summary>
     /// How many likes <c>/administration/menu</c> reports against one dish, or <c>null</c> where it
     /// reports none (§11.4; Stage 5b-ii).
@@ -703,6 +889,38 @@ internal static class AdministrationJourneys
                     $"§11.4's like chip carries data-like-count=\"{declared}\", which is not an integer."));
     }
 
+    /// <summary>
+    /// Reads <c>/administration/menu</c> as the administrator sees it since M6 Slice 44: a list of
+    /// headings in stored order, each holding the items filed under it (§7, §11.4).
+    ///
+    /// <para><b>This is the administration counterpart of
+    /// <c>TableOrderJourneys.ReadMenuCardsAsync</c>, and the pair is the assertion.</b> §7 states an
+    /// asymmetry that no single surface can demonstrate: the guest is rendered no empty heading and no
+    /// inactive one, and §11.4's administrator is rendered both. A scenario that read only the guest's
+    /// menu would see a heading missing and could not say which of three reasons put it there; a scenario
+    /// that read only this page would see every heading and learn nothing about the rule. Reading both
+    /// and comparing them is what makes the difference between the two lists the thing under test.</para>
+    ///
+    /// <para><b>The groups are read in document order and nothing is sorted here.</b> Stored order is the
+    /// property under assertion — §7 orders headings by <c>(display_order, name,
+    /// menu_section_identifier)</c> and a helper that sorted its own output would make every ordering
+    /// assertion above it a tautology.</para>
+    ///
+    /// <para><b>The name comes off <c>.menu-group-name</c> as declared text.</b> The summary line also
+    /// carries a chip and a count, so reading the <c>&lt;summary&gt;</c> whole would return
+    /// <c>"Starters Visible to guests 2 items · position 0"</c> — and <see cref="ScreenText"/> is used for
+    /// the same reason it exists: a heading is content, but the count beside it lives under a rule that
+    /// could acquire a transform, and the narrow read cannot pick that up at all.</para>
+    ///
+    /// <para>Waiting on <c>.menu-groups</c> rather than on a group: a menu with no headings at all renders
+    /// the first-use panel and no wrapper, so a caller arriving too early fails here naming the page
+    /// rather than thirty seconds later inside a group that was never going to exist.</para>
+    ///
+    /// <para><b>This block was attached to <see cref="ReadMenuIndexLikeCountAsync"/> until F-114.</b>
+    /// Slice 59 inserted that method between this comment and the method it describes, which left one
+    /// member with two <c>&lt;summary&gt;</c> elements and this one with none — silently, because the
+    /// C# compiler has no opinion about how many a documentation comment holds.</para>
+    /// </summary>
     internal static async Task<IReadOnlyList<MenuHeadingOnTheIndex>> ReadMenuIndexAsync(IPage page)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -747,10 +965,30 @@ internal static class AdministrationJourneys
                 .Locator("div.menu-group-body td.record-primary a.record-link")
                 .AllTextContentsAsync();
 
+            // §11.4 renders BOTH controls on every group and disables the one that would exchange with
+            // nothing, rather than omitting it. So two is the count, and a group with one is the
+            // implementation that ruling refuses — caught here rather than left to a scenario asserting
+            // on a control that is not there.
+            ILocator moves = group.Locator("div.menu-group-actions button");
+            int moveCount = await moves.CountAsync();
+
+            if (moveCount != 2)
+            {
+                throw new InvalidOperationException(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"The '{name}' group renders {moveCount} move control(s) and §11.4 renders two —"
+                        + $" Up and Down, the edge one disabled rather than omitted, because a control"
+                        + $" that vanishes at the end of a list moves every other control up a row on the"
+                        + $" next render."));
+            }
+
             headings.Add(new MenuHeadingOnTheIndex(
                 name,
                 visible,
-                [.. raw.Select(ScreenText.Collapse)]));
+                [.. raw.Select(ScreenText.Collapse)],
+                !await moves.Nth(0).IsDisabledAsync(),
+                !await moves.Nth(1).IsDisabledAsync()));
         }
 
         return headings;

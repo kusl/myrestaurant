@@ -1902,11 +1902,6 @@ internal static class TableOrderJourneys
     }
 
     /// <summary>
-    /// Which badge a line is wearing, from the chip's class rather than from its words. The two lists
-    /// word it differently — "At your table" on your own order, "At the table" on somebody else's — and
-    /// both publish <c>chip-ok</c>, which is the state rather than the copy.
-    /// </summary>
-    /// <summary>
     /// Every price adjustment §11.1 has written under one committed line, oldest first — which is the
     /// order <c>OrderNarrative</c> folds them in, and therefore the order they happened.
     ///
@@ -1982,6 +1977,15 @@ internal static class TableOrderJourneys
         return string.Create(CultureInfo.InvariantCulture, $" adjusted {adjustments}");
     }
 
+    /// <summary>
+    /// Which badge a line is wearing, from the chip's class rather than from its words. The two lists
+    /// word it differently — "At your table" on your own order, "At the table" on somebody else's — and
+    /// both publish <c>chip-ok</c>, which is the state rather than the copy.
+    ///
+    /// <para>This paragraph sat above <c>ReadPriceAdjustmentsAsync</c> until F-114, as a second
+    /// <c>&lt;summary&gt;</c> element in that method's documentation comment. The C# compiler accepts
+    /// that in silence, so the method it describes carried none.</para>
+    /// </summary>
     private static async Task<GuestLineBadge> ReadBadgeAsync(ILocator line)
     {
         if (await line.Locator("span.chip-warn").CountAsync() > 0)

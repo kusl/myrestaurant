@@ -1215,17 +1215,21 @@ internal static class CounterJourneys
     }
 
     /// <summary>
-    /// The sitting identifier out of a <c>/counter/sittings/{id}</c> URL. Parsed rather than trusted:
-    /// under enhanced navigation the address bar can be ahead of the document, so a scenario that means
-    /// to cross-check which sitting it opened deserves to be told when the URL is not one at all.
-    /// </summary>
-    /// <summary>
     /// A sitting's own URL at the till. The inverse of <see cref="SittingIdentifierFrom"/>, and beside it
     /// so the prefix is written once.
     /// </summary>
     private static string PathFor(Guid sittingIdentifier)
         => string.Create(CultureInfo.InvariantCulture, $"{SittingPathPrefix}{sittingIdentifier:D}");
 
+    /// <summary>
+    /// The sitting identifier out of a <c>/counter/sittings/{id}</c> URL. Parsed rather than trusted:
+    /// under enhanced navigation the address bar can be ahead of the document, so a scenario that means
+    /// to cross-check which sitting it opened deserves to be told when the URL is not one at all.
+    ///
+    /// <para>This paragraph was attached to <see cref="PathFor"/> until F-114 — a second
+    /// <c>&lt;summary&gt;</c> element in one documentation comment, which the compiler accepts in
+    /// silence, so the pair read as though the inverse described the forward direction.</para>
+    /// </summary>
     private static Guid SittingIdentifierFrom(string url)
     {
         if (Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)

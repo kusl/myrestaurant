@@ -872,9 +872,9 @@ the harness could have said which of the two this was. What makes it safe rather
 
 ### What is still open after this stage
 
-**No end-to-end scenario drives either resequencing verb.** §16.3's scenario 17 is not extended, so nothing
-asserts through a browser that a heading or an item moves. The barrier measures the controls; nothing
-exercises them.
+**~~No end-to-end scenario drives either resequencing verb.~~ Closed in Stage 3d, M6 Slice 61.** §16.3's
+scenario 17 is extended after all, thirteen slices later: the barrier measured the controls and nothing
+pressed them, which is exactly the gap this paragraph named.
 
 **The wide layout stacks each row's three controls.** A `<form>` is a block element and `app.css` has no rule
 for a row of them. It is now true on two registers, which makes it slightly more worth fixing than it was.
@@ -943,8 +943,9 @@ restates every time it mentions either.
 
 ### What is still open after this stage
 
-**No scenario drives either resequencing verb**, which is the largest end-to-end gap in the menu: the 375px
-barrier measures those controls and nothing presses them.
+**~~No scenario drives either resequencing verb~~ — closed, M6 Slice 61 (Stage 3d below).** It was the
+largest end-to-end gap in the menu for thirteen slices: the 375px barrier measured those controls and
+nothing pressed them.
 
 **`/kitchen` has no §16.3 scenario at all**, which is the largest end-to-end gap in the application. This stage
 changed that surface and could not assert the change through a browser.
@@ -953,6 +954,105 @@ changed that surface and could not assert the change through a browser.
 
 **Ordering is complete for both tables, every menu surface groups by heading, and Stage 3 and 3a–3c are closed.**
 Stage 4a landed next, in Slice 51.
+
+---
+
+## ~~Stage 3d — a scenario that presses the resequencing controls~~ — **landed, M6 Slice 61**
+
+**The oldest open item this plan carried, and it outlived four stages that were opened, worked and closed
+around it.** Stage 3a shipped `ResequenceMenuSectionsAsync` and its two buttons in Slice 47. Stage 3b
+shipped `ResequenceMenuItemsAsync` and its two in Slice 48, and closed with the sentence this stage exists
+to discharge: *"No end-to-end scenario drives either resequencing verb. §16.3's scenario 17 is not
+extended, so nothing asserts through a browser that a heading or an item moves. The barrier measures the
+controls; nothing exercises them."* Stage 3c repeated it, Stages 4a–4f and 5a–5c carried it, and thirteen
+slices later it was the only end-to-end gap left in the menu.
+
+### Why it was so easy to carry, which is F-109's lesson arriving where F-109 predicted it
+
+**The controls were never unasserted.** §16.3 scenario 16 has measured them since the slice each landed
+in — where they sit, how tall they are, that they lie inside a 375px viewport — and Stage 3b even recorded
+a small finding about that: `.record-actions button` had matched *nothing* until the item rows became the
+first submit controls to render in one. So every re-reading of the open item met a page whose controls were
+demonstrably on the screen, in a repository whose data-access layer asserts both verbs against a real
+PostgreSQL. The deferral read as diligence, and the sentence justifying it was never re-examined, because
+re-examination is not what re-reading is for.
+
+**What the two instruments have in common is that neither presses anything.** A barrier measures where a
+control *is*; an integration fact calls the write service directly. The gap between them is the whole of
+what a browser adds, and naming it precisely is what makes the scenario worth its minutes.
+
+### What only a browser can say, stated as the three claims
+
+**A press reaches the form that owns it.** Every heading renders two static-SSR forms named from its own
+identifier, and every item row two more from its own — so a three-heading, three-item menu carries twelve
+distinct `@formname` values on one page. Blazor dispatches a POST to the form that names it; a dispatch
+that routed a press to the wrong one would move the wrong heading and **report success**. Nothing below the
+browser can see that, because nothing below the browser renders a form.
+
+**An already-open menu re-orders itself.** `ResequenceMenuSectionsAsync` and `ResequenceMenuItemsAsync`
+publish `MenuChanged` on `Resequenced` and on nothing else, and §11.1 renders headings and items in stored
+order — so a resequence changes the shape of every open guest picker without a name, a price or an
+availability flag having moved. That publish is asserted by `MenuWiringTests` against a fake broadcaster;
+whether a phone at a table actually re-reads is a different claim.
+
+**An item moves within its heading and nowhere else.** §7 makes a position a position *within* a heading,
+so the index sends that heading's ordering and not the menu's. The failure this catches is a page that sent
+the whole menu and renumbered the starters because somebody moved a pudding — and it is caught only by
+asserting the heading that was *not* touched, which is why both halves are read.
+
+### Three rulings about the shape of the scenario
+
+**Scenario 17 is extended rather than a scenario 22 added**, on the reason Slices 59 and 60 both gave and
+which is now this project's default: the arrangement already exists. Seventeen ends with three headings, a
+two-item heading, an empty heading, and a guest whose circuit has been open across five broadcasts. A
+scenario 22 would have cost a second container, a second passkey registration and a second join to arrange
+what is already standing.
+
+**Both directions of both controls, each with its restoration**, and the restoration is the stronger half.
+A resequence writes **absolute** positions `0…n-1` over the list it was sent, so an implementation writing a
+relative offset — or writing the right rows in the wrong order — gets the first move right and cannot get
+the move back right as well. And a page that wired Up and left Down inert passes every assertion scenario 17
+held before this stage.
+
+**The count of `reordered` events is deliberately not asserted here.** One event per row that *actually
+moved* is the no-op rule, and it belongs to `MenuSectionResequenceTests` and `MenuItemResequenceTests`,
+which run against a real database and can count rows. A browser reading a *Recent activity* feed would be a
+weaker instrument for the same claim, and the section half is not even visible there — `menu_section_event`
+has no cross-section feed, on the standing rule that a read with no caller is a defect.
+
+### One §11.4 ruling that turned out to have no assertion anywhere
+
+**"Disabled rather than omitted" had never been checked.** Both controls are rendered on every group and the
+one that would exchange with nothing is disabled, because a control that vanishes at the end of a list moves
+every other control up a row on the render after a move — and scenario 16 measures where controls *are*. The
+ruling is in §7, in §11.4 and in the component's own comment, and nothing in the tree had an opinion about
+it: a page that omitted the edge control would have satisfied every existing assertion, including the
+barrier's, whose floor counts controls and would simply have counted fewer.
+
+It is discharged in two halves, deliberately. **Presence is the reader's**: `ReadMenuIndexAsync` refuses a
+group carrying anything other than two move controls, so the omit-at-the-edge implementation fails in the
+harness with a sentence naming the heading. **Enabled-ness is the scenario's**: the first heading offers no
+Up, the last offers no Down, and the middle one offers both. The split is the same one `MenuCard` already
+makes between §7's `disabled` and the chip beside it — whichever of the two is the contract is the one to
+read.
+
+### What is open after this stage
+
+**`/kitchen` still has no §16.3 scenario at all**, which is now the largest end-to-end gap in the
+application by a clear margin. Scenario 21 opens that board and presses one control on it, which is the
+only thing any scenario has ever done there.
+
+**The wide layout stacks each row's three controls** on the administration index. Carried on two registers
+since Slice 47, and this stage pressed those very controls without touching `app.css`, so it is carried
+again with one more slice of evidence that nobody minds enough to open the stylesheet.
+
+**Nothing in this repository measures §11.1 at 375px.** Carried from Slice 60. The handheld barrier is
+scoped to §11.4's surfaces, and the guest menu's box model changed in that slice.
+
+**Ordering is complete for both tables, every menu surface groups by heading, and every verb in §7 now has
+both a surface and a browser that presses it.** The menu enhancement's open list is empty for the third
+time. **The next thing in this plan is still Stage 6**, and it is still not startable, for the three
+reasons it gives below — none of which this stage changed.
 
 ---
 

@@ -2435,6 +2435,17 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     //     own sections-first index is read against the guest's menu, and the assertion is where the two
     //     DISAGREE: a third heading, created and left empty, is a group on the index and absent from the
     //     guest's menu, which is the half of §7's asymmetry no single surface can show.
+    //
+    //     AND THEN IT MOVES THINGS, WHICH IS SLICE 61 AND IS THE OLDEST OPEN ITEM IN THE MENU PLAN.
+    //     Slices 47 and 48 shipped the two resequencing verbs and their controls, and §16.3 scenario 16
+    //     has MEASURED those controls ever since — where they sit, how tall they are, that they are
+    //     inside a 375px viewport — while nothing in this repository had ever PRESSED one. So: a heading
+    //     is moved down and the guest's already-open menu re-orders, then moved back and it returns; an
+    //     item is moved up WITHIN its heading and the other heading is untouched, then moved back. Both
+    //     directions of both controls, because one being wired and the other not is a plausible
+    //     half-implementation that every existing assertion here survives. And the disabled edges are
+    //     read off the index, because "disabled rather than omitted" is a §11.4 ruling that nothing had
+    //     an opinion about either.
     // -------------------------------------------------------------------------------------------
     [Fact]
     public async Task Guest_ReadsTheMenuGroupedUnderItsHeadings()
@@ -2720,6 +2731,162 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         Assert.Equal(
             new[] { starters, puddings },
             (await TableOrderJourneys.ReadMenuSectionNamesAsync(guest)).ToArray());
+
+        // (k) THE DISABLED EDGES, which is a §11.4 ruling nothing in this repository had an opinion
+        // about. Both controls are rendered on every group and the one that would exchange with nothing
+        // is DISABLED rather than omitted, because a control that vanishes at the end of a list moves
+        // every other control up a row on the render after a move — and scenario 16 measures where
+        // controls are. Presence is asserted by the reader itself, which refuses a group carrying
+        // anything but two; what is asserted here is which of the two a person can press.
+        Assert.Equal(
+            new[] { false, true, true },
+            index.Select(heading => heading.OffersMoveUp).ToArray());
+
+        Assert.Equal(
+            new[] { true, true, false },
+            index.Select(heading => heading.OffersMoveDown).ToArray());
+
+        // (l) A HEADING MOVES, AND A MENU THAT NOBODY TOUCHED RE-ORDERS ITSELF. This is the oldest open
+        // item in the menu plan: the verb landed in Slice 47 with its two buttons, scenario 16 has
+        // measured those buttons ever since, and nothing had pressed one.
+        //
+        // What only a browser can say is that the whole-ordering POST reaches the group that owns it.
+        // Every heading renders two static-SSR forms named from its own identifier, so this page carries
+        // six distinct `@formname` values and a dispatch that routed a press to the wrong one would move
+        // the wrong heading and report success. `MenuSectionResequenceTests` asserts the write against a
+        // real PostgreSQL and cannot see that at all.
+        //
+        // Starters moves DOWN rather than Puddings moving up, although the two produce the same ordering:
+        // the pair below presses one control and then the other, because a page that wired Up and left
+        // Down inert passes every assertion in this scenario written before now.
+        await AdministrationJourneys.MoveMenuHeadingAsync(
+            administrator, startersIdentifier, up: false);
+
+        IReadOnlyList<MenuCard> reordered = await TableOrderJourneys.WaitForMenuAsync(
+            guest,
+            observed => observed.Count > 0 && observed[0].SectionName == puddings,
+            InteractivityPatience,
+            $"the '{puddings}' heading to move above '{starters}'",
+            cancellationToken);
+
+        // The whole heading moved, with everything under it, and the items inside each did not stir.
+        Assert.Equal(
+            new[] { puddings, starters },
+            reordered.Select(card => card.SectionName).Distinct().ToArray());
+
+        Assert.Equal(
+            new[] { pie.Name, second.Name },
+            reordered.Where(card => card.SectionName == puddings).Select(card => card.Name).ToArray());
+
+        Assert.Equal(
+            new[] { soup.Name },
+            reordered.Where(card => card.SectionName == starters).Select(card => card.Name).ToArray());
+
+        // The administrator's index agrees about the ORDER and still disagrees about the MEMBERSHIP,
+        // which is the same comparison step (j) makes, now with the ordering as its subject. The empty
+        // heading stays last: a resequence rewrites the positions of the list it was sent and invents
+        // nothing about a heading nobody moved.
+        IReadOnlyList<MenuHeadingOnTheIndex> movedIndex =
+            await AdministrationJourneys.ReadMenuIndexAsync(administrator);
+
+        Assert.Equal(
+            new[] { puddings, starters, wines },
+            movedIndex.Select(heading => heading.Name).ToArray());
+
+        // And the edges moved with the list rather than staying on whichever heading used to hold them.
+        Assert.Equal(
+            new[] { false, true, true },
+            movedIndex.Select(heading => heading.OffersMoveUp).ToArray());
+
+        // (m) And back, with the other control. A restoration is the assertion step (h) is built on and
+        // it is stronger here than the move was: `ResequenceMenuSectionsAsync` writes ABSOLUTE positions
+        // 0…n-1 over the whole list, so an implementation that wrote a relative offset — or that wrote
+        // the right rows in the wrong order — gets the first move right and cannot get the second one
+        // right as well.
+        await AdministrationJourneys.MoveMenuHeadingAsync(
+            administrator, startersIdentifier, up: true);
+
+        IReadOnlyList<MenuCard> restoredOrder = await TableOrderJourneys.WaitForMenuAsync(
+            guest,
+            observed => observed.Count > 0 && observed[0].SectionName == starters,
+            InteractivityPatience,
+            $"the '{starters}' heading to move back above '{puddings}'",
+            cancellationToken);
+
+        Assert.Equal(
+            new[] { starters, puddings },
+            restoredOrder.Select(card => card.SectionName).Distinct().ToArray());
+
+        // (n) AN ITEM MOVES WITHIN ITS HEADING, AND THE OTHER HEADING IS NOT RENUMBERED. This is the
+        // second verb, and the claim that makes it a different verb rather than the same one at another
+        // scale: §7 makes a position a position WITHIN a heading, so the index sends that heading's
+        // ordering and not the menu's. A page that had sent the whole menu would renumber the starters
+        // because somebody moved a pudding, and it would pass an assertion that only read the heading
+        // that was touched.
+        //
+        // Puddings holds the pie at 0 and `second` at 1, which step (i) established by watching the
+        // refile append. Moving `second` up exchanges them.
+        await AdministrationJourneys.MoveMenuItemAsync(administrator, second.Identifier, up: true);
+
+        IReadOnlyList<MenuCard> itemMoved = await TableOrderJourneys.WaitForMenuAsync(
+            guest,
+            observed => observed
+                .Where(card => card.SectionName == puddings)
+                .Select(card => card.Name)
+                .FirstOrDefault() == second.Name,
+            InteractivityPatience,
+            $"'{second.Name}' to move to the top of '{puddings}'",
+            cancellationToken);
+
+        Assert.Equal(
+            new[] { second.Name, pie.Name },
+            itemMoved.Where(card => card.SectionName == puddings).Select(card => card.Name).ToArray());
+
+        // The headings did not move, and the other heading's items did not move. Both halves matter: an
+        // item resequence that reached `ResequenceMenuSectionsAsync` by mistake would reorder the
+        // headings, and one that sent the whole menu would reorder the soup.
+        Assert.Equal(
+            new[] { starters, puddings },
+            itemMoved.Select(card => card.SectionName).Distinct().ToArray());
+
+        Assert.Equal(
+            new[] { soup.Name },
+            itemMoved.Where(card => card.SectionName == starters).Select(card => card.Name).ToArray());
+
+        // And back, with the other control, on the reason step (m) gives. Read from the administrator's
+        // index rather than the guest's menu this time — the same rows through the other surface, which
+        // is what steps (i) and (j) already do for the refile and is the only thing that catches an index
+        // whose two lists agree with each other and not with the database.
+        await AdministrationJourneys.MoveMenuItemAsync(administrator, second.Identifier, up: false);
+
+        IReadOnlyList<MenuCard> itemRestored = await TableOrderJourneys.WaitForMenuAsync(
+            guest,
+            observed => observed
+                .Where(card => card.SectionName == puddings)
+                .Select(card => card.Name)
+                .FirstOrDefault() == pie.Name,
+            InteractivityPatience,
+            $"'{pie.Name}' to return to the top of '{puddings}'",
+            cancellationToken);
+
+        Assert.Equal(
+            new[] { pie.Name, second.Name },
+            itemRestored.Where(card => card.SectionName == puddings).Select(card => card.Name).ToArray());
+
+        IReadOnlyList<MenuHeadingOnTheIndex> finalIndex =
+            await AdministrationJourneys.ReadMenuIndexAsync(administrator);
+
+        Assert.Equal(
+            new[] { starters, puddings, wines },
+            finalIndex.Select(heading => heading.Name).ToArray());
+
+        Assert.Equal(
+            new[] { pie.Name, second.Name },
+            Assert.Single(finalIndex, heading => heading.Name == puddings).ItemNames.ToArray());
+
+        Assert.Equal(
+            new[] { soup.Name },
+            Assert.Single(finalIndex, heading => heading.Name == starters).ItemNames.ToArray());
     }
 
     // --- helpers ---------------------------------------------------------------------------------

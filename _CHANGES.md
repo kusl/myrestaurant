@@ -1,14 +1,14 @@
-# M6 Slice 60 — likes: a dish that is off tonight, and a read that had no reader
+# M6 Slice 61 — the controls the barrier had been measuring, and a comment that described somebody else
 
-**Apply this to a tree at Slice 59.** It edits five files that Slices 58 and 59 created or last touched, so
-extracting it over an older tree will leave a Razor component and a scenario referencing things that do not
-exist.
+**Apply this to a tree at Slice 60.** It edits nine files that earlier slices created or last touched, and
+adds one. Extracting it over an older tree will leave a scenario referencing harness members that do not
+exist and a §16.4 census that does not match.
 
 Extract at the repository root. Every file in the archive is a **complete file**; nothing is a patch, and
 there are no scripts to run.
 
 ```
-tar -xzf m6-slice-60-like-an-unavailable-dish.tar.gz
+tar -xzf m6-slice-61-press-the-resequencing-controls.tar.gz
 ```
 
 ## Files to delete
@@ -17,137 +17,143 @@ tar -xzf m6-slice-60-like-an-unavailable-dish.tar.gz
 
 ## New files — these must be `git add`ed
 
-**None.** Every file in the archive already exists in the tree.
+| Path |
+| --- |
+| `tests/MyRestaurant.WebApplication.Tests/Documentation/DocumentationCommentContractTests.cs` |
+
+**One file, and it must be added rather than merely extracted.** The tree and repository gates enumerate
+with `git ls-files`, so an untracked file is invisible to every one of them — including, this time, the gate
+itself.
 
 ## What is in the archive
 
 | Path | Why |
 | --- | --- |
-| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor` | The way into the panel for a dish that cannot be staged, and `ChooseItem`'s corrected paragraph |
-| `src/MyRestaurant.WebApplication/wwwroot/app.css` | `.order-menu-inspect`, and `.order-menu-item` becomes a column |
-| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemReactionSurfaceContractTests.cs` | The sixth and seventh facts |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | `InspectAsync`, and F-113's repair |
-| `tests/MyRestaurant.EndToEnd.Tests/MenuReactionScenarios.cs` | Scenario 21 extended; still one `[Fact]` |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.45**: §7, §11.1, §16.3 scenario 21, §16.4 five → seven, two Appendix A rows, changelog |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 5c, landed; the carried open item struck through in both stages; the header's stale date deleted |
-| `docs/DOCUMENTATION_REVIEW.md` | **F-113** |
-| `docs/BUILD_PROGRESS.md` | The Slice 60 narrative, shipped whole |
-| `_CHANGES.md` | This file |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs` | `MoveMenuHeadingAsync`, `MoveMenuItemAsync`, `PressMoveAsync`; the index reader now reads the two move controls and refuses an omitted edge; `MenuHeadingOnTheIndex` gains two members; two F-114 repairs |
+| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | scenario 17 gains steps (k) through (n); still one `[Fact]` |
+| `tests/MyRestaurant.WebApplication.Tests/Documentation/DocumentationCommentContractTests.cs` | **new** — F-114's gate, two assertions |
+| `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs` | `MinimumCountedClasses` 33 → 34 |
+| `src/MyRestaurant.WebApplication/Components/Pages/Administration/HiddenRecords.razor` | F-114: `ListPath`'s comment returns to `ListPath` |
+| `tests/MyRestaurant.DataAccess.Tests/Orders/OrderTestWorld.cs` | F-114: the falsified pre-F-86 paragraph deleted; two summaries on `AddMenuItemAsync` merged |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs` | F-114: the class's summary moves onto the class |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs` | F-114: a forward and an inverse whose comments were swapped |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | F-114: `ReadBadgeAsync`'s summary returns to `ReadBadgeAsync` |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.46**: §16.3 scenario 17, a new §16.4 paragraph, two Appendix A rows, changelog |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 3d, landed; the carried open item struck through in both stages that held it |
+| `docs/DOCUMENTATION_REVIEW.md` | **F-114**, and the register's status line |
+| `docs/BUILD_PROGRESS.md` | the Slice 61 narrative, shipped whole |
+| `_CHANGES.md` | this file |
 
 ## Test count
 
 | Where | Facts | Running |
 | --- | --- | --- |
-| Baseline — **measured**, from your last run | — | 1279 |
-| `MenuItemReactionSurfaceContractTests` (5 → 7) | +2 | 1281 |
+| Baseline — **predicted, not measured** | — | 1281 |
+| `DocumentationCommentContractTests` (new) | +2 | 1283 |
 
-**Predicted 1281**, and the §16.3 suite stays at **21**.
+**Predicted 1283**, and the §16.3 suite stays at **21**. Two facts rather than more: the resequencing work
+adds assertions *inside* an existing `[Fact]`, and F-114's eight repairs add none.
 
-This is the first slice in four whose baseline was measured rather than carried forward, so a deviation is
-attributable to this slice alone rather than to a chain of predictions.
+**The baseline is carried rather than measured, so a deviation is not attributable to this slice alone.**
+Slice 60 measured 1279 and predicted 1281; no run of 1281 exists. A run returning **1281** means the new
+class did not execute. A run returning **1279** means Slice 60's two facts are missing too, and that is the
+thing to chase first.
 
-## The drift, said first
+## Session start
 
-The session opened believing this tree was at **Slice 54** — picture history, roughly 1250 tests, ledger
-through F-105. The SHA-256 reconstruction said **Slice 59**, v1.44, 1279, F-112. Five slices, which is the
-largest gap the reconstruction has caught. 374 of 375 files verified byte-exact; the two that did not are
-`export.sh`, whose dump rewrites its own header into the copy it embeds, and `LICENSE`, which the dump
-elides to metadata deliberately. Nothing was reconstructed on a guess.
+**No drift.** The SHA-256 reconstruction from `dump.txt` verified 374 of 375 files byte-exact and agreed
+with the incoming belief on every fact — Slice 60, v1.45, F-113, twenty-one scenarios, 1281 carried. The two
+that did not verify are the two that never do: `export.sh`, whose dump rewrites its own header into the copy
+it embeds, and `LICENSE`, elided to metadata by design. First session in five with nothing to correct.
 
 ## What this slice closes
 
-**A guest could not like an unavailable dish.** §11.1 puts the like in the detail panel, the panel opens
-only for a *chosen* item, and §7 renders a deactivated item's card `disabled` — so *the salmon is off
-tonight and it is still the best thing here* was an opinion this surface could not record. Stage 5b-i wrote
-the gap down and named the repair; this is the repair.
+**The oldest open item in the project.** Stage 3a shipped `ResequenceMenuSectionsAsync` and its two buttons
+in Slice 47; Stage 3b shipped `ResequenceMenuItemsAsync` and its two in Slice 48, and closed with the
+sentence this slice discharges: *no end-to-end scenario drives either resequencing verb — the barrier
+measures the controls, nothing exercises them.* Thirteen slices, and by Slice 60 the only end-to-end gap
+left in the menu.
 
-## The one ruling worth reading twice
+**Why it was so easy to carry, which is the transferable part.** The controls were never *unasserted*.
+Scenario 16 has measured them since each landed — where they sit, how tall they are, that they lie inside a
+375px viewport — and both verbs are asserted against a real PostgreSQL. Every re-reading of the open item
+met a page whose controls were demonstrably on the screen. **What the two instruments have in common is
+that neither presses anything**, and the gap between them is the whole of what a browser adds. That is
+F-109's mechanism on a second kind of deferral: a justifying sentence is not re-examined, because
+re-examination is not what re-reading is for.
 
-**The card stays `disabled`.** The obvious change is to drop it so one control does both jobs, and it
-works: §7's "cannot be added to a send" is enforced by `OrderStaging.Stage`, which refuses an inactive item
-**by name**, and again by the send transaction under the lock. The markup gets smaller. Every existing test
-stays green.
+**Scenario 17 is extended rather than a scenario 22 added.** Seventeen ends with three headings, a two-item
+heading, an empty heading, and a guest whose circuit has been open across five broadcasts — which is
+exactly the arrangement a resequence needs. A scenario 22 would have cost a second container, a second
+passkey registration and a second join to arrange what is already standing. Slices 59 and 60 both made this
+call; it is now the default.
 
-It is refused because §7's rule is about *staging* and the card is the staging control. A card that
-answered a tap on a dish the surface already knows is off would be inviting somebody to press *Add to
-basket* and be told no. What was missing was a **path**, not a looser refusal — so the card keeps
-`disabled` and gains a sibling inside the same `<li>`.
+**Both directions of both controls, each with its restoration.** A resequence writes **absolute** positions
+`0…n-1` over the list it was sent, so an implementation writing a relative offset gets the first move right
+and cannot get the move back right as well. And a page that wired Up and left Down inert passes every
+assertion scenario 17 held before now.
 
-A sibling and not a child, which is the parser ruling for the second time: a `<button>` inside a
-`<button>` is markup the parser silently splits, taking the half that carries the dish's name out of the
-staging path with nothing thrown and the Razor compiling.
+**A §11.4 ruling that had no assertion anywhere is discharged in passing.** "Disabled rather than omitted"
+is in §7, in §11.4 and in the component's own comment, and nothing in the tree had an opinion about it — a
+page that omitted the edge control would have satisfied the barrier, whose floor merely counts controls and
+would have counted fewer. Presence is now the reader's business and enabled-ness the scenario's.
 
-## Veto points
+## The finding — F-114
 
-**1. The card keeps `disabled` and gains a second control.** *To reverse:* delete the
-`.order-menu-inspect` block and the guard around it, drop `disabled="@(!item.IsActive)"` from the card, and
-delete the sixth contract fact. What you buy is one control per card instead of two. What you pay is a
-guest tapping a dish that is off, choosing it, pressing *Add to basket* and being refused — the invitation
-§7's `disabled` exists to withhold.
+**A documentation comment can describe a member other than the one it is attached to.** A `///` block binds
+to the next declaration; C# has no file-level documentation comment; and a block holding two `<summary>`
+elements compiles, publishes malformed XML documentation, and renders whichever one the tooling reaches
+first. **Eight were in the tree, in five files, one under `src/`.**
 
-**2. *Add to basket* is asserted never `disabled`.** *To reverse:* delete the seventh fact and bind the
-button to the chosen item's availability. Note what you are buying: a dead control with no reason on it,
-where `OrderStaging` would have named the dish, and a second opinion about availability inside a component
-whose staging area already holds one (F-65).
+Seven are misplaced prose, each arriving a different way — a class-level essay bound to whichever record was
+declared first (twice), a comment orphaned by Slice 59 inserting a method between it and its subject, a
+forward and an inverse whose comments were swapped, `ListPath`'s comment on `IsExpanded`.
 
-**3. The accessible name is a visually hidden span rather than an `aria-label`.** *To reverse:* put
-`aria-label="Read about @item.Name"` on the button and delete the span. What you pay is voice control: an
-`aria-label` replaces the content, so *"click Read about"* stops matching for the population most likely to
-be using it.
+**The eighth is what gives it a number.** `OrderTestWorld`'s `menu_item_event` INSERT carried its own
+pre-F-86 description — *the payload columns `0004` and `0005` added are omitted rather than passed as NULL*,
+and *the casts on the two columns that remain* — six lines above a statement that lists all five and casts
+all five. **F-86 wrote its correction underneath the claim it falsified instead of over it**, and because
+two summaries are legal the falsified sentence stayed first for twenty-two slices. This mechanism does not
+merely misplace prose: it preserves a refuted claim where a reader meets it first, with nothing able to
+report it.
 
-**4. Scenario 21 was extended instead of a scenario 22 added.** *To reverse:* copy the arrangement into a
-second `[Fact]`. What you pay is a second container, a second passkey registration and a second join, for
-an arrangement this scenario already has standing.
+**All eight repaired**, and where two summaries describe the same member the superseded one is **deleted**
+rather than merged (F-77, F-89). **The rule is then made executable because it is total** — XML
+documentation gives a member one summary and no other element is affected, so there is nothing legitimate
+to exempt. F-81's class, not F-104's. Subject computed, no file named (F-58); an escaped mention is outside
+the rule by construction, which matters because every repair refers to the tag that way.
 
-**5. F-113 adds no gate.** *To reverse:* write one, and note what it needs — a CSS selector engine resolved
-against a component tree, because *which reads a `text-transform` rule reaches* is not decidable from text.
-A lexical approximation reports findings on correct reads while missing transformed ones, which is F-41's
-*reaching past what it can decide*.
+**Writing the sensitivity proof found this gate's own instance of its subject.** The synthesised defect,
+written as a literal, would have put two consecutive `///` lines carrying a summary each into the test file
+— which the walk reads as text and cannot tell from a real comment. The first emulation reported a finding
+on the file proving the gate works. The fixtures are composed at run time instead.
 
-## F-113, and why it could not be seen
+## Why two changes in one slice
 
-`ChosenItemDetail.Facts` is keyed by the detail panel's `<dt>` terms and its own paragraph names them
-*Price*, *Available* and *On the menu since*. The reader built it with `InnerTextAsync`, and `app.css`
-upcases `.order-menu-facts dt` — so it produced `AVAILABLE`.
+The scenario fails as a named step of one Playwright fact in `MyRestaurant.EndToEnd.Tests`. F-114 fails as
+one of two named unit facts in `MyRestaurant.WebApplication.Tests`, computing over source text, and its
+eight repairs change no behaviour at all. Neither can make the other red, and a red run names which — which
+is v1.32's distinguishable-failure exemption. **The gate could not have shipped later than the repair**,
+because a gate on a tree that violates it is red on arrival.
 
-**F-88's mechanism a second time inside the file F-88 was found in.** That fix corrected two reads in one
-slice and then wrote *"only this one read is affected"*, which was wrong by one at the moment of writing.
-It was narrowly true only because `Facts` was a **read with no reader**: nothing had ever looked a term up,
-so the disagreement between the record and its reader was unobservable rather than unobserved.
+## Veto candidates
 
-The term now goes through `ScreenText.DeclaredAsync`; the `<dd>` beside it deliberately does not, that
-being `ScreenText`'s own distinction between a label and content. What closes the hole is that `Facts` now
-has a caller — this slice's scenario step.
+**`ReadMenuIndexAsync` now throws on a group with anything other than two move controls.** This is the
+"disabled rather than omitted" claim placed in the reader rather than in the scenario, and the cost is a new
+way for scenario 17 to fail that has nothing to do with ordering: a §11.4 markup change now surfaces as a
+harness exception. **To revert**, delete the `moveCount != 2` guard in
+`AdministrationJourneys.ReadMenuIndexAsync` and pass `false, false` for the two new record members where the
+controls are absent — the scenario's two `OffersMoveUp`/`OffersMoveDown` assertions then become the only
+statement about the edges, and presence stops being asserted anywhere.
 
-## What was verified before packaging, and what was not
+**The new gate reads `tests/` as well as `src/`.** Five of F-114's eight sites were under `tests/`, and the
+harness is where this project keeps the reasoning that makes a scenario readable. **To revert**, remove
+`"tests"` from `SourceRoots` in `DocumentationCommentContractTests` and lower both non-vacuity floors —
+`MinimumFilesScanned` to roughly 120 and `MinimumBlocksScanned` to roughly 700 — or the gate will fail on a
+correct tree for having read less than it expects to.
 
-**Verified mechanically.** All seven contract facts emulated against the edited tree, and the two new ones
-**proven sensitive against six planted defects**: the card's `disabled` dropped, the control moved inside
-the card's `<button>`, the guard removed, *Add to basket* given a `disabled` binding, and the control
-deleted outright. Every one was reported, by the assertion that should report it. §16.4's counted-class
-gate emulated over the edited specification — **33 classes, no ambiguity, no disagreement**. The Markdown
-table gate emulated with the real unescaped-pipe splitter over all **25** tracked documents: clean. The
-version gate emulated: header 1.45, newest entry 1.45, **46** entries strictly descending. Brace and
-parenthesis balance checked on every changed C# file. Byte hygiene — no CR, one final newline, no tab, no
-whitespace-only or trailing-space line — on every file in the archive. No `await` in an interpolated hole
-(CS4007); no `string.Create` chain with a plain literal (CS1620); no `@section`.
-
-**Not verified.** Nothing was compiled and nothing was run (F-71's standing caveat). **The layout change is
-the largest risk and no gate here can see it**: `.order-menu-item` becomes a column and the card takes
-`flex-grow: 1` so a row of cards stays level, and nothing in this repository measures §11.1 at any width —
-§16.3 scenario 16's 375px barrier is scoped to §11.4's surfaces. If a row looks ragged, that is the line.
-Second, `MenuInspectSelector` uses a `>` child combinator; the control is a direct child of the `<li>`
-today, and a Razor construct between them would break the selector while the contract fact still passed.
-Third, `KitchenJourneys.OpenAsync` is called on the administrator's page, which no scenario had previously
-used as both the kitchen and the menu index — §3.7 permits it and that method's own summary says so.
-
-## What is open after this slice
-
-**Nothing about the menu enhancement.** Stage 5's list is empty for the second time, and this time nothing
-was deferred into it. Stage 6 — comments — remains *not startable* for the reasons it records: a
-rate-limiting slice with no menu in it, a `REQUIREMENTS.md` revision about guest privacy, and a moderation
-surface.
-
-**One new open item, named rather than carried silently:** nothing in this repository measures §11.1 at
-375px. The handheld barrier is scoped to §11.4, and this slice is the first to change the guest menu's box
-model. The repair is a scenario, and it needs a seated guest.
+**The eight F-114 repairs each leave a paragraph explaining what moved.** That is F-70's rule — an
+assertion nobody can find the reason for is an assertion the next person deletes — and it costs eight
+paragraphs of housekeeping prose in files about other things. **To revert**, delete the paragraph beginning
+*"This block sat at…"*, *"This paragraph was attached to…"* or *"A falsified paragraph stood above…"* in each
+of the five files; nothing depends on them and the gate is indifferent.
