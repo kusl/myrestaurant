@@ -296,6 +296,8 @@ public sealed class RestaurantTimeTests
         Argon2Iterations = 3,
         Argon2Parallelism = 1,
         Argon2MaxConcurrentHashes = 4,
+        GuestRegistrationAttemptsPerWindow = 0,
+        GuestRegistrationWindowMinutes = 0,
     };
 
     /// <summary>

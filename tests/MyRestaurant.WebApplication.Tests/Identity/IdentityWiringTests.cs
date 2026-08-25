@@ -313,6 +313,8 @@ public sealed class IdentityWiringTests
         Argon2Iterations = 3,
         Argon2Parallelism = 1,
         Argon2MaxConcurrentHashes = 4,
+        GuestRegistrationAttemptsPerWindow = 0,
+        GuestRegistrationWindowMinutes = 0,
     };
 
     /// <summary>The wiring tests never open a connection; this makes that explicit.</summary>
