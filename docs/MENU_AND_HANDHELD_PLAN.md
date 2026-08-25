@@ -1981,10 +1981,10 @@ join, for an arrangement this scenario already has standing.
 and the consequence Stage 5b-i recorded is discharged rather than carried. The menu enhancement's open list
 is empty for the second time, and this time nothing was deferred into it.
 
-**The next thing in this plan is Stage 6**, which is *not startable* and says why below. **One of its four
-prerequisites is discharged as of M6 Slice 62** — the rate-limiting slice with no menu in it, which landed
-on `/register` rather than on comments and is recorded as Stage 6a below. Three still block it: the
-`REQUIREMENTS.md` revision about guest privacy, the moderation surface, and §11.11's rendering rule.
+**The next thing in this plan is Stage 6**, which is *not startable* and says why below. **Two of its four
+prerequisites are discharged** — the rate-limiting slice with no menu in it (M6 Slice 62, Stage 6a below), and
+§11.11's rendering rule (M6 Slice 63, Stage 6b below). Two still block it: the `REQUIREMENTS.md` revision about
+guest privacy, and the moderation surface.
 
 ---
 
@@ -2036,9 +2036,9 @@ arithmetic is not.
 
 ### What is open after this stage
 
-**Three of Stage 6's four prerequisites**, unchanged and listed below: the `REQUIREMENTS.md` revision about
-guest privacy, the moderation surface, and §11.11's rendering rule. Nothing was deferred *into* the open
-list by this stage.
+**Three of Stage 6's four prerequisites**, unchanged and listed below at the time this stage closed: the
+`REQUIREMENTS.md` revision about guest privacy, the moderation surface, and §11.11's rendering rule. The third
+of those was taken next, in Slice 63 — Stage 6b. Nothing was deferred *into* the open list by this stage.
 
 **One thing only a browser can say**, and it is the same claim §4.2 has never had asserted either: that the
 Blazor endpoint for a static-SSR page carries `[EnableRateLimiting]` in its endpoint metadata, so the
@@ -2049,11 +2049,82 @@ treated as new risk.
 
 ---
 
+## Stage 6b — the rendering rule stops being a sentence — **landed, M6 Slice 63**
+
+**Prerequisite 4 of Stage 6, discharged, and it is the second slice in a row with no menu in it.** Stage 6a
+established the shape: a prerequisite is cheapest to discharge while nothing yet depends on it being wrong.
+This one is cheaper still, because unlike the rate limiter there was no wall — only a rule written in
+English in two documents and a comment, and nothing anywhere able to notice it being broken.
+
+### What the rule was, and what it was worth
+
+Prerequisite 4 below says comment text goes through Razor's default HTML encoding and must never reach a
+`MarkupString`. ADR-0014 says the same thing about an item description. §17 says something stronger and
+depends on it: that `script-src 'self'` with no hash, nonce or `unsafe-*` is a **second line of defence**,
+which is only true if the places this application bypasses Razor's escaping are a small closed set of values
+it computed itself.
+
+**That last claim was written as a count — *the six `MarkupString` sites* — in four places and enforced in
+none.** §17's threat paragraph, `ResponseSecurityHeaders`' own summary, and the two F-49 ledger rows. It was
+correct on every one of the thirty-nine slices since it was written, and it is exactly the artefact this
+project has recorded under F-73, F-77, F-89, F-105, F-111 and F-112: a census in prose that nothing can move.
+
+**A seventh site is one line of markup.** It compiles, it renders, it reviews as unremarkable, and it turns
+an escaped field into an injection point — and the policy would keep an injected script inert and keep
+nothing else inert, because markup this application serves from its own origin sits inside `'self'` and no
+directive distinguishes it from markup this application wrote. A comment is the first content one guest
+writes for another guest to read, so the first line of markup that ever wants to be raw is the one Stage 6
+would write.
+
+### What landed
+
+`RawHtmlContractTests` — **two facts** — holds the set as a `path → count` record and compares it against the
+tree. All six recorded sites render an SVG QR code built from a value this application minted: a rotating
+join token (§4.3), a pairing code (§4.2), or a TOTP enrolment URI (§3.4). The live prose copies of the count
+are deleted: §17 now names the gate, and `ResponseSecurityHeaders`' summary says in as many words that how
+many there are is deliberately not written there.
+
+### Four rulings, and the first is the one to read twice
+
+**The undecidable half is refused rather than approximated.** Whether a value was authored by a person is a
+fact about where it came from several calls away, not a property of the text, so a gate claiming to assert it
+would be reaching past what it can decide (F-41). What is decidable is *where* raw HTML is produced. A closed
+set converts the undecidable question into a **human** one asked at the right moment: adding a site means
+editing that file, in the same commit, with the reason in the slice — the same trade
+`ContentSecurityPolicyContractTests` makes about its two concessions.
+
+**The comparison runs in both directions and carries the per-file count.** A production nobody recorded is
+the case the gate exists for. A recorded site the tree no longer has is how a list of six becomes five real
+entries and one superstition, and the next reader trusts the superstition. And a second production inside a
+file that already had one is the cheapest way past a gate that compared only paths.
+
+**The two F-49 ledger rows keep their count.** A ledger row is a dated account of what was true on a date;
+editing one is rewriting history rather than removing a duplicate. Only live claims lost the number.
+
+**It reads code rather than text, and that is F-116 rather than caution.** `ResponseSecurityHeaders` names
+the type in prose while explaining what the policy is for, so a scan of raw text would report a finding on
+the file that documents the rule. F-67's open-parenthesis distinction cannot help — a type name is not a
+call and there is nothing to key on — which is why the reader became comment-blind instead of the pattern
+becoming cleverer.
+
+### What is open after this stage
+
+**Two of Stage 6's four prerequisites**, and they are the two that were always the hard ones: the
+`REQUIREMENTS.md` revision about guest privacy, which is *new intent* and therefore the owner's to make, and
+the moderation surface, which is a slice of real work. Nothing was deferred *into* the open list.
+
+**One thing only a gate of this shape can never say.** The record is a set of files, not a set of values, so
+a recorded site that *changed what it renders* — the QR component made to take a caption, say — passes. That
+is the residual, and it is why the record's own comment states the question to ask as *can a person ever
+reach this value* rather than *is this string safe today*.
+
+---
+
 ## Stage 6 — comments, and what has to be settled first
 
-**Not started, and one of four prerequisites now discharged (Stage 6a above, M6 Slice 62).** This is still
-the one item in the request that cannot be planned into a slice, and it is worth being precise about why
-rather than calling it "future work".
+**Not started, and two of four prerequisites now discharged (Stage 6a, M6 Slice 62; Stage 6b, M6 Slice 63).**
+This is still the one item in the request that cannot be planned into a slice, and it is worth being precise
+about why rather than calling it "future work".
 
 A comment is the first **user-generated content** in this system. Every text field a guest can write today
 — a display name, a customization note — is read by staff. A comment is read by other guests. Four things
@@ -2079,14 +2150,18 @@ follow, and three of them are edits to documents rather than to code.
 3. **Moderation is not optional, and §6.8 is the model.** The vocabulary already exists: hiding, never
    deletion, with an administration surface that can find what was hidden and unhide it. A comment gets
    `posted | edited | hidden | unhidden` and the hidden-records page gains a second kind of record.
-4. **Rendering, and the second line of defence is already there.** Comment text goes through Razor's
-   default HTML encoding and must never reach a `MarkupString`; §11.11's `script-src` carries no
-   `'unsafe-inline'`, which is what F-49 built it for. `ContentSecurityPolicyContractTests` computes what
-   the application loads by scanning the tree, so it will notice a new inline handler on its own.
+4. ~~**Rendering, and the second line of defence is already there.**~~ **Discharged, M6 Slice 63 — Stage 6b
+   above.** Comment text goes through Razor's default HTML encoding and must never reach a `MarkupString`;
+   §11.11's `script-src` carries no `'unsafe-inline'`, which is what F-49 built it for.
+   `ContentSecurityPolicyContractTests` computes what the application loads by scanning the tree, so it will
+   notice a new inline handler on its own. **What was a sentence in this list is now a gate**: raw HTML has a
+   recorded closed set of sources, compared against the tree in both directions, so the line of markup that
+   would render a comment unescaped cannot be added without a human deciding to add it to that record.
 
-**The recommendation below was written before Stage 5 landed and before Stage 6a discharged prerequisite 1.
-It is kept rather than rewritten, because the argument in it is still the argument** — three of four
-prerequisites stand, and the sentence about what comments cost is unchanged by one of the four going away.
+**The recommendation below was written before Stage 5 landed and before Stage 6a and 6b discharged two prerequisites.
+It is kept rather than rewritten, because the argument in it is still the argument** — two of four
+prerequisites stand, and the two that do are the requirements revision and the moderation surface, which is
+to say the two the recommendation was actually about.
 
 **Recommendation: do Stage 5b and stop.** Likes answer "which of these is popular" with no new question
 attached. Comments answer a question nobody has asked for yet at the cost of a rate-limiting slice, a

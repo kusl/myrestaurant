@@ -30,14 +30,17 @@ namespace MyRestaurant.WebApplication.Security;
 ///
 /// <para><b>The three headers, each with a threat.</b> Nothing is here for completeness.</para>
 /// <list type="bullet">
-///   <item><b><c>Content-Security-Policy</c></b> — the six <c>MarkupString</c> sites (§3.4, §4.3, §4.5)
-///   are the only raw HTML this application injects, and inline SVG can carry <c>&lt;script&gt;</c>.
-///   Razor escapes everything else, which is a reason for confidence and not a reason to skip the
-///   defence: the policy is what makes an injection that gets past escaping non-executable rather than
-///   merely unlikely. It also carries <c>frame-ancestors 'none'</c> on every response instead of
-///   <c>'self'</c> on some, and <c>form-action 'self'</c>, which is the one directive antiforgery does
-///   not cover — a token protects against a forged request and says nothing about where a real form
-///   posts to.</item>
+///   <item><b><c>Content-Security-Policy</c></b> — the <c>MarkupString</c> sites (§3.4, §4.3, §4.5) are
+///   the only raw HTML this application injects, and inline SVG can carry <c>&lt;script&gt;</c>. How
+///   many there are is deliberately not written here: <c>RawHtmlContractTests</c> holds the set, and a
+///   count beside an enforced copy of itself is the artefact F-112 and F-89 are about. Razor escapes
+///   everything else, which is a reason for confidence and not a reason to skip the defence: the policy
+///   is what makes an injection that gets past escaping non-executable rather than merely unlikely — and
+///   it is only the <em>second</em> line, because markup this application serves from its own origin is
+///   inside <c>'self'</c> and nothing in a policy distinguishes it from markup this application wrote.
+///   It also carries <c>frame-ancestors 'none'</c> on every response instead of <c>'self'</c> on some,
+///   and <c>form-action 'self'</c>, which is the one directive antiforgery does not cover — a token
+///   protects against a forged request and says nothing about where a real form posts to.</item>
 ///   <item><b><c>X-Content-Type-Options: nosniff</c></b> — this application serves static files from
 ///   <c>wwwroot</c> and, in the container, published static web assets. A sniffed content type turns a
 ///   file the server called one thing into a script the browser treats as another.</item>

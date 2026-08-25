@@ -5683,3 +5683,244 @@ since Slice 47.
 **Three of Stage 6's four prerequisites.** New, and the only open item this slice created — the
 `REQUIREMENTS.md` revision about guest privacy, the moderation surface, and §11.11's rendering rule. The
 menu enhancement's own open list is still empty.
+
+---
+
+# M6 Slice 63 — a gate that could not tell a use from a mention, and the menu plan's rendering rule stops being a sentence
+
+**Two changes and one instrument.** The instrument is a comment-blind source reader; the changes are the gate
+that shipped broken in Slice 62 and Stage 6b of the menu plan. Their failure modes are unrelated — one is a
+policy-name scan reporting a horizontal ellipsis, the other is an equality against a recorded set of markup
+sites — so the "one change, one green run" rule is satisfied by them being distinguishable rather than by
+being separated.
+
+## Drift, and it was two slices this time
+
+The session began, as every session must, by reconstructing the tree from `dump.txt` and verifying every
+file's SHA-256. **380 files, two mismatches, both benign**: `export.sh`, which contains its own
+`${SCRIPT_NAME}` record and therefore cannot hash to itself, and `LICENSE`, which the dump elides by design.
+
+**Carried session memory said Slice 60 and specification v1.45. The tree is Slice 62 and v1.47** — drift of
+two slices, caught by the ritual for the fifth time. Baseline test count **1296**, predicted at Slice 62 and
+carried rather than measured for the third consecutive slice. §16.3 stands at **21** scenarios.
+
+## F-116 — the failure that arrived, and why it is not a bad regex
+
+The reported failure was one assertion:
+
+```
+failed RateLimitingContractTests.EveryOptInInTheTreeNamesARegisteredPolicy
+  src/MyRestaurant.WebApplication/Security/RateLimitedSurfaces.cs opts in with '…',
+  which is not a member of RateLimitedSurfaces.
+```
+
+`RateLimitedSurfaces.cs` line 23 is a documentation comment: *"The page opts in with
+`[EnableRateLimiting(…)]` naming this value."* The scan's pattern is `EnableRateLimiting\(`, and its own
+summary said the open parenthesis was load-bearing on **F-67's** authority — *it distinguishes a use of the
+attribute from a mention of it in the prose explaining one, and this file's own subject guarantees such prose
+exists.*
+
+**The second clause is true and the first does not follow from it.** F-67 is a ruling about an *identifier*:
+a gate keying on `Foo` reports every sentence containing the word and one keying on `Foo(` does not. It does
+not transfer to a *form*, because a documentation comment explaining an attribute writes the attribute out,
+placeholder argument included — that is what an explanation is. So the gate and the prose it could not read
+shipped in the same archive, and the first run against a real tree reported **a finding on a correct tree**,
+which is F-41 arriving from the side that costs a session rather than the side that costs coverage.
+
+**This was not the operator's hand-fix.** The commit under review is *initialize required members*, which is
+`RestaurantOptions`' two new `required` properties reaching their construction sites — an authoring omission
+of Slice 62's, and correctly repaired. The scan defect was already in the tree it repaired.
+
+**Two things lift it to a numbered finding.** Slice 62's own log records that two of its *emulation* scans
+had this exact defect, were caught, and were fixed before delivery, with the observation that *a gate
+emulation that reports findings on a correct tree is F-41 from the other direction* — one paragraph from the
+same defect shipping in the gate. And that log states the sensitivity proof walked *the same files with the
+same pattern*, which it cannot have done, because doing so would have failed. **An emulation shares an author
+with the thing it checks, so it inherits whatever the author believes about the tree — and the belief is what
+is wrong when a gate is wrong on arrival.** That went into `DOCUMENTATION_REVIEW.md`'s *Going forward* with
+two cheap habits: run the emulation over the reconstructed tree rather than over a summary of it, and treat a
+session catching this defect in its own emulation as a report about the gate.
+
+### The remedy is the input, not the pattern
+
+`SourceCode.WithoutComments` — a comment-blind reader of source text. The pattern is untouched; what changes
+is what it is given. Both tree scans in this slice go through it, so the repository holds **one decision
+procedure for *is this occurrence code*** rather than one per gate, which is F-50, F-56, F-65 and F-107's
+shape refused before it forms.
+
+**The prose is deliberately not reworded**, and this is the ruling most likely to read as laziness. Deleting
+one parenthesis is a one-character fix that works today and fails on the next correct sentence somebody
+writes. Leaving the mention where it is makes the reader *load-bearing*: planting a no-op reader reports both
+of the tree's mentions at once, so the tree now carries its own permanent sensitivity proof. §18 records the
+habit, and records that keeping a mention a gate must not see is a decision rather than an oversight.
+
+**It is a lexer for four comment forms and not a C# parser, and the residual is stated in §18.** A multi-line
+verbatim or raw string literal is read as code on its inner lines; a literal opened inside an interpolation
+hole is mis-paired for the rest of its line. **Both failures lose code**, which is the safe direction, and
+every consumer asserts a floor on what it found so that losing a real site fails loudly. Prose surviving as
+code cannot happen, because a comment marker outside a literal always wins.
+
+## Stage 6b — the menu progress, and it is a prerequisite rather than a feature
+
+Stage 6 (guest comments) has four prerequisites. Slice 62 discharged the first. **This discharges the
+fourth**, and the menu enhancement's own open list was empty, so a prerequisite was the only menu work
+available that was not new intent.
+
+Prerequisite 4 said comment text goes through Razor's default encoding and must never reach a
+`MarkupString`. ADR-0014 says the same about an item description. §17 says something stronger and depends on
+it: `script-src 'self'` with no hash, nonce or `unsafe-*` is a **second line of defence**, which is only true
+if the places this application bypasses Razor's escaping are a small closed set of values it computed itself.
+
+**That claim was written as a count — *the six `MarkupString` sites* — in four places and enforced in none**:
+§17's threat paragraph, `ResponseSecurityHeaders`' summary, and the two F-49 ledger rows. Correct on all
+thirty-nine slices since it was written, and exactly the artefact recorded under F-73, F-77, F-89, F-105,
+F-111 and F-112.
+
+**A seventh site is one line of markup** — it compiles, renders, and reviews as unremarkable, and it turns an
+escaped field into an injection point. The policy would keep injected script inert and keep nothing else
+inert, because markup this application serves from its own origin sits inside `'self'` and no directive
+distinguishes it from markup this application wrote. A comment is the first content one guest writes for
+another guest to read, so the first line of markup that ever wants to be raw is the one Stage 6 would write.
+
+`RawHtmlContractTests` holds the set as a `path → count` record and compares it against the tree in both
+directions. All six recorded sites render an SVG QR code built from a value this application minted — a
+rotating join token (§4.3), a pairing code (§4.2), a TOTP enrolment URI (§3.4).
+
+**The undecidable half is refused rather than approximated.** Whether a value was authored by a person is a
+fact about where it came from several calls away, not a property of the text, so asserting it would be
+reaching past what the gate can decide (F-41). What is decidable is *where* raw HTML is produced, and a
+closed set converts the undecidable question into a **human** one asked in the commit that adds a site.
+
+**The two F-49 ledger rows keep their count.** A ledger row is a dated account of what was true on a date;
+editing one is rewriting history rather than removing a duplicate. Only live claims lost the number.
+
+## F-117 — found on the way in, and it is the cheapest instance of an old shape
+
+§16.4's paragraph on the response-header tests read *"(`…/Security/`, three classes in the `unit` job) … they
+are three rather than one because they assert three different kinds of thing."* **Slice 62 made it four. This
+slice would have made it five.**
+
+Nothing in this repository can see it, and the reason is exact rather than accidental:
+`TestingSectionContractTests` compares *assertion* counts against `[Fact]` attributes, so it reads `three
+classes` and `three different kinds of thing` as ordinary prose and discards both — correct behaviour, since
+neither is the claim it exists to check. **F-77's shape for the ninth time and F-112's for the second**, in
+its cheapest possible instance: a number `ls` answers. Deleted rather than corrected, on F-89's ruling.
+Nothing of the argument is lost, because *several classes rather than one because they assert different kinds
+of thing* is the argument and *three* was never part of it.
+
+## What this slice deliberately did NOT do
+
+**No `REQUIREMENTS.md` revision.** Stage 6b is a mechanism catching up to intent §17 already recorded, which
+is rev 2's reasoning rather than rev 3's. Nothing in that document moved.
+
+**No ADR edit.** ADR-0014's sentence about an item description never reaching a `MarkupString` is now
+enforced by a gate rather than by prose, and the ADR carries rationale rather than mechanism — the
+correct place for *what enforces it* is §16.4, which has it.
+
+**Stage 6 is not struck through.** Two of four prerequisites stand, and they are the two that were always the
+hard ones: the guest-privacy revision, which is new intent and therefore the owner's to make, and the
+moderation surface, which is a slice of real work.
+
+**No reflection assertion over `EnableRateLimitingAttribute` was added**, though it was considered and is the
+obviously stronger instrument for *which policies the compiled application names*. It was declined because it
+does not close the gap the plan actually records — Razor's `@attribute` compiling to a class attribute is not
+the same claim as the **endpoint metadata** carrying it, and only the second is what makes the middleware
+select a policy. Adding it would have looked like closing that gap while leaving it exactly where it is.
+
+**`0008_menu_item_reactions.sql` line 57 was left alone** for the second slice running. Pre-existing trailing
+space, outside the tree gate by that gate's own explicit ruling, and repairing it here would be an
+unexplained edit to a migration in a slice about gates.
+
+## §18 arithmetic
+
+| Where | Tests | Running |
+| --- | --- | --- |
+| Baseline — **carried from Slice 62, predicted, not measured** | — | 1296 |
+| `SourceCodeTests` (new) — four facts | +4 | 1300 |
+| `RawHtmlContractTests` (new) — two facts | +2 | 1302 |
+
+**Predicted 1302**, and the §16.3 suite stays at **21** — no scenario was touched. `RateLimitingContractTests`
+keeps its six facts: the failing one was repaired, not replaced, and none was added.
+
+**The reconciliation to do first.** The reported run showed one failure and did not state a total, so **1296
+is still a prediction and not an observation**. If the run returns **1302**, both the baseline and this slice
+are confirmed at once. **1298 means Slice 62's eight `RestaurantOptionsTests` additions counted as four** —
+the theory arithmetic that slice flagged. **1296 means neither new class executed.** Anything else needs
+Slice 62 reconciled before this slice is blamed.
+
+## What was verified, and what was not
+
+**Verified mechanically, all green.** The reconstruction was verified by SHA-256 before anything was authored.
+The §16.4 counted-class census was emulated over the edited specification: **37 classes, exact at the floor**,
+no ambiguity, and **no disagreement between any claimed count and its file** — `MinimumCountedClasses` moved
+35 → 37 in this slice, per F-73's surviving habit. The Markdown table gate was emulated with the real
+backtick-and-escape-aware splitter over every tracked document: **49 tables, 525 rows, no width mismatch**.
+The version gate was emulated: header **1.48**, newest changelog entry **1.48**, **49** entries strictly
+descending, `REQUIREMENTS.md` still self-consistent at rev 6. The documentation-comment gate was emulated over
+all 308 source files: **2439 comments parsed, no comment holding two `<summary>` elements** — which matters
+because this slice adds three files of dense documentation. Byte hygiene was checked over every changed file:
+no CR, exactly one final newline, no trailing whitespace, no whitespace-only line, no dump separator. The
+standing authoring scans ran: no plain literal in a `string.Create` chain (CS1620), no `await` in an
+interpolated hole (CS4007), no `section` identifier in any Razor file — and no Razor file was touched at all
+in this slice, which is the first time in several.
+
+**The reader was verified by transcription rather than by argument, and that is the one methodological change
+here.** `SourceCode.WithoutComments` was written in C#, then transcribed back into Python **line for line**
+and run over all 169 `.cs` and `.razor` files under `src/`. Results: `EnableRateLimiting\(` matches **3 → 2**,
+with both surviving arguments correct; `MarkupString` occurrences **7 → 6**, in exactly the six recorded
+files; **newline count preserved in every one of the 169 files**; no file emptied; and structural tokens
+confirmed present after stripping in the highest-risk files — the raw-string SQL reader, the component with
+CSS comments inside a scoped `<style>` block, and the page with a multi-line Razor comment block.
+
+**Seven planted defects, each caught by the intended assertion.** A new raw-HTML site added to the guest menu
+→ *unrecorded*. A recorded site deleted → *departed*, and the floor. A second production inside a recorded
+file → *miscounted*. An opt-in written as a bare string literal → *not a member*. An opt-in naming an
+unregistered constant → *not a policy-name constant*. **The reader replaced by a no-op** → both of the tree's
+prose mentions reported at once, which is the proof that leaving them in place makes the fix load-bearing.
+**The reader replaced by one returning nothing** → the total floor and the opt-in argument floor, both.
+
+**Not verified.** Nothing was compiled and nothing was run (F-71's standing caveat). The specific risks, in
+order of what they would cost.
+
+**`SourceCode.WithoutComments` is the largest**, because everything else in this slice depends on it and it is
+a hand-written state machine over indices. The transcription proves the *algorithm* against 169 real files and
+eight synthesised fixtures; it does not prove the *C#*, and the two places a transcription is weakest are the
+clamp on the escape advance (`Math.Min(index + 2, lineEnd)`, which is what stops a trailing backslash reading
+past a newline) and the `emitted` flag that decides whether a segment is appended after a block comment
+opens. Both were transcribed deliberately rather than paraphrased, and both are exercised by the fixtures.
+
+**`Assert.Contains(string, string, StringComparison)` and `Assert.DoesNotContain(string, string,
+StringComparison)`** are used throughout `SourceCodeTests` on the pattern already present in
+`ContentSecurityPolicyContractTests` and `ResponseSecurityHeadersTests`, so the overloads exist in this
+xUnit v3; that is evidence from the tree rather than from a compile.
+
+**`SourceCode` sits in namespace `MyRestaurant.WebApplication.Tests` and is used from
+`...Tests.Security` with no `using`**, relying on C#'s outward namespace search. Correct by the language rules
+and untested here; a stray `using` would be needed if the file were ever moved into a folder.
+
+**`RecordedSites` is `IReadOnlyDictionary<string, int>` and is read three ways** — `ContainsKey`,
+`TryGetValue` and the indexer. All three are on the interface. `CA1859` may suggest the concrete type; it is
+informational by default and not an error even under `ContinuousIntegrationBuild=true`.
+
+**Nothing proves the six recorded paths are spelled correctly**, and a typo in one would present as *departed*
+plus *unrecorded* on the same file — an ugly failure with an obvious cause. The paths were taken from the
+scan output rather than typed.
+
+## Open items carried
+
+**`/kitchen` has no §16.3 scenario at all.** Carried, and still the largest end-to-end gap by a clear margin.
+
+**The wide layout stacks each row's three controls** on the administration index. Carried since Slice 47.
+
+**Nothing in this repository measures §11.1 at 375px.** Carried from Slice 60.
+
+**No assertion anywhere proves a static-SSR Razor endpoint carries `[EnableRateLimiting]` in its endpoint
+metadata.** Carried from Slice 62, and this slice declined the reflection assertion that would have looked
+like closing it. If the assumption is false, both rate-limited surfaces are unlimited and every test passes.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried, and `BUILD_PROGRESS.md`
+is now past five thousand eight hundred lines.
+
+**Two of Stage 6's four prerequisites**, and neither is a mechanism: the `REQUIREMENTS.md` revision about
+guest privacy is new intent, and the moderation surface is a slice of work. The menu enhancement's own open
+list remains empty.

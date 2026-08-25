@@ -45,6 +45,15 @@ namespace MyRestaurant.WebApplication.Tests.Security;
 /// and the reflection catches a policy constant that no entry in the list uses — which is the half a
 /// text scan cannot see, because an unused constant appears in no attribute.</para>
 ///
+/// <para><b>The page scan was wrong on arrival and its own summary said why it was safe (F-116).</b> It
+/// read source <em>text</em>, and one of the files it reads explains <c>[EnableRateLimiting]</c> in a
+/// documentation comment that spells the form with a placeholder argument — so the first run of this
+/// class on a real tree reported the file it exists to protect as opting into a policy called
+/// <em>…</em>. It now reads source <em>code</em>, through <see cref="SourceCode"/>. Worth recording
+/// beside the fix: the sensitivity proof accompanying this class emulated the scan over the same files
+/// with the same pattern and did not reproduce the failure, because the emulation was written against
+/// the tree the authoring session imagined rather than the one it shipped.</para>
+///
 /// <para><b>Pure.</b> Reads the surface list, one service provider that opens no connection, and two
 /// directories of source text. No server, no container, no engine.</para>
 /// </summary>
@@ -56,9 +65,20 @@ public sealed class RateLimitingContractTests
     /// <summary>
     /// An opt-in as it is written in this tree, in either language. Razor spells it
     /// <c>@attribute [EnableRateLimiting(…)]</c> and C# would spell it <c>[EnableRateLimiting(…)]</c>;
-    /// the attribute name and its argument are what both have in common. <b>The open parenthesis is
-    /// load-bearing</b> (F-67): it distinguishes a use of the attribute from a mention of it in the prose
-    /// explaining one, and this file's own subject guarantees such prose exists.
+    /// the attribute name and its argument are what both have in common.
+    ///
+    /// <para><b>The open parenthesis is not what makes this safe, and believing it was is F-116.</b> This
+    /// pattern shipped with a paragraph claiming that the parenthesis distinguished a use of the attribute
+    /// from a mention of one in the prose explaining it, on F-67's authority. F-67 is about an
+    /// <em>identifier</em> — a gate keying on <c>Foo</c> catches every sentence containing the word, a gate
+    /// keying on <c>Foo(</c> does not — and it does not transfer to a <em>form</em>. The very file this
+    /// gate protects explains the attribute in a documentation comment spelling the whole form with a
+    /// placeholder for its argument, exactly as the two illustrations above do, so the first real run
+    /// reported a finding on a correct tree: <c>RateLimitedSurfaces.cs</c> <em>opts in with</em> a
+    /// horizontal ellipsis. <b>The prose was not the mistake.</b> A comment explaining a construct spells
+    /// that construct; the mistake was a scan that could read comments, and the fix is that it no longer
+    /// can — see <see cref="SourceCode"/>, and note that the mention is deliberately still in the tree so
+    /// that the fix is load-bearing rather than theoretical.</para>
     /// </summary>
     private static readonly Regex OptIn = new(@"EnableRateLimiting\(\s*([^)]*?)\s*\)");
 
@@ -203,7 +223,10 @@ public sealed class RateLimitingContractTests
         {
             filesRead++;
 
-            string text = File.ReadAllText(path);
+            // Code, not text (F-116). A documentation comment that spells the attribute is prose about
+            // an opt-in and not one, and this scan's own subject is a file whose comments do exactly
+            // that.
+            string text = SourceCode.WithoutComments(File.ReadAllText(path));
             string relative = RelativeTo(RepositoryRoot(), path);
 
             foreach (Match match in OptIn.Matches(text))

@@ -1,15 +1,14 @@
-# M6 Slice 62 — the wall that was documented for eleven slices, and the refusal the endpoint now decides
+# M6 Slice 63 — a gate that could not tell a use from a mention, and the menu plan's rendering rule stops being a sentence
 
-**Apply this to a tree at Slice 61.** It edits fourteen files that earlier slices created or last touched,
-and adds three. Extracting it over an older tree will leave a `RestaurantOptions` with two `required`
-members nothing constructs, a §16.4 census that does not match, and a page opting into a policy that does
-not exist.
+**Apply this to a tree at Slice 62.** It edits six files and adds three. Extracting it over an older tree
+will leave a §16.4 census that does not match, a counted-class floor two above what the document states, and
+two test classes referring to a helper that is not there.
 
 Extract at the repository root. Every file in the archive is a **complete file**; nothing is a patch, and
 there are no scripts to run.
 
 ```
-tar -xzf m6-slice-62-the-refusal-the-endpoint-decides.tar.gz
+tar -xzf m6-slice-63-use-mention-and-the-closed-set.tar.gz
 ```
 
 ## Files to delete
@@ -20,104 +19,93 @@ tar -xzf m6-slice-62-the-refusal-the-endpoint-decides.tar.gz
 
 | Path |
 | --- |
-| `src/MyRestaurant.WebApplication/Security/RateLimitedSurfaces.cs` |
-| `src/MyRestaurant.WebApplication/Security/RateLimitingServiceCollectionExtensions.cs` |
-| `tests/MyRestaurant.WebApplication.Tests/Security/RateLimitingContractTests.cs` |
+| `tests/MyRestaurant.WebApplication.Tests/SourceCode.cs` |
+| `tests/MyRestaurant.WebApplication.Tests/SourceCodeTests.cs` |
+| `tests/MyRestaurant.WebApplication.Tests/Security/RawHtmlContractTests.cs` |
 
-**Three files, and they must be added rather than merely extracted.** The tree and repository gates
-enumerate with `git ls-files`, so an untracked file is invisible to every one of them — including, again,
-the new gate itself.
+**Three files, and they must be added rather than merely extracted.** The tree and repository gates enumerate
+with `git ls-files`, so an untracked file is invisible to every one of them — and `SourceCode.cs` being
+invisible would mean the two gates that depend on it fail to compile with the reason unfindable.
 
 ## What is in the archive
 
 | Path | Why |
 | --- | --- |
-| `src/MyRestaurant.WebApplication/Security/RateLimitedSurfaces.cs` | **new** — `RateLimitedSurface` (three `required` members) and the list of two; both policy-name constants; `GenericRefusal`; `RefusalFor`; both partitioners |
-| `src/MyRestaurant.WebApplication/Security/RateLimitingServiceCollectionExtensions.cs` | **new** — the one `AddRateLimiter`, and `OnRejected` dispatching on the endpoint |
-| `tests/MyRestaurant.WebApplication.Tests/Security/RateLimitingContractTests.cs` | **new** — F-115's gate, six assertions |
-| `src/MyRestaurant.WebApplication/Displays/DisplaysServiceCollectionExtensions.cs` | the limiter registration removed; three data services remain; summary records why it moved |
-| `src/MyRestaurant.WebApplication/Displays/DisplayRoutes.cs` | `PairingRateLimitPolicy` **deleted** (moved); the budget stays, with the line between them stated |
-| `src/MyRestaurant.WebApplication/Components/Pages/Display/DisplayPair.razor` | the attribute now names `RateLimitedSurfaces.PairingPolicy`; one new `@using` |
-| `src/MyRestaurant.WebApplication/Components/Account/Pages/Register.razor` | gains `@attribute [EnableRateLimiting(…)]`, two `@using` directives, and the partition ruling in its comment block |
-| `src/MyRestaurant.WebApplication/Program.cs` | `AddRestaurantRateLimiting()` added; two comments corrected — `AddRestaurantDisplays` no longer claims the limiter, `UseRateLimiter` now describes two policies |
-| `src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs` | two `required` properties, two defaults and two floors as named constants, two binding calls, two validation refusals |
-| `.env.example` | both keys, with the partition hazard written out for the operator |
-| `compose.yaml` | both keys in the `web` service's `environment` mapping |
-| `tests/MyRestaurant.WebApplication.Tests/Displays/DisplaysWiringTests.cs` | the limiter fact removed (−1), two `using`s dropped, summary records where the claim went |
-| `tests/MyRestaurant.WebApplication.Tests/RestaurantOptionsTests.cs` | `Build()` gains two parameters; two facts and two theories for the budget (+8 tests) |
-| `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs` | `MinimumCountedClasses` 34 → 35 |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.47** — §4.2, §11.8, §13, §16.4, §17, §18, Appendix A (F-115 + Stage 6 prerequisite row, F-37's row discharged in part), changelog |
-| `docs/DOCUMENTATION_REVIEW.md` | F-115's ledger row, and a *Going forward* paragraph on the third instance of F-35/F-37's pattern |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | **Stage 6a** added and marked landed; Stage 6's prerequisite 1 struck through; the stage itself is **not** struck through |
-| `docs/BUILD_PROGRESS.md` | the Slice 62 entry, appended |
+| `tests/MyRestaurant.WebApplication.Tests/SourceCode.cs` | **new** — `WithoutComments`, the comment-blind reader both tree scans now go through |
+| `tests/MyRestaurant.WebApplication.Tests/SourceCodeTests.cs` | **new** — four facts over composed fixtures, one per comment form |
+| `tests/MyRestaurant.WebApplication.Tests/Security/RawHtmlContractTests.cs` | **new** — Stage 6b's gate, two facts, the recorded set of six |
+| `tests/MyRestaurant.WebApplication.Tests/Security/RateLimitingContractTests.cs` | the scan reads code rather than text; the false open-parenthesis paragraph replaced; F-116 recorded in the class summary. **Still six facts** |
+| `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs` | `MinimumCountedClasses` 35 → 37 |
+| `src/MyRestaurant.WebApplication/Security/ResponseSecurityHeaders.cs` | the census deleted from its summary; the gate that now holds the set named; the *second* line of defence stated as second |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.48** — §16.4 (two paragraphs added, one count deleted), §17, §18 (two habits), Appendix A (F-116, F-117, Stage 6b row), changelog |
+| `docs/DOCUMENTATION_REVIEW.md` | F-116 and F-117 ledger rows, and a *Going forward* paragraph on what an emulation is evidence about |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | **Stage 6b** added and marked landed; Stage 6's prerequisite 4 struck through; the stage itself is **not** struck through |
+| `docs/BUILD_PROGRESS.md` | the Slice 63 entry, appended |
 | `_CHANGES.md` | this file |
+
+## The failure you reported, and what it actually was
+
+```
+RateLimitingContractTests.EveryOptInInTheTreeNamesARegisteredPolicy
+  src/…/Security/RateLimitedSurfaces.cs opts in with '…', which is not a member of RateLimitedSurfaces.
+```
+
+`RateLimitedSurfaces.cs` line 23 is a documentation comment reading *"The page opts in with
+`[EnableRateLimiting(…)]` naming this value."* The scan's pattern is `EnableRateLimiting\(` and its own
+summary claimed the open parenthesis made it safe, on F-67's authority.
+
+**F-67 is a ruling about an identifier, not about a form.** Keying on `Foo(` rather than `Foo` does separate a
+call from a mention of a *name*. It does not separate a use of a *construct* from a documentation comment that
+spells that construct — and a comment explaining an attribute spells the attribute, placeholder argument
+included, because that is what an explanation is. The gate and the sentence it could not read shipped in the
+same archive, and the first real run reported a finding on a correct tree.
+
+**Not your hand-fix.** *initialize required members* is `RestaurantOptions`' two new `required` properties
+reaching their construction sites — an omission of Slice 62's authoring, correctly repaired. The scan defect
+was already in the tree you repaired.
 
 ## Two decisions worth your veto, with reversion instructions
 
-**1 — the budget: 60 attempts per 10 minutes, floors 10 and 1.** The reasoning is that the partition is a
-client address and over the tunnel a client address is *the whole dining room*, so the floor exists to
-protect **guests** rather than the server — the inverse of every other bound in §13.
+**1 — the prose in `RateLimitedSurfaces.cs` is deliberately left alone.** The one-character fix is to delete
+the parenthesis from that comment, and it would have made your run green in ten seconds. It is declined
+because it makes the gate's correctness depend on prose never quoting its own subject, which is a promise no
+future sentence is bound by — and because leaving the mention makes the new reader *load-bearing*: replacing
+the reader with a no-op reports that mention immediately, so the tree carries its own permanent proof that
+the fix is doing something. **To revert:** change line 23 to say `<c>[EnableRateLimiting]</c>` without the
+parenthesis, and `SourceCode.cs` becomes unnecessary for that gate — but `RawHtmlContractTests` still needs
+it, because `ResponseSecurityHeaders`' summary names `MarkupString` in prose and a type name has no
+parenthesis to key on at all.
 
-To revert: delete both properties, both defaults, both floors, both binding calls and both validation
-blocks from `RestaurantOptions.cs`; delete the two keys from `.env.example`, `compose.yaml` and §13's
-table; remove the `GuestRegistrationPolicy` entry from `RateLimitedSurfaces.All` and the constant beside
-it; remove the `@attribute` line and the two `@using` lines from `Register.razor`; drop the eight tests
-from `RestaurantOptionsTests.cs`; restore §17 and §11.8. **The mechanism survives that reversion intact,
-which is deliberate** — F-115 is the mechanism, and the policy is not.
-
-To keep the mechanism and only change the number: edit
-`RestaurantOptions.DefaultGuestRegistrationAttemptsPerWindow` and
-`DefaultGuestRegistrationWindowMinutes`, the two `.env.example` lines, the two `compose.yaml` defaults,
-§13's two table rows, and the two literal assertions in
-`FromConfiguration_GuestRegistrationBudget_UsesTheDocumentedDefault` — which exist so that halving the
-number requires reading why it is what it is.
-
-**2 — `GenericRefusal` is `static readonly`, not `const`.** That one keyword keeps the set of public
-string literals on `RateLimitedSurfaces` equal to the set of policy names, which is what lets
-`EveryPolicyNameConstantIsARegisteredPolicy` say *every public string constant* instead of *every one
-whose name ends in a word somebody chose*. Changing it to `const` does not break the build and does not
-fail any test — it silently turns that assertion into a claim about a refusal sentence, which will then
-fail for the wrong reason. If it is changed, that assertion must be rewritten in the same edit.
-
-## What was deliberately not done
-
-**No `REQUIREMENTS.md` revision.** Revs 3–6 each added one cross-cutting §8 principle for **new intent**;
-a limit on `/register` is a mechanism catching up to intent §17 had already recorded. Rev 2's reasoning,
-not rev 3's. That document is not in the archive.
-
-**Stage 6 is not struck through.** One of four prerequisites is discharged. Striking the stage would
-claim it is startable.
-
-**`0008_menu_item_reactions.sql` line 57 keeps its trailing space.** Pre-existing, and outside
-`check_tree.sh` gate 2 by that gate's own explicit ruling — it fails only on lines made *entirely* of
-whitespace. Repairing it here would be an unexplained edit to a migration in a slice about rate limiting.
-Recorded in `BUILD_PROGRESS.md`, not fixed, and not a finding.
+**2 — `RawHtmlContractTests` records six file paths rather than asserting a rule.** A gate that names its
+subject is normally a gate about one file (F-58), and this one names six. It is declined as a problem because
+the property that matters — *no person-authored value reaches raw HTML* — is a fact about where a value came
+from several calls away and is not decidable from text, so the alternatives were an approximation that reports
+findings on correct files or nothing at all. A closed set turns the undecidable question into a human one
+asked in the commit that adds a site. **To revert:** delete
+`tests/MyRestaurant.WebApplication.Tests/Security/RawHtmlContractTests.cs`, drop `MinimumCountedClasses` to 36,
+and remove the §16.4 raw-HTML paragraph — the specification's §17 sentence and
+`ResponseSecurityHeaders`' summary would then be claims with nothing behind them again, so restore their
+counts to *six* if you take this option.
 
 ## Predicted test count
 
 | Where | Tests | Running |
 | --- | --- | --- |
-| Baseline — carried from Slice 61, predicted, not measured | — | 1283 |
-| `DisplaysWiringTests` — the limiter fact moves out | −1 | 1282 |
-| `RateLimitingContractTests` (new) — six facts | +6 | 1288 |
-| `RestaurantOptionsTests` — two facts, two theories at three and two cases | +8 | 1296 |
+| Baseline — carried from Slice 62, predicted, not measured | — | 1296 |
+| `SourceCodeTests` — four facts | +4 | 1300 |
+| `RawHtmlContractTests` — two facts | +2 | 1302 |
 
-**Predicted 1296**, §16.3 unchanged at **21**.
+**Predicted 1302.** §16.3 stays at **21** — no scenario was touched, and no Razor file was touched at all.
 
-**Five new attributes produce eight tests**, so **1293** means the theories were counted as facts rather
-than that anything failed. The baseline was carried for the second consecutive slice: **1281** means the
-new class did not execute and **1279** means Slice 61's two facts are also missing, either of which needs
-Slice 61 reconciled before this slice is blamed.
+**Reconcile the baseline first.** Your run reported one failure and no total, so 1296 is still a prediction.
+**1302** confirms the baseline and this slice together. **1298** means Slice 62's two theories counted as
+facts. **1296** means neither new class executed.
 
 ## What was not verified
 
-Nothing was compiled and nothing was run. Largest risk is `Register.razor` — two new `@using` directives
-and an `@attribute` whose argument is a member access on a namespace that page had never imported, and
-this tree's compiler errors live in `.razor` files (F-81, F-104).
-
-**One claim no assertion in this repository makes:** that a static-SSR Razor endpoint carries
-`[EnableRateLimiting]` in its endpoint metadata. If that is false, both surfaces are unlimited and every
-test still passes. `/display/pair` has run on the same unasserted assumption since Slice 22.
-
-Full account, including the two gate emulations that were wrong before they were right, in
-`docs/BUILD_PROGRESS.md`.
+Nothing was compiled and nothing was run. The largest risk is `SourceCode.WithoutComments` itself: it is a
+hand-written state machine, and it was verified by transcribing the C# back into Python line for line and
+running it over all 169 `.cs` and `.razor` files under `src/` — `EnableRateLimiting\(` 3 → 2 with both
+arguments correct, `MarkupString` 7 → 6 in exactly the six recorded files, newline count preserved in every
+file, and structural tokens still present in the raw-string, CSS-comment and Razor-comment-block files. That
+proves the algorithm, not the C#. `docs/BUILD_PROGRESS.md` lists the rest in order.
