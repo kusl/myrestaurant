@@ -7,19 +7,19 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-25T09:37:43-04:00
+  Generated at   : 2026-08-25T14:23:27-04:00
   Generator      : export.sh
 
 REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : ff2155d8a7d3d507620836ae7642cfb650773a7d
-  Commit (short) : ff2155d
-  Commit date    : 2026-08-25 09:37:35 -0400
-  Commit message : fix xunit errorr - use single
+  Commit (full)  : 723dafebb2cac2970c79cc08605421642e925b0f
+  Commit (short) : 723dafe
+  Commit date    : 2026-08-25 14:23:21 -0400
+  Commit message : add claude changes
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 376
+  Files included : 379
   Withheld paths : docs/llm/, docs/progress/
   Excluded files : export.sh
   Elided files   : LICENSE (metadata and SHA-256 only)
@@ -579,7 +579,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (376 included files)
+# FILE TREE  (379 included files)
 ################################################################################
 .
 ├── .dockerignore
@@ -848,6 +848,8 @@ cat "$OUTPUT_FILE"
 │       ├── Properties
 │       │   └── launchSettings.json
 │       ├── Security
+│       │   ├── RateLimitedSurfaces.cs
+│       │   ├── RateLimitingServiceCollectionExtensions.cs
 │       │   ├── ResponseSecurityHeaders.cs
 │       │   └── SecurityHeadersMiddleware.cs
 │       ├── Sittings
@@ -1023,6 +1025,7 @@ cat "$OUTPUT_FILE"
         ├── RestaurantOptionsTests.cs
         ├── Security
         │   ├── ContentSecurityPolicyContractTests.cs
+        │   ├── RateLimitingContractTests.cs
         │   ├── ResponseSecurityHeadersTests.cs
         │   └── SecurityHeadersMiddlewareTests.cs
         ├── Sittings
@@ -1136,8 +1139,8 @@ indent_size = 2
 
 --- METADATA ---
   Relative path:         .env.example
-  Size:                  10.4 KiB (10656 bytes)
-  SHA-256:               dfbda91259bb4984b3274bad60ea12b84a89d2476e9bbff22f36090743a1505d
+  Size:                  11.4 KiB (11662 bytes)
+  SHA-256:               d50d6d6232d2739e3dd160f58b2186a8d2eeddc30e425c1794cb723bd42ae126
 
 --- CONTENT ---
 # Copy to `.env` and adjust. `.env` is git-ignored; never commit a populated one.
@@ -1203,6 +1206,19 @@ KITCHEN_SUBMISSION_REMINDER_SECONDS=60   # §10.2, min 1
 TABLE_JOIN_TOKEN_ROTATION_SECONDS=60     # §4.3, min 10
 TABLE_JOIN_GRANT_MINUTES=10              # §4.4, min 1
 TABLE_DISPLAY_PAIRING_CODE_MINUTES=10    # §4.2, min 1
+
+# --- Guest registration rate limit (§11.8, §17) --------------------------------------------------
+# /register is anonymous and creates accounts, so it is rate-limited per client address.
+#
+# READ THE PARTITION BEFORE TIGHTENING THESE. The limit is counted per client address, and over the
+# Cloudflare tunnel every guest on the restaurant's own wifi presents the SAME address — so this is a
+# per-venue budget, not a per-person one. The default is 60 attempts per 10 minutes because it has to
+# cover a full room turning over, with retries, all sharing one bucket. Too loose costs you spam
+# accounts, which hold no capability (a guest is the absence of a grant). Too tight costs you a seated
+# guest who cannot create the account they need in order to order dinner, at a table where staff have
+# no remedy and no diagnosis. Raise these if a busy service ever reports refusals.
+GUEST_REGISTRATION_ATTEMPTS_PER_WINDOW=60   # §11.8, min 10
+GUEST_REGISTRATION_WINDOW_MINUTES=10        # §11.8, min 1
 
 # --- Argon2id (§3.2 + startup floor guard) -------------------------------------------------------
 # The app refuses to start below the floor: memory >= 19456 KiB, iterations >= 2, parallelism >= 1.
@@ -3310,21 +3326,22 @@ This document describes how a report gets handled, not what anyone is entitled t
 
 --- METADATA ---
   Relative path:         _CHANGES.md
-  Size:                  10.6 KiB (10881 bytes)
-  SHA-256:               c6913c376b6c6466c06b8da3ff99db5607ae50780c83402be6ab6d39691109c7
+  Size:                  8.2 KiB (8428 bytes)
+  SHA-256:               ca3fd6b11ade571d930a3d9d41da0fc9955810ead5fda0a20943fe4cd5560193
 
 --- CONTENT ---
-# M6 Slice 61 — the controls the barrier had been measuring, and a comment that described somebody else
+# M6 Slice 62 — the wall that was documented for eleven slices, and the refusal the endpoint now decides
 
-**Apply this to a tree at Slice 60.** It edits nine files that earlier slices created or last touched, and
-adds one. Extracting it over an older tree will leave a scenario referencing harness members that do not
-exist and a §16.4 census that does not match.
+**Apply this to a tree at Slice 61.** It edits fourteen files that earlier slices created or last touched,
+and adds three. Extracting it over an older tree will leave a `RestaurantOptions` with two `required`
+members nothing constructs, a §16.4 census that does not match, and a page opting into a policy that does
+not exist.
 
 Extract at the repository root. Every file in the archive is a **complete file**; nothing is a patch, and
 there are no scripts to run.
 
 ```
-tar -xzf m6-slice-61-press-the-resequencing-controls.tar.gz
+tar -xzf m6-slice-62-the-refusal-the-endpoint-decides.tar.gz
 ```
 
 ## Files to delete
@@ -3335,144 +3352,107 @@ tar -xzf m6-slice-61-press-the-resequencing-controls.tar.gz
 
 | Path |
 | --- |
-| `tests/MyRestaurant.WebApplication.Tests/Documentation/DocumentationCommentContractTests.cs` |
+| `src/MyRestaurant.WebApplication/Security/RateLimitedSurfaces.cs` |
+| `src/MyRestaurant.WebApplication/Security/RateLimitingServiceCollectionExtensions.cs` |
+| `tests/MyRestaurant.WebApplication.Tests/Security/RateLimitingContractTests.cs` |
 
-**One file, and it must be added rather than merely extracted.** The tree and repository gates enumerate
-with `git ls-files`, so an untracked file is invisible to every one of them — including, this time, the gate
-itself.
+**Three files, and they must be added rather than merely extracted.** The tree and repository gates
+enumerate with `git ls-files`, so an untracked file is invisible to every one of them — including, again,
+the new gate itself.
 
 ## What is in the archive
 
 | Path | Why |
 | --- | --- |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs` | `MoveMenuHeadingAsync`, `MoveMenuItemAsync`, `PressMoveAsync`; the index reader now reads the two move controls and refuses an omitted edge; `MenuHeadingOnTheIndex` gains two members; two F-114 repairs |
-| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | scenario 17 gains steps (k) through (n); still one `[Fact]` |
-| `tests/MyRestaurant.WebApplication.Tests/Documentation/DocumentationCommentContractTests.cs` | **new** — F-114's gate, two assertions |
-| `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs` | `MinimumCountedClasses` 33 → 34 |
-| `src/MyRestaurant.WebApplication/Components/Pages/Administration/HiddenRecords.razor` | F-114: `ListPath`'s comment returns to `ListPath` |
-| `tests/MyRestaurant.DataAccess.Tests/Orders/OrderTestWorld.cs` | F-114: the falsified pre-F-86 paragraph deleted; two summaries on `AddMenuItemAsync` merged |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs` | F-114: the class's summary moves onto the class |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs` | F-114: a forward and an inverse whose comments were swapped |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | F-114: `ReadBadgeAsync`'s summary returns to `ReadBadgeAsync` |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.46**: §16.3 scenario 17, a new §16.4 paragraph, two Appendix A rows, changelog |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | Stage 3d, landed; the carried open item struck through in both stages that held it |
-| `docs/DOCUMENTATION_REVIEW.md` | **F-114**, and the register's status line |
-| `docs/BUILD_PROGRESS.md` | the Slice 61 narrative, shipped whole |
+| `src/MyRestaurant.WebApplication/Security/RateLimitedSurfaces.cs` | **new** — `RateLimitedSurface` (three `required` members) and the list of two; both policy-name constants; `GenericRefusal`; `RefusalFor`; both partitioners |
+| `src/MyRestaurant.WebApplication/Security/RateLimitingServiceCollectionExtensions.cs` | **new** — the one `AddRateLimiter`, and `OnRejected` dispatching on the endpoint |
+| `tests/MyRestaurant.WebApplication.Tests/Security/RateLimitingContractTests.cs` | **new** — F-115's gate, six assertions |
+| `src/MyRestaurant.WebApplication/Displays/DisplaysServiceCollectionExtensions.cs` | the limiter registration removed; three data services remain; summary records why it moved |
+| `src/MyRestaurant.WebApplication/Displays/DisplayRoutes.cs` | `PairingRateLimitPolicy` **deleted** (moved); the budget stays, with the line between them stated |
+| `src/MyRestaurant.WebApplication/Components/Pages/Display/DisplayPair.razor` | the attribute now names `RateLimitedSurfaces.PairingPolicy`; one new `@using` |
+| `src/MyRestaurant.WebApplication/Components/Account/Pages/Register.razor` | gains `@attribute [EnableRateLimiting(…)]`, two `@using` directives, and the partition ruling in its comment block |
+| `src/MyRestaurant.WebApplication/Program.cs` | `AddRestaurantRateLimiting()` added; two comments corrected — `AddRestaurantDisplays` no longer claims the limiter, `UseRateLimiter` now describes two policies |
+| `src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs` | two `required` properties, two defaults and two floors as named constants, two binding calls, two validation refusals |
+| `.env.example` | both keys, with the partition hazard written out for the operator |
+| `compose.yaml` | both keys in the `web` service's `environment` mapping |
+| `tests/MyRestaurant.WebApplication.Tests/Displays/DisplaysWiringTests.cs` | the limiter fact removed (−1), two `using`s dropped, summary records where the claim went |
+| `tests/MyRestaurant.WebApplication.Tests/RestaurantOptionsTests.cs` | `Build()` gains two parameters; two facts and two theories for the budget (+8 tests) |
+| `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs` | `MinimumCountedClasses` 34 → 35 |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.47** — §4.2, §11.8, §13, §16.4, §17, §18, Appendix A (F-115 + Stage 6 prerequisite row, F-37's row discharged in part), changelog |
+| `docs/DOCUMENTATION_REVIEW.md` | F-115's ledger row, and a *Going forward* paragraph on the third instance of F-35/F-37's pattern |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | **Stage 6a** added and marked landed; Stage 6's prerequisite 1 struck through; the stage itself is **not** struck through |
+| `docs/BUILD_PROGRESS.md` | the Slice 62 entry, appended |
 | `_CHANGES.md` | this file |
 
-## Test count
+## Two decisions worth your veto, with reversion instructions
 
-| Where | Facts | Running |
+**1 — the budget: 60 attempts per 10 minutes, floors 10 and 1.** The reasoning is that the partition is a
+client address and over the tunnel a client address is *the whole dining room*, so the floor exists to
+protect **guests** rather than the server — the inverse of every other bound in §13.
+
+To revert: delete both properties, both defaults, both floors, both binding calls and both validation
+blocks from `RestaurantOptions.cs`; delete the two keys from `.env.example`, `compose.yaml` and §13's
+table; remove the `GuestRegistrationPolicy` entry from `RateLimitedSurfaces.All` and the constant beside
+it; remove the `@attribute` line and the two `@using` lines from `Register.razor`; drop the eight tests
+from `RestaurantOptionsTests.cs`; restore §17 and §11.8. **The mechanism survives that reversion intact,
+which is deliberate** — F-115 is the mechanism, and the policy is not.
+
+To keep the mechanism and only change the number: edit
+`RestaurantOptions.DefaultGuestRegistrationAttemptsPerWindow` and
+`DefaultGuestRegistrationWindowMinutes`, the two `.env.example` lines, the two `compose.yaml` defaults,
+§13's two table rows, and the two literal assertions in
+`FromConfiguration_GuestRegistrationBudget_UsesTheDocumentedDefault` — which exist so that halving the
+number requires reading why it is what it is.
+
+**2 — `GenericRefusal` is `static readonly`, not `const`.** That one keyword keeps the set of public
+string literals on `RateLimitedSurfaces` equal to the set of policy names, which is what lets
+`EveryPolicyNameConstantIsARegisteredPolicy` say *every public string constant* instead of *every one
+whose name ends in a word somebody chose*. Changing it to `const` does not break the build and does not
+fail any test — it silently turns that assertion into a claim about a refusal sentence, which will then
+fail for the wrong reason. If it is changed, that assertion must be rewritten in the same edit.
+
+## What was deliberately not done
+
+**No `REQUIREMENTS.md` revision.** Revs 3–6 each added one cross-cutting §8 principle for **new intent**;
+a limit on `/register` is a mechanism catching up to intent §17 had already recorded. Rev 2's reasoning,
+not rev 3's. That document is not in the archive.
+
+**Stage 6 is not struck through.** One of four prerequisites is discharged. Striking the stage would
+claim it is startable.
+
+**`0008_menu_item_reactions.sql` line 57 keeps its trailing space.** Pre-existing, and outside
+`check_tree.sh` gate 2 by that gate's own explicit ruling — it fails only on lines made *entirely* of
+whitespace. Repairing it here would be an unexplained edit to a migration in a slice about rate limiting.
+Recorded in `BUILD_PROGRESS.md`, not fixed, and not a finding.
+
+## Predicted test count
+
+| Where | Tests | Running |
 | --- | --- | --- |
-| Baseline — **predicted, not measured** | — | 1281 |
-| `DocumentationCommentContractTests` (new) | +2 | 1283 |
+| Baseline — carried from Slice 61, predicted, not measured | — | 1283 |
+| `DisplaysWiringTests` — the limiter fact moves out | −1 | 1282 |
+| `RateLimitingContractTests` (new) — six facts | +6 | 1288 |
+| `RestaurantOptionsTests` — two facts, two theories at three and two cases | +8 | 1296 |
 
-**Predicted 1283**, and the §16.3 suite stays at **21**. Two facts rather than more: the resequencing work
-adds assertions *inside* an existing `[Fact]`, and F-114's eight repairs add none.
+**Predicted 1296**, §16.3 unchanged at **21**.
 
-**The baseline is carried rather than measured, so a deviation is not attributable to this slice alone.**
-Slice 60 measured 1279 and predicted 1281; no run of 1281 exists. A run returning **1281** means the new
-class did not execute. A run returning **1279** means Slice 60's two facts are missing too, and that is the
-thing to chase first.
+**Five new attributes produce eight tests**, so **1293** means the theories were counted as facts rather
+than that anything failed. The baseline was carried for the second consecutive slice: **1281** means the
+new class did not execute and **1279** means Slice 61's two facts are also missing, either of which needs
+Slice 61 reconciled before this slice is blamed.
 
-## Session start
+## What was not verified
 
-**No drift.** The SHA-256 reconstruction from `dump.txt` verified 374 of 375 files byte-exact and agreed
-with the incoming belief on every fact — Slice 60, v1.45, F-113, twenty-one scenarios, 1281 carried. The two
-that did not verify are the two that never do: `export.sh`, whose dump rewrites its own header into the copy
-it embeds, and `LICENSE`, elided to metadata by design. First session in five with nothing to correct.
+Nothing was compiled and nothing was run. Largest risk is `Register.razor` — two new `@using` directives
+and an `@attribute` whose argument is a member access on a namespace that page had never imported, and
+this tree's compiler errors live in `.razor` files (F-81, F-104).
 
-## What this slice closes
+**One claim no assertion in this repository makes:** that a static-SSR Razor endpoint carries
+`[EnableRateLimiting]` in its endpoint metadata. If that is false, both surfaces are unlimited and every
+test still passes. `/display/pair` has run on the same unasserted assumption since Slice 22.
 
-**The oldest open item in the project.** Stage 3a shipped `ResequenceMenuSectionsAsync` and its two buttons
-in Slice 47; Stage 3b shipped `ResequenceMenuItemsAsync` and its two in Slice 48, and closed with the
-sentence this slice discharges: *no end-to-end scenario drives either resequencing verb — the barrier
-measures the controls, nothing exercises them.* Thirteen slices, and by Slice 60 the only end-to-end gap
-left in the menu.
-
-**Why it was so easy to carry, which is the transferable part.** The controls were never *unasserted*.
-Scenario 16 has measured them since each landed — where they sit, how tall they are, that they lie inside a
-375px viewport — and both verbs are asserted against a real PostgreSQL. Every re-reading of the open item
-met a page whose controls were demonstrably on the screen. **What the two instruments have in common is
-that neither presses anything**, and the gap between them is the whole of what a browser adds. That is
-F-109's mechanism on a second kind of deferral: a justifying sentence is not re-examined, because
-re-examination is not what re-reading is for.
-
-**Scenario 17 is extended rather than a scenario 22 added.** Seventeen ends with three headings, a two-item
-heading, an empty heading, and a guest whose circuit has been open across five broadcasts — which is
-exactly the arrangement a resequence needs. A scenario 22 would have cost a second container, a second
-passkey registration and a second join to arrange what is already standing. Slices 59 and 60 both made this
-call; it is now the default.
-
-**Both directions of both controls, each with its restoration.** A resequence writes **absolute** positions
-`0…n-1` over the list it was sent, so an implementation writing a relative offset gets the first move right
-and cannot get the move back right as well. And a page that wired Up and left Down inert passes every
-assertion scenario 17 held before now.
-
-**A §11.4 ruling that had no assertion anywhere is discharged in passing.** "Disabled rather than omitted"
-is in §7, in §11.4 and in the component's own comment, and nothing in the tree had an opinion about it — a
-page that omitted the edge control would have satisfied the barrier, whose floor merely counts controls and
-would have counted fewer. Presence is now the reader's business and enabled-ness the scenario's.
-
-## The finding — F-114
-
-**A documentation comment can describe a member other than the one it is attached to.** A `///` block binds
-to the next declaration; C# has no file-level documentation comment; and a block holding two `<summary>`
-elements compiles, publishes malformed XML documentation, and renders whichever one the tooling reaches
-first. **Eight were in the tree, in five files, one under `src/`.**
-
-Seven are misplaced prose, each arriving a different way — a class-level essay bound to whichever record was
-declared first (twice), a comment orphaned by Slice 59 inserting a method between it and its subject, a
-forward and an inverse whose comments were swapped, `ListPath`'s comment on `IsExpanded`.
-
-**The eighth is what gives it a number.** `OrderTestWorld`'s `menu_item_event` INSERT carried its own
-pre-F-86 description — *the payload columns `0004` and `0005` added are omitted rather than passed as NULL*,
-and *the casts on the two columns that remain* — six lines above a statement that lists all five and casts
-all five. **F-86 wrote its correction underneath the claim it falsified instead of over it**, and because
-two summaries are legal the falsified sentence stayed first for twenty-two slices. This mechanism does not
-merely misplace prose: it preserves a refuted claim where a reader meets it first, with nothing able to
-report it.
-
-**All eight repaired**, and where two summaries describe the same member the superseded one is **deleted**
-rather than merged (F-77, F-89). **The rule is then made executable because it is total** — XML
-documentation gives a member one summary and no other element is affected, so there is nothing legitimate
-to exempt. F-81's class, not F-104's. Subject computed, no file named (F-58); an escaped mention is outside
-the rule by construction, which matters because every repair refers to the tag that way.
-
-**Writing the sensitivity proof found this gate's own instance of its subject.** The synthesised defect,
-written as a literal, would have put two consecutive `///` lines carrying a summary each into the test file
-— which the walk reads as text and cannot tell from a real comment. The first emulation reported a finding
-on the file proving the gate works. The fixtures are composed at run time instead.
-
-## Why two changes in one slice
-
-The scenario fails as a named step of one Playwright fact in `MyRestaurant.EndToEnd.Tests`. F-114 fails as
-one of two named unit facts in `MyRestaurant.WebApplication.Tests`, computing over source text, and its
-eight repairs change no behaviour at all. Neither can make the other red, and a red run names which — which
-is v1.32's distinguishable-failure exemption. **The gate could not have shipped later than the repair**,
-because a gate on a tree that violates it is red on arrival.
-
-## Veto candidates
-
-**`ReadMenuIndexAsync` now throws on a group with anything other than two move controls.** This is the
-"disabled rather than omitted" claim placed in the reader rather than in the scenario, and the cost is a new
-way for scenario 17 to fail that has nothing to do with ordering: a §11.4 markup change now surfaces as a
-harness exception. **To revert**, delete the `moveCount != 2` guard in
-`AdministrationJourneys.ReadMenuIndexAsync` and pass `false, false` for the two new record members where the
-controls are absent — the scenario's two `OffersMoveUp`/`OffersMoveDown` assertions then become the only
-statement about the edges, and presence stops being asserted anywhere.
-
-**The new gate reads `tests/` as well as `src/`.** Five of F-114's eight sites were under `tests/`, and the
-harness is where this project keeps the reasoning that makes a scenario readable. **To revert**, remove
-`"tests"` from `SourceRoots` in `DocumentationCommentContractTests` and lower both non-vacuity floors —
-`MinimumFilesScanned` to roughly 120 and `MinimumBlocksScanned` to roughly 700 — or the gate will fail on a
-correct tree for having read less than it expects to.
-
-**The eight F-114 repairs each leave a paragraph explaining what moved.** That is F-70's rule — an
-assertion nobody can find the reason for is an assertion the next person deletes — and it costs eight
-paragraphs of housekeeping prose in files about other things. **To revert**, delete the paragraph beginning
-*"This block sat at…"*, *"This paragraph was attached to…"* or *"A falsified paragraph stood above…"* in each
-of the five files; nothing depends on them and the gate is indifferent.
+Full account, including the two gate emulations that were wrong before they were right, in
+`docs/BUILD_PROGRESS.md`.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3480,8 +3460,8 @@ of the five files; nothing depends on them and the gate is indifferent.
 
 --- METADATA ---
   Relative path:         compose.yaml
-  Size:                  8.8 KiB (8966 bytes)
-  SHA-256:               7a29cf6bf71e8ea63a55eef28a3736afbc0edc8a6b36d1f4e9deae4229bd49e0
+  Size:                  9.2 KiB (9439 bytes)
+  SHA-256:               6bfb57cff486fb310c5330afa873e344b7a9ca7dcc989d279ba04421177344a9
 
 --- CONTENT ---
 # Canonical stack (TECHNICAL_SPECIFICATION §14.1), rootless Podman-first.
@@ -3584,6 +3564,11 @@ services:
       TABLE_JOIN_TOKEN_ROTATION_SECONDS: ${TABLE_JOIN_TOKEN_ROTATION_SECONDS:-60}
       TABLE_JOIN_GRANT_MINUTES: ${TABLE_JOIN_GRANT_MINUTES:-10}
       TABLE_DISPLAY_PAIRING_CODE_MINUTES: ${TABLE_DISPLAY_PAIRING_CODE_MINUTES:-10}
+      # /register's rate limit (§11.8, §17). Partitioned by client address, which over the tunnel is
+      # one address for the whole dining room — so this is a per-venue budget and the default is
+      # generous on purpose. See .env.example for what each direction of getting it wrong costs.
+      GUEST_REGISTRATION_ATTEMPTS_PER_WINDOW: ${GUEST_REGISTRATION_ATTEMPTS_PER_WINDOW:-60}
+      GUEST_REGISTRATION_WINDOW_MINUTES: ${GUEST_REGISTRATION_WINDOW_MINUTES:-10}
       ARGON2_MEMORY_KIBIBYTES: ${ARGON2_MEMORY_KIBIBYTES:-65536}
       ARGON2_ITERATIONS: ${ARGON2_ITERATIONS:-3}
       ARGON2_PARALLELISM: ${ARGON2_PARALLELISM:-1}
@@ -3647,8 +3632,8 @@ volumes:
 
 --- METADATA ---
   Relative path:         docs/BUILD_PROGRESS.md
-  Size:                  362.1 KiB (370747 bytes)
-  SHA-256:               87659920d3aab2720e29b0c2dca9a70daa785bd1c35d36f4d3648d27becd497e
+  Size:                  378.3 KiB (387380 bytes)
+  SHA-256:               b7043feb9bde641a50daa6b6577133c5aefe908d7da4a5492495ef230c713c12
 
 --- CONTENT ---
 # Build progress
@@ -9102,14 +9087,249 @@ starts it successfully.** Carried.
 **Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
 past five thousand three hundred lines, and this entry is the longest addition in six slices.
 
+---
+
+# M6 Slice 62 — the wall that was documented for eleven slices, and the refusal the endpoint now decides
+
+**Session started with the reconstruction ritual, and it caught drift for the fifth time.** The tree was
+rebuilt from `dump.txt` with SHA-256 verified per file: **374 of 375 verified, one elided by the exporter
+(`LICENSE`, metadata and digest only), zero unexplained mismatches.** Two apparent mismatches, both
+accounted for and both an artefact of the reader rather than of the dump — `LICENSE`, whose metadata block
+was briefly reconstructed as content, and `RestaurantTimeTests.cs`, which is the last file in the dump and
+had swallowed the `DUMP SUMMARY` footer; trimmed, its digest then matched
+`a378f355cbe0…` exactly.
+
+**The drift was one slice, and it was the session's own memory that was behind.** Carried state said Slice
+60, specification v1.45, 1281 predicted, `MinimumCountedClasses` 33, highest finding F-113. The tree at
+commit `ff2155d` said **Slice 61, v1.46, 1283 predicted, floor 34, F-114**. Nothing was authored before
+that was established.
+
+## What this slice is, and why it is a menu slice with no menu in it
+
+`docs/MENU_AND_HANDHELD_PLAN.md` has had an **empty open list since Slice 60** — every read and write
+`0008` introduced has a caller, and no verb in §7 lacks a surface. The only thing left in the plan is
+**Stage 6, comments**, recorded as *not startable* on four prerequisites, of which the first reads: a
+comment needs a rate limit, and §17 says the rate limiter cannot take a second policy. The plan also
+predicted the shape of the fix — *"a rate-limiting slice with no menu in it"*.
+
+So this is that slice. It lands on `/register` rather than on comments, because `/register` is the surface
+that needed a limit **on its own merits** and whose absence of one was already a recorded risk (F-37),
+and because a limit on a surface that does not exist yet is not testable. Comments inherit the
+**mechanism**, not the policy.
+
+## F-115, and the finding is the eleven slices rather than the arrangement
+
+§17 has said since **v1.1** that `/register` has no rate limit; that the reason it is not a two-line
+addition is that `RateLimiterOptions.OnRejected` and `RejectionStatusCode` are single-valued, so a second
+`AddRateLimiter` silently takes the refusal wording from the first and a refused registration would answer
+with §4.2's *"Too many pairing attempts from this device"*; and that doing it properly means `OnRejected`
+dispatching on the endpoint. **Every one of those three was correct when written and stayed correct.**
+
+The limiter meanwhile was configured inside `AddRestaurantDisplays`, where the only policy happened to
+belong — which made a display-device extension the owner of the rejection handler for every surface that
+might ever acquire a limit, and put the wall in a file neither `/display/pair` nor `/register` mentions.
+
+**What earns this a number is not the arrangement, it is that nothing could tell a documented wall from a
+closed one.** §17 is a list of *accepted risks*, and in that list an accepted risk and an unstarted repair
+are the same shape. F-37's ledger row said *no rate limit in v1, with the reason it is not a two-line
+addition recorded* — which reads as a decision somebody made, not as work in a queue. It surfaced only
+because a **plan** named it as prerequisite 1 of something else, which is the third instance of a pattern
+F-35 and F-37 already established: found by somebody trying to *use* the thing.
+
+## The mechanism, in one sentence per decision
+
+**One `AddRateLimiter`**, owned by `Security/RateLimitingServiceCollectionExtensions.cs` rather than by
+any surface's extension method, reading nothing but `RateLimitedSurfaces.All`.
+
+**A policy with no sentence does not compile.** `RateLimitedSurface` has three `required` members —
+policy name, refusal sentence, partitioner — so the thing §17 was afraid of is unrepresentable rather
+than discouraged, and that cost nothing to get.
+
+**The dispatch reads the middleware's own metadata.** `OnRejected` resolves the refused policy through
+`GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName` — *the same read the
+middleware performed one instant earlier to select that policy*. This is not a heuristic recovering lost
+information: a lookup that failed would be describing a request that could not be being refused.
+
+**The fallback is about honesty rather than coverage.** It is kept because
+`EnableRateLimitingAttribute.PolicyName` is nullable and because a global limiter would refuse with no
+attribute in scope — and its stated property is that an unidentifiable policy is answered **vaguely,
+never wrongly**. §17's objection was never to a vague sentence; it was to a wrong one that looks
+deliberate.
+
+## Two rulings about where a name lives, and one about a keyword
+
+**The pairing policy name moved; the pairing budget did not.** A policy name is a key three unrelated
+readers agree on (the page's attribute, the registration, the dispatch) and there are now two of them, so
+the list is its only honest home. The budget is §4.2's normative number about one area with no operator
+decision in it, so it stayed on `DisplayRoutes`. That line — *names the limiter owns move, numbers §4.2
+owns stay* — is the reason `DisplayPair.razor` changed in this slice and `DisplayRoutes`'s two integers
+did not.
+
+**`GenericRefusal` is `static readonly` and not `const`, and that keyword is load-bearing.** It keeps the
+set of public string *literals* on the type equal to the set of policy names, which is what lets the gate
+assert *every public string constant here is a policy* rather than *every one whose name ends in a word
+somebody chose*. A convention would have made it a gate about spelling; the keyword makes it a gate about
+the type — F-67's use/mention distinction one register down.
+
+## The budget, which is a ruling about a NAT and not about a threat model
+
+**The partition is a client address, and over the tunnel a client address is a whole dining room.** Guests
+reach `/register` from the restaurant's own wifi through Cloudflare, so `UseForwardedHeaders` faithfully
+reports **one public address for every one of them**: a per-address limit on this surface is a
+**per-venue** limit. §4.2's surface has no such property — a member of staff installs one tablet — which
+is why 5 per minute is right there and would be indefensible here.
+
+Two consequences, both of which look like laxity and are not:
+
+- **The default is sized for a full room rather than against an attacker.** 60 attempts per 10 minutes;
+  six a minute sustained with the whole window available as a burst. There is no secret to guess at this
+  endpoint, so the limit is a **volume ceiling**, and F-37's finding stands that the worst outcome of
+  exceeding it is *rows* rather than access.
+- **The floor protects guests, not the server.** Ten attempts minimum — the inverse of every other bound
+  in §13, and stated as such in the constant's own summary. The costs are asymmetric: too loose is spam
+  rows, accepted on the record by F-37 and holding no capability; too tight is a *seated guest who cannot
+  create the account they need in order to order dinner*, at a table where staff have no remedy and no
+  diagnosis, because the browser shows a plain-text refusal and nothing anywhere names the knob.
+
+**Configuration rather than a constant, because the right number is a property of the room** — which this
+repository cannot know and must not guess on an operator's behalf. That asymmetry with pairing's constant
+is written into `RateLimitedSurfaces`' summary so it is not tidied into symmetry later.
+
+## What this slice deliberately did NOT do
+
+**No `REQUIREMENTS.md` revision.** Revs 3 through 6 each added exactly one cross-cutting §8 principle for
+**new intent**. A limit on `/register` is a mechanism catching up to intent §17 had already recorded, so
+this is rev 2's reasoning rather than rev 3's. Nothing in that document moved.
+
+**Stage 6 is not struck through.** It had four prerequisites and this discharges one. The plan now reads
+*one of four discharged*, gains **Stage 6a** recording what landed, and strikes through prerequisite 1
+only. Striking the stage would claim it is startable, and it is not: the guest-privacy revision, the
+moderation surface and §11.11's rendering rule all still block it.
+
+**No comment budget was chosen.** Stage 6a says explicitly that a comment's number will not be this
+number — the *shape* of the question transfers (per-venue partition, generous default, floor protecting
+guests) and the arithmetic does not.
+
+**`0008_menu_item_reactions.sql` line 57 was left alone.** The hygiene emulation found a trailing space
+there. It is pre-existing, it is **outside the tree gate by that gate's own explicit ruling** — gate 2
+fails only on lines made *entirely* of whitespace, because two trailing spaces in Markdown are a hard line
+break and forbidding those would be wrong about Markdown rather than right about whitespace — and
+repairing it here would be an unexplained edit to a migration in a slice about rate limiting. Recorded,
+not fixed, and not a finding.
+
+## §18 arithmetic
+
+| Where | Tests | Running |
+| --- | --- | --- |
+| Baseline — **carried from Slice 61, predicted, not measured** | — | 1283 |
+| `DisplaysWiringTests` — the limiter fact moves out | −1 | 1282 |
+| `RateLimitingContractTests` (new) — six facts | +6 | 1288 |
+| `RestaurantOptionsTests` — two facts, two theories at three and two cases | +8 | 1296 |
+
+**Predicted 1296**, and the §16.3 suite stays at **21** — no scenario was touched.
+
+**The theory arithmetic is the part to read twice.** Five new attributes produce **eight** tests, so a run
+returning **1293** means the theories were counted as facts rather than that anything failed. And the
+baseline was carried rather than measured for the second consecutive slice: **1281 means
+`RateLimitingContractTests` did not execute, 1279 means Slice 61's two facts are also missing**, and
+anything else needs Slice 61 reconciled before this slice is blamed.
+
+## What was verified, and what was not
+
+**Verified mechanically, all green.** The §16.4 counted-class census was emulated over the edited
+specification: **35 classes, no ambiguity, no disagreement between any claimed count and its file**, with
+`MinimumCountedClasses` moved 34 → 35 in this slice per F-73's surviving habit — and the emulation is
+**exact at the floor**, not merely above it. The Markdown table gate was emulated with the real
+unescaped-pipe splitter over every tracked document: **48 tables, 460 rows, clean.** The version gate was
+emulated: header **1.47**, newest entry **1.47**, **48** entries strictly descending, and
+`REQUIREMENTS.md` still self-consistent at rev 6. The configuration-surface gate was emulated in all five
+of its assertions: **19 keys** read out of `FromConfiguration`, none bound twice, every one of them
+present in `compose.yaml`'s `web` environment mapping, in `.env.example`, and in §13's table, and every
+name a refusal message in `Validate()` uses is a name the binding method reads. The compose-substitution
+gate was emulated: every variable interpolated in that mapping is assigned in `.env.example`. Byte hygiene
+was checked against the repository's **own** rule over all 373 authored files — no CR, exactly one final
+newline, no line blank-but-not-empty — and against the stricter `.editorconfig` rule over this slice's
+seventeen files only. The standing authoring scans ran over every changed file: no `await` in an
+interpolated hole (CS4007), no plain literal in a `string.Create` chain (CS1620), no `section` identifier
+in any Razor file.
+
+**Two of those scans were wrong before they were right, and both are worth recording.** The CS4007 scan
+initially matched *any* brace block containing `await`, which is every async method in the tree; it now
+walks each `$"…"` literal and inspects only its holes. The `@section` scan initially ran over `.cs` files
+and reported two contract tests with a perfectly legal local named `section`; RZ2005 is a **Razor**
+diagnostic, so the scan is now scoped to `.razor`. A gate emulation that reports findings on a correct
+tree is F-41 from the other direction, and both would have wasted a real session.
+
+**The census gate caught a defect in this slice's own authoring, which is the best thing that happened
+here.** The first insertion of §16.4's new paragraph put a blank line before it and none after, so it
+fused with the compose-dependency paragraph below. The emulation reported
+`ambiguous: [RateLimitingContractTests.cs, ComposeDependencyContractTests.cs]` and the count fell to
+**33** — the new paragraph uncounted *and* an existing one knocked out of the census. That is F-72's
+mechanism exactly: nothing was wrong in the source, it was wrong only once **rendered**.
+
+**All six new assertions were proven sensitive by planted defects, none vacuous.** Each assertion was
+re-implemented over the same inputs the C# reads — the surface list parsed out of `RateLimitedSurfaces.cs`,
+the tree scan walking the same files with the same pattern — then run against the tree and against nine
+planted defects. Deleting a surface from the list was reported by assertions 1 and 5; giving both surfaces
+the pairing sentence, and giving registration the fallback sentence, by assertion 2; a policy constant no
+entry registers, by assertion 5; the page opting in with a bare string literal, and with an unregistered
+member, by assertion 4; and leaving `RejectionStatusCode` at the framework default, never assigning
+`OnRejected`, and adding policies from anywhere but the list, all three by assertion 6.
+
+**Not verified, and one of these is a gap in the emulation rather than in the tree.** Nothing was compiled
+and nothing was run (F-71's standing caveat). The specific risks, in order.
+
+**`Register.razor` is the largest**, because Razor is where this tree's compiler errors live: it gained two
+`@using` directives and an `@attribute` whose argument is a member access on a type in a namespace that
+page had never imported. F-104 and F-81 were both one character in a `.razor` file.
+
+**Assertion 3's sensitivity is argued rather than demonstrated.** The emulation *reimplements*
+`RefusalFor` rather than executing it, so planting into that method proves the emulation sensitive and not
+the C#. What was checked instead is textual and weaker: the method returns `GenericRefusal` for null and
+empty, matches with `StringComparison.Ordinal`, contains no case-insensitive comparison, and falls through
+to `GenericRefusal` after the loop. The assertion itself is the strongest one in the class on paper and
+the least proven here.
+
+**No assertion anywhere in this repository proves that a static-SSR Razor endpoint carries
+`[EnableRateLimiting]` in its endpoint metadata.** Everything asserted here is about the list, the lookup,
+and the tree; none of it proves a 429 was ever produced by a request, or that the middleware ever selected
+either policy. **If that assumption were false, both surfaces are unlimited and every test still passes** —
+and `/display/pair` has run on it since Slice 22, which is why it is recorded as carried rather than as
+new risk.
+
+**The registration partitioner resolves `RestaurantOptions` from `RequestServices` per request**, which is
+correct for a singleton and untested: nothing here proves the service is resolvable from that scope at the
+moment the limiter runs, and a failure there is an exception inside a rejection path.
+
+**Whether `Security` referencing `Configuration` and `Displays` creates a folder-convention cycle** was
+not checked. It is legal C# — one assembly — but this tree has a dependency direction it takes seriously
+and no gate expresses the intra-assembly half of it.
+
+## Open items carried
+
+**`/kitchen` has no §16.3 scenario at all.** Carried, and still the largest end-to-end gap in the
+application by a clear margin.
+
+**The wide layout stacks each row's three controls** on the administration index. Carried on two registers
+since Slice 47.
+
+**Nothing in this repository measures §11.1 at 375px.** Carried from Slice 60.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried, and now more pressing:
+`BUILD_PROGRESS.md` is past five thousand six hundred lines.
+
+**Three of Stage 6's four prerequisites.** New, and the only open item this slice created — the
+`REQUIREMENTS.md` revision about guest privacy, the moderation surface, and §11.11's rendering rule. The
+menu enhancement's own open list is still empty.
+
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
 ################################################################################
 
 --- METADATA ---
   Relative path:         docs/DOCUMENTATION_REVIEW.md
-  Size:                  268.9 KiB (275304 bytes)
-  SHA-256:               debe80ee6ebf619f91feb8f36e5f50ed39697872f806ed57d33418b1ec6667ed
+  Size:                  273.5 KiB (280038 bytes)
+  SHA-256:               3b59f0a6f8f1eaa325810ad4a21d41fd4862cbb357e6fe2b23fae8a7495f4e2a
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
@@ -9265,6 +9485,7 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 | F-108 | **A `stackalloc` inside a loop, and the build that treats it as an error is not the build anybody runs on a workstation.** `PictureFixtures.Deflate` declared `Span<byte> lengths = stackalloc byte[4]` inside its stored-block loop. Stack memory is released when the **method** returns, not when the iteration ends, so the frame grows once per pass — which is CA2014, and which is a temporary leak on any input and a stack overflow on a large enough one. **The actual cost here was seventy-six bytes**: the loop runs once per 64 KiB and the largest fixture is nineteen blocks, so nothing in the suite could ever have failed on it. **What earns it a row is the asymmetry that let it reach a delivery.** `Directory.Build.props` sets `TreatWarningsAsErrors` false for a plain `dotnet build` and true under `-p:ContinuousIntegrationBuild=true`, and that is a deliberate, well-argued ruling: a fresh clone on tomorrow's SDK must build through analyzer drift rather than refusing at the door. Its consequence is that the same defect is *one line among eleven seconds of build output* locally and *a halt* in CI. The operator's session shows exactly that — `dotnet build` succeeded, `dotnet test` returned **1256** green and matching the prediction exactly, and `scripts/ci_local.sh` stopped at step 5 with every step after it unrun. | The declaration is hoisted above the loop, which is behaviour-identical because every pass overwrites all four bytes before reading any of them. **No gate is added, and that is a ruling rather than an omission** (F-47, F-71, F-88): CA2014 *is* the gate — it exists, it ran, it decided correctly, and it blocked the build. A lexical re-implementation of a Roslyn analyzer inside xUnit would be strictly weaker than the analyzer while adding a second thing that can be wrong, which is F-41's *reaching past what it can decide* wearing a new hat. **The failure was authoring-side and is named as such:** this slice's predecessor was written without a .NET SDK, so its C# was reviewed rather than compiled, and its own "what was NOT verified" said so. The ruling is that the ordering matters — `ci_local.sh` is the reproduction of CI and its verdict is the one that counts, so a green `dotnet test` earlier in the same session is not evidence about the build CI will run. | S§18 · `tests/MyRestaurant.EndToEnd.Tests/Harness/PictureFixtures.cs` · BUILD_PROGRESS M6 Slice 56 |
 | F-109 | **The upload surface trusted a string that is not a fact about the file, and the refusal it produced blamed the operator's photograph — for six slices, with the fix written down the whole time.** `ManageMenuItem.AttachPictureAsync` passed `IFormFile.ContentType` into the write service. That value is whatever the operating system's extension map produced for the chosen **filename**: a Linux desktop without `shared-mime-info`, an Android browser handed a file from a document provider, and any file saved with no extension all send `application/octet-stream` for a genuine PNG. §8.2's census does not admit that string, so the write answered `UnsupportedContentType` and the page rendered *"which is not a picture format this menu serves"* about a picture whose format was fine. **The interesting half is the deferral rather than the defect.** Slice 52 diagnosed it correctly, wrote down the one-line fix — *identify from the bytes and pass that* — and declined to take it on the ground that doing so *"would make two of the write's outcomes unreachable from the only surface that can reach them"*. That sentence was then copied forward into four consecutive slices' open-item lists without being re-read as a claim. It is true, and it is not a cost: an outcome unreachable from one caller is not an outcome that has stopped being tested, because the write is a library whose integration facts reach both directly. **Stage 4e narrowed it without closing it**, which is what made the remainder easy to keep deferring: anything the downscaler touches returns from `canvas.toBlob` as `image/jpeg` whatever it was labelled, so only files already under the cap still reproduced it — which is to say screenshots and small photographs, and nothing anybody was testing with. | The surface asks `ImageFormat.IdentifyContentType` what the bytes are and passes that; bytes it cannot identify become the empty string, which is in no census, so **every refusal is still the write service's and no new refusal path exists**. The deferral's objection is answered rather than overridden: what the surface passes is the answer of *the same pure function the write consults*, so there is one decision procedure called twice rather than two that can disagree, and the write's census check and signature check become true by construction instead of by luck. `ContentTypeContradictedByBytes` is thereby unreachable from this form; **its arm is kept deliberately**, because the failure mode of deleting it is the worst one on the menu — a redirect and silence — and a surface's defence in depth is not a second opinion about what may be stored. **The row names something executable** (F-38's lesson, twenty-first application): two facts on the new `MenuItemImageContentTypeContractTests`, the first of which **computes its own subject** (F-47) — it names no page, but finds every file under `src/` binding an `IFormFile` and scopes the ban to *that binding* rather than to the string, since §11.4's panel renders the stored `ContentType` and a blanket rule would report a finding on a correct file (F-41). The second is its positive half, because emptiness is cheap: passing a literal would satisfy *does not read the browser's declaration* while breaking every upload. **And §16.3 gains scenario 20**, which uploads a real PNG named without an extension under the fallback media type and requires the stored format to be `image/png` and not the declared one. | S§7, S§16.3, S§16.4 · `Components/Pages/Administration/ManageMenuItem.razor`, `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageContentTypeContractTests.cs` (new), `tests/MyRestaurant.EndToEnd.Tests/MenuPictureScenarios.cs` · BUILD_PROGRESS M6 Slice 56 |
 | F-110 | **The media-type vocabulary had a fourth and a fifth declaration, both in English, both on the surface an operator actually reads, and neither reachable by any gate.** §8.2's CHECK declares it, `ImageFormat.RecognisedContentTypes` declares it, and `MenuItemImageUpload.AcceptAttribute` **derives** it — that third copy having been made derived in Slice 52 precisely on the argument that a stale `accept` list has no server-side symptom at all. Two more copies were written in that same slice and neither has a symptom either: the explanatory paragraph above the upload form said *"JPEG, PNG or WebP; anything else is refused with a reason"*, and the refusal itself said *"Choose a JPEG, a PNG or a WebP"*. A migration admitting a fourth format leaves both sentences quietly wrong — read by an operator, believed, and contradicted by a file picker that would happily offer the format the prose has just told them is unavailable. **F-80's shape in a fifth place.** Found while rewording the refusal F-109 had to change anyway, which is **F-93's timing for the fifth time**: the slice that edits a paragraph is the last moment its content is free to be wrong. | Both render `MenuItemImageUpload.RecognisedTypesForOperators`, derived from the same census the `accept` hint is derived from. **It renders media types rather than English names, and that is the ruling rather than a shortcut**: turning `image/webp` into *"a WebP"* requires a map from type to article-and-name, and that map would itself be the fourth copy this change exists to remove — so the operator is shown exactly the list their file picker was filtered by, and the two surfaces cannot disagree about what may be chosen. **The row names something executable:** a third fact on `MenuItemImageContentTypeContractTests`, with the forbidden words **derived** from the census rather than listed, so a fourth format is a word the gate begins looking for on its own. It scans the whole page rather than the refusal alone — scoping to the `switch` would have caught the message and left the paragraph, which is F-46's mechanism exactly. Its anti-evasion half requires the derived census to be *rendered*, because the cheapest way to stop naming formats is to stop telling the operator which ones are accepted, and a refusal that does not say what would have worked sends somebody back to the same file. | S§7, S§16.4 · `src/MyRestaurant.WebApplication/Menu/MenuItemImageEndpoints.cs`, `Components/Pages/Administration/ManageMenuItem.razor`, `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageContentTypeContractTests.cs` · BUILD_PROGRESS M6 Slice 56 |
+| F-115 | **A wall was documented — correctly, in full, with its own fix named in the same paragraph — and stayed up for eleven slices, because nothing in this repository could tell a documented wall from a closed one.** §17 has said since v1.1 that `/register` has no rate limit; that the reason it is not a two-line addition is that `RateLimiterOptions.OnRejected` and `RejectionStatusCode` are single-valued, so a second `AddRateLimiter` silently takes the refusal wording from the first and a refused registration answers with §4.2's *"Too many pairing attempts from this device"*; and that doing it properly means `OnRejected` dispatching on the endpoint. Every one of those was true when written and remained true. The limiter itself was configured inside `AddRestaurantDisplays`, where the only policy happened to belong — which made a display-device extension the owner of the rejection handler for every future surface, and put the wall in a place neither `/display/pair` nor `/register` mentions. **The finding is not the arrangement, it is the eleven slices**, and the mechanism is that §17 is a list of *accepted risks*: an accepted risk and an unstarted repair are the same shape there, and F-37's ledger row said *no rate limit in v1, with the reason it is not a two-line addition recorded*, which reads as a decision that was made rather than as work that was queued. It surfaced only because the menu plan named it — Stage 6 is *not startable* and prerequisite 1 is this paragraph — so it was found by somebody trying to *use* the thing, which is the same way F-35 and F-37 were both found and is now the third instance. | **One `AddRateLimiter` for the application**, owned by `Security/RateLimitingServiceCollectionExtensions.cs` rather than by any surface's extension method, and reading nothing but `RateLimitedSurfaces.All`. A `RateLimitedSurface` has three `required` members — policy name, refusal sentence, partitioner — so **a policy with no sentence of its own does not compile**, which is a stronger guarantee than a convention and cost nothing to get. `OnRejected` resolves the refused policy by reading `EnableRateLimitingAttribute` out of the endpoint's metadata: **the same read the middleware performed one instant earlier to select that policy**, which is why this is not a heuristic recovering lost information — a lookup that failed would be describing a request that could not be being refused. The fallback sentence is kept anyway and its property is stated: an unidentifiable policy is answered **vaguely, never wrongly**, because §17's objection was never to a vague sentence, it was to a wrong one that looks deliberate. Two secondary rulings, both about where a name lives. The pairing **policy name** moved to the list, because it is a key three unrelated readers agree on and there are now two of them; the pairing **budget** stayed on `DisplayRoutes`, because it is §4.2's normative number about one area and there is no operator decision in it. And `GenericRefusal` is `static readonly` rather than `const`, which is what lets the gate assert *every public string constant on this type is a policy* instead of *every one whose name ends in a word somebody chose* — one keyword separating a gate about the type from a gate about spelling (F-67's distinction, one register down). **§18 gains the general habit rather than §17 gaining a caveat:** an accepted risk whose own paragraph names its remedy is a **deferral**, and a deferral belongs where deferrals are tracked. | S§4.2, S§11.8, S§13, S§16.4, S§17, S§18 · `src/MyRestaurant.WebApplication/Security/RateLimitedSurfaces.cs` (new), `src/MyRestaurant.WebApplication/Security/RateLimitingServiceCollectionExtensions.cs` (new), `tests/MyRestaurant.WebApplication.Tests/Security/RateLimitingContractTests.cs` (new) · BUILD_PROGRESS M6 Slice 62 |
 | F-114 | **A documentation comment can describe a member other than the one it is attached to, and neither the language nor the toolchain has any opinion about it.** A `///` block binds to the next declaration; C# has no file-level documentation comment; and a block holding two `<summary>` elements compiles, publishes malformed XML documentation, and renders whichever one the tooling reaches first. **Eight were in the tree, in five files, one under `src/`.** Seven are the ordinary shape and each arrived a different way: a class-level essay left at the top of a file, where it bound to whichever record was declared first — twice, and in one of those a reader hovering a four-member record was handed several hundred words about child processes and WebAuthn origins while the class itself carried nothing; a comment orphaned by Slice 59 inserting a method between it and its subject; a forward and an inverse whose comments were swapped, with the inverse's own text saying it was the inverse; and `ListPath`'s comment attached to `IsExpanded` in a production component. **The eighth is what gives this a number rather than a tidy-up.** `OrderTestWorld`'s `menu_item_event` INSERT carried its own **pre-F-86 description, falsified, stacked directly above the F-86 correction** — *the payload columns `0004` and `0005` added are omitted rather than passed as NULL*, and *the casts on the two columns that remain*, six lines above a statement that lists all five and casts all five. F-86 wrote the fix *underneath* the claim it falsified instead of over it, and because two summaries are legal the falsified sentence stayed first for twenty-two slices. So this mechanism does not merely misplace prose: **it preserves a refuted claim in the position a reader meets first, with nothing in the repository able to report it.** Found by opening `AdministrationJourneys.cs` to add the journeys Stage 3d needed, which is **F-93's timing for the ninth time** | All eight repaired. An orphan **moves onto the member it describes**; where two summaries describe the **same** member the superseded one is **deleted** rather than merged, on F-77's ruling and F-89's precedent — a stale account of a member is the same artefact as a stale count of one. Each repair leaves a paragraph saying what was moved and why, because an assertion nobody can find the reason for is an assertion the next person deletes (F-70). **The rule is then made executable and total**: one `<summary>` per documentation comment, which is not a judgement — XML documentation gives a member one summary and every other element it may carry is unaffected, so there is no legitimate second one to exempt. That puts it in F-81's class rather than F-104's: decidable from text with certainty. **The subject is computed and no file is named** (F-58) — every `.cs` and `.razor` under `src/` and `tests/`, a run of consecutive `///` lines as one comment. **An escaped mention is outside the rule by construction rather than by exclusion**, which matters because every repair above refers to the tag that way: F-67's distinction between a use and a mention, in a third form. **Two non-vacuity floors, neither redundant** (F-41) — one on files opened, because the correct answer is zero; one on comments parsed, because a block reader recognising nothing would open every file and satisfy the first. **And writing the sensitivity proof found this gate's own instance of its subject**: the synthesised defect written as a literal would have put two consecutive `///` lines carrying a summary each into the test file, which the walk reads as text and cannot tell from a real comment — so the gate reported a finding on the file proving it works. The fixtures are composed at run time and the marker never appears. **The residual is stated**: a member with no summary at all is not reported, because that would be a gate about how much documentation this project writes | S§16.4, S Appendix A · `tests/MyRestaurant.WebApplication.Tests/Documentation/DocumentationCommentContractTests.cs` · `tests/MyRestaurant.DataAccess.Tests/Orders/OrderTestWorld.cs`, `tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs`, `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantInstance.cs`, `tests/MyRestaurant.EndToEnd.Tests/Harness/CounterJourneys.cs`, `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs`, `src/MyRestaurant.WebApplication/Components/Pages/Administration/HiddenRecords.razor` · BUILD_PROGRESS M6 Slice 61 |
 | F-113 | **The harness read a `<dt>` that `app.css` upcases, keyed a dictionary on the result, and documented the keys in the casing the markup uses — for nineteen slices, unobservably, because that dictionary had no caller.** `ChosenItemDetail.Facts` is keyed by §11.1's detail-panel terms and its own paragraph names them *Price*, *Available* and *On the menu since*. `ReadChosenItemDetailAsync` built it with `InnerTextAsync`, which returns what layout produced, and `.order-menu-facts dt` declares `text-transform: uppercase` — so the reader produced `AVAILABLE` while the record promised `Available`, and the first caller to look a term up by the documented name would have taken a `KeyNotFoundException` off a panel that was entirely correct. **What lifts it above a typo is the sentence beside it.** This is **F-88's mechanism a second time inside the file F-88 was found in**, and that fix left a comment reading *"Only this one read is affected: it is the only place the suite compares a value against text a `text-transform` rule reaches"* — written in the same slice that fixed `ReadTotalsAsync` forty lines further down for exactly this reason, and wrong by one at the moment of writing. It was *narrowly* true only because `Facts` was a **read with no reader**, which is precisely the condition that hid it: this project's standing rule is that a read with no caller is a defect, and here the absent caller was also the absent instrument. Found by needing `Facts["Available"]` in order to write Stage 5c's scenario step, which is **F-93's timing for the eighth time** | The term goes through `ScreenText.DeclaredAsync` — the helper that already exists for this and that `ReadTotalsAsync` already uses — so both `<dt>` sites run one decision procedure rather than two that can disagree. **The `<dd>` beside it deliberately stays on `InnerTextAsync`**, which is `ScreenText`'s own stated distinction: a *label* the harness holds the expected wording of is read as declared, and *content* is read as rendered; a blanket replacement would be the wrong subject (F-46). The false sentence is **corrected rather than deleted**, on F-77's cheaper direction as for F-100, F-103 and F-105 — and corrected **into a rule rather than a census**, because a count of affected sites is the artefact that went stale here. **No gate, and it is a ruling rather than a shrug** (F-41, F-47, F-104): which reads a `text-transform` rule reaches is not decidable from text without a CSS selector engine resolved against a component tree, the lexical approximation would report findings on correct reads while missing transformed ones, and a second weaker implementation blocking the build is F-41's *reaching past what it can decide*. **What closes the hole is that `Facts` now has a caller** — scenario 21's Stage 5c step reads `Facts["Available"]` — so the disagreement between the record and its reader has stopped being unobservable. The residual is stated: a read of a transformed element added tomorrow is still invisible until something compares it | S§16.3, S§18 · `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs`, `tests/MyRestaurant.EndToEnd.Tests/MenuReactionScenarios.cs` · BUILD_PROGRESS M6 Slice 60 |
 | F-112 | **The §16.4 counted-class census was written three times in the one place a ruling had cleared, and two of the three were wrong.** F-89 deleted the census from §16.4's own prose and from `TestingSectionContractTests`' class summary, leaving `MinimumCountedClasses` as the only copy on the stated ground that a constant asserted on every run can go stale only *loudly*. The doc comment **on that constant** then grew a narrative census — *twelve, sixteen, eighteen, nineteen … twenty-five, and now twenty-seven* — sitting one line above `= 29`, guarding a §16.4 that by this slice stated **32**. So the prose disagreed with the constant it documented, and the constant lagged the document it guards by three. **Nothing could see either**, and F-89 had already recorded why: the gate compares *assertion counts per class* against files, and a census is a count of *paragraphs*, which is prose. **This is F-73 recurring inside the repair for F-89, which was itself F-73 recurring inside the repair for F-73** — a third generation, and the recurrence is the whole evidence. Twice now a ruling has said *this number will be moved by habit*, and twice the habit has failed within three slices; the variable is not the diligence of the person editing, it is that a number beside an enforced copy of itself reads as part of the enforcement. Found by computing the census in order to move it for a new counted class, which is **F-93's** timing for the seventh time. | The narrative is **deleted rather than corrected**, which is F-89's own remedy applied to the copy F-89 created, and the paragraph now names where the history of a number belongs — `BUILD_PROGRESS.md`, which is a log rather than a claim. The floor moves **29 → 33** with the census, that habit being the one part of F-73's ruling still standing and the one that is load-bearing rather than decorative. **No gate is added, and the reason is F-89's own rather than a shrug** (F-41, F-47): the instrument that would catch a stale floor is an *equality* between the floor and the computed census, and an equality would report a finding on every §16.4 paragraph that describes a test class without enumerating its assertions — which §16.4 legitimately does, for the three response-header classes covered as a group by directory. A floor can only be too low, and too low costs nothing but the check it declines to make; what was removed is the copy that could go stale in silence. | S§16.4 · `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs`, `docs/TECHNICAL_SPECIFICATION.md` · BUILD_PROGRESS M6 Slice 58 |
@@ -9279,6 +9500,8 @@ Found while implementing against the real .NET 10 framework, and resolved in the
 carried the reason its fix was *not* folded into the slice that found it, named the milestone it would land
 before, and landed there. That is the ledger working as intended — a finding is recorded when it is seen, not
 when it is convenient.
+
+**F-37's rate-limit half is discharged, and the way it was found is the third instance of one pattern (F-115).** F-35 and F-37 were both requirements stated plainly, mechanisms described in the specification, and no line in §19's build order claiming them — found in the end by somebody trying to *use* the thing. This is the same shape with a different document doing the naming: §17 stated the ruling, the reason and the fix, and it was `docs/MENU_AND_HANDHELD_PLAN.md` — a *plan*, listing Stage 6's four prerequisites — that made the paragraph into work. **The cheap guard is the one already written for F-35 and F-37, applied to a third section:** when a section records a risk whose own text names the remedy, that is a deferral rather than an acceptance, and it should be visible in a plan and not only in §17. That is now §18's, not a habit.
 
 **F-37 is the ledger's blind spot, twice.** It is the same shape as F-35: a requirement stated plainly in
 `REQUIREMENTS.md`, a mechanism described in the specification, and no line in §19's build order claiming it —
@@ -9720,8 +9943,8 @@ tie-break hold, so the sentence points at something a test can fail.
 
 --- METADATA ---
   Relative path:         docs/MENU_AND_HANDHELD_PLAN.md
-  Size:                  150.3 KiB (153952 bytes)
-  SHA-256:               e2689c39ad63c21d26738a5e92809563141f8533d8345afdf2edd7a16659e8a2
+  Size:                  155.2 KiB (158925 bytes)
+  SHA-256:               4ca327d7da6488bcd59c27a3009287602f1c6b9b6194e17338f5011308c36b89
 
 --- CONTENT ---
 # Menu modernization and the handheld contract — staged plan
@@ -11707,26 +11930,90 @@ join, for an arrangement this scenario already has standing.
 and the consequence Stage 5b-i recorded is discharged rather than carried. The menu enhancement's open list
 is empty for the second time, and this time nothing was deferred into it.
 
-**The next thing in this plan is Stage 6**, which is *not startable* and says why below. That has not
-changed: a comment is the first user-generated content in this system and it needs a rate-limiting slice
-with no menu in it, a `REQUIREMENTS.md` revision about guest privacy, and a moderation surface.
+**The next thing in this plan is Stage 6**, which is *not startable* and says why below. **One of its four
+prerequisites is discharged as of M6 Slice 62** — the rate-limiting slice with no menu in it, which landed
+on `/register` rather than on comments and is recorded as Stage 6a below. Three still block it: the
+`REQUIREMENTS.md` revision about guest privacy, the moderation surface, and §11.11's rendering rule.
+
+---
+
+## Stage 6a — the rate limiter takes a second policy — **landed, M6 Slice 62**
+
+**Prerequisite 1 of Stage 6, discharged, and it is the only thing in this plan with no menu in it.** The
+plan predicted this exactly — *"it needs a rate-limiting slice with no menu in it"* — and the slice went
+where the prediction said it would: not to comments, which do not exist, but to `/register`, which is the
+surface that needed a limit on its own merits and whose absence of one was already a recorded risk (§17,
+F-37). Comments inherit the **mechanism**, not the policy: when they land they add an entry to
+`RateLimitedSurfaces.All`, which is now a list rather than a line inside somebody else's extension method.
+
+### What was actually in the way, and it was not the policy
+
+**§17 had the whole thing written down and had had it written down since v1.1.** The ruling (no limit on
+`/register`), the reason it was not a two-line change (`RateLimiterOptions.OnRejected` and
+`RejectionStatusCode` are single-valued, so a second `AddRateLimiter` takes the refusal wording from the
+first and a refused registration answers *"too many pairing attempts"*), and the fix (`OnRejected`
+dispatching on the endpoint). Correct, all three, for eleven slices.
+
+**What was missing was a reader.** §17 is a list of *accepted risks*, and in that list an accepted risk and
+an unstarted repair are the same shape — F-37's ledger row said *no rate limit in v1, with the reason it is
+not a two-line addition recorded*, which reads as a decision somebody made. This document is what turned it
+back into work, by listing it as a prerequisite of something else. **That is worth noticing about this plan
+rather than about that section:** a plan naming a blocker is a stronger mechanism than a specification
+recording one, because a plan is read when somebody wants to do the next thing. The general habit went into
+§18 (an accepted risk whose paragraph names its own remedy is a *deferral*), and the finding is F-115.
+
+### The ruling Stage 6 inherits, and it is about a NAT rather than about a threat
+
+**`/register` is limited per client address, and over the tunnel a client address is a whole dining room.**
+Guests reach the page from the restaurant's own wifi through Cloudflare, so `UseForwardedHeaders` reports
+one public address for every one of them. §4.2's pairing limit — 5 per minute per address — has no such
+problem, because a member of staff installs one tablet; the same number here would refuse a party of eight.
+
+Two consequences follow, and **Stage 6 will face both again with a comment instead of an account**:
+
+- **The default is sized for a full room rather than against an attacker.** 60 attempts per 10 minutes,
+  configurable, because the right number is a property of the room and this repository cannot know it.
+- **The floor exists to protect guests, not the server.** Ten attempts minimum — the inverse of every
+  other bound in §13. Too loose costs spam rows, which F-37 accepted on the record and which hold no
+  capability; too tight costs a seated guest who cannot create the account they need in order to order
+  dinner, at a table where staff have no remedy and no diagnosis.
+
+**A comment's budget will not be this budget**, and Stage 6 should not copy the number. A comment is
+cheaper to write than an account is to create and there are many more of them per guest, so the shape of
+the question is the same — per-venue partition, generous default, floor protecting guests — and the
+arithmetic is not.
+
+### What is open after this stage
+
+**Three of Stage 6's four prerequisites**, unchanged and listed below: the `REQUIREMENTS.md` revision about
+guest privacy, the moderation surface, and §11.11's rendering rule. Nothing was deferred *into* the open
+list by this stage.
+
+**One thing only a browser can say**, and it is the same claim §4.2 has never had asserted either: that the
+Blazor endpoint for a static-SSR page carries `[EnableRateLimiting]` in its endpoint metadata, so the
+middleware finds the policy and the dispatch finds the name. Every assertion in this slice is about the
+list, the lookup and the tree; none of them proves a 429 was ever produced by a request. The pairing surface
+has run on that same unasserted assumption since Slice 22, which is why it is recorded here rather than
+treated as new risk.
 
 ---
 
 ## Stage 6 — comments, and what has to be settled first
 
-**Not started, and not startable.** This is the one item in the request that cannot be planned into a
-slice yet, and it is worth being precise about why rather than calling it "future work".
+**Not started, and one of four prerequisites now discharged (Stage 6a above, M6 Slice 62).** This is still
+the one item in the request that cannot be planned into a slice, and it is worth being precise about why
+rather than calling it "future work".
 
 A comment is the first **user-generated content** in this system. Every text field a guest can write today
 — a display name, a customization note — is read by staff. A comment is read by other guests. Four things
 follow, and three of them are edits to documents rather than to code.
 
-1. **Rate limiting, and it is a known wall.** §17 records that `/register` has no rate limit and states the
-   concrete reason it is not a two-line addition: a second naive `AddRateLimiter` policy hijacks §4.2's
-   single-valued rejection handler, so a refused registration would answer *"too many pairing attempts"* —
-   wrong, and deliberate-looking. Comments hit the identical wall. **This stage cannot land before that
-   ruling is revisited**, and revisiting it is a slice of its own with no menu in it.
+1. ~~**Rate limiting, and it is a known wall.**~~ **Discharged, M6 Slice 62 — Stage 6a above.** The wall was
+   real: a second naive `AddRateLimiter` policy hijacked §4.2's single-valued rejection handler, so a refused
+   registration would have answered *"too many pairing attempts"* — wrong, and deliberate-looking. The
+   limiter now takes policies from a list in which each carries its own refusal sentence, and `OnRejected`
+   dispatches on the endpoint. **A comment adds an entry to that list.** What Stage 6 still has to decide is
+   the *number*, and Stage 6a's ruling about the partition transfers while its arithmetic does not.
 1b. **One of Stage 6's questions is already answered.** *Does it require having ordered the item* is the
    same question for a comment as for a like, and Stage 5a ruled on it: **no**, because
    `order_current_line` records what somebody ordered rather than what they ate and a table shares. That
@@ -11745,6 +12032,10 @@ follow, and three of them are edits to documents rather than to code.
    default HTML encoding and must never reach a `MarkupString`; §11.11's `script-src` carries no
    `'unsafe-inline'`, which is what F-49 built it for. `ContentSecurityPolicyContractTests` computes what
    the application loads by scanning the tree, so it will notice a new inline handler on its own.
+
+**The recommendation below was written before Stage 5 landed and before Stage 6a discharged prerequisite 1.
+It is kept rather than rewritten, because the argument in it is still the argument** — three of four
+prerequisites stand, and the sentence about what comments cost is unchanged by one of the four going away.
 
 **Recommendation: do Stage 5b and stop.** Likes answer "which of these is popular" with no new question
 attached. Comments answer a question nobody has asked for yet at the cost of a rate-limiting slice, a
@@ -12488,13 +12779,13 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
 
 --- METADATA ---
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
-  Size:                  662.5 KiB (678412 bytes)
-  SHA-256:               a529638c65df512031ed7b469dd9b0fbd44cbda7eb8735347c06e3ea907a1270
+  Size:                  678.3 KiB (694559 bytes)
+  SHA-256:               d969cd68bc21b97952ddbe3d58c7285bf710c6af43857209144325cdd2f1cfd3
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
 
-**Version 1.46 — 2026-08-25 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
+**Version 1.47 — 2026-08-25 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
 This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md`. It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. The decisions register in Appendix A maps every ruling to its embodiment.
 
@@ -12611,7 +12902,7 @@ Each table row holds `join_secret bytea CHECK (octet_length(join_secret) = 32)`,
 
 `table_display_device`: bound to one table; authenticated by a device cookie whose value is `device:{device_identifier}:{secret}` where `secret` is 32 random bytes Base64Url; the server stores only `sha256(secret)` (`device_secret_hash`). Cookie: Secure, HttpOnly, SameSite=Lax, expiry ~365 days. Each request re-validates the hash and `revoked_at IS NULL`; `last_seen_at` is updated at most once per minute. Revocation (`revoked_at`, `revoked_by_person_identifier`) kills the device on its next request or circuit revalidation.
 
-Pairing: administrator, from the table's admin page, generates a one-time code — 8 characters from the unambiguous alphabet `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, stored **hashed** (SHA-256) in `table_display_pairing_code` with `expires_at = now() + TABLE_DISPLAY_PAIRING_CODE_MINUTES` (default 10), single-use (`used_at`). The device opens `/display/pair` (anonymous; rate-limited **5 attempts/minute/IP**), enters the code; on match the server creates the device row, sets the cookie, marks the code used, and redirects to `/display/{table}`. Failed attempts burn nothing but the rate budget.
+Pairing: administrator, from the table's admin page, generates a one-time code — 8 characters from the unambiguous alphabet `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, stored **hashed** (SHA-256) in `table_display_pairing_code` with `expires_at = now() + TABLE_DISPLAY_PAIRING_CODE_MINUTES` (default 10), single-use (`used_at`). The device opens `/display/pair` (anonymous; rate-limited **5 attempts/minute/IP** — one of the two policies in `RateLimitedSurfaces`, §11.8 being the other, and this budget stays a compile-time constant because there is no operator decision in it), enters the code; on match the server creates the device row, sets the cookie, marks the code used, and redirects to `/display/{table}`. Failed attempts burn nothing but the rate budget.
 
 ### 4.3 Token algorithm (normative)
 
@@ -13540,6 +13831,16 @@ That asymmetry is §3.3's rule made structural: a passkey is always offered, nev
 
 No TOTP step (§3.4 pairs the authenticator with the password path for staff) and no role — a guest is the *absence* of a grant (§3.7), so nothing touches `person_role`. The account commits in one transaction — `person`, the optional `passkey_credential`, and a `security_event` with a **NULL actor**, this being a self-action, exactly as the bootstrap records itself.
 
+**Rate-limited, as of v1.47 — `GUEST_REGISTRATION_ATTEMPTS_PER_WINDOW` per `GUEST_REGISTRATION_WINDOW_MINUTES` per client address, default 60 per 10 minutes, floor 10 and 1 (§13, §17, F-115).** This reverses the *no rate limit* half of F-37's ruling and reverses nothing else; F-37's reasoning about what an unlimited `/register` costs was correct and is why the budget is shaped the way it is.
+
+**Read the budget as a volume ceiling rather than as a brute-force defence.** There is no secret to guess at this endpoint. What the limit bounds is how fast an anonymous caller can mint `person` rows and ask for Argon2id work, and F-37's finding stands that the worst outcome of exceeding it is *rows* rather than access — a guest is the absence of a grant, so a spam account holds no capability.
+
+**The partition is a client address, and over the tunnel a client address is a whole dining room.** This is the fact that decides every number here, and it is the one a later reader is most likely to "correct". Guests reach this page from the restaurant's own wifi through Cloudflare, so `UseForwardedHeaders` faithfully reports one public address for all of them: a per-address limit on this surface is a **per-venue** limit. §4.2's pairing surface has no such property — a member of staff installs one tablet — which is why 5 per minute is right there and would be indefensible here.
+
+**So the default is sized for a full room rather than against an attacker, and the floor exists to protect guests rather than the server.** That is the inverse of every other bound in §13, and it follows from the costs being asymmetric. Too loose costs spam rows, accepted on the record by F-37. Too tight costs a *seated guest who cannot create the account they need in order to order dinner*, at a table where staff have no remedy and no diagnosis — the browser shows a plain-text refusal and nothing anywhere says which knob produced it. Sixty per ten minutes is six a minute sustained with the whole window available as a burst; the floor of ten is the smallest value at which one large party is plausible. **It is configuration rather than a constant because the right number is a property of the room**, which this repository cannot know.
+
+The refusal is plain text, names no detail of what was attempted, and is **this surface's own sentence** — see §17 for why that last clause needed a mechanism rather than a string.
+
 ### 11.9 The colophon and `/source` (every page, both layouts)
 
 **The colophon** is one quiet line beneath the §11.7 wall clock, rendered by both layouts on every page: the product name, the running version, and a link to `/source` reading *"Source code (AGPL-3.0-only)"*. It is a sibling of the clock's `<footer>` rather than a child of it, because that element belongs to a component whose re-rendering is pinned off; the pair is styled as one bar and the colophon carries the bottom padding and the safe-area inset.
@@ -13734,12 +14035,14 @@ The resource carries `service.name = myrestaurant` and **`service.version` = the
 | `TABLE_JOIN_TOKEN_ROTATION_SECONDS` | `60` | §4.3 |
 | `TABLE_JOIN_GRANT_MINUTES` | `10` | §4.4 |
 | `TABLE_DISPLAY_PAIRING_CODE_MINUTES` | `10` | §4.2 |
+| `GUEST_REGISTRATION_ATTEMPTS_PER_WINDOW` | `60` | §11.8 — `/register` attempts per window **per client address**. Partitioned by address, and over the tunnel a venue's whole dining room shares one, so this is a per-venue budget; the default is generous on purpose and the floor of 10 protects guests rather than the server (F-115) |
+| `GUEST_REGISTRATION_WINDOW_MINUTES` | `10` | §11.8 — the window the count above is taken over |
 | `ARGON2_MEMORY_KIBIBYTES` / `ARGON2_ITERATIONS` / `ARGON2_PARALLELISM` / `ARGON2_MAX_CONCURRENT_HASHES` | `65536` / `3` / `1` / `4` | §3.2 + floor guard |
 | `BACKUP_DIRECTORY` / `BACKUP_SCHEDULE_TIME` / `BACKUP_RETENTION_COUNT` | `/var/lib/myrestaurant/backups` / `03:30` / `14` | §15 |
 | `OTEL_*` | unset | standard OTel variables; `UPTRACE_DSN` translated by `run.sh` only |
 | `CLOUDFLARE_TUNNEL_TOKEN` | — | production profile, cloudflared |
 
-Fail-fast validation at startup: origin parses as absolute https URL; source URL parses as absolute http-or-https URL; Argon2 floor (§3.2); rotation/grant/pairing values ≥ 10 s / ≥ 1 min / ≥ 1 min; connection string present.
+Fail-fast validation at startup: origin parses as absolute https URL; source URL parses as absolute http-or-https URL; Argon2 floor (§3.2); rotation/grant/pairing values ≥ 10 s / ≥ 1 min / ≥ 1 min; registration budget ≥ 10 attempts / ≥ 1 min; connection string present.
 
 **A setting reaches the process or it does not exist (F-50).** `compose.yaml`'s `web` service enumerates its environment key by key and takes no `env_file`, so this table is not a description of what a deployed container receives — it is a description of what the *program* reads, and the two are joined only by somebody having written the key in a third place. Every key in this table **must** therefore appear in the `web` service's `environment` mapping and in `.env.example`, and the agreement is asserted by `ConfigurationSurfaceTests` (§16.4) rather than remembered. The failure this rule exists to stop is silent by construction: an unpassed variable is not an error, it is the compiled-in default, rendering a page indistinguishable from a correctly configured one.
 
@@ -13893,6 +14196,9 @@ The **configuration-surface test** (`tests/MyRestaurant.WebApplication.Tests/Con
 
 The `compose.yaml` half is the one that found something. It reads the mapping **bounded to the `web` service**, because every service in that file takes an `environment:` block and a variable set on the wrong one is the failure that would otherwise pass. It reads source text with plain string operations and no parser, deliberately: a YAML dependency in the unit test project would be a package taken on to check five lines of indentation, and the question — *does this key appear as a child of that mapping* — is answerable without one.
 
+
+The **rate-limiting contract test** (`tests/MyRestaurant.WebApplication.Tests/Security/RateLimitingContractTests.cs`, an ordinary unit test in the `unit` job) asserts that a rate-limited surface is refused in its own words (**F-115**). **Six assertions**, and the interesting thing about the subject is that it existed as correct prose for eleven slices: §17 stated the ruling, the reason `/register` had no limit, *and* the fix — `OnRejected` dispatching on the endpoint — in one paragraph, and nothing in this tree could say whether any of it had been acted on. **This file deliberately asserts nothing about the numbers**, which are §13's and live in `RestaurantOptionsTests` beside every other bound; whether a budget is the right budget is a judgement about a dining room. What is decidable is the structure §17 asked for. That the list holds at least two surfaces, each with a non-blank policy name, a non-blank sentence and a partitioner, and no policy name twice — the guard every assertion below needs, because an emptied list satisfies all of them (**F-41**). That **no two surfaces share a refusal and none borrows the fallback**, which is the finding from both sides: one sentence serving two endpoints is the defect, and a surface silently inheriting the generic wording is the defect's cheapest disguise. That the dispatch resolves every registered policy to its own sentence and answers anything else — an unknown name, a null, an empty string, a differently-cased name — with the fallback, which is the only assertion that exercises the branch §17 was afraid of and it asserts the branch is **vague** rather than absent, because naming the wrong surface is worse than naming none. Then the two tree assertions, and they **close each other's hole**: every `[EnableRateLimiting]` under `src/` names a member of `RateLimitedSurfaces` that the list registers — an unknown policy is not a startup failure, it throws on the first request to reach an anonymous page — and, by reflection, every public string **literal** on that type is a policy the list registers, which is the half no text scan can see, since an unused constant appears in no attribute. `GenericRefusal` is `static readonly` rather than `const` precisely so that second assertion can say *every public string constant* instead of *every one whose name ends in a word somebody chose*: one keyword is the difference between a gate about the type and a gate about spelling. The sixth is the limiter's own registration — 429 rather than the framework's 503, a rejection handler present, and no global limiter — moved here from `DisplaysWiringTests` in the same slice that moved the registration it is about, because asked of `AddRestaurantDisplays` it would now resolve a framework default and assert nothing.
+
 The **compose dependency test** (`tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeDependencyContractTests.cs`, an ordinary unit test in the `unit` job) asserts §14.1's dependency-condition rule (**F-53**). Three assertions: that the scan found the graph at all — four services and at least three `depends_on` edges, because the assertion that matters passes vacuously on an empty set (**F-41**); that no edge asks for any condition other than `service_started`; and that every edge names a service the file declares. It parses the file with plain string operations for the reason the configuration-surface test does, and it accepts the list form of `depends_on` and records it as `service_started`, because that is what both engines normalize it to and failing it would be reporting a finding on a correct file.
 
 Unlike F-51's rule, this one **is** made executable, and the distinction is worth stating because the two findings arrived together. F-51's would-be gate — *no `image:` value lacks a registry component* — is a text assertion standing in for a behavioural contract, and it passes on a tree where the images are qualified and the stack still cannot start for the next reason. This one is not standing in for anything: the condition *is* the thing that hangs, the file is the only place a condition is asked for, and which conditions this file asks for is decidable from the text with certainty. What neither test replaces is running the canonical stack on the canonical engine, which remains open.
@@ -14032,7 +14338,11 @@ Threats mitigated: **content injection and clickjacking, bounded by a Content Se
 
 Accepted, by ruling or by design: token replay within ≤120 s (bounded by membership/visibility rules); WAN dependence of in-house ordering (hairpin — F-06); quick-tunnel passkeys work per run but the per-run URL is not persistent (PSL — re-register each demo; named tunnel for durability); counter role may operate password-only (no passkey mandate); guest sees table-mates' display names and orders (that's the product); no rate limit on authenticated order sends beyond all-or-nothing validation (single-restaurant trust model).
 
-**No rate limit on `/register` (§11.8), by ruling — F-37.** It is the second anonymous surface that writes, and the more consequential one: a `person` row outlives its request where a failed pairing attempt does not. Four things bound it meanwhile, none of them a policy: registration is a **two-request** flow behind an antiforgery token and a protected ticket cookie, so it is not a scriptable single POST; the password is capped at 256 characters, so an anonymous caller cannot ask for unbounded Argon2id work; §3.2's semaphore bounds concurrent hashes process-wide; and a spam account holds no capability — a guest is the absence of a grant (§3.7), so the worst outcome is rows, not access.
+**`/register` is rate-limited as of v1.47 (§11.8, §13) — F-37's *no rate limit* ruling is discharged, and F-115 is the mechanism that made discharging it possible.** F-37's *reasoning* survives intact and is now the argument for the budget's shape rather than for its absence: registration is a **two-request** flow behind an antiforgery token and a protected ticket cookie, so it was never a scriptable single POST; the password is capped at 256 characters, so an anonymous caller cannot ask for unbounded Argon2id work; §3.2's semaphore bounds concurrent hashes process-wide; and a spam account holds no capability — a guest is the absence of a grant (§3.7), so the worst outcome is rows, not access. Those four are why the limit is a **volume ceiling sized for a dining room** rather than a brute-force defence sized against an attacker: there is nothing here to brute-force, and the partition is a client address that a whole venue shares.
+
+**What the eleven slices are the finding, and they are worth more than the code (F-115).** The paragraph below stated the ruling, the concrete reason it was not a two-line change, *and* the fix — and it was correct in all three from the day it was written. It then sat in an accepted-risks section for eleven slices while nothing in this repository could tell whether any of it had been acted on. **A wall that is documented is not a wall that is closed**, and the ledger had no way to distinguish the two: an accepted risk and an unstarted repair read identically. The habit that follows is small and is stated in §18 rather than left here — an accepted risk whose own paragraph names its remedy is a **deferral**, and a deferral belongs where deferrals are tracked.
+
+**The mechanism, kept because it is the reason a second policy is still not a two-line addition anywhere else.** `RateLimiterOptions.OnRejected` and `RejectionStatusCode` are properties of the *limiter*, not of a policy. A second `AddRateLimiter` call adding a registration policy silently takes over the rejection handler, and a refused registration would then answer with §4.2's *"Too many pairing attempts from this device"* — worse than no limit, because it is wrong and looks deliberate. Doing it properly means `OnRejected` dispatching on the endpoint, which is what `RateLimitedSurfaces` now does: **one** `AddRateLimiter`, owned by `Security/RateLimitingServiceCollectionExtensions.cs` rather than by a surface's own extension method, walking one list in which a policy cannot be represented without a refusal sentence of its own. The dispatch reads `EnableRateLimitingAttribute` out of the endpoint's metadata — *the same read the middleware performed one instant earlier to select the policy* — so a lookup that failed would describe a request that could not have been refused; the fallback sentence is therefore about honesty rather than coverage, and its property is that an unidentifiable policy produces a **vague** answer and never a wrong one. Asserted by `RateLimitingContractTests` (§16.4) rather than remembered.
 
 **Coordinated disclosure, and this section's part in it (F-42).** The project must offer a **private** channel for security reports, named in `SECURITY.md`, and that channel is the single exception to §18's no-outside-contributions rule. The asymmetry is the argument: refusing a feature costs the person who wanted it, and the AGPL has already given them the source and the freedom to build it; refusing a report costs an operator's *guests*, who never chose this software, cannot read `CONTRIBUTING.md`, and have no fork to run. **This section is part of the offer rather than a disclaimer.** Every ruling above was argued and written down, so `SECURITY.md` must send a reporter here first — a report that asks for one of them to be *re-ruled* is an argument and gets read as one; a report that presents one as news gets pointed back at the paragraph that decided it. What the project owes in return is stated as targets rather than as an SLA a single maintainer would miss, and the advisory is published when there is a release to upgrade to rather than held open-endedly. A fork operator is the security contact for their own instance, and `SECURITY.md` says so, because nothing here can reach their box, their data or their guests.
 
@@ -14040,7 +14350,7 @@ The reason this is not a two-line addition, recorded so it is not rediscovered: 
 
 ## 18. Governance
 
-Single-owner project; no outside contributions (`CONTRIBUTING.md`) — **except a security report, which is not a contribution** (`SECURITY.md`, §17). **A document in this tree states policy, never platform state:** what the project will do is true wherever it is read, whereas a claim about a hosting provider's settings page is unverifiable from inside the repository and was in fact false for as long as it existed (F-42). The rule is enforced by `scripts/check_repository.sh` rather than remembered. **Atomic documentation:** a behavior change lands in one commit with its `REQUIREMENTS.md`, this specification, `DOCUMENTATION_REVIEW.md` ledger, and ADR edits. ADRs are edited in place with a History line (never duplicated); supersessions say so explicitly. This specification's version bumps (1.0 → 1.1 …) with a dated changelog appended at the bottom when normative content changes.
+Single-owner project; no outside contributions (`CONTRIBUTING.md`) — **except a security report, which is not a contribution** (`SECURITY.md`, §17). **A document in this tree states policy, never platform state:** what the project will do is true wherever it is read, whereas a claim about a hosting provider's settings page is unverifiable from inside the repository and was in fact false for as long as it existed (F-42). The rule is enforced by `scripts/check_repository.sh` rather than remembered. **An accepted risk whose own paragraph names its remedy is a deferral, and belongs where deferrals are tracked (F-115).** §17 carried the `/register` rate limit for eleven slices as an accepted risk that stated its own fix; an accepted risk and an unstarted repair read identically in that section, so nothing distinguished *we decided not to* from *we have not got to it*. The test is whether the paragraph names a remedy: if it does, the risk is not accepted, it is scheduled, and it gets a line in the plan that owns it rather than only a paragraph in §17. **Atomic documentation:** a behavior change lands in one commit with its `REQUIREMENTS.md`, this specification, `DOCUMENTATION_REVIEW.md` ledger, and ADR edits. ADRs are edited in place with a History line (never duplicated); supersessions say so explicitly. This specification's version bumps (1.0 → 1.1 …) with a dated changelog appended at the bottom when normative content changes.
 
 **A gate is a behaviour change, and the atomic rule covers it (F-70).** An assertion added to the suite is the project acquiring an opinion it will now block on, so it lands with its §16.4 paragraph, its `DOCUMENTATION_REVIEW.md` row where it closes a finding, and its changelog entry, exactly as a feature does. This is stated because it was broken: `HandheldLayoutContractTests` acquired an eighth assertion with none of the four, and it stayed unnoticed for a slice. The gate itself was good; nothing in the tree said why it was there, and an assertion nobody can find the reason for is an assertion the next person deletes.
 
@@ -14081,7 +14391,7 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`) — **except 
 | F-36 | — | All instants rendered in `RESTAURANT_TIME_ZONE` for every reader, through one type; `RESTAURANT_CLOCK_FORMAT` settles the 12-vs-24 question; ticking footer clock states the convention on every page | §8.1, §11.7, §13, §19 |
 | F-18 / F-19 | — | Menu item event log; lockout 5/5min, username 3–64 citext, currency/timezone defaults | §7, §3.1, §13, §8.2 |
 | F-20 | — | Hand-written fakes; NSubstitute ok; no Moq | §16.1 |
-| F-37 | — | Guest self-registration is a real surface at `/register`, specified rather than assumed; a passkey is offered first and may be declined only when a password was set; no rate limit in v1, with the reason it is not a two-line addition recorded | §11.1, §11.8, §17, §19 · R§4.3 |
+| F-37 | — | Guest self-registration is a real surface at `/register`, specified rather than assumed; a passkey is offered first and may be declined only when a password was set; no rate limit in v1, with the reason it is not a two-line addition recorded. **The rate-limit half is discharged in v1.47 — see F-115**, which is also where the eleven slices between the reason being recorded and it being acted on are accounted for; the rest of this row stands | §11.1, §11.8, §17, §19 · R§4.3 |
 | F-38 | The restore path had never been executed and could not have completed: `pg_restore` exits non-zero on ignored errors, ahead of the line that restarted `web`. Nothing captured the Data Protection key ring despite §15 requiring it. A failed dump could evict a good one on the following run. Container discovery took whichever match came first | Both scripts rewritten; `scripts/restore_drill.sh` added and executed by CI on every push, so the drill is rehearsed rather than documented | §15, §16.4 · O§6, O§8, O§14 · `scripts/backup.sh`, `scripts/restore.sh`, `scripts/restore_drill.sh`, `.github/workflows/ci.yml` |
 | F-39 | The program could not say what it was, and did not offer its own source. Nothing stamped a version, so every assembly reported the SDK's default and every trace left the process unversioned; and no surface discharged AGPL §13, although `CONTRIBUTING.md` told forks they owed it | Version and source revision stamped through the `Containerfile` into `AssemblyInformationalVersionAttribute`, read by `BuildInformation`, reported at `/source`, in a colophon on every page in both layouts, and as OpenTelemetry's `service.version`; `RESTAURANT_SOURCE_URL` set by the operator; no off switch; CI fails unless `/source` names the commit it was built from | §11.9, §12, §13, §16.4, §19 · R§8 · `Configuration/BuildInformation.cs`, `Configuration/SourceRoutes.cs`, `Components/Pages/Source.razor`, `Components/Layout/AppColophon.razor`, `Directory.Build.props`, `Containerfile`, `.github/workflows/` |
 | F-40 | Twenty-one tracked files carried an appended context-dump separator line, and `docs/BUILD_PROGRESS.md` carried a second one buried mid-document. `Directory.Build.props` was one of them, which made it invalid XML and failed every MSBuild verb in the repository. Root cause: a tool read a context dump and treated the decoration between files as content, where the authoritative terminator is the byte count in each `METADATA` block | `scripts/check_tree.sh` added and run as the first gate both in CI (`tree` job) and locally; five properties asserted, four of them blocking with no dependencies; two pre-existing `.editorconfig` violations fixed so the gate lands at zero noise | §16.4 · O§14 · `scripts/check_tree.sh`, `scripts/ci_local.sh`, `.github/workflows/ci.yml`, `.editorconfig` |
@@ -14170,6 +14480,8 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`) — **except 
 | Menu enhancement, Stage 5b-ii likes: §11.4's count (enhancement, not a finding) | `ListLikeCountsAsync` was the last read in this feature with no caller, and Stage 5b-i had discharged the stronger half by giving the write one. It is the weaker defect — an unread read cannot change anything without telling anybody — but it is also the half that answers the question Stage 5a said the number exists for: *which of these is popular*, which is comparative and belongs on the index rather than one dish at a time | A **neutral chip beside the dish's name**, and **no chip where nobody has pressed it**. Beside the name rather than in a column of its own, which is **Stage 4d's ruling a second time** — a column empty on most rows puts a `data-label` beside nothing on the handheld card (§11.12). Neutral rather than `-ok` or `-warn`, both of which already mean something one cell over. **Nothing rather than a zero**, because the read lists what *is* liked instead of left-joining the menu. **No CSS at all:** `.chip` is declared and the number's hook is `data-like-count`, a data attribute rather than a class, since `.record-` is §11.12's shared prefix and a hook borrowing it without a rule would be a name the stylesheet has never heard of. **The fifth contract fact is the half that fails plausibly** — the index must call `ListLikeCountsAsync` and never `ListLikedByAsync`, which are one keystroke apart and of which the wrong one renders perfectly, showing the administrator their own opinion as the restaurant's. **Scenario 21 is extended rather than a scenario added**, and the extension is the only place §11.1's write and §11.4's read meet. **Every read and write `0008` introduced now has a caller** | §7, §11.4, §16.3, §16.4 · `Components/Pages/Administration/AdministrationMenu.razor`, `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemReactionSurfaceContractTests.cs`, `tests/MyRestaurant.EndToEnd.Tests/Harness/AdministrationJourneys.cs`, `tests/MyRestaurant.EndToEnd.Tests/MenuReactionScenarios.cs` · BUILD_PROGRESS M6 Slice 59 |
 | Menu enhancement, Stage 5b likes: the guest's control (enhancement, not a finding) | `0008` shipped in Slice 57 with **no caller for either reaction service**, and Stage 5a named the state precisely: two reads with no caller and one **write** with no caller, the second being the stronger, on the standing rule that a write nothing calls is a code path no test can reach through the interface meant to protect it. The count surface (§11.4) is deliberately *not* first, because it would render a column no surface in the application could populate | §11.1's detail panel gains the guest's like. **The placement is mechanical rather than aesthetic:** a card is itself a `<button>` and the HTML parser silently splits a nested one, so the half carrying the dish's name would stop staging anything while the Razor still compiled. **A toggle's accessible name does not move with its state** — constant word, `aria-pressed`, and a glyph that changes shape rather than only colour — where the card one loop up legitimately does the opposite, being a one-of-many choice rather than a toggle. **The press applies the write's answer rather than the tap's intent**, so `AlreadyInThatState` settles the control on the truth; **no in-flight guard**, because a double-tap is the ordinary gesture on a heart and is the one the fold's identifier tie-break exists for (F-95). `ListLikedByAsync` is read beside the pictures in the one place this surface loads per-item facts. **Two rulings become tests rather than staying paragraphs** — no guest surface calls `ListLikeCountsAsync`, subject computed over the directory, and `MenuWorkflow` reaches neither reaction symbol — and **§16.3 gains scenario 21 in the same slice**, on F-109's ruling, because a control with F-106's exact profile does not get a fourth deferral. `TableJourneys.SeatGuestAsync` moves into the harness (F-100's argument for a test helper), the old file keeping a one-line forwarder so its eight call sites are untouched | §7, §11.1, §16.3, §16.4 · `Components/Pages/Table/TableOrderSurface.razor`, `wwwroot/app.css`, `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemReactionSurfaceContractTests.cs` (new), `tests/MyRestaurant.EndToEnd.Tests/MenuReactionScenarios.cs` (new), `tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs` · BUILD_PROGRESS M6 Slice 58 |
 | F-114 | **A documentation comment can describe a member other than the one it is attached to, and nothing in the language or the toolchain says so.** A `///` block binds to the next declaration; C# has no file-level documentation comment and no diagnostic for a block holding two `<summary>` elements. Eight were in the tree, in five files, one under `src/`: a class-level essay bound to whichever record was declared first (twice), a comment orphaned by a method inserted between it and its subject, a forward and an inverse whose comments were swapped, `ListPath`'s comment on `IsExpanded`, and — the one that makes this a finding rather than a formatting complaint — `OrderTestWorld`'s `menu_item_event` INSERT carrying the **pre-F-86 account of itself, falsified, stacked above the F-86 correction**, because F-86 wrote the fix underneath the claim instead of over it. Twenty-two slices of a reader being told the opposite of what the statement six lines below does. | All eight repaired: an orphan moves onto the member it describes, and where two summaries describe the *same* member the superseded one is **deleted** rather than kept (F-77). The rule is made total and executable — one summary per documentation comment, subject computed over every `.cs` and `.razor` file under `src/` and `tests/`, escaped mentions outside it by construction (F-67). Writing the sensitivity proof found the gate's own instance of that same distinction and the fixtures are composed at run time. | §16.4 · `DocumentationCommentContractTests` · five repaired files |
+| F-115 | **A wall was documented, correctly and in full, and stayed up for eleven slices because nothing could tell a documented wall from a closed one.** §17 stated that `/register` had no rate limit, stated the concrete mechanism that made adding one non-trivial — `RateLimiterOptions.OnRejected` and `RejectionStatusCode` are single-valued, so a second `AddRateLimiter` silently takes the refusal wording from the first and a refused registration would answer *"too many pairing attempts"* — and stated the fix, *`OnRejected` dispatching on the endpoint*. All three were right. The limiter meanwhile lived inside `AddRestaurantDisplays`, which made a display-device extension the owner of the rejection handler for every surface that might ever acquire a limit, and made the wall invisible to anybody reading either surface. **The finding is the eleven slices rather than the arrangement:** an accepted risk and an unstarted repair are indistinguishable in §17, and F-37's row said *no rate limit in v1, with the reason it is not a two-line addition recorded* — which reads as a decision. | **One `AddRateLimiter`**, owned by `Security/RateLimitingServiceCollectionExtensions.cs` rather than by a surface, walking `RateLimitedSurfaces.All` — a list whose entries cannot be constructed without a refusal sentence of their own, which makes *a policy with no sentence* unrepresentable rather than discouraged. `OnRejected` reads `EnableRateLimitingAttribute` from the endpoint's metadata, **the same read the middleware just performed to select the policy**, so a failed lookup would describe a request that could not be being refused; the fallback is therefore about honesty, and its property is that an unidentifiable policy is answered **vaguely** and never wrongly. The pairing *policy name* moved to the list and the pairing *budget* stayed on `DisplayRoutes`, because a name shared by three readers and a normative number about one area are different things. §18 gains the general habit: an accepted risk that names its own remedy is a deferral and belongs in a plan. **Six assertions**, each proven sensitive by a planted defect. | S§4.2, S§11.8, S§13, S§16.4, S§17, S§18 · `Security/RateLimitedSurfaces.cs` (new), `Security/RateLimitingServiceCollectionExtensions.cs` (new), `tests/…/Security/RateLimitingContractTests.cs` (new) · BUILD_PROGRESS M6 Slice 62 |
+| Stage 6 prerequisite — `/register`'s rate limit (enhancement, not a finding) | `docs/MENU_AND_HANDHELD_PLAN.md` Stage 6 (guest comments) has been *not startable* since the plan was written, and item 1 of the four reasons was this: comments are the first content one guest writes for another guest to read, they need a rate limit, and §17 said the rate limiter could not take a second policy. The menu enhancement's own open list was empty as of Slice 60, so this was the only thing between the plan and its last stage — and it is a slice with no menu in it, exactly as the plan predicted. | The limit lands on `/register` because that is the surface that needed it on its own merits and the one whose absence was already a recorded risk; comments inherit the **mechanism** rather than the policy, adding an entry to `RateLimitedSurfaces.All` when they land. Stage 6's remaining three prerequisites are untouched and still block it: the `REQUIREMENTS.md` revision about guest privacy, the moderation surface, and the §11.11 rendering rule. **Stage 6 moves from *not startable* to *one of four prerequisites discharged*, and the plan says so rather than being struck through.** | S§11.8, S§17 · `MENU_AND_HANDHELD_PLAN.md` Stage 6 · BUILD_PROGRESS M6 Slice 62 |
 | Menu resequencing, Stage 3d (enhancement, not a finding) | The two resequencing verbs shipped in Slices 47 and 48 with the controls that call them, and §16.3 scenario 16 has measured those controls ever since — while nothing in this repository had ever pressed one. The plan carried *no end-to-end scenario drives either resequencing verb* as an open item for thirteen slices, latterly as the only such gap in the menu. | Scenario 17 is extended rather than a scenario 22 added, on Slice 59's and 60's reason: it already holds three headings, a two-item heading and a guest with an open circuit, and a new scenario would cost a second container, a second passkey registration and a second join. Both directions of both controls, each with its restoration; the disabled edges read off the index, which discharges a §11.4 ruling nothing had an opinion about. The count of `reordered` events stays where it is asserted against a real database. | §16.3 scenario 17 · §16.4 · `AdministrationJourneys.MoveMenuHeadingAsync`, `MoveMenuItemAsync` |
 | F-113 | **The harness read a `<dt>` the stylesheet upcases, keyed a dictionary on the result, and documented the keys in the casing the markup uses — and nothing could notice, because that dictionary had no caller for nineteen slices.** `ChosenItemDetail.Facts` is keyed by §11.1's detail-panel terms and its own paragraph names them *Price*, *Available* and *On the menu since*; `ReadChosenItemDetailAsync` built it with `InnerTextAsync`, which returns what layout produced, and `app.css` declares `text-transform: uppercase` on `.order-menu-facts dt`. So the reader produced `AVAILABLE` and the record promised `Available`, and the first caller to look a term up by the documented name would have taken a `KeyNotFoundException` off a panel that was entirely correct. **This is F-88's mechanism a second time inside the file F-88 was found in, and the comment that fix left behind is what makes it a finding rather than a typo:** it says *"Only this one read is affected: it is the only place the suite compares a value against text a `text-transform` rule reaches"* — written in the same slice that fixed `ReadTotalsAsync` forty lines further down for exactly this reason, and wrong by one at the moment it was written. The sentence was *narrowly* true only because `Facts` was a read with no reader, which is the condition that hid it. Found by needing `Facts["Available"]` in order to write Stage 5c's scenario step, which is **F-93's timing for the eighth time** | The term goes through `ScreenText.DeclaredAsync`, which is the helper that already exists for this and that `ReadTotalsAsync` already uses — one decision procedure at both `<dt>` sites rather than two that can disagree. **The `<dd>` beside it deliberately stays on `InnerTextAsync`**, because that is `ScreenText`'s own stated distinction: a *label* the harness holds the expected wording of is read as declared, and *content* is read as rendered. The false sentence is **corrected rather than deleted**, on F-77's cheaper direction as for F-100, F-103 and F-105 — and corrected into a **rule** instead of a census, because a count of affected sites is the artefact that went stale here in the first place. **No gate, and it is a ruling rather than a shrug** (F-41, F-47, F-104): deciding which reads a `text-transform` rule reaches needs a CSS selector engine resolved against a component tree, which is not decidable from text, and a lexical approximation would report findings on correct reads while missing transformed ones. What closes the actual hole is that `Facts` now **has a caller** — scenario 21's Stage 5c step — so the disagreement between the record and its reader is no longer unobservable | §16.3, §18 · `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs`, `tests/MyRestaurant.EndToEnd.Tests/MenuReactionScenarios.cs` · BUILD_PROGRESS M6 Slice 60 |
 | F-112 | **F-89 deleted two prose copies of the §16.4 census and kept one constant as the only place it is written; the doc comment on that constant then grew a third copy, and by this slice it held three numbers of which two were wrong.** It recited the sequence — *twelve, sixteen, eighteen, nineteen … twenty-five, and now twenty-seven* — one line above `MinimumCountedClasses = 29`, against a §16.4 that by then stated **thirty-two**. So the narrative disagreed with the constant it was documenting, the constant disagreed with the document it guards, and nothing could see either: the gate compares *assertion counts per class* against files, and the census is a count of **paragraphs**, which is the exact blind spot F-89 recorded. **This is F-73 recurring inside the repair for F-89, which was itself F-73 recurring inside the repair for F-73** — third generation, and the recurrence is the evidence: a number kept in prose beside an enforced copy of itself is not kept, whatever ruling says it will be. Found by computing the census in order to move it for a new counted class, which is **F-93's timing for the seventh time** | The narrative is **deleted rather than corrected**, which is F-89's own remedy applied to the copy F-89 created, and the paragraph now says where the history of a number belongs — `BUILD_PROGRESS.md`. The floor moves **29 → 33** with the census, which is the one part of F-73's ruling still standing. **No gate is added, and the reason is F-89's own:** the instrument that would catch a stale floor is an equality, and an equality would report a finding on every §16.4 paragraph that describes a class without enumerating it — which §16.4 legitimately does for the three response-header classes. A floor can only be too low, and too low costs nothing but the check it declines to make; the copy that could go stale *silently* is the one being removed | §16.4 · `tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs` · BUILD_PROGRESS M6 Slice 58 |
@@ -14182,6 +14494,14 @@ Single-owner project; no outside contributions (`CONTRIBUTING.md`) — **except 
 ---
 
 ## Changelog
+
+**v1.47 — 2026-08-25.** `/register` has a rate limit, and the eleven slices it did not have one are the finding. **§11.8** gains the budget — `GUEST_REGISTRATION_ATTEMPTS_PER_WINDOW` per `GUEST_REGISTRATION_WINDOW_MINUTES` per client address, default 60 per 10 minutes — and four paragraphs of why it is shaped the way it is. **§13** gains both keys, their floors, and the fail-fast line. **§17**'s *no rate limit on `/register`* ruling is discharged: F-37's reasoning survives verbatim as the argument for the budget's *shape*, and the mechanism paragraph is kept because it is still the reason a third policy is not a two-line addition anywhere else. **§4.2** notes that pairing is now one of two policies and that its budget stays a constant. **§16.4** gains the six-assertion contract test. **§18** gains the general habit. **Appendix A** gains F-115 and the Stage 6 prerequisite row, and F-37's row records its own partial discharge.
+
+**The partition is the ruling, and it is the one most likely to be "corrected" later.** `/register` is limited per client address, and guests reach it over the Cloudflare tunnel from the restaurant's own wifi — so `UseForwardedHeaders` faithfully reports **one address for the entire dining room** and a per-address limit here is a per-*venue* limit. §4.2's 5-per-minute is right for a surface a member of staff touches once per tablet and would be indefensible on this one. From that follow the two things that look like laxity and are not: the default is sized for a full room turning over with retries rather than against an attacker, and the **floor of ten exists to protect guests rather than the server** — the inverse of every other bound in §13. The costs are asymmetric. Too loose is spam rows, which F-37 accepted on the record and which hold no capability. Too tight is a seated guest who cannot create the account they need in order to order dinner, at a table where staff have no remedy and no diagnosis.
+
+**F-115 is a mechanism, and the eleven slices are what earn it a number.** The limiter was configured inside `AddRestaurantDisplays`, which made a display-device extension the owner of `OnRejected` — a property of the whole limiter — for every surface that might ever acquire a limit. §17 had that written down correctly, with the fix named in the same paragraph, from v1.1 onward. **Nothing in this repository could distinguish a documented wall from a closed one**, and F-37's row read *no rate limit in v1, with the reason recorded*, which reads as a decision rather than as a queue. The repair is one `AddRateLimiter` walking one list whose entries cannot exist without a refusal sentence, a dispatch that reads the *same* endpoint metadata the middleware read one instant earlier to pick the policy, and a fallback whose property is vagueness rather than coverage. §18 takes the general lesson: an accepted risk whose own paragraph names its remedy is a **deferral**, and belongs where deferrals are tracked.
+
+**One change, and it unblocks the menu plan's last stage rather than advancing it.** Stage 6 (guest comments) has been *not startable* since the plan was written, on four prerequisites; this discharges the first and only the first. The other three — a `REQUIREMENTS.md` revision about guest privacy, a moderation surface, and §11.11's rendering rule — still block it, and the plan records the stage as *one of four discharged* rather than striking it through.
 
 **v1.46 — 2026-08-25.** The controls the barrier had been measuring for thirteen slices are finally pressed, and a documentation comment that described somebody else. **§16.3 scenario 17** gains the two resequencing verbs: a heading moves down and a guest's already-open menu re-orders itself, then moves back and it returns; an item moves up within its heading and the other heading is untouched, then moves back. Both directions of both controls, because a page that wired Up and left Down inert passed every assertion in that scenario written before now. Extended rather than made a scenario 22, on the reason Slices 59 and 60 both gave: the arrangement — three headings, a two-item heading, a guest with a live circuit — already exists, and a second scenario would cost a second container, a second passkey registration and a second join.
 
@@ -39894,15 +40214,18 @@ public static class AuthorizationServiceCollectionExtensions
 
 --- METADATA ---
   Relative path:         src/MyRestaurant.WebApplication/Components/Account/Pages/Register.razor
-  Size:                  20.9 KiB (21436 bytes)
-  SHA-256:               cb3949611a3031a4bea3934900ea72e2fb0ddf4f887095c164b6ea1802008a95
+  Size:                  21.9 KiB (22419 bytes)
+  SHA-256:               0f3e2e63291afcc3f5740224d67b75509a0f0e7316bf2e74bfdad2d2b2f599bf
 
 --- CONTENT ---
 @page "/register"
 @attribute [ExcludeFromInteractiveRouting]
+@attribute [EnableRateLimiting(RateLimitedSurfaces.GuestRegistrationPolicy)]
 @using MyRestaurant.Domain.Identifiers
 @using MyRestaurant.Domain.Time
 @using Microsoft.AspNetCore.DataProtection
+@using Microsoft.AspNetCore.RateLimiting
+@using MyRestaurant.WebApplication.Security
 @inject IGuestRegistration Registration
 @inject IPasswordHasher<Person> PasswordHasher
 @inject SignInManager<Person> SignInManager
@@ -39946,7 +40269,16 @@ public static class AuthorizationServiceCollectionExtensions
 
    No TOTP step, unlike /setup. §3.4 pairs the authenticator with the password path for staff and
    administrators; a guest is never required to hold one and may enroll voluntarily later from
-   /account/enroll-totp. No role is granted either: a guest is the absence of a grant (§3.7). *@
+   /account/enroll-totp. No role is granted either: a guest is the absence of a grant (§3.7).
+
+   RATE LIMITED as of Slice 62 (§11.8, §13, §17, F-115), by the policy named in the attribute above.
+   Read the budget as a volume ceiling, not as a brute-force defence: there is no secret to guess here,
+   and F-37's ruling that the worst outcome of an unlimited /register is ROWS rather than access still
+   stands. What matters for anybody editing this page is the partition — it is the client address, and
+   over the tunnel from a restaurant's own wifi that is ONE address for the entire dining room. So the
+   budget is sized for a full room rather than against an attacker, and it is configurable because the
+   right number is a property of the room. Tightening it is not a free security improvement: it is
+   traded against a seated guest who cannot create the account they need in order to order dinner. *@
 
 <PageTitle>Create an account</PageTitle>
 
@@ -51452,16 +51784,17 @@ else
 
 --- METADATA ---
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Display/DisplayPair.razor
-  Size:                  7.9 KiB (8100 bytes)
-  SHA-256:               3a35f51df6dfeeb99d568a5d670e816d3a37adaa0b9f0b0ce3654561e5f1e49b
+  Size:                  8.0 KiB (8141 bytes)
+  SHA-256:               dd498c97b1f3bfc3366994d93a5b49bc5176f0c54f391f485bceb6dcc330b6fc
 
 --- CONTENT ---
 @page "/display/pair"
 @using Microsoft.AspNetCore.RateLimiting
 @using MyRestaurant.DataAccess.Displays
 @using MyRestaurant.WebApplication.Displays
+@using MyRestaurant.WebApplication.Security
 @attribute [ExcludeFromInteractiveRouting]
-@attribute [EnableRateLimiting(DisplayRoutes.PairingRateLimitPolicy)]
+@attribute [EnableRateLimiting(RateLimitedSurfaces.PairingPolicy)]
 @layout DisplayLayout
 @inject IDisplayDevicePairing Pairing
 @inject RestaurantOptions Options
@@ -56778,8 +57111,8 @@ public sealed class BuildInformation
 
 --- METADATA ---
   Relative path:         src/MyRestaurant.WebApplication/Configuration/RestaurantOptions.cs
-  Size:                  16.9 KiB (17344 bytes)
-  SHA-256:               9e281211265e5bf5c734589f305bee3da108317870e3b887105238bcefd5bccd
+  Size:                  20.5 KiB (21040 bytes)
+  SHA-256:               4780da2c544a34bf21d68a512f655d162fb475ccad0e31a94a9ec0b958bede22
 
 --- CONTENT ---
 using System.Globalization;
@@ -56803,6 +57136,37 @@ public sealed class RestaurantOptions
     public const int MinimumTableJoinTokenRotationSeconds = 10;
     public const int MinimumTableJoinGrantMinutes = 1;
     public const int MinimumTableDisplayPairingCodeMinutes = 1;
+
+    /// <summary>
+    /// The floor under §11.8's registration budget (§13, §17, F-115).
+    ///
+    /// <para><b>This floor protects guests rather than the server, which is the opposite of every other
+    /// bound on this type.</b> The Argon2 floor exists so an operator cannot configure the hashing into
+    /// uselessness; this one exists so an operator cannot configure the *front door* into uselessness.
+    /// `/register` is partitioned on the client address, and over the tunnel from a venue's own wifi that
+    /// is one address for the whole dining room — so a small number here does not mean "strict", it means
+    /// a party of eight cannot all create accounts. Ten is the smallest value at which one table is
+    /// plausible; the default is far above it.</para>
+    /// </summary>
+    public const int MinimumGuestRegistrationAttemptsPerWindow = 10;
+
+    /// <summary>The floor under the window that budget is counted over (§13). One minute, as §4.2's.</summary>
+    public const int MinimumGuestRegistrationWindowMinutes = 1;
+
+    /// <summary>
+    /// The documented default permit count for §11.8 (§13, §17). Sixty per ten minutes is six a minute
+    /// sustained with the whole ten-minute budget available as a burst, which covers a full room turning
+    /// over with retries and leaves an anonymous caller a bounded row ceiling rather than none.
+    ///
+    /// <para><b>Named rather than spelled into the binding call</b> so the test asserting the default and
+    /// the binding read one constant. The window's default is not named the same way — see
+    /// <see cref="DefaultGuestRegistrationWindowMinutes"/> — because both are needed to state the
+    /// budget and a pair stated half in a constant and half in a literal is the shape F-56 is about.</para>
+    /// </summary>
+    public const int DefaultGuestRegistrationAttemptsPerWindow = 60;
+
+    /// <summary>The documented default window for §11.8's budget, in minutes (§13, §17).</summary>
+    public const int DefaultGuestRegistrationWindowMinutes = 10;
 
     /// <summary>
     /// The default trusted WebAuthn origin patterns (TECHNICAL_SPECIFICATION §3.3, ADR-0005). Cloudflare
@@ -56890,6 +57254,17 @@ public sealed class RestaurantOptions
     public required int TableJoinTokenRotationSeconds { get; init; }
     public required int TableJoinGrantMinutes { get; init; }
     public required int TableDisplayPairingCodeMinutes { get; init; }
+
+    /// <summary>
+    /// How many `/register` attempts one client address may make per
+    /// <see cref="GuestRegistrationWindowMinutes"/> (§11.8, §13, §17, F-115). Read per request by
+    /// <see cref="Security.RateLimitedSurfaces"/>'s registration partitioner.
+    /// </summary>
+    public required int GuestRegistrationAttemptsPerWindow { get; init; }
+
+    /// <summary>The window <see cref="GuestRegistrationAttemptsPerWindow"/> is counted over (§13).</summary>
+    public required int GuestRegistrationWindowMinutes { get; init; }
+
     public required int Argon2MemoryKibibytes { get; init; }
     public required int Argon2Iterations { get; init; }
     public required int Argon2Parallelism { get; init; }
@@ -56917,6 +57292,14 @@ public sealed class RestaurantOptions
             TableJoinTokenRotationSeconds = ReadInt(configuration, "TABLE_JOIN_TOKEN_ROTATION_SECONDS", 60),
             TableJoinGrantMinutes = ReadInt(configuration, "TABLE_JOIN_GRANT_MINUTES", 10),
             TableDisplayPairingCodeMinutes = ReadInt(configuration, "TABLE_DISPLAY_PAIRING_CODE_MINUTES", 10),
+            GuestRegistrationAttemptsPerWindow = ReadInt(
+                configuration,
+                "GUEST_REGISTRATION_ATTEMPTS_PER_WINDOW",
+                DefaultGuestRegistrationAttemptsPerWindow),
+            GuestRegistrationWindowMinutes = ReadInt(
+                configuration,
+                "GUEST_REGISTRATION_WINDOW_MINUTES",
+                DefaultGuestRegistrationWindowMinutes),
             Argon2MemoryKibibytes = ReadInt(configuration, "ARGON2_MEMORY_KIBIBYTES", 65536),
             Argon2Iterations = ReadInt(configuration, "ARGON2_ITERATIONS", 3),
             Argon2Parallelism = ReadInt(configuration, "ARGON2_PARALLELISM", 1),
@@ -57002,6 +57385,16 @@ public sealed class RestaurantOptions
         if (TableDisplayPairingCodeMinutes < MinimumTableDisplayPairingCodeMinutes)
         {
             errors.Add($"TABLE_DISPLAY_PAIRING_CODE_MINUTES must be at least {MinimumTableDisplayPairingCodeMinutes} (was {TableDisplayPairingCodeMinutes}).");
+        }
+
+        if (GuestRegistrationAttemptsPerWindow < MinimumGuestRegistrationAttemptsPerWindow)
+        {
+            errors.Add($"GUEST_REGISTRATION_ATTEMPTS_PER_WINDOW must be at least {MinimumGuestRegistrationAttemptsPerWindow} (was {GuestRegistrationAttemptsPerWindow}). This surface is partitioned by client address, and a whole dining room can share one; a smaller budget refuses guests rather than attackers.");
+        }
+
+        if (GuestRegistrationWindowMinutes < MinimumGuestRegistrationWindowMinutes)
+        {
+            errors.Add($"GUEST_REGISTRATION_WINDOW_MINUTES must be at least {MinimumGuestRegistrationWindowMinutes} (was {GuestRegistrationWindowMinutes}).");
         }
 
         if (KitchenSubmissionReminderSeconds < 1)
@@ -57666,16 +58059,20 @@ public static class DisplayRefreshSchedule
 
 --- METADATA ---
   Relative path:         src/MyRestaurant.WebApplication/Displays/DisplayRoutes.cs
-  Size:                  1.7 KiB (1747 bytes)
-  SHA-256:               f293b662e75c31bd970ef41dba088484d22ae69ebafd137e72f70b5c4df0840f
+  Size:                  2.4 KiB (2463 bytes)
+  SHA-256:               43a62bbdf46682b042cf56bfbe1753da9dfb8b1c6cbbe5dac25e1c26d39215d5
 
 --- CONTENT ---
 namespace MyRestaurant.WebApplication.Displays;
 
 /// <summary>
 /// The routes and limits of the display area (TECHNICAL_SPECIFICATION §4.2, §11.5), in one place so the
-/// pages, the middleware, the rate-limiter registration, and the tests cannot drift apart — the same
-/// role <see cref="Identity.AccountRoutes"/> plays for the account surfaces.
+/// pages, the middleware, the rate-limiter partitioner, and the tests cannot drift apart.
+///
+/// <para>The pairing <em>policy name</em> is not here; it moved to
+/// <see cref="Security.RateLimitedSurfaces"/> in Slice 62 when a second surface acquired a limit
+/// (F-115). The pairing <em>budget</em> below stayed, because it is §4.2's number about this area
+/// rather than a key shared with another one.</para>
 /// </summary>
 public static class DisplayRoutes
 {
@@ -57692,10 +58089,16 @@ public static class DisplayRoutes
     /// <summary>The Blazor circuit endpoint, which a paired display's interactive surface runs over.</summary>
     public const string BlazorCircuit = "/_blazor";
 
-    /// <summary>The rate-limiter policy name applied to <see cref="Pair"/> (§4.2).</summary>
-    public const string PairingRateLimitPolicy = "display-pairing";
-
-    /// <summary>§4.2: pairing is rate-limited to 5 attempts per minute per IP address.</summary>
+    /// <summary>
+    /// §4.2: pairing is rate-limited to 5 attempts per minute per IP address.
+    ///
+    /// <para>The <em>budget</em> is here and the <em>policy name</em> is not, and the line between them
+    /// is deliberate (F-115). This number is §4.2's, stated normatively about this surface, and there is
+    /// no operator decision in it — a member of staff installs a tablet, once. The policy name is the key
+    /// three unrelated readers agree on (the page's attribute, the limiter registration, and the refusal
+    /// dispatch), and once a second surface acquired a limit the only honest home for either name was the
+    /// list of them: <see cref="Security.RateLimitedSurfaces.PairingPolicy"/>.</para>
+    /// </summary>
     public const int PairingAttemptsPerWindow = 5;
 
     /// <summary>The window <see cref="PairingAttemptsPerWindow"/> is counted over.</summary>
@@ -57711,31 +58114,32 @@ public static class DisplayRoutes
 
 --- METADATA ---
   Relative path:         src/MyRestaurant.WebApplication/Displays/DisplaysServiceCollectionExtensions.cs
-  Size:                  4.5 KiB (4562 bytes)
-  SHA-256:               5c616abc26cc303216f8993daf0f19ef7df0903ee948550fefc3ac50a16e42bb
+  Size:                  2.4 KiB (2423 bytes)
+  SHA-256:               f00f0b33c4a1cb6644a1b99ac3831f420feb9d6d3989b8f75dcad87605a74991
 
 --- CONTENT ---
-using System.Threading.RateLimiting;
-using Microsoft.AspNetCore.RateLimiting;
 using MyRestaurant.DataAccess.Displays;
 
 namespace MyRestaurant.WebApplication.Displays;
 
 /// <summary>
-/// Wires the display-device services (TECHNICAL_SPECIFICATION §4.2, §11.5). Two groups:
+/// Wires the display-device data services (TECHNICAL_SPECIFICATION §4.2, §11.5): the read-only
+/// <see cref="IDisplayDeviceDirectory"/> the administration devices page lists from, the transactional
+/// <see cref="IDisplayDevicePairing"/> it issues and revokes through (and that <c>/display/pair</c>
+/// redeems through), and the <see cref="IDisplayDeviceAuthenticator"/> the request middleware and the
+/// live surface re-validate with. Scoped, like every other data service: they hold no state and open
+/// their own connection per call from the singleton
+/// <see cref="MyRestaurant.DataAccess.IDatabaseConnectionFactory"/>.
 ///
-/// <list type="bullet">
-///   <item><description><b>Data services</b> — the read-only <see cref="IDisplayDeviceDirectory"/> the
-///   administration devices page lists from, the transactional <see cref="IDisplayDevicePairing"/> it
-///   issues and revokes through (and that <c>/display/pair</c> redeems through), and the
-///   <see cref="IDisplayDeviceAuthenticator"/> the request middleware and the live surface re-validate
-///   with. Scoped, like every other data service: they hold no state and open their own connection per
-///   call from the singleton <see cref="MyRestaurant.DataAccess.IDatabaseConnectionFactory"/>.</description></item>
-///   <item><description><b>The pairing rate limiter</b> — §4.2 requires <c>/display/pair</c> to be
-///   "anonymous; rate-limited 5 attempts/minute/IP". Registered here as a named policy that the page
-///   opts into with <c>[EnableRateLimiting]</c>; <c>Program.cs</c> adds
-///   <c>UseRateLimiter()</c>.</description></item>
-/// </list>
+/// <para><b>The pairing rate limiter used to be registered here, and moving it out was a defect fix
+/// rather than a tidy-up (F-115).</b> §4.2's <em>"anonymous; rate-limited 5 attempts/minute/IP"</em> is
+/// still this area's rule and <see cref="DisplayRoutes"/> still carries the budget — but
+/// <c>AddRateLimiter</c> configures <c>OnRejected</c> and <c>RejectionStatusCode</c> for the
+/// <em>whole limiter</em>, not for one policy, so calling it from here made a display-device extension
+/// the owner of the refusal wording for every surface that might ever acquire a limit. §17 recorded that
+/// as the concrete reason `/register` went eleven slices without one. The single call now lives in
+/// <see cref="Security.RateLimitingServiceCollectionExtensions"/>, whose list of surfaces
+/// <c>/display/pair</c> is the first entry in.</para>
 ///
 /// <para>Kept separate from <c>AddRestaurantTables</c> because a display device is an authentication
 /// concern with its own principal, not table management — though the two meet on the surface, where a
@@ -57751,50 +58155,7 @@ public static class DisplaysServiceCollectionExtensions
         services.AddScoped<IDisplayDevicePairing, DapperDisplayDevicePairing>();
         services.AddScoped<IDisplayDeviceAuthenticator, DapperDisplayDeviceAuthenticator>();
 
-        services.AddRateLimiter(limiter =>
-        {
-            // 429 rather than the framework default of 503: the request is not being shed because the
-            // server is unwell, it is being refused because this address has had its five tries.
-            limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            limiter.AddPolicy<string>(DisplayRoutes.PairingRateLimitPolicy, PartitionPairingByAddress);
-            limiter.OnRejected = WritePairingRejection;
-        });
-
         return services;
-    }
-
-    /// <summary>
-    /// One fixed window per client address (§4.2). The partition key is the connection's remote address,
-    /// which is the real client only because <c>UseForwardedHeaders()</c> has already run — the app is
-    /// always behind Caddy or the Cloudflare tunnel, so <c>UseRateLimiter()</c> must stay after it in the
-    /// pipeline or every request would share the proxy's single partition.
-    ///
-    /// <para><c>QueueLimit = 0</c> is the point of a brute-force limit: the sixth attempt in a minute is
-    /// refused immediately rather than parked until a permit frees up.</para>
-    /// </summary>
-    private static RateLimitPartition<string> PartitionPairingByAddress(HttpContext httpContext)
-        => RateLimitPartition.GetFixedWindowLimiter(
-            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = DisplayRoutes.PairingAttemptsPerWindow,
-                Window = DisplayRoutes.PairingRateLimitWindow,
-                QueueLimit = 0,
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                AutoReplenishment = true,
-            });
-
-    /// <summary>
-    /// A plain-text refusal. The status code is already set by the middleware before this runs; the body
-    /// exists so a person standing at a tablet reads a sentence rather than a bare error page. No detail
-    /// about the code they tried — the whole surface is an oracle-free zone (§4.2).
-    /// </summary>
-    private static ValueTask WritePairingRejection(OnRejectedContext context, CancellationToken cancellationToken)
-    {
-        context.HttpContext.Response.ContentType = "text/plain; charset=utf-8";
-        return new ValueTask(context.HttpContext.Response.WriteAsync(
-            "Too many pairing attempts from this device. Wait a minute, then try again.",
-            cancellationToken));
     }
 }
 
@@ -63585,8 +63946,8 @@ public static class OrdersServiceCollectionExtensions
 
 --- METADATA ---
   Relative path:         src/MyRestaurant.WebApplication/Program.cs
-  Size:                  17.7 KiB (18131 bytes)
-  SHA-256:               e36b4a5b1eb921a35487725316b5b21103d781358a2aed91c7757f42fb6e1f3d
+  Size:                  18.5 KiB (18928 bytes)
+  SHA-256:               64676455002b8b3a668a3f1f22f8e4f9f575dd26a6cd9ba4b851dff51de63fdd
 
 --- CONTENT ---
 using System.Data.Common;
@@ -63727,12 +64088,19 @@ builder.Services.AddRestaurantIdentity(options);
 builder.Services.AddRestaurantTables();
 
 // Display devices (§4.2, §11.5): the read-only IDisplayDeviceDirectory the administration devices page
-// lists from, the transactional IDisplayDevicePairing behind issue/redeem/revoke, the
-// IDisplayDeviceAuthenticator the request middleware and the live surface re-validate with, and the
-// 5-per-minute-per-IP rate-limiter policy /display/pair opts into. A display is a device principal, not
-// a person, so it is wired apart from AddRestaurantIdentity — but it renders the rotating QR through
-// AddRestaurantTables' ITableJoinTokens, hence the position after it.
+// lists from, the transactional IDisplayDevicePairing behind issue/redeem/revoke, and the
+// IDisplayDeviceAuthenticator the request middleware and the live surface re-validate with. A display is
+// a device principal, not a person, so it is wired apart from AddRestaurantIdentity — but it renders the
+// rotating QR through AddRestaurantTables' ITableJoinTokens, hence the position after it.
 builder.Services.AddRestaurantDisplays();
+
+// Endpoint rate limiting (§4.2, §11.8, §17, F-115). ONE AddRateLimiter for the whole application, and
+// the singular is the design rather than a convention: OnRejected and RejectionStatusCode are properties
+// of the limiter, not of a policy, so a second call anywhere here would silently take the refusal wording
+// away from the first — which is exactly what kept /register unlimited for eleven slices while the fix
+// sat written down in §17. Every policy comes out of RateLimitedSurfaces.All, which cannot hold a policy
+// without a sentence of its own. This used to be a line inside AddRestaurantDisplays.
+builder.Services.AddRestaurantRateLimiting();
 
 // Menu (read side) and orders (§6, §7, §8.3, §9, §12): the IMenuDirectory the staging area and the "86"
 // panel read; IOrderMutations, the single transaction implementing the §6.6 locking protocol;
@@ -63823,11 +64191,13 @@ app.UseMiddleware<PublicOriginMiddleware>();
 // is a header nobody sent. Nothing above this line can answer a request — UseForwardedHeaders and
 // PublicOriginMiddleware both rewrite and call on — so those two constraints pick one position.
 app.UseMiddleware<SecurityHeadersMiddleware>();
-// Endpoint rate limiting (§4.2: /display/pair is anonymous and limited to 5 attempts/minute/IP). It
-// MUST sit after UseForwardedHeaders, because the limiter partitions on the connection's remote
+// Endpoint rate limiting. Two anonymous surfaces carry a policy: /display/pair (§4.2, 5
+// attempts/minute/IP) and /register (§11.8, configurable, sized for a dining room rather than a person).
+// It MUST sit after UseForwardedHeaders, because both partitioners key on the connection's remote
 // address — before the forwarded headers are applied that address is the proxy's, and every device in
-// the building would share one bucket. Only endpoints carrying [EnableRateLimiting] are affected;
-// there is no global limiter, so everything else passes straight through.
+// the building would share one bucket. Only endpoints carrying [EnableRateLimiting] are affected; there
+// is no global limiter, so everything else passes straight through — which is also why the refusal
+// dispatch can rely on an endpoint being in scope when it runs (F-115).
 app.UseRateLimiter();
 app.UseStaticFiles();
 app.UseAuthentication();
@@ -63931,6 +64301,341 @@ return 0;
       }
     }
   }
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Security/RateLimitedSurfaces.cs
+################################################################################
+
+--- METADATA ---
+  Relative path:         src/MyRestaurant.WebApplication/Security/RateLimitedSurfaces.cs
+  Size:                  13.3 KiB (13586 bytes)
+  SHA-256:               0de628eab42556aabfa45070831cd85df7932aac547045c0ac4739a652bff137
+
+--- CONTENT ---
+using System.Threading.RateLimiting;
+using MyRestaurant.WebApplication.Configuration;
+using MyRestaurant.WebApplication.Displays;
+
+namespace MyRestaurant.WebApplication.Security;
+
+/// <summary>
+/// One rate-limited endpoint: the policy name the middleware selects it by, the sentence a refused
+/// caller reads, and how the budget is partitioned (TECHNICAL_SPECIFICATION §4.2, §11.8, §17).
+///
+/// <para><b>All three are required, and that is the point of the type.</b> §17 recorded for eleven
+/// slices that adding a second policy was not a two-line change, because
+/// <c>RateLimiterOptions.OnRejected</c> is single-valued: the handler registered by whichever
+/// extension method ran last answers <em>every</em> refusal on every policy. So the second surface to
+/// acquire a limit would have been refused in the first surface's words — §4.2's <em>"too many pairing
+/// attempts"</em> answering a guest who was creating an account. A construction of this record missing
+/// its <see cref="Refusal"/> does not compile, which is the smallest available mechanism that makes
+/// <em>a policy with no sentence of its own</em> unrepresentable rather than merely discouraged.</para>
+/// </summary>
+public sealed class RateLimitedSurface
+{
+    /// <summary>
+    /// The policy name. The page opts in with <c>[EnableRateLimiting(…)]</c> naming this value, the
+    /// middleware resolves the policy by it, and <see cref="RateLimitedSurfaces.RefusalFor"/> reads the
+    /// sentence back out by it — three readers of one string, which is why it is declared once.
+    /// </summary>
+    public required string PolicyName { get; init; }
+
+    /// <summary>
+    /// What a refused caller reads. Plain text, one sentence, no detail about what was attempted: both
+    /// surfaces this applies to are anonymous, and an anonymous endpoint that explains itself is an
+    /// oracle (§4.2).
+    /// </summary>
+    public required string Refusal { get; init; }
+
+    /// <summary>
+    /// The partition this surface's budget is counted in. A delegate rather than a permit count and a
+    /// window, because the two surfaces do not agree about where their numbers come from: §4.2 states
+    /// pairing's normatively and <see cref="RestaurantOptions"/> carries registration's, and flattening
+    /// that into two integers here would force one of them to be restated.
+    /// </summary>
+    public required Func<HttpContext, RateLimitPartition<string>> Partition { get; init; }
+}
+
+/// <summary>
+/// Every rate-limited endpoint in this application, in one list (§4.2, §11.8, §13, §17).
+///
+/// <para><b>Why this exists (F-115).</b> The limiter used to be configured inside
+/// <c>AddRestaurantDisplays</c>, which is where the only policy happened to belong. §17 wrote down what
+/// that cost — <c>OnRejected</c> and <c>RejectionStatusCode</c> are properties of the whole limiter, not
+/// of a policy, so the display extension owned the refusal wording for every surface that might ever
+/// acquire a limit — and wrote down the fix in the same paragraph: <em>"doing it properly means
+/// <c>OnRejected</c> dispatching on the endpoint."</em> That paragraph sat in an accepted-risks section
+/// for eleven slices while `/register` had no limit at all, because the wall was real and nobody
+/// wanted to answer a refused registration in the pairing surface's words.</para>
+///
+/// <para><b>The dispatch reads the same metadata the middleware just read.</b>
+/// <c>OnRejectedContext</c> carries the <see cref="HttpContext"/> and the lease and nothing else, so the
+/// only way to learn which policy refused is to ask the endpoint — which is precisely how the
+/// middleware chose that policy one instant earlier. That makes the lookup as reliable as the refusal
+/// itself: if the attribute could not be found, no policy could have been selected, and the request
+/// would not be being refused. <b>The fallback is therefore about honesty rather than about
+/// coverage</b> — see <see cref="GenericRefusal"/>.</para>
+///
+/// <para><b>Why the two budgets are asymmetric, which is the ruling most likely to be "tidied" away.</b>
+/// Pairing's is a compile-time constant and registration's is configuration, and that is deliberate.
+/// §4.2 states 5 attempts per minute normatively for a surface a member of staff touches when a tablet
+/// is being installed; there is no operator decision in it. Registration's right number is a property
+/// of the <em>room</em> — see the note on <see cref="GuestRegistrationPolicy"/> — which this repository
+/// cannot know and must not guess on an operator's behalf.</para>
+///
+/// <para><b>Every public string literal on this type is a policy name</b>, and
+/// <see cref="GenericRefusal"/> is <c>static readonly</c> rather than <c>const</c> for exactly that
+/// reason: it keeps the set of literal constants equal to the set of policy names, so
+/// <c>RateLimitingContractTests</c> can enumerate one by reflection and hold it against
+/// <see cref="All"/> without keying on a naming convention. A convention would have been a gate about
+/// spelling (F-67's distinction, one register down); this is a gate about the type.</para>
+/// </summary>
+public static class RateLimitedSurfaces
+{
+    /// <summary>
+    /// §4.2's anonymous pairing surface. Moved here from <c>DisplayRoutes</c> in Slice 62: a policy name
+    /// is neither a route nor a limit, it is the key three readers agree on, and once there were two of
+    /// them the list is the only honest place for either.
+    /// </summary>
+    public const string PairingPolicy = "display-pairing";
+
+    /// <summary>
+    /// §11.8's anonymous registration surface.
+    ///
+    /// <para><b>The partition is an address and the address is the whole dining room</b>, which is the
+    /// fact that decides the budget. Guests reach this page over the Cloudflare tunnel from the
+    /// restaurant's own wifi, so <c>UseForwardedHeaders</c> faithfully reports one public address for
+    /// every one of them: a per-address limit here is a per-<em>venue</em> limit, not a per-person one.
+    /// §4.2's surface has no such problem — pairing is a staff action, one tablet at a time.</para>
+    ///
+    /// <para><b>So this is a volume bound rather than a credential bound.</b> There is no secret to
+    /// guess at this endpoint; F-37 already ruled that the worst outcome of an unlimited one is
+    /// <em>rows</em> rather than access. What the limit buys is a ceiling on how fast an anonymous
+    /// caller can mint <c>person</c> rows and ask for Argon2id work, and it is sized for a full room
+    /// rather than against an attacker — because the two ways of getting it wrong do not cost the same.
+    /// Too loose costs spam rows, which F-37 accepted on the record. Too tight costs a seated guest who
+    /// cannot create the account they need in order to order dinner, at a table where staff have no
+    /// remedy and no diagnosis. That asymmetry, and not a threat model, is why the default is
+    /// generous.</para>
+    /// </summary>
+    public const string GuestRegistrationPolicy = "guest-registration";
+
+    /// <summary>
+    /// What a caller reads when the refused policy cannot be identified.
+    ///
+    /// <para>Unreachable while the framework behaves, per the type's own summary, and kept anyway
+    /// because the alternative is a lie. <c>EnableRateLimitingAttribute.PolicyName</c> is nullable — the
+    /// framework has a constructor taking a policy <em>instance</em> — and a global limiter, which this
+    /// application deliberately does not register, would refuse with no attribute in scope at all. In
+    /// either case the failure mode of the dispatch is a sentence that is <b>vague</b>, never one that
+    /// is <b>wrong</b>, and that is the whole property §17 was waiting for: naming the wrong surface is
+    /// worse than naming none, because it looks deliberate.</para>
+    ///
+    /// <para><c>static readonly</c> rather than <c>const</c> on purpose — see the type's summary.</para>
+    /// </summary>
+    public static readonly string GenericRefusal =
+        "Too many attempts from this device. Wait a few minutes, then try again.";
+
+    /// <summary>
+    /// The surfaces, and the only registration path. <c>AddRestaurantRateLimiting</c> walks this list
+    /// and adds nothing that is not in it, so a policy the application enforces is a policy this list
+    /// describes — which is what makes the reflection assertion above worth anything.
+    /// </summary>
+    public static IReadOnlyList<RateLimitedSurface> All { get; } =
+    [
+        new RateLimitedSurface
+        {
+            PolicyName = PairingPolicy,
+            Refusal = "Too many pairing attempts from this device. Wait a minute, then try again.",
+            Partition = PartitionPairingByAddress,
+        },
+        new RateLimitedSurface
+        {
+            PolicyName = GuestRegistrationPolicy,
+            Refusal = "Too many accounts have been created from this network. Wait a few minutes, then"
+                + " try again — or ask a member of staff.",
+            Partition = PartitionGuestRegistrationByAddress,
+        },
+    ];
+
+    /// <summary>
+    /// The sentence for the policy that refused, or <see cref="GenericRefusal"/> when the caller could
+    /// not say which one did. Ordinal comparison: a policy name is a key the framework matches
+    /// byte-for-byte, and admitting a case-insensitive match here would make this lookup succeed on a
+    /// string the middleware would have failed on.
+    /// </summary>
+    public static string RefusalFor(string? policyName)
+    {
+        if (string.IsNullOrEmpty(policyName))
+        {
+            return GenericRefusal;
+        }
+
+        foreach (RateLimitedSurface surface in All)
+        {
+            if (string.Equals(surface.PolicyName, policyName, StringComparison.Ordinal))
+            {
+                return surface.Refusal;
+            }
+        }
+
+        return GenericRefusal;
+    }
+
+    /// <summary>
+    /// One fixed window per client address (§4.2). The key is the connection's remote address, which is
+    /// the real client only because <c>UseForwardedHeaders()</c> has already run — the app is always
+    /// behind Caddy or the Cloudflare tunnel, so <c>UseRateLimiter()</c> must stay after it in the
+    /// pipeline or every request in the building would share the proxy's single partition.
+    ///
+    /// <para><c>QueueLimit = 0</c> is the point of a brute-force limit: the sixth attempt in a minute is
+    /// refused immediately rather than parked until a permit frees up.</para>
+    /// </summary>
+    private static RateLimitPartition<string> PartitionPairingByAddress(HttpContext httpContext)
+        => RateLimitPartition.GetFixedWindowLimiter(
+            PartitionKeyFor(httpContext),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = DisplayRoutes.PairingAttemptsPerWindow,
+                Window = DisplayRoutes.PairingRateLimitWindow,
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                AutoReplenishment = true,
+            });
+
+    /// <summary>
+    /// One fixed window per client address for §11.8, with the budget read from configuration (§13).
+    ///
+    /// <para>The options are resolved <em>per request</em> from <c>RequestServices</c> rather than
+    /// captured when the policy was registered. That is not indirection for its own sake: capturing
+    /// would put the permit count in a closure created during
+    /// <c>AddRestaurantRateLimiting</c>, and this method is then a function of when it was registered
+    /// rather than of what the process was configured with — the shape F-50 is about, with the two
+    /// copies separated by a service-collection call instead of by a file. <c>RestaurantOptions</c> is a
+    /// singleton bound once at startup, so the resolution is a dictionary lookup.</para>
+    ///
+    /// <para>Partitioned on the address like pairing, with the caveat that here the address is a whole
+    /// venue — see <see cref="GuestRegistrationPolicy"/>. <c>QueueLimit = 0</c> for pairing's reason:
+    /// parking a refused registration behind a permit would hold a browser open on a form.</para>
+    /// </summary>
+    private static RateLimitPartition<string> PartitionGuestRegistrationByAddress(HttpContext httpContext)
+    {
+        RestaurantOptions options = httpContext.RequestServices.GetRequiredService<RestaurantOptions>();
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            PartitionKeyFor(httpContext),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = options.GuestRegistrationAttemptsPerWindow,
+                Window = TimeSpan.FromMinutes(options.GuestRegistrationWindowMinutes),
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                AutoReplenishment = true,
+            });
+    }
+
+    /// <summary>
+    /// The partition key both surfaces use. One method rather than two spellings of
+    /// <c>RemoteIpAddress?.ToString() ?? "unknown"</c>, so the two surfaces cannot disagree about what
+    /// an unknown address is called — and so that a caller with no address resolvable at all lands in
+    /// one shared bucket rather than in a partition per null, which is not a partition.
+    /// </summary>
+    private static string PartitionKeyFor(HttpContext httpContext)
+        => httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+}
+
+################################################################################
+# FILE: src/MyRestaurant.WebApplication/Security/RateLimitingServiceCollectionExtensions.cs
+################################################################################
+
+--- METADATA ---
+  Relative path:         src/MyRestaurant.WebApplication/Security/RateLimitingServiceCollectionExtensions.cs
+  Size:                  4.5 KiB (4648 bytes)
+  SHA-256:               7a8b0b82d7454ac8767eefc81ccf536204d07bfe73d19b2952d2e657b34bf9f4
+
+--- CONTENT ---
+using Microsoft.AspNetCore.RateLimiting;
+
+namespace MyRestaurant.WebApplication.Security;
+
+/// <summary>
+/// The one <c>AddRateLimiter</c> call in this application (TECHNICAL_SPECIFICATION §4.2, §11.8, §17,
+/// F-115).
+///
+/// <para><b>One call, and the singular is the whole design.</b> <c>RateLimiterOptions.OnRejected</c> and
+/// <c>RejectionStatusCode</c> are properties of the limiter rather than of a policy, so a second
+/// <c>AddRateLimiter</c> anywhere in the composition root silently takes the refusal wording away from
+/// the first — no error, no warning, and a surface that answers in another surface's words. §17 recorded
+/// that as the concrete reason `/register` had no limit. It is discharged by owning the call here and
+/// by <see cref="RateLimitedSurfaces.All"/> being the only thing it reads: a new limited surface is a
+/// new entry in that list, and it cannot be added without a refusal sentence of its own.</para>
+///
+/// <para><b>Placed in <c>Security</c> rather than beside a surface.</b> That is the correction, not
+/// tidying. The limiter lived in <c>AddRestaurantDisplays</c> because pairing was the only thing limited
+/// — which made a display-device extension the owner of the rejection handler for every future policy,
+/// and made §17's wall invisible to anybody reading either surface. A cross-cutting response concern
+/// belongs with <c>SecurityHeadersMiddleware</c>, which is the same shape: something every response may
+/// be shaped by, owned in one place, and asserted rather than remembered.</para>
+///
+/// <para><b><c>app.UseRateLimiter()</c> is still the caller's job</b> and its position is still
+/// load-bearing: it must sit after <c>UseForwardedHeaders()</c>, because both partitioners key on the
+/// connection's remote address and before the forwarded headers are applied that address is the
+/// proxy's — one partition for the whole building. <c>Program.cs</c> says so at the line.</para>
+/// </summary>
+public static class RateLimitingServiceCollectionExtensions
+{
+    public static IServiceCollection AddRestaurantRateLimiting(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddRateLimiter(limiter =>
+        {
+            // 429 rather than the framework default of 503, for both surfaces: the request is not being
+            // shed because the server is unwell, it is being refused because this address has spent its
+            // budget. A 503 additionally invites a retry-after-immediately client and, on the pairing
+            // surface, tells an installer to go and look at the server.
+            limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            limiter.OnRejected = WriteRefusal;
+
+            foreach (RateLimitedSurface surface in RateLimitedSurfaces.All)
+            {
+                limiter.AddPolicy<string>(surface.PolicyName, surface.Partition);
+            }
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// The refusal body, dispatched on the endpoint that was refused (§17's stated fix).
+    ///
+    /// <para><b>The lookup is the middleware's own.</b> The rate-limiting middleware selected the policy
+    /// for this request by reading <c>EnableRateLimitingAttribute</c> out of the endpoint's metadata; the
+    /// same read here returns the same name. So this is not a heuristic recovering information the
+    /// framework lost — it is asking the same question of the same object one instant later, which is why
+    /// a mismatch is not a case that needs handling so much as a case that cannot arise.</para>
+    ///
+    /// <para>The status code is already on the response before this runs, set from
+    /// <c>RejectionStatusCode</c>. The body exists so that a person standing at a tablet or holding a
+    /// phone at a table reads a sentence rather than a bare error page — and, since both limited surfaces
+    /// are anonymous, it says nothing about what was attempted (§4.2's oracle-free rule, which §11.8
+    /// inherits by being anonymous and writing).</para>
+    /// </summary>
+    private static ValueTask WriteRefusal(OnRejectedContext context, CancellationToken cancellationToken)
+    {
+        string? policyName = context.HttpContext
+            .GetEndpoint()?
+            .Metadata
+            .GetMetadata<EnableRateLimitingAttribute>()?
+            .PolicyName;
+
+        context.HttpContext.Response.ContentType = "text/plain; charset=utf-8";
+
+        return new ValueTask(context.HttpContext.Response.WriteAsync(
+            RateLimitedSurfaces.RefusalFor(policyName),
+            cancellationToken));
+    }
 }
 
 ################################################################################
@@ -108437,16 +109142,13 @@ public sealed class DisplayRefreshScheduleTests
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Displays/DisplaysWiringTests.cs
-  Size:                  5.5 KiB (5627 bytes)
-  SHA-256:               5d4752457d2aa17fd4577a5f185083aba316278628f3331b851980b61a424796
+  Size:                  5.2 KiB (5282 bytes)
+  SHA-256:               c240d867d0b47f26c4887ecd73f20c4b00378076e99a5c38d8ef4964fdfe963b
 
 --- CONTENT ---
 using System.Data.Common;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using MyRestaurant.DataAccess;
 using MyRestaurant.DataAccess.Displays;
 using MyRestaurant.Domain.Identifiers;
@@ -108462,9 +109164,15 @@ namespace MyRestaurant.WebApplication.Tests.Displays;
 /// <see cref="DisplaysServiceCollectionExtensions.AddRestaurantDisplays"/> (TECHNICAL_SPECIFICATION
 /// §4.2): the read-only <see cref="IDisplayDeviceDirectory"/>, the transactional
 /// <see cref="IDisplayDevicePairing"/>, and the <see cref="IDisplayDeviceAuthenticator"/> all resolve to
-/// their concrete implementations, and the pairing rate limiter is registered. Constructing them opens
-/// no connection (they only capture the connection factory, clock, and identifier factory), so this
-/// resolves without a database — mirroring the resolvability facts in <c>TablesWiringTests</c>.
+/// their concrete implementations. Constructing them opens no connection (they only capture the
+/// connection factory, clock, and identifier factory), so this resolves without a database — mirroring
+/// the resolvability facts in <c>TablesWiringTests</c>.
+///
+/// <para>The pairing rate limiter used to be asserted here, because it used to be registered here. Both
+/// moved in Slice 62 (<b>F-115</b>): the limiter's rejection handler is single-valued and therefore not a
+/// display concern, and asking this extension for <c>RateLimiterOptions</c> now would resolve a framework
+/// default and assert nothing. The claim lives in <c>Security/RateLimitingContractTests.cs</c>. §4.2's
+/// budget is still asserted below, since <c>DisplayRoutes</c> still carries it.</para>
 /// </summary>
 public sealed class DisplaysWiringTests
 {
@@ -108503,28 +109211,12 @@ public sealed class DisplaysWiringTests
     }
 
     [Fact]
-    public void RateLimiter_IsRegisteredAndRefusesWithTooManyRequests()
-    {
-        using ServiceProvider provider = BuildProvider();
-
-        // AddRateLimiter is what makes app.UseRateLimiter() legal; without it the middleware throws at
-        // startup. Resolving the options proves the call happened and pins the refusal status: the
-        // framework default is 503, which would misreport a brute-force block as a sick server.
-        RateLimiterOptions limiter = provider.GetRequiredService<IOptions<RateLimiterOptions>>().Value;
-
-        Assert.Equal(StatusCodes.Status429TooManyRequests, limiter.RejectionStatusCode);
-        Assert.NotNull(limiter.OnRejected);
-
-        // No global limiter: only endpoints carrying [EnableRateLimiting] are affected, so nothing else
-        // in the application silently acquires a budget.
-        Assert.Null(limiter.GlobalLimiter);
-    }
-
-    [Fact]
     public void PairingRateLimit_MatchesTheSpecifiedBudget()
     {
         // §4.2: "/display/pair (anonymous; rate-limited 5 attempts/minute/IP)". The policy body is not
         // publicly inspectable, so the numbers are pinned where the policy and the page both read them.
+        // The budget stayed on DisplayRoutes when the policy NAME moved to RateLimitedSurfaces (F-115):
+        // this is §4.2's number about this area, not a key shared with another surface.
         Assert.Equal(5, DisplayRoutes.PairingAttemptsPerWindow);
         Assert.Equal(TimeSpan.FromMinutes(1), DisplayRoutes.PairingRateLimitWindow);
         Assert.Equal("/display/pair", DisplayRoutes.Pair);
@@ -109909,7 +110601,7 @@ public sealed class SpecificationVersionTests
 --- METADATA ---
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Documentation/TestingSectionContractTests.cs
   Size:                  18.9 KiB (19389 bytes)
-  SHA-256:               9091a4ff1b86280e4a729af21618508a106f2bec3d7bba3024753037dcd96743
+  SHA-256:               755250b339065db53eecaca523e0e76a6bce47b9e81e62a5634b4b425b051e60
 
 --- CONTENT ---
 using System.Globalization;
@@ -110013,7 +110705,7 @@ public sealed class TestingSectionContractTests
     /// refuses is the collapse to zero, which is the one failure a computed subject cannot report on
     /// itself.</para>
     /// </summary>
-    private const int MinimumCountedClasses = 34;
+    private const int MinimumCountedClasses = 35;
 
     /// <summary>
     /// A test class named inside backticks, in either of the two forms §16.4 uses: the full
@@ -118152,8 +118844,8 @@ public sealed class OrdersWiringTests
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.WebApplication.Tests/RestaurantOptionsTests.cs
-  Size:                  12.0 KiB (12333 bytes)
-  SHA-256:               f7cdd801737f72ab965f9a13e170689b3c7cf4076ced0194bf6710c7bcd2212a
+  Size:                  15.4 KiB (15777 bytes)
+  SHA-256:               b21262bb85e7a5413305efeb78bfc15dd2a98ccf5632ce71207544a6386afb71
 
 --- CONTENT ---
 using Microsoft.Extensions.Configuration;
@@ -118412,6 +119104,73 @@ public sealed class RestaurantOptionsTests
         Assert.Empty(options.Validate());
     }
 
+    // --- the guest registration budget (§11.8, §13, §17, F-115) -----------------------------------
+
+    /// <summary>
+    /// The documented default (§13) is what an unconfigured process gets, and it is read from the
+    /// constants rather than restated — the pair being what states the budget, so half of it in a literal
+    /// would be F-56's shape.
+    /// </summary>
+    [Fact]
+    public void FromConfiguration_GuestRegistrationBudget_UsesTheDocumentedDefault()
+    {
+        RestaurantOptions options = RestaurantOptions.FromConfiguration(EmptyConfiguration());
+
+        Assert.Equal(
+            RestaurantOptions.DefaultGuestRegistrationAttemptsPerWindow,
+            options.GuestRegistrationAttemptsPerWindow);
+        Assert.Equal(
+            RestaurantOptions.DefaultGuestRegistrationWindowMinutes,
+            options.GuestRegistrationWindowMinutes);
+        Assert.Empty(options.Validate());
+
+        // The default has to be defensible as a number and not only as a constant, because the whole
+        // ruling is that it is sized for a dining room: sixty over ten minutes is six a minute
+        // sustained. A future edit that halves it should have to change this line and read why.
+        Assert.Equal(60, RestaurantOptions.DefaultGuestRegistrationAttemptsPerWindow);
+        Assert.Equal(10, RestaurantOptions.DefaultGuestRegistrationWindowMinutes);
+    }
+
+    [Fact]
+    public void FromConfiguration_ReadsTheGuestRegistrationBudget()
+    {
+        RestaurantOptions options = RestaurantOptions.FromConfiguration(ConfigurationWith(new()
+        {
+            ["GUEST_REGISTRATION_ATTEMPTS_PER_WINDOW"] = "240",
+            ["GUEST_REGISTRATION_WINDOW_MINUTES"] = "30",
+        }));
+
+        Assert.Equal(240, options.GuestRegistrationAttemptsPerWindow);
+        Assert.Equal(30, options.GuestRegistrationWindowMinutes);
+        Assert.Empty(options.Validate());
+    }
+
+    /// <summary>
+    /// <b>This floor protects guests, not the server</b> — the inverse of every other bound on this type,
+    /// and the reason it is asserted rather than left to taste. `/register` is partitioned by client
+    /// address and a venue's whole dining room shares one, so a small budget here does not mean strict,
+    /// it means a party of eight cannot all create accounts. Nine is refused; ten is the documented
+    /// floor and is accepted.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(9)]
+    public void Validate_GuestRegistrationAttemptsBelowTheFloor_IsRejected(int attempts)
+        => Assert.NotEmpty(Build(registrationAttempts: attempts).Validate());
+
+    [Fact]
+    public void Validate_GuestRegistrationAttemptsAtTheFloor_IsAccepted()
+        => Assert.Empty(
+            Build(registrationAttempts: RestaurantOptions.MinimumGuestRegistrationAttemptsPerWindow)
+                .Validate());
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Validate_GuestRegistrationWindowBelowTheFloor_IsRejected(int windowMinutes)
+        => Assert.NotEmpty(Build(registrationWindowMinutes: windowMinutes).Validate());
+
     private static IConfiguration EmptyConfiguration() => new ConfigurationBuilder().Build();
 
     private static IConfiguration ConfigurationWith(Dictionary<string, string?> values)
@@ -118428,6 +119187,8 @@ public sealed class RestaurantOptionsTests
         int rotationSeconds = 60,
         int grantMinutes = 10,
         int pairingMinutes = 10,
+        int registrationAttempts = RestaurantOptions.DefaultGuestRegistrationAttemptsPerWindow,
+        int registrationWindowMinutes = RestaurantOptions.DefaultGuestRegistrationWindowMinutes,
         int argon2Memory = 65536,
         int argon2Iterations = 3,
         int argon2Parallelism = 1,
@@ -118448,6 +119209,8 @@ public sealed class RestaurantOptionsTests
             TableJoinTokenRotationSeconds = rotationSeconds,
             TableJoinGrantMinutes = grantMinutes,
             TableDisplayPairingCodeMinutes = pairingMinutes,
+            GuestRegistrationAttemptsPerWindow = registrationAttempts,
+            GuestRegistrationWindowMinutes = registrationWindowMinutes,
             Argon2MemoryKibibytes = argon2Memory,
             Argon2Iterations = argon2Iterations,
             Argon2Parallelism = argon2Parallelism,
@@ -118974,6 +119737,418 @@ public sealed class ContentSecurityPolicyContractTests
         public List<string> InlineEventHandlers { get; } = [];
 
         public List<string> AbsoluteResourceReferences { get; } = [];
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Security/RateLimitingContractTests.cs
+################################################################################
+
+--- METADATA ---
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Security/RateLimitingContractTests.cs
+  Size:                  20.4 KiB (20847 bytes)
+  SHA-256:               5d2ae0a78a0d65cdff4bbfbfaa5e4533ce060356cd8311f15cfe506e1458a2f9
+
+--- CONTENT ---
+using System.Data.Common;
+using System.Globalization;
+using System.Reflection;
+using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using MyRestaurant.DataAccess;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.Time;
+using MyRestaurant.WebApplication.Configuration;
+using MyRestaurant.WebApplication.Security;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests.Security;
+
+/// <summary>
+/// A rate-limited surface is refused in its own words (TECHNICAL_SPECIFICATION §4.2, §11.8, §16.4, §17,
+/// <b>F-115</b>).
+///
+/// <para><b>Why this exists.</b> §17 carried, for eleven slices, a paragraph explaining that
+/// `/register` could not be given a rate limit without a mechanism change — because
+/// <c>RateLimiterOptions.OnRejected</c> and <c>RejectionStatusCode</c> are single-valued, so a second
+/// <c>AddRateLimiter</c> call takes the refusal wording away from the first, and a refused registration
+/// would have answered with §4.2's <em>"too many pairing attempts"</em>. That paragraph also named the
+/// fix. What is worth noticing is the shape of the eleven slices: <b>the ruling, the reason and the
+/// remedy were all written down and correct, and nothing in this tree could tell whether they had been
+/// acted on.</b> The wall was documented; being documented is not being closed.</para>
+///
+/// <para><b>What is decidable here, and what is not.</b> Whether a limit is the <em>right</em> limit is
+/// a judgement about a dining room that no test will make — and this file deliberately asserts nothing
+/// about the numbers, which live in <c>RestaurantOptionsTests</c> beside every other bound. What is
+/// decidable is the structure §17 asked for: that a policy cannot exist without a sentence of its own,
+/// that no two surfaces share one, that the dispatch resolves each policy to its own sentence, that an
+/// unresolvable policy gets a vague sentence rather than a wrong one, and that the tree does not name a
+/// policy the list never registered.</para>
+///
+/// <para><b>Why the subject is computed twice over, from two different directions.</b> F-58's lesson:
+/// a gate that names its subject is a gate about one file. So the page scan finds every
+/// <c>[EnableRateLimiting]</c> under <c>src/</c> without naming a page, and the constant scan finds every
+/// public string literal on <see cref="RateLimitedSurfaces"/> by reflection without naming a policy. The
+/// two close each other's hole: the scan catches an attribute naming a policy the list does not have,
+/// and the reflection catches a policy constant that no entry in the list uses — which is the half a
+/// text scan cannot see, because an unused constant appears in no attribute.</para>
+///
+/// <para><b>Pure.</b> Reads the surface list, one service provider that opens no connection, and two
+/// directories of source text. No server, no container, no engine.</para>
+/// </summary>
+public sealed class RateLimitingContractTests
+{
+    private const string SolutionFileName = "MyRestaurant.slnx";
+    private const string ApplicationSourceDirectory = "src";
+
+    /// <summary>
+    /// An opt-in as it is written in this tree, in either language. Razor spells it
+    /// <c>@attribute [EnableRateLimiting(…)]</c> and C# would spell it <c>[EnableRateLimiting(…)]</c>;
+    /// the attribute name and its argument are what both have in common. <b>The open parenthesis is
+    /// load-bearing</b> (F-67): it distinguishes a use of the attribute from a mention of it in the prose
+    /// explaining one, and this file's own subject guarantees such prose exists.
+    /// </summary>
+    private static readonly Regex OptIn = new(@"EnableRateLimiting\(\s*([^)]*?)\s*\)");
+
+    /// <summary>
+    /// Every surface is a policy name, a sentence and a partitioner, and no two of them collide.
+    ///
+    /// <para>Asserted first and on its own, because every assertion below is satisfied by an empty list
+    /// (F-41) — and a list that had lost an entry to a merge would produce exactly that, silently, on the
+    /// surface whose whole subject is a refusal nobody reads until it happens.</para>
+    /// </summary>
+    [Fact]
+    public void TheSurfaceListDescribesEveryLimitedSurfaceExactlyOnce()
+    {
+        IReadOnlyList<RateLimitedSurface> surfaces = RateLimitedSurfaces.All;
+
+        Assert.True(
+            surfaces.Count >= 2,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"RateLimitedSurfaces.All holds {surfaces.Count} surface(s). Two are specified —"
+                + $" /display/pair (§4.2) and /register (§11.8) — and every assertion in this file"
+                + $" passes vacuously against a shorter list, so this one runs first."));
+
+        foreach (RateLimitedSurface surface in surfaces)
+        {
+            Assert.False(
+                string.IsNullOrWhiteSpace(surface.PolicyName),
+                "A rate-limited surface has a blank policy name. The middleware matches a policy by"
+                + " that string; a blank one is a policy no attribute can name.");
+
+            Assert.False(
+                string.IsNullOrWhiteSpace(surface.Refusal),
+                $"The '{surface.PolicyName}' surface has a blank refusal sentence. A 429 with an empty"
+                + " body is a bare error page, which is what the OnRejected handler exists to avoid.");
+
+            Assert.NotNull(surface.Partition);
+        }
+
+        List<string> repeated = surfaces
+            .GroupBy(surface => surface.PolicyName, StringComparer.Ordinal)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToList();
+
+        Assert.True(
+            repeated.Count == 0,
+            $"RateLimitedSurfaces.All registers these policy names more than once:"
+            + $" {string.Join(", ", repeated)}. AddPolicy throws on a duplicate name, so this is a"
+            + " startup failure rather than a shadowed policy — but it fails at the composition root"
+            + " with no mention of which surface was doubled.");
+    }
+
+    /// <summary>
+    /// <b>This is F-115.</b> No two surfaces are refused in the same words, and no surface is refused in
+    /// the fallback's words. Those are the two ways the old arrangement's defect would come back: one
+    /// sentence serving two endpoints, or a surface added to the list without one and quietly inheriting
+    /// the generic wording, which reads as deliberate and is not.
+    /// </summary>
+    [Fact]
+    public void NoTwoSurfacesShareARefusalAndNoneBorrowsTheFallback()
+    {
+        IReadOnlyList<RateLimitedSurface> surfaces = RateLimitedSurfaces.All;
+
+        List<string> shared = surfaces
+            .GroupBy(surface => surface.Refusal, StringComparer.Ordinal)
+            .Where(group => group.Count() > 1)
+            .Select(group => string.Join(" and ", group.Select(surface => surface.PolicyName)))
+            .ToList();
+
+        Assert.True(
+            shared.Count == 0,
+            $"These surfaces are refused in identical words: {string.Join("; ", shared)}. That is the"
+            + " defect F-115 is about, arriving from the other side: the mechanism now permits a"
+            + " sentence per policy, and two policies sharing one means a caller is told about a"
+            + " surface they were not using. §17's objection was never to the wording, it was to the"
+            + " wording being wrong and looking deliberate.");
+
+        List<string> borrowed = surfaces
+            .Where(surface => string.Equals(
+                surface.Refusal,
+                RateLimitedSurfaces.GenericRefusal,
+                StringComparison.Ordinal))
+            .Select(surface => surface.PolicyName)
+            .ToList();
+
+        Assert.True(
+            borrowed.Count == 0,
+            $"These surfaces are refused with RateLimitedSurfaces.GenericRefusal:"
+            + $" {string.Join(", ", borrowed)}. That string is the answer for a policy that could not"
+            + " be identified. A surface in the list has been identified by definition, so using it"
+            + " here throws away the one thing the dispatch was built to recover.");
+    }
+
+    /// <summary>
+    /// The dispatch answers each registered policy with that policy's sentence, and anything else with
+    /// the fallback. The second half is the one worth having: it is the only assertion in this file that
+    /// exercises the branch §17 was afraid of, and it asserts that the branch is <em>vague</em> rather
+    /// than that it is absent.
+    /// </summary>
+    [Fact]
+    public void TheDispatchResolvesEveryPolicyAndFallsBackForAnythingElse()
+    {
+        foreach (RateLimitedSurface surface in RateLimitedSurfaces.All)
+        {
+            Assert.Equal(surface.Refusal, RateLimitedSurfaces.RefusalFor(surface.PolicyName));
+        }
+
+        // A policy name nobody registered, a null endpoint's absent attribute, and an empty string —
+        // the three shapes GetMetadata<EnableRateLimitingAttribute>()?.PolicyName can produce that are
+        // not a registered name.
+        Assert.Equal(RateLimitedSurfaces.GenericRefusal, RateLimitedSurfaces.RefusalFor("no-such-policy"));
+        Assert.Equal(RateLimitedSurfaces.GenericRefusal, RateLimitedSurfaces.RefusalFor(null));
+        Assert.Equal(RateLimitedSurfaces.GenericRefusal, RateLimitedSurfaces.RefusalFor(string.Empty));
+
+        // Ordinal, matching the framework's own policy lookup. A case-insensitive match here would
+        // succeed on a string the middleware would have failed on, which is a worse answer than the
+        // fallback: it would report a surface that was never refused.
+        string differentlyCased = RateLimitedSurfaces.PairingPolicy.ToUpperInvariant();
+
+        Assert.Equal(RateLimitedSurfaces.GenericRefusal, RateLimitedSurfaces.RefusalFor(differentlyCased));
+    }
+
+    /// <summary>
+    /// Every <c>[EnableRateLimiting]</c> under <c>src/</c> names a policy the surface list registers.
+    ///
+    /// <para>Unknown policy names do not fail at startup — the framework resolves a policy when a request
+    /// arrives at the endpoint, so a typo here is an exception on the first visit to an <em>anonymous</em>
+    /// page, which is the worst place in this application to discover one. The argument must additionally
+    /// be a member access on <see cref="RateLimitedSurfaces"/> rather than a literal: a literal would be a
+    /// second copy of the policy name, joined to the first only by somebody remembering to edit it, which
+    /// is F-50's shape at the smallest possible stakes.</para>
+    /// </summary>
+    [Fact]
+    public void EveryOptInInTheTreeNamesARegisteredPolicy()
+    {
+        IReadOnlyDictionary<string, string> constants = PolicyNameConstants();
+        List<string> arguments = [];
+        List<string> failures = [];
+        int filesRead = 0;
+
+        foreach (string path in SourceFiles(ApplicationSourceDirectory))
+        {
+            filesRead++;
+
+            string text = File.ReadAllText(path);
+            string relative = RelativeTo(RepositoryRoot(), path);
+
+            foreach (Match match in OptIn.Matches(text))
+            {
+                string argument = match.Groups[1].Value.Trim();
+                arguments.Add(argument);
+
+                const string Prefix = nameof(RateLimitedSurfaces) + ".";
+
+                if (!argument.StartsWith(Prefix, StringComparison.Ordinal))
+                {
+                    failures.Add(
+                        $"{relative} opts in with '{argument}', which is not a member of"
+                        + $" {nameof(RateLimitedSurfaces)}. A policy name written twice is a policy name"
+                        + " that can drift; name the constant.");
+                    continue;
+                }
+
+                string member = argument[Prefix.Length..];
+
+                if (!constants.ContainsKey(member))
+                {
+                    failures.Add(
+                        $"{relative} opts in with '{argument}', and"
+                        + $" {nameof(RateLimitedSurfaces)}.{member} is not a policy-name constant."
+                        + " An unknown policy is not a startup failure: it throws on the first request"
+                        + " to reach the endpoint.");
+                }
+            }
+        }
+
+        Assert.True(
+            filesRead >= 50,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Only {filesRead} source file(s) were read under '{ApplicationSourceDirectory}'. The"
+                + $" assertion below passes against an empty walk (F-41), so this floor runs first."));
+
+        Assert.True(
+            arguments.Count >= 2,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Only {arguments.Count} [EnableRateLimiting] attribute(s) were found under"
+                + $" '{ApplicationSourceDirectory}'. Two surfaces are specified to carry one, so a"
+                + $" smaller number means the pattern stopped matching rather than that the tree is"
+                + $" clean."));
+
+        Assert.True(failures.Count == 0, string.Join("\n", failures));
+    }
+
+    /// <summary>
+    /// Every policy-name constant on <see cref="RateLimitedSurfaces"/> is a policy the list registers.
+    ///
+    /// <para>The half the scan above cannot reach: a constant that no attribute names appears in no
+    /// attribute, so a text scan reports nothing about it. Left alone it is a policy name that looks
+    /// available and is not — and the surface that opted into it would compile, deploy, and throw on its
+    /// first anonymous visitor.</para>
+    ///
+    /// <para><b>The subject is the type's string literals, which is why <c>GenericRefusal</c> is
+    /// <c>static readonly</c> and not <c>const</c>.</b> That one keyword is what lets this assertion say
+    /// <em>every public string constant</em> instead of <em>every public string constant whose name ends
+    /// in a word I chose</em>. A naming convention would have made this a gate about spelling; the
+    /// keyword makes it a gate about the type.</para>
+    /// </summary>
+    [Fact]
+    public void EveryPolicyNameConstantIsARegisteredPolicy()
+    {
+        IReadOnlyDictionary<string, string> constants = PolicyNameConstants();
+
+        Assert.True(
+            constants.Count >= 2,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Only {constants.Count} public string constant(s) were found on"
+                + $" {nameof(RateLimitedSurfaces)}. Two policy names are specified, and the assertion"
+                + $" below passes against an empty set (F-41)."));
+
+        HashSet<string> registered = RateLimitedSurfaces.All
+            .Select(surface => surface.PolicyName)
+            .ToHashSet(StringComparer.Ordinal);
+
+        List<string> unregistered = constants
+            .Where(constant => !registered.Contains(constant.Value))
+            .Select(constant => $"{constant.Key} = \"{constant.Value}\"")
+            .ToList();
+
+        Assert.True(
+            unregistered.Count == 0,
+            $"{nameof(RateLimitedSurfaces)} declares these policy-name constants that"
+            + $" {nameof(RateLimitedSurfaces)}.All never registers: {string.Join(", ", unregistered)}."
+            + " A page naming one would compile and deploy, and throw on its first request. Either add"
+            + " the surface — with a refusal sentence of its own — or delete the constant.");
+    }
+
+    /// <summary>
+    /// The limiter is registered by <c>AddRestaurantRateLimiting</c>, refuses with 429, carries a
+    /// rejection handler, and adds no global limiter.
+    ///
+    /// <para>Moved here from <c>DisplaysWiringTests</c> in the slice that moved the registration it
+    /// asserts. It is the same claim it always was, about the same options object, asked of the extension
+    /// that now owns it — and asking it of <c>AddRestaurantDisplays</c> would now pass against a
+    /// framework default of 503 while proving nothing.</para>
+    /// </summary>
+    [Fact]
+    public void TheLimiterIsRegisteredAndRefusesWithTooManyRequests()
+    {
+        using ServiceProvider provider = BuildProvider();
+
+        // AddRateLimiter is what makes app.UseRateLimiter() legal; without it the middleware throws at
+        // startup. Resolving the options proves the call happened and pins the refusal status: the
+        // framework default is 503, which would misreport a spent budget as a sick server.
+        RateLimiterOptions limiter = provider.GetRequiredService<IOptions<RateLimiterOptions>>().Value;
+
+        Assert.Equal(StatusCodes.Status429TooManyRequests, limiter.RejectionStatusCode);
+        Assert.NotNull(limiter.OnRejected);
+
+        // No global limiter: only endpoints carrying [EnableRateLimiting] are affected, so nothing else
+        // in the application silently acquires a budget — and the refusal dispatch can rely on an
+        // endpoint being in scope when it runs.
+        Assert.Null(limiter.GlobalLimiter);
+    }
+
+    /// <summary>
+    /// The public string literals declared on <see cref="RateLimitedSurfaces"/>, by member name. Literal
+    /// constants only — <c>IsLiteral</c> is what excludes <c>GenericRefusal</c>, which is
+    /// <c>static readonly</c> for that purpose.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> PolicyNameConstants()
+        => typeof(RateLimitedSurfaces)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(field => field.IsLiteral && field.FieldType == typeof(string))
+            .ToDictionary(
+                field => field.Name,
+                field => (string)field.GetRawConstantValue()!,
+                StringComparer.Ordinal);
+
+    private static ServiceProvider BuildProvider()
+    {
+        ServiceCollection services = new();
+
+        // The prerequisites Program.cs registers before AddRestaurantRateLimiting. RestaurantOptions is
+        // among them because the registration partitioner resolves it per request; the connection factory
+        // is never used here — resolution constructs, it does not connect.
+        services.AddLogging();
+        services.AddSingleton<IClock, SystemClock>();
+        services.AddSingleton<IIdentifierFactory, UuidV7IdentifierFactory>();
+        services.AddSingleton<IDatabaseConnectionFactory, UnusedConnectionFactory>();
+        services.AddSingleton(RestaurantOptions.FromConfiguration(new ConfigurationBuilder().Build()));
+
+        services.AddRestaurantRateLimiting();
+
+        return services.BuildServiceProvider();
+    }
+
+    private static IEnumerable<string> SourceFiles(string directory)
+        => Directory
+            .EnumerateFiles(Path.Combine(RepositoryRoot(), directory), "*.*", SearchOption.AllDirectories)
+            .Where(path =>
+                path.EndsWith(".cs", StringComparison.Ordinal)
+                || path.EndsWith(".razor", StringComparison.Ordinal))
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .OrderBy(path => path, StringComparer.Ordinal);
+
+    private static string RelativeTo(string root, string path)
+        => Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/');
+
+    /// <summary>
+    /// The same walk up to <c>MyRestaurant.slnx</c> every other contract test in this repository uses,
+    /// and it throws rather than skips for the same reason: a check that quietly declines to run is worse
+    /// than none.
+    /// </summary>
+    private static string RepositoryRoot()
+    {
+        for (DirectoryInfo? candidate = new(AppContext.BaseDirectory);
+             candidate is not null;
+             candidate = candidate.Parent)
+        {
+            if (File.Exists(Path.Combine(candidate.FullName, SolutionFileName)))
+            {
+                return candidate.FullName;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Walked up from '{AppContext.BaseDirectory}' without finding {SolutionFileName}.");
+    }
+
+    /// <summary>This test never opens a connection; this makes that explicit.</summary>
+    private sealed class UnusedConnectionFactory : IDatabaseConnectionFactory
+    {
+        public ValueTask<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Contract tests must not open a database connection.");
     }
 }
 
@@ -120839,10 +122014,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 376
-  Total size     : 6.3 MiB (6627937 bytes)
+  Files dumped   : 379
+  Total size     : 6.4 MiB (6715724 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-25T09:37:48-04:00
+  Completed at   : 2026-08-25T14:23:33-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
