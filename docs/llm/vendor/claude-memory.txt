@@ -1,65 +1,56 @@
-Manage project memory
-Claude regenerates project memory every evening from your past chats in this project. Only you can see this memory, and it is not shared with other project users.
-
 Purpose & context
 
-Kushal (GitHub: kusl) is building MyRestaurant — a self-hosted, single-restaurant ordering and management system licensed under AGPL-3.0. The stack is .NET 10 Blazor Server, PostgreSQL with Dapper only (EF Core explicitly forbidden), DbUp startup migrations, rootless Podman Compose, OpenTelemetry, ASP.NET Core Identity over custom Dapper stores, Argon2id, WebAuthn passkeys, and TOTP. The repo lives at github.com/kusl/myrestaurant. Dependency direction is WebApplication → DataAccess → Domain (Domain is BCL-only). Tests use xUnit v3 with Testcontainers against real PostgreSQL and AwesomeAssertions (no Moq, no FluentAssertions). Local development is on Fedora; primary mobile test target is iPhone SE 2020 (375px viewport).
+Kushal is building MyRestaurant — a self-hosted, single-restaurant management system licensed under AGPL-3.0, built on .NET 10 Blazor (static SSR with interactive server islands), PostgreSQL via Dapper only (EF Core explicitly forbidden), DbUp startup migrations, rootless Podman Compose, and OpenTelemetry. The repo is kusl/myrestaurant on GitHub. The dependency direction is WebApplication → DataAccess → Domain (Domain is BCL-only). Authentication uses ASP.NET Core Identity with custom Dapper stores, Argon2id password hashing, WebAuthn passkeys, and TOTP. Tests use xUnit v3 with Testcontainers against real PostgreSQL; no Moq, no FluentAssertions (AwesomeAssertions available but plain xUnit Assert preferred). Playwright covers end-to-end scenarios.
 
-The project follows a rigorous spec-first, slice-based delivery methodology: each "slice" is an atomic deliverable with code, tests, and documentation updated together. Milestones M1–M5 are complete; M6 (hardening) is active. Work is tracked in docs/TECHNICAL_SPECIFICATION.md (versioned), docs/DOCUMENTATION_REVIEW.md (F-numbered defect ledger), docs/BUILD_PROGRESS.md, docs/MENU_AND_HANDHELD_PLAN.md, and docs/adr/ (ADR-numbered decision records).
+The project follows a rigorous slice-based delivery methodology within numbered milestones (M1–M6). M1–M5 are complete. M6 (hardening) is in progress, focused on menu enhancement, mobile layout, end-to-end test coverage, CI/CD, and operational hardening.
 
 Current state
 
-Kushal is mid-M6, working through a staged menu enhancement and handheld layout plan. As of the most recent slice (M6 Slice 40 / Stage 2 close-out):
+Active work is M6 Stage 4 of the menu enhancement plan (docs/MENU_AND_HANDHELD_PLAN.md):
 
-Migration 0005_menu_item_sections.sql has been delivered, making menu_item.menu_section_identifier a mandatory FK to menu_section.
-Section create page (CreateMenuSection.razor), section picker on item creation, and guest menu rendering grouped under section headings (§7 asymmetry: inactive sections hidden from guests entirely, inactive items visible but marked) are implemented.
-Event explorer vocabulary corrected (F-80); new contract test MenuEventVocabularyContractTests.cs added.
-Technical specification is at v1.25; predicted test count ~1136.
-Stage 1 (handheld layout conversion) is complete: all admin pages use shared §11.12 handheld-first CSS vocabulary with a single min-width: 48rem breakpoint; a 375px reachability barrier (scenario 16) is in place.
-Several scope rulings are active: MoveMenuItemToSectionAsync is deliberately deferred (Stage 3); only CreateMenuSectionAsync is behind IMenuWorkflow so far; one scenario 17 assertion (deactivate section → vanishes from guest menu) was cut as out-of-scope and explicitly recorded.
-Key active findings to track: F-78 (DbUp dollar-quote fix — .WithVariablesDisabled()), F-79 (duplicated spec paragraph), F-80 (event vocabulary correction).
+Slice 54 (most recent): Added picture event history reader and panel (IMenuItemImageEventLog, DapperMenuItemImageEventLog). Fixed F-104 (Razor syntax error from prior archive) and F-105 (image event vocabulary specification had wrong type count and biconditional count). A gate was added to MenuEventVocabularyContractTests asserting every migration-declared event type has a sentence on the rendering surface. Archive: m6-slice-54-picture-history.tar.gz (13 files). The F-105 gate — asserting Razor switch arms against migration vocabulary — was flagged as vetoable with explicit reversion instructions in _CHANGES.md.
+Browser downscaling is explicitly named as the next slice — the only remaining obstacle between the image feature and end users.
+Current predicted test count: ~1250 (noting the prior baseline of 1242 was itself unverified due to a build failure).
 
 On the horizon
 
-Stage 3 of the menu enhancement plan: item editor (including MoveMenuItemToSectionAsync), section editor (including deactivate-section-hides-from-guests assertion), and remaining IMenuWorkflow verb migrations.
-Outstanding docs/_append/ sections may still need merging into BUILD_PROGRESS.md.
-Predicted test count arithmetic should be validated on first workstation run after each slice.
+Browser image downscaling (Stage 4, next slice — named explicitly, not deferred)
+Remaining open items tracked in the repository's own open items list
+
 Key learnings & principles
 
-Atomic documentation rule: every behavior change ships with its spec edits, ADR, ledger row, and changelog entry in the same slice. Violated rules are tracked as F-numbered findings.
-Gates must be honest: a gate that reaches past what it can decide reports findings on correct trees (F-41 precedent). Gates assert tree-consistency, not stack behavior (F-51 ruling).
-Lists should not exist where a rule can execute (F-47 habit): migration tracking lists replaced by emptiness assertions.
-Named findings, not silent drops: if a scope item is cut mid-slice, it is recorded explicitly rather than quietly omitted.
-Predicted test counts are uncompiled arithmetic (§18 rule): always flagged as such; any deviation from predicted count is the first item to investigate.
-Stale counts in prose are a liability: counts in documentation that no gate can verify should be deleted, not corrected (F-77 ruling).
-CSS palette: all color values live in app.css :root; values declared outside it are defects (F-64/F-68 pattern). Eight surfaces with missing palette properties was a near-miss.
-Dapper + Npgsql: timestamptz materializes as DateTime (UTC), not DateTimeOffset; always read as DateTime and project to DateTimeOffset via new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc)).
-string.Create rule: every operand in a string.Create addition chain must be a $"…" interpolated string; plain literals cause CS1620.
-No await in interpolated string holes bound to DefaultInterpolatedStringHandler (CS4007); hoist to a local variable.
-DbUp dollar-quote hazard: VariableSubstitutionPreprocessor runs before the statement splitter and misreads $tag$ as variable references; fix with .WithVariablesDisabled() (F-78).
-Npgsql in CI: container image references must be fully qualified to avoid silent test skips on canonical hosts (F-60).
-Compose variable substitution: Debian trixie's podman-compose does not apply ${NAME:-default} defaults; use explicit env values (F-57).
-Blazor enhanced navigation race: WaitForURLAsync resolves when history.pushState fires, before page content arrives; use a destination-specific element as the arrival barrier.
-Static SSR intermediate render: StateHasChanged fires the moment OnInitializedAsync suspends; guard against null dereference with else if (_field is not null).
-WebAuthn RP-ID: quick tunnels work with per-request RP-ID derivation (ServerDomain = null); named tunnels are still the production path for stable passkey binding.
+SHA-256 tree reconstruction: At the start of each session, Claude reconstructs the full working tree from dump.txt using SHA-256 verification. This has caught significant session-memory drift (multiple times, by 5–6 slices). The BUILD_PROGRESS narrative records drift events explicitly.
+One change, one green run rule: Two changes may ride together only when their failure modes are distinguishable. This is reasoned explicitly per slice.
+Findings ledger discipline: Every finding gets an F-number, a ledger row in DOCUMENTATION_REVIEW.md, and an entry in Appendix A of the specification. Unenforceable prose is deleted rather than corrected (F-77 ruling). Counts are deleted rather than corrected (established pattern).
+No vacuous gates (F-41): Gates must not reach past what they can decide. Gates must be proven sensitive by planting defects before delivery.
+Subjects computed, not listed (F-47/F-58): Where a rule can be executed against the tree, a hardcoded list must not exist.
+Declared, not merely mentioned (F-67): CSS shared vocabulary must be declared once, not referenced in comments.
+§18 arithmetic discipline: Test count predictions are stated and verified arithmetically before closing every slice. Any deviation from the predicted count is the first thing to investigate.
+Razor reserved words: @section must never be used as a variable name (RZ2005/RZ1011). Loop variables named section cause RZ9979. These are standing rules across all sessions.
+string.Create pattern (CS1620): Every operand in a string.Create addition chain must be a $"…" interpolated string — plain string literals will not compile.
+No await in interpolated string holes (CS4007): Caught and fixed multiple times; now a standing scan before packaging.
+Dapper/Npgsql DateTime mapping: Npgsql materializes timestamptz as UTC DateTime; Dapper constructor binding refuses DateTimeOffset. Fix pattern: read as DateTime?, project to DateTimeOffset? via new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc)). Internal row types with DateTime fields plus a ToSummary() projection is the established pattern.
+UUIDv7 monotonicity: Guid.CreateVersion7() is unordered within a millisecond (49.8% inversion rate). IIdentifierFactory.Create() guarantees monotonicity via a 12-bit counter in rand_a (RFC 9562 §6.2 method 1) with compare-and-swap. All ordering assertions must use ToByteArray(bigEndian: true) because Guid.CompareTo disagrees with PostgreSQL's uuid collation.
+Menu image reader must not JOIN menu_item_image: Replaced and removed pictures delete their rows; an INNER JOIN would silently return only current-photograph history.
+Static form file upload transport: Plain enctype="multipart/form-data" posting to the page itself under @formname, reading HttpContext.Request.Form.Files — costs nothing because Blazor's static form handling has already read the body.
+
 Approach & patterns
 
-Session workflow: Kushal provides dump.txt (full repo export with SHA-256 per file); Claude reconstructs the working tree, verifies checksums, performs all work, then delivers a .tar.gz archive with repo-relative paths extractable at the repo root. The word "continue" resumes across tool-call ceiling hits.
-Delivery format — non-negotiable:
-Full files only — never diffs, patches, or bespoke text-manipulation scripts.
-Single structured .tar.gz extractable at the repo root.
-Explicit "Files to DELETE" section (even when empty).
-git add reminders for any new untracked files/directories (gates use git ls-files).
-BUILD_PROGRESS.md delivered as a complete file, not an append block.
-Documentation updated in every slice.
-Veto protocol: consequential architectural decisions, scope rulings, and visible changes are flagged explicitly for Kushal's veto before or immediately after delivery; reversion instructions are provided.
-Verification without SDK: brace/bracket/paren balance walks (string-aware), Razor tag-tree comparison against SHA-256-verified originals, CSS selector existence checks, CS4007/CS1620 scans, SpecificationVersionTests ported to Python, shellcheck at --severity=style, YAML parse validation, byte hygiene (no CR, final newline, no whitespace-only lines).
-"What was NOT verified" is recorded explicitly in BUILD_PROGRESS.md each slice.
-Scope discipline: docs/_append/ delivery mechanism is retired; BUILD_PROGRESS.md ships whole. Unmerged appends still in tree should be cat-merged.
+Session workflow: Kushal provides dump.txt (full repo export with SHA-256 per file) and optionally claude-terminal.txt (build/test output). Claude reconstructs the tree, verifies hashes, re-plans from the tree's own open items, authors all changes, and delivers a complete .tar.gz archive.
+Deliverable format (non-negotiable): Structured .tar.gz with repo-relative paths, extractable at the repository root in one operation. Full files for every changed file — never diffs, patches, or bespoke text-manipulation scripts. Explicit delete list (even when empty). git add instructions for new untracked files (gates use git ls-files). Test count prediction stated before delivery.
+Documentation updated atomically: Every slice updates DOCUMENTATION_REVIEW.md, Appendix A, TECHNICAL_SPECIFICATION.md (with version number and changelog), BUILD_PROGRESS.md (full narrative slice entry), MENU_AND_HANDHELD_PLAN.md (stage sections), and _CHANGES.md. Specification carries a version number and changelog entry every slice.
+Verification before packaging: Razor tag-tree walk, CSS vocabulary check, cell-label arithmetic, spec version gate, Markdown table gate (25 documents), §16.4 counted-class gate, byte hygiene (no CR, final newline, no whitespace-only lines). "What was NOT verified" is documented explicitly in BUILD_PROGRESS.
+Veto points: Decisions worth reversing are flagged explicitly with reversion instructions in _CHANGES.md before delivery.
+Standing project conventions: data-label parity enforced across all record-list tables; counted-class floor in TestingSectionContractTests maintained; Markdown table gate must pass across all tracked documents; FOR UPDATE locking before comparisons; display_order assigned by MAX+1 not COUNT(*); stored strings not enums for event type vocabulary.
+BUILD_PROGRESS.md: Too large to regenerate as a full file in some contexts — delivered as a complete file when feasible, otherwise as a targeted append block. The docs/_append/ delivery mechanism is retired; BUILD_PROGRESS.md ships whole.
+Communication pattern: Kushal communicates tersely ("please continue," "go"). Claude resumes immediately without preamble. Decisions requiring a ruling are flagged before proceeding, not after.
+
 Tools & resources
 
-Repository: github.com/kusl/myrestaurant; dump format via export.sh producing dump.txt with # FILE: / --- CONTENT --- / Size: / SHA-256 headers.
-Stack: .NET 10, PostgreSQL 17, Dapper/Npgsql, DbUp, Testcontainers, xUnit v3, AwesomeAssertions, Playwright (E2E), rootless Podman / podman-compose, Caddy, Cloudflare tunnels, OpenTelemetry OTLP.
-Key packages: Net.Codecrete.QrCodeGenerator, Konscious Argon2id, CentralPackageTransitivePinningEnabled for transitive dependency management.
-CI: GitHub Actions (.github/workflows/ci.yml, release.yml); local equivalent via scripts/ci_local.sh; scripts/check_tree.sh as gate 1; scripts/check_repository.sh as gate 6.
-GitHub PAT: available for read-only API calls; must never appear in any response or generated file.
+Repository: kusl/myrestaurant on GitHub (branch: main)
+Local repo on Fedora 44: /home/kushal/src/dotnet/myrestaurant
+Deployment: rootless Podman Compose on a Debian host ("virginia") accessible via Tailscale; Cloudflare tunnels for production ingress
+Context dump: dump.txt (full repo export via export.sh, SHA-256 per file); claude-terminal.txt for build/test output
+Shell scripts validated with shellcheck --severity=style (shellcheck 0.11.0) and bash -n before delivery
+GitHub PAT available for read-only API calls — must never appear in any response or generated file
+Primary mobile test target: iPhone SE 2020 (375px viewport)
