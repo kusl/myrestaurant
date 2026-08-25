@@ -5924,3 +5924,274 @@ is now past five thousand eight hundred lines.
 **Two of Stage 6's four prerequisites**, and neither is a mechanism: the `REQUIREMENTS.md` revision about
 guest privacy is new intent, and the moderation surface is a slice of work. The menu enhancement's own open
 list remains empty.
+
+---
+
+# M6 Slice 64 — the surface the contract was written for, measured last, and the control no gate could reach
+
+**One change and one instrument, and they found each other.** The change is Stage 1d: §11.1's guest ordering
+surface is laid out at 375×667 by a browser for the first time. The instrument is the handheld barrier
+generalised from *§11.4's barrier* to *a barrier over a named surface*. The first run of the second against
+the first is what produced **F-118**, which is a barrier doing the only thing a barrier is for.
+
+## The reconstruction agreed with the tree, and the baseline is finally a measurement
+
+The session began by rebuilding the tree from `dump.txt` with SHA-256 verified per file: **381 of 383
+byte-exact**, and the two that never verify are the two that never verify — `export.sh`, whose dump rewrites
+its own header into the copy it embeds, and `LICENSE`, which the exporter elides to metadata by design. One
+file needed trimming before it would hash: `RestaurantTimeTests.cs` is last in the dump and swallows the
+`DUMP SUMMARY` footer; trimmed, it matched `7575227f6bf4…` exactly.
+
+**Carried session memory said Slice 60, v1.45, 1281, floor 33, F-113. The tree said Slice 63, v1.48, 1302,
+floor 37, F-117** — drift of three slices, caught by the ritual for the sixth time. Nothing was authored
+before that was settled.
+
+**And the baseline stopped being a prediction.** The operator ran the suite: **1302 passed, 0 failed, 0
+skipped**, across all four assemblies. That is the number Slice 63 predicted, which confirms Slice 62 and
+Slice 63 *at once* — the two reconciliation branches that slice named (1298 for the `RestaurantOptionsTests`
+theory arithmetic, 1296 for neither new class executing) are both ruled out. This is the first slice in four
+whose baseline is an observation.
+
+## Why §11.1 was the last surface measured, and it is not an oversight
+
+Stage 1 of the menu plan is **the handheld contract**. Its 1a gave the tree a vocabulary, 1b converted the
+`/administration` area, 1c built the 375px barrier. And 1b's closing sentence said *"what remains is the
+counter, kitchen and table surfaces, which were never record lists and were never the subject of F-59"* —
+true, and it quietly retired the table surface from the stage.
+
+**But §11.12 is justified by R§1, and R§1 is one sentence about the phone in a guest's hand.** Every slice of
+Stage 1 measured the surfaces *staff* use, because that is where F-59 was found. Meanwhile §11.1 acquired
+headings and descriptions, a thumbnail on the card and an uncropped picture in the panel, a like inside that
+panel, and a second control beside a refused card — **six stages of box model, none of it ever laid out at
+the width it is read at.** The plan carried the one-line gap from Slice 60 for four slices while the
+enhancement's own open list was empty, which is the same shape of deferral Slice 61 recorded about the
+resequencing verbs: every re-reading met a surface that demonstrably worked, and the sentence justifying the
+deferral was never re-examined (**F-109's mechanism**, third observation).
+
+## F-118 — a control outside the arrangement the rule is declared against
+
+§11.1's basket renders its staged line's quantity box like this:
+
+```razor
+<label class="order-basket-quantity">
+    <span>Quantity</span>
+    <input type="number" inputmode="numeric" … />
+</label>
+```
+
+`app.css` declares §11.12's nine control declarations against exactly two selector lists — `.form-field
+input, .form-field select, .form-field textarea` and `.manage-inline-form input, .manage-inline-form select`
+— and that label is neither. **Exactly one rule in the whole stylesheet matched the control**, `max-width:
+8rem`. So it carried **neither half** of §11.12's control rule: no `--touch-target` floor and no 16px font
+floor, rendering at a user-agent default of roughly 13px of Arial in roughly 21px of height.
+
+**Where it is matters more than what it is.** This is the guest's own basket. R§1 says guests order from
+their own phones, which is the sentence §11.12 exists because of, and on that platform the font floor is a
+behaviour rather than a preference: iOS Safari zooms the whole viewport when a focused control's text is
+under 16px and does not zoom back out. One staged line therefore breaks the layout of the page around it and
+the guest cannot get it back.
+
+**It is F-66's shape a second time.** That finding was four administration detail surfaces declaring their
+form controls inline, where *"`.manage-inline-form`'s `input` and `select` carried no `min-height` and no
+font floor at all"*. Same defect, same cause, different area — and the second instance is what makes it worth
+a section edit rather than a repair.
+
+### Why nothing could see it, stated exactly
+
+`HandheldLayoutContractTests` asserts that `app.css` **declares** the control height and the font floor.
+That is arithmetic on text and it is correct; what it cannot produce is the fact that some page put its
+`<input>` where the selector does not reach. The 375px barrier reads a real browser and could have seen it —
+and was scoped to §11.4's ten surfaces. **The defect sits precisely in the gap between the two levels §11.12
+says the contract is asserted at**, which is why the repair comes with a new paragraph in that section rather
+than only a line of CSS:
+
+> whether a declared rule *reaches* a rendered element is a third question, sitting between the two levels,
+> and only the browser level can answer it.
+
+### And the markup reads as symmetric where it is not
+
+```css
+.order-picker-quantity input,
+.order-basket-quantity input {
+    max-width: 8rem;
+}
+```
+
+Two quantity boxes named side by side, which reads as a pair of controls treated alike. The declarations that
+decide whether they *are* alike sit two hundred lines above: the picker's box is inside a `.form-field` and
+inherited the rule; the basket's inherited nothing. **A pair of selectors written together is not evidence
+that a pair of controls is covered together**, and that is the transferable half.
+
+### The repair is a selector and never a copy
+
+`.order-basket-quantity input` joins the `.form-field` list, and its focus ring joins the matching one. A
+third copy of those nine declarations is the mechanism F-48, F-50 and F-56 each are, and this tree already
+carries a second in `.manage-inline-form`. **That second copy is deliberately not folded in**: four
+administration surfaces, in a slice about the guest's menu, is a second change with a second failure mode.
+Recorded as an open item rather than left to be noticed.
+
+## The barrier is now a barrier over a named surface
+
+`HandheldReach` was named for §11.12 — normative for *every surface, every screen* — while its anchor, its
+selector list and its refusal message were §11.4's. The scope was never hidden: §11.12's own closing
+paragraph said the browser level *"walks §11.4's surfaces"*. But **the only place it was written in code was
+an exception message** telling a reader their page *"is not one of §11.4's administration indexes"*, which a
+guest surface arriving at reads as a broken page rather than an out-of-scope one.
+
+A surface is now a value carrying an anchor, three selector groups — reach, height-only, font-floor — and the
+membership argument for each. Two entry points:
+
+- **`MeasureAsync`** navigates and waits for the anchor. That is how you arrive at a static-SSR page, and
+  scenario 16's ten call sites did not move, because a surface argument threaded through a caller that only
+  ever passes one value is an argument that exists to be got wrong.
+- **`MeasureHereAsync`** measures the page as it stands. §11.1 needs it: the chosen dish, the open panel and
+  the staged line are *circuit state*, so a navigation would destroy the whole arrangement in order to look
+  at it.
+
+### The residual scenario 16 named is closed on one surface
+
+That scenario's comment recorded it in as many words — a floor cannot notice a group that grew, only one that
+vanished, and attributing each control to the selector that found it was *"a real gate, deliberately not
+built in the slice that found the defect"*. It is built. Each selector declares whether the surface **must**
+render something it matches, and the census is seeded from the **declared** set rather than counted up from
+what was found, so a silent selector appears as a zero — a census assembled from results can only ever list
+what exists.
+
+The failure it catches is one this repository has actually had: **`.record-actions button` was in the barrier
+from the day it was written and matched nothing until Slice 48**, with nothing able to say which of the two
+it was.
+
+**Every guest selector is required and every administration selector is optional**, and that is a recorded
+decision. Requiring the other ten would be a claim about ten pages and the rows one scenario happens to
+arrange, made by an authoring session reading a tree rather than running against one — **F-116 with the name
+changed**, one slice after F-116. The census is printed in every failure message either way, so the next
+slice can widen it from evidence.
+
+### The refusal is thrown, not asserted
+
+A required selector matching nothing throws from the harness rather than returning a report the caller has to
+remember to check. That is this directory's standing convention: a journey reports an arrangement failure as
+an `InvalidOperationException` naming what the surface was showing, and only claims about the product live in
+a scenario. **A group that went quiet is an arrangement failure** — nothing about the product is wrong, and
+every verdict computed from it is true of a smaller page than the one the scenario meant to measure.
+
+## What this slice deliberately did NOT do
+
+**No picture on a card.** The `has-picture` grid is a real box model this barrier does not exercise, and
+attaching a photograph inside scenario 21 means extracting the upload journey into the harness — a second
+change with a different failure mode, in the slice whose own change has to be proven first. It is the
+cheapest remaining thing in the plan and it is named there.
+
+**No font floor on §11.4.** The obvious next move, declined on F-116's remedy: those ten pages surely comply,
+and *surely* is the word that cost a session one slice ago.
+
+**No `.manage-inline-form` fold.** Above.
+
+**No `EndToEndScenarios.cs` edit.** `MeasureAsync(page, path)` keeps its signature and `MeasuredControl`
+gained fields rather than losing any, so scenario 16 compiles and means exactly what it meant. A file of
+three thousand lines not touched is three thousand lines that cannot have been broken.
+
+**No `REQUIREMENTS.md` revision and no ADR edit.** R§1 already says guests order from their own phones and
+§11.12 is already normative for every surface; this is a mechanism catching up to intent, which is rev 2's
+reasoning rather than rev 3's.
+
+## §18 arithmetic
+
+| Where | Tests | Running |
+| --- | --- | --- |
+| Baseline — **measured, 1302 passed / 0 failed** | — | 1302 |
+| Scenario 21 extended in place — steps (k), (l), (m) inside the existing `[Fact]` | +0 | 1302 |
+| `app.css`, `HandheldReach`, `TableJourneys` — no test method added or removed | +0 | 1302 |
+
+**Predicted 1302**, and the §16.3 suite stays at **21** — no scenario was added and none was removed.
+`MinimumCountedClasses` stays **37**: no test class is added, and the two §16.4 paragraphs this slice writes
+cite `HandheldReach.cs`, which is not a `*Tests.cs` and is therefore not a counted class.
+
+**The count not moving is the thing to check first.** If the run comes back at 1302 with a red assertion, the
+red one is the finding and this slice worked. If it comes back at anything other than 1302, something was
+added or lost that nobody in this session intended.
+
+## What was verified, and what was not
+
+**Verified mechanically.** The reconstruction was SHA-256 verified before anything was authored. The §16.4
+counted-class census was emulated over the edited specification: **37 classes, exact at the floor**, no
+ambiguity, no disagreement between any claimed count and its file. The new §16.4 paragraphs were checked
+against the census gate's own parser rather than against a belief about it — `CitedTestClass` matches
+`` `…Tests.cs` `` and `HandheldReach.cs` does not match it, so both paragraphs are skipped entirely; the
+scenario 21 text contains the phrase *"no assertion"*, which `AssertionCount` matches and `ValueOf` discards
+because *no* is not in `NumberWords`. The Markdown table gate was emulated with the backtick-aware splitter
+over every tracked document. The version gate was emulated: header **1.49**, newest changelog entry **1.49**,
+entries strictly descending, `REQUIREMENTS.md` still self-consistent at rev 6. Byte hygiene was checked over
+every changed file: no CR, exactly one final newline, no trailing whitespace, no whitespace-only line, no
+dump separator. The standing authoring scans ran: no plain literal in a `string.Create` chain, no `await` in
+an interpolated hole, no `section` identifier in any Razor file — and no Razor file was touched.
+
+**Eight planted defects, each caught by the intended verdict, and the eighth is why the proof was worth
+running.** The new decision logic was transcribed out of C# into Python and driven against synthesised
+reports: a basket with no staged line, a renamed `.order-menu-choice`, a card pushed off the right edge,
+a 34px way-in control, F-118 itself as it stood before the repair, and a reader returning nothing — which
+reported all ten selectors silent at once, so the whole instrument cannot pass vacuously.
+
+**The eighth was a field at 15px, and on the first run it reported GREEN.** The font-floor comparison had
+been written as `font < Minimum - PixelTolerance`, copied from the touch-target comparison directly above
+it, and one pixel of slack passes a 15px control — which is a control iOS Safari zooms. **The two
+comparisons are about different kinds of number**: a bounding box is a layout engine's output carrying
+sub-pixel rounding, a fractional `clamp()` padding and a scrollbar's width, and a computed font size is
+none of those, because `max(1rem, 1em)` against a 16px root computes to exactly 16 and every value under it
+was written under it. The floor is now strict, the reason is in the constant's own summary, and the
+sensitivity proof is what found it — a gate that would otherwise have shipped believing itself sensitive,
+one slice after F-116.
+
+**Not verified.** Nothing was compiled and nothing was run (F-71's standing caveat). The specific risks, in
+order of what they would cost:
+
+**The barrier itself is the largest, and its failure mode is the good one.** If §11.1 has a second layout
+defect this slice did not find, the scenario reports it and the report is the finding. **That is not a reason
+to delete the barrier**, and it is written down here because deleting a gate that reports on arrival is the
+tempting move and the wrong one. Send the message; the next slice is the repair.
+
+**The `width: 100%` the repair brings with it** is the one thing about F-118's fix that is not purely
+additive. `.order-basket-quantity` is a flex container and its input is a flex item, so a percentage width
+resolves against an indefinite main size; `max-width: 8rem` caps it and `.order-basket-controls` carries
+`flex-wrap: wrap`, so the worst case is the Take-out button wrapping to its own line. `.order-picker-quantity
+input` has had exactly these declarations since the picker was written, which is evidence from the tree
+rather than from a compile.
+
+**`MeasureHereAsync` reads three selector groups out of one JSON shape**, and the grouped shape is new — the
+previous script returned a flat array per group and this one returns `{selector, controls[]}` per group.
+`ReadGroups` is where a mis-shaped read would surface, and it would surface as a `KeyNotFoundException` from
+`GetProperty` rather than as a wrong number.
+
+**`HandheldSelector` and `HandheldSurface` are new internal records in an existing file**, referenced from
+`MenuReactionScenarios` in namespace `MyRestaurant.EndToEnd.Tests` with a `using …Harness;` already present.
+
+**`string[][]` is passed as the script argument** where the old code passed `string[]`. Playwright serialises
+it as a nested JSON array and the script indexes `groups[0..2]`; the old call passed a field rather than an
+array literal to avoid CA1861, and this one builds the jagged array inside the method, where CA1861 does not
+apply because it is not a constant argument at a call site.
+
+**Nothing proves the eight guest selectors match what scenario 21 arranges.** They were derived by reading
+the markup, and the required-selector refusal is precisely the instrument that will say so if any is wrong —
+by name, with the census, rather than by a verdict quietly computed over a smaller page.
+
+## Open items carried
+
+**`/kitchen` has no §16.3 scenario at all.** Carried, and still the largest end-to-end gap by a clear margin.
+
+**The wide layout stacks each row's three controls** on the administration index. Carried since Slice 47.
+
+**`.manage-inline-form` keeps a second copy of the control declarations.** New, and named above.
+
+**The font floor is asserted on §11.1 and nowhere else.** New, and it is a deliberate scope rather than a gap.
+
+**Nothing measures §11.1 with a picture on a card.** New, and the cheapest remaining thing in the plan.
+
+**No assertion anywhere proves a static-SSR Razor endpoint carries `[EnableRateLimiting]` in its endpoint
+metadata.** Carried from Slice 62.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried, and this file is now past
+six thousand lines.
+
+**Two of Stage 6's four prerequisites**, and neither is a mechanism: the `REQUIREMENTS.md` revision about
+guest privacy is new intent, and the moderation surface is a slice of work. The menu enhancement's own open
+list is empty for the fourth time.

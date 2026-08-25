@@ -531,10 +531,24 @@ body {
  * floor is the §11.12 rule that is easiest to get wrong: iOS Safari zooms the whole viewport when a
  * focused control's text is under 16px, and it does not zoom back out. One under-sized field
  * therefore breaks the layout of the page around it, on the platform most guests are holding.
+ *
+ * `.order-basket-quantity input` IS IN THIS LIST RATHER THAN IN A COPY OF IT (F-118). §11.1's basket
+ * declares its quantity box as a bare <input> inside a <label class="order-basket-quantity">, which
+ * is not a `.form-field` — so from the slice the basket was written until the slice the guest surface
+ * was first measured in a browser, that control had NEITHER of §11.12's two halves: no
+ * `--touch-target` floor and no 16px font floor, on the one surface R§1 says a guest reads from their
+ * own phone. It is F-66's shape a second time — a form control declared outside the arrangement that
+ * carries the control rule — and the repair is a selector rather than a rule, because a third copy of
+ * these nine declarations is the mechanism F-48, F-50 and F-56 each are.
+ *
+ * `.manage-inline-form input` below is the SECOND copy and is deliberately not folded in here: it is
+ * four administration detail surfaces, this slice is about the guest's menu, and one change with one
+ * failure mode is the rule. That is recorded as an open item rather than left to be noticed.
  */
 .form-field input,
 .form-field select,
-.form-field textarea {
+.form-field textarea,
+.order-basket-quantity input {
     width: 100%;
     min-height: var(--touch-target);
     padding: 0.6rem 0.75rem;
@@ -554,7 +568,8 @@ body {
 
 .form-field input:focus-visible,
 .form-field select:focus-visible,
-.form-field textarea:focus-visible {
+.form-field textarea:focus-visible,
+.order-basket-quantity input:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 1px;
     border-color: var(--accent);
@@ -1903,7 +1918,16 @@ a:focus-visible,
 }
 
 /* A quantity box wants to be a box, not a full-width text field — but only where there is room for
-   it to be one. On a handset a 6rem field beside its label is a field two thumbs wide. */
+   it to be one. On a handset a 6rem field beside its label is a field two thumbs wide.
+
+   THESE TWO ARE NAMED TOGETHER HERE AND WERE COVERED SEPARATELY ABOVE, AND THAT IS WHAT HID F-118.
+   `.order-picker-quantity` is a `.form-field` and inherited §11.12's control rule; `.order-basket-
+   quantity` is a bare <label> in a flex row and inherited nothing, so for every slice between the
+   basket being written and Slice 64 the second box was a UA-default control — about 13px of Arial in
+   roughly 21px of height — sitting one card below a correct one. A pair of selectors written side by
+   side reads as a pair of controls treated alike; the declarations that decide whether they are alike
+   are two hundred lines away. Both now take the shared block above, and this rule is the only thing
+   that has ever been true of exactly these two. */
 .order-picker-quantity input,
 .order-basket-quantity input {
     max-width: 8rem;

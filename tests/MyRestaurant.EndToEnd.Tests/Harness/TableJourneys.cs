@@ -154,14 +154,29 @@ internal static class TableJourneys
     /// naming what the surface was showing instead, and only <c>RestaurantHarness</c> references xUnit at
     /// all. The scan's outcome is the one branch worth a sentence, because §4.4 makes three of its four
     /// results look alike on screen.</para>
+    ///
+    /// <para><b><paramref name="handheld"/> defaults to false, and the default is the point</b> (M6
+    /// Slice 64). A viewport is a property of a context (F-62), so seating a guest on a phone is one
+    /// boolean forwarded to <see cref="RestaurantInstance.OpenIsolatedPageAsync"/> — but every existing
+    /// caller seats a guest to assert something about ordering rather than about layout, and threading
+    /// the argument through all of them would have been a mandatory parameter arriving late. That is the
+    /// rule <c>OrderTestWorld.AddMenuItemAsync</c> established when <c>0005</c> made a heading
+    /// mandatory: <b>give the arrangement helper a default rather than threading the argument through
+    /// every caller that does not care about it</b>, and the callers that do not care compile unchanged
+    /// and mean what they meant.</para>
     /// </summary>
+    /// <param name="handheld">
+    /// Lay the guest's context out at 375×667 (§11.12). The whole of §16.3 scenario 21's barrier, and
+    /// nothing else in this harness passes true.
+    /// </param>
     internal static async Task<IPage> SeatGuestAsync(
         RestaurantInstance instance,
         Guid tableIdentifier,
         byte[] joinSecret,
         GuestAccount account,
         TimeSpan patience,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool handheld = false)
     {
         ArgumentNullException.ThrowIfNull(instance);
         ArgumentNullException.ThrowIfNull(joinSecret);
@@ -170,7 +185,8 @@ internal static class TableJourneys
         string token = JoinTokenService.ComputeCurrentToken(
             joinSecret, tableIdentifier, DateTimeOffset.UtcNow, instance.TableJoinTokenRotationSeconds);
 
-        IPage guest = await instance.OpenIsolatedPageAsync(withVirtualAuthenticator: true);
+        IPage guest = await instance.OpenIsolatedPageAsync(
+            withVirtualAuthenticator: true, handheld: handheld);
 
         JoinStage afterScan = await ScanAsync(guest, tableIdentifier, token);
 

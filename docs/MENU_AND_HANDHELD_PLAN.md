@@ -59,8 +59,10 @@ landed in Slice 32 and ahead of 1b (the 375px end-to-end barrier), for the reaso
 for the whole `/administration` area in Slice 34**: every §11.4 surface is on the shared vocabulary, the
 retired names are gone from the tree rather than tracked in a list, and nine of the ten reachable surfaces
 are measured at 375px by a browser. What remains of 1b is the counter, kitchen and table surfaces, which
-were never record lists and were never the subject of F-59. **Stage 2 is next**, and its boundary
-correction is below.
+were never record lists and were never the subject of F-59. **Stage 1d closed the rest of it in Slice 64**: §11.1 — the guest's own
+ordering surface, which is the surface R§1 justifies the whole section with — is measured at 375px by a
+browser, and the counter and kitchen surfaces are the two that remain. **Stage 2 was next**, and its
+boundary correction is below.
 
 The specification governs. Where a stage below and `TECHNICAL_SPECIFICATION.md` disagree, the
 specification is right and this file is stale — with one deliberate exception, marked per stage: a decision
@@ -1046,8 +1048,10 @@ only thing any scenario has ever done there.
 since Slice 47, and this stage pressed those very controls without touching `app.css`, so it is carried
 again with one more slice of evidence that nobody minds enough to open the stylesheet.
 
-**Nothing in this repository measures §11.1 at 375px.** Carried from Slice 60. The handheld barrier is
-scoped to §11.4's surfaces, and the guest menu's box model changed in that slice.
+**~~Nothing in this repository measures §11.1 at 375px.~~ Closed by Stage 1d, M6 Slice 64.** It was carried
+from Slice 60 with the reason stated each time — the handheld barrier was scoped to §11.4's surfaces while
+the guest menu's box model kept changing — and the barrier that finally measured it found F-118 on the first
+pass, which is what a gap carried for four slices is for.
 
 **Ordering is complete for both tables, every menu surface groups by heading, and every verb in §7 now has
 both a surface and a browser that presses it.** The menu enhancement's open list is empty for the third
@@ -2117,6 +2121,116 @@ the moderation surface, which is a slice of real work. Nothing was deferred *int
 a recorded site that *changed what it renders* — the QR component made to take a caption, say — passes. That
 is the residual, and it is why the record's own comment states the question to ask as *can a person ever
 reach this value* rather than *is this string safe today*.
+
+---
+
+## Stage 1d — the guest's own menu, at the width it is read at — **landed, M6 Slice 64**
+
+**This stage had no number until the slice that did it, and that is the point of writing it down.** Stage 1
+is *the handheld contract*. Its 1a gave the tree a vocabulary, its 1b converted the `/administration` area,
+and its 1c built the 375px barrier — and the closing sentence of 1b said *"what remains is the counter,
+kitchen and table surfaces, which were never record lists and were never the subject of F-59"*. That
+sentence is true and it quietly retired the table surface from the stage, because §11.12's justification is
+**R§1**, and R§1 is one sentence about the phone in a **guest's** hand. Every slice of Stage 1 measured the
+surfaces *staff* use, because that is where the defect was found.
+
+Meanwhile §11.1 acquired, in this plan's own stages, headings and descriptions (Stage 2, 3), a photograph on
+the card and an uncropped one in the panel (Stage 4c), a like inside that panel (Stage 5b) and a second
+control beside a refused card (Stage 5c). **Six stages of box model, and not one of them was ever laid out
+at 375px by anything that would report on it.** The plan recorded the gap from Slice 60 onward in one line —
+*"nothing in this repository measures §11.1 at 375px"* — and carried it for four slices while the enhancement's
+own open list was empty.
+
+### Extended rather than added, and the arrangement is the reason
+
+Scenario 21's guest is seated in a handheld context and the scenario closes with the barrier. That is the
+rule Slices 59, 60 and 61 each applied and it is now this project's default: **the arrangement already
+exists.** A barrier over §11.1 wants a menu carrying an available dish and a refused one, the way-in control
+beside the refused card, a panel open on the refused dish with a like inside it, and a staged line so the
+basket has controls and Send has something to send. Scenario 21 ends holding all of that but the staged
+line. A scenario 22 would have bought a second container, a second passkey registration and a second join to
+arrange what is already standing.
+
+**The two subjects fail in ways nothing could confuse**, which is what satisfies "one change, one green run"
+here without separating them: an opinion that does not survive a reload is a fold reading the wrong row, and
+a control under 44px is a stylesheet. Each failure message names the surface it is about.
+
+**Everything before the barrier is a DOM read or a click.** Playwright scrolls an element into view before
+pressing it, so no assertion in steps (a) to (j) can tell what width the context was laid out at — which is
+why the whole viewport change is one boolean forwarded to `SeatGuestAsync`, and why it is safe to add to a
+scenario that already passes. The parameter defaults to false on the rule `OrderTestWorld.AddMenuItemAsync`
+established when `0005` made a heading mandatory: **give the arrangement helper a default rather than
+threading a late argument through every caller that does not care about it.**
+
+### Measured where it stands, which is the one structural difference
+
+Scenario 16's ten surfaces are static SSR, and arriving at one is a navigation. §11.1 is an interactive
+island whose measurable state — the chosen dish, the open panel, the staged line — *is circuit state*, so a
+`GotoAsync` would destroy every part of the arrangement in order to look at it. The barrier therefore has
+two ways in: one navigates and waits for an anchor, one measures the page as it stands and leaves the caller
+responsible for the surface being live and arranged.
+
+The anchor for the guest surface is §11.10's **pair**, both halves demanded —
+`[data-live='true'][data-loaded='true']`. `data-live` alone matches the circuit's first render, where the
+island is the single line *"Loading your table…"* and every selector below it matches nothing; a barrier
+anchored on that would measure an empty page and report ten absences.
+
+### Three rulings about the selector set
+
+1. **The membership rule is the old one read for a guest instead of an operator:** the thing they opened the
+   page in order to press. A dish's card; the way into a refused dish's panel; the like; Add to basket; a
+   staged line's Take out; Send. Nothing else — the roster, the totals and the party list are things a guest
+   *reads*, and a barrier that measured every element on a page would be measuring the page.
+2. **The two quantity boxes are in the set and they are not controls in that sense.** They are in because
+   **F-118 is one of them**, and a rule proved on the surface that broke it is worth more than a rule proved
+   somewhere convenient.
+3. **Every guest selector is required to match**, which is the residual scenario 16 named and could not
+   reach. That scenario's own comment recorded it: a total floor cannot notice a group that grew, only one
+   that vanished, and attributing each control to the selector that found it was *"a real gate, deliberately
+   not built"*. It is built. The census is seeded from the **declared** set, so a silent selector appears as
+   a zero — a census assembled from results can only ever list what exists — and the barrier refuses the run
+   rather than reporting verdicts true of a smaller page. This repository has had the failure it catches:
+   `.record-actions button` was in the barrier from the day it was written and matched **nothing** until
+   Slice 48.
+
+**Every administration selector stays optional, and that is a decision rather than a default.** Requiring
+the other ten would be a claim about ten pages and the rows one scenario happens to arrange, made by an
+authoring session reading a tree rather than running against one — **F-116** with the name changed. The
+census is printed in every failure message either way, so the next slice can turn them on from evidence.
+
+### The defect it found on the way in (F-118)
+
+§11.12's control rule is declared in `app.css` against two selector lists. §11.1's basket declares its
+quantity box as a bare `<input>` inside a `<label class="order-basket-quantity">`, which is neither of them,
+and exactly one rule in the whole stylesheet matched it: `max-width`. **Neither half of the rule reached
+it** — no `--touch-target` floor, no 16px font floor — on the guest's own basket, which is the surface R§1
+names, and therefore on the platform where the font floor is a behaviour rather than a preference.
+
+The repair is a **selector** and never a copy of the nine declarations. The gate is a **computed style read
+off a rendered element**, which is the first time §11.12's font floor has been asserted against a browser
+anywhere here — and it is the only instrument that could have seen this, because whether a page put its
+control inside the arrangement a rule is declared against is a fact about markup that no reading of the
+stylesheet produces.
+
+### What is open after this stage
+
+**The counter and kitchen surfaces are what remains of Stage 1**, and neither is menu work. `/kitchen` has
+no §16.3 scenario at all, which is the larger of the two problems and is carried on its own register below.
+
+**`.manage-inline-form`'s copy of the control declarations is not folded into the shared list.** Deliberate:
+it is four administration surfaces, in a slice about the guest's menu, and one change with one failure mode
+is the rule. Recorded here so it is a decision rather than something nobody noticed.
+
+**The font floor is asserted on §11.1 and nowhere else**, on F-116's remedy: widening it to §11.4's ten
+surfaces is a decision taken from a green run rather than from a paragraph.
+
+**Nothing measures §11.1 with a picture on a card.** The `has-picture` grid is a real box model this barrier
+does not exercise, because attaching a photograph inside scenario 21 means extracting the upload journey
+into the harness — a second change with a different failure mode, in the slice whose own change has to be
+proven first. It is the cheapest remaining thing in this file.
+
+**The menu enhancement's open list is empty for the fourth time**, and the next thing in this plan is still
+Stage 6, still not startable, for the two prerequisites that remain below.
 
 ---
 

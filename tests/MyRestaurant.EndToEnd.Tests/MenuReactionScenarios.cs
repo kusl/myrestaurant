@@ -37,6 +37,20 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// scenario file, and a private method cannot be called from a second one — so the choice was to move it
 /// or to paste it, and pasting a journey is F-59's mechanism with F-100's ruling already written down
 /// against it.</para>
+///
+/// <para><b>Its guest sits at 375×667, and the scenario closes with §11.12's barrier (M6 Slice 64,
+/// Stage 1d).</b> That is a second subject in one scenario and it is here rather than in a scenario 22
+/// for the reason Slices 59, 60 and 61 each gave and which is now this project's default: <b>the
+/// arrangement already exists</b>. A barrier over §11.1 wants a menu with an available dish and a
+/// refused one, a way-in control beside the refused card, a panel open on it with a like inside, and a
+/// staged line so the basket has controls — which is this scenario's closing state plus one
+/// <c>StageAsync</c>. A scenario 22 would have cost a second container, a second passkey registration
+/// and a second join to arrange what is already standing.</para>
+///
+/// <para><b>The two subjects have unrelated failure modes</b>, which is what satisfies the "one change,
+/// one green run" rule here: a like that does not survive a reload is a fold reading the wrong row, and
+/// a control under 44px is a stylesheet. Neither can be mistaken for the other in a failure message, and
+/// both name the surface they are about.</para>
 /// </summary>
 public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
 {
@@ -91,6 +105,19 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
     //      something not yet built. MenuItemReactionSurfaceContractTests holds it as a fact over the
     //      whole guest directory — and holds the mirror of it over §11.4's index, which must read the
     //      whole-menu count and never one person's presses — in two seconds rather than in a browser.
+    //
+    //      (k) ONE STAGED LINE, which is arrangement rather than assertion: it is what makes the
+    //          basket's controls and an enabled Send exist for the barrier below.
+    //      (l) §11.12 AT 375px, ON §11.1 (Stage 1d). The guest's context has been handheld since the
+    //          join. Nothing in this repository had ever laid this surface out at the width it is read
+    //          at — Stage 1 measured the surfaces STAFF use, because F-59 was found there, while R§1's
+    //          sentence about a guest's own phone is what the whole section is justified by.
+    //      (m) THE FONT FLOOR, AND IT IS F-118. The basket's quantity box is a bare <input> in a
+    //          <label class="order-basket-quantity">, which is not a `.form-field` — so it had neither
+    //          of §11.12's two halves and had not since the basket was written. A computed style read
+    //          off a rendered element is the only instrument here that can see it: a text gate can
+    //          assert that `app.css` declares the floor and cannot know which elements a page renders
+    //          outside the arrangement it declares it against. F-66's shape a second time.
     // -------------------------------------------------------------------------------------------
     [Fact]
     public async Task Guest_LikesADish_AndTheOpinionSurvivesAReload()
@@ -117,8 +144,20 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
         Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
         byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
 
+        // THE GUEST IS ON A PHONE, and that is Stage 1d rather than decoration. Every assertion in
+        // steps (a) to (j) is a DOM read or a click, and Playwright scrolls an element into view before
+        // pressing it, so none of them can tell what width the context was laid out at — which is why
+        // this costs one boolean and why it is safe to add to a scenario that already passes. What it
+        // buys is step (k): the barrier at the end measures the surface this scenario has spent its
+        // whole length arranging, and there was no cheaper way to arrange it.
         IPage guest = await TableJourneys.SeatGuestAsync(
-            instance, tableIdentifier, joinSecret, guestAccount, InteractivityPatience, cancellationToken);
+            instance,
+            tableIdentifier,
+            joinSecret,
+            guestAccount,
+            InteractivityPatience,
+            cancellationToken,
+            handheld: true);
 
         // (a) Nothing to press until something is chosen. §11.1 renders the control inside the detail
         //     panel, and the panel renders only for a chosen item.
@@ -244,7 +283,109 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
         //     opened a panel and toggled a field would pass everything above and fail here.
         Assert.Equal(1, await AdministrationJourneys.ReadMenuIndexLikeCountAsync(
             administrator, salmon.Identifier));
+
+        // (k) THE LAST STEP OF THE ARRANGEMENT, AND IT IS THE BASKET. Nothing above this line puts a
+        //     line in the basket, so `.order-basket-controls button` and an enabled Send do not exist
+        //     — and the barrier below declares both REQUIRED, so leaving them unarranged fails loudly
+        //     rather than measuring a smaller page. The pudding is what gets staged because §7 will
+        //     not let the salmon be staged at all now: its card is disabled, which is the whole of
+        //     step (g).
+        await TableOrderJourneys.StageAsync(guest, pudding, quantity: 2);
+
+        // Staging chose the pudding, which closed the salmon's panel. Reopening it through the way-in
+        // control is what puts the surface into the state worth measuring: a refused card WITH its
+        // sibling control beside it, a panel open on a dish that is off, and a like inside that panel.
+        // That box model is the newest thing on this surface and the only one no browser has ever laid
+        // out narrow.
+        await TableOrderJourneys.InspectAsync(guest, salmon);
+
+        // (l) §11.12 AT 375px, ON §11.1, FOR THE FIRST TIME. Stage 1 of the menu plan is "the handheld
+        //     contract", and every slice of it measured the surfaces STAFF use, because F-59 was found
+        //     there. Meanwhile R§1 — the sentence the whole section is justified by — is about the
+        //     phone in a GUEST's hand, and this surface acquired headings, descriptions, a photograph,
+        //     a detail panel, a like and a second control beside a refused card without one of them
+        //     ever being laid out at the width they are read at.
+        //
+        //     Measured HERE rather than navigated to, which is the difference between this barrier and
+        //     scenario 16's ten. Those are static-SSR pages and a GotoAsync is how you arrive at one.
+        //     This surface is an interactive island: the chosen dish, the open panel and the staged
+        //     line are circuit state, so navigating to it would destroy every one of them in order to
+        //     look at them.
+        HandheldReachReport report = await HandheldReach.MeasureHereAsync(
+            guest,
+            $"/table/{tableIdentifier:D}",
+            HandheldSurface.GuestOrder);
+
+        // The viewport is the one this step claims. First, and on its own, because every number below
+        // is relative to it: at Playwright's default 1280 every assertion passes and means nothing.
+        // Read from the document rather than from the option that set it, and compared as a ceiling
+        // with a scrollbar's allowance under it — `clientWidth` excludes a classic scrollbar and
+        // headless Chromium draws one on a page that scrolls vertically, which this one does.
+        Assert.True(
+            report.ClientWidth <= RestaurantInstance.HandheldViewportWidth
+                && report.ClientWidth >= RestaurantInstance.HandheldViewportWidth - ScrollbarAllowancePixels,
+            $"§11.1 was measured in a {report.ClientWidth}px viewport, and this step is about"
+                + $" {RestaurantInstance.HandheldViewportWidth}px. Either the guest's context was not"
+                + " created handheld, or something resized it — and at any wider width every assertion"
+                + " below passes on a page nobody claims is reachable.");
+
+        // No floor is asserted on the total, and that is deliberate rather than an omission. Every
+        // selector in this surface's set is REQUIRED, so `MeasureHereAsync` has already refused a run
+        // in which any of them matched nothing, naming the selector and printing the census. A total
+        // floor here would be the weaker instrument the guest set no longer needs — and it is exactly
+        // the residual scenario 16's own comment recorded as "a real gate, deliberately not built".
+        Assert.NotEmpty(report.Reachable);
+
+        // F-59, as the number it always was, on the surface F-59's own justification is about.
+        Assert.False(
+            report.ScrollsSideways,
+            "§11.12: the guest's ordering surface must not scroll sideways on the screen it is read"
+                + $" from. {report.DescribeOverflow()}. Census: {report.DescribeCensus()}.");
+
+        // The finding itself, per control: everything a guest taps is on the screen.
+        Assert.True(
+            report.OutOfReach.Count == 0,
+            "§11.12: a dish's card is the full width of the menu column and every other control on"
+                + $" this surface lies inside the viewport. Off the screen:"
+                + $" {HandheldReach.Format(report.OutOfReach)}.");
+
+        // The touch-target half. `--touch-target` is 2.75rem and every control here declares it, so a
+        // failure means a rule overrode the declaration or a control was written without one.
+        Assert.True(
+            report.Undersized.Count == 0,
+            $"§11.12: every control is at least {HandheldReach.MinimumTouchTargetPixels}px tall."
+                + $" Shorter: {HandheldReach.Format(report.Undersized)}.");
+
+        // (m) THE FONT FLOOR, AND IT IS F-118. This is the half of §11.12's control rule that no text
+        //     gate in this repository can reach: `HandheldLayoutContractTests` asserts that `app.css`
+        //     DECLARES the floor, and whether a page put its <input> inside an arrangement that
+        //     carries the declaration is a fact about markup. §11.1's basket had not — the quantity
+        //     box beside "Take out" was a bare <input> in a <label class="order-basket-quantity">,
+        //     matched by exactly one rule in the whole stylesheet (`max-width`), and therefore a
+        //     user-agent default of roughly 13px in roughly 21px of height, on the one surface R§1
+        //     says a guest reads from their own phone. iOS Safari zooms the viewport on a focused
+        //     control under 16px and does not zoom back.
+        //
+        //     Asserted last because it is the assertion this scenario was extended to be able to make,
+        //     and because it is the one that fails if the repair in `app.css` was written wrong.
+        Assert.True(
+            report.UndersizedText.Count == 0,
+            $"§11.12: every text control is at least {HandheldReach.MinimumTextFontPixels}px."
+                + $" Under it: {HandheldReach.Format(report.UndersizedText)}. This is F-118: the"
+                + " control is rendered outside any arrangement `app.css` declares the floor against,"
+                + " so it inherits a user-agent default and iOS Safari zooms the page around it.");
     }
+
+    /// <summary>
+    /// The slack allowed under <see cref="RestaurantInstance.HandheldViewportWidth"/> when the viewport
+    /// is read back from the document. <c>document.documentElement.clientWidth</c> excludes a classic
+    /// scrollbar, and headless Chromium draws one on any page that scrolls vertically — which §11.1
+    /// does the moment there is a menu and a basket on it. The same figure and the same reason as
+    /// <c>EndToEndScenarios</c>' constant of this name; it is deliberately not shared, because the two
+    /// files are two scenario classes with their own fixtures and a constant reaching across them would
+    /// be the first thing either shares.
+    /// </summary>
+    private const double ScrollbarAllowancePixels = 20.0;
 
     /// <summary>
     /// Reloads the guest's table page, waits for the circuit to come back, and chooses one dish again.
