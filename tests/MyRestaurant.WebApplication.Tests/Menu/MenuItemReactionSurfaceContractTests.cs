@@ -9,10 +9,18 @@ namespace MyRestaurant.WebApplication.Tests.Menu;
 /// <para><b>Why this exists rather than more facts on <c>MenuWiringTests</c>.</b> That file asserts what
 /// happens to a call once a surface makes one. Every claim here is about whether the call can be made at
 /// all, or about a ruling whose violation is <em>silent</em> — a nested button that a browser quietly
-/// splits, a count that reaches the wrong audience, a write that starts announcing itself. None of the
-/// four fails loudly, and two of them cannot fail in any suite this repository has: §16.1 rules out
-/// bUnit, so nothing renders a component, and the §16.3 barrier that visits the guest surface measures
-/// where controls <em>are</em> rather than what they read.</para>
+/// splits, a count that reaches the wrong audience, a write that starts announcing itself. None of them
+/// fails loudly, and several cannot fail in any suite this repository has: §16.1 rules out bUnit, so
+/// nothing renders a component, and the §16.3 barrier that visits the guest surface measures where
+/// controls <em>are</em> rather than what they read.</para>
+///
+/// <para><b>The last two are Stage 5c's and they are about reach rather than placement.</b> §11.1 puts
+/// the like in the detail panel and the panel opens only for a chosen item, so a dish whose card is
+/// <c>disabled</c> had no panel and therefore no like at all — the consequence Stage 5b-i wrote down
+/// instead of repairing. The repair is a second control beside the card, and both of its failure modes
+/// are improvements: dropping the card's <c>disabled</c> so one control does both jobs, and disabling
+/// Add to basket so a dish that is off cannot be chosen into the basket. Each renders perfectly, each
+/// passes every other fact here, and each takes a sentence away from the guest.</para>
 ///
 /// <para><b>Two of the four hold a ruling rather than a mechanism, and that is deliberate.</b> Stage 5a
 /// decided that the like <em>count</em> is staff-facing and that a reaction publishes nothing, and wrote
@@ -53,6 +61,27 @@ public sealed class MenuItemReactionSurfaceContractTests
 
     /// <summary>The card's own class — a <c>&lt;button&gt;</c>, which is the whole of fact two.</summary>
     private const string CardChoiceClass = "order-menu-choice";
+
+    /// <summary>
+    /// Stage 5c's second control: the way into the detail panel for a dish §7 will not let the guest
+    /// stage. It exists so that the like can be pressed on a dish that is off tonight.
+    /// </summary>
+    private const string InspectControlClass = "order-menu-inspect";
+
+    /// <summary>
+    /// What keeps §7's half of the rule after Stage 5c added a way past the card. The card is the
+    /// STAGING control and stays refused; the sibling beside it only opens a panel.
+    /// </summary>
+    private const string CardDisabledAttribute = "disabled=\"@(!item.IsActive)\"";
+
+    /// <summary>The verb both controls call, which is what makes them open the same panel.</summary>
+    private const string ChooseHandler = "ChooseItem(item)";
+
+    /// <summary>
+    /// §11.1's staging control. Named by the words on it rather than by a class, because it has none of
+    /// its own — it is a <c>.button-secondary</c>, like every other secondary action in the tree.
+    /// </summary>
+    private const string StagingControlLabel = ">Add to basket<";
 
     /// <summary>The read §11.1 is entitled to: one person's own presses.</summary>
     private const string PerPersonRead = "ListLikedByAsync(";
@@ -274,6 +303,144 @@ public sealed class MenuItemReactionSurfaceContractTests
             + " Every chip would then say '1 like' or be absent — this administrator's own opinion"
             + " rendered as the restaurant's, on a page that asks which dishes are popular. Nothing"
             + " throws and no number is malformed, which is why this is a test rather than a comment.");
+    }
+
+    /// <summary>
+    /// A dish that cannot be staged still has a way into the detail panel, the card that refuses it is
+    /// still refused, and the way in is beside the card rather than inside it (Stage 5c).
+    ///
+    /// <para><b>What this closes.</b> §11.1 puts the like in the detail panel, and the panel opens only
+    /// for a chosen item — so an item whose card is <c>disabled</c> had no panel and therefore no like.
+    /// Stage 5b-i recorded that consequence rather than repairing it, and named the repair: a second path
+    /// for items that cannot be staged. <em>The salmon is off tonight and it is still the best thing
+    /// here</em> is a real opinion, and this is the markup that lets somebody record it.</para>
+    ///
+    /// <para><b>Four claims, and the first is the one a later slice would undo without noticing.</b> The
+    /// card must still carry <c>disabled</c> bound to <c>!item.IsActive</c>. The tidy repair — drop it,
+    /// so one control does both jobs — renders perfectly and passes every other fact in this file: §7's
+    /// "cannot be added to a send" would still hold, because <c>OrderStaging.Stage</c> refuses an
+    /// inactive item by name and the send transaction re-reads under the lock. What it costs is that a
+    /// guest is invited to press Add to basket for a dish the surface already knows is off, and is
+    /// answered with a refusal instead of never being offered the choice.</para>
+    ///
+    /// <para><b>The second is the parser fact for the second time.</b> A <c>&lt;button&gt;</c> inside a
+    /// <c>&lt;button&gt;</c> is markup a browser silently splits, so a control placed inside the card
+    /// would take the half carrying the dish's name out of the staging path — with nothing thrown and
+    /// the Razor compiling. The walk is the one the like control's fact uses, and the structural claim is
+    /// stronger than "not inside": the control must sit between the card's <c>&lt;/button&gt;</c> and the
+    /// <c>&lt;/li&gt;</c>, which is the only place a sibling can be.</para>
+    ///
+    /// <para><b>The third is the guard</b> — the region between the card's close and this control must
+    /// test <c>!item.IsActive</c>, because a way in rendered beside every card is a second control on a
+    /// menu of sixty. <b>And the fourth is that both controls call the same verb</b>, which is what makes
+    /// the panel this one opens the panel the like lives in; a control wired to anything else would open
+    /// something, and a reader would have to run it to find out what.</para>
+    /// </summary>
+    [Fact]
+    public void AnUnavailableItem_HasAWayIntoTheDetailPanel_BesideItsRefusedCard()
+    {
+        string page = GuestPage();
+
+        Assert.True(
+            page.Contains(CardDisabledAttribute, StringComparison.Ordinal),
+            $"§11.1's menu card no longer carries {CardDisabledAttribute}. §7 says a deactivated item"
+            + " stays on the menu, marked, and cannot be added to a send — and the card is the staging"
+            + " control, so that is where the refusal belongs. Dropping it so that one control both"
+            + " stages and opens the panel renders perfectly and is still wrong: the send would be"
+            + " refused by OrderStaging.Stage and by the transaction, so the only visible change is that"
+            + " a guest is offered a dish the surface already knows is off.");
+
+        int controls = Occurrences(page, $"class=\"{InspectControlClass}\"");
+
+        Assert.True(
+            controls == 1,
+            $"§11.1 renders exactly one '{InspectControlClass}' control; the markup holds {controls}."
+            + " Zero means a dish that is off tonight has no detail panel and therefore no like, which"
+            + " is the gap Stage 5c closed; two is what a copy of it into the card would leave behind.");
+
+        int cardOpen = page.IndexOf($"class=\"{CardChoiceClass}\"", StringComparison.Ordinal);
+        Assert.True(cardOpen >= 0, $"the guest menu no longer renders a '{CardChoiceClass}' card.");
+
+        int cardClose = page.IndexOf("</button>", cardOpen, StringComparison.Ordinal);
+        Assert.True(cardClose > cardOpen, "the card's <button> is unterminated.");
+
+        int listItemClose = page.IndexOf("</li>", cardClose, StringComparison.Ordinal);
+        Assert.True(listItemClose > cardClose, "the card's <li> is unterminated.");
+
+        int inspectAt = page.IndexOf($"class=\"{InspectControlClass}\"", StringComparison.Ordinal);
+
+        Assert.True(
+            inspectAt > cardClose && inspectAt < listItemClose,
+            $"the '{InspectControlClass}' control is not a sibling of the card inside its <li>. Inside"
+            + " the card it is a <button> within a <button>, which the HTML parser does not keep: it"
+            + " closes the outer element when it meets the inner one, so the card splits in two and the"
+            + " half carrying the dish's name stops staging anything. Nothing throws and the Razor"
+            + " compiles, which is why this is asserted structurally rather than described.");
+
+        string between = page[(cardClose + "</button>".Length)..inspectAt];
+
+        Assert.True(
+            between.Contains("!item.IsActive", StringComparison.Ordinal),
+            $"the '{InspectControlClass}' control is not guarded by !item.IsActive, so it renders beside"
+            + " every card on the menu. An available dish already has a way into its panel — its card —"
+            + " and a second control on sixty cards is sixty controls nobody needed, read from a phone.");
+
+        string control = page[inspectAt..listItemClose];
+
+        Assert.True(
+            control.Contains(ChooseHandler, StringComparison.Ordinal),
+            $"the '{InspectControlClass}' control does not call {ChooseHandler}. Both controls have to"
+            + " open the same panel, because that panel is where §11.1 puts the like — and this one"
+            + " exists so a dish that cannot be staged can still be liked.");
+    }
+
+    /// <summary>
+    /// §11.1's staging control is never disabled, because the refusal it would be hiding is a sentence
+    /// somebody needs to read (Stage 5c).
+    ///
+    /// <para><b>Why this became worth asserting now.</b> Before Stage 5c the chosen item was always one
+    /// the card had allowed, so the question never arose. Now a guest can open the panel for a dish that
+    /// is off, and the obvious next tidy-up is to disable Add to basket while that item is chosen. It
+    /// would look considerate and it costs two things. The guest gets a dead control and no reason —
+    /// where <c>OrderStaging.Stage</c> answers "<em>Grilled salmon is currently unavailable</em>",
+    /// naming the dish — and the component acquires a second opinion about availability alongside the
+    /// staging area's, which is F-65's mechanism: one rule in two places, and the two drift.</para>
+    ///
+    /// <para><b>The Send button one region down legitimately does the opposite</b>, and the distinction
+    /// is the reason this fact names its subject by the words on it. §11.1 requires Send to be disabled
+    /// while the basket is empty — there is nothing to refuse and nothing to explain, so the control has
+    /// no sentence to withhold. Add to basket always has one.</para>
+    ///
+    /// <para>Non-vacuity is the label itself (F-41): a fact about the attributes of a button that is not
+    /// there passes beautifully.</para>
+    /// </summary>
+    [Fact]
+    public void TheStagingControl_IsNeverDisabled_BecauseItsRefusalIsASentence()
+    {
+        string page = GuestPage();
+
+        int label = page.IndexOf(StagingControlLabel, StringComparison.Ordinal);
+
+        Assert.True(
+            label >= 0,
+            $"§11.1 no longer renders a control reading '{StagingControlLabel.Trim('>', '<')}', so the"
+            + " claim below is asserting nothing. That button is how a chosen item reaches the basket.");
+
+        int opening = page.LastIndexOf("<button", label, StringComparison.Ordinal);
+
+        Assert.True(opening >= 0, "the staging control's label is not inside a <button>.");
+
+        string tag = page[opening..label];
+
+        Assert.False(
+            tag.Contains("disabled", StringComparison.Ordinal),
+            "§11.1's Add to basket control carries a disabled attribute. The refusal it would be hiding"
+            + " is OrderStaging.Stage's, which names the dish and says why — and since Stage 5c a guest"
+            + " can choose a dish that is off, so this is exactly the control somebody will reach for."
+            + " Two costs: a dead button with no reason on it, and a second authority on availability"
+            + " inside a component whose staging area already holds one (F-65). The Send button is"
+            + " disabled while the basket is empty and that is not the same case — an empty basket has"
+            + " no refusal to explain.");
     }
 
     private static string GuestPage() => File.ReadAllText(PathUnder(GuestPageRelativePath));

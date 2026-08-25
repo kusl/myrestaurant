@@ -5011,3 +5011,196 @@ starts it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
 past four thousand nine hundred lines.
+
+# M6 Slice 60 — likes: a dish that is off tonight, and a read that had no reader
+
+**The last item on the menu enhancement's open list.** Stage 5b-i put §11.1's like in the detail panel for
+a mechanical reason, recorded what that placement costs, and declined to pay it: the panel opens only for a
+*chosen* item, §7 renders a deactivated item's card `disabled`, and so a guest could not like an
+unavailable dish. *The salmon is off tonight and it is still the best thing here* is a real opinion and
+this surface could not record it. Stage 5c is the repair the paragraph itself predicted.
+
+**The baseline this slice starts from is measured rather than predicted**, which has not been true for
+three slices. `claude-terminal.txt` shows `dotnet test` at **1279** green, `scripts/ci_local.sh --with-all
+--with-e2e` clean end to end, twenty-one §16.3 scenarios, the restore drill, the boot smoke and a quick
+tunnel. Slice 59's prediction of 1279 was therefore right, and so was Slice 58's of 1278.
+
+**Session-memory drift, recorded because it keeps happening and the instrument keeps catching it.** The
+session opened believing the tree was at Slice 54 — picture history, roughly 1250 tests, ledger through
+F-105. The SHA-256 reconstruction from `dump.txt` said Slice 59, v1.44, 1279, F-112: **five slices of
+drift**, the second-largest yet. 374 of 375 files verified byte-exact; the two that did not are `export.sh`
+(the dump rewrites its own header into the copy it embeds) and `LICENSE` (elided to metadata by design).
+Nothing was reconstructed on a guess. This is the fourth time the reconstruction has caught drift and the
+first time it has caught five slices of it.
+
+## The repair is a path rather than a looser refusal
+
+The obvious change is to drop the card's `disabled` so that one control both stages and opens the panel. It
+works, and that is why it is worth arguing against rather than merely not doing. §7's "cannot be added to a
+send" would still hold: `OrderStaging.Stage` refuses an inactive item **by name**, and the send transaction
+re-reads the menu under the lock. The markup would be smaller. Every existing test would stay green.
+
+**What it costs is a sentence.** §7's rule is about *staging* and the card is the staging control, so a
+card that answered a tap on a dish the surface already knows is off would be inviting somebody to press
+*Add to basket* and be told no. The thing that was missing was never a looser refusal — it was a second
+**path**. The card keeps `disabled` and gains a sibling inside the same `<li>`.
+
+## A sibling and not a child, asserted structurally
+
+Stage 5b-i's argument applies again unchanged: a card *is* a `<button>`, the HTML parser does not permit a
+button inside a button and does not report the attempt, so a nested control silently splits the card and
+the half carrying the dish's name stops staging anything. Nothing throws, the Razor compiles, §16.1 rules
+out bUnit.
+
+**So the contract fact asserts an index rather than an absence.** The control's position must fall between
+the card's `</button>` and the `</li>`, which is the only place a sibling can be. An absence assertion —
+"not inside the card" — is satisfied by a control that has drifted out of the list item entirely, and the
+structural form costs one extra `IndexOf`.
+
+## Three smaller rulings, and one of them is about voice control
+
+**Rendered only where the card is refused.** An available dish already has a way into its panel. A second
+control beside every card is sixty controls on a menu of sixty, read from a phone.
+
+**The accessible name carries the dish; the visible text does not.** A column of buttons all reading *Read
+about* is unusable to anybody navigating by control, so the dish's name is appended in a
+`.visually-hidden` span. **Not an `aria-label`, and the direction of that difference is the ruling**: an
+`aria-label` *replaces* the element's content, and voice control matches on what is on screen — so a label
+would break *"click Read about"* for exactly the population most likely to be using it. The visible words
+stay a prefix of the accessible name, which is what §11.4's own record ticks already do.
+
+***Add to basket* is never disabled, and that is now asserted.** It is the same ruling read backwards. Now
+that a guest can choose a dish that is off, the next tidy-up is to disarm that button while such an item is
+chosen. It looks considerate and costs two things: a dead control with no reason on it, where
+`OrderStaging` would have named the dish; and a second opinion about availability inside a component whose
+staging area already holds one, which is F-65's mechanism. The Send button one region down *is* disabled
+while the basket is empty, and the distinction is why this fact names its subject by the words on the
+control — an empty basket has no refusal to explain.
+
+## One layout consequence that is invisible in the markup
+
+`.order-menu-item` was `display: flex` with a single full-width child, and the default `align-items:
+stretch` is what made every card in a row the same height. A second child makes it a **column**, where the
+axis that stretches is the other one — so the card takes `flex-grow: 1` and the row stays level. Without
+that one line the change is correct HTML that looks broken on the first menu holding two cards of different
+lengths side by side, and nothing in this repository measures §11.1 at any width.
+
+## F-113, and the shape of it is a scope claim rather than a number
+
+`ChosenItemDetail.Facts` is keyed by the detail panel's `<dt>` terms and its own paragraph names them
+*Price*, *Available* and *On the menu since*. `ReadChosenItemDetailAsync` built the dictionary with
+`InnerTextAsync`, which returns what layout produced, and `app.css` declares `text-transform: uppercase` on
+`.order-menu-facts dt`. So the reader produced `AVAILABLE` while the record promised `Available`.
+
+**F-88's mechanism a second time inside the file F-88 was found in.** That fix corrected
+`ReadMenuAsync`'s section-name read and, forty lines further down, `ReadTotalsAsync` — two instances in one
+slice — and then wrote *"Only this one read is affected: it is the only place the suite compares a value
+against text a `text-transform` rule reaches."* Wrong by one at the moment of writing.
+
+**And it was the kind of wrong nothing could report, for a reason this project already has a rule about.**
+`Facts` was a **read with no reader**: nothing in the suite had ever looked a term up, so the disagreement
+between the record's documented keys and the keys its reader produced was unobservable rather than merely
+unobserved. The standing rule is that a read with no caller is a defect; here the absent caller was also
+the absent instrument.
+
+The remedy is `ScreenText.DeclaredAsync`, which already exists for this and which `ReadTotalsAsync` already
+uses — one decision procedure at both `<dt>` sites. **The `<dd>` beside it deliberately stays on
+`InnerTextAsync`**, because that is `ScreenText`'s own stated distinction between a label and content, and
+a blanket replacement would be the wrong subject (F-46). The false sentence is corrected rather than
+deleted (F-77's cheaper direction) and corrected **into a rule rather than a census**, since a count of
+affected sites is the artefact that went stale in the first place.
+
+**No gate**, on F-104's reasoning: deciding which reads a `text-transform` rule reaches needs a CSS
+selector engine resolved against a component tree, which is not decidable from text, and a lexical
+approximation would report findings on correct reads while missing transformed ones. What closes the hole
+is that `Facts` now has a caller.
+
+## The plan's header lost a date, and it is not a finding
+
+`MENU_AND_HANDHELD_PLAN.md` opened with *"Last moved 2026-08-18, at the close of Slice 51"* while the
+document below it had been moved by Slices 52 through 59 — eight slices and six days stale, in a document
+three gates read for structure and none reads for meaning. **Deleted rather than corrected**, on F-112's
+ruling about a number written beside an enforced copy of itself: the durable form of *when did this last
+move* is the struck-through stage headings, each of which names its slice, and this log.
+
+It gets no F-number. The ledger is for findings, and a document's own metadata going stale is not a claim
+anything depended on — the distinction Slice 57 drew when it recorded Stage 5a as an enhancement rather
+than a defect.
+
+## Scenario 21 was extended rather than a scenario added
+
+**Four steps, on Slice 59's reason.** The kitchen 86s the salmon, the guest's open menu marks the card
+unavailable, and the panel is reached through the second control.
+
+**The pudding is chosen first, and that is arrangement rather than decoration.** The salmon's panel is
+still open from step (e) — `_pickedMenuItemIdentifier` is component state and going off the menu does not
+clear it — so without moving the panel off it, the claim would be satisfied by a panel that had simply
+never gone away. That is the shape of a scenario that proves nothing, and it is worth naming because it is
+invisible when the steps are read in order.
+
+The closing assertion is §11.4's index reporting **one** like against a dish that is off the menu. A
+surface that had merely opened a panel and toggled a field passes every step before it.
+
+The cost of a scenario 22 would have been a second container, a second passkey registration and a second
+join, for an arrangement this scenario already has standing.
+
+## §18 arithmetic
+
+| Where | Facts | Running |
+| --- | --- | --- |
+| Baseline — **measured, `claude-terminal.txt`** | — | 1279 |
+| `MenuItemReactionSurfaceContractTests` (5 → 7) | +2 | 1281 |
+
+**Predicted 1281**, and the §16.3 suite stays at **21**. This is the first slice in four whose baseline was
+measured rather than carried, so a deviation here is attributable to this slice alone.
+
+## What was verified, and what was not
+
+**Verified mechanically.** All seven contract facts were emulated against the edited tree, and the two new
+ones **proven sensitive against six planted defects** — the card's `disabled` dropped; the control moved
+inside the card's `<button>`; the guard removed so it renders beside every card; *Add to basket* given a
+`disabled` binding; and the control deleted outright. Every one was reported, and by the assertion that
+should report it. The §16.4 counted-class gate was emulated over the edited specification: **33 classes,
+no ambiguity, no disagreement between any claimed count and its file**, the census unchanged because both
+new assertions joined an existing class. The Markdown table gate was emulated with the real
+unescaped-pipe splitter over all **25** tracked documents: clean. The version gate was emulated: header
+1.45, newest entry 1.45, **46** entries strictly descending. Brace and parenthesis balance was checked on
+every changed C# file, with the two-parenthesis surplus traced to the pre-existing `"ListLikedByAsync("`
+and `"ListLikeCountsAsync("` literals. The standing authoring scans ran over every changed file: no
+`await` in an interpolated hole (CS4007), no `string.Create` chain with a plain literal (CS1620), no
+`@section`, no tabs, no CR bytes, one final newline each, no whitespace-only or trailing-space lines.
+
+**Not verified.** Nothing was compiled and nothing was run (F-71's standing caveat). The specific risks, in
+order. **The layout change is the largest**, and it is the one thing here no gate in this repository can
+see: `.order-menu-item` becomes a column and the card takes `flex-grow: 1` to keep a row level, and nothing
+measures §11.1 at any width — §16.3 scenario 16's 375px barrier visits §11.4's surfaces only. If a row of
+cards looks ragged, that line is where to look. **The `>` child combinator** in `MenuInspectSelector`
+asserts that the control is a direct child of the `<li>`; it is, because the `@if` block sits at that
+level, but a Razor construct between them would break the selector while the contract fact still passed.
+**`KitchenJourneys.OpenAsync` on the administrator's page** navigates away from `/administration/menu` and
+the closing assertion navigates back; the administrator is permitted on `/kitchen` by §3.7 and by that
+method's own summary, but no scenario had previously used that page as *both*. And **`Facts["Available"]`
+is an indexer rather than a `TryGetValue`**, deliberately: after F-113 a missing key means the panel
+stopped rendering that row, and a `KeyNotFoundException` naming the key is a better failure than a null.
+
+## Open items carried
+
+**No end-to-end scenario drives either resequencing verb.** The 375px barrier measures those controls and
+nothing presses them. Carried, and now the only such gap in the menu.
+
+**`/kitchen` has no §16.3 scenario at all.** Carried; the largest end-to-end gap in the application —
+though scenario 21 now opens that board and presses one control on it, which is the first time any scenario
+has.
+
+**The wide layout stacks each row's three controls** on the administration index. Carried on two registers.
+
+**Nothing in this repository measures §11.1 at 375px.** New, and named rather than carried silently: the
+handheld barrier is scoped to §11.4's surfaces, and this slice is the first to change the guest menu's box
+model. A scenario 16 for the guest surface is the repair, and it needs a seated guest, which is why it is
+recorded rather than done here.
+
+**`run.sh --containers-only` prints two `Error:` lines about a container that does not exist yet, then
+starts it successfully.** Carried.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
+past five thousand one hundred lines.

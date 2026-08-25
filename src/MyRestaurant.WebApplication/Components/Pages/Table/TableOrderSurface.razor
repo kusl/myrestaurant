@@ -369,6 +369,57 @@
                                                      decoding="async" />
                                             }
                                         </button>
+
+                                        @* STAGE 5c: THE WAY INTO THE PANEL FOR A DISH THAT CANNOT BE
+                                           STAGED, and every word of its placement is load-bearing.
+
+                                           IT IS A SIBLING OF THE CARD AND NOT A CHILD OF IT. The card
+                                           above is a `<button>`; the HTML parser does not permit a button
+                                           inside a button and does not report the attempt — it closes the
+                                           outer element when it meets the inner one, so the card would
+                                           silently become two elements and the half carrying the dish's
+                                           name and price would stop staging anything. That is the same
+                                           mechanism that put the like control in the detail panel rather
+                                           than on the card (§7), and it applies here for the second time.
+                                           This element is therefore inside the <li> and after the card's
+                                           own </button>, which is why `.order-menu-item` stacks.
+
+                                           THE CARD STAYS `disabled`, WHICH IS THE RULING. §7 says a
+                                           deactivated item "remains visible, marked, and cannot be added
+                                           to a send"; the obvious repair — drop the `disabled` so one
+                                           control does both jobs — would look tidier, render perfectly,
+                                           and invite a guest to press Add to basket for a dish the
+                                           staging area is going to refuse. What was missing was never a
+                                           looser refusal, it was a second PATH: "the salmon is off
+                                           tonight and it is still the best thing here" is a real opinion
+                                           and this surface could not record it, because the panel that
+                                           carries the like never opened for an item whose card was
+                                           disabled. Stage 5b-i wrote that gap down rather than repairing
+                                           it; this is the repair.
+
+                                           IT IS RENDERED ONLY WHERE THE CARD IS REFUSED. An available
+                                           dish already has a way in — its card — and a second control
+                                           beside every card would be one control too many on a menu of
+                                           sixty, read from a phone.
+
+                                           THE ACCESSIBLE NAME CARRIES THE DISH AND THE VISIBLE TEXT DOES
+                                           NOT. A column of buttons all reading "Read about" is unusable
+                                           to anybody navigating by control, so the name is appended in a
+                                           `.visually-hidden` span rather than supplied by `aria-label`:
+                                           an aria-label REPLACES the content, and voice control matches
+                                           on what is on screen — so a label would break "click Read
+                                           about" for the one population most likely to be using it. The
+                                           visible words stay a prefix of the accessible name, which is
+                                           the arrangement §11.4's own record ticks already use. *@
+                                        @if (!item.IsActive)
+                                        {
+                                            <button type="button" class="order-menu-inspect"
+                                                    data-menu-item-inspect="@item.MenuItemIdentifier"
+                                                    aria-pressed="@(isChosen ? "true" : "false")"
+                                                    @onclick="() => ChooseItem(item)">
+                                                Read about<span class="visually-hidden"> @item.Name</span>
+                                            </button>
+                                        }
                                     </li>
                                 }
                             </ul>
@@ -1150,10 +1201,19 @@
     /// the note, and clearing it would be this surface discarding something they typed. Those two are
     /// reset by <see cref="StageItem"/>, once the line is in the basket and they have been used.</para>
     ///
-    /// <para>An inactive item never reaches here — its card is <c>disabled</c> (§7) — so this method has
-    /// no availability check of its own. The guard that matters is in the send transaction, which
-    /// re-reads the menu under the lock (§6.5.4, §6.6); everything on this surface refuses early only so
-    /// the answer arrives at the moment of the tap.</para>
+    /// <para><b>An inactive item does reach here, and as of Stage 5c that is by design rather than by a
+    /// race.</b> This paragraph used to say that one never could, because its card is <c>disabled</c>
+    /// (§7) — true until the <c>.order-menu-inspect</c> sibling was added beside that card so a guest can
+    /// read about, and have an opinion about, a dish that is off tonight. The older reading was in any
+    /// case only nearly true: <c>MenuChanged</c> can deactivate the chosen item under an open panel.</para>
+    ///
+    /// <para><b>This method still has no availability check of its own, and that is the ruling rather
+    /// than an omission.</b> Choosing writes nothing and stages nothing; it selects, and it opens a
+    /// panel. The refusal lives in <c>OrderStaging.Stage</c>, which already answers "<em>X is currently
+    /// unavailable</em>" by name, and behind it in the send transaction, which re-reads the menu under
+    /// the lock (§6.5.4, §6.6). A second test here would be a second authority on availability inside the
+    /// one component, which is F-65's mechanism — and the surface refuses early only so that the answer
+    /// arrives at the moment of the tap.</para>
     /// </summary>
     private void ChooseItem(MenuItemSummary item)
     {

@@ -1,10 +1,17 @@
 # Menu modernization and the handheld contract — staged plan
 
-**Opened 2026-08-11, at the close of M6 Slice 30. Last moved 2026-08-18, at the close of Slice 51.** This
+**Opened 2026-08-11, at the close of M6 Slice 30.** This
 is the execution plan for the first enhancement request the project has received from a person who was
 shown the running application, together with the defect that request arrived beside. It is a working
 document: a stage is struck through when it lands, and the ruling paragraphs are the part worth keeping
 afterwards.
+
+**The header used to carry a *last moved* date and it does not any more.** It said *"Last moved 2026-08-18,
+at the close of Slice 51"* while the document below it had been moved by Slices 52 through 59 — a date
+maintained by habit, eight slices stale, in a document three gates read for structure and none reads for
+meaning. It is deleted rather than corrected, on the ruling F-112 settled about a number written beside an
+enforced copy of itself: the durable form of *when did this last move* is the struck-through stage headings
+below, each of which names its slice, and `docs/BUILD_PROGRESS.md`, which is a log rather than a claim.
 
 **~~Where Stage 2 stands~~ — Stage 2 is closed. `0005` landed in Slice 40 with the three surfaces it
 forces.** The boundary moved twice and then the expensive cut arrived exactly as expensive as every
@@ -1704,7 +1711,8 @@ only `RestaurantHarness` references xUnit at all.
 the last read in this feature with no caller, and it was the weaker of the two defects rather than the
 stronger — an unread read cannot change anything without telling anybody.
 
-**A guest cannot like an unavailable dish**, carried with the reason above.
+**~~A guest cannot like an unavailable dish~~ — closed by Stage 5c below, M6 Slice 60.** The repair is
+the one this paragraph predicted: a second path into the panel for items that cannot be staged.
 
 **Not carried forward:** a guest-visible count, and any notion of a like that requires an order. Both were
 ruled against in Stage 5a, and neither is an item.
@@ -1777,14 +1785,107 @@ which is F-67's neighbourhood.
 **Nothing about likes.** Every read and every write `0008` introduced now has a caller, no verb in §7 is
 without a surface, and Stage 5's open list is empty for the first time since 5a.
 
-**A guest cannot like an unavailable dish**, carried from Stage 5b-i with its reason. It follows from the
-control's placement rather than from a decision, and the repair is a second route into the detail panel for
-items that cannot be staged.
+**~~A guest cannot like an unavailable dish~~ — closed, M6 Slice 60.** It followed from the control's
+placement rather than from a decision, and the repair is exactly what this paragraph named: a second route
+into the detail panel for items that cannot be staged. Stage 5c below.
 
 **The next thing in this plan is Stage 6**, which is *not startable* and says why below: a comment is the
 first user-generated content in this system, and it needs a rate-limiting slice with no menu in it, a
 `REQUIREMENTS.md` revision about guest privacy, and a moderation surface. The recommendation recorded there
 — **do Stage 5b and stop** — is now discharged rather than pending.
+
+## ~~Stage 5c — likes: a dish that is off tonight~~ — **landed, M6 Slice 60**
+
+**The last item on this plan's open list, and the only one that did not need a stage nobody can start.**
+Stage 5b-i put §11.1's like in the detail panel for a mechanical reason, wrote down what that placement
+costs, and declined to pay it: the panel opens only for a *chosen* item, §7 renders a deactivated item's
+card `disabled`, and so **a guest could not like an unavailable dish**. *The salmon is off tonight and it
+is still the best thing here* is a real opinion and this surface could not record it.
+
+### The repair is a path rather than a looser refusal, and that is the whole ruling
+
+The obvious change is to drop the card's `disabled` so one control does both jobs. It works. §7's
+"cannot be added to a send" would still hold — `OrderStaging.Stage` refuses an inactive item **by name**
+and the send transaction re-reads under the lock (§6.5.4, §6.6) — the markup gets smaller, and every
+existing test stays green.
+
+**It is refused, and the argument is what a guest would then experience.** §7's rule is about *staging*,
+and the card is the staging control; a card that accepted a tap on a dish the surface already knows is off
+would be inviting somebody to press *Add to basket* and be told no. What was missing was never a looser
+refusal — it was a second **path** to the panel. So the card stays `disabled` and gains a **sibling**
+inside the same `<li>`.
+
+### A sibling and not a child, which is the parser ruling for the second time
+
+Stage 5b-i's reason for putting the like in the panel applies here unchanged: the card *is* a `<button>`,
+the HTML parser does not permit a button inside a button and does not report the attempt — it closes the
+outer element when it meets the inner one, so the card silently becomes two elements and the half carrying
+the dish's name and price stops staging anything. Nothing throws, no C# is wrong, the Razor compiles, and
+§16.1 rules out bUnit so nothing renders it. **The contract fact therefore asserts the placement
+structurally rather than by absence**: the control's index must fall between the card's `</button>` and
+the `</li>`, which is the only place a sibling can be.
+
+### Three smaller rulings
+
+**It is rendered only where the card is refused.** An available dish already has a way into its panel —
+its card — and a second control beside every card is sixty controls on a menu of sixty, read from a phone.
+
+**Its accessible name carries the dish and its visible text does not.** A column of buttons all reading
+*Read about* is unusable to anybody navigating by control. The name is appended in a `.visually-hidden`
+span rather than supplied by an `aria-label`, and the difference matters in one direction: an `aria-label`
+**replaces** the content, and voice control matches on what is on screen — so a label would break *"click
+Read about"* for exactly the population most likely to be using it. The visible words stay a prefix of the
+accessible name, which is the arrangement §11.4's own record ticks already use.
+
+***Add to basket* is never disabled, and that is asserted rather than assumed.** It is the same ruling read
+backwards. Now that a guest can choose a dish that is off, the next tidy-up is to disarm that button while
+such an item is chosen — considerate-looking, and it costs two things: the guest gets a dead control and no
+reason where `OrderStaging` would have named the dish, and the component acquires a second opinion about
+availability beside the staging area's, which is F-65's mechanism. The Send button one region down *is*
+disabled while the basket is empty and that is not the same case — an empty basket has no refusal to
+explain.
+
+### One layout consequence, recorded because it is invisible in the markup
+
+`.order-menu-item` was `display: flex` with a single full-width child, and the default `align-items:
+stretch` was what made every card in a row the same height. A second child makes it a **column**, where the
+axis that stretches is the other one — so the card takes `flex-grow: 1` and the row stays level. Without
+that line the change is correct HTML that looks broken on the first menu with two cards of different
+lengths beside each other.
+
+### A defect found on the way in (F-113)
+
+`ChosenItemDetail.Facts` is keyed by the detail panel's `<dt>` terms and its own paragraph names them
+*Price*, *Available* and *On the menu since*; the reader built it with `InnerTextAsync`, and `app.css`
+upcases `.order-menu-facts dt`. **F-88's mechanism a second time inside the file F-88 was found in** — and
+the comment that fix left behind claims it was the only affected read, written in the same slice that fixed
+`ReadTotalsAsync` forty lines down for exactly this reason. It was narrowly true only because `Facts` had
+no caller, which is the condition that hid it, and this stage's scenario step is the first caller it has
+ever had. Found by needing `Facts["Available"]`, which is F-93's timing again.
+
+### The scenario is an extension, on Slice 59's reason
+
+**Scenario 21 gains four steps rather than a scenario 22 being added.** The kitchen 86s the salmon, the
+guest's open menu marks the card unavailable, the **pudding is chosen first** — deliberately, because the
+salmon's panel is still open from the step before and going off the menu does not close it, so without that
+the claim would be satisfied by a panel that had simply never gone away — and then the second control is
+what gets back to it. The like reports unpressed, is pressed, and §11.4's index reads **one** against that
+dish. A surface that had merely opened a panel and toggled a field passes every step before the last one.
+
+The cost of a scenario 22 would have been a second container, a second passkey registration and a second
+join, for an arrangement this scenario already has standing.
+
+### What is open after this stage
+
+**Nothing.** Every read and every write `0008` introduced has a caller, no verb in §7 is without a surface,
+and the consequence Stage 5b-i recorded is discharged rather than carried. The menu enhancement's open list
+is empty for the second time, and this time nothing was deferred into it.
+
+**The next thing in this plan is Stage 6**, which is *not startable* and says why below. That has not
+changed: a comment is the first user-generated content in this system and it needs a rate-limiting slice
+with no menu in it, a `REQUIREMENTS.md` revision about guest privacy, and a moderation surface.
+
+---
 
 ## Stage 6 — comments, and what has to be settled first
 

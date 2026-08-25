@@ -1992,8 +1992,22 @@ a:focus-visible,
     grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
 }
 
+/*
+ * A COLUMN, BECAUSE A CARD CAN NOW HAVE A SIBLING (Stage 5c). §7 keeps a deactivated item's card
+ * `disabled`, so the way into its detail panel is a second control — and it cannot be inside the
+ * card, which is itself a <button>, because the parser splits a nested one. It is therefore the
+ * <li>'s second child, and the <li> stacks.
+ *
+ * `flex-grow` ON THE CARD IS WHAT KEEPS THE ROW LEVEL. This <li> is a grid item stretched to its
+ * row's height, and while it had exactly one child the default `align-items: stretch` of a row-
+ * direction flex container made that child fill it. In a column the cross axis is the one that
+ * stretches, so without this the card would shrink to its own content and a card beside a taller
+ * neighbour would leave a gap under it.
+ */
 .order-menu-item {
     display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
 }
 
 .order-menu-choice {
@@ -2001,6 +2015,7 @@ a:focus-visible,
     gap: 0.2rem;
     align-content: start;
     width: 100%;
+    flex-grow: 1;
     min-height: var(--touch-target);
     padding: 0.6rem 0.7rem;
     border: 1px solid var(--hairline);
@@ -2043,6 +2058,46 @@ a:focus-visible,
     background-color: var(--surface);
     color: var(--ink-soft);
     cursor: default;
+}
+
+/*
+ * The way into the detail panel for a dish that cannot be staged (Stage 5c). Quiet rather than
+ * primary: it is not the thing a guest came to the menu to press, and a dish that is off should not
+ * shout louder than the ones that are on.
+ *
+ * `--touch-target` and not a smaller number that merely looks right (§11.12), and `align-self: start`
+ * rather than stretching, because a full-width control under a card reads as a second card. It is
+ * still `--touch-target` TALL, which is the half the layout contract is about.
+ */
+.order-menu-inspect {
+    align-self: start;
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch-target);
+    padding: 0.4rem 0.7rem;
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    background-color: transparent;
+    color: var(--accent-strong);
+    font: inherit;
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.order-menu-inspect:hover {
+    border-color: var(--accent);
+    background-color: var(--surface-raised);
+}
+
+.order-menu-inspect:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+.order-menu-inspect[aria-pressed="true"] {
+    border-color: var(--accent);
+    background-color: var(--accent-surface-soft);
 }
 
 .order-menu-line {

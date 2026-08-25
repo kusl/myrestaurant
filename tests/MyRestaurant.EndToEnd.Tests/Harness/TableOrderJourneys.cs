@@ -152,11 +152,17 @@ internal sealed record MenuCard(
 /// §11.1's detail panel for the item the guest has chosen — the answer to "see more about this item if
 /// such information exists" (M6 Slice 39, Stage 3 of <c>docs/MENU_AND_HANDHELD_PLAN.md</c>).
 ///
-/// <para><paramref name="Facts"/> is keyed by the <c>&lt;dt&gt;</c> term the panel prints rather than
-/// indexed by position, on the same reasoning <see cref="GuestTotals"/>'s two figures are found by their
-/// terms: a fact added between two others must not silently shift what a scenario reads. The terms today
-/// are <c>Price</c>, <c>Available</c> and <c>On the menu since</c>; Stages 4 and 5 add rows rather than
-/// change these.</para>
+/// <para><paramref name="Facts"/> is keyed by the <c>&lt;dt&gt;</c> term the panel <em>declares</em>
+/// rather than indexed by position, on the same reasoning <see cref="GuestTotals"/>'s two figures are
+/// found by their terms: a fact added between two others must not silently shift what a scenario reads.
+/// The terms today are <c>Price</c>, <c>Available</c> and <c>On the menu since</c>; Stages 4 and 5 add
+/// rows rather than change these.</para>
+///
+/// <para><b>Declared and not painted, which is F-113 and was wrong here until Stage 5c.</b> <c>app.css</c>
+/// upcases <c>.order-menu-facts dt</c>, so the reader's <c>InnerTextAsync</c> produced <c>AVAILABLE</c>
+/// against the three names written above — and this dictionary had no caller at all until Stage 5c
+/// looked one up, so the disagreement between this paragraph and its own reader was invisible for
+/// nineteen slices.</para>
 ///
 /// <para><paramref name="Description"/> is <c>null</c> when the panel is showing its "nothing else has
 /// been written down" sentence. That is a state worth distinguishing rather than collapsing to an empty
@@ -364,6 +370,16 @@ internal static class TableOrderJourneys
     /// way to get it is to walk the section that contains the card.
     /// </summary>
     private const string MenuSectionSelector = "#table-order-surface div.order-menu-section";
+
+    /// <summary>
+    /// Stage 5c's second control — the way into the detail panel for a dish §7 will not let a guest
+    /// stage. It is a <em>sibling</em> of the card inside the <c>&lt;li&gt;</c> rather than a child of
+    /// it, because the card is itself a <c>&lt;button&gt;</c> and a nested one is markup a parser
+    /// splits; the selector says so by reaching through <c>li.order-menu-item</c> rather than through
+    /// the card.
+    /// </summary>
+    private const string MenuInspectSelector =
+        "#table-order-surface li.order-menu-item > button.order-menu-inspect";
 
     /// <summary>§11.1's detail panel, present only while an item is chosen.</summary>
     private const string MenuDetailSelector = "#table-order-surface div.order-menu-detail";
@@ -589,6 +605,68 @@ internal static class TableOrderJourneys
     }
 
     /// <summary>
+    /// Opens the detail panel for an item §7 will not let the guest stage, through Stage 5c's second
+    /// control, and returns once the surface reports it chosen.
+    ///
+    /// <para><b>The mirror of <see cref="ChooseAsync"/>, and the two are deliberately not one method.</b>
+    /// That one refuses a disabled card with a sentence — a scenario asking to stage a dish that is off
+    /// has made a mistake about its own arrangement, and saying so at the moment it reaches for the card
+    /// is worth far more than a click that fails later. Folding this in as a fallback would delete that
+    /// diagnosis for every caller, in order to serve the one caller that wants the other thing.</para>
+    ///
+    /// <para><b>Refusing an <em>available</em> item is the other half.</b> §11.1 renders this control
+    /// only where the card is refused, so asking for it on a dish that is on is asking for an element
+    /// that is not there by design — and the honest answer names the card as the way in rather than
+    /// timing out on a selector.</para>
+    ///
+    /// <para>Confirmation is <c>aria-pressed</c> going true, for <see cref="ChooseAsync"/>'s reason: the
+    /// attribute is the contract and the class is how it is painted. Both controls carry it because both
+    /// toggle the same panel.</para>
+    /// </summary>
+    internal static async Task InspectAsync(IPage page, MenuItemOnTheMenu item)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(item);
+
+        string identifier = item.Identifier.ToString("D", CultureInfo.InvariantCulture);
+        string control = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{MenuInspectSelector}[data-menu-item-inspect='{identifier}']");
+
+        ILocator inspect = page.Locator(control).First;
+
+        if (await inspect.CountAsync() == 0)
+        {
+            // Read before composing: an await inside an interpolation hole is CS4007.
+            string menu = Describe(await ReadMenuAsync(page));
+
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"There is no way-in control for '{item.Name}' beside its card. §11.1 renders one"
+                    + $" only where §7 has refused the card — a dish that is ON the menu is opened by"
+                    + $" tapping the card itself, which is ChooseAsync. What the menu shows: {menu}."));
+        }
+
+        await inspect.ClickAsync();
+
+        if (await WaitForAttributeAsync(page, control, "aria-pressed", "true", TimeSpan.FromSeconds(15)))
+        {
+            return;
+        }
+
+        string showing = Describe(await ReadMenuAsync(page));
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Pressing the way-in control for '{item.Name}' did not open its panel: the control"
+                + $" never reported aria-pressed='true'. The menu shows: {showing}. A control that does"
+                + $" not answer a tap is the @onclick landing on no circuit, which"
+                + $" WaitForLiveSurfaceAsync is supposed to have ruled out before this."));
+    }
+
+    /// <summary>
     /// The menu as §11.1 renders it — every card, in the order the surface lists them, which is
     /// <c>(display_order, name, menu_item_identifier)</c> (§7).
     ///
@@ -616,8 +694,15 @@ internal static class TableOrderJourneys
             // was read back as "STARTERS" and compared, correctly and uselessly, against "Starters".
             // The stored name is the fact this scenario is about; the casing is presentation, and a
             // harness that could not tell them apart would either fail on a correct tree or have to
-            // encode a stylesheet rule in an assertion. Only this one read is affected: it is the only
-            // place the suite compares a value against text a `text-transform` rule reaches.
+            // encode a stylesheet rule in an assertion.
+            //
+            // THIS SENTENCE USED TO SAY "only this one read is affected", AND IT WAS WRONG BY ONE
+            // (F-113). ReadChosenItemDetailAsync keys its dictionary on `.order-menu-facts dt`, which
+            // app.css upcases too, and it was reading that with InnerTextAsync — undetectably, because
+            // nothing called it until Stage 5c. The claim is corrected rather than deleted, and it is
+            // corrected into a rule instead of a census: a read whose result is COMPARED against a
+            // phrase somebody typed goes through ScreenText.DeclaredAsync, and a read of content does
+            // not. Three sites obey it now — this one, ReadTotalsAsync, and the panel's terms.
             string sectionName = (await section
                 .Locator("h4.order-menu-section-name").First.TextContentAsync() ?? string.Empty).Trim();
 
@@ -754,7 +839,20 @@ internal static class TableOrderJourneys
         {
             ILocator group = groups.Nth(index);
 
-            string term = (await group.Locator("dt").First.InnerTextAsync()).Trim();
+            // THE TERM IS READ AS DECLARED AND THE VALUE AS PAINTED, and the asymmetry is F-113. This
+            // dictionary is keyed by the <dt>, and `app.css` declares `text-transform: uppercase` on
+            // `.order-menu-facts dt` — so InnerTextAsync returned AVAILABLE where the markup says
+            // Available, and the first caller to look a term up by the name this record documents would
+            // have got a KeyNotFoundException from a panel that was perfectly correct. That is F-88's
+            // mechanism a second time in this file: the slice that found it fixed ReadTotalsAsync forty
+            // lines down for exactly this reason and left this one, on a sentence claiming it was the
+            // only affected read. Nothing could notice, because `Facts` had no caller until Stage 5c.
+            //
+            // The <dd> beside it stays on InnerTextAsync deliberately — ScreenText's own rule is that a
+            // LABEL the harness holds the expected wording of is read as declared, and CONTENT is read
+            // as rendered. No stylesheet transforms these values, and the whitespace normalisation is
+            // genuinely wanted there.
+            string term = await ScreenText.DeclaredAsync(group.Locator("dt").First);
             string value = (await group.Locator("dd").First.InnerTextAsync()).Trim();
 
             facts[term] = value;

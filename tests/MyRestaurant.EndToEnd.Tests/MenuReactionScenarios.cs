@@ -76,6 +76,17 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
     //          is what makes "two reads over one fold" a fact rather than a design note. A count over
     //          'liked' EVENTS rather than over current opinions passes every step before it.
     //
+    //      (g) A DISH THAT IS OFF CAN STILL BE LIKED (Stage 5c). The kitchen 86s the salmon, the
+    //          guest's open menu marks the card unavailable, and the panel is reached through the
+    //          second control beside it rather than through the card §7 disabled. This is the gap
+    //          Stage 5b-i wrote down instead of repairing, and nothing but a browser can say it is
+    //          closed: the unit facts assert where the markup is, not that a browser answers it.
+    //      (h) The panel reports the dish as unavailable, which is a branch no scenario had reached
+    //          before — and reads the term the markup DECLARES rather than the one app.css paints,
+    //          which is F-113 and makes this the first caller ChosenItemDetail.Facts has ever had.
+    //      (i) The press writes, and (j) §11.4's count sees it. A surface that had merely opened a
+    //          panel and toggled a field passes every step before (j).
+    //
     //      No count is on the GUEST's screen to read, and that is Stage 5a's ruling rather than
     //      something not yet built. MenuItemReactionSurfaceContractTests holds it as a fact over the
     //      whole guest directory — and holds the mirror of it over §11.4's index, which must read the
@@ -169,6 +180,69 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
         //      layer's own summary names as the plausible wrong implementation. Null rather than zero,
         //      because §11.4's read lists what is liked instead of left-joining the menu.
         Assert.Null(await AdministrationJourneys.ReadMenuIndexLikeCountAsync(
+            administrator, salmon.Identifier));
+
+        // (g) THE DISH GOES OFF, AND THE OPINION IS STILL AVAILABLE TO HAVE. Stage 5b-i recorded the
+        //     gap and declined to repair it: §11.1 puts the like in the detail panel, the panel opens
+        //     only for a chosen item, and §7 renders a deactivated item's card `disabled` — so "the
+        //     salmon is off tonight and it is still the best thing here" was an opinion this surface
+        //     could not record. Stage 5c is the repair, and this is the only thing in the repository
+        //     that can say it worked: §16.1 rules out bUnit, so nothing else renders the control, and
+        //     the unit facts can assert where the markup is and not that a browser will answer it.
+        //
+        //     The 86 goes through the KITCHEN's panel rather than the item's own page, on the harness's
+        //     standing preference: both reach the same write and the same MenuChanged (§9), and this
+        //     one does not need §11.4's editor open.
+        await KitchenJourneys.OpenAsync(administrator, InteractivityPatience);
+        await KitchenJourneys.EightySixAsync(administrator, salmon.Name);
+
+        // Waited for rather than assumed, for the reason every menu wait in this suite is: the flip
+        // travels as a broadcast to a circuit nobody is touching, and reading once would be sampling a
+        // race. What is waited for is the CARD being refused, which is §7's half of the rule and the
+        // thing that makes the next step non-trivial.
+        await TableOrderJourneys.WaitForMenuAsync(
+            guest,
+            observed => observed.Any(card =>
+                card.Name.Contains(salmon.Name, StringComparison.Ordinal) && !card.IsAvailable),
+            InteractivityPatience,
+            "the salmon marked unavailable on the guest's open menu",
+            cancellationToken);
+
+        // The salmon's panel is still open from step (e) — _pickedMenuItemIdentifier is component state
+        // and going off the menu does not clear it. Choosing the pudding closes it, and that is the
+        // arrangement rather than a step: without it the next assertion would be satisfied by a panel
+        // that had simply never gone away, which is the shape of a scenario proving nothing.
+        await TableOrderJourneys.ChooseAsync(guest, pudding);
+
+        ChosenItemDetail? puddingPanel = await TableOrderJourneys.ReadChosenItemDetailAsync(guest);
+
+        Assert.NotNull(puddingPanel);
+        Assert.Equal(pudding.Name, puddingPanel.Name);
+
+        // (h) The way back in. ChooseAsync would refuse here and say why — §7 disabled that card — so
+        //     the second control is the only route, which is exactly the claim.
+        await TableOrderJourneys.InspectAsync(guest, salmon);
+
+        ChosenItemDetail? salmonPanel = await TableOrderJourneys.ReadChosenItemDetailAsync(guest);
+
+        Assert.NotNull(salmonPanel);
+        Assert.Equal(salmon.Name, salmonPanel.Name);
+
+        // The panel is showing the dish AS UNAVAILABLE, which is a branch no scenario had ever reached:
+        // before Stage 5c the only way to see it was for MenuChanged to deactivate an item under an
+        // already-open panel. Read by the term the markup declares rather than the one the stylesheet
+        // paints — that is F-113, and this assertion is the first caller this dictionary has ever had.
+        Assert.Equal("Not right now", salmonPanel.Facts["Available"]);
+
+        // (i) And the like is reachable and writable. False first, because it was withdrawn in (e) and
+        //     every claim below is a CHANGE from it.
+        Assert.False(await TableOrderJourneys.ReadChosenItemLikedAsync(guest));
+        Assert.True(await TableOrderJourneys.PressLikeAsync(guest, InteractivityPatience));
+
+        // (j) The write reached the database, not just the circuit — the same meeting of §11.1's write
+        //     and §11.4's read that (c2) made, now for a dish that is off the menu. A surface that had
+        //     opened a panel and toggled a field would pass everything above and fail here.
+        Assert.Equal(1, await AdministrationJourneys.ReadMenuIndexLikeCountAsync(
             administrator, salmon.Identifier));
     }
 
