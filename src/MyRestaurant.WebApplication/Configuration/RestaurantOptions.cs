@@ -21,6 +21,37 @@ public sealed class RestaurantOptions
     public const int MinimumTableDisplayPairingCodeMinutes = 1;
 
     /// <summary>
+    /// The floor under §11.8's registration budget (§13, §17, F-115).
+    ///
+    /// <para><b>This floor protects guests rather than the server, which is the opposite of every other
+    /// bound on this type.</b> The Argon2 floor exists so an operator cannot configure the hashing into
+    /// uselessness; this one exists so an operator cannot configure the *front door* into uselessness.
+    /// `/register` is partitioned on the client address, and over the tunnel from a venue's own wifi that
+    /// is one address for the whole dining room — so a small number here does not mean "strict", it means
+    /// a party of eight cannot all create accounts. Ten is the smallest value at which one table is
+    /// plausible; the default is far above it.</para>
+    /// </summary>
+    public const int MinimumGuestRegistrationAttemptsPerWindow = 10;
+
+    /// <summary>The floor under the window that budget is counted over (§13). One minute, as §4.2's.</summary>
+    public const int MinimumGuestRegistrationWindowMinutes = 1;
+
+    /// <summary>
+    /// The documented default permit count for §11.8 (§13, §17). Sixty per ten minutes is six a minute
+    /// sustained with the whole ten-minute budget available as a burst, which covers a full room turning
+    /// over with retries and leaves an anonymous caller a bounded row ceiling rather than none.
+    ///
+    /// <para><b>Named rather than spelled into the binding call</b> so the test asserting the default and
+    /// the binding read one constant. The window's default is not named the same way — see
+    /// <see cref="DefaultGuestRegistrationWindowMinutes"/> — because both are needed to state the
+    /// budget and a pair stated half in a constant and half in a literal is the shape F-56 is about.</para>
+    /// </summary>
+    public const int DefaultGuestRegistrationAttemptsPerWindow = 60;
+
+    /// <summary>The documented default window for §11.8's budget, in minutes (§13, §17).</summary>
+    public const int DefaultGuestRegistrationWindowMinutes = 10;
+
+    /// <summary>
     /// The default trusted WebAuthn origin patterns (TECHNICAL_SPECIFICATION §3.3, ADR-0005). Cloudflare
     /// Quick Tunnels hand out a random <c>*.trycloudflare.com</c> hostname per run, so trusting that
     /// wildcard lets passkeys work in a quick-tunnel demo without knowing the URL at startup. This gates
@@ -106,6 +137,17 @@ public sealed class RestaurantOptions
     public required int TableJoinTokenRotationSeconds { get; init; }
     public required int TableJoinGrantMinutes { get; init; }
     public required int TableDisplayPairingCodeMinutes { get; init; }
+
+    /// <summary>
+    /// How many `/register` attempts one client address may make per
+    /// <see cref="GuestRegistrationWindowMinutes"/> (§11.8, §13, §17, F-115). Read per request by
+    /// <see cref="Security.RateLimitedSurfaces"/>'s registration partitioner.
+    /// </summary>
+    public required int GuestRegistrationAttemptsPerWindow { get; init; }
+
+    /// <summary>The window <see cref="GuestRegistrationAttemptsPerWindow"/> is counted over (§13).</summary>
+    public required int GuestRegistrationWindowMinutes { get; init; }
+
     public required int Argon2MemoryKibibytes { get; init; }
     public required int Argon2Iterations { get; init; }
     public required int Argon2Parallelism { get; init; }
@@ -133,6 +175,14 @@ public sealed class RestaurantOptions
             TableJoinTokenRotationSeconds = ReadInt(configuration, "TABLE_JOIN_TOKEN_ROTATION_SECONDS", 60),
             TableJoinGrantMinutes = ReadInt(configuration, "TABLE_JOIN_GRANT_MINUTES", 10),
             TableDisplayPairingCodeMinutes = ReadInt(configuration, "TABLE_DISPLAY_PAIRING_CODE_MINUTES", 10),
+            GuestRegistrationAttemptsPerWindow = ReadInt(
+                configuration,
+                "GUEST_REGISTRATION_ATTEMPTS_PER_WINDOW",
+                DefaultGuestRegistrationAttemptsPerWindow),
+            GuestRegistrationWindowMinutes = ReadInt(
+                configuration,
+                "GUEST_REGISTRATION_WINDOW_MINUTES",
+                DefaultGuestRegistrationWindowMinutes),
             Argon2MemoryKibibytes = ReadInt(configuration, "ARGON2_MEMORY_KIBIBYTES", 65536),
             Argon2Iterations = ReadInt(configuration, "ARGON2_ITERATIONS", 3),
             Argon2Parallelism = ReadInt(configuration, "ARGON2_PARALLELISM", 1),
@@ -218,6 +268,16 @@ public sealed class RestaurantOptions
         if (TableDisplayPairingCodeMinutes < MinimumTableDisplayPairingCodeMinutes)
         {
             errors.Add($"TABLE_DISPLAY_PAIRING_CODE_MINUTES must be at least {MinimumTableDisplayPairingCodeMinutes} (was {TableDisplayPairingCodeMinutes}).");
+        }
+
+        if (GuestRegistrationAttemptsPerWindow < MinimumGuestRegistrationAttemptsPerWindow)
+        {
+            errors.Add($"GUEST_REGISTRATION_ATTEMPTS_PER_WINDOW must be at least {MinimumGuestRegistrationAttemptsPerWindow} (was {GuestRegistrationAttemptsPerWindow}). This surface is partitioned by client address, and a whole dining room can share one; a smaller budget refuses guests rather than attackers.");
+        }
+
+        if (GuestRegistrationWindowMinutes < MinimumGuestRegistrationWindowMinutes)
+        {
+            errors.Add($"GUEST_REGISTRATION_WINDOW_MINUTES must be at least {MinimumGuestRegistrationWindowMinutes} (was {GuestRegistrationWindowMinutes}).");
         }
 
         if (KitchenSubmissionReminderSeconds < 1)

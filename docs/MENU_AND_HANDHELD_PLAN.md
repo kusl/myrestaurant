@@ -1981,26 +1981,90 @@ join, for an arrangement this scenario already has standing.
 and the consequence Stage 5b-i recorded is discharged rather than carried. The menu enhancement's open list
 is empty for the second time, and this time nothing was deferred into it.
 
-**The next thing in this plan is Stage 6**, which is *not startable* and says why below. That has not
-changed: a comment is the first user-generated content in this system and it needs a rate-limiting slice
-with no menu in it, a `REQUIREMENTS.md` revision about guest privacy, and a moderation surface.
+**The next thing in this plan is Stage 6**, which is *not startable* and says why below. **One of its four
+prerequisites is discharged as of M6 Slice 62** — the rate-limiting slice with no menu in it, which landed
+on `/register` rather than on comments and is recorded as Stage 6a below. Three still block it: the
+`REQUIREMENTS.md` revision about guest privacy, the moderation surface, and §11.11's rendering rule.
+
+---
+
+## Stage 6a — the rate limiter takes a second policy — **landed, M6 Slice 62**
+
+**Prerequisite 1 of Stage 6, discharged, and it is the only thing in this plan with no menu in it.** The
+plan predicted this exactly — *"it needs a rate-limiting slice with no menu in it"* — and the slice went
+where the prediction said it would: not to comments, which do not exist, but to `/register`, which is the
+surface that needed a limit on its own merits and whose absence of one was already a recorded risk (§17,
+F-37). Comments inherit the **mechanism**, not the policy: when they land they add an entry to
+`RateLimitedSurfaces.All`, which is now a list rather than a line inside somebody else's extension method.
+
+### What was actually in the way, and it was not the policy
+
+**§17 had the whole thing written down and had had it written down since v1.1.** The ruling (no limit on
+`/register`), the reason it was not a two-line change (`RateLimiterOptions.OnRejected` and
+`RejectionStatusCode` are single-valued, so a second `AddRateLimiter` takes the refusal wording from the
+first and a refused registration answers *"too many pairing attempts"*), and the fix (`OnRejected`
+dispatching on the endpoint). Correct, all three, for eleven slices.
+
+**What was missing was a reader.** §17 is a list of *accepted risks*, and in that list an accepted risk and
+an unstarted repair are the same shape — F-37's ledger row said *no rate limit in v1, with the reason it is
+not a two-line addition recorded*, which reads as a decision somebody made. This document is what turned it
+back into work, by listing it as a prerequisite of something else. **That is worth noticing about this plan
+rather than about that section:** a plan naming a blocker is a stronger mechanism than a specification
+recording one, because a plan is read when somebody wants to do the next thing. The general habit went into
+§18 (an accepted risk whose paragraph names its own remedy is a *deferral*), and the finding is F-115.
+
+### The ruling Stage 6 inherits, and it is about a NAT rather than about a threat
+
+**`/register` is limited per client address, and over the tunnel a client address is a whole dining room.**
+Guests reach the page from the restaurant's own wifi through Cloudflare, so `UseForwardedHeaders` reports
+one public address for every one of them. §4.2's pairing limit — 5 per minute per address — has no such
+problem, because a member of staff installs one tablet; the same number here would refuse a party of eight.
+
+Two consequences follow, and **Stage 6 will face both again with a comment instead of an account**:
+
+- **The default is sized for a full room rather than against an attacker.** 60 attempts per 10 minutes,
+  configurable, because the right number is a property of the room and this repository cannot know it.
+- **The floor exists to protect guests, not the server.** Ten attempts minimum — the inverse of every
+  other bound in §13. Too loose costs spam rows, which F-37 accepted on the record and which hold no
+  capability; too tight costs a seated guest who cannot create the account they need in order to order
+  dinner, at a table where staff have no remedy and no diagnosis.
+
+**A comment's budget will not be this budget**, and Stage 6 should not copy the number. A comment is
+cheaper to write than an account is to create and there are many more of them per guest, so the shape of
+the question is the same — per-venue partition, generous default, floor protecting guests — and the
+arithmetic is not.
+
+### What is open after this stage
+
+**Three of Stage 6's four prerequisites**, unchanged and listed below: the `REQUIREMENTS.md` revision about
+guest privacy, the moderation surface, and §11.11's rendering rule. Nothing was deferred *into* the open
+list by this stage.
+
+**One thing only a browser can say**, and it is the same claim §4.2 has never had asserted either: that the
+Blazor endpoint for a static-SSR page carries `[EnableRateLimiting]` in its endpoint metadata, so the
+middleware finds the policy and the dispatch finds the name. Every assertion in this slice is about the
+list, the lookup and the tree; none of them proves a 429 was ever produced by a request. The pairing surface
+has run on that same unasserted assumption since Slice 22, which is why it is recorded here rather than
+treated as new risk.
 
 ---
 
 ## Stage 6 — comments, and what has to be settled first
 
-**Not started, and not startable.** This is the one item in the request that cannot be planned into a
-slice yet, and it is worth being precise about why rather than calling it "future work".
+**Not started, and one of four prerequisites now discharged (Stage 6a above, M6 Slice 62).** This is still
+the one item in the request that cannot be planned into a slice, and it is worth being precise about why
+rather than calling it "future work".
 
 A comment is the first **user-generated content** in this system. Every text field a guest can write today
 — a display name, a customization note — is read by staff. A comment is read by other guests. Four things
 follow, and three of them are edits to documents rather than to code.
 
-1. **Rate limiting, and it is a known wall.** §17 records that `/register` has no rate limit and states the
-   concrete reason it is not a two-line addition: a second naive `AddRateLimiter` policy hijacks §4.2's
-   single-valued rejection handler, so a refused registration would answer *"too many pairing attempts"* —
-   wrong, and deliberate-looking. Comments hit the identical wall. **This stage cannot land before that
-   ruling is revisited**, and revisiting it is a slice of its own with no menu in it.
+1. ~~**Rate limiting, and it is a known wall.**~~ **Discharged, M6 Slice 62 — Stage 6a above.** The wall was
+   real: a second naive `AddRateLimiter` policy hijacked §4.2's single-valued rejection handler, so a refused
+   registration would have answered *"too many pairing attempts"* — wrong, and deliberate-looking. The
+   limiter now takes policies from a list in which each carries its own refusal sentence, and `OnRejected`
+   dispatches on the endpoint. **A comment adds an entry to that list.** What Stage 6 still has to decide is
+   the *number*, and Stage 6a's ruling about the partition transfers while its arithmetic does not.
 1b. **One of Stage 6's questions is already answered.** *Does it require having ordered the item* is the
    same question for a comment as for a like, and Stage 5a ruled on it: **no**, because
    `order_current_line` records what somebody ordered rather than what they ate and a table shares. That
@@ -2019,6 +2083,10 @@ follow, and three of them are edits to documents rather than to code.
    default HTML encoding and must never reach a `MarkupString`; §11.11's `script-src` carries no
    `'unsafe-inline'`, which is what F-49 built it for. `ContentSecurityPolicyContractTests` computes what
    the application loads by scanning the tree, so it will notice a new inline handler on its own.
+
+**The recommendation below was written before Stage 5 landed and before Stage 6a discharged prerequisite 1.
+It is kept rather than rewritten, because the argument in it is still the argument** — three of four
+prerequisites stand, and the sentence about what comments cost is unchanged by one of the four going away.
 
 **Recommendation: do Stage 5b and stop.** Likes answer "which of these is popular" with no new question
 attached. Comments answer a question nobody has asked for yet at the cost of a rate-limiting slice, a

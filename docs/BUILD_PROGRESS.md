@@ -5448,3 +5448,238 @@ starts it successfully.** Carried.
 
 **Nothing decides when the next tranche of the log moves to the archive.** Carried. `BUILD_PROGRESS.md` is
 past five thousand three hundred lines, and this entry is the longest addition in six slices.
+
+---
+
+# M6 Slice 62 — the wall that was documented for eleven slices, and the refusal the endpoint now decides
+
+**Session started with the reconstruction ritual, and it caught drift for the fifth time.** The tree was
+rebuilt from `dump.txt` with SHA-256 verified per file: **374 of 375 verified, one elided by the exporter
+(`LICENSE`, metadata and digest only), zero unexplained mismatches.** Two apparent mismatches, both
+accounted for and both an artefact of the reader rather than of the dump — `LICENSE`, whose metadata block
+was briefly reconstructed as content, and `RestaurantTimeTests.cs`, which is the last file in the dump and
+had swallowed the `DUMP SUMMARY` footer; trimmed, its digest then matched
+`a378f355cbe0…` exactly.
+
+**The drift was one slice, and it was the session's own memory that was behind.** Carried state said Slice
+60, specification v1.45, 1281 predicted, `MinimumCountedClasses` 33, highest finding F-113. The tree at
+commit `ff2155d` said **Slice 61, v1.46, 1283 predicted, floor 34, F-114**. Nothing was authored before
+that was established.
+
+## What this slice is, and why it is a menu slice with no menu in it
+
+`docs/MENU_AND_HANDHELD_PLAN.md` has had an **empty open list since Slice 60** — every read and write
+`0008` introduced has a caller, and no verb in §7 lacks a surface. The only thing left in the plan is
+**Stage 6, comments**, recorded as *not startable* on four prerequisites, of which the first reads: a
+comment needs a rate limit, and §17 says the rate limiter cannot take a second policy. The plan also
+predicted the shape of the fix — *"a rate-limiting slice with no menu in it"*.
+
+So this is that slice. It lands on `/register` rather than on comments, because `/register` is the surface
+that needed a limit **on its own merits** and whose absence of one was already a recorded risk (F-37),
+and because a limit on a surface that does not exist yet is not testable. Comments inherit the
+**mechanism**, not the policy.
+
+## F-115, and the finding is the eleven slices rather than the arrangement
+
+§17 has said since **v1.1** that `/register` has no rate limit; that the reason it is not a two-line
+addition is that `RateLimiterOptions.OnRejected` and `RejectionStatusCode` are single-valued, so a second
+`AddRateLimiter` silently takes the refusal wording from the first and a refused registration would answer
+with §4.2's *"Too many pairing attempts from this device"*; and that doing it properly means `OnRejected`
+dispatching on the endpoint. **Every one of those three was correct when written and stayed correct.**
+
+The limiter meanwhile was configured inside `AddRestaurantDisplays`, where the only policy happened to
+belong — which made a display-device extension the owner of the rejection handler for every surface that
+might ever acquire a limit, and put the wall in a file neither `/display/pair` nor `/register` mentions.
+
+**What earns this a number is not the arrangement, it is that nothing could tell a documented wall from a
+closed one.** §17 is a list of *accepted risks*, and in that list an accepted risk and an unstarted repair
+are the same shape. F-37's ledger row said *no rate limit in v1, with the reason it is not a two-line
+addition recorded* — which reads as a decision somebody made, not as work in a queue. It surfaced only
+because a **plan** named it as prerequisite 1 of something else, which is the third instance of a pattern
+F-35 and F-37 already established: found by somebody trying to *use* the thing.
+
+## The mechanism, in one sentence per decision
+
+**One `AddRateLimiter`**, owned by `Security/RateLimitingServiceCollectionExtensions.cs` rather than by
+any surface's extension method, reading nothing but `RateLimitedSurfaces.All`.
+
+**A policy with no sentence does not compile.** `RateLimitedSurface` has three `required` members —
+policy name, refusal sentence, partitioner — so the thing §17 was afraid of is unrepresentable rather
+than discouraged, and that cost nothing to get.
+
+**The dispatch reads the middleware's own metadata.** `OnRejected` resolves the refused policy through
+`GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName` — *the same read the
+middleware performed one instant earlier to select that policy*. This is not a heuristic recovering lost
+information: a lookup that failed would be describing a request that could not be being refused.
+
+**The fallback is about honesty rather than coverage.** It is kept because
+`EnableRateLimitingAttribute.PolicyName` is nullable and because a global limiter would refuse with no
+attribute in scope — and its stated property is that an unidentifiable policy is answered **vaguely,
+never wrongly**. §17's objection was never to a vague sentence; it was to a wrong one that looks
+deliberate.
+
+## Two rulings about where a name lives, and one about a keyword
+
+**The pairing policy name moved; the pairing budget did not.** A policy name is a key three unrelated
+readers agree on (the page's attribute, the registration, the dispatch) and there are now two of them, so
+the list is its only honest home. The budget is §4.2's normative number about one area with no operator
+decision in it, so it stayed on `DisplayRoutes`. That line — *names the limiter owns move, numbers §4.2
+owns stay* — is the reason `DisplayPair.razor` changed in this slice and `DisplayRoutes`'s two integers
+did not.
+
+**`GenericRefusal` is `static readonly` and not `const`, and that keyword is load-bearing.** It keeps the
+set of public string *literals* on the type equal to the set of policy names, which is what lets the gate
+assert *every public string constant here is a policy* rather than *every one whose name ends in a word
+somebody chose*. A convention would have made it a gate about spelling; the keyword makes it a gate about
+the type — F-67's use/mention distinction one register down.
+
+## The budget, which is a ruling about a NAT and not about a threat model
+
+**The partition is a client address, and over the tunnel a client address is a whole dining room.** Guests
+reach `/register` from the restaurant's own wifi through Cloudflare, so `UseForwardedHeaders` faithfully
+reports **one public address for every one of them**: a per-address limit on this surface is a
+**per-venue** limit. §4.2's surface has no such property — a member of staff installs one tablet — which
+is why 5 per minute is right there and would be indefensible here.
+
+Two consequences, both of which look like laxity and are not:
+
+- **The default is sized for a full room rather than against an attacker.** 60 attempts per 10 minutes;
+  six a minute sustained with the whole window available as a burst. There is no secret to guess at this
+  endpoint, so the limit is a **volume ceiling**, and F-37's finding stands that the worst outcome of
+  exceeding it is *rows* rather than access.
+- **The floor protects guests, not the server.** Ten attempts minimum — the inverse of every other bound
+  in §13, and stated as such in the constant's own summary. The costs are asymmetric: too loose is spam
+  rows, accepted on the record by F-37 and holding no capability; too tight is a *seated guest who cannot
+  create the account they need in order to order dinner*, at a table where staff have no remedy and no
+  diagnosis, because the browser shows a plain-text refusal and nothing anywhere names the knob.
+
+**Configuration rather than a constant, because the right number is a property of the room** — which this
+repository cannot know and must not guess on an operator's behalf. That asymmetry with pairing's constant
+is written into `RateLimitedSurfaces`' summary so it is not tidied into symmetry later.
+
+## What this slice deliberately did NOT do
+
+**No `REQUIREMENTS.md` revision.** Revs 3 through 6 each added exactly one cross-cutting §8 principle for
+**new intent**. A limit on `/register` is a mechanism catching up to intent §17 had already recorded, so
+this is rev 2's reasoning rather than rev 3's. Nothing in that document moved.
+
+**Stage 6 is not struck through.** It had four prerequisites and this discharges one. The plan now reads
+*one of four discharged*, gains **Stage 6a** recording what landed, and strikes through prerequisite 1
+only. Striking the stage would claim it is startable, and it is not: the guest-privacy revision, the
+moderation surface and §11.11's rendering rule all still block it.
+
+**No comment budget was chosen.** Stage 6a says explicitly that a comment's number will not be this
+number — the *shape* of the question transfers (per-venue partition, generous default, floor protecting
+guests) and the arithmetic does not.
+
+**`0008_menu_item_reactions.sql` line 57 was left alone.** The hygiene emulation found a trailing space
+there. It is pre-existing, it is **outside the tree gate by that gate's own explicit ruling** — gate 2
+fails only on lines made *entirely* of whitespace, because two trailing spaces in Markdown are a hard line
+break and forbidding those would be wrong about Markdown rather than right about whitespace — and
+repairing it here would be an unexplained edit to a migration in a slice about rate limiting. Recorded,
+not fixed, and not a finding.
+
+## §18 arithmetic
+
+| Where | Tests | Running |
+| --- | --- | --- |
+| Baseline — **carried from Slice 61, predicted, not measured** | — | 1283 |
+| `DisplaysWiringTests` — the limiter fact moves out | −1 | 1282 |
+| `RateLimitingContractTests` (new) — six facts | +6 | 1288 |
+| `RestaurantOptionsTests` — two facts, two theories at three and two cases | +8 | 1296 |
+
+**Predicted 1296**, and the §16.3 suite stays at **21** — no scenario was touched.
+
+**The theory arithmetic is the part to read twice.** Five new attributes produce **eight** tests, so a run
+returning **1293** means the theories were counted as facts rather than that anything failed. And the
+baseline was carried rather than measured for the second consecutive slice: **1281 means
+`RateLimitingContractTests` did not execute, 1279 means Slice 61's two facts are also missing**, and
+anything else needs Slice 61 reconciled before this slice is blamed.
+
+## What was verified, and what was not
+
+**Verified mechanically, all green.** The §16.4 counted-class census was emulated over the edited
+specification: **35 classes, no ambiguity, no disagreement between any claimed count and its file**, with
+`MinimumCountedClasses` moved 34 → 35 in this slice per F-73's surviving habit — and the emulation is
+**exact at the floor**, not merely above it. The Markdown table gate was emulated with the real
+unescaped-pipe splitter over every tracked document: **48 tables, 460 rows, clean.** The version gate was
+emulated: header **1.47**, newest entry **1.47**, **48** entries strictly descending, and
+`REQUIREMENTS.md` still self-consistent at rev 6. The configuration-surface gate was emulated in all five
+of its assertions: **19 keys** read out of `FromConfiguration`, none bound twice, every one of them
+present in `compose.yaml`'s `web` environment mapping, in `.env.example`, and in §13's table, and every
+name a refusal message in `Validate()` uses is a name the binding method reads. The compose-substitution
+gate was emulated: every variable interpolated in that mapping is assigned in `.env.example`. Byte hygiene
+was checked against the repository's **own** rule over all 373 authored files — no CR, exactly one final
+newline, no line blank-but-not-empty — and against the stricter `.editorconfig` rule over this slice's
+seventeen files only. The standing authoring scans ran over every changed file: no `await` in an
+interpolated hole (CS4007), no plain literal in a `string.Create` chain (CS1620), no `section` identifier
+in any Razor file.
+
+**Two of those scans were wrong before they were right, and both are worth recording.** The CS4007 scan
+initially matched *any* brace block containing `await`, which is every async method in the tree; it now
+walks each `$"…"` literal and inspects only its holes. The `@section` scan initially ran over `.cs` files
+and reported two contract tests with a perfectly legal local named `section`; RZ2005 is a **Razor**
+diagnostic, so the scan is now scoped to `.razor`. A gate emulation that reports findings on a correct
+tree is F-41 from the other direction, and both would have wasted a real session.
+
+**The census gate caught a defect in this slice's own authoring, which is the best thing that happened
+here.** The first insertion of §16.4's new paragraph put a blank line before it and none after, so it
+fused with the compose-dependency paragraph below. The emulation reported
+`ambiguous: [RateLimitingContractTests.cs, ComposeDependencyContractTests.cs]` and the count fell to
+**33** — the new paragraph uncounted *and* an existing one knocked out of the census. That is F-72's
+mechanism exactly: nothing was wrong in the source, it was wrong only once **rendered**.
+
+**All six new assertions were proven sensitive by planted defects, none vacuous.** Each assertion was
+re-implemented over the same inputs the C# reads — the surface list parsed out of `RateLimitedSurfaces.cs`,
+the tree scan walking the same files with the same pattern — then run against the tree and against nine
+planted defects. Deleting a surface from the list was reported by assertions 1 and 5; giving both surfaces
+the pairing sentence, and giving registration the fallback sentence, by assertion 2; a policy constant no
+entry registers, by assertion 5; the page opting in with a bare string literal, and with an unregistered
+member, by assertion 4; and leaving `RejectionStatusCode` at the framework default, never assigning
+`OnRejected`, and adding policies from anywhere but the list, all three by assertion 6.
+
+**Not verified, and one of these is a gap in the emulation rather than in the tree.** Nothing was compiled
+and nothing was run (F-71's standing caveat). The specific risks, in order.
+
+**`Register.razor` is the largest**, because Razor is where this tree's compiler errors live: it gained two
+`@using` directives and an `@attribute` whose argument is a member access on a type in a namespace that
+page had never imported. F-104 and F-81 were both one character in a `.razor` file.
+
+**Assertion 3's sensitivity is argued rather than demonstrated.** The emulation *reimplements*
+`RefusalFor` rather than executing it, so planting into that method proves the emulation sensitive and not
+the C#. What was checked instead is textual and weaker: the method returns `GenericRefusal` for null and
+empty, matches with `StringComparison.Ordinal`, contains no case-insensitive comparison, and falls through
+to `GenericRefusal` after the loop. The assertion itself is the strongest one in the class on paper and
+the least proven here.
+
+**No assertion anywhere in this repository proves that a static-SSR Razor endpoint carries
+`[EnableRateLimiting]` in its endpoint metadata.** Everything asserted here is about the list, the lookup,
+and the tree; none of it proves a 429 was ever produced by a request, or that the middleware ever selected
+either policy. **If that assumption were false, both surfaces are unlimited and every test still passes** —
+and `/display/pair` has run on it since Slice 22, which is why it is recorded as carried rather than as
+new risk.
+
+**The registration partitioner resolves `RestaurantOptions` from `RequestServices` per request**, which is
+correct for a singleton and untested: nothing here proves the service is resolvable from that scope at the
+moment the limiter runs, and a failure there is an exception inside a rejection path.
+
+**Whether `Security` referencing `Configuration` and `Displays` creates a folder-convention cycle** was
+not checked. It is legal C# — one assembly — but this tree has a dependency direction it takes seriously
+and no gate expresses the intra-assembly half of it.
+
+## Open items carried
+
+**`/kitchen` has no §16.3 scenario at all.** Carried, and still the largest end-to-end gap in the
+application by a clear margin.
+
+**The wide layout stacks each row's three controls** on the administration index. Carried on two registers
+since Slice 47.
+
+**Nothing in this repository measures §11.1 at 375px.** Carried from Slice 60.
+
+**Nothing decides when the next tranche of the log moves to the archive.** Carried, and now more pressing:
+`BUILD_PROGRESS.md` is past five thousand six hundred lines.
+
+**Three of Stage 6's four prerequisites.** New, and the only open item this slice created — the
+`REQUIREMENTS.md` revision about guest privacy, the moderation surface, and §11.11's rendering rule. The
+menu enhancement's own open list is still empty.

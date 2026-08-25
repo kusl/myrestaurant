@@ -1,8 +1,11 @@
 @page "/register"
 @attribute [ExcludeFromInteractiveRouting]
+@attribute [EnableRateLimiting(RateLimitedSurfaces.GuestRegistrationPolicy)]
 @using MyRestaurant.Domain.Identifiers
 @using MyRestaurant.Domain.Time
 @using Microsoft.AspNetCore.DataProtection
+@using Microsoft.AspNetCore.RateLimiting
+@using MyRestaurant.WebApplication.Security
 @inject IGuestRegistration Registration
 @inject IPasswordHasher<Person> PasswordHasher
 @inject SignInManager<Person> SignInManager
@@ -46,7 +49,16 @@
 
    No TOTP step, unlike /setup. §3.4 pairs the authenticator with the password path for staff and
    administrators; a guest is never required to hold one and may enroll voluntarily later from
-   /account/enroll-totp. No role is granted either: a guest is the absence of a grant (§3.7). *@
+   /account/enroll-totp. No role is granted either: a guest is the absence of a grant (§3.7).
+
+   RATE LIMITED as of Slice 62 (§11.8, §13, §17, F-115), by the policy named in the attribute above.
+   Read the budget as a volume ceiling, not as a brute-force defence: there is no secret to guess here,
+   and F-37's ruling that the worst outcome of an unlimited /register is ROWS rather than access still
+   stands. What matters for anybody editing this page is the partition — it is the client address, and
+   over the tunnel from a restaurant's own wifi that is ONE address for the entire dining room. So the
+   budget is sized for a full room rather than against an attacker, and it is configurable because the
+   right number is a property of the room. Tightening it is not a free security improvement: it is
+   traded against a seated guest who cannot create the account they need in order to order dinner. *@
 
 <PageTitle>Create an account</PageTitle>
 

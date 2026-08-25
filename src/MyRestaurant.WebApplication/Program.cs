@@ -136,12 +136,19 @@ builder.Services.AddRestaurantIdentity(options);
 builder.Services.AddRestaurantTables();
 
 // Display devices (§4.2, §11.5): the read-only IDisplayDeviceDirectory the administration devices page
-// lists from, the transactional IDisplayDevicePairing behind issue/redeem/revoke, the
-// IDisplayDeviceAuthenticator the request middleware and the live surface re-validate with, and the
-// 5-per-minute-per-IP rate-limiter policy /display/pair opts into. A display is a device principal, not
-// a person, so it is wired apart from AddRestaurantIdentity — but it renders the rotating QR through
-// AddRestaurantTables' ITableJoinTokens, hence the position after it.
+// lists from, the transactional IDisplayDevicePairing behind issue/redeem/revoke, and the
+// IDisplayDeviceAuthenticator the request middleware and the live surface re-validate with. A display is
+// a device principal, not a person, so it is wired apart from AddRestaurantIdentity — but it renders the
+// rotating QR through AddRestaurantTables' ITableJoinTokens, hence the position after it.
 builder.Services.AddRestaurantDisplays();
+
+// Endpoint rate limiting (§4.2, §11.8, §17, F-115). ONE AddRateLimiter for the whole application, and
+// the singular is the design rather than a convention: OnRejected and RejectionStatusCode are properties
+// of the limiter, not of a policy, so a second call anywhere here would silently take the refusal wording
+// away from the first — which is exactly what kept /register unlimited for eleven slices while the fix
+// sat written down in §17. Every policy comes out of RateLimitedSurfaces.All, which cannot hold a policy
+// without a sentence of its own. This used to be a line inside AddRestaurantDisplays.
+builder.Services.AddRestaurantRateLimiting();
 
 // Menu (read side) and orders (§6, §7, §8.3, §9, §12): the IMenuDirectory the staging area and the "86"
 // panel read; IOrderMutations, the single transaction implementing the §6.6 locking protocol;
@@ -232,11 +239,13 @@ app.UseMiddleware<PublicOriginMiddleware>();
 // is a header nobody sent. Nothing above this line can answer a request — UseForwardedHeaders and
 // PublicOriginMiddleware both rewrite and call on — so those two constraints pick one position.
 app.UseMiddleware<SecurityHeadersMiddleware>();
-// Endpoint rate limiting (§4.2: /display/pair is anonymous and limited to 5 attempts/minute/IP). It
-// MUST sit after UseForwardedHeaders, because the limiter partitions on the connection's remote
+// Endpoint rate limiting. Two anonymous surfaces carry a policy: /display/pair (§4.2, 5
+// attempts/minute/IP) and /register (§11.8, configurable, sized for a dining room rather than a person).
+// It MUST sit after UseForwardedHeaders, because both partitioners key on the connection's remote
 // address — before the forwarded headers are applied that address is the proxy's, and every device in
-// the building would share one bucket. Only endpoints carrying [EnableRateLimiting] are affected;
-// there is no global limiter, so everything else passes straight through.
+// the building would share one bucket. Only endpoints carrying [EnableRateLimiting] are affected; there
+// is no global limiter, so everything else passes straight through — which is also why the refusal
+// dispatch can rely on an endpoint being in scope when it runs (F-115).
 app.UseRateLimiter();
 app.UseStaticFiles();
 app.UseAuthentication();

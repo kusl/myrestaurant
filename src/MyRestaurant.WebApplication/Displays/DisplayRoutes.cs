@@ -2,8 +2,12 @@ namespace MyRestaurant.WebApplication.Displays;
 
 /// <summary>
 /// The routes and limits of the display area (TECHNICAL_SPECIFICATION §4.2, §11.5), in one place so the
-/// pages, the middleware, the rate-limiter registration, and the tests cannot drift apart — the same
-/// role <see cref="Identity.AccountRoutes"/> plays for the account surfaces.
+/// pages, the middleware, the rate-limiter partitioner, and the tests cannot drift apart.
+///
+/// <para>The pairing <em>policy name</em> is not here; it moved to
+/// <see cref="Security.RateLimitedSurfaces"/> in Slice 62 when a second surface acquired a limit
+/// (F-115). The pairing <em>budget</em> below stayed, because it is §4.2's number about this area
+/// rather than a key shared with another one.</para>
 /// </summary>
 public static class DisplayRoutes
 {
@@ -20,10 +24,16 @@ public static class DisplayRoutes
     /// <summary>The Blazor circuit endpoint, which a paired display's interactive surface runs over.</summary>
     public const string BlazorCircuit = "/_blazor";
 
-    /// <summary>The rate-limiter policy name applied to <see cref="Pair"/> (§4.2).</summary>
-    public const string PairingRateLimitPolicy = "display-pairing";
-
-    /// <summary>§4.2: pairing is rate-limited to 5 attempts per minute per IP address.</summary>
+    /// <summary>
+    /// §4.2: pairing is rate-limited to 5 attempts per minute per IP address.
+    ///
+    /// <para>The <em>budget</em> is here and the <em>policy name</em> is not, and the line between them
+    /// is deliberate (F-115). This number is §4.2's, stated normatively about this surface, and there is
+    /// no operator decision in it — a member of staff installs a tablet, once. The policy name is the key
+    /// three unrelated readers agree on (the page's attribute, the limiter registration, and the refusal
+    /// dispatch), and once a second surface acquired a limit the only honest home for either name was the
+    /// list of them: <see cref="Security.RateLimitedSurfaces.PairingPolicy"/>.</para>
+    /// </summary>
     public const int PairingAttemptsPerWindow = 5;
 
     /// <summary>The window <see cref="PairingAttemptsPerWindow"/> is counted over.</summary>

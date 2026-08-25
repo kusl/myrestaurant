@@ -1,9 +1,6 @@
 using System.Data.Common;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using MyRestaurant.DataAccess;
 using MyRestaurant.DataAccess.Displays;
 using MyRestaurant.Domain.Identifiers;
@@ -19,9 +16,15 @@ namespace MyRestaurant.WebApplication.Tests.Displays;
 /// <see cref="DisplaysServiceCollectionExtensions.AddRestaurantDisplays"/> (TECHNICAL_SPECIFICATION
 /// §4.2): the read-only <see cref="IDisplayDeviceDirectory"/>, the transactional
 /// <see cref="IDisplayDevicePairing"/>, and the <see cref="IDisplayDeviceAuthenticator"/> all resolve to
-/// their concrete implementations, and the pairing rate limiter is registered. Constructing them opens
-/// no connection (they only capture the connection factory, clock, and identifier factory), so this
-/// resolves without a database — mirroring the resolvability facts in <c>TablesWiringTests</c>.
+/// their concrete implementations. Constructing them opens no connection (they only capture the
+/// connection factory, clock, and identifier factory), so this resolves without a database — mirroring
+/// the resolvability facts in <c>TablesWiringTests</c>.
+///
+/// <para>The pairing rate limiter used to be asserted here, because it used to be registered here. Both
+/// moved in Slice 62 (<b>F-115</b>): the limiter's rejection handler is single-valued and therefore not a
+/// display concern, and asking this extension for <c>RateLimiterOptions</c> now would resolve a framework
+/// default and assert nothing. The claim lives in <c>Security/RateLimitingContractTests.cs</c>. §4.2's
+/// budget is still asserted below, since <c>DisplayRoutes</c> still carries it.</para>
 /// </summary>
 public sealed class DisplaysWiringTests
 {
@@ -60,28 +63,12 @@ public sealed class DisplaysWiringTests
     }
 
     [Fact]
-    public void RateLimiter_IsRegisteredAndRefusesWithTooManyRequests()
-    {
-        using ServiceProvider provider = BuildProvider();
-
-        // AddRateLimiter is what makes app.UseRateLimiter() legal; without it the middleware throws at
-        // startup. Resolving the options proves the call happened and pins the refusal status: the
-        // framework default is 503, which would misreport a brute-force block as a sick server.
-        RateLimiterOptions limiter = provider.GetRequiredService<IOptions<RateLimiterOptions>>().Value;
-
-        Assert.Equal(StatusCodes.Status429TooManyRequests, limiter.RejectionStatusCode);
-        Assert.NotNull(limiter.OnRejected);
-
-        // No global limiter: only endpoints carrying [EnableRateLimiting] are affected, so nothing else
-        // in the application silently acquires a budget.
-        Assert.Null(limiter.GlobalLimiter);
-    }
-
-    [Fact]
     public void PairingRateLimit_MatchesTheSpecifiedBudget()
     {
         // §4.2: "/display/pair (anonymous; rate-limited 5 attempts/minute/IP)". The policy body is not
         // publicly inspectable, so the numbers are pinned where the policy and the page both read them.
+        // The budget stayed on DisplayRoutes when the policy NAME moved to RateLimitedSurfaces (F-115):
+        // this is §4.2's number about this area, not a key shared with another surface.
         Assert.Equal(5, DisplayRoutes.PairingAttemptsPerWindow);
         Assert.Equal(TimeSpan.FromMinutes(1), DisplayRoutes.PairingRateLimitWindow);
         Assert.Equal("/display/pair", DisplayRoutes.Pair);

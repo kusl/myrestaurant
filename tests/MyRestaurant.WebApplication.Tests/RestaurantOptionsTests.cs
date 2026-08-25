@@ -254,6 +254,73 @@ public sealed class RestaurantOptionsTests
         Assert.Empty(options.Validate());
     }
 
+    // --- the guest registration budget (§11.8, §13, §17, F-115) -----------------------------------
+
+    /// <summary>
+    /// The documented default (§13) is what an unconfigured process gets, and it is read from the
+    /// constants rather than restated — the pair being what states the budget, so half of it in a literal
+    /// would be F-56's shape.
+    /// </summary>
+    [Fact]
+    public void FromConfiguration_GuestRegistrationBudget_UsesTheDocumentedDefault()
+    {
+        RestaurantOptions options = RestaurantOptions.FromConfiguration(EmptyConfiguration());
+
+        Assert.Equal(
+            RestaurantOptions.DefaultGuestRegistrationAttemptsPerWindow,
+            options.GuestRegistrationAttemptsPerWindow);
+        Assert.Equal(
+            RestaurantOptions.DefaultGuestRegistrationWindowMinutes,
+            options.GuestRegistrationWindowMinutes);
+        Assert.Empty(options.Validate());
+
+        // The default has to be defensible as a number and not only as a constant, because the whole
+        // ruling is that it is sized for a dining room: sixty over ten minutes is six a minute
+        // sustained. A future edit that halves it should have to change this line and read why.
+        Assert.Equal(60, RestaurantOptions.DefaultGuestRegistrationAttemptsPerWindow);
+        Assert.Equal(10, RestaurantOptions.DefaultGuestRegistrationWindowMinutes);
+    }
+
+    [Fact]
+    public void FromConfiguration_ReadsTheGuestRegistrationBudget()
+    {
+        RestaurantOptions options = RestaurantOptions.FromConfiguration(ConfigurationWith(new()
+        {
+            ["GUEST_REGISTRATION_ATTEMPTS_PER_WINDOW"] = "240",
+            ["GUEST_REGISTRATION_WINDOW_MINUTES"] = "30",
+        }));
+
+        Assert.Equal(240, options.GuestRegistrationAttemptsPerWindow);
+        Assert.Equal(30, options.GuestRegistrationWindowMinutes);
+        Assert.Empty(options.Validate());
+    }
+
+    /// <summary>
+    /// <b>This floor protects guests, not the server</b> — the inverse of every other bound on this type,
+    /// and the reason it is asserted rather than left to taste. `/register` is partitioned by client
+    /// address and a venue's whole dining room shares one, so a small budget here does not mean strict,
+    /// it means a party of eight cannot all create accounts. Nine is refused; ten is the documented
+    /// floor and is accepted.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(9)]
+    public void Validate_GuestRegistrationAttemptsBelowTheFloor_IsRejected(int attempts)
+        => Assert.NotEmpty(Build(registrationAttempts: attempts).Validate());
+
+    [Fact]
+    public void Validate_GuestRegistrationAttemptsAtTheFloor_IsAccepted()
+        => Assert.Empty(
+            Build(registrationAttempts: RestaurantOptions.MinimumGuestRegistrationAttemptsPerWindow)
+                .Validate());
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Validate_GuestRegistrationWindowBelowTheFloor_IsRejected(int windowMinutes)
+        => Assert.NotEmpty(Build(registrationWindowMinutes: windowMinutes).Validate());
+
     private static IConfiguration EmptyConfiguration() => new ConfigurationBuilder().Build();
 
     private static IConfiguration ConfigurationWith(Dictionary<string, string?> values)
@@ -270,6 +337,8 @@ public sealed class RestaurantOptionsTests
         int rotationSeconds = 60,
         int grantMinutes = 10,
         int pairingMinutes = 10,
+        int registrationAttempts = RestaurantOptions.DefaultGuestRegistrationAttemptsPerWindow,
+        int registrationWindowMinutes = RestaurantOptions.DefaultGuestRegistrationWindowMinutes,
         int argon2Memory = 65536,
         int argon2Iterations = 3,
         int argon2Parallelism = 1,
@@ -290,6 +359,8 @@ public sealed class RestaurantOptionsTests
             TableJoinTokenRotationSeconds = rotationSeconds,
             TableJoinGrantMinutes = grantMinutes,
             TableDisplayPairingCodeMinutes = pairingMinutes,
+            GuestRegistrationAttemptsPerWindow = registrationAttempts,
+            GuestRegistrationWindowMinutes = registrationWindowMinutes,
             Argon2MemoryKibibytes = argon2Memory,
             Argon2Iterations = argon2Iterations,
             Argon2Parallelism = argon2Parallelism,
