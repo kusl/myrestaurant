@@ -188,7 +188,7 @@ public sealed class DocumentationCommentContractTests
 
         DocumentationComment[] stacked = [.. ReadDocumentationComments(defect)];
 
-        Assert.Equal(1, stacked.Length);
+        Assert.Single(stacked.Length);
         Assert.Equal(2, stacked[0].SummaryCount);
 
         // The escape. Every repair for F-114 writes the tag this way when explaining what it repaired, so
