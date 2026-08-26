@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Playwright;
 
 namespace MyRestaurant.EndToEnd.Tests.Harness;
@@ -103,6 +104,8 @@ internal static class TableOrderJourneys
         "#table-order-surface div.order-menu-detail button.order-menu-like";
 
     private const string RemovalCheckboxSelector = "#table-order-surface label.order-line-remove";
+
+    private const string UnavailableMarkSelector = "#table-order-surface p.order-line-warning";
 
     private const string TotalsGroupSelector = "#table-order-surface dl.order-totals > div";
 
@@ -675,10 +678,29 @@ internal static class TableOrderJourneys
     {
         ArgumentNullException.ThrowIfNull(page);
 
+        string[] selectors =
+        [
+            BasketLineSelector,
+            BasketRemovalSelector,
+            UnavailableMarkSelector,
+        ];
+
+        JsonElement? evaluated = await page.EvaluateAsync(CountingScript, selectors);
+
+        if (evaluated is not { ValueKind: JsonValueKind.Array } counted
+            || counted.GetArrayLength() != selectors.Length)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Counting the basket returned no reading for {selectors.Length} selector(s), so"
+                    + $" this reading is of no instant at all; the browser is at '{page.Url}'."));
+        }
+
         return new BasketContents(
-            await page.Locator(BasketLineSelector).CountAsync(),
-            await page.Locator(BasketRemovalSelector).CountAsync(),
-            await page.Locator($"{SurfaceSelector} p.order-line-warning").CountAsync());
+            counted[0].GetInt32(),
+            counted[1].GetInt32(),
+            counted[2].GetInt32());
     }
 
     internal static async Task<string?> ReadPruneNoticeAsync(IPage page)
@@ -1368,4 +1390,8 @@ internal static class TableOrderJourneys
             CultureInfo.InvariantCulture,
             $"data-live='{live ?? "absent"}', data-loaded='{loaded ?? "absent"}'");
     }
+
+    private const string CountingScript = """
+        (selectors) => selectors.map((selector) => document.querySelectorAll(selector).length)
+        """;
 }

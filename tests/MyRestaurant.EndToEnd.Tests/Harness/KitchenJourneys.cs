@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Playwright;
 using MyRestaurant.WebApplication.Orders;
 
@@ -25,6 +26,16 @@ internal static class KitchenJourneys
     private const string MenuItemSelector = "#kitchen-board-surface ul.kitchen-menu > li.kitchen-menu-item";
 
     private const string AlertBadgeSelector = "#kitchen-board-surface button.kitchen-alert-badge";
+
+    private const string UnseenAlertsAttribute = "data-unseen-alerts";
+
+    private const string UnseenRemindersAttribute = "data-unseen-reminders";
+
+    private const string LineQuantitySelector = "span.kitchen-line-quantity";
+
+    private const string LineNameSelector = "span.kitchen-line-name";
+
+    private const string LineNoteSelector = "p.kitchen-line-note";
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
@@ -72,57 +83,78 @@ internal static class KitchenJourneys
     {
         ArgumentNullException.ThrowIfNull(page);
 
-        ILocator surface = page.Locator(SurfaceSelector).First;
+        string[] names =
+        [
+            SurfaceSelector,
+            UnseenAlertsAttribute,
+            UnseenRemindersAttribute,
+            PendingLineSelector,
+            LineQuantitySelector,
+            LineNameSelector,
+            LineNoteSelector,
+        ];
 
-        int unseenCount = await ReadCountAttributeAsync(
-            surface, "data-unseen-alerts", nameof(KitchenAlertState.UnseenCount));
+        JsonElement? evaluated = await page.EvaluateAsync(BoardReadingScript, names);
 
-        int unseenReminderCount = await ReadCountAttributeAsync(
-            surface,
-            "data-unseen-reminders",
+        if (evaluated is not { ValueKind: JsonValueKind.Object } reading)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"There is no kitchen board at `{SurfaceSelector}` to read, so this reading is of"
+                    + $" no instant at all; the browser is at '{page.Url}'."));
+        }
+
+        int unseenCount = ReadCount(
+            reading,
+            "alerts",
+            UnseenAlertsAttribute,
+            nameof(KitchenAlertState.UnseenCount));
+
+        int unseenReminderCount = ReadCount(
+            reading,
+            "reminders",
+            UnseenRemindersAttribute,
             nameof(KitchenAlertState.UnseenReminderCount));
 
-        ILocator lines = page.Locator(PendingLineSelector);
-        int count = await lines.CountAsync();
+        List<KitchenBoardLine> pending = [];
 
-        List<KitchenBoardLine> pending = new(count);
-
-        for (int index = 0; index < count; index++)
+        foreach (JsonElement line in reading.GetProperty("lines").EnumerateArray())
         {
-            ILocator line = lines.Nth(index);
-
-            string quantityText = (await line.Locator("span.kitchen-line-quantity").First.InnerTextAsync())
+            string quantityText = (line.GetProperty("quantity").GetString() ?? string.Empty)
                 .Trim()
                 .TrimEnd('×');
 
-            string name = (await line.Locator("span.kitchen-line-name").First.InnerTextAsync()).Trim();
-
-            ILocator note = line.Locator("p.kitchen-line-note");
-            string? noteText = await note.CountAsync() > 0
-                ? (await note.First.InnerTextAsync()).Trim()
-                : null;
+            JsonElement note = line.GetProperty("note");
 
             pending.Add(new KitchenBoardLine(
-                int.TryParse(quantityText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int quantity)
+                int.TryParse(
+                    quantityText,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out int quantity)
                     ? quantity
                     : 0,
-                name,
-                noteText));
+                (line.GetProperty("name").GetString() ?? string.Empty).Trim(),
+                note.ValueKind == JsonValueKind.String ? note.GetString()?.Trim() : null));
         }
 
         return new KitchenBoardSnapshot(unseenCount, unseenReminderCount, pending);
     }
 
-    private static async Task<int> ReadCountAttributeAsync(
-        ILocator surface,
+    private static int ReadCount(
+        JsonElement reading,
+        string propertyName,
         string attributeName,
         string sourcePropertyName)
     {
-        string? raw = await surface.GetAttributeAsync(attributeName);
+        JsonElement value = reading.GetProperty(propertyName);
 
-        if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
+        string? raw = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+        if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
         {
-            return value;
+            return parsed;
         }
 
         throw new InvalidOperationException(
@@ -489,4 +521,29 @@ internal static class KitchenJourneys
             $"data-live='{live ?? "absent"}', data-loaded='{loaded ?? "absent"}',"
             + $" data-unseen-alerts='{unseen ?? "absent"}'");
     }
+
+    private const string BoardReadingScript = """
+        (names) => {
+            const [surfaceSelector, alertsAttribute, remindersAttribute, lineSelector,
+                   quantitySelector, nameSelector, noteSelector] = names;
+
+            const surface = document.querySelector(surfaceSelector);
+
+            if (surface === null) {
+                return null;
+            }
+
+            const text = (element) => element === null ? null : element.innerText;
+
+            return {
+                alerts: surface.getAttribute(alertsAttribute),
+                reminders: surface.getAttribute(remindersAttribute),
+                lines: Array.from(document.querySelectorAll(lineSelector)).map((line) => ({
+                    quantity: text(line.querySelector(quantitySelector)),
+                    name: text(line.querySelector(nameSelector)),
+                    note: text(line.querySelector(noteSelector))
+                }))
+            };
+        }
+        """;
 }

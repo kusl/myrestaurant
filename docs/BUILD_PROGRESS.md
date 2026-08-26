@@ -59,3 +59,19 @@
 **Test count.** 1302 before. `DocumentationCommentContractTests` removes 2; `SourceCommentContractTests` adds 2. **Predicted: 1302, unchanged.** A deviation from that number is the first thing to investigate, and the likeliest cause is an analyzer diagnostic promoted to an error by `ContinuousIntegrationBuild=true` rather than a failed assertion.
 
 **Still open.** `docs/OPERATIONS.md` (57 KB), `README.md` (38 KB), `docs/REQUIREMENTS.md` (35 KB) and the fifteen ADRs (76 KB) are unchanged. Together they are under 3% of the tree, and each is either a live runbook, the requirement this specification implements, or the rationale record — so condensing them buys little and risks the documents an operator actually follows. They are a separate slice if they are wanted at all.
+
+## Slice 67 — the reading that was two instants
+
+| Slice | What landed | Findings closed |
+|---|---|---|
+| 67 | `KitchenJourneys.ReadBoardAsync` and `TableOrderJourneys.ReadBasketAsync` rewritten to one `EvaluateAsync` each; `HarnessSnapshotContractTests` added over a computed subject set; the changelog's stale entry count deleted | F-121 |
+
+**What is in this slice.** A flake was reported against §16.3 scenario 8 — `Expected: 2, Actual: 1` on the unseen-alert count — and could not be reproduced. It is a torn read in the harness rather than a defect in the product. `KitchenBoard.razor` renders `data-unseen-alerts` and `data-unseen-reminders` from one `KitchenAlertState` on one element; the reader took them in two round trips, so a reminder arriving in between produced one alert beside one reminder. `WaitForBoardAsync`'s predicate asks only about reminders, so the torn reading satisfied it and the assertion on the next line failed against a board that had been right the whole time. `TableOrderJourneys.ReadBasketAsync` had the same shape over three `CountAsync` calls and is polled by a predicate on a surface that is actively changing, so it is repaired in the same slice: the two fail in ways nothing could confuse — one names a kitchen board and one names a basket — and the gate's subject set covers both, so repairing one would leave it red.
+
+**The rule and its subject.** `HarnessSnapshotContractTests` computes the composites that a `Func<T, bool>` is evaluated against and requires every method returning one to contain at most one browser read. Twenty harness files, three subjects, six readers. Collection-valued predicates are excluded and the exclusion is recorded as a residual rather than left implicit.
+
+**Test count arithmetic.** 1302 + 2 = **1304**. Two `[Fact]` in one new class in `MyRestaurant.WebApplication.Tests`; no test was deleted and no existing count moved. §16.4's counted-class census goes 37 → 38, over a floor of 37.
+
+**Sensitivity.** The scan is proven against three composed fixtures — a torn reading is reported, a whole one is not, and one that no predicate is ever asked about is not — and against the pre-repair tree, where it reports `ReadBoardAsync` at five reads and `ReadBasketAsync` at three. The floor on total body bytes is the guard on the brace-matching extraction: a truncated body contains no read and would otherwise pass.
+
+**What was NOT verified.** Nothing was compiled. No test was run. No browser was opened, so the two rewritten JavaScript readers have not executed against a real page — the claim that they are behaviour-preserving rests on reading: `innerText` for `innerText`, the same relative selectors, and the same `.Trim()` and `.TrimEnd('×')` applied in C# afterwards rather than in the script. The new gate was emulated mechanically against the edited tree rather than executed. The flake itself cannot be shown fixed by a passing run, because it did not fail on demand before.

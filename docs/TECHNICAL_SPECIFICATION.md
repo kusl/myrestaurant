@@ -1,6 +1,6 @@
 # myrestaurant — Technical Specification
 
-**Version 1.51 — 2026-08-26 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
+**Version 1.52 — 2026-08-26 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
 This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md`. It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. Appendix A maps every ruling to its embodiment.
 
@@ -1129,6 +1129,8 @@ CI builds with `-p:ContinuousIntegrationBuild=true`, which flips `TreatWarningsA
 
 `tests/MyRestaurant.WebApplication.Tests/Security/RawHtmlContractTests.cs` — 2 assertions: raw HTML has a closed set of sources in this application and none of them is a person, over a floor of fifty-odd source files (**F-116**, ADR-0014).
 
+`tests/MyRestaurant.WebApplication.Tests/HarnessSnapshotContractTests.cs` — 2 assertions: every composite the end-to-end harness evaluates a `Func<T, bool>` against is read from the browser in one evaluation, over a subject set computed from the harness sources rather than listed, with a sensitivity proof against composed fixtures — a torn reading, a whole one, and one no predicate is ever asked about (**F-121**).
+
 `tests/MyRestaurant.WebApplication.Tests/SourceCodeTests.cs` — 4 assertions: the comment-removing reader used by every scan that must not read prose behaves the same way on every form this tree contains, proven against composed fixtures (**F-116**).
 
 `tests/MyRestaurant.WebApplication.Tests/Security/ContentSecurityPolicyContractTests.cs` — 10 assertions: the policy admits no inline script and no inline event handler, no off-origin resource reference survives, and exactly one `data:` URL exists in the tree (**F-49**, ADR-0013).
@@ -1384,8 +1386,9 @@ One row per ruling: what was decided, and where in this document or which ADR ca
 
 ## Changelog
 
-**The full changelog through v1.50 is archived** in [`docs/progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md`](progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md), and every entry it holds is also a commit. The ten most recent are kept here because `SpecificationVersionTests` reads the newest one as this document's current version and asserts the header agrees with it.
+**The full changelog through v1.50 is archived** in [`docs/progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md`](progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md), and every entry it holds is also a commit. The most recent are kept here because `SpecificationVersionTests` reads the newest one as this document's current version and asserts the header agrees with it. How many is not written down: nothing can check it, and it had already drifted by one (**F-77**).
 
+- **v1.52 — 2026-08-26.** A reading composed out of two instants, and the flake it had been producing since the harness was written. **§16.4** gains `HarnessSnapshotContractTests`: a composite that a `Func<T, bool>` is evaluated against is read in one `EvaluateAsync`, over a subject set computed from the harness rather than listed. `KitchenJourneys.ReadBoardAsync` and `TableOrderJourneys.ReadBasketAsync` are rewritten to one evaluation each (**F-121**). No production code changed.
 - **v1.51 — 2026-08-26.** House-cleaning slice. Every comment removed from authored `.cs`, `.razor`, `.sql`, `.css`, `.js` and `.sh` — 2,087,175 bytes, 42% of all code — and §18 now states the rule that keeps it that way, held by `SourceCommentContractTests`. `DocumentationCommentContractTests` deleted: its subject no longer exists (**F-120**). `ConfigurationSurfaceTests` no longer terminates its scan on a documentation comment (**F-119**). The long form of this document, of the findings register, of the build log and of the menu plan archived to `docs/progress/`; §7, §11, §14, §16, §18, Appendix A and this changelog rewritten as registers. No behaviour changed.
 - **v1.50 — 2026-08-25.** The picture the barrier had never seen, and the element that can be present with no area at all. **§16.3 scenario 21** attaches a photograph to one of its two dishes: a dish with a picture renders a different card grid and its panel renders the whole frame uncropped, and six stages of the menu plan built both…
 - **v1.49 — 2026-08-25.** The guest's own menu is measured at the width it is read at, and the first thing that measurement found. **§11.12** gains the paragraph the finding is about — *whether a declared rule reaches a rendered element is a third question, sitting between the two levels, and only the browser level answers it* — and its…
