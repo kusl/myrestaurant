@@ -80,6 +80,7 @@ note_warning_detail() {
 is_record_file() {
     local candidate="$1" record
     for record in "${RECORD_FILES[@]}"; do
+        # shellcheck disable=SC2053
         [[ "$candidate" == $record ]] && return 0
     done
     return 1
