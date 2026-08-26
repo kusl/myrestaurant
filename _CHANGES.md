@@ -1,6 +1,6 @@
-# M6 Slice 64 — the surface the contract was written for, measured last, and the control no gate could reach
+# M6 Slice 65 — the picture the barrier had never seen, and the element that is present with no area at all
 
-**Apply this to a tree at Slice 63.** It edits nine files and adds none. Extracting it over an older tree
+**Apply this to a tree at Slice 64.** It edits eight files and adds one. Extracting it over an older tree
 will leave a specification two versions behind its own changelog and a menu plan whose Stage 1 status
 paragraph describes work that is not there.
 
@@ -8,126 +8,159 @@ Extract at the repository root. Every file in the archive is a **complete file**
 there are no scripts to run.
 
 ```
-tar -xzf m6-slice-64-the-guest-surface-at-375px.tar.gz
+tar -xzf m6-slice-65-the-picture-on-a-card.tar.gz
 ```
 
 ## Files to delete
 
 **None.** Nothing is removed by this slice.
 
-## New files — these must be `git add`ed
+## New files — this must be `git add`ed
 
-**None.** Every path in the archive is already tracked, so `git ls-files` sees all of it and no gate is
-blind to anything here.
+```
+git add tests/MyRestaurant.EndToEnd.Tests/Harness/MenuPictureJourneys.cs
+```
+
+**This matters more than it looks.** Every gate in this repository that walks the tree walks
+`git ls-files`, so an untracked file is invisible to all of them — the byte-hygiene gate, the
+documentation-comment gate, the raw-HTML scan and the §16.4 census included. A file that compiles and is
+never added is a file no gate has an opinion about.
 
 ## What is in the archive
 
 | Path | Why |
 | --- | --- |
-| `src/MyRestaurant.WebApplication/wwwroot/app.css` | **F-118** — `.order-basket-quantity input` joins the `.form-field` selector list and the matching focus ring; the `max-width` rule gains the comment saying what is and is not true of exactly those two |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs` | rewritten — `HandheldSelector`, `HandheldSurface` with `Administration` and `GuestOrder`, `MeasureHereAsync`, the per-selector census, the font-floor verdict |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableJourneys.cs` | `SeatGuestAsync` gains `handheld = false` — a default, so no existing caller moves |
-| `tests/MyRestaurant.EndToEnd.Tests/MenuReactionScenarios.cs` | scenario 21's guest is seated at 375×667; steps (k), (l) and (m) added inside the existing `[Fact]` |
-| `docs/TECHNICAL_SPECIFICATION.md` | **v1.49** — §11.12 (one paragraph added, the closing one rewritten), §16.3 scenario 21, §16.4 (three paragraphs), Appendix A (F-118, Stage 1d), changelog |
-| `docs/DOCUMENTATION_REVIEW.md` | F-118's ledger row and two *Going forward* paragraphs |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | **Stage 1d** added and marked landed; Stage 1's status paragraph updated; the §11.1 gap struck through where it was carried |
-| `docs/BUILD_PROGRESS.md` | the Slice 64 entry, appended |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/MenuPictureJourneys.cs` | **new** — the picture upload journey the menu plan named as this stage's blocker, the decode wait, and the six selectors that stop being spelled twice |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs` | a fourth selector group (`ReachOnlySelectors`), `MeasuredControl.Width`, the collapsed-box refusal, `AllSelectors` extracted, the script returns `width` and a fourth group |
+| `tests/MyRestaurant.EndToEnd.Tests/MenuReactionScenarios.cs` | scenario 21 attaches a 400px photograph to one dish and waits for both pictures to decode — steps (n) and (o) inside the existing `[Fact]` |
+| `tests/MyRestaurant.EndToEnd.Tests/MenuPictureScenarios.cs` | six selector constants now taken from the harness; `WaitForResizeReportAsync` calls the shared wait instead of carrying a copy of it |
+| `docs/TECHNICAL_SPECIFICATION.md` | **v1.50** — §16.3 scenario 21, §16.4 (the fourth group and the refusal; the barrier paragraph says four groups), Appendix A (Stage 1e), changelog |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | **Stage 1e** added and marked landed; Stage 1's status paragraph updated; Stage 1d's carried §11.1-picture gap struck through and closed |
+| `docs/DOCUMENTATION_REVIEW.md` | two *Going forward* rules — what a census of matches can and cannot answer, and where the line between a journey and a scenario falls |
+| `docs/BUILD_PROGRESS.md` | the Slice 65 entry, appended |
 | `_CHANGES.md` | this file |
 
+**`src/` is deliberately untouched.** No stylesheet, no Razor component, no C# under `src/`. Nothing in
+this slice repairs a defect, because nothing in this slice found one — it points an existing instrument at
+an arrangement it had never seen, and adds the refusal that arrangement turns out to need.
+
 **`tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` is deliberately NOT in the archive.**
-`MeasureAsync(page, path)` keeps its signature and `MeasuredControl` gained fields rather than losing any,
-so scenario 16's ten call sites compile and mean exactly what they meant. A file of three thousand lines
-not touched is three thousand lines that cannot have been broken.
+`MeasureAsync(page, path)` keeps its signature, `MeasuredControl` gained a field rather than losing any,
+`MeasuredCount` still means what it meant, and §11.4's surface declares an **empty** fourth group — so
+scenario 16's ten reports are numerically identical and that file compiles and means exactly what it meant.
 
 ## The count
 
-**1302, unchanged**, and for the first time in four slices the baseline is an observation rather than a
-prediction — your run reported 1302 passed, 0 failed, 0 skipped, which confirms Slice 62 and Slice 63 at
-once. Nothing here adds or removes a `[Fact]`: scenario 21 is extended *inside* its existing method.
-`MinimumCountedClasses` stays **37** — no test class is added, and the §16.4 paragraphs cite
-`HandheldReach.cs`, which is not a `*Tests.cs` and is therefore not a counted class.
+**1302, unchanged.** The baseline is Slice 64's measurement — your run reported 1302 passed, 0 failed, 0
+skipped. Nothing here adds or removes a `[Fact]`: scenario 21 is extended *inside* its existing method, and
+`MenuPictureJourneys.cs` is a harness file with no test method in it. §16.3 stays at **21** scenarios.
+`MinimumCountedClasses` stays **37** — no test class is added, and the new §16.4 paragraph cites
+`MenuPictureJourneys` and `HandheldReach.cs`, neither of which is a `*Tests.cs`.
 
 **If the run returns anything other than 1302, that is the first thing to investigate**, because nothing in
 this slice was supposed to move it.
 
 ## What this slice is
 
-**Stage 1d.** §11.1 — the guest's own ordering surface — is laid out at 375×667 by a browser for the first
-time. Stage 1 of the menu plan is *the handheld contract*, §11.12 is justified by R§1's sentence about the
-phone in a **guest's** hand, and every slice of Stage 1 measured the surfaces **staff** use, because that
-is where F-59 was found. Six stages of this plan then gave §11.1 headings, descriptions, a thumbnail, an
-uncropped picture, a detail panel, a like and a second control beside a refused card, and none of it was
-ever laid out at the width it is read at.
+**Stage 1e**, and the stage before it named it in one line with the blocker stated correctly: *"nothing
+measures §11.1 with a picture on a card … attaching a photograph inside scenario 21 means extracting the
+upload journey into the harness."*
 
-Scenario 21 is **extended rather than a scenario 22 added**, on the rule Slices 59, 60 and 61 each applied:
-the arrangement already exists. It ends holding a menu with an available dish and a refused one, the way-in
-control beside the refused card, and a panel open on it — everything the barrier wants but a staged line.
+Slice 64 pointed the 375px barrier at the guest's ordering surface and reported on ten selectors correctly.
+What it reported on was **the one-column card**, because that scenario creates two dishes and attaches a
+picture to neither. A dish with a photograph is a different arrangement of the same markup —
+`.order-menu-item.has-picture .order-menu-choice` is two columns, with a 4rem cropped square in the first
+and the text in the second — and its open panel renders the same photograph again, uncropped, under
+`max-width: 100%`. Stages 4c through 4f built all of it and nothing had ever laid any of it out narrow.
 
-## The defect it found (F-118)
+### The fixture is wider than the screen, and that is the design
 
-§11.1's basket renders its quantity box as a bare `<input>` inside a `<label class="order-basket-quantity">`.
-`app.css` declares §11.12's nine control declarations against `.form-field` and `.manage-inline-form`, and
-that label is neither — so **exactly one rule in the whole stylesheet matched it**, `max-width: 8rem`. The
-control therefore had **neither half** of the control rule: no `--touch-target` floor and no 16px font
-floor, rendering at a user-agent default of roughly 13px in roughly 21px of height.
+`app.css`'s own comment beside `.order-menu-detail-picture` says what its one width declaration is for: an
+`<img>` with no constraint renders at whatever a camera produced, so a photograph wider than the viewport
+makes the *document* wider than the viewport. **That had been a prediction for eleven slices.** Neither
+existing fixture turns it into a claim — a 12px picture renders 12px wide, so the rule could be deleted with
+every assertion still green; a 640px picture is over §8.2's cap, so the browser's ladder decides the stored
+dimensions and the step becomes a test of a downscaler.
 
-On the **guest's own basket**, which is the surface R§1 names, so the font floor there is a behaviour
-rather than a preference: iOS Safari zooms the viewport when a focused control's text is under 16px and
-does not zoom back out.
+**400 is the number, and both properties are load-bearing.** `PictureFixtures` writes
+`edge × (1 + edge × 3)` bytes plus framing, so 400 is **480,503 bytes against a cap of 524,288** — about
+43 KB of headroom. Under the cap the file is stored verbatim, so the panel renders a 400px photograph inside
+a panel roughly 300px across and `max-width: 100%` is the only thing standing between that and a sideways
+scroll. The cap is never written in the scenario; §8.2's constraint stays the only place that says how large
+a picture may be.
 
-**F-66's shape a second time**, and the two together are one sentence: *a control written outside the
-arrangement that carries a rule is invisible to every gate that reads the rule.*
-`HandheldLayoutContractTests` asserts the declaration exists and cannot know which element a page renders;
-the 375px barrier could have seen it and was scoped to §11.4. The repair is a **selector**, never a copy of
-the declarations.
+**On one dish and not both.** A menu where every card is two columns is a menu where the one-column card is
+untested, and both shapes stand on this surface at once in any real dining room. It goes on the dish that is
+later 86'd, so the card with the picture is also the card with the unavailable mark and a sibling control
+stacked beneath it — the busiest box model §11.1 can produce.
 
-## Decisions worth your veto
+### The hole it found, which is the part worth reading twice
 
-**1. Scenario 21 now has two subjects.** Likes, and a layout barrier. They are in one scenario because the
-arrangement is shared, and the "one change, one green run" rule is satisfied by their failure modes being
-distinguishable rather than by separation: an opinion that does not survive a reload is a fold reading the
-wrong row, and a control under 44px is a stylesheet.
+**An `<img>` whose bytes have not arrived has no intrinsic size.** Its box is `0×0`, which lies inside every
+viewport there is — so a barrier measuring it reports the element reachable, having measured a placeholder.
 
-**To revert:** move steps (k), (l) and (m) and the `ScrollbarAllowancePixels` constant into a new
-`MenuHandheldScenarios` class as scenario 22, and pass `handheld: false` at the `SeatGuestAsync` call.
-Costs a second container, a second passkey registration and a second join per run.
+**And Slice 64's refusal cannot see that.** That refusal fires when a required selector matches **nothing**,
+which is what made every other verdict on that surface mean something. An undecoded image *matches*: it
+counts in the census as a one, the refusal passes, and every verdict is computed over an element that is not
+there yet. The one instrument built to notice a group that went quiet is blind to an element that is present
+and empty.
 
-**2. `.manage-inline-form` keeps its second copy of the control declarations.** Folding it into the shared
-list is the obviously correct end state and it is four administration surfaces, in a slice about the
-guest's menu. Carried as an open item in three documents rather than done quietly.
+So there are two mechanisms rather than one, deliberately. `WaitForDecodedAsync` waits until every match
+reports a non-zero `naturalWidth`; the collapsed-box refusal is what says so if a later slice removes the
+wait. **The general rule is in `DOCUMENTATION_REVIEW.md`**: a census of matches answers *did the arrangement
+build* only for elements whose presence and whose extent are the same fact — true of a `<button>`, sized by
+its own padding and text, false of anything sized by bytes that arrive later.
 
-**To revert the deferral:** add `.manage-inline-form input, .manage-inline-form select` to the
-`.form-field` list and delete the standalone block. Do it in a slice that can run scenario 16.
+### A fourth selector group, because nobody presses a photograph
 
-**3. The font floor is asserted on §11.1 and nowhere else.** Turning it on for §11.4's ten surfaces is the
-obvious next move and it was declined on F-116's remedy — those pages *surely* comply, and *surely* is what
-cost a session one slice ago. Every administration selector is `Optional`; every guest selector is
-`Required`.
+The reach group asserts two things at once: the box is inside the viewport, and it clears §11.12's 44px
+touch-target floor. **The second is a claim about a thumb.** A 4rem thumbnail clears 44px incidentally, so
+putting one in that group attaches a verdict that is accidentally true and that nobody means — a floor that
+cannot fail, which is the mistake F-41 records. `ReachOnlySelectors` is the mirror of the height-only group
+the barrier has carried since Slice 33: reach without height, beside height without reach.
 
-**To widen:** change the relevant `HandheldSelector.Optional(…)` calls in `HandheldSurface.Administration`
-to `Required`, and add a `FontFloorSelectors` list to it. Do it from a green run, not from a paragraph.
+## Veto points
 
-## What was NOT verified
+**1. `MenuPictureScenarios.cs` was edited and it is currently green.** This is the one change in the slice
+made to something already working. Six `private const` declarations now initialise from `internal const`
+fields in the same assembly — legal, and it cannot change behaviour — and `WaitForResizeReportAsync` lost its
+inline script to `MenuPictureJourneys.SettleAsync`.
 
-Nothing was compiled and nothing was run. The risks, in order of what they would cost:
+*Why it is here:* leaving copies behind would be two spellings of each selector, and
+`AdministrationJourneys` already carries the sentence for why that is a defect rather than a style
+preference — *"a second spelling of it would make one of them silently stop matching"*. An `id` renamed on
+the form is not a compile error and not an exception; it is a locator that waits a minute and then reports
+the wrong thing, once per file that spelled it.
 
-**The barrier may report on arrival, and if it does the report is the finding.** §11.1 has never been laid
-out at 375px by anything that would tell you. If a second layout defect is there, this scenario is what
-says so — **do not delete the barrier**, send me the message. That is written here because deleting a gate
-that reports on arrival is the tempting move and the wrong one, and it is the exact mistake F-116 is about
-from the other side.
+*To revert:* restore the six literals as the values of those six `private const` fields, and restore the
+five-line `WaitForFunctionAsync` body inside `WaitForResizeReportAsync`. Nothing else in this slice depends
+on either. `MenuPictureJourneys` keeps its own constants and `SettleAsync` can go back to `private`.
 
-**The `width: 100%` the F-118 repair brings with it** is the only part of that fix that is not purely
-additive. `.order-basket-quantity` is a flex container; a percentage width resolves against an indefinite
-main size, `max-width: 8rem` caps it, and `.order-basket-controls` carries `flex-wrap: wrap`, so the worst
-case is the Take-out button wrapping to its own line. `.order-picker-quantity input` has carried exactly
-these declarations since the picker was written, which is evidence from the tree rather than from a
-compile.
+**2. The collapsed-box refusal is scoped to the reach-only group.** It could have been applied to all four.
 
-**The measurement script returns a new JSON shape** — `{selector, controls[]}` per group, where it
-previously returned a flat array per group. A mis-shaped read surfaces in `ReadGroups` as a
-`KeyNotFoundException` from `GetProperty`, not as a wrong number.
+*Why it is not:* nothing in the other three groups can be present-and-empty — a `<button>` has a box the
+moment it is in the document — so the check there would be a floor that cannot fail, and turning it on from
+this argument rather than from a green run is F-116 with the name changed.
 
-**Nothing proves the eight guest selectors match what scenario 21 arranges.** They were derived by reading
-the markup — and the required-selector refusal is exactly the instrument that will say so if one is wrong,
-by name and with the full census, rather than by a verdict quietly computed over a smaller page.
+*To widen it:* change the filter in `MeasureHereAsync` from `reachOnly` to the concatenation, and expect it
+to be a no-op. It should be widened from evidence, not from this paragraph.
+
+**3. Scenario 21 is now a long scenario with three subjects.** A like that survives a reload, §11.12 at
+375px, and a photograph on a card.
+
+*Why it is here:* the arrangement already exists, which is the rule Slices 59, 60, 61 and 64 each applied.
+A scenario 22 would buy a second container, a second passkey registration and a second join to arrange what
+is already standing. The three fail in ways nothing could confuse — a fold reading the wrong row, a
+stylesheet, and an upload — and each failure message names its own surface.
+
+*If you would rather split it:* the natural cut is after step (j), with a scenario 22 taking the barrier and
+the picture. It costs one container per run and buys nothing except a shorter method.
+
+## What to expect on the first run
+
+**The best outcome is green at 1302.** The second-best is green at 1302 with a red assertion inside scenario
+21, because that means the barrier is reporting on a box model nothing had ever measured — and the message
+will name the element, print the census, and say which of the four verdicts failed. **That is the finding,
+and the next slice is the repair.** Deleting the group would be the tempting move and the wrong one.
+
+The failure to be suspicious of is a **count other than 1302**. Nothing here was supposed to move it.

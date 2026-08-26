@@ -61,8 +61,10 @@ retired names are gone from the tree rather than tracked in a list, and nine of 
 are measured at 375px by a browser. What remains of 1b is the counter, kitchen and table surfaces, which
 were never record lists and were never the subject of F-59. **Stage 1d closed the rest of it in Slice 64**: §11.1 — the guest's own
 ordering surface, which is the surface R§1 justifies the whole section with — is measured at 375px by a
-browser, and the counter and kitchen surfaces are the two that remain. **Stage 2 was next**, and its
-boundary correction is below.
+browser, and the counter and kitchen surfaces are the two that remain. **Stage 1e finished the arrangement in
+Slice 65**: that surface is now measured with a photograph on a card, which is a different card grid and a
+different panel, and the barrier gained the fourth selector group and the collapsed-box refusal a picture
+turns out to need. **Stage 2 was next**, and its boundary correction is below.
 
 The specification governs. Where a stage below and `TECHNICAL_SPECIFICATION.md` disagree, the
 specification is right and this file is stale — with one deliberate exception, marked per stage: a decision
@@ -2224,13 +2226,159 @@ is the rule. Recorded here so it is a decision rather than something nobody noti
 **The font floor is asserted on §11.1 and nowhere else**, on F-116's remedy: widening it to §11.4's ten
 surfaces is a decision taken from a green run rather than from a paragraph.
 
-**Nothing measures §11.1 with a picture on a card.** The `has-picture` grid is a real box model this barrier
-does not exercise, because attaching a photograph inside scenario 21 means extracting the upload journey
-into the harness — a second change with a different failure mode, in the slice whose own change has to be
-proven first. It is the cheapest remaining thing in this file.
+~~**Nothing measures §11.1 with a picture on a card.**~~ **Closed, M6 Slice 65 — Stage 1e below.** The
+reason recorded here was right in every clause, including the deferral: the `has-picture` grid is a real box
+model, and exercising it did mean extracting the upload journey into the harness. It was also the cheapest
+remaining thing in this file, and it was discharged in the next slice rather than carried — which is what
+distinguishes this deferral from the one Stage 1d itself is about. **What it found was not a layout defect
+but a hole in the instrument**: an `<img>` whose bytes have not arrived is `0×0`, which lies inside every
+viewport there is *and matches its selector*, so the required-selector refusal this stage was so pleased with
+passes on a placeholder.
 
 **The menu enhancement's open list is empty for the fourth time**, and the next thing in this plan is still
 Stage 6, still not startable, for the two prerequisites that remain below.
+
+## Stage 1e — the picture on a card, at the width it is read at — **landed, M6 Slice 65**
+
+**This stage was named by the stage before it, in one line, with the blocker stated correctly.** Stage 1d's
+closing register said: *"nothing measures §11.1 with a picture on a card. The `has-picture` grid is a real box
+model this barrier does not exercise, because attaching a photograph inside scenario 21 means extracting the
+upload journey into the harness — a second change with a different failure mode, in the slice whose own change
+has to be proven first. It is the cheapest remaining thing in this file."* Every clause of that is right,
+including the deferral, and this is the slice that pays it.
+
+### What the barrier was measuring, and what it was not
+
+Slice 64 pointed the 375px barrier at §11.1 and it reported on ten selectors correctly. What it reported on was
+**the one-column card**, because scenario 21 creates two dishes and attaches a picture to neither. A dish with a
+photograph is a different arrangement of the same markup:
+
+```css
+.order-menu-item.has-picture .order-menu-choice {
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 0.7rem;
+    align-items: start;
+}
+```
+
+Two columns where every other card is one, a 4rem square in the first of them under `object-fit: cover`, and
+the text pushed into the second — and in the panel, the same photograph again, uncropped. **Stages 4c through 4f
+built all of it and nothing had ever laid any of it out narrow.** That is not the same shape of deferral Stage 1d
+recorded: this one was written down with the right reason in the slice that could see it, and it was discharged
+in the next.
+
+### The fixture is wider than the screen, and that is the whole design of this stage
+
+`.order-menu-detail-picture` declares `max-width: 100%` and `height: auto` and nothing else about its width, and
+`app.css`'s comment beside it says exactly what for:
+
+> an `<img>` with no width constraint renders at whatever a camera produced, so a 3000px photograph would make
+> the DOCUMENT wider than a 375px viewport
+
+**That sentence had been a prediction for eleven slices.** `MenuPictureScenarios` has a 12px fixture and a 640px
+one; neither would turn it into a claim. A 12px picture renders 12px wide, so the declaration acts on nothing and
+could be deleted with every assertion still green. A 640px picture is over §8.2's cap, so the browser's downscaler
+decides the stored dimensions and the step becomes a test of a ladder.
+
+**400 is the number, and both of its properties are load-bearing.** `PictureFixtures` writes
+`edge × (1 + edge × 3)` bytes of stored deflate plus framing, so 400 is **480,503 bytes against a cap of
+524,288** — about 43 KB of headroom. Under the cap, `wwwroot/js/menu-picture.js` takes its
+`file.size <= budget` branch, says *stored exactly as it is*, and the server stores the PNG that was chosen. So
+the guest's panel renders a 400px photograph inside a panel roughly 300px across, `max-width: 100%` is the only
+thing standing between that and a document wider than the screen, and the barrier's overflow verdict is finally
+about something. **The cap is never written in the scenario** — §8.2's constraint stays the only place in this
+repository that says how large a picture may be, and the arithmetic above is working rather than a second copy.
+
+### One dish and not both, which is a ruling rather than laziness
+
+A menu where every card carries a picture is a menu where the **one-column** card is no longer measured. Both
+shapes stand on this surface at once in any real dining room, so both are arranged: the salmon carries a
+photograph, the pudding does not.
+
+It goes on the **salmon** because that is the dish this scenario goes on to 86 and then reopen through the way-in
+control. So the card carrying the picture is also the card carrying `is-unavailable`, with a sibling `<button>`
+stacked beneath it inside the `<li>` — which is the busiest box model §11.1 is capable of producing and the one
+nothing had measured. And it is attached **before the guest joins**, so no §9 broadcast has to be waited for: an
+attach publishes `MenuChanged`, and doing it during the arrangement means the guest's first render already has the
+picture in it rather than acquiring one mid-scenario.
+
+### A fourth selector group, because a picture is not a control
+
+The barrier's reach group asserts two things at once — the box lies inside the viewport, and the box clears
+§11.12's 44px touch-target floor. **The second is a claim about a thumb, and nobody presses a photograph.** A 4rem
+thumbnail clears 44px incidentally and an uncropped one clears it by a mile, so putting either in that group
+attaches a verdict that is accidentally true and that nobody means — which is a floor that cannot fail, and this
+project has a name for those (F-41). What *is* worth asserting about a photograph on a 375px screen is precisely
+whether it fits.
+
+So `HandheldSurface` gains `ReachOnlySelectors`, the mirror of the height-only group it has carried since Slice 33.
+`.manage-picture-image` is deliberately **not** added to §11.4's surface: scenario 16 walks ten pages and arranges a
+picture on none of them, so a required selector would refuse every run and an optional one would measure nothing
+ten times.
+
+### The hole this stage found on the way in, and it is not a race
+
+**An `<img>` whose bytes have not arrived has no intrinsic size.** Its box is `0×0`, which lies inside every
+viewport there is. A barrier measuring it reports the element reachable, having measured a placeholder.
+
+**And the census cannot say otherwise**, which is what lifts this from a timing problem to a hole in the
+instrument. Slice 64's whole contribution was a refusal for a required selector that **matched nothing** — the
+thing `.record-actions button` did for fifteen slices with nothing able to say so. An undecoded image *matches*.
+It appears in the census as a one, the refusal passes, and every verdict computed from it is true of an element
+that is not there yet. The one instrument built to notice a group that went quiet is blind to an element that is
+present and empty.
+
+Two things follow, and they are deliberately both:
+
+- **`MenuPictureJourneys.WaitForDecodedAsync`** waits until every match reports a non-zero `naturalWidth`, on
+  the card and in the panel together, because §11.1 renders the same picture twice at once and a wait satisfied
+  by either alone sometimes returns before the element the step is about has pixels. The card's thumbnail is
+  `loading="eager"` only for the first heading, which is where these two dishes happen to sit — true of this
+  arrangement rather than a contract, and waiting is what makes it not matter.
+- **The reach-only group carries a collapsed-box refusal of its own.** The wait makes the arrangement
+  deterministic; the refusal is what says so if a later slice removes the wait. It is scoped to this group
+  because **nothing else on any surface here can reach that state**: a `<button>` is sized by its own padding and
+  text and has a box the moment it is in the document. Widening it to elements that cannot be empty would be a
+  claim made from this paragraph rather than from a run, which is F-116 with the name changed.
+
+### The journey is extracted, and the four selectors stop being spelled twice
+
+`MenuPictureJourneys` is a new harness file. The upload existed only as steps inlined in `MenuPictureScenarios`
+with the selectors as `private const`, and a private member cannot be reached from a second scenario class — so
+the choice was to move it or to paste it, and pasting a journey is F-59's mechanism with F-100's ruling already
+written against it. Same choice `TableJourneys.SeatGuestAsync` faced one slice ago, resolved the same way.
+
+**What deliberately did not move: those three scenarios' own steps.** Scenarios 18, 19 and 20 assert *between*
+the actions the journey performs as one — the status line before the submit, the file the control holds after the
+downscaler ran, the flash on the redirected GET, the stored facts on the panel. Folding them onto the journey
+would mean either growing assertion hooks into it, which this directory forbids because only claims about the
+product belong in a scenario, or those scenarios losing the intermediate claims that are the reason they exist —
+and **F-106 was found in exactly one of those gaps**. They keep their steps and give up only the strings. Two
+small consequences ride along: `WaitForResizeReportAsync` stops carrying a duplicate of a five-line predicate
+about two selectors and calls the harness's, and the `figcaption` and caption-field literals join the same set.
+
+### What is open after this stage
+
+**`.manage-inline-form` still keeps a second copy of §11.12's control declarations.** Carried from Slice 64,
+unchanged, and still deliberate: four administration surfaces in a slice about the guest's menu.
+
+**The font floor is asserted on §11.1 and nowhere else.** Carried from Slice 64, on F-116's remedy.
+
+**The collapsed-box refusal is on the reach-only group and nowhere else.** New, and a deliberate scope rather
+than a gap — see above. A later slice widens it from a green run if it ever wants to.
+
+**Nothing measures a menu long enough to scroll.** New, and the honest residual of this stage: two dishes is a
+menu, and a real one is sixty. `.order-menu` is `repeat(auto-fit, minmax(16rem, 1fr))`, so at 375px it is one
+column whatever the count, and the box model of a card does not change with the number of them — which is why
+this is a small item rather than the next one. What it would catch is a vertical rhythm nobody has measured.
+
+**The counter and kitchen surfaces are what remains of Stage 1**, and neither is menu work. `/kitchen` has no
+§16.3 scenario at all, which is the larger of the two problems and is carried on its own register below.
+
+**The menu enhancement's open list is empty for the fifth time**, and the next thing in this plan is still
+Stage 6, still not startable, for the two prerequisites that remain below.
+
+---
 
 ---
 

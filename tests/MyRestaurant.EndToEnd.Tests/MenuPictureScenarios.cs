@@ -64,14 +64,30 @@ public sealed class MenuPictureScenarios : IClassFixture<RestaurantHarness>
     /// </summary>
     private const int LargePictureEdge = 640;
 
-    /// <summary>The upload form's file input, its status line, and the panel the redirect lands on.</summary>
-    private const string FileInputSelector = "#picture-file";
+    /// <summary>
+    /// The upload form's file input, its status line, the panel the redirect lands on, and §11.4's
+    /// thumbnail of what is stored.
+    ///
+    /// <para><b>Taken from <see cref="MenuPictureJourneys"/> rather than spelled here (M6 Slice 65).</b>
+    /// These were four literals until Stage 1e needed the upload from a second scenario class and the
+    /// journey moved into the harness. Leaving copies behind would be two spellings of each selector,
+    /// which is the failure <c>AdministrationJourneys</c> already has a sentence about: an <c>id</c>
+    /// renamed on the form is not a compile error and not an exception, it is a locator that waits a
+    /// minute and then reports the wrong thing, once per file that spelled it. The local names stay
+    /// because the steps below read better for them and because nothing about these three scenarios
+    /// moved.</para>
+    /// </summary>
+    private const string FileInputSelector = MenuPictureJourneys.FileInput;
 
-    private const string StatusSelector = "#picture-status";
+    private const string StatusSelector = MenuPictureJourneys.Status;
 
-    private const string FlashSelector = ".status-success";
+    private const string FlashSelector = MenuPictureJourneys.Flash;
 
-    private const string ThumbnailSelector = "img.manage-picture-image";
+    private const string ThumbnailSelector = MenuPictureJourneys.Thumbnail;
+
+    private const string FactsSelector = MenuPictureJourneys.Facts;
+
+    private const string AltTextSelector = MenuPictureJourneys.AltTextInput;
 
     /// <summary>
     /// What a browser sends when it cannot name a file's format — an operating system with no extension
@@ -172,7 +188,7 @@ public sealed class MenuPictureScenarios : IClassFixture<RestaurantHarness>
 
         // Stored verbatim, which is the rule for anything already inside the cap: same format, same
         // byte count as what was handed to the control.
-        string facts = await administrator.InnerTextAsync("figcaption.manage-picture-facts");
+        string facts = await administrator.InnerTextAsync(FactsSelector);
         Assert.Contains("image/png", facts, StringComparison.Ordinal);
         Assert.Contains(
             $"{picture.Length.ToString(CultureInfo.InvariantCulture)} bytes",
@@ -187,7 +203,7 @@ public sealed class MenuPictureScenarios : IClassFixture<RestaurantHarness>
 
         // (f) The caption editor — F-106's own form. Its ValidationMessage now lives inside it, so this
         // is also the first time anything has rendered that form on a page carrying a picture.
-        await administrator.FillAsync("#picture-alt-text", caption);
+        await administrator.FillAsync(AltTextSelector, caption);
         await administrator.ClickAsync("button:has-text('Save caption')");
 
         await administrator.Locator(FlashSelector).WaitForAsync(
@@ -310,7 +326,7 @@ public sealed class MenuPictureScenarios : IClassFixture<RestaurantHarness>
             await administrator.InnerTextAsync(FlashSelector),
             StringComparison.Ordinal);
 
-        string facts = await administrator.InnerTextAsync("figcaption.manage-picture-facts");
+        string facts = await administrator.InnerTextAsync(FactsSelector);
         Assert.Contains("image/jpeg", facts, StringComparison.Ordinal);
         Assert.DoesNotContain("image/png", facts, StringComparison.Ordinal);
 
@@ -410,7 +426,7 @@ public sealed class MenuPictureScenarios : IClassFixture<RestaurantHarness>
         // Stored as what it IS. Before Stage 4f this upload's only possible outcome was a refusal;
         // believing the label instead would put octet-stream in the column and then into §7's response
         // header, so the positive assertion and the negative one are both required.
-        string facts = await administrator.InnerTextAsync("figcaption.manage-picture-facts");
+        string facts = await administrator.InnerTextAsync(FactsSelector);
 
         Assert.Contains("image/png", facts, StringComparison.Ordinal);
         Assert.DoesNotContain(UnnamedContentType, facts, StringComparison.Ordinal);
@@ -433,19 +449,15 @@ public sealed class MenuPictureScenarios : IClassFixture<RestaurantHarness>
     /// </summary>
     private static async Task<string> WaitForResizeReportAsync(IPage page)
     {
-        // Three conditions rather than one, because each of the other two alone has a race. The status
-        // element is written twice — "Resizing…" and then the outcome — so reading it on first sight
-        // catches the wrong sentence; and the file control is re-enabled at the end but has not
-        // necessarily been disabled yet at the moment this starts, so waiting only for enabled can
-        // return before the work began. Together they are unambiguous: a settled sentence beside a
-        // control that is not busy.
-        await page.WaitForFunctionAsync(
-            "() => { const status = document.querySelector('#picture-status');"
-            + " const control = document.querySelector('#picture-file');"
-            + " return status !== null && control !== null && !control.disabled"
-            + " && status.textContent.length > 0 && status.textContent.indexOf('Resizing') < 0; }",
-            null,
-            new PageWaitForFunctionOptions { Timeout = 60_000 });
+        // The wait itself is the harness's since M6 Slice 65, and this method is what is left of it:
+        // the SENTENCE. Three conditions rather than one, because each of the other two alone has a
+        // race — the status element is written twice for an oversized picture ("Resizing…", then the
+        // outcome), so reading it on first sight catches the wrong one; and the control is re-enabled
+        // at the end but has not necessarily been disabled yet when the wait starts. Together they are
+        // unambiguous: a settled sentence beside a control that is not busy. `AttachAsync` waits on
+        // exactly this and has no reason to read the text, which is why the wait is shared and the read
+        // is not.
+        await MenuPictureJourneys.SettleAsync(page);
 
         return await page.InnerTextAsync(StatusSelector);
     }

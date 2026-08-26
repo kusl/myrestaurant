@@ -51,6 +51,21 @@ namespace MyRestaurant.EndToEnd.Tests;
 /// one green run" rule here: a like that does not survive a reload is a fold reading the wrong row, and
 /// a control under 44px is a stylesheet. Neither can be mistaken for the other in a failure message, and
 /// both name the surface they are about.</para>
+///
+/// <para><b>And since M6 Slice 65 the salmon carries a photograph (Stage 1e).</b> That is arrangement
+/// rather than a third subject, and it is what the barrier at the end was missing. A dish with a picture
+/// renders a <em>different card</em> — <c>.order-menu-item.has-picture .order-menu-choice</c> is two
+/// columns where every other card is one — and an open panel renders the whole frame uncropped under
+/// <c>max-width: 100%</c>. Six stages of this plan built both and nothing had laid either out at 375px,
+/// because this scenario put a picture on nothing, so Slice 64's barrier measured the one-column card
+/// and reported on it correctly. **The picture is deliberately on one dish and not both**: a menu where
+/// every card is two columns is a menu where the one-column card is untested, and both shapes stand on
+/// this surface at once in any real dining room.</para>
+///
+/// <para><b>It uses <see cref="MenuPictureJourneys"/>, which the menu plan named as this stage's
+/// blocker</b> — <em>"attaching a photograph inside scenario 21 means extracting the upload journey into
+/// the harness"</em>. It did, and the extraction is a file rather than a paste, on the ruling
+/// <see cref="TableJourneys.SeatGuestAsync"/> was moved under one slice ago.</para>
 /// </summary>
 public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
 {
@@ -63,6 +78,33 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
     /// report a defect in the thing it was about to test.
     /// </summary>
     private static readonly TimeSpan InteractivityPatience = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// The edge of the fixture photograph, in pixels, and both of its properties are load-bearing
+    /// (Stage 1e).
+    ///
+    /// <para><b>Wider than the viewport.</b> <c>.order-menu-detail-picture</c> declares
+    /// <c>max-width: 100%</c> and no width of its own, and <c>app.css</c>'s comment beside it says what
+    /// that is for: an <c>&lt;img&gt;</c> with no constraint renders at whatever a camera produced, so a
+    /// photograph wider than the screen makes the <em>document</em> wider than the screen. At 400px
+    /// inside a panel roughly 300px across, that declaration is doing work; at
+    /// <c>MenuPictureScenarios</c>' 12px fixture it would be doing none, and the barrier's overflow
+    /// assertion would pass on a stylesheet that had lost the rule.</para>
+    ///
+    /// <para><b>Inside §8.2's cap, which is what keeps the arrangement deterministic.</b>
+    /// <see cref="PictureFixtures"/> writes <c>edge × (1 + edge × 3)</c> bytes of stored deflate plus a
+    /// little framing, so 400 is a shade over 480 KB against a cap of 512 KiB — about 43 KB of headroom.
+    /// Under the cap, <c>wwwroot/js/menu-picture.js</c> leaves the file completely alone and the server
+    /// stores the PNG that was chosen, so what the guest's page renders is a picture of exactly this
+    /// width. Over the cap, the browser's ladder would decide the stored dimensions and this scenario
+    /// would be asserting about a downscaler instead of about a layout.</para>
+    ///
+    /// <para><b>The cap is not written here</b>, and that is <c>MenuPictureScenarios</c>' rule rather
+    /// than a new one: §8.2's constraint is the only place in this repository that says how large a
+    /// picture may be. What is written here is a number chosen to sit under it with room, and the
+    /// arithmetic above is the working rather than a second copy of the limit.</para>
+    /// </summary>
+    private const int WideFixtureEdge = 400;
 
     public MenuReactionScenarios(RestaurantHarness harness) => _harness = harness;
 
@@ -118,6 +160,29 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
     //          off a rendered element is the only instrument here that can see it: a text gate can
     //          assert that `app.css` declares the floor and cannot know which elements a page renders
     //          outside the arrangement it declares it against. F-66's shape a second time.
+    //
+    //      (n) A PICTURE ON A CARD (Stage 1e), which is arrangement and is the whole point of this
+    //          slice. Stage 4c gave a dish a cropped thumbnail on its card and the whole photograph
+    //          in its panel, and the card's grid CHANGES SHAPE when one is attached — `has-picture`
+    //          makes `.order-menu-choice` two columns where every other card is one. Nothing had ever
+    //          laid that arrangement out at 375px, because this scenario put no picture on either
+    //          dish, so Slice 64's barrier measured the one-column card and was right about it.
+    //
+    //          THE FIXTURE IS INTRINSICALLY WIDER THAN THE SCREEN, and that is what makes the panel's
+    //          picture worth measuring. `.order-menu-detail-picture` declares `max-width: 100%` and
+    //          nothing else about its width, and app.css's own comment says what for: an <img> with
+    //          no constraint renders at whatever a camera produced, so a photograph wider than the
+    //          viewport makes the DOCUMENT wider than the viewport. That sentence had been a
+    //          prediction for eleven slices. A 400px picture inside a ~300px panel is the arrangement
+    //          in which it is a claim — and 400px is inside §8.2's cap, so the server stores it
+    //          verbatim and the assertion is not handed to a downscaler.
+    //
+    //      (o) THE DECODE, and it is a gate rather than a courtesy. An <img> whose bytes have not
+    //          arrived has NO INTRINSIC SIZE: its box is 0×0, which lies inside every viewport there
+    //          is, and it appears in the barrier's census as a one — so the required-selector refusal
+    //          cannot see it either. Measuring then would report a placeholder as reachable. The
+    //          harness waits for pixels before the barrier runs, and the barrier refuses a collapsed
+    //          box on its own as well, so removing the wait fails loudly instead of quietly.
     // -------------------------------------------------------------------------------------------
     [Fact]
     public async Task Guest_LikesADish_AndTheOpinionSurvivesAReload()
@@ -140,6 +205,36 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
             await AdministrationJourneys.CreateMenuItemAsync(administrator, "E2E Grilled Salmon", 24.00m);
         MenuItemOnTheMenu pudding =
             await AdministrationJourneys.CreateMenuItemAsync(administrator, "E2E Sticky Toffee", 7.50m);
+
+        // (n) THE PICTURE, attached during the arrangement and before anybody joins the table. Stage
+        //     1e: `has-picture` is a different card grid from the one every other card renders, and
+        //     `.order-menu-detail-picture` is the element `max-width: 100%` was written for — neither
+        //     had ever been laid out at 375px, because this scenario put a picture on nothing.
+        //
+        //     ON ONE DISH AND NOT BOTH, deliberately. A menu where every card is two columns is a
+        //     menu where the one-column card is untested, and both shapes are on this surface at once
+        //     in any real restaurant. It goes on the SALMON because that is the dish this scenario
+        //     goes on to 86 and then reopen through the way-in control, so the card carrying the
+        //     picture is also the card carrying `is-unavailable` and a sibling control beneath it —
+        //     which is the busiest box model §11.1 can produce and the one nothing has measured.
+        //
+        //     BEFORE THE GUEST EXISTS, so no §9 broadcast has to be waited for. An attach publishes
+        //     MenuChanged; doing it here means the guest's first render already has the picture in it
+        //     rather than acquiring one mid-scenario, and a scenario that waited on a broadcast it
+        //     did not need would be arranging a race for no claim.
+        int storedWidth = await MenuPictureJourneys.AttachAsync(
+            administrator,
+            salmon,
+            PictureFixtures.SquareGradientPng(WideFixtureEdge),
+            fileName: "salmon.png",
+            mimeType: "image/png");
+
+        // Stored VERBATIM, which is what keeps the arrangement about layout instead of about the
+        // downscaler. The fixture is inside §8.2's cap, so `menu-picture.js` leaves it alone and the
+        // server stores the PNG that was chosen — and a picture that came back narrower than the
+        // viewport would silently make the panel assertion below prove nothing, because
+        // `max-width: 100%` does not act on an image that already fits.
+        Assert.Equal(WideFixtureEdge, storedWidth);
 
         Guid tableIdentifier = await AdministrationJourneys.CreateTableAsync(administrator, tableLabel);
         byte[] joinSecret = await instance.ReadJoinSecretAsync(tableIdentifier, cancellationToken);
@@ -298,6 +393,35 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
         // That box model is the newest thing on this surface and the only one no browser has ever laid
         // out narrow.
         await TableOrderJourneys.InspectAsync(guest, salmon);
+
+        // (o) THE PICTURES HAVE PIXELS, and this is a gate rather than tidiness. An <img> whose bytes
+        //     have not arrived has NO intrinsic size, and `.order-menu-detail-picture` declares no
+        //     width or height of its own — so before the decode its box is 0×0, which lies inside
+        //     every viewport there is. The barrier would report it reachable, having measured a
+        //     placeholder, and the census cannot say otherwise: an undecoded image MATCHES its
+        //     selector, so it counts as a one and the required-selector refusal passes.
+        //
+        //     Both are waited for together because §11.1 renders the same picture twice at once — the
+        //     card's cropped thumbnail and the panel's whole frame — and the panel's is the one with
+        //     something to prove. The card's is `loading="eager"` only for the first heading, which
+        //     is where these two dishes happen to sit; that is true of this arrangement rather than a
+        //     contract, and waiting is what makes it not matter.
+        //
+        //     Asserted as well as waited for. The width is the fixture's, unchanged, read back
+        //     through §7's route on the GUEST's own page — which is a different claim from the one
+        //     step (n) made on §11.4's panel: that route answered for an administrator, and this one
+        //     answers for a table member on a join grant.
+        Assert.Equal(
+            WideFixtureEdge,
+            await MenuPictureJourneys.WaitForDecodedAsync(
+                guest,
+                "#table-order-surface img.order-menu-thumbnail"));
+
+        Assert.Equal(
+            WideFixtureEdge,
+            await MenuPictureJourneys.WaitForDecodedAsync(
+                guest,
+                "#table-order-surface img.order-menu-detail-picture"));
 
         // (l) §11.12 AT 375px, ON §11.1, FOR THE FIRST TIME. Stage 1 of the menu plan is "the handheld
         //     contract", and every slice of it measured the surfaces STAFF use, because F-59 was found

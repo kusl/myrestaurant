@@ -51,6 +51,13 @@ internal sealed record HandheldSelector(string Css, bool MustMatch)
 /// <param name="Left">The box's left edge in CSS pixels, relative to the viewport's left edge.</param>
 /// <param name="Right">The box's right edge in CSS pixels, relative to the viewport's left edge.</param>
 /// <param name="Height">The box's height in CSS pixels.</param>
+/// <param name="Width">
+/// The box's width in CSS pixels, read from the rectangle rather than computed as
+/// <paramref name="Right"/> minus <paramref name="Left"/>. The two agree, and reading it is what makes a
+/// <b>collapsed</b> box — an element present in the document with no area at all — decidable without a
+/// subtraction a reader has to check. See <see cref="HandheldSurface.ReachOnlySelectors"/> for the one
+/// kind of element that can be in that state.
+/// </param>
 /// <param name="FontSizePixels">
 /// <c>getComputedStyle(element).fontSize</c> in CSS pixels. Read for every measured element and
 /// asserted only for the font-floor set — see <see cref="HandheldSurface.FontFloorSelectors"/>.
@@ -61,13 +68,21 @@ internal sealed record MeasuredControl(
     double Left,
     double Right,
     double Height,
+    double Width,
     double FontSizePixels)
 {
+    /// <summary>
+    /// Whether this element occupies no area at all. An <c>&lt;img&gt;</c> whose bytes have not arrived
+    /// is the reachable case, and it reports <c>0×0</c> while being perfectly present in the document.
+    /// </summary>
+    internal bool IsCollapsed =>
+        Width <= HandheldReach.PixelTolerance || Height <= HandheldReach.PixelTolerance;
+
     /// <summary>One line for a failure message: what it was, and the numbers that made it a finding.</summary>
     internal string Describe() => string.Create(
         CultureInfo.InvariantCulture,
-        $"{Description} [left {Left:0.#}, right {Right:0.#}, height {Height:0.#},"
-            + $" font {FontSizePixels:0.#}px, via `{Selector}`]");
+        $"{Description} [left {Left:0.#}, right {Right:0.#}, width {Width:0.#},"
+            + $" height {Height:0.#}, font {FontSizePixels:0.#}px, via `{Selector}`]");
 }
 
 /// <summary>
@@ -100,12 +115,33 @@ internal sealed record MeasuredControl(
 /// different rule with a different failure: an under-sized field is perfectly placed, perfectly tall,
 /// and zooms the whole viewport on focus in iOS Safari without zooming back.
 /// </param>
+/// <param name="ReachOnlySelectors">
+/// Elements whose whole box must lie inside the viewport and which carry <b>no</b> touch-target claim
+/// (M6 Slice 65, Stage 1e). The mirror of <paramref name="HeightOnlySelectors"/>, and it exists for one
+/// kind of element: a picture.
+///
+/// <para><b>A touch target is a claim about a thumb, and nobody presses a photograph.</b> A 4rem
+/// thumbnail clears 44px incidentally and an uncropped one clears it by a mile, so putting either in the
+/// reach group would attach a verdict that is accidentally true and that nobody means — which is a floor
+/// that cannot fail, and this project has a name for those (F-41). What <em>is</em> worth asserting about
+/// a picture is precisely the reach half: whether the thing fits on the screen.</para>
+///
+/// <para><b>And the members of this group are the only elements on any surface that can be present
+/// without occupying space.</b> A <c>&lt;button&gt;</c> is sized by its padding and its text, so it has a
+/// box the moment it is in the document. An <c>&lt;img&gt;</c> with no declared width is sized by bytes
+/// that arrive later, so before they do its box is <c>0×0</c> — inside every viewport there is, and
+/// present in the census as a one. That is why this group alone carries the collapsed-box refusal in
+/// <see cref="HandheldReach.MeasureHereAsync"/>: the failure it catches is one only this kind of element
+/// has. Widening the refusal to the other groups is a decision a later slice takes from a green run
+/// rather than from this paragraph, which is F-116's remedy applied on the way in.</para>
+/// </param>
 internal sealed record HandheldSurface(
     string Name,
     string AnchorSelector,
     IReadOnlyList<HandheldSelector> ReachSelectors,
     IReadOnlyList<HandheldSelector> HeightOnlySelectors,
-    IReadOnlyList<HandheldSelector> FontFloorSelectors)
+    IReadOnlyList<HandheldSelector> FontFloorSelectors,
+    IReadOnlyList<HandheldSelector> ReachOnlySelectors)
 {
     /// <summary>
     /// §11.4's administration surfaces — six indexes and four detail pages (§16.3 scenario 16).
@@ -172,6 +208,13 @@ internal sealed record HandheldSurface(
         // §11.12's font floor is not asserted here, and the reason is the one above: it would be a
         // claim about every text control on ten pages, made from reading a stylesheet. The guest
         // surface below turns it on for the three controls this slice can account for.
+        [],
+        // No reach-only group, and the omission is a fact about these ten pages rather than an
+        // oversight. `.manage-picture-image` is a picture on one of them — §11.4's item page — and
+        // it is deliberately not measured here: scenario 16 walks ten surfaces and arranges a
+        // picture on none of them, so a required selector would refuse every run and an optional one
+        // would measure nothing on nine pages and nothing on the tenth. The element that DOES get
+        // measured is the same picture on the guest's menu, where scenario 21 arranges one.
         []);
 
     /// <summary>
@@ -201,6 +244,22 @@ internal sealed record HandheldSurface(
     /// <para><b>Nothing is measured for height alone</b>, because nothing on this surface is inside a
     /// scroll container of its own. That is stated rather than left as an empty list: the guest area has
     /// no <c>.page-head-areas</c> strip, and if one ever arrives it belongs in that group.</para>
+    ///
+    /// <para><b>Two pictures are measured for reach alone (M6 Slice 65, Stage 1e), and they are the last
+    /// thing on this surface no browser had ever laid out narrow.</b> Stage 4c gave a dish a cropped
+    /// thumbnail on its card and the whole photograph in its panel, and the card's grid changes shape
+    /// when one is attached — <c>.order-menu-item.has-picture .order-menu-choice</c> becomes two columns
+    /// where every other card is one. Nothing in this repository had ever rendered that arrangement at
+    /// 375px, because scenario 21 put no picture on either dish, so Slice 64's barrier measured the
+    /// one-column card and reported on it correctly.</para>
+    ///
+    /// <para><b>The uncropped one is the element with something to prove.</b> It declares
+    /// <c>max-width: 100%</c> and <c>height: auto</c> and nothing else, and <c>app.css</c>'s own comment
+    /// says what that first declaration is for: <em>"an <c>&lt;img&gt;</c> with no width constraint
+    /// renders at whatever a camera produced, so a 3000px photograph would make the DOCUMENT wider than a
+    /// 375px viewport"</em>. That sentence had been a prediction for eleven slices. It is now the thing
+    /// scenario 21 arranges — a fixture picture <b>intrinsically wider than the screen</b>, inside §8.2's
+    /// cap so the server stores it verbatim rather than handing the assertion to a downscaler.</para>
     ///
     /// <para><b>Every selector is scoped to the island</b> (<c>#table-order-surface</c>) for the reason
     /// every selector in <see cref="TableOrderJourneys"/> is: the page around it is static SSR and
@@ -235,6 +294,19 @@ internal sealed record HandheldSurface(
             // target is the label around it.
             HandheldSelector.Required("#table-order-surface input[type=\"text\"]"),
             HandheldSelector.Required("#table-order-surface input[type=\"number\"]"),
+        ],
+        [
+            // Stage 1e. Both required, because scenario 21 attaches a picture to one dish and then
+            // opens that dish's panel — so both elements exist at the moment of measurement, and a
+            // selector matching nothing here means the upload silently did not happen, which would
+            // otherwise leave this whole group measuring the surface Slice 64 already measured.
+            //
+            // `img` rather than a bare class on both, for F-67's reason one register over: the class
+            // is what the markup declares and the element type is what makes the measurement mean
+            // something. A `<div class="order-menu-thumbnail">` would have a box whatever happened to
+            // the bytes.
+            HandheldSelector.Required("#table-order-surface img.order-menu-thumbnail"),
+            HandheldSelector.Required("#table-order-surface img.order-menu-detail-picture"),
         ]);
 }
 
@@ -276,7 +348,14 @@ internal sealed record HandheldReachReport(
     IReadOnlyList<MeasuredControl> UndersizedText,
     IReadOnlyDictionary<string, int> Census)
 {
-    /// <summary>Every control measured for reach, whatever its verdict.</summary>
+    /// <summary>
+    /// Every element measured for reach, whatever its verdict.
+    ///
+    /// <para>Since M6 Slice 65 this includes <see cref="HandheldSurface.ReachOnlySelectors"/>' members,
+    /// because <em>is it on the screen</em> is one question and answering it in two lists would let a
+    /// later edit assert it on one of them. It is <b>not</b> a count of things that must clear the
+    /// touch-target floor, and never was — <c>Undersized</c> is that.</para>
+    /// </summary>
     internal int MeasuredCount => Reachable.Count + OutOfReach.Count;
 
     /// <summary>Whether the document itself scrolls sideways, within a pixel of rounding.</summary>
@@ -340,6 +419,15 @@ internal sealed record HandheldReachReport(
 /// for touch-target height alone. Everything else — a row's action, a page's primary action, a dish's
 /// card — must lie inside the viewport outright, because the only other thing to scroll is the page and
 /// scrolling the page sideways is the finding.</para>
+///
+/// <para><b>And since M6 Slice 65, what is measured for reach ALONE (Stage 1e).</b> A picture is not
+/// pressed, so a touch-target floor on one is a verdict that is accidentally true; what is worth
+/// asserting about a photograph on a 375px screen is exactly whether it fits. That group also carries a
+/// refusal the other three do not need: an <c>&lt;img&gt;</c> with no declared width is sized by bytes
+/// that arrive later, so it can be <em>present in the document with no area at all</em> — a <c>0×0</c>
+/// box, inside every viewport there is, and counted in the census as a one. Every other element on every
+/// surface here is sized by its own padding and text and cannot reach that state. See
+/// <see cref="HandheldSurface.ReachOnlySelectors"/>.</para>
 ///
 /// <para><b>Navigation and measurement are two methods (Slice 64).</b> <see cref="MeasureAsync"/> is a
 /// static-SSR page: go there, wait for the anchor, measure. <see cref="MeasureHereAsync"/> measures the
@@ -473,6 +561,7 @@ internal static class HandheldReach
             [.. surface.ReachSelectors.Select(selector => selector.Css)],
             [.. surface.HeightOnlySelectors.Select(selector => selector.Css)],
             [.. surface.FontFloorSelectors.Select(selector => selector.Css)],
+            [.. surface.ReachOnlySelectors.Select(selector => selector.Css)],
         ];
 
         JsonElement? evaluated = await page.EvaluateAsync(MeasurementScript, selectors);
@@ -493,12 +582,11 @@ internal static class HandheldReach
         List<MeasuredControl> reach = ReadGroups(measurement.GetProperty("reach"));
         List<MeasuredControl> heightOnly = ReadGroups(measurement.GetProperty("heightOnly"));
         List<MeasuredControl> fontFloor = ReadGroups(measurement.GetProperty("fontFloor"));
+        List<MeasuredControl> reachOnly = ReadGroups(measurement.GetProperty("reachOnly"));
 
         Dictionary<string, int> census = [];
 
-        foreach (HandheldSelector selector in surface.ReachSelectors
-            .Concat(surface.HeightOnlySelectors)
-            .Concat(surface.FontFloorSelectors))
+        foreach (HandheldSelector selector in AllSelectors(surface))
         {
             // Seeded at zero from the DECLARED set rather than counted up from what was found, which
             // is the whole point: a selector that matched nothing has to appear in the census as a
@@ -506,7 +594,10 @@ internal static class HandheldReach
             census[selector.Css] = 0;
         }
 
-        foreach (MeasuredControl control in reach.Concat(heightOnly).Concat(fontFloor))
+        foreach (MeasuredControl control in reach
+            .Concat(heightOnly)
+            .Concat(fontFloor)
+            .Concat(reachOnly))
         {
             census[control.Selector] = census.GetValueOrDefault(control.Selector) + 1;
         }
@@ -537,6 +628,17 @@ internal static class HandheldReach
             }
         }
 
+        foreach (MeasuredControl control in reachOnly)
+        {
+            // The reach half and NOT the touch-target half — see HandheldSurface.ReachOnlySelectors.
+            // A picture is not pressed, so a 44px floor on one is a verdict that is accidentally true
+            // and that nobody means.
+            bool inside = control.Left >= -PixelTolerance
+                && control.Right <= clientWidth + PixelTolerance;
+
+            (inside ? reachable : outOfReach).Add(control);
+        }
+
         foreach (MeasuredControl control in fontFloor)
         {
             // Strictly under, with no tolerance — see MinimumTextFontPixels for why this comparison
@@ -559,9 +661,7 @@ internal static class HandheldReach
             undersizedText,
             census);
 
-        string[] silent = surface.ReachSelectors
-            .Concat(surface.HeightOnlySelectors)
-            .Concat(surface.FontFloorSelectors)
+        string[] silent = AllSelectors(surface)
             .Where(selector => selector.MustMatch && census[selector.Css] == 0)
             .Select(selector => selector.Css)
             .ToArray();
@@ -584,8 +684,51 @@ internal static class HandheldReach
                     + $" was renamed. The full census: {report.DescribeCensus()}."));
         }
 
+        // A required reach-only member that matched an element with NO AREA is the same finding as one
+        // that matched nothing, and the census cannot tell them apart — it reports a one either way.
+        // Reported SECOND, because a selector matching nothing is the more fundamental fact and a
+        // reader who gets both messages at once cannot act on either.
+        //
+        // Scoped to this group on purpose: a button is sized by its padding and its text and cannot be
+        // present-but-empty, while an <img> with no declared width is sized by bytes that may not have
+        // arrived. Thrown rather than returned, on this directory's standing convention — an
+        // arrangement that did not build is an InvalidOperationException, and only claims about the
+        // product live in a scenario.
+        MeasuredControl[] collapsed = reachOnly
+            .Where(control => control.IsCollapsed)
+            .Where(control => surface.ReachOnlySelectors
+                .Any(selector => selector.MustMatch
+                    && string.Equals(selector.Css, control.Selector, StringComparison.Ordinal)))
+            .ToArray();
+
+        if (collapsed.Length > 0)
+        {
+            throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"On {surface.Name} at '{path}', {collapsed.Length} required element(s) are in the"
+                    + $" document with no area at all: {Format(collapsed)}. An <img> whose bytes have"
+                    + $" not arrived reports a 0×0 box, which lies inside every viewport there is and"
+                    + $" appears in the census as a one — so every verdict here would be true of a"
+                    + $" placeholder rather than of a picture. Arrange the decode before measuring"
+                    + $" (`MenuPictureJourneys.WaitForDecodedAsync`), or §7's route is not answering."
+                    + $" The full census: {report.DescribeCensus()}."));
+        }
+
         return report;
     }
+
+    /// <summary>
+    /// Every selector a surface declares, in one sequence. Declared once because three call sites in
+    /// <see cref="MeasureHereAsync"/> walk exactly this set — seeding the census, counting the silent
+    /// ones, and the group added in Slice 65 — and a fourth group added to two of the three is a census
+    /// that quietly stops covering a set the refusal still checks.
+    /// </summary>
+    private static IEnumerable<HandheldSelector> AllSelectors(HandheldSurface surface)
+        => surface.ReachSelectors
+            .Concat(surface.HeightOnlySelectors)
+            .Concat(surface.FontFloorSelectors)
+            .Concat(surface.ReachOnlySelectors);
 
     /// <summary>
     /// Every line in a set of measurements, formatted for a failure message. Empty reads as
@@ -614,6 +757,7 @@ internal static class HandheldReach
                     element.GetProperty("left").GetDouble(),
                     element.GetProperty("right").GetDouble(),
                     element.GetProperty("height").GetDouble(),
+                    element.GetProperty("width").GetDouble(),
                     element.GetProperty("fontSize").GetDouble()));
             }
         }
@@ -656,6 +800,7 @@ internal static class HandheldReach
                         left: box.left,
                         right: box.right,
                         height: box.height,
+                        width: box.width,
                         fontSize: parseFloat(getComputedStyle(element).fontSize) || 0
                     };
                 })
@@ -704,7 +849,8 @@ internal static class HandheldReach
                 widestOverflowHint: hint,
                 reach: measure(groups[0]),
                 heightOnly: measure(groups[1]),
-                fontFloor: measure(groups[2])
+                fontFloor: measure(groups[2]),
+                reachOnly: measure(groups[3])
             };
         }
         """;
