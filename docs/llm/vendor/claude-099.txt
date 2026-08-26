@@ -13,3 +13,71 @@ I will likely miss those bespoke scripts
 also please remember to update all documentation as necessary 
 remember our main focus is making progress toward enhancing the menu 
 we need to make progress toward that as well 
+
+
+/
+Claude finished the response
+please continue 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+please avoid giving me bespoke scripts to manipulate text in code / documentation 
+remember to give full files for all files that need to change 
+I will likely miss those bespoke scripts 
+also please remember to update all documentation as necessary 
+remember our main focus is making progress toward enhancing the menu 
+we need to make progress toward that as well
+
+
+Ran 43 commands, viewed 7 files · 7 notes
+Ran 43 commands, viewed 7 files · 7 notes
+Reconstruction and drift check
+I rebuilt the working tree from dump.txt with SHA-256 verified per file: 382 of 382 byte-exact. The two that never verify are the two that never verify — export.sh, whose dump rewrites its own header into the copy it embeds, and LICENSE, which the exporter elides to metadata by design. One file needed trimming before it hashed: RestaurantTimeTests.cs is last in the dump and swallows the DUMP SUMMARY footer; trimmed, it matched 7575227f6bf4… exactly.
+
+Carried session memory said Slice 60, v1.45, 1281 tests, floor 33, F-113. The tree says Slice 64, v1.49, 1302 tests, floor 37, F-118 — drift of four slices, caught by the ritual for the seventh time. Nothing was authored before that was settled. Per your own standing rule, the baseline at Slice 64 was a measurement (1302 passed / 0 failed / 0 skipped), and Slice 64 predicted 1302 unchanged.
+
+What the next slice is
+The menu plan's own closing register names it, in as many words: "Nothing measures §11.1 with a picture on a card … It is the cheapest remaining thing in this file." That is Stage 1e, and its recorded blocker is precise — attaching a photograph inside scenario 21 means extracting the upload journey into the harness.
+
+I confirmed the blocker is real and the shape of the work:
+
+The upload journey exists only inline inside MenuPictureScenarios, with #picture-file, #picture-status, .status-success and img.manage-picture-image as private const. A second scenario file cannot reach any of it — F-100's situation exactly, one register over from TableJourneys.SeatGuestAsync in Slice 64.
+PictureFixtures.SquareGradientPng(edge) already generates a real PNG of a chosen size, so no fixture work is needed. At edge 400 the file is 480,503 bytes against §8.2's cap of 524,288 — inside it, so menu-picture.js reports "stored exactly as it is" and the server stores a 400×400 PNG verbatim. No JPEG re-encode, no ladder, nothing non-deterministic.
+Why 400 and not 12. .order-menu-detail-picture carries max-width: 100%; height: auto, and that stylesheet's own comment says why: "a 3000px photograph would make the DOCUMENT wider than a 375px viewport". A 12px fixture renders 12px and proves the declaration does nothing. A 400px intrinsic image inside a ~300px panel is the arrangement in which that declaration is load-bearing — remove it and ScrollsSideways fails.
+
+And the vacuity trap I found on the way in, which is F-41's shape. An <img> that has not decoded has zero intrinsic size, so its box is 0×0 — and a 0×0 box trivially lies inside the viewport. Worse, the required-selector census would report img.order-menu-detail-picture × 1, matched, so Slice 64's own refusal cannot see it. The barrier would pass while measuring a placeholder. The card's thumbnail is loading="eager" only for heading index 0, which is where scenario 21's items sit — true today, and not a contract.
+
+That makes two things load-bearing rather than tidy: a decode wait in the harness before measuring, and a collapsed-box refusal in the barrier scoped to a new selector group for elements sized by their own bytes rather than by padding and text.
+
+The change set I had settled on
+Path	Why
+tests/MyRestaurant.EndToEnd.Tests/Harness/MenuPictureJourneys.cs	new — the attach journey, the four selectors as internal const, and the decode wait
+tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs	a fourth group, ReachOnlySelectors — inside the viewport, no touch-target claim, since an image is not pressed — plus the collapsed-box refusal, and two required selectors on GuestOrder
+tests/MyRestaurant.EndToEnd.Tests/MenuReactionScenarios.cs	scenario 21 attaches a 400px picture to the salmon and asserts the guest's thumbnail decoded
+tests/MyRestaurant.EndToEnd.Tests/MenuPictureScenarios.cs	four private const initialised from the harness constants — one spelling, one place
+docs/TECHNICAL_SPECIFICATION.md	v1.50 — §11.12, §16.3 scenario 21, §16.4, Appendix A, changelog
+docs/MENU_AND_HANDHELD_PLAN.md	Stage 1e
+docs/DOCUMENTATION_REVIEW.md, docs/BUILD_PROGRESS.md, _CHANGES.md	ledger row, Slice 65 entry, this slice
+Deletions: none. New file requiring git add: MenuPictureJourneys.cs — gates use git ls-files, so it is blind to it until you add it.
+
+Predicted count 1302, unchanged — scenario 21 is extended inside its existing [Fact], no test class is added, MinimumCountedClasses stays 37, and §16.3 stays at 21 scenarios.
+
+I hit the tool limit at the packaging step, so no archive was produced — I'd rather tell you that than hand you a partial one. Say continue and I'll author the files and ship the .tar.gz, with the sensitivity proofs and the gate emulations run before packaging as usual.
+
+Claude reached its tool-use limit for this turn.
+
+Want to be notified when Claude responds?
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
+
+
+
+83
+67
+
